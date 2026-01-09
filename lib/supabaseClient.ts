@@ -1,12 +1,13 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 export function createClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl) throw new Error("NEXT_PUBLIC_SUPABASE_URL is required");
-  if (!supabaseAnonKey) throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY is required");
+  if (!url) throw new Error("NEXT_PUBLIC_SUPABASE_URL is required");
+  if (!anon) throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY is required");
 
-  return createSupabaseClient(supabaseUrl, supabaseAnonKey);
+  // ✅ Ici url et anon sont garantis string
+  return createSupabaseClient(url, anon);
 }
 
