@@ -231,3 +231,176 @@ body {
     animation: none !important;
   }
 }
+
+/* ===== iNrCy Atom Dashboard ===== */
+
+.inrcy-atom-wrap {
+  display: grid;
+  place-items: center;
+}
+
+.inrcy-atom {
+  position: relative;
+  width: min(860px, 100%);
+  height: min(620px, 72vh);
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+/* Chaque ring est un “groupe” qui tourne */
+.inrcy-ring {
+  position: absolute;
+  width: var(--size);
+  height: var(--size);
+  display: grid;
+  place-items: center;
+  animation: inrcy-orbit-rotate var(--dur) linear infinite;
+}
+
+.inrcy-ring-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.03) inset;
+  opacity: 0.55;
+}
+
+/* L’électron est positionné à un angle sur l’orbite */
+.inrcy-electron {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform:
+    translate(-50%, -50%)
+    rotate(var(--angle))
+    translateX(calc(var(--size) / 2))
+    rotate(calc(-1 * var(--angle)));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.75);
+  background: rgba(255,255,255,0.70);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.10);
+
+  cursor: pointer;
+  user-select: none;
+  transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.inrcy-electron:hover {
+  background: rgba(255,255,255,0.88);
+  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.14);
+}
+
+.inrcy-electron:focus-visible {
+  outline: 3px solid rgba(59,130,246,0.45);
+  outline-offset: 3px;
+}
+
+.inrcy-electron-emoji {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  font-size: 16px;
+}
+
+.inrcy-electron-label {
+  display: grid;
+  line-height: 1.1;
+  text-align: left;
+  color: rgba(15, 23, 42, 0.92);
+}
+
+/* Noyau */
+.inrcy-core {
+  position: relative;
+  z-index: 2;
+  width: min(360px, 92%);
+  border-radius: 28px;
+  padding: 22px 20px;
+  text-align: center;
+
+  background: rgba(255,255,255,0.72);
+  border: 1px solid rgba(255,255,255,0.80);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 22px 80px rgba(15, 23, 42, 0.18);
+}
+
+.inrcy-core::before {
+  content: "";
+  position: absolute;
+  inset: -22px;
+  border-radius: 34px;
+  background: radial-gradient(circle at 50% 30%,
+    rgba(0,180,255,0.18),
+    rgba(120,90,255,0.14),
+    rgba(255,55,140,0.10),
+    transparent 60%
+  );
+  filter: blur(8px);
+  z-index: -1;
+}
+
+.inrcy-core-badge {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.72);
+  background: rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(255,255,255,0.8);
+  padding: 6px 10px;
+  border-radius: 999px;
+}
+
+.inrcy-core-title {
+  margin-top: 10px;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: rgba(15, 23, 42, 0.92);
+}
+
+.inrcy-core-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.66);
+}
+
+.inrcy-core-btn {
+  margin-top: 14px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.8);
+  background: rgba(255,255,255,0.85);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+}
+
+.inrcy-core-btn:hover {
+  background: rgba(255,255,255,0.95);
+}
+
+/* Animation rotation orbite */
+@keyframes inrcy-orbit-rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* Respecte la préférence “moins d’animations” */
+@media (prefers-reduced-motion: reduce) {
+  .inrcy-ring {
+    animation: none !important;
+  }
+}
+
