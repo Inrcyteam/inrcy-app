@@ -233,25 +233,24 @@ body {
 }
 
 /* ===== iNrCy Atom Dashboard ===== */
-/* ✅ On garde le wrapper, mais on remplace la partie "orbites" par "champ de bulles" */
 
 .inrcy-atom-wrap {
   display: grid;
   place-items: center;
 }
 
-/* ✅ Nouveau conteneur pour le dashboard “bulles” */
+/* Conteneur “champ” */
 .inrcy-atom-field {
   position: relative;
-  width: min(860px, 100%);
-  height: min(620px, 72vh);
+  width: min(920px, 100%);
+  height: min(700px, 78vh);
   margin-inline: auto;
   display: grid;
   place-items: center;
   isolation: isolate;
 }
 
-/* ✅ SVG des liens de synergie */
+/* Lignes synergie */
 .inrcy-links {
   position: absolute;
   inset: 0;
@@ -261,39 +260,44 @@ body {
   pointer-events: none;
 }
 
-/* ✅ Animation dédiée aux bulles (pour éviter conflit avec tes dots login) */
-@keyframes inrcy-bubble-wander {
-  0%   { transform: translate(-50%, -50%) translate(0px, 0px); }
-  22%  { transform: translate(-50%, -50%) translate(var(--x1), var(--y1)); }
-  48%  { transform: translate(-50%, -50%) translate(var(--x2), var(--y2)); }
-  74%  { transform: translate(-50%, -50%) translate(var(--x3), var(--y3)); }
-  100% { transform: translate(-50%, -50%) translate(var(--x4), var(--y4)); }
-}
-
-/* ✅ Bulle = picto + rond + texte */
+/* Bulles (texte dedans) */
 .inrcy-bubble {
   position: absolute;
-  z-index: 2; /* ✅ derrière le noyau */
-  left: 50%;
-  top: 50%;
+  z-index: 2; /* derrière le noyau */
   transform: translate(-50%, -50%);
 
-  width: 120px;
-  display: grid;
-  place-items: center;
+  /* plus gros + responsive */
+  width: clamp(112px, 15vw, 150px);
+  height: clamp(112px, 15vw, 150px);
+  border-radius: 9999px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  padding: 14px 12px;
   gap: 6px;
 
-  background: transparent;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: color-mix(in srgb, var(--c) 78%, white 22%);
+  box-shadow:
+    0 24px 70px rgba(15, 23, 42, 0.20),
+    0 0 0 6px rgba(255, 255, 255, 0.34);
 
-  animation: inrcy-bubble-wander var(--dur) ease-in-out infinite;
-  animation-delay: var(--delay);
-  will-change: transform;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
 }
 
-/* picto au-dessus */
+.inrcy-bubble:hover {
+  filter: saturate(1.04);
+  box-shadow:
+    0 30px 86px rgba(15, 23, 42, 0.24),
+    0 0 0 6px rgba(255, 255, 255, 0.44);
+}
+
+/* Picto rond à l’intérieur (haut) */
 .inrcy-bubble-icon {
   width: 30px;
   height: 30px;
@@ -303,39 +307,13 @@ body {
   background: rgba(255, 255, 255, 0.70);
   border: 1px solid rgba(255, 255, 255, 0.8);
   box-shadow: 0 10px 22px rgba(15, 23, 42, 0.10);
-  transform: translateY(8px);
   font-size: 14px;
 }
 
-/* rond coloré */
-.inrcy-bubble-circle {
-  width: 72px;
-  height: 72px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--c) 84%, white 16%);
-  border: 1px solid rgba(255, 255, 255, 0.82);
-  box-shadow:
-    0 18px 46px rgba(15, 23, 42, 0.18),
-    0 0 0 6px rgba(255, 255, 255, 0.34);
-  transition: transform 180ms ease, box-shadow 180ms ease;
-}
-
-.inrcy-bubble:hover .inrcy-bubble-circle {
-  transform: translateY(-2px) scale(1.04);
-  box-shadow:
-    0 24px 62px rgba(15, 23, 42, 0.22),
-    0 0 0 6px rgba(255, 255, 255, 0.44);
-}
-
-.inrcy-bubble:focus-visible .inrcy-bubble-circle {
-  outline: 3px solid rgba(59, 130, 246, 0.45);
-  outline-offset: 4px;
-}
-
-/* textes */
+/* Textes dans la bulle */
 .inrcy-bubble-title {
   font-weight: 900;
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(15, 23, 42, 0.92);
   text-align: center;
   line-height: 1.05;
@@ -343,16 +321,21 @@ body {
 
 .inrcy-bubble-desc {
   font-size: 11px;
-  opacity: 0.72;
-  color: rgba(15, 23, 42, 0.86);
+  color: rgba(15, 23, 42, 0.78);
   text-align: center;
-  line-height: 1.05;
+  line-height: 1.1;
 }
 
-/* ✅ Noyau (centre) — au-dessus de tout */
+/* Focus */
+.inrcy-bubble:focus-visible {
+  outline: 3px solid rgba(59, 130, 246, 0.45);
+  outline-offset: 6px;
+}
+
+/* Noyau */
 .inrcy-core {
   position: relative;
-  z-index: 5; /* ✅ bulles passent derrière */
+  z-index: 5; /* bulles derrière */
   width: min(260px, 86%);
   border-radius: 22px;
   padding: 16px 14px;
@@ -364,7 +347,6 @@ body {
   box-shadow: 0 18px 65px rgba(15, 23, 42, 0.16);
 }
 
-/* halo doux */
 .inrcy-core::before {
   content: "";
   position: absolute;
@@ -388,7 +370,7 @@ body {
   font-size: 12px;
   color: rgba(15, 23, 42, 0.72);
   background: rgba(15, 23, 42, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255,255,255,0.8);
   padding: 6px 10px;
   border-radius: 999px;
 }
@@ -407,10 +389,9 @@ body {
   color: rgba(15, 23, 42, 0.66);
 }
 
-/* Respecte la préférence “moins d’animations” */
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .inrcy-bubble {
-    animation: none !important;
+    transition: none !important;
   }
 }
-

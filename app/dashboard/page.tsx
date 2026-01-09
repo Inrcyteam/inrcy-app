@@ -7,29 +7,58 @@ import { createClient } from "@/lib/supabaseClient";
 
 type UserInfo = { email?: string | null };
 
-type Electron = {
+type ToolSeed = {
   key: string;
   label: string;
   desc: string;
   href?: string;
-  icon: string; // picto au-dessus
+  icon: string;
+  color: string;
+};
+
+type NodeSim = {
+  key: string;
+  label: string;
+  desc: string;
+  href?: string;
+  icon: string;
   color: string;
 
-  left: number; // %
-  top: number; // %
-  dur: number; // s
-  delay: number; // s
-  x1: number; y1: number;
-  x2: number; y2: number;
-  x3: number; y3: number;
-  x4: number; y4: number;
+  // sim (px)
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+
+  // anchor (px) : centre “virtuel” de la zone où il flotte
+  ax: number;
+  ay: number;
 };
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
 
 function rand(min: number, max: number) {
   return Math.random() * (max - min) + min;
 }
-function rint(min: number, max: number) {
-  return Math.round(rand(min, max));
+
+function dist(ax: number, ay: number, bx: number, by: number) {
+  const dx = ax - bx;
+  const dy = ay - by;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// place des points autour d’un “anneau” mais sans orbites visibles
+function initialPoints(n: number, cx: number, cy: number, radius: number) {
+  return Array.from({ length: n }).map((_, i) => {
+    const a = (i / n) * Math.PI * 2 + rand(-0.25, 0.25);
+    const r = radius * rand(0.92, 1.06);
+    return {
+      x: cx + Math.cos(a) * r,
+      y: cy + Math.sin(a) * r,
+    };
+  });
 }
 
 export default function DashboardPage() {
@@ -39,39 +68,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<UserInfo | null>(null);
 
-  // refs pour calculer les lignes (synergie)
   const containerRef = useRef<HTMLDivElement | null>(null);
   const coreRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
-  useEffect(() => {
-    let ignore = false;
+  const nodeElsRef = useRef<Record<string, HTMLButtonElement | null>>({});
+  const nodesRef = useRef<NodeSim[]>([]);
+  const [readyNodes, setReadyNodes] = useState<NodeSim[]>([]); // initial render only
 
-    async function boot() {
-      const { data, error } = await supabase.auth.getUser();
-      if (!data?.user || error) {
-        router.replace("/login");
-        return;
-      }
-      if (!ignore) {
-        setUser({ email: data.user.email });
-        setLoading(false);
-      }
-    }
-
-    boot();
-    return () => {
-      ignore = true;
-    };
-  }, [router, supabase]);
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.replace("/login");
-  }
-
-  // ✅ 9 bulles comme ton schéma
-  const seed = useMemo(
+  // ✅ 9 bulles
+  const seed: ToolSeed[] = useMemo(
     () => [
       { key: "facebook", label: "Facebook", desc: "Meta Pages", icon: "📘", color: "#3b82f6", href: "/dashboard/facebook" },
       { key: "site-inrcy", label: "Site iNrCy", desc: "Pages + tracking", icon: "🧩", color: "#a855f7", href: "/dashboard/site" },
@@ -86,86 +92,257 @@ export default function DashboardPage() {
     []
   );
 
-  const [electrons, setElectrons] = useState<Electron[]>([]);
-
-  // Génère des positions + trajectoires “pseudo-aléatoires” (1 fois au mount)
   useEffect(() => {
-    const placed: Electron[] = seed.map((t, i) => {
-      const angle = (i / seed.length) * Math.PI * 2 + rand(-0.25, 0.25);
-      const radius = rand(22, 34); // % de la zone
-      const left = 50 + Math.cos(angle) * radius + rand(-3, 3);
-      const top = 50 + Math.sin(angle) * radius + rand(-3, 3);
-
-      return {
-        ...t,
-        left: Math.max(12, Math.min(88, left)),
-        top: Math.max(14, Math.min(86, top)),
-        dur: rint(14, 26),
-        delay: Math.round(rand(0, 6) * 10) / 10,
-        x1: rint(-70, 70), y1: rint(-55, 55),
-        x2: rint(-70, 70), y2: rint(-55, 55),
-        x3: rint(-70, 70), y3: rint(-55, 55),
-        x4: rint(-70, 70), y4: rint(-55, 55),
-      };
-    });
-
-    setElectrons(placed);
-  }, [seed]);
-
-  function onToolClick(e: Electron) {
-    if (e.href) {
-      router.push(e.href);
-      return;
+    let ignore = false;
+    async function boot() {
+      const { data, error } = await supabase.auth.getUser();
+      if (!data?.user || error) {
+        router.replace("/login");
+        return;
+      }
+      if (!ignore) {
+        setUser({ email: data.user.email });
+        setLoading(false);
+      }
     }
-    alert(`Bientôt : ${e.label}`);
+    boot();
+    return () => {
+      ignore = true;
+    };
+  }, [router, supabase]);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.replace("/login");
   }
 
-  // Lignes de synergie (Core → bulles) qui suivent les mouvements
+  function onToolClick(t: NodeSim) {
+    if (t.href) {
+      router.push(t.href);
+      return;
+    }
+    alert(`Bientôt : ${t.label}`);
+  }
+
+  // ✅ INIT positions + anti-chevauchement (rejection sampling simple)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const setup = () => {
+      const rect = el.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+
+      const cx = w / 2;
+      const cy = h / 2;
+
+      // taille bulle (px) cohérente avec le CSS clamp()
+      const bubble = Math.round(clamp(w * 0.15, 112, 150)); // ~responsive
+      const minGap = 18;
+      const minDist = bubble + minGap; // centre à centre
+
+      const radius = Math.min(w, h) * 0.34; // plus “large” à l’écran
+      const pts = initialPoints(seed.length, cx, cy, radius);
+
+      const nodes: NodeSim[] = [];
+      const boundsPad = bubble * 0.55;
+
+      for (let i = 0; i < seed.length; i++) {
+        const s = seed[i];
+
+        // essaie de trouver un point non chevauchant
+        let x = pts[i].x + rand(-20, 20);
+        let y = pts[i].y + rand(-20, 20);
+
+        let tries = 0;
+        while (tries < 200) {
+          let ok = true;
+          for (const n of nodes) {
+            if (dist(x, y, n.x, n.y) < minDist) {
+              ok = false;
+              break;
+            }
+          }
+          if (ok) break;
+
+          // si collision, re-tire autour d’un angle aléatoire
+          const a = rand(0, Math.PI * 2);
+          const r = radius * rand(0.88, 1.08);
+          x = cx + Math.cos(a) * r;
+          y = cy + Math.sin(a) * r;
+          tries++;
+        }
+
+        x = clamp(x, boundsPad, w - boundsPad);
+        y = clamp(y, boundsPad, h - boundsPad);
+
+        const node: NodeSim = {
+          ...s,
+          x,
+          y,
+          vx: rand(-0.15, 0.15),
+          vy: rand(-0.15, 0.15),
+          ax: x,
+          ay: y,
+        };
+
+        nodes.push(node);
+      }
+
+      nodesRef.current = nodes;
+      setReadyNodes(nodes);
+    };
+
+    setup();
+
+    const ro = new ResizeObserver(() => setup());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [seed]);
+
+  // ✅ SIMULATION + COLLISIONS + LIGNES (RAF)
   useEffect(() => {
     const container = containerRef.current;
     const core = coreRef.current;
     const svg = svgRef.current;
     if (!container || !core || !svg) return;
-    if (!electrons.length) return;
+    if (!readyNodes.length) return;
 
+    let raf = 0;
+
+    // (re)create lines
     svg.innerHTML = "";
-
-    const lines = electrons.map(() => {
+    const lines = readyNodes.map(() => {
       const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("stroke", "rgba(15,23,42,0.18)");
+      line.setAttribute("stroke", "rgba(15,23,42,0.20)");
       line.setAttribute("stroke-width", "1");
       line.setAttribute("stroke-linecap", "round");
       svg.appendChild(line);
       return line;
     });
 
-    let raf = 0;
-
     const tick = () => {
-      const cRect = container.getBoundingClientRect();
+      const rect = container.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+
+      // taille “effective” (px) proche du CSS clamp
+      const bubble = Math.round(clamp(w * 0.15, 112, 150));
+      const radius = bubble * 0.5;
+      const minGap = 18;
+      const minDist = bubble + minGap;
+
+      // noyau
       const coreRect = core.getBoundingClientRect();
+      const cx = coreRect.left - rect.left + coreRect.width / 2;
+      const cy = coreRect.top - rect.top + coreRect.height / 2;
+      const coreR = Math.max(coreRect.width, coreRect.height) * 0.52;
 
-      const cx = coreRect.left - cRect.left + coreRect.width / 2;
-      const cy = coreRect.top - cRect.top + coreRect.height / 2;
+      const nodes = nodesRef.current;
+      const pad = radius + 10;
 
-      const nodes = container.querySelectorAll<HTMLElement>("[data-electron='1']");
-      nodes.forEach((el, i) => {
-        const r = el.getBoundingClientRect();
-        const ex = r.left - cRect.left + r.width / 2;
-        const ey = r.top - cRect.top + r.height / 2;
+      // 1) forces: bruit + ressort vers anchor + repousse du centre
+      for (const n of nodes) {
+        // bruit doux (random walk)
+        n.vx += rand(-0.06, 0.06);
+        n.vy += rand(-0.06, 0.06);
 
+        // ressort doux vers anchor (garde la bulle dans sa zone)
+        n.vx += (n.ax - n.x) * 0.0009;
+        n.vy += (n.ay - n.y) * 0.0009;
+
+        // repousse du centre (pour laisser respirer le noyau)
+        const dC = dist(n.x, n.y, cx, cy);
+        const push = coreR + radius + 26;
+        if (dC < push) {
+          const dx = n.x - cx;
+          const dy = n.y - cy;
+          const inv = 1 / Math.max(dC, 0.001);
+          const strength = (push - dC) * 0.010;
+          n.vx += dx * inv * strength;
+          n.vy += dy * inv * strength;
+        }
+
+        // damping
+        n.vx *= 0.94;
+        n.vy *= 0.94;
+      }
+
+      // 2) collisions (répulsion pairwise)
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const a = nodes[i];
+          const b = nodes[j];
+
+          const d = dist(a.x, a.y, b.x, b.y);
+          if (d < minDist) {
+            const overlap = (minDist - d) * 0.5;
+            const dx = (a.x - b.x) / Math.max(d, 0.001);
+            const dy = (a.y - b.y) / Math.max(d, 0.001);
+
+            a.x += dx * overlap;
+            a.y += dy * overlap;
+            b.x -= dx * overlap;
+            b.y -= dy * overlap;
+
+            // petit kick vitesse
+            a.vx += dx * overlap * 0.02;
+            a.vy += dy * overlap * 0.02;
+            b.vx -= dx * overlap * 0.02;
+            b.vy -= dy * overlap * 0.02;
+          }
+        }
+      }
+
+      // 3) integrate + bounds
+      for (const n of nodes) {
+        n.x += n.vx;
+        n.y += n.vy;
+
+        // limites
+        if (n.x < pad) {
+          n.x = pad;
+          n.vx *= -0.65;
+        }
+        if (n.x > w - pad) {
+          n.x = w - pad;
+          n.vx *= -0.65;
+        }
+        if (n.y < pad) {
+          n.y = pad;
+          n.vy *= -0.65;
+        }
+        if (n.y > h - pad) {
+          n.y = h - pad;
+          n.vy *= -0.65;
+        }
+
+        // appliquer style directement (pas de re-render)
+        const elNode = nodeElsRef.current[n.key];
+        if (elNode) {
+          elNode.style.left = `${n.x}px`;
+          elNode.style.top = `${n.y}px`;
+        }
+      }
+
+      // 4) update synergy lines (core -> node centers)
+      nodes.forEach((n, i) => {
+        const elNode = nodeElsRef.current[n.key];
         const line = lines[i];
-        if (!line) return;
+        if (!elNode || !line) return;
+
+        const r = elNode.getBoundingClientRect();
+        const ex = r.left - rect.left + r.width / 2;
+        const ey = r.top - rect.top + r.height / 2;
 
         line.setAttribute("x1", `${cx}`);
         line.setAttribute("y1", `${cy}`);
         line.setAttribute("x2", `${ex}`);
         line.setAttribute("y2", `${ey}`);
 
-        const dx = ex - cx;
-        const dy = ey - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const op = Math.max(0.10, Math.min(0.28, 300 / (dist + 40)));
+        const d = dist(ex, ey, cx, cy);
+        const op = clamp(0.28 - d / 1600, 0.10, 0.26);
         line.setAttribute("stroke", `rgba(15,23,42,${op})`);
       });
 
@@ -174,7 +351,7 @@ export default function DashboardPage() {
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [electrons]);
+  }, [readyNodes]);
 
   if (loading) {
     return (
@@ -223,44 +400,37 @@ export default function DashboardPage() {
               {/* lignes (derrière) */}
               <svg className="inrcy-links" ref={svgRef} aria-hidden="true" />
 
-              {/* bulles (toujours derrière le noyau) */}
-              {electrons.map((e) => (
+              {/* bulles */}
+              {readyNodes.map((n) => (
                 <button
-                  key={e.key}
+                  key={n.key}
+                  ref={(el) => {
+                    nodeElsRef.current[n.key] = el;
+                  }}
                   type="button"
-                  data-electron="1"
                   className="inrcy-bubble"
-                  onClick={() => onToolClick(e)}
+                  onClick={() => onToolClick(n)}
                   style={
                     {
-                      left: `${e.left}%`,
-                      top: `${e.top}%`,
-                      ["--dur" as any]: `${e.dur}s`,
-                      ["--delay" as any]: `${e.delay}s`,
-                      ["--x1" as any]: `${e.x1}px`,
-                      ["--y1" as any]: `${e.y1}px`,
-                      ["--x2" as any]: `${e.x2}px`,
-                      ["--y2" as any]: `${e.y2}px`,
-                      ["--x3" as any]: `${e.x3}px`,
-                      ["--y3" as any]: `${e.y3}px`,
-                      ["--x4" as any]: `${e.x4}px`,
-                      ["--y4" as any]: `${e.y4}px`,
-                      ["--c" as any]: e.color,
+                      // init px, ensuite raf met à jour
+                      left: `${n.x}px`,
+                      top: `${n.y}px`,
+                      ["--c" as any]: n.color,
                     } as React.CSSProperties
                   }
-                  title={`${e.label} — ${e.desc}`}
-                  aria-label={`${e.label} — ${e.desc}`}
+                  title={`${n.label} — ${n.desc}`}
+                  aria-label={`${n.label} — ${n.desc}`}
                 >
                   <div className="inrcy-bubble-icon" aria-hidden="true">
-                    {e.icon}
+                    {n.icon}
                   </div>
-                  <div className="inrcy-bubble-circle" aria-hidden="true" />
-                  <div className="inrcy-bubble-title">{e.label}</div>
-                  <div className="inrcy-bubble-desc">{e.desc}</div>
+
+                  <div className="inrcy-bubble-title">{n.label}</div>
+                  <div className="inrcy-bubble-desc">{n.desc}</div>
                 </button>
               ))}
 
-              {/* noyau AU-DESSUS (les bulles passent derrière) */}
+              {/* noyau AU-DESSUS */}
               <div className="inrcy-core" ref={coreRef}>
                 <div className="inrcy-core-badge">⚙️ Générateur</div>
                 <div className="inrcy-core-title">iNrCy</div>
