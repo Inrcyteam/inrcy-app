@@ -26,7 +26,7 @@ function rint(min: number, max: number) {
 }
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("contact@inrcy.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
