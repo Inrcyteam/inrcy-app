@@ -233,113 +233,143 @@ body {
 }
 
 /* ===== iNrCy Atom Dashboard ===== */
+/* ✅ On garde le wrapper, mais on remplace la partie "orbites" par "champ de bulles" */
 
 .inrcy-atom-wrap {
   display: grid;
   place-items: center;
 }
 
-.inrcy-atom {
+/* ✅ Nouveau conteneur pour le dashboard “bulles” */
+.inrcy-atom-field {
   position: relative;
   width: min(860px, 100%);
   height: min(620px, 72vh);
+  margin-inline: auto;
   display: grid;
   place-items: center;
   isolation: isolate;
 }
 
-/* Chaque ring est un “groupe” qui tourne */
-.inrcy-ring {
-  position: absolute;
-  width: var(--size);
-  height: var(--size);
-  display: grid;
-  place-items: center;
-  animation: inrcy-orbit-rotate var(--dur) linear infinite;
-}
-
-.inrcy-ring-track {
+/* ✅ SVG des liens de synergie */
+.inrcy-links {
   position: absolute;
   inset: 0;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.03) inset;
-  opacity: 0.55;
+  width: 100%;
+  height: 100%;
+  z-index: 1; /* derrière */
+  pointer-events: none;
 }
 
-/* L’électron est positionné à un angle sur l’orbite */
-.inrcy-electron {
+/* ✅ Animation dédiée aux bulles (pour éviter conflit avec tes dots login) */
+@keyframes inrcy-bubble-wander {
+  0%   { transform: translate(-50%, -50%) translate(0px, 0px); }
+  22%  { transform: translate(-50%, -50%) translate(var(--x1), var(--y1)); }
+  48%  { transform: translate(-50%, -50%) translate(var(--x2), var(--y2)); }
+  74%  { transform: translate(-50%, -50%) translate(var(--x3), var(--y3)); }
+  100% { transform: translate(-50%, -50%) translate(var(--x4), var(--y4)); }
+}
+
+/* ✅ Bulle = picto + rond + texte */
+.inrcy-bubble {
   position: absolute;
+  z-index: 2; /* ✅ derrière le noyau */
   left: 50%;
   top: 50%;
-  transform:
-    translate(-50%, -50%)
-    rotate(var(--angle))
-    translateX(calc(var(--size) / 2))
-    rotate(calc(-1 * var(--angle)));
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  transform: translate(-50%, -50%);
 
-  padding: 10px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.75);
-  background: rgba(255,255,255,0.70);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.10);
-
-  cursor: pointer;
-  user-select: none;
-  transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
-}
-
-.inrcy-electron:hover {
-  background: rgba(255,255,255,0.88);
-  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.14);
-}
-
-.inrcy-electron:focus-visible {
-  outline: 3px solid rgba(59,130,246,0.45);
-  outline-offset: 3px;
-}
-
-.inrcy-electron-emoji {
-  width: 34px;
-  height: 34px;
+  width: 120px;
   display: grid;
   place-items: center;
+  gap: 6px;
+
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+
+  animation: inrcy-bubble-wander var(--dur) ease-in-out infinite;
+  animation-delay: var(--delay);
+  will-change: transform;
+}
+
+/* picto au-dessus */
+.inrcy-bubble-icon {
+  width: 30px;
+  height: 30px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
-  font-size: 16px;
-}
-
-.inrcy-electron-label {
   display: grid;
-  line-height: 1.1;
-  text-align: left;
-  color: rgba(15, 23, 42, 0.92);
+  place-items: center;
+  background: rgba(255, 255, 255, 0.70);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.10);
+  transform: translateY(8px);
+  font-size: 14px;
 }
 
-/* Noyau */
+/* rond coloré */
+.inrcy-bubble-circle {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c) 84%, white 16%);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  box-shadow:
+    0 18px 46px rgba(15, 23, 42, 0.18),
+    0 0 0 6px rgba(255, 255, 255, 0.34);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.inrcy-bubble:hover .inrcy-bubble-circle {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow:
+    0 24px 62px rgba(15, 23, 42, 0.22),
+    0 0 0 6px rgba(255, 255, 255, 0.44);
+}
+
+.inrcy-bubble:focus-visible .inrcy-bubble-circle {
+  outline: 3px solid rgba(59, 130, 246, 0.45);
+  outline-offset: 4px;
+}
+
+/* textes */
+.inrcy-bubble-title {
+  font-weight: 900;
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.92);
+  text-align: center;
+  line-height: 1.05;
+}
+
+.inrcy-bubble-desc {
+  font-size: 11px;
+  opacity: 0.72;
+  color: rgba(15, 23, 42, 0.86);
+  text-align: center;
+  line-height: 1.05;
+}
+
+/* ✅ Noyau (centre) — au-dessus de tout */
 .inrcy-core {
   position: relative;
-  z-index: 2;
-  width: min(360px, 92%);
-  border-radius: 28px;
-  padding: 22px 20px;
+  z-index: 5; /* ✅ bulles passent derrière */
+  width: min(260px, 86%);
+  border-radius: 22px;
+  padding: 16px 14px;
   text-align: center;
 
-  background: rgba(255,255,255,0.72);
-  border: 1px solid rgba(255,255,255,0.80);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.80);
   backdrop-filter: blur(16px);
-  box-shadow: 0 22px 80px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 18px 65px rgba(15, 23, 42, 0.16);
 }
 
+/* halo doux */
 .inrcy-core::before {
   content: "";
   position: absolute;
-  inset: -22px;
-  border-radius: 34px;
+  inset: -18px;
+  border-radius: 28px;
   background: radial-gradient(circle at 50% 30%,
     rgba(0,180,255,0.18),
     rgba(120,90,255,0.14),
@@ -358,15 +388,15 @@ body {
   font-size: 12px;
   color: rgba(15, 23, 42, 0.72);
   background: rgba(15, 23, 42, 0.06);
-  border: 1px solid rgba(255,255,255,0.8);
+  border: 1px solid rgba(255, 255, 255, 0.8);
   padding: 6px 10px;
   border-radius: 999px;
 }
 
 .inrcy-core-title {
-  margin-top: 10px;
-  font-size: 28px;
-  font-weight: 800;
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 900;
   letter-spacing: -0.02em;
   color: rgba(15, 23, 42, 0.92);
 }
@@ -377,29 +407,9 @@ body {
   color: rgba(15, 23, 42, 0.66);
 }
 
-.inrcy-core-btn {
-  margin-top: 14px;
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.8);
-  background: rgba(255,255,255,0.85);
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
-  cursor: pointer;
-}
-
-.inrcy-core-btn:hover {
-  background: rgba(255,255,255,0.95);
-}
-
-/* Animation rotation orbite */
-@keyframes inrcy-orbit-rotate {
-  to { transform: rotate(360deg); }
-}
-
 /* Respecte la préférence “moins d’animations” */
 @media (prefers-reduced-motion: reduce) {
-  .inrcy-ring {
+  .inrcy-bubble {
     animation: none !important;
   }
 }
