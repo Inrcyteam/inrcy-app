@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabaseClient";
 
 type WanderDot = {
   left: string; // %
@@ -21,17 +22,22 @@ type WanderDot = {
 function rand(min: number, max: number) {
   return Math.random() * (max - min) + min;
 }
+
 function rint(min: number, max: number) {
   return Math.round(rand(min, max));
 }
 
 export default function LoginPage() {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ palette (10 combos), réutilisée si 20 boules
+  // 🎨 Palette (10 combos) pour les boules
   const dotColors = useMemo(
     () => [
       { a: "rgba(0,180,255,1)", b: "rgba(120,90,255,1)" },     // cyan → violet
@@ -48,7 +54,7 @@ export default function LoginPage() {
     []
   );
 
-  // ✅ IMPORTANT: on génère les boules APRES le mount => pas d'hydration mismatch
+  // ✅ Générer les boules après mount => pas d’hydration mismatch
   const [mounted, setMounted] = useState(false);
   const [dots, setDots] = useState<WanderDot[]>([]);
 
@@ -73,7 +79,7 @@ export default function LoginPage() {
     setDots(newDots);
   }, []);
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setLoading(true);
@@ -83,12 +89,16 @@ export default function LoginPage() {
         email,
         password,
       });
-      if (error) throw error;
 
-      // Pour l’instant on confirme juste (tu pourras rediriger vers /app après)
-      alert("Connecté ✅");
-    } catch (err: any) {
-      setError(err?.message ?? "Erreur de connexion");
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      // ✅ Redirection après connexion
+      router.replace("/dashboard");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erreur de connexion");
     } finally {
       setLoading(false);
     }
@@ -98,8 +108,8 @@ export default function LoginPage() {
     <main className="relative min-h-screen inrcy-soft-noise overflow-hidden">
       <div className="inrcy-noise-overlay" />
 
-      {/* Lignes “réseau” en arrière-plan + cercles */}
-      <svg className="inrcy-lines" viewBox="0 0 1200 700" preserveAspectRatio="none">
+      {/* Lignes “réseau” + cercles */}
+      <svg className="inrcy-lines" viewBox="0 0 1200 700" preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <linearGradient id="gLine" x1="0" x2="1">
             <stop offset="0" stopColor="rgba(0,180,255,0.20)" />
@@ -113,7 +123,6 @@ export default function LoginPage() {
         </defs>
 
         <circle cx="600" cy="350" r="260" fill="url(#gHalo)" />
-
         <circle cx="600" cy="350" r="260" fill="none" stroke="url(#gLine)" strokeWidth="1" opacity="0.35" />
         <circle cx="600" cy="350" r="210" fill="none" stroke="url(#gLine)" strokeWidth="1" opacity="0.35" />
         <circle cx="600" cy="350" r="155" fill="none" stroke="url(#gLine)" strokeWidth="1" opacity="0.35" />
@@ -146,7 +155,7 @@ export default function LoginPage() {
         ))}
       </svg>
 
-      {/* ✅ Boules: rendues seulement après mount => pas d'hydration error */}
+      {/* ✅ Boules après mount */}
       {mounted && (
         <div className="inrcy-float-field" aria-hidden="true">
           {dots.map((d, i) => {
@@ -185,7 +194,6 @@ export default function LoginPage() {
       {/* Card */}
       <section className="relative z-10 flex min-h-screen items-center justify-center px-4">
         <div className="inrcy-card w-full max-w-[420px] p-6">
-          {/* Logo centré + Espace client */}
           <div className="flex flex-col items-center gap-2 pb-4">
             <div className="inrcy-logo-wrap">
               <Image
@@ -260,3 +268,4 @@ export default function LoginPage() {
     </main>
   );
 }
+
