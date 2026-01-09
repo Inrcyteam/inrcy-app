@@ -7,29 +7,24 @@ import { createClient } from "@/lib/supabaseClient";
 
 type UserInfo = { email?: string | null };
 
-type Electron = {
+type BubbleSeed = {
   key: string;
   label: string;
   desc: string;
   href?: string;
-  icon: string; // picto au-dessus
+  icon: string;
   color: string;
+};
 
-  left: number; // %
-  top: number; // %
-  dur: number; // s
-  delay: number; // s
-  x1: number; y1: number;
-  x2: number; y2: number;
-  x3: number; y3: number;
-  x4: number; y4: number;
+type BubbleState = BubbleSeed & {
+  x: number; // px (dans le conteneur)
+  y: number; // px
+  vx: number; // px/s
+  vy: number; // px/s
 };
 
 function rand(min: number, max: number) {
   return Math.random() * (max - min) + min;
-}
-function rint(min: number, max: number) {
-  return Math.round(rand(min, max));
 }
 
 export default function DashboardPage() {
@@ -39,11 +34,15 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<UserInfo | null>(null);
 
-  // refs pour calculer les lignes (synergie)
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const coreRef = useRef<HTMLDivElement | null>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
+  // Taille du champ (pour SVG + collisions)
+  const fieldRef = useRef<HTMLDivElement | null>(null);
+  const [fieldSize, setFieldSize] = useState({ w: 860, h: 620 });
 
+  // Bubbles animées
+  const bubblesRef = useRef<BubbleState[]>([]);
+  const [bubbles, setBubbles] = useState<BubbleState[]>([]);
+
+  // ---- Auth ----
   useEffect(() => {
     let ignore = false;
 
@@ -70,8 +69,8 @@ export default function DashboardPage() {
     router.replace("/login");
   }
 
-  // ✅ 9 bulles comme ton schéma
-  const seed = useMemo(
+  // ---- Tes 9 modules ----
+  const seed: BubbleSeed[] = useMemo(
     () => [
       { key: "facebook", label: "Facebook", desc: "Meta Pages", icon: "📘", color: "#3b82f6", href: "/dashboard/facebook" },
       { key: "site-inrcy", label: "Site iNrCy", desc: "Pages + tracking", icon: "🧩", color: "#a855f7", href: "/dashboard/site" },
@@ -86,95 +85,162 @@ export default function DashboardPage() {
     []
   );
 
-  const [electrons, setElectrons] = useState<Electron[]>([]);
+  function onBubbleClick(b: BubbleSeed) {
+    if (b.href) router.push(b.href);
+    else alert(`Bientôt : ${b.label}`);
+  }
 
-  // Génère des positions + trajectoires “pseudo-aléatoires” (1 fois au mount)
+  // ---- Observe la taille du champ ----
   useEffect(() => {
-    const placed: Electron[] = seed.map((t, i) => {
-      const angle = (i / seed.length) * Math.PI * 2 + rand(-0.25, 0.25);
-      const radius = rand(22, 34); // % de la zone
-      const left = 50 + Math.cos(angle) * radius + rand(-3, 3);
-      const top = 50 + Math.sin(angle) * radius + rand(-3, 3);
+    const el = fieldRef.current;
+    if (!el) return;
+
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      setFieldSize({
+        w: Math.max(320, Math.round(r.width)),
+        h: Math.max(320, Math.round(r.height)),
+      });
+    });
+
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // ---- Init positions (une fois qu'on a une taille) ----
+  useEffect(() => {
+    const { w, h } = fieldSize;
+    const cx = w / 2;
+    const cy = h / 2;
+
+    // rayon plus grand => bulles plus espacées
+    const baseR = Math.min(w, h) * 0.36;
+
+    const init: BubbleState[] = seed.map((s, i) => {
+      const a = (i / seed.length) * Math.PI * 2 + rand(-0.22, 0.22);
+      const r = baseR + rand(-18, 18);
 
       return {
-        ...t,
-        left: Math.max(12, Math.min(88, left)),
-        top: Math.max(14, Math.min(86, top)),
-        dur: rint(14, 26),
-        delay: Math.round(rand(0, 6) * 10) / 10,
-        x1: rint(-70, 70), y1: rint(-55, 55),
-        x2: rint(-70, 70), y2: rint(-55, 55),
-        x3: rint(-70, 70), y3: rint(-55, 55),
-        x4: rint(-70, 70), y4: rint(-55, 55),
+        ...s,
+        x: cx + Math.cos(a) * r,
+        y: cy + Math.sin(a) * r,
+        vx: rand(-12, 12),
+        vy: rand(-12, 12),
       };
     });
 
-    setElectrons(placed);
-  }, [seed]);
+    bubblesRef.current = init;
+    setBubbles(init);
+  }, [seed, fieldSize.w, fieldSize.h]); // recalcul si le champ change beaucoup
 
-  function onToolClick(e: Electron) {
-    if (e.href) {
-      router.push(e.href);
-      return;
-    }
-    alert(`Bientôt : ${e.label}`);
-  }
-
-  // Lignes de synergie (Core → bulles) qui suivent les mouvements
+  // ---- “moteur” anti-chevauchement + errance ----
   useEffect(() => {
-    const container = containerRef.current;
-    const core = coreRef.current;
-    const svg = svgRef.current;
-    if (!container || !core || !svg) return;
-    if (!electrons.length) return;
-
-    svg.innerHTML = "";
-
-    const lines = electrons.map(() => {
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("stroke", "rgba(15,23,42,0.18)");
-      line.setAttribute("stroke-width", "1");
-      line.setAttribute("stroke-linecap", "round");
-      svg.appendChild(line);
-      return line;
-    });
-
     let raf = 0;
+    let last = performance.now();
+    let accum = 0;
 
-    const tick = () => {
-      const cRect = container.getBoundingClientRect();
-      const coreRect = core.getBoundingClientRect();
+    const tick = (now: number) => {
+      const dt = Math.min(0.035, (now - last) / 1000); // clamp
+      last = now;
+      accum += dt;
 
-      const cx = coreRect.left - cRect.left + coreRect.width / 2;
-      const cy = coreRect.top - cRect.top + coreRect.height / 2;
+      const { w, h } = fieldSize;
+      const cx = w / 2;
+      const cy = h / 2;
 
-      const nodes = container.querySelectorAll<HTMLElement>("[data-electron='1']");
-      nodes.forEach((el, i) => {
-        const r = el.getBoundingClientRect();
-        const ex = r.left - cRect.left + r.width / 2;
-        const ey = r.top - cRect.top + r.height / 2;
+      // Réglages
+      const bubbleR = 64; // rayon visuel approximatif (bulle)
+      const minDist = bubbleR * 2 + 22; // distance mini entre centres
+      const pad = 16;
 
-        const line = lines[i];
-        if (!line) return;
+      const coreR = 95; // “zone” noyau
+      const coreKeepout = coreR + bubbleR + 18; // interdit d’être trop près du noyau
 
-        line.setAttribute("x1", `${cx}`);
-        line.setAttribute("y1", `${cy}`);
-        line.setAttribute("x2", `${ex}`);
-        line.setAttribute("y2", `${ey}`);
+      const arr = bubblesRef.current;
+      if (arr.length) {
+        // 1) Drift doux (bruit)
+        for (const b of arr) {
+          b.vx += rand(-18, 18) * dt;
+          b.vy += rand(-18, 18) * dt;
 
-        const dx = ex - cx;
-        const dy = ey - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const op = Math.max(0.10, Math.min(0.28, 300 / (dist + 40)));
-        line.setAttribute("stroke", `rgba(15,23,42,${op})`);
-      });
+          // limite vitesse
+          b.vx = Math.max(-55, Math.min(55, b.vx));
+          b.vy = Math.max(-55, Math.min(55, b.vy));
+        }
+
+        // 2) Repulsion bulles-bulles
+        for (let i = 0; i < arr.length; i++) {
+          for (let j = i + 1; j < arr.length; j++) {
+            const a = arr[i];
+            const b = arr[j];
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const d = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+
+            if (d < minDist) {
+              const push = (minDist - d) * 0.5;
+              const nx = dx / d;
+              const ny = dy / d;
+
+              a.x -= nx * push;
+              a.y -= ny * push;
+              b.x += nx * push;
+              b.y += ny * push;
+
+              // petite impulsion
+              a.vx -= nx * push * 1.5;
+              a.vy -= ny * push * 1.5;
+              b.vx += nx * push * 1.5;
+              b.vy += ny * push * 1.5;
+            }
+          }
+        }
+
+        // 3) Repulsion noyau (les bulles peuvent “passer derrière”, mais pas traverser le centre)
+        for (const b of arr) {
+          const dx = b.x - cx;
+          const dy = b.y - cy;
+          const d = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+
+          if (d < coreKeepout) {
+            const nx = dx / d;
+            const ny = dy / d;
+            const push = coreKeepout - d;
+
+            b.x += nx * push;
+            b.y += ny * push;
+
+            b.vx += nx * push * 2.0;
+            b.vy += ny * push * 2.0;
+          }
+        }
+
+        // 4) Intégration + friction + limites
+        for (const b of arr) {
+          b.x += b.vx * dt;
+          b.y += b.vy * dt;
+
+          b.vx *= 0.94;
+          b.vy *= 0.94;
+
+          // clamp dans le champ
+          b.x = Math.max(bubbleR + pad, Math.min(w - bubbleR - pad, b.x));
+          b.y = Math.max(bubbleR + pad, Math.min(h - bubbleR - pad, b.y));
+        }
+      }
+
+      // 30 fps de re-render (léger)
+      if (accum >= 1 / 30) {
+        accum = 0;
+        setBubbles([...arr]);
+      }
 
       raf = requestAnimationFrame(tick);
     };
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [electrons]);
+  }, [fieldSize]);
 
   if (loading) {
     return (
@@ -185,6 +251,9 @@ export default function DashboardPage() {
       </main>
     );
   }
+
+  const cx = fieldSize.w / 2;
+  const cy = fieldSize.h / 2;
 
   return (
     <main className="min-h-screen inrcy-soft-noise relative overflow-hidden">
@@ -213,55 +282,69 @@ export default function DashboardPage() {
             <div>
               <h1 className="text-xl font-semibold text-slate-900">Dashboard iNrCy</h1>
               <p className="mt-2 text-slate-700 text-sm">
-                Centre = Générateur iNrCy. Autour = bulles cliquables en mouvement (synergie).
+                Centre = Générateur iNrCy. Autour = bulles (électrons) qui bougent légèrement + synergie.
               </p>
             </div>
           </div>
 
           <div className="mt-8">
-            <div className="inrcy-atom-field" ref={containerRef} aria-label="Outils iNrCy">
-              {/* lignes (derrière) */}
-              <svg className="inrcy-links" ref={svgRef} aria-hidden="true" />
+            <div className="inrcy-atom-field" ref={fieldRef} aria-label="Outils iNrCy">
+              {/* Liens de synergie (toujours derrière) */}
+              <svg
+                className="inrcy-links"
+                aria-hidden="true"
+                viewBox={`0 0 ${fieldSize.w} ${fieldSize.h}`}
+                preserveAspectRatio="none"
+              >
+                {bubbles.map((b) => {
+                  const dx = b.x - cx;
+                  const dy = b.y - cy;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  const opacity = Math.max(0.10, Math.min(0.28, 320 / (dist + 60)));
+                  return (
+                    <line
+                      key={b.key}
+                      x1={cx}
+                      y1={cy}
+                      x2={b.x}
+                      y2={b.y}
+                      stroke={`rgba(15,23,42,${opacity})`}
+                      strokeWidth={1}
+                      strokeLinecap="round"
+                    />
+                  );
+                })}
+              </svg>
 
-              {/* bulles (toujours derrière le noyau) */}
-              {electrons.map((e) => (
+              {/* Bulles (derrière le noyau) */}
+              {bubbles.map((b) => (
                 <button
-                  key={e.key}
+                  key={b.key}
                   type="button"
-                  data-electron="1"
                   className="inrcy-bubble"
-                  onClick={() => onToolClick(e)}
+                  onClick={() => onBubbleClick(b)}
                   style={
                     {
-                      left: `${e.left}%`,
-                      top: `${e.top}%`,
-                      ["--dur" as any]: `${e.dur}s`,
-                      ["--delay" as any]: `${e.delay}s`,
-                      ["--x1" as any]: `${e.x1}px`,
-                      ["--y1" as any]: `${e.y1}px`,
-                      ["--x2" as any]: `${e.x2}px`,
-                      ["--y2" as any]: `${e.y2}px`,
-                      ["--x3" as any]: `${e.x3}px`,
-                      ["--y3" as any]: `${e.y3}px`,
-                      ["--x4" as any]: `${e.x4}px`,
-                      ["--y4" as any]: `${e.y4}px`,
-                      ["--c" as any]: e.color,
+                      left: `${b.x}px`,
+                      top: `${b.y}px`,
+                      ["--c" as any]: b.color,
                     } as React.CSSProperties
                   }
-                  title={`${e.label} — ${e.desc}`}
-                  aria-label={`${e.label} — ${e.desc}`}
+                  title={`${b.label} — ${b.desc}`}
+                  aria-label={`${b.label} — ${b.desc}`}
                 >
-                  <div className="inrcy-bubble-icon" aria-hidden="true">
-                    {e.icon}
+                  <div className="inrcy-bubble-circle">
+                    <div className="inrcy-bubble-icon" aria-hidden="true">
+                      {b.icon}
+                    </div>
+                    <div className="inrcy-bubble-title">{b.label}</div>
+                    <div className="inrcy-bubble-desc">{b.desc}</div>
                   </div>
-                  <div className="inrcy-bubble-circle" aria-hidden="true" />
-                  <div className="inrcy-bubble-title">{e.label}</div>
-                  <div className="inrcy-bubble-desc">{e.desc}</div>
                 </button>
               ))}
 
-              {/* noyau AU-DESSUS (les bulles passent derrière) */}
-              <div className="inrcy-core" ref={coreRef}>
+              {/* Noyau (au-dessus) */}
+              <div className="inrcy-core">
                 <div className="inrcy-core-badge">⚙️ Générateur</div>
                 <div className="inrcy-core-title">iNrCy</div>
                 <div className="inrcy-core-sub">Automatisation - SEO - Social - Tracking</div>
