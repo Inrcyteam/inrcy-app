@@ -62,19 +62,20 @@ export default function DashboardPage() {
 
   // ✅ 9 bulles
   const seed: ToolSeed[] = useMemo(
-    () => [
-      { key: "facebook", label: "Facebook", desc: "Meta Pages", icon: "📘", color: "#3b82f6", href: "/dashboard/facebook" },
-      { key: "site-inrcy", label: "Site iNrCy", desc: "Pages + tracking", icon: "🧩", color: "#a855f7", href: "/dashboard/site" },
-      { key: "gmb", label: "GMB", desc: "Business Profile", icon: "📍", color: "#22c55e", href: "/dashboard/gmb" },
-      { key: "mails", label: "Mails", desc: "Inbox & relances", icon: ✉️", color: "#f97316", href: "/dashboard/messages" },
-      { key: "publier", label: "Publier", desc: "Posts multi-canaux", icon: "🛰️", color: "#06b6d4", href: "/dashboard/publish" },
-      { key: "houzz", label: "Houzz", desc: "Profil & posts", icon: "🏠", color: "#10b981" },
-      { key: "site-web", label: "Site web", desc: "Votre site client", icon: "🌐", color: "#eab308" },
-      { key: "stats", label: "Stats", desc: "Clics, appels, leads", icon: "📈", color: "#ef4444", href: "/dashboard/stats" },
-      { key: "annuaire", label: "Annuaire", desc: "Citations / NAP", icon: "📒", color: "#8b5cf6" },
-    ],
-    []
-  );
+  () => [
+    { key: "facebook", label: "Facebook", desc: "Meta Pages", icon: "\u{1F4D8}", color: "#3b82f6", href: "/dashboard/facebook" }, // 📘
+    { key: "site-inrcy", label: "Site iNrCy", desc: "Pages + tracking", icon: "\u{1F9E9}", color: "#a855f7", href: "/dashboard/site" }, // 🧩
+    { key: "gmb", label: "GMB", desc: "Business Profile", icon: "\u{1F4CD}", color: "#22c55e", href: "/dashboard/gmb" }, // 📍
+    { key: "mails", label: "Mails", desc: "Inbox & relances", icon: "\u2709\uFE0F", color: "#f97316", href: "/dashboard/messages" }, //✉️
+    { key: "publier", label: "Publier", desc: "Posts multi-canaux", icon: "\u{1F6F0}\uFE0F", color: "#06b6d4", href: "/dashboard/publish" }, // 🛰️
+    { key: "houzz", label: "Houzz", desc: "Profil & posts", icon: "\u{1F3E0}", color: "#10b981" }, // 🏠
+    { key: "site-web", label: "Site web", desc: "Votre site client", icon: "\u{1F310}", color: "#eab308" }, // 🌐
+    { key: "stats", label: "Stats", desc: "Clics, appels, leads", icon: "\u{1F4C8}", color: "#ef4444", href: "/dashboard/stats" }, // 📈
+    { key: "annuaire", label: "Annuaire", desc: "Citations / NAP", icon: "\u{1F4D2}", color: "#8b5cf6" }, // 📒
+  ],
+  []
+);
+
 
   // auth
   useEffect(() => {
