@@ -224,175 +224,98 @@ body {
   }
 }
 
-/* =========================================================
-   ✅ iNrCy Dashboard Bulles (anti-overlap + texte dedans)
-   ========================================================= */
+/* ===== iNrCy Atom Dashboard (floating bubbles, no lines) ===== */
 
 .inrcy-atom-wrap {
   display: grid;
   place-items: center;
 }
 
-.inrcy-atom-field {
+/* terrain */
+.inrcy-field {
   position: relative;
   width: min(980px, 100%);
-  height: min(760px, 78vh);
-  margin-inline: auto;
+  height: min(720px, 72vh);
   display: grid;
   place-items: center;
   isolation: isolate;
 }
 
-.inrcy-links {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 1; /* derrière */
-  pointer-events: none;
-}
-
-/* Le bouton est juste un “support” positionné */
+/* bulles */
 .inrcy-bubble {
   position: absolute;
-  z-index: 2; /* derrière le noyau */
-  transform: translate(-50%, -50%);
-  background: transparent;
-  border: 0;
-  padding: 0;
+  z-index: 5; /* ✅ AU-DESSUS du centre */
+  width: 118px;
+  height: 118px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,0.95), rgba(255,255,255,0.35) 30%, rgba(255,255,255,0.12) 55%, rgba(255,255,255,0) 70%),
+              radial-gradient(circle at 70% 75%, rgba(255,255,255,0.55), var(--bubble) 65%, rgba(0,0,0,0) 72%);
+  box-shadow:
+    0 18px 45px rgba(2, 6, 23, 0.22),
+    0 10px 28px rgba(2, 6, 23, 0.10);
   cursor: pointer;
   user-select: none;
+  backdrop-filter: blur(10px);
+  transition: transform 120ms ease, filter 120ms ease;
 }
 
-/* Rond coloré + contenu dedans */
-.inrcy-bubble-circle {
-  width: 128px;
-  height: 128px;
-  border-radius: 999px;
-
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-
-  padding: 14px 12px;
-  gap: 6px;
-
-  background:
-    radial-gradient(circle at 30% 25%, rgba(255,255,255,0.55), rgba(255,255,255,0.10) 45%, rgba(255,255,255,0) 70%),
-    radial-gradient(circle at 60% 70%, color-mix(in srgb, var(--c) 84%, white 16%), color-mix(in srgb, var(--c) 92%, black 8%));
-  border: 1px solid rgba(255, 255, 255, 0.82);
-
-  box-shadow:
-    0 26px 70px rgba(15, 23, 42, 0.20),
-    0 0 0 8px rgba(255, 255, 255, 0.30);
-
-  transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+.inrcy-bubble:hover {
+  filter: saturate(1.05) brightness(1.02);
 }
 
-.inrcy-bubble:hover .inrcy-bubble-circle {
-  transform: translateY(-2px) scale(1.04);
-  filter: saturate(1.06);
-  box-shadow:
-    0 34px 88px rgba(15, 23, 42, 0.24),
-    0 0 0 8px rgba(255, 255, 255, 0.42);
-}
-
-.inrcy-bubble:focus-visible .inrcy-bubble-circle {
+.inrcy-bubble:focus-visible {
   outline: 3px solid rgba(59, 130, 246, 0.45);
-  outline-offset: 5px;
+  outline-offset: 4px;
 }
 
-/* Picto en haut (dans la bulle) */
+.inrcy-bubble-inner {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: 10px;
+  text-align: center;
+  color: rgba(15, 23, 42, 0.92);
+  gap: 4px;
+}
+
 .inrcy-bubble-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.10);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.10);
   font-size: 16px;
 }
 
-/* Textes DANS la bulle */
 .inrcy-bubble-title {
-  font-weight: 900;
+  font-weight: 800;
   font-size: 12px;
-  color: rgba(15, 23, 42, 0.92);
-  text-align: center;
   line-height: 1.05;
 }
 
 .inrcy-bubble-desc {
-  font-size: 11px;
-  opacity: 0.80;
-  color: rgba(15, 23, 42, 0.86);
-  text-align: center;
+  font-size: 10px;
   line-height: 1.1;
+  opacity: 0.82;
 }
 
-/* Noyau au-dessus */
-.inrcy-core {
-  position: relative;
-  z-index: 5; /* bulles passent derrière */
-  width: min(260px, 86%);
-  border-radius: 22px;
-  padding: 16px 14px;
-  text-align: center;
-
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.80);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 18px 65px rgba(15, 23, 42, 0.16);
+/* centre (petit) */
+.inrcy-core--small {
+  z-index: 2; /* ✅ sous les bulles */
+  width: min(290px, 92%);
+  padding: 18px 16px;
+  border-radius: 24px;
 }
 
-.inrcy-core::before {
-  content: "";
-  position: absolute;
-  inset: -18px;
-  border-radius: 28px;
-  background: radial-gradient(circle at 50% 30%,
-    rgba(0,180,255,0.18),
-    rgba(120,90,255,0.14),
-    rgba(255,55,140,0.10),
-    transparent 60%
-  );
-  filter: blur(8px);
-  z-index: -1;
-}
-
-.inrcy-core-badge {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.72);
-  background: rgba(15, 23, 42, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  padding: 6px 10px;
-  border-radius: 999px;
-}
-
-.inrcy-core-title {
-  margin-top: 8px;
-  font-size: 24px;
-  font-weight: 900;
-  letter-spacing: -0.02em;
-  color: rgba(15, 23, 42, 0.92);
-}
-
-.inrcy-core-sub {
-  margin-top: 6px;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.66);
-}
-
-/* Réduction animation si besoin */
-@media (prefers-reduced-motion: reduce) {
-  .inrcy-bubble-circle {
-    transition: none !important;
+@media (max-width: 520px) {
+  .inrcy-bubble {
+    width: 104px;
+    height: 104px;
   }
 }
