@@ -61,11 +61,6 @@ export default function DashboardPage() {
     { key: "messages", label: "Messages", desc: "Inbox & demandes", emoji: "💬", ring: 2, href: "/dashboard/messages" },
   ];
 
-  // Répartit les électrons par orbite avec un angle “de départ”
-  const ringConfig = useMemo(() => {
-    const byRing: Record<1 | 2 | 3, Tool[]> = { 1: [], 2: [], 3: [] };
-    tools.forEach((t) => byRing[t.ring].push(t);
-
 // Répartit les électrons par orbite avec un angle “de départ”
 const ringConfig = useMemo(() => {
   // On utilise des clés string pour éviter les bugs de parsing
