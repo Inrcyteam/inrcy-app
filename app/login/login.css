@@ -107,30 +107,66 @@
   z-index: 1;
 }
 
+/* ✅ Animation plus “vivante” + plus rapide
+   (sans changer le TS : on accélère via duration multiplier)
+*/
 @keyframes inrcy-wander {
   0%   { transform: translate3d(0, 0, 0); }
-  50%  { transform: translate3d(var(--x1), var(--y1), 0); }
+  15%  { transform: translate3d(var(--x1), var(--y1), 0); }
+  33%  { transform: translate3d(var(--x2), var(--y2), 0); }
+  50%  { transform: translate3d(var(--x3), var(--y3), 0); }
+  70%  { transform: translate3d(var(--x4), var(--y4), 0); }
+  88%  { transform: translate3d(var(--x5), var(--y5), 0); }
   100% { transform: translate3d(0, 0, 0); }
 }
 
 @keyframes inrcy-pulse {
-  0%,100% { transform: scale(1); }
-  50% { transform: scale(1.2); }
+  0%, 100% { transform: scale(1); filter: saturate(1); }
+  50%      { transform: scale(1.22); filter: saturate(1.12); }
 }
 
 .inrcy-wander-dot {
   position: absolute;
   border-radius: 9999px;
-  animation: inrcy-wander var(--dur) ease-in-out infinite;
+
+  /* ✅ plus vite : on réduit la durée perçue */
+  animation: inrcy-wander calc(var(--dur) * 0.65) ease-in-out infinite;
+  animation-delay: var(--delay);
+
+  will-change: transform;
 }
 
+/* ✅ COULEURS (var(--cA)/var(--cB)) + look “bille” */
 .inrcy-wander-dot::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  animation: inrcy-pulse calc(var(--dur) * 0.6) ease-in-out infinite;
-  background: radial-gradient(circle, white, transparent 70%);
+
+  /* ✅ pulse plus rapide aussi */
+  animation: inrcy-pulse calc(var(--dur) * 0.42) ease-in-out infinite;
+  animation-delay: var(--delay);
+
+  background:
+    radial-gradient(circle at 30% 30%,
+      rgba(255,255,255,0.95),
+      rgba(255,255,255,0.18) 35%,
+      rgba(255,255,255,0) 70%
+    ),
+    radial-gradient(circle at 65% 65%,
+      var(--cA),
+      var(--cB) 55%,
+      rgba(0,0,0,0) 85%
+    ),
+    radial-gradient(circle at 20% 75%,
+      rgba(255,255,255,0.25),
+      rgba(0,0,0,0) 70%
+    );
+
+  box-shadow:
+    0 10px 40px rgba(255, 55, 140, 0.10),
+    0 8px 30px rgba(120, 90, 255, 0.10),
+    0 6px 22px rgba(0, 180, 255, 0.08);
 }
 
 /* ===== Logo ===== */
