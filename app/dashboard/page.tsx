@@ -1,279 +1,266 @@
 "use client";
 
-import Image from "next/image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabaseClient";
+import styles from "./dashboard.module.css";
 
-type UserInfo = { email?: string | null };
-
-type Electron = {
+type ModuleItem = {
   key: string;
   label: string;
   desc: string;
-  href?: string;
-  icon: string; // picto au-dessus
-  color: string;
-
-  left: number; // %
-  top: number; // %
-  dur: number; // s
-  delay: number; // s
-  x1: number; y1: number;
-  x2: number; y2: number;
-  x3: number; y3: number;
-  x4: number; y4: number;
+  icon: string;
+  colorA: string;
+  colorB: string;
+  href?: string; // plus tard
 };
 
-function rand(min: number, max: number) {
-  return Math.random() * (max - min) + min;
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
 }
-function rint(min: number, max: number) {
-  return Math.round(rand(min, max));
+
+function wrapIndex(i: number, len: number) {
+  return (i % len + len) % len;
+}
+
+function shortestDelta(i: number, active: number, len: number) {
+  // renvoie un delta dans [-len/2, len/2] (plus court chemin)
+  let d = i - active;
+  const half = Math.floor(len / 2);
+  if (d > half) d -= len;
+  if (d < -half) d += len;
+  return d;
 }
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
-
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<UserInfo | null>(null);
-
-  // refs pour calculer les lignes (synergie)
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const coreRef = useRef<HTMLDivElement | null>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
-
-  useEffect(() => {
-    let ignore = false;
-
-    async function boot() {
-      const { data, error } = await supabase.auth.getUser();
-      if (!data?.user || error) {
-        router.replace("/login");
-        return;
-      }
-      if (!ignore) {
-        setUser({ email: data.user.email });
-        setLoading(false);
-      }
-    }
-
-    boot();
-    return () => {
-      ignore = true;
-    };
-  }, [router, supabase]);
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.replace("/login");
-  }
-
-  // ✅ 9 bulles comme ton schéma
-  const seed = useMemo(
+  const modules: ModuleItem[] = useMemo(
     () => [
-      { key: "facebook", label: "Facebook", desc: "Meta Pages", icon: "📘", color: "#3b82f6", href: "/dashboard/facebook" },
-      { key: "site-inrcy", label: "Site iNrCy", desc: "Pages + tracking", icon: "🧩", color: "#a855f7", href: "/dashboard/site" },
-      { key: "gmb", label: "GMB", desc: "Business Profile", icon: "📍", color: "#22c55e", href: "/dashboard/gmb" },
-      { key: "mails", label: "Mails", desc: "Inbox & relances", icon: "✉️", color: "#f97316", href: "/dashboard/messages" },
-      { key: "publier", label: "Publier", desc: "Posts multi-canaux", icon: "🛰️", color: "#06b6d4", href: "/dashboard/publish" },
-      { key: "houzz", label: "Houzz", desc: "Profil & posts", icon: "🏠", color: "#10b981" },
-      { key: "site-web", label: "Site web", desc: "Votre site client", icon: "🌐", color: "#eab308" },
-      { key: "stats", label: "Stats", desc: "Clics, appels, leads", icon: "📈", color: "#ef4444", href: "/dashboard/stats" },
-      { key: "annuaire", label: "Annuaire", desc: "Citations / NAP", icon: "📒", color: "#8b5cf6" },
+      { key: "mail", label: "Mails", desc: "Relances & inbox", icon: "✉️", colorA: "rgba(0,180,255,1)", colorB: "rgba(120,90,255,1)" },
+      { key: "facebook", label: "Facebook", desc: "Pages & ads", icon: "📘", colorA: "rgba(59,130,246,1)", colorB: "rgba(0,180,255,1)" },
+      { key: "site-inrcy", label: "Site iNrCy", desc: "Pages + tracking", icon: "🧩", colorA: "rgba(168,85,247,1)", colorB: "rgba(255,55,140,1)" },
+      { key: "publish", label: "Publier", desc: "Posts multi-canaux", icon: "🛰️", colorA: "rgba(6,182,212,1)", colorB: "rgba(0,180,255,1)" },
+      { key: "houzz", label: "Houzz", desc: "Profil & posts", icon: "🏠", colorA: "rgba(16,185,129,1)", colorB: "rgba(0,180,255,1)" },
+      { key: "gmb", label: "GMB", desc: "Business Profile", icon: "📍", colorA: "rgba(34,197,94,1)", colorB: "rgba(250,204,21,1)" },
+      { key: "stats", label: "Stats", desc: "Clics, appels, leads", icon: "📈", colorA: "rgba(255,55,140,1)", colorB: "rgba(255,140,0,1)" },
+      { key: "devis", label: "Devis", desc: "Créer & envoyer", icon: "🧾", colorA: "rgba(120,90,255,1)", colorB: "rgba(0,180,255,1)" },
+      { key: "factures", label: "Factures", desc: "Paiements & PDF", icon: "🧮", colorA: "rgba(250,204,21,1)", colorB: "rgba(255,55,140,1)" },
+      { key: "crm", label: "CRM", desc: "Pipeline leads", icon: "🧠", colorA: "rgba(14,165,233,1)", colorB: "rgba(168,85,247,1)" },
+      { key: "tracking", label: "Tracking", desc: "Numéros & events", icon: "📞", colorA: "rgba(255,140,0,1)", colorB: "rgba(0,180,255,1)" },
+      { key: "settings", label: "Réglages", desc: "Compte & accès", icon: "⚙️", colorA: "rgba(148,163,184,1)", colorB: "rgba(120,90,255,1)" },
     ],
     []
   );
 
-  const [electrons, setElectrons] = useState<Electron[]>([]);
+  const [active, setActive] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
 
-  // Génère des positions + trajectoires “pseudo-aléatoires” (1 fois au mount)
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const lastSwipeAt = useRef<number>(0);
+
   useEffect(() => {
-    const placed: Electron[] = seed.map((t, i) => {
-      const angle = (i / seed.length) * Math.PI * 2 + rand(-0.25, 0.25);
-      const radius = rand(22, 34); // % de la zone
-      const left = 50 + Math.cos(angle) * radius + rand(-3, 3);
-      const top = 50 + Math.sin(angle) * radius + rand(-3, 3);
+    const mq = window.matchMedia("(max-width: 860px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener?.("change", apply);
+    return () => mq.removeEventListener?.("change", apply);
+  }, []);
 
-      return {
-        ...t,
-        left: Math.max(12, Math.min(88, left)),
-        top: Math.max(14, Math.min(86, top)),
-        dur: rint(14, 26),
-        delay: Math.round(rand(0, 6) * 10) / 10,
-        x1: rint(-70, 70), y1: rint(-55, 55),
-        x2: rint(-70, 70), y2: rint(-55, 55),
-        x3: rint(-70, 70), y3: rint(-55, 55),
-        x4: rint(-70, 70), y4: rint(-55, 55),
-      };
-    });
-
-    setElectrons(placed);
-  }, [seed]);
-
-  function onToolClick(e: Electron) {
-    if (e.href) {
-      router.push(e.href);
-      return;
-    }
-    alert(`Bientôt : ${e.label}`);
+  function prev() {
+    setActive((v) => wrapIndex(v - 1, modules.length));
+  }
+  function next() {
+    setActive((v) => wrapIndex(v + 1, modules.length));
   }
 
-  // Lignes de synergie (Core → bulles) qui suivent les mouvements
-  useEffect(() => {
-    const container = containerRef.current;
-    const core = coreRef.current;
-    const svg = svgRef.current;
-    if (!container || !core || !svg) return;
-    if (!electrons.length) return;
+  function onTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0];
+    touchStartX.current = t.clientX;
+    touchStartY.current = t.clientY;
+  }
 
-    svg.innerHTML = "";
+  function onTouchEnd(e: React.TouchEvent) {
+    const sx = touchStartX.current;
+    const sy = touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    if (sx == null || sy == null) return;
 
-    const lines = electrons.map(() => {
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("stroke", "rgba(15,23,42,0.18)");
-      line.setAttribute("stroke-width", "1");
-      line.setAttribute("stroke-linecap", "round");
-      svg.appendChild(line);
-      return line;
-    });
+    const t = e.changedTouches[0];
+    const dx = t.clientX - sx;
+    const dy = t.clientY - sy;
 
-    let raf = 0;
+    // anti-double trigger
+    const now = Date.now();
+    if (now - lastSwipeAt.current < 180) return;
 
-    const tick = () => {
-      const cRect = container.getBoundingClientRect();
-      const coreRect = core.getBoundingClientRect();
+    // swipe horizontal dominant
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      lastSwipeAt.current = now;
+      if (dx < 0) next();
+      else prev();
+    }
+  }
 
-      const cx = coreRect.left - cRect.left + coreRect.width / 2;
-      const cy = coreRect.top - cRect.top + coreRect.height / 2;
-
-      const nodes = container.querySelectorAll<HTMLElement>("[data-electron='1']");
-      nodes.forEach((el, i) => {
-        const r = el.getBoundingClientRect();
-        const ex = r.left - cRect.left + r.width / 2;
-        const ey = r.top - cRect.top + r.height / 2;
-
-        const line = lines[i];
-        if (!line) return;
-
-        line.setAttribute("x1", `${cx}`);
-        line.setAttribute("y1", `${cy}`);
-        line.setAttribute("x2", `${ex}`);
-        line.setAttribute("y2", `${ey}`);
-
-        const dx = ex - cx;
-        const dy = ey - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const op = Math.max(0.10, Math.min(0.28, 300 / (dist + 40)));
-        line.setAttribute("stroke", `rgba(15,23,42,${op})`);
-      });
-
-      raf = requestAnimationFrame(tick);
-    };
-
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [electrons]);
-
-  if (loading) {
-    return (
-      <main className="min-h-screen grid place-items-center inrcy-soft-noise">
-        <div className="rounded-2xl bg-white/70 backdrop-blur-xl border border-white/60 shadow-2xl px-8 py-6">
-          <div className="text-sm text-slate-600">Chargement de l’espace client…</div>
-        </div>
-      </main>
-    );
+  function openModule(m: ModuleItem) {
+    // plus tard : router.push(m.href)
+    // pour l’instant on focus la bulle si mobile, ou affiche un toast
+    if (isMobile) {
+      const idx = modules.findIndex((x) => x.key === m.key);
+      if (idx >= 0) setActive(idx);
+      return;
+    }
+    // Desktop: placeholder
+    // eslint-disable-next-line no-alert
+    alert(`Module: ${m.label}\n(Bientôt relié)`);
   }
 
   return (
-    <main className="min-h-screen inrcy-soft-noise relative overflow-hidden">
-      {/* Header */}
-      <header className="relative z-10 max-w-6xl mx-auto px-6 pt-8 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Image src="/logo-inrcy.png" alt="iNrCy" width={42} height={42} priority />
-          <div className="leading-tight">
-            <div className="text-sm font-semibold text-slate-900">Espace Client</div>
-            <div className="text-xs text-slate-600">{user?.email}</div>
-          </div>
+    <main className={styles.page}>
+      {/* Top bar */}
+      <header className={styles.topbar}>
+        <div className={styles.brand}>
+          <div className={styles.brandMark}>iNrCy</div>
+          <div className={styles.brandSub}>Location de générateurs de leads</div>
         </div>
 
-        <button
-          onClick={handleLogout}
-          className="px-4 py-2 rounded-xl bg-white/70 hover:bg-white/85 border border-white/70 shadow-sm backdrop-blur text-sm text-slate-800"
-        >
-          Se déconnecter
-        </button>
+        <div className={styles.topbarRight}>
+          <button className={styles.ghostBtn} type="button">
+            Support
+          </button>
+          <button className={styles.primaryBtn} type="button">
+            Déconnexion
+          </button>
+        </div>
       </header>
 
-      {/* Dashboard */}
-      <section className="relative z-10 max-w-6xl mx-auto px-6 py-10">
-        <div className="rounded-3xl bg-white/60 backdrop-blur-xl border border-white/60 shadow-2xl p-6 md:p-8">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h1 className="text-xl font-semibold text-slate-900">Dashboard iNrCy</h1>
-              <p className="mt-2 text-slate-700 text-sm">
-                Centre = Générateur iNrCy. Autour = bulles cliquables en mouvement (synergie).
-              </p>
-            </div>
+      <section className={styles.stageWrap}>
+        <div
+          className={styles.stage}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+          role="application"
+          aria-label="Dashboard atomique iNrCy"
+        >
+          {/* Orbital rings */}
+          <div className={styles.rings} aria-hidden="true">
+            <div className={styles.ring} />
+            <div className={styles.ring2} />
+            <div className={styles.ring3} />
           </div>
 
-          <div className="mt-8">
-            <div className="inrcy-atom-field" ref={containerRef} aria-label="Outils iNrCy">
-              {/* lignes (derrière) */}
-              <svg className="inrcy-links" ref={svgRef} aria-hidden="true" />
+          {/* Core */}
+          <div className={styles.core}>
+            <div className={styles.coreBadge}>⚙️ Générateur</div>
+            <div className={styles.coreTitle}>iNrCy</div>
+            <div className={styles.coreSub}>Machine à leads • Automatisation • Tracking</div>
+          </div>
 
-              {/* bulles (toujours derrière le noyau) */}
-              {electrons.map((e) => (
-                <button
-                  key={e.key}
-                  type="button"
-                  data-electron="1"
-                  className="inrcy-bubble"
-                  onClick={() => onToolClick(e)}
-                  style={
-                    {
-                      left: `${e.left}%`,
-                      top: `${e.top}%`,
-                      ["--dur" as any]: `${e.dur}s`,
-                      ["--delay" as any]: `${e.delay}s`,
-                      ["--x1" as any]: `${e.x1}px`,
-                      ["--y1" as any]: `${e.y1}px`,
-                      ["--x2" as any]: `${e.x2}px`,
-                      ["--y2" as any]: `${e.y2}px`,
-                      ["--x3" as any]: `${e.x3}px`,
-                      ["--y3" as any]: `${e.y3}px`,
-                      ["--x4" as any]: `${e.x4}px`,
-                      ["--y4" as any]: `${e.y4}px`,
-                      ["--c" as any]: e.color,
-                    } as React.CSSProperties
-                  }
-                  title={`${e.label} — ${e.desc}`}
-                  aria-label={`${e.label} — ${e.desc}`}
-                >
-                  {/* ✅ CONTENU DANS LE ROND */}
-                  <div className="inrcy-bubble-circle">
-                    <div className="inrcy-bubble-icon" aria-hidden="true">
-                      {e.icon}
-                    </div>
-                    <div className="inrcy-bubble-title">{e.label}</div>
-                    <div className="inrcy-bubble-desc">{e.desc}</div>
-                  </div>
-                </button>
-              ))}
+          {/* Desktop orbit */}
+          {!isMobile && (
+            <div className={styles.orbitLayer} aria-label="Modules">
+              {modules.map((m, i) => {
+                const orbitClass = styles[`orbit${(i % 4) + 1}`] as string;
+                const delay = (i * -0.65).toFixed(2);
 
-              {/* noyau AU-DESSUS (les bulles passent derrière) */}
-              <div className="inrcy-core" ref={coreRef}>
-                <div className="inrcy-core-badge">⚙️ Générateur</div>
-                <div className="inrcy-core-title">iNrCy</div>
-                <div className="inrcy-core-sub">Automatisation - SEO - Social - Tracking</div>
+                return (
+                  <button
+                    key={m.key}
+                    type="button"
+                    className={`${styles.electron} ${orbitClass}`}
+                    style={
+                      {
+                        ["--delay" as any]: `${delay}s`,
+                        ["--cA" as any]: m.colorA,
+                        ["--cB" as any]: m.colorB,
+                      } as React.CSSProperties
+                    }
+                    onClick={() => openModule(m)}
+                    title={`${m.label} — ${m.desc}`}
+                    aria-label={`${m.label} — ${m.desc}`}
+                  >
+                    <span className={styles.electronIcon} aria-hidden="true">
+                      {m.icon}
+                    </span>
+                    <span className={styles.electronText}>
+                      <span className={styles.electronLabel}>{m.label}</span>
+                      <span className={styles.electronDesc}>{m.desc}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Mobile “orbital carousel” */}
+          {isMobile && (
+            <>
+              <div className={styles.mobileOrbit} aria-label="Modules (swipe)">
+                {modules.map((m, i) => {
+                  const d = shortestDelta(i, active, modules.length);
+                  const step = 0.55; // rad
+                  const angle = d * step;
+
+                  const R = 145; // rayon
+                  const x = Math.sin(angle) * R;
+                  const y = -Math.cos(angle) * (R * 0.55) + 28; // perspective
+                  const depth = 1 - Math.abs(d) * 0.12;
+                  const scale = clamp(0.66 + depth * 0.38, 0.62, 1.05);
+                  const opacity = clamp(0.22 + depth * 0.85, 0.18, 1);
+                  const blur = clamp((1 - depth) * 3.2, 0, 3.2);
+                  const zIndex = 200 - Math.abs(d) * 10;
+
+                  const isActive = i === active;
+
+                  return (
+                    <button
+                      key={m.key}
+                      type="button"
+                      className={`${styles.electron} ${styles.mobileElectron} ${isActive ? styles.activeElectron : ""}`}
+                      style={
+                        {
+                          transform: `translate3d(${x}px, ${y}px, 0) scale(${scale})`,
+                          opacity,
+                          filter: `blur(${blur}px)`,
+                          zIndex,
+                          ["--cA" as any]: m.colorA,
+                          ["--cB" as any]: m.colorB,
+                        } as React.CSSProperties
+                      }
+                      onClick={() => openModule(m)}
+                      aria-label={`${m.label} — ${m.desc}`}
+                      title={`${m.label} — ${m.desc}`}
+                    >
+                      <span className={styles.electronIcon} aria-hidden="true">
+                        {m.icon}
+                      </span>
+                      <span className={styles.electronText}>
+                        <span className={styles.electronLabel}>{m.label}</span>
+                        <span className={styles.electronDesc}>{m.desc}</span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-            </div>
 
-            <div className="mt-4 text-xs text-slate-600">
-              Astuce : clique sur une bulle. (On branchera chaque module ensuite.)
-            </div>
-          </div>
+              <div className={styles.mobileControls}>
+                <button type="button" className={styles.arrowBtn} onClick={prev} aria-label="Module précédent">
+                  ←
+                </button>
+
+                <div className={styles.mobileHint}>
+                  <div className={styles.mobileHintTitle}>{modules[active]?.label}</div>
+                  <div className={styles.mobileHintDesc}>{modules[active]?.desc}</div>
+                </div>
+
+                <button type="button" className={styles.arrowBtn} onClick={next} aria-label="Module suivant">
+                  →
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className={styles.footerHint}>
+          Desktop : clique une bulle • Mobile : swipe / flèches pour mettre un module au premier plan
         </div>
       </section>
     </main>
