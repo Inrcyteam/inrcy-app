@@ -1,0 +1,154 @@
+@import "tailwindcss";
+
+/* =========================
+   BASE (pour le login)
+   ========================= */
+:root {
+  --bg-0: #070a16;
+  --bg-1: #090f24;
+
+  --text: #0b1020;
+  --muted: rgba(15, 23, 42, 0.65);
+
+  --ring: rgba(20, 30, 60, 0.10);
+  --glass: rgba(255, 255, 255, 0.55);
+  --glass-strong: rgba(255, 255, 255, 0.72);
+  --stroke: rgba(255, 255, 255, 0.55);
+
+  --shadow: 0 18px 45px rgba(2, 6, 23, 0.30);
+
+  --c1: rgba(0, 180, 255, 0.55);
+  --c2: rgba(120, 90, 255, 0.55);
+  --c3: rgba(255, 55, 140, 0.50);
+  --c4: rgba(255, 140, 0, 0.40);
+}
+
+/* ===== Fond luxe ===== */
+.inrcy-soft-noise {
+  background-image:
+    radial-gradient(circle at 18% 12%, var(--c2), transparent 42%),
+    radial-gradient(circle at 75% 22%, var(--c1), transparent 38%),
+    radial-gradient(circle at 48% 88%, var(--c3), transparent 45%),
+    radial-gradient(circle at 70% 75%, var(--c4), transparent 40%),
+    linear-gradient(180deg, #f6f9ff, #edf2ff);
+}
+
+.inrcy-noise-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.08;
+  background-image:
+    repeating-linear-gradient(
+      135deg,
+      rgba(0, 0, 0, 0.06) 0px,
+      rgba(0, 0, 0, 0.06) 1px,
+      transparent 1px,
+      transparent 6px
+    );
+  mix-blend-mode: soft-light;
+}
+
+/* ===== Card ===== */
+.inrcy-card {
+  background: var(--glass);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  position: relative;
+  z-index: 10;
+}
+
+/* ===== Inputs ===== */
+.inrcy-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 44px 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.86);
+  color: #0b1020;
+  outline: none;
+}
+
+.inrcy-input::placeholder {
+  color: rgba(2, 6, 23, 0.38);
+}
+
+.inrcy-input:focus {
+  border-color: rgba(120, 90, 255, 0.35);
+  box-shadow:
+    0 0 0 4px rgba(120, 90, 255, 0.15),
+    0 0 0 1px rgba(0, 180, 255, 0.10);
+}
+
+/* ===== Bouton ===== */
+.inrcy-btn {
+  height: 46px;
+  border-radius: 12px;
+  color: white;
+  font-weight: 700;
+  background: linear-gradient(90deg, rgba(0, 180, 255, 1), rgba(255, 55, 140, 1));
+}
+
+/* ===== Réseau + particules ===== */
+.inrcy-lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.inrcy-float-field {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes inrcy-wander {
+  0%   { transform: translate3d(0, 0, 0); }
+  50%  { transform: translate3d(var(--x1), var(--y1), 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes inrcy-pulse {
+  0%,100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+
+.inrcy-wander-dot {
+  position: absolute;
+  border-radius: 9999px;
+  animation: inrcy-wander var(--dur) ease-in-out infinite;
+}
+
+.inrcy-wander-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  animation: inrcy-pulse calc(var(--dur) * 0.6) ease-in-out infinite;
+  background: radial-gradient(circle, white, transparent 70%);
+}
+
+/* ===== Logo ===== */
+.inrcy-logo-wrap {
+  display: inline-grid;
+  place-items: center;
+}
+
+.inrcy-logo {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Accessibilité */
+@media (prefers-reduced-motion: reduce) {
+  .inrcy-wander-dot,
+  .inrcy-wander-dot::after {
+    animation: none !important;
+  }
+}
+
