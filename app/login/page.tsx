@@ -37,24 +37,22 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 🎨 Palette (10 combos) pour les boules
   const dotColors = useMemo(
     () => [
-      { a: "rgba(0,180,255,1)", b: "rgba(120,90,255,1)" },     // cyan → violet
-      { a: "rgba(255,55,140,1)", b: "rgba(255,140,0,1)" },     // pink → orange
-      { a: "rgba(120,90,255,1)", b: "rgba(0,180,255,1)" },     // violet → cyan
-      { a: "rgba(34,197,94,1)", b: "rgba(0,180,255,1)" },      // green → cyan
-      { a: "rgba(255,140,0,1)", b: "rgba(255,55,140,1)" },     // orange → pink
-      { a: "rgba(59,130,246,1)", b: "rgba(0,180,255,1)" },     // blue → cyan
-      { a: "rgba(168,85,247,1)", b: "rgba(255,55,140,1)" },    // purple → pink
-      { a: "rgba(250,204,21,1)", b: "rgba(255,140,0,1)" },     // yellow → orange
-      { a: "rgba(236,72,153,1)", b: "rgba(168,85,247,1)" },    // pink → purple
-      { a: "rgba(14,165,233,1)", b: "rgba(34,197,94,1)" },     // sky → green
+      { a: "rgba(0,180,255,1)", b: "rgba(120,90,255,1)" },
+      { a: "rgba(255,55,140,1)", b: "rgba(255,140,0,1)" },
+      { a: "rgba(120,90,255,1)", b: "rgba(0,180,255,1)" },
+      { a: "rgba(34,197,94,1)", b: "rgba(0,180,255,1)" },
+      { a: "rgba(255,140,0,1)", b: "rgba(255,55,140,1)" },
+      { a: "rgba(59,130,246,1)", b: "rgba(0,180,255,1)" },
+      { a: "rgba(168,85,247,1)", b: "rgba(255,55,140,1)" },
+      { a: "rgba(250,204,21,1)", b: "rgba(255,140,0,1)" },
+      { a: "rgba(236,72,153,1)", b: "rgba(168,85,247,1)" },
+      { a: "rgba(14,165,233,1)", b: "rgba(34,197,94,1)" },
     ],
     []
   );
 
-  // ✅ Générer les boules après mount => pas d’hydration mismatch
   const [mounted, setMounted] = useState(false);
   const [dots, setDots] = useState<WanderDot[]>([]);
 
@@ -95,7 +93,6 @@ export default function LoginPage() {
         return;
       }
 
-      // ✅ Redirection après connexion
       router.replace("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur de connexion");
@@ -108,7 +105,6 @@ export default function LoginPage() {
     <main className="relative min-h-screen inrcy-soft-noise overflow-hidden">
       <div className="inrcy-noise-overlay" />
 
-      {/* Lignes “réseau” + cercles */}
       <svg className="inrcy-lines" viewBox="0 0 1200 700" preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <linearGradient id="gLine" x1="0" x2="1">
@@ -155,7 +151,6 @@ export default function LoginPage() {
         ))}
       </svg>
 
-      {/* ✅ Boules après mount */}
       {mounted && (
         <div className="inrcy-float-field" aria-hidden="true">
           {dots.map((d, i) => {
@@ -191,7 +186,6 @@ export default function LoginPage() {
         </div>
       )}
 
-      {/* Card */}
       <section className="relative z-10 flex min-h-screen items-center justify-center px-4">
         <div className="inrcy-card w-full max-w-[420px] p-6">
           <div className="flex flex-col items-center gap-2 pb-4">
@@ -268,4 +262,3 @@ export default function LoginPage() {
     </main>
   );
 }
-

@@ -1,9 +1,30 @@
-@import "tailwindcss";
+/* ❌ IMPORTANT : PAS de @import "tailwindcss"; ici (déjà dans app/globals.css) */
 
 /* =========================
-   BASE (pour le login)
+   WRAPPERS (locals)
    ========================= */
-:root {
+.layout {
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+.layoutBg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.content {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+}
+
+/* =========================
+   BASE (pour le login) — variables SCOPÉES AU LOGIN
+   ========================= */
+.layout {
   --bg-0: #070a16;
   --bg-1: #090f24;
 
@@ -24,7 +45,7 @@
 }
 
 /* ===== Fond luxe ===== */
-.inrcy-soft-noise {
+:global(.inrcy-soft-noise) {
   background-image:
     radial-gradient(circle at 18% 12%, var(--c2), transparent 42%),
     radial-gradient(circle at 75% 22%, var(--c1), transparent 38%),
@@ -33,7 +54,7 @@
     linear-gradient(180deg, #f6f9ff, #edf2ff);
 }
 
-.inrcy-noise-overlay {
+:global(.inrcy-noise-overlay) {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -47,10 +68,11 @@
       transparent 6px
     );
   mix-blend-mode: soft-light;
+  z-index: 1;
 }
 
 /* ===== Card ===== */
-.inrcy-card {
+:global(.inrcy-card) {
   background: var(--glass);
   border: 1px solid rgba(255, 255, 255, 0.75);
   border-radius: 18px;
@@ -61,7 +83,7 @@
 }
 
 /* ===== Inputs ===== */
-.inrcy-input {
+:global(.inrcy-input) {
   width: 100%;
   height: 44px;
   padding: 0 44px 0 14px;
@@ -72,11 +94,11 @@
   outline: none;
 }
 
-.inrcy-input::placeholder {
+:global(.inrcy-input::placeholder) {
   color: rgba(2, 6, 23, 0.38);
 }
 
-.inrcy-input:focus {
+:global(.inrcy-input:focus) {
   border-color: rgba(120, 90, 255, 0.35);
   box-shadow:
     0 0 0 4px rgba(120, 90, 255, 0.15),
@@ -84,7 +106,7 @@
 }
 
 /* ===== Bouton ===== */
-.inrcy-btn {
+:global(.inrcy-btn) {
   height: 46px;
   border-radius: 12px;
   color: white;
@@ -93,23 +115,21 @@
 }
 
 /* ===== Réseau + particules ===== */
-.inrcy-lines {
+:global(.inrcy-lines) {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 0;
 }
 
-.inrcy-float-field {
+:global(.inrcy-float-field) {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 1;
 }
 
-/* ✅ Animation plus “vivante” + plus rapide
-   (sans changer le TS : on accélère via duration multiplier)
-*/
+/* Animations */
 @keyframes inrcy-wander {
   0%   { transform: translate3d(0, 0, 0); }
   15%  { transform: translate3d(var(--x1), var(--y1), 0); }
@@ -125,25 +145,20 @@
   50%      { transform: scale(1.22); filter: saturate(1.12); }
 }
 
-.inrcy-wander-dot {
+:global(.inrcy-wander-dot) {
   position: absolute;
   border-radius: 9999px;
-
-  /* ✅ plus vite : on réduit la durée perçue */
   animation: inrcy-wander calc(var(--dur) * 0.65) ease-in-out infinite;
   animation-delay: var(--delay);
-
   will-change: transform;
 }
 
-/* ✅ COULEURS (var(--cA)/var(--cB)) + look “bille” */
-.inrcy-wander-dot::after {
+:global(.inrcy-wander-dot::after) {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
 
-  /* ✅ pulse plus rapide aussi */
   animation: inrcy-pulse calc(var(--dur) * 0.42) ease-in-out infinite;
   animation-delay: var(--delay);
 
@@ -169,22 +184,21 @@
     0 6px 22px rgba(0, 180, 255, 0.08);
 }
 
-/* ===== Logo ===== */
-.inrcy-logo-wrap {
+/* Logo */
+:global(.inrcy-logo-wrap) {
   display: inline-grid;
   place-items: center;
 }
 
-.inrcy-logo {
+:global(.inrcy-logo) {
   background: transparent !important;
   box-shadow: none !important;
 }
 
 /* Accessibilité */
 @media (prefers-reduced-motion: reduce) {
-  .inrcy-wander-dot,
-  .inrcy-wander-dot::after {
+  :global(.inrcy-wander-dot),
+  :global(.inrcy-wander-dot::after) {
     animation: none !important;
   }
 }
-
