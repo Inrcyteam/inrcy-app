@@ -108,24 +108,10 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Générateur iNrCy + Core */}
         <div className={styles.generatorCard}>
           <div className={styles.generatorFX} aria-hidden />
           <div className={styles.generatorFX2} aria-hidden />
           <div className={styles.generatorFX3} aria-hidden />
-
-          {/* ✅ Core “charge” : gros, mais derrière le contenu */}
-          <div className={styles.coreWrap} aria-hidden>
-            <div className={styles.coreBeam} />
-            <div className={styles.core}>
-              <div className={styles.coreOuter} />
-              <div className={styles.coreRing} />
-              <div className={styles.coreRotor} />
-              <div className={styles.coreTicks} />
-              <div className={styles.coreGlass} />
-              <div className={styles.coreGlow} />
-            </div>
-          </div>
 
           <div className={styles.generatorHeader}>
             <div>
@@ -135,9 +121,19 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
-              <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
-              {leadsMonth > 0 ? "Actif" : "En attente"}
+            {/* ✅ Statut + mini core (petit, propre, ne touche rien) */}
+            <div className={styles.generatorHeaderRight}>
+              <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
+                <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
+                {leadsMonth > 0 ? "Actif" : "En attente"}
+              </div>
+
+              <div className={styles.miniCore} title="Alimentation du Générateur (simulation)" aria-hidden>
+                <div className={styles.miniCoreRing} />
+                <div className={styles.miniCoreRotor} />
+                <div className={styles.miniCoreGlass} />
+                <div className={styles.miniCoreGlow} />
+              </div>
             </div>
           </div>
 
