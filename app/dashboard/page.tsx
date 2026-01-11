@@ -1,17 +1,40 @@
 import styles from "./dashboard.module.css";
 
+type ModuleKey =
+  | "facebook"
+  | "site"
+  | "mail"
+  | "stats"
+  | "annuaire"
+  | "gmb"
+  | "houzz"
+  | "publier"
+  | "facturer"
+  | "devis";
+
 type ModuleStatus = "connected" | "available" | "coming";
 
 type Module = {
-  key: string;
+  key: ModuleKey;
   name: string;
   description: string;
-  status: ModuleStatus;
   accent: "blue" | "green" | "purple" | "orange" | "pink" | "teal";
+  status: ModuleStatus;
+
   metricLabel: string;
-  metricValue: string;
+  metricValue?: string; // undefined => "—"
 };
 
+function statusLabel(s: ModuleStatus) {
+  if (s === "connected") return "Connecté";
+  if (s === "available") return "À connecter";
+  return "Bientôt";
+}
+
+/**
+ * ✅ Tu peux basculer ces status au fur et à mesure des intégrations.
+ * Plus tard, tu remplaceras ça par un fetch Supabase.
+ */
 const modules: Module[] = [
   {
     key: "facebook",
@@ -20,16 +43,14 @@ const modules: Module[] = [
     status: "available",
     accent: "blue",
     metricLabel: "Leads 7j",
-    metricValue: "—",
   },
   {
     key: "site",
     name: "Site iNrCy",
     description: "Landing + tracking — transforme en contacts.",
-    status: "connected",
+    status: "available",
     accent: "green",
     metricLabel: "Conversion",
-    metricValue: "4.8%",
   },
   {
     key: "mail",
@@ -38,16 +59,14 @@ const modules: Module[] = [
     status: "available",
     accent: "purple",
     metricLabel: "Ouverture",
-    metricValue: "—",
   },
   {
     key: "stats",
     name: "Stats",
     description: "ROI & performance — pilote comme un pro.",
-    status: "connected",
+    status: "available",
     accent: "teal",
     metricLabel: "ROI",
-    metricValue: "x3.1",
   },
   {
     key: "annuaire",
@@ -56,7 +75,6 @@ const modules: Module[] = [
     status: "available",
     accent: "orange",
     metricLabel: "Citations",
-    metricValue: "—",
   },
   {
     key: "gmb",
@@ -65,7 +83,6 @@ const modules: Module[] = [
     status: "available",
     accent: "green",
     metricLabel: "Actions",
-    metricValue: "—",
   },
   {
     key: "houzz",
@@ -74,7 +91,6 @@ const modules: Module[] = [
     status: "available",
     accent: "pink",
     metricLabel: "Demandes",
-    metricValue: "—",
   },
   {
     key: "publier",
@@ -83,7 +99,6 @@ const modules: Module[] = [
     status: "coming",
     accent: "purple",
     metricLabel: "Planifié",
-    metricValue: "Bientôt",
   },
   {
     key: "devis",
@@ -92,7 +107,6 @@ const modules: Module[] = [
     status: "coming",
     accent: "orange",
     metricLabel: "Devis",
-    metricValue: "Bientôt",
   },
   {
     key: "facturer",
@@ -101,35 +115,22 @@ const modules: Module[] = [
     status: "coming",
     accent: "teal",
     metricLabel: "Factures",
-    metricValue: "Bientôt",
   },
 ];
 
-type Lead = {
-  id: string;
-  name: string;
-  service: string;
-  city: string;
-  source: string;
-  score: "Chaud" | "Tiède" | "Froid";
-  minutesAgo: number;
-};
+function computeReadiness(mods: Module[]) {
+  const connected = mods.filter((m) => m.status === "connected").length;
+  const available = mods.filter((m) => m.status === "available").length;
+  const coming = mods.filter((m) => m.status === "coming").length;
 
-const leads: Lead[] = [
-  { id: "L-1021", name: "M. Dupont", service: "Toiture", city: "Calais", source: "Site iNrCy", score: "Chaud", minutesAgo: 6 },
-  { id: "L-1020", name: "Mme Martin", service: "Dératisation", city: "Berck", source: "Google Business", score: "Tiède", minutesAgo: 22 },
-  { id: "L-1019", name: "Société Lemoine", service: "Rénovation", city: "Boulogne-sur-Mer", source: "Facebook", score: "Froid", minutesAgo: 48 },
-];
+  // Si rien n'est connecté, on n'invente pas de chiffres.
+  const hasData = connected > 0;
 
-function statusLabel(s: ModuleStatus) {
-  if (s === "connected") return "Connecté";
-  if (s === "available") return "À connecter";
-  return "Bientôt";
+  return { connected, available, coming, hasData };
 }
 
 export default function DashboardPage() {
-  const connected = modules.filter((m) => m.status === "connected").length;
-  const total = modules.length;
+  const readiness = computeReadiness(modules);
 
   return (
     <main className={styles.page}>
@@ -157,24 +158,37 @@ export default function DashboardPage() {
 
       <section className={styles.hero}>
         <div className={styles.heroLeft}>
-          <div className={styles.kicker}>Votre cockpit iNrCy</div>
+          <div className={styles.kicker}>
+            <span className={styles.kickerDot} aria-hidden />
+            Votre cockpit iNrCy
+          </div>
+
           <h1 className={styles.title}>
-            Un seul écran.
-            <span className={styles.titleAccent}> Tous vos canaux.</span>
-            <span className={styles.titleLine2}> Une seule machine à leads.</span>
+            Le <span className={styles.titleAccent}>Générateur</span>
+            <span className={styles.titleLine2}>au centre de tous vos modules.</span>
           </h1>
 
           <p className={styles.subtitle}>
-            iNrCy est le <strong>Générateur</strong>. Chaque module (Facebook, Site, GMB, Email, Houzz, Annuaire…)
-            s’y branche pour <strong>produire, suivre et convertir</strong>.
+            Connectez Facebook, Site iNrCy, GMB, Email, Houzz, Annuaire… et pilotez tout
+            depuis une seule page : <strong>collecte</strong> → <strong>qualifie</strong> →{" "}
+            <strong>convertit</strong>.
           </p>
 
           <div className={styles.pills}>
             <span className={styles.pill}>
               <span className={styles.pillDot} aria-hidden />
-              {connected}/{total} modules connectés
+              {readiness.connected} connectés • {readiness.available} à connecter • {readiness.coming} bientôt
             </span>
-            <span className={styles.pillMuted}>Temps réel • ROI • Automatisations</span>
+            <span className={styles.pillMuted}>Automatisations • ROI • Centralisation</span>
+          </div>
+
+          <div className={styles.ctaRow}>
+            <button className={styles.primaryBtn} type="button">
+              Démarrer la configuration
+            </button>
+            <button className={styles.secondaryBtn} type="button">
+              Voir les modules
+            </button>
           </div>
         </div>
 
@@ -182,35 +196,48 @@ export default function DashboardPage() {
           <div className={styles.generatorHeader}>
             <div>
               <div className={styles.generatorTitle}>Le Générateur iNrCy</div>
-              <div className={styles.generatorDesc}>Le point central : collecte → qualification → conversion</div>
+              <div className={styles.generatorDesc}>
+                Quand un module est connecté, iNrCy récupère les signaux et les transforme en leads.
+              </div>
             </div>
 
-            <div className={styles.generatorStatus}>
-              <span className={styles.liveDot} aria-hidden />
-              Actif
+            <div
+              className={`${styles.generatorStatus} ${
+                readiness.hasData ? styles.statusLive : styles.statusSetup
+              }`}
+            >
+              <span className={readiness.hasData ? styles.liveDot : styles.setupDot} aria-hidden />
+              {readiness.hasData ? "Actif" : "À configurer"}
             </div>
           </div>
 
           <div className={styles.generatorGrid}>
             <div className={styles.metricCard}>
               <div className={styles.metricLabel}>Leads aujourd’hui</div>
-              <div className={styles.metricValue}>12</div>
-              <div className={styles.metricHint}>+18% vs hier</div>
+              <div className={styles.metricValue}>{readiness.hasData ? "—" : "0"}</div>
+              <div className={styles.metricHint}>
+                {readiness.hasData ? "En attente des données…" : "Connectez un module pour démarrer"}
+              </div>
             </div>
+
             <div className={styles.metricCard}>
               <div className={styles.metricLabel}>Leads ce mois</div>
-              <div className={styles.metricValue}>248</div>
-              <div className={styles.metricHint}>Objectif: 300</div>
+              <div className={styles.metricValue}>{readiness.hasData ? "—" : "0"}</div>
+              <div className={styles.metricHint}>
+                {readiness.hasData ? "En attente des données…" : "Objectif : à définir après connexion"}
+              </div>
             </div>
+
             <div className={styles.metricCard}>
               <div className={styles.metricLabel}>Valeur estimée</div>
-              <div className={styles.metricValue}>8 420 €</div>
-              <div className={styles.metricHint}>Basé sur vos conversions</div>
+              <div className={styles.metricValue}>—</div>
+              <div className={styles.metricHint}>S’affiche quand vous suivez devis/factures</div>
             </div>
+
             <div className={styles.metricCard}>
               <div className={styles.metricLabel}>Temps de réponse</div>
-              <div className={styles.metricValue}>7 min</div>
-              <div className={styles.metricHint}>Plus bas = plus de deals</div>
+              <div className={styles.metricValue}>—</div>
+              <div className={styles.metricHint}>S’affiche quand le flux est actif</div>
             </div>
           </div>
 
@@ -219,7 +246,7 @@ export default function DashboardPage() {
               Voir le flux
             </button>
             <button className={styles.primaryBtn} type="button">
-              Lancer une action
+              Connecter maintenant
             </button>
           </div>
 
@@ -231,7 +258,9 @@ export default function DashboardPage() {
         <div className={styles.leftCol}>
           <div className={styles.sectionHead}>
             <h2 className={styles.h2}>Modules rattachés</h2>
-            <p className={styles.h2Sub}>Connectez chaque brique au Générateur pour déclencher la machine.</p>
+            <p className={styles.h2Sub}>
+              Chaque module se branche au Générateur. Plus tu connectes, plus iNrCy devient puissant.
+            </p>
           </div>
 
           <div className={styles.moduleGrid}>
@@ -260,7 +289,7 @@ export default function DashboardPage() {
                 <div className={styles.moduleBottom}>
                   <div className={styles.moduleMetric}>
                     <div className={styles.moduleMetricLabel}>{m.metricLabel}</div>
-                    <div className={styles.moduleMetricValue}>{m.metricValue}</div>
+                    <div className={styles.moduleMetricValue}>{m.metricValue ?? "—"}</div>
                   </div>
 
                   {m.status === "connected" ? (
@@ -288,74 +317,64 @@ export default function DashboardPage() {
           <div className={styles.panel}>
             <div className={styles.panelHead}>
               <h3 className={styles.h3}>Flux de leads</h3>
-              <span className={styles.smallMuted}>Derniers entrants</span>
+              <span className={styles.smallMuted}>En temps réel</span>
             </div>
 
-            <div className={styles.leadList}>
-              {leads.map((l) => (
-                <div key={l.id} className={styles.leadRow}>
-                  <div className={styles.leadMain}>
-                    <div className={styles.leadTitle}>
-                      {l.name} <span className={styles.leadMuted}>• {l.service}</span>
-                    </div>
-                    <div className={styles.leadMeta}>
-                      <span className={styles.metaPill}>{l.city}</span>
-                      <span className={styles.metaPillSoft}>{l.source}</span>
-                      <span
-                        className={`${styles.score} ${
-                          l.score === "Chaud"
-                            ? styles.scoreHot
-                            : l.score === "Tiède"
-                            ? styles.scoreWarm
-                            : styles.scoreCold
-                        }`}
-                      >
-                        {l.score}
-                      </span>
-                    </div>
-                  </div>
-                  <div className={styles.leadSide}>
-                    <div className={styles.timeAgo}>{l.minutesAgo} min</div>
-                    <button className={styles.smallBtn} type="button">
-                      Ouvrir
-                    </button>
-                  </div>
+            {!readiness.hasData ? (
+              <div className={styles.emptyState}>
+                <div className={styles.emptyIcon} aria-hidden>
+                  <div className={styles.emptyPulse} />
                 </div>
-              ))}
-            </div>
+                <div className={styles.emptyTitle}>Aucun lead pour le moment</div>
+                <div className={styles.emptyText}>
+                  Dès qu’un module est connecté (ex: Site iNrCy, GMB ou Facebook), les leads apparaissent ici.
+                </div>
 
-            <div className={styles.panelFooter}>
-              <button className={styles.secondaryBtn} type="button">
-                Voir tous les leads
-              </button>
-              <button className={styles.primaryBtn} type="button">
-                Créer un devis
-              </button>
-            </div>
+                <div className={styles.emptyActions}>
+                  <button className={styles.primaryBtn} type="button">
+                    Connecter Site iNrCy
+                  </button>
+                  <button className={styles.secondaryBtn} type="button">
+                    Connecter GMB
+                  </button>
+                </div>
+
+                <div className={styles.emptyHint}>
+                  Conseil : commence par <strong>Site iNrCy</strong> + <strong>Google Business</strong> pour un ROI rapide.
+                </div>
+              </div>
+            ) : (
+              <div className={styles.leadList}>
+                {/* Plus tard: map des leads Supabase */}
+                <div className={styles.placeholderRow}>
+                  Les leads connectés s’afficheront ici.
+                </div>
+              </div>
+            )}
           </div>
 
           <div className={styles.panel}>
             <div className={styles.panelHead}>
               <h3 className={styles.h3}>Actions rapides</h3>
-              <span className={styles.smallMuted}>Votre routine iNrCy</span>
+              <span className={styles.smallMuted}>Pilotage</span>
             </div>
 
             <div className={styles.quickGrid}>
               <button className={styles.quickBtn} type="button">
+                <span className={styles.quickTitle}>Connecter</span>
+                <span className={styles.quickSub}>Ajouter un canal</span>
+              </button>
+              <button className={styles.quickBtn} type="button">
+                <span className={styles.quickTitle}>Configurer</span>
+                <span className={styles.quickSub}>Suivi & tracking</span>
+              </button>
+              <button className={styles.quickBtn} type="button" disabled>
                 <span className={styles.quickTitle}>Publier</span>
-                <span className={styles.quickSub}>Post GMB + réseaux</span>
+                <span className={styles.quickSub}>Bientôt</span>
               </button>
-              <button className={styles.quickBtn} type="button">
-                <span className={styles.quickTitle}>Relancer</span>
-                <span className={styles.quickSub}>Email/SMS aux tièdes</span>
-              </button>
-              <button className={styles.quickBtn} type="button">
-                <span className={styles.quickTitle}>Optimiser</span>
-                <span className={styles.quickSub}>Pages & conversions</span>
-              </button>
-              <button className={styles.quickBtn} type="button">
+              <button className={styles.quickBtn} type="button" disabled>
                 <span className={styles.quickTitle}>Facturer</span>
-                <span className={styles.quickSub}>Paiement & suivi</span>
+                <span className={styles.quickSub}>Bientôt</span>
               </button>
             </div>
           </div>
@@ -363,9 +382,14 @@ export default function DashboardPage() {
       </section>
 
       <footer className={styles.footer}>
-        <div className={styles.footerLeft}>© {new Date().getFullYear()} iNrCy — Générateur & modules connectés</div>
+        <div className={styles.footerLeft}>© {new Date().getFullYear()} iNrCy</div>
         <div className={styles.footerRight}>
-          <span className={styles.smallMuted}>Astuce :</span> connecte d’abord <strong>Site iNrCy</strong> + <strong>GMB</strong> pour un ROI immédiat.
+          <span className={styles.smallMuted}>État :</span>{" "}
+          {readiness.connected === 0 ? (
+            <strong>prêt à connecter vos modules</strong>
+          ) : (
+            <strong>collecte en cours</strong>
+          )}
         </div>
       </footer>
     </main>
