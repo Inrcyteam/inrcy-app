@@ -29,6 +29,7 @@ const fluxModules: Module[] = [
   { key: "site_web", name: "Site web", description: "Formulaires & appels : récupère les intentions.", status: "available", accent: "pink" },
   { key: "gmb", name: "Google Business", description: "Appels, itinéraires, avis : le local qui convertit.", status: "available", accent: "orange" },
   { key: "houzz", name: "Houzz", description: "Demandes qualifiées : projets à valeur.", status: "available", accent: "pink" },
+  { key: "pages_jaunes", name: "Pages Jaunes", description: "Présence + leads : visibilité locale.", status: "available", accent: "orange" },
 ];
 
 const adminModules: Module[] = [
@@ -44,47 +45,45 @@ const quickActions: Array<{ key: string; title: string; sub: string; disabled?: 
 ];
 
 export default function DashboardPage() {
-  // ✅ Pas de données inventées : 0 tant que rien n’est connecté
-  // Plus tard : tu remplaceras par des valeurs Supabase (leads du jour/semaine/mois).
+  // ✅ Pas de fake data : tant que rien n’est connecté, tout est neutre.
   const leadsToday = 0;
   const leadsWeek = 0;
   const leadsMonth = 0;
 
-  // Panier moyen : on le rend "réel" tout de suite, côté UI (sans backend).
-  // Plus tard : tu le stockeras dans Supabase (profil) et tu hydrateras ici.
-  const avgBasket = 0; // affichage neutre pour le moment
+  // Plus tard: panier moyen viendra du profil Supabase
+  const avgBasket = 0;
   const estimatedValue = avgBasket > 0 ? avgBasket * leadsMonth : 0;
 
-  const profileComplete = false; // plus tard basé sur Supabase
-  const profileLabel = profileComplete ? "Profil complété" : "Profil à compléter";
+  // Plus tard: basé sur Supabase
+  const profileComplete = false;
 
   return (
     <main className={styles.page}>
+      {/* TOPBAR */}
       <header className={styles.topbar}>
-        <div className={styles.brandZone}>
-          <div className={styles.brand}>
-            <div className={styles.logoWrap}>
-              <img className={styles.logoImg} src="/logo-inrcy.png" alt="iNrCy" />
-            </div>
-            <div className={styles.brandText}>
-              <div className={styles.brandName}>iNrCy</div>
-              <div className={styles.brandTag}>Générateur de leads — Hub connecté</div>
-            </div>
+        <div className={styles.brand}>
+          {/* ✅ Logo libre (sans cadre) */}
+          <img className={styles.logoImg} src="/logo-inrcy.png" alt="iNrCy" />
+          <div className={styles.brandText}>
+            <div className={styles.brandName}>iNrCy</div>
+            <div className={styles.brandTag}>Générateur de leads — Hub connecté</div>
           </div>
+        </div>
 
-          {/* ✅ Profil “en haut à droite du logo” */}
-          <div className={styles.profileCard}>
-            <div className={styles.profileTop}>
-              <div className={styles.profileTitle}>Profil pro</div>
-              <span className={`${styles.profileBadge} ${profileComplete ? styles.profileOk : styles.profileWarn}`}>
-                {profileLabel}
+        <div className={styles.topbarRight}>
+          {/* ✅ Profil Pro : petit bloc propre dans la topbar */}
+          <div className={styles.profileChip}>
+            <div className={styles.profileChipTop}>
+              <div className={styles.profileChipTitle}>Profil pro</div>
+              <span className={`${styles.profileChipBadge} ${profileComplete ? styles.profileOk : styles.profileWarn}`}>
+                {profileComplete ? "Complété" : "À compléter"}
               </span>
             </div>
-            <div className={styles.profileHint}>
-              Renseignez les infos utiles pour <strong>devis</strong>, <strong>factures</strong> et <strong>mentions</strong>.
+            <div className={styles.profileChipHint}>
+              Infos pour <strong>devis</strong> / <strong>factures</strong> / <strong>newsletter</strong>
             </div>
-            <div className={styles.profileActions}>
-              <button className={styles.secondaryBtn} type="button">
+            <div className={styles.profileChipActions}>
+              <button className={styles.ghostBtn} type="button">
                 Voir
               </button>
               <button className={styles.primaryBtn} type="button">
@@ -92,22 +91,22 @@ export default function DashboardPage() {
               </button>
             </div>
           </div>
-        </div>
 
-        <div className={styles.topbarActions}>
-          <button className={styles.ghostBtn} type="button">
-            Centre d’aide
-          </button>
-          <button className={styles.primaryBtn} type="button">
-            Connecter un module
-          </button>
-          <div className={styles.avatar} title="Compte">
-            IN
+          <div className={styles.topbarActions}>
+            <button className={styles.ghostBtn} type="button">
+              Centre d’aide
+            </button>
+            <button className={styles.primaryBtn} type="button">
+              Connecter un module
+            </button>
+            <div className={styles.avatar} title="Compte">
+              IN
+            </div>
           </div>
         </div>
       </header>
 
-      {/* HERO : gauche (vision) / droite (Générateur) */}
+      {/* HERO */}
       <section className={styles.hero}>
         <div className={styles.heroLeft}>
           <div className={styles.kicker}>
@@ -121,14 +120,14 @@ export default function DashboardPage() {
           </h1>
 
           <p className={styles.subtitle}>
-            Connectez vos sources (Facebook, GMB, Sites, Houzz…) pour centraliser le flux et passer en mode{" "}
-            <strong>machine à contacts</strong>.
+            Connectez Facebook, GMB, Sites, Houzz, Pages Jaunes… iNrCy centralise le flux et vous aide à convertir :
+            <strong> contacts → devis → factures</strong>.
           </p>
 
           <div className={styles.pills}>
             <span className={styles.pill}>
               <span className={styles.pillDot} aria-hidden />
-              Flux • Admin • Actions rapides
+              Flux de contacts • Admin • Actions rapides
             </span>
             <span className={styles.pillMuted}>Centralisation • ROI • Automatisations</span>
           </div>
@@ -143,13 +142,17 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ✅ Générateur en haut à droite (ton cadre) */}
+        {/* ✅ Générateur dynamique (stars / vitesse lumière) */}
         <div className={styles.generatorCard}>
+          <div className={styles.generatorFX} aria-hidden />
+          <div className={styles.generatorFX2} aria-hidden />
+          <div className={styles.generatorFX3} aria-hidden />
+
           <div className={styles.generatorHeader}>
             <div>
               <div className={styles.generatorTitle}>Générateur iNrCy</div>
               <div className={styles.generatorDesc}>
-                Affiche en direct la production de leads dès qu’un module est connecté.
+                Production en direct dès qu’un module est connecté.
               </div>
             </div>
 
@@ -163,7 +166,7 @@ export default function DashboardPage() {
             <div className={styles.metricCard}>
               <div className={styles.metricLabel}>Leads aujourd’hui</div>
               <div className={styles.metricValue}>{leadsToday}</div>
-              <div className={styles.metricHint}>Se met à jour en temps réel</div>
+              <div className={styles.metricHint}>Temps réel</div>
             </div>
 
             <div className={styles.metricCard}>
@@ -184,7 +187,7 @@ export default function DashboardPage() {
                 {estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "—"}
               </div>
               <div className={styles.metricHint}>
-                Panier moyen × nb leads (configurable via Profil)
+                Panier moyen × nb leads (via Profil)
               </div>
             </div>
           </div>
@@ -202,9 +205,10 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      {/* CONTENT — ici on aligne Flux de contacts (gauche) + Flux en direct (droite) */}
       <section className={styles.content}>
+        {/* LEFT */}
         <div className={styles.leftCol}>
-          {/* FLUX */}
           <div className={styles.sectionHead}>
             <h2 className={styles.h2}>Flux de contacts</h2>
             <p className={styles.h2Sub}>Ce sont les entrées. Branche-les au Générateur.</p>
@@ -248,46 +252,57 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* ADMIN */}
-          <div className={styles.sectionHead} style={{ marginTop: 18 }}>
-            <h2 className={styles.h2}>Admin</h2>
-            <p className={styles.h2Sub}>Pilotage : emails + stats, pour suivre et convertir.</p>
-          </div>
+          {/* ✅ Admin + Actions rapides sur la même ligne */}
+          <div className={styles.lowerRow}>
+            <div className={styles.blockCard}>
+              <div className={styles.blockHead}>
+                <h3 className={styles.h3}>Admin</h3>
+                <span className={styles.smallMuted}>Pilotage</span>
+              </div>
 
-          <div className={styles.moduleGrid} style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-            {adminModules.map((m) => (
-              <article key={m.key} className={`${styles.moduleCard} ${styles[`accent_${m.accent}`]}`}>
-                <div className={styles.moduleTop}>
-                  <div className={styles.moduleName}>{m.name}</div>
-                  <span className={`${styles.badge} ${statusClass(m.status)}`}>{statusLabel(m.status)}</span>
-                </div>
-
-                <div className={styles.moduleDesc}>{m.description}</div>
-
-                <div className={styles.moduleBottom}>
-                  <div className={styles.moduleMeta}>
-                    <div className={styles.moduleMetaLabel}>Données</div>
-                    <div className={styles.moduleMetaValue}>—</div>
+              <div className={styles.blockGrid2}>
+                {adminModules.map((m) => (
+                  <div key={m.key} className={`${styles.miniCard} ${styles[`accent_${m.accent}`]}`}>
+                    <div className={styles.miniTop}>
+                      <div className={styles.miniTitle}>{m.name}</div>
+                      <span className={`${styles.badge} ${statusClass(m.status)}`}>{statusLabel(m.status)}</span>
+                    </div>
+                    <div className={styles.miniDesc}>{m.description}</div>
+                    <div className={styles.miniBottom}>
+                      <button className={styles.primaryBtn} type="button">
+                        Connecter
+                      </button>
+                    </div>
                   </div>
+                ))}
+              </div>
+            </div>
 
-                  {m.status === "available" ? (
-                    <button className={styles.primaryBtn} type="button">
-                      Connecter
-                    </button>
-                  ) : (
-                    <button className={styles.ghostBtn} type="button" disabled>
-                      À venir
-                    </button>
-                  )}
-                </div>
+            <div className={styles.blockCard}>
+              <div className={styles.blockHead}>
+                <h3 className={styles.h3}>Actions rapides</h3>
+                <span className={styles.smallMuted}>Conversion</span>
+              </div>
 
-                <div className={styles.moduleGlow} aria-hidden />
-              </article>
-            ))}
+              <div className={styles.quickGrid}>
+                {quickActions.map((a) => (
+                  <button
+                    key={a.key}
+                    className={`${styles.quickBtn} ${styles[`quick_${a.accent}`]}`}
+                    type="button"
+                    disabled={!!a.disabled}
+                  >
+                    <span className={styles.quickTitle}>{a.title}</span>
+                    <span className={styles.quickSub}>{a.sub}</span>
+                    <span className={styles.quickBadge}>{a.disabled ? "Bientôt" : "Ouvrir"}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* RIGHT COL */}
+        {/* RIGHT — aligné avec Flux de contacts */}
         <aside className={styles.rightCol}>
           <div className={styles.panel}>
             <div className={styles.panelHead}>
@@ -316,28 +331,6 @@ export default function DashboardPage() {
               <div className={styles.emptyHint}>
                 Astuce : une fois le flux actif, tu pourras déclencher <strong>devis</strong> et <strong>factures</strong>.
               </div>
-            </div>
-          </div>
-
-          <div className={styles.panel}>
-            <div className={styles.panelHead}>
-              <h3 className={styles.h3}>Actions rapides</h3>
-              <span className={styles.smallMuted}>Conversion</span>
-            </div>
-
-            <div className={styles.quickGrid}>
-              {quickActions.map((a) => (
-                <button
-                  key={a.key}
-                  className={`${styles.quickBtn} ${styles[`quick_${a.accent}`]}`}
-                  type="button"
-                  disabled={!!a.disabled}
-                >
-                  <span className={styles.quickTitle}>{a.title}</span>
-                  <span className={styles.quickSub}>{a.sub}</span>
-                  <span className={styles.quickBadge}>{a.disabled ? "Bientôt" : "Ouvrir"}</span>
-                </button>
-              ))}
             </div>
           </div>
         </aside>
