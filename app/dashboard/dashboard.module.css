@@ -46,9 +46,7 @@
   filter: drop-shadow(0 18px 36px rgba(0, 0, 0, 0.35));
 }
 
-.brandText {
-  line-height: 1.1;
-}
+.brandText { line-height: 1.1; }
 
 .brandName {
   font-weight: 950;
@@ -69,17 +67,29 @@
   padding-top: 2px;
 }
 
-.avatar {
-  width: 40px;
-  height: 40px;
+/* OUT bouton */
+.avatarBtn {
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
   display: grid;
   place-items: center;
-  font-weight: 900;
-  font-size: 13px;
+  font-weight: 950;
+  font-size: 12px;
+  letter-spacing: -0.2px;
+  cursor: pointer;
+
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
+  color: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.30);
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.avatarBtn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.10);
 }
 
 /* =========================
@@ -192,11 +202,11 @@
 }
 
 /* =========================
-   Générateur + FX (warp speed) + WOW Power Lines
+   Générateur
 ========================= */
 .generatorCard {
   position: relative;
-  overflow: visible;
+  overflow: hidden;
   border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.04));
@@ -205,7 +215,6 @@
   backdrop-filter: blur(14px);
 }
 
-/* FX profondeur / warp */
 .generatorFX,
 .generatorFX2,
 .generatorFX3 {
@@ -224,7 +233,7 @@
 }
 
 .generatorFX2 {
-  opacity: 0.22;
+  opacity: 0.18;
   background:
     repeating-linear-gradient(
       115deg,
@@ -238,9 +247,9 @@
 }
 
 .generatorFX3 {
-  opacity: 0.16;
+  opacity: 0.12;
   background: radial-gradient(rgba(255, 255, 255, 0.35) 1px, transparent 1px);
-  background-size: 22px 22px;
+  background-size: 24px 24px;
   animation: stars 7s linear infinite;
 }
 
@@ -270,131 +279,6 @@
   z-index: 0;
 }
 
-/* WOW: conduits d’énergie (montrent que le générateur alimente le dessous) */
-.powerOut {
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: -34px;
-  height: 120px;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.95;
-}
-
-.powerLine {
-  position: absolute;
-  left: 18%;
-  top: 0;
-  width: 2px;
-  height: 120px;
-  border-radius: 999px;
-  background: linear-gradient(
-    180deg,
-    rgba(56, 189, 248, 0.00),
-    rgba(56, 189, 248, 0.55),
-    rgba(167, 139, 250, 0.45),
-    rgba(244, 114, 182, 0.30),
-    rgba(251, 146, 60, 0.10)
-  );
-  box-shadow:
-    0 0 16px rgba(56, 189, 248, 0.26),
-    0 0 28px rgba(167, 139, 250, 0.18);
-  animation: powerFlow 1.8s linear infinite;
-}
-
-.powerLine2 { left: 50%; opacity: 0.85; animation-duration: 1.5s; }
-.powerLine3 { left: 82%; opacity: 0.75; animation-duration: 2.1s; }
-
-@keyframes powerFlow {
-  0% { transform: translateY(-10px); filter: brightness(1.05); opacity: 0.15; }
-  20% { opacity: 0.85; }
-  60% { opacity: 0.65; }
-  100% { transform: translateY(18px); filter: brightness(1.2); opacity: 0.10; }
-}
-
-.powerPulse {
-  position: absolute;
-  left: 50%;
-  top: 12px;
-  width: 220px;
-  height: 220px;
-  transform: translateX(-50%);
-  border-radius: 999px;
-  background:
-    radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.18), transparent 55%),
-    radial-gradient(circle at 55% 55%, rgba(167, 139, 250, 0.14), transparent 62%),
-    radial-gradient(circle at 50% 70%, rgba(251, 146, 60, 0.10), transparent 68%);
-  opacity: 0.75;
-  filter: blur(0px);
-  animation: pulseOut 2.6s ease-in-out infinite;
-}
-
-@keyframes pulseOut {
-  0% { transform: translateX(-50%) scale(0.92); opacity: 0.35; }
-  45% { transform: translateX(-50%) scale(1.05); opacity: 0.72; }
-  100% { transform: translateX(-50%) scale(0.92); opacity: 0.35; }
-}
-
-/* énergie interne (bar + scan) */
-.generatorEnergy {
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 14px;
-  height: 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.energyBar {
-  height: 100%;
-  width: 40%;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    rgba(56, 189, 248, 0.00),
-    rgba(56, 189, 248, 0.55),
-    rgba(167, 139, 250, 0.50),
-    rgba(244, 114, 182, 0.45),
-    rgba(251, 146, 60, 0.35)
-  );
-  animation: energyFill 3.2s ease-in-out infinite;
-  opacity: 0.9;
-}
-
-.energyScan {
-  position: absolute;
-  inset: -60% -20%;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.00),
-    rgba(255, 255, 255, 0.14),
-    rgba(255, 255, 255, 0.00)
-  );
-  transform: translateY(-30%);
-  animation: energyScan 2.6s ease-in-out infinite;
-  opacity: 0.6;
-}
-
-@keyframes energyFill {
-  0%   { transform: translateX(-50%); width: 24%; }
-  45%  { transform: translateX(10%);  width: 55%; }
-  100% { transform: translateX(120%); width: 24%; }
-}
-
-@keyframes energyScan {
-  0%   { transform: translateY(-35%) rotate(1deg); opacity: 0.0; }
-  25%  { opacity: 0.65; }
-  55%  { opacity: 0.55; }
-  100% { transform: translateY(35%) rotate(1deg); opacity: 0.0; }
-}
-
-/* contenu au-dessus des FX */
 .generatorHeader,
 .generatorGrid,
 .generatorFooter {
@@ -406,7 +290,7 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
@@ -421,6 +305,12 @@
   color: rgba(255, 255, 255, 0.70);
 }
 
+.generatorRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .generatorStatus {
   display: inline-flex;
   align-items: center;
@@ -431,6 +321,7 @@
   color: rgba(255, 255, 255, 0.86);
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.06);
+  white-space: nowrap;
 }
 
 .statusLive {
@@ -458,6 +349,46 @@
 .setupDot {
   background: var(--c-cyan);
   box-shadow: 0 0 0 7px rgba(56, 189, 248, 0.16);
+}
+
+/* ✅ Batterie */
+.battery {
+  position: relative;
+  width: 54px;
+  height: 22px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+}
+
+.batteryCap {
+  position: absolute;
+  right: -6px;
+  top: 6px;
+  width: 6px;
+  height: 10px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.batteryFill {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  bottom: 2px;
+  width: 20%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--c-cyan), var(--c-purple), var(--c-pink), var(--c-orange));
+  animation: batteryCharge 2.6s ease-in-out infinite;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.22);
+}
+
+@keyframes batteryCharge {
+  0% { width: 10%; opacity: 0.70; }
+  45% { width: 92%; opacity: 0.95; }
+  100% { width: 10%; opacity: 0.70; }
 }
 
 .generatorGrid {
@@ -490,7 +421,6 @@
 .contentFull {
   max-width: 1220px;
   margin: 0 auto;
-  position: relative;
 }
 
 .sectionHead {
@@ -509,7 +439,6 @@
   color: rgba(255, 255, 255, 0.64);
 }
 
-/* 3 colonnes */
 .moduleGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -738,13 +667,8 @@
   background: linear-gradient(90deg, rgba(56, 189, 248, 0.20), rgba(167, 139, 250, 0.16), rgba(251, 146, 60, 0.10));
 }
 
-.secondaryBtn {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.ghostBtn {
-  background: transparent;
-}
+.secondaryBtn { background: rgba(255, 255, 255, 0.05); }
+.ghostBtn { background: transparent; }
 
 .primaryBtn:hover,
 .secondaryBtn:hover,
@@ -762,7 +686,7 @@
   transform: none;
 }
 
-/* ✅ WOW: bouton Connecter = gradient iNrCy + glow */
+/* Boutons Connecter = gradient iNrCy + glow */
 .connectBtn {
   border-color: rgba(56, 189, 248, 0.38) !important;
   background: linear-gradient(
@@ -811,9 +735,6 @@
   .moduleGrid { grid-template-columns: 1fr; }
   .lowerRow { grid-template-columns: 1fr; }
   .blockGrid2 { grid-template-columns: 1fr; }
-
-  /* WOW lines : on évite l’overflow visuel sur mobile */
-  .powerOut { display: none; }
 }
 
 @media (max-width: 560px) {

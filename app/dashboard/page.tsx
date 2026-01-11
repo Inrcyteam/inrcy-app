@@ -71,9 +71,11 @@ export default function DashboardPage() {
           <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
             Connecter un module
           </button>
-          <div className={styles.avatar} title="Compte">
-            IN
-          </div>
+
+          {/* OUT = déconnexion */}
+          <button className={styles.avatarBtn} type="button" title="Déconnexion">
+            OUT
+          </button>
         </div>
       </header>
 
@@ -102,48 +104,39 @@ export default function DashboardPage() {
             <span className={styles.pillMuted}>Centralisation • ROI • Automatisations</span>
           </div>
 
+          {/* ✅ Un seul bouton */}
           <div className={styles.ctaRow}>
             <button className={styles.primaryBtn} type="button">
               Compléter votre profil pro
             </button>
-            <button className={styles.secondaryBtn} type="button">
-              Voir les modules
-            </button>
           </div>
         </div>
 
-        {/* Générateur WOW */}
+        {/* Générateur (batterie) */}
         <div className={styles.generatorCard}>
-          {/* FX profondeur / warp */}
           <div className={styles.generatorFX} aria-hidden />
           <div className={styles.generatorFX2} aria-hidden />
           <div className={styles.generatorFX3} aria-hidden />
-
-          {/* WOW: conduits d’énergie vers le bas */}
-          <div className={styles.powerOut} aria-hidden>
-            <span className={styles.powerLine} />
-            <span className={`${styles.powerLine} ${styles.powerLine2}`} />
-            <span className={`${styles.powerLine} ${styles.powerLine3}`} />
-            <span className={styles.powerPulse} />
-          </div>
-
-          {/* énergie interne (bar + scan) */}
-          <div className={styles.generatorEnergy} aria-hidden>
-            <div className={styles.energyBar} />
-            <div className={styles.energyScan} />
-          </div>
 
           <div className={styles.generatorHeader}>
             <div>
               <div className={styles.generatorTitle}>Générateur iNrCy</div>
               <div className={styles.generatorDesc}>
-                Alimenté par vos canaux : chaque connexion augmente le flux.
+                Production en direct dès qu’un module est connecté.
               </div>
             </div>
 
-            <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
-              <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
-              {leadsMonth > 0 ? "Actif" : "En attente"}
+            <div className={styles.generatorRight}>
+              <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
+                <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
+                {leadsMonth > 0 ? "Actif" : "En attente"}
+              </div>
+
+              {/* ✅ Batterie qui se recharge */}
+              <div className={styles.battery} title="Niveau d'alimentation du Générateur (simulation)">
+                <span className={styles.batteryCap} aria-hidden />
+                <span className={styles.batteryFill} aria-hidden />
+              </div>
             </div>
           </div>
 
