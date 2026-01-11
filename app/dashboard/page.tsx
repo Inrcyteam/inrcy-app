@@ -45,24 +45,19 @@ const quickActions: Array<{ key: string; title: string; sub: string; disabled?: 
 ];
 
 export default function DashboardPage() {
-  // ✅ Pas de fake data : tant que rien n’est connecté, tout est neutre.
+  // ✅ Pas de fake data : neutre tant que rien n’est connecté.
   const leadsToday = 0;
   const leadsWeek = 0;
   const leadsMonth = 0;
 
-  // Plus tard: panier moyen viendra du profil Supabase
-  const avgBasket = 0;
+  const avgBasket = 0; // viendra du profil (plus tard Supabase)
   const estimatedValue = avgBasket > 0 ? avgBasket * leadsMonth : 0;
-
-  // Plus tard: basé sur Supabase
-  const profileComplete = false;
 
   return (
     <main className={styles.page}>
       {/* TOPBAR */}
       <header className={styles.topbar}>
         <div className={styles.brand}>
-          {/* ✅ Logo libre (sans cadre) */}
           <img className={styles.logoImg} src="/logo-inrcy.png" alt="iNrCy" />
           <div className={styles.brandText}>
             <div className={styles.brandName}>iNrCy</div>
@@ -70,38 +65,15 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className={styles.topbarRight}>
-          {/* ✅ Profil Pro : petit bloc propre dans la topbar */}
-          <div className={styles.profileChip}>
-            <div className={styles.profileChipTop}>
-              <div className={styles.profileChipTitle}>Profil pro</div>
-              <span className={`${styles.profileChipBadge} ${profileComplete ? styles.profileOk : styles.profileWarn}`}>
-                {profileComplete ? "Complété" : "À compléter"}
-              </span>
-            </div>
-            <div className={styles.profileChipHint}>
-              Infos pour <strong>devis</strong> / <strong>factures</strong> / <strong>newsletter</strong>
-            </div>
-            <div className={styles.profileChipActions}>
-              <button className={styles.ghostBtn} type="button">
-                Voir
-              </button>
-              <button className={styles.primaryBtn} type="button">
-                Compléter
-              </button>
-            </div>
-          </div>
-
-          <div className={styles.topbarActions}>
-            <button className={styles.ghostBtn} type="button">
-              Centre d’aide
-            </button>
-            <button className={styles.primaryBtn} type="button">
-              Connecter un module
-            </button>
-            <div className={styles.avatar} title="Compte">
-              IN
-            </div>
+        <div className={styles.topbarActions}>
+          <button className={styles.ghostBtn} type="button">
+            Centre d’aide
+          </button>
+          <button className={styles.primaryBtn} type="button">
+            Connecter un module
+          </button>
+          <div className={styles.avatar} title="Compte">
+            IN
           </div>
         </div>
       </header>
@@ -142,7 +114,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ✅ Générateur dynamique (stars / vitesse lumière) */}
+        {/* Générateur (dynamique) */}
         <div className={styles.generatorCard}>
           <div className={styles.generatorFX} aria-hidden />
           <div className={styles.generatorFX2} aria-hidden />
@@ -205,135 +177,103 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* CONTENT — ici on aligne Flux de contacts (gauche) + Flux en direct (droite) */}
-      <section className={styles.content}>
-        {/* LEFT */}
-        <div className={styles.leftCol}>
-          <div className={styles.sectionHead}>
-            <h2 className={styles.h2}>Flux de contacts</h2>
-            <p className={styles.h2Sub}>Ce sont les entrées. Branche-les au Générateur.</p>
-          </div>
+      {/* CONTENT — plein écran (on a récupéré la largeur) */}
+      <section className={styles.contentFull}>
+        <div className={styles.sectionHead}>
+          <h2 className={styles.h2}>Flux de contacts</h2>
+          <p className={styles.h2Sub}>Ce sont les entrées. Branche-les au Générateur.</p>
+        </div>
 
-          <div className={styles.moduleGrid}>
-            {fluxModules.map((m) => (
-              <article key={m.key} className={`${styles.moduleCard} ${styles[`accent_${m.accent}`]}`}>
-                <div className={styles.moduleTop}>
-                  <div className={styles.moduleName}>{m.name}</div>
-                  <span className={`${styles.badge} ${statusClass(m.status)}`}>{statusLabel(m.status)}</span>
+        <div className={styles.moduleGrid}>
+          {fluxModules.map((m) => (
+            <article key={m.key} className={`${styles.moduleCard} ${styles[`accent_${m.accent}`]}`}>
+              <div className={styles.moduleTop}>
+                <div className={styles.moduleName}>{m.name}</div>
+                <span className={`${styles.badge} ${statusClass(m.status)}`}>{statusLabel(m.status)}</span>
+              </div>
+
+              <div className={styles.moduleDesc}>{m.description}</div>
+
+              <div className={styles.moduleBottom}>
+                <div className={styles.moduleMeta}>
+                  <div className={styles.moduleMetaLabel}>État</div>
+                  <div className={styles.moduleMetaValue}>
+                    {m.status === "available" ? "Prêt à connecter" : m.status === "connected" ? "Connecté" : "Bientôt"}
+                  </div>
                 </div>
 
-                <div className={styles.moduleDesc}>{m.description}</div>
+                {m.status === "available" ? (
+                  <button className={styles.primaryBtn} type="button">
+                    Connecter
+                  </button>
+                ) : m.status === "connected" ? (
+                  <button className={styles.ghostBtn} type="button">
+                    Configurer
+                  </button>
+                ) : (
+                  <button className={styles.ghostBtn} type="button" disabled>
+                    À venir
+                  </button>
+                )}
+              </div>
 
-                <div className={styles.moduleBottom}>
-                  <div className={styles.moduleMeta}>
-                    <div className={styles.moduleMetaLabel}>État</div>
-                    <div className={styles.moduleMetaValue}>
-                      {m.status === "available" ? "Prêt à connecter" : m.status === "connected" ? "Connecté" : "Bientôt"}
-                    </div>
+              <div className={styles.moduleGlow} aria-hidden />
+            </article>
+          ))}
+        </div>
+
+        {/* Admin + Actions rapides sur la même ligne */}
+        <div className={styles.lowerRow}>
+          <div className={styles.blockCard}>
+            <div className={styles.blockHead}>
+              <h3 className={styles.h3}>Admin</h3>
+              <div className={styles.blockHeadRight}>
+                <button className={styles.secondaryBtn} type="button">
+                  Profil pro
+                </button>
+              </div>
+            </div>
+
+            <div className={styles.blockGrid2}>
+              {adminModules.map((m) => (
+                <div key={m.key} className={`${styles.miniCard} ${styles[`accent_${m.accent}`]}`}>
+                  <div className={styles.miniTop}>
+                    <div className={styles.miniTitle}>{m.name}</div>
+                    <span className={`${styles.badge} ${statusClass(m.status)}`}>{statusLabel(m.status)}</span>
                   </div>
-
-                  {m.status === "available" ? (
+                  <div className={styles.miniDesc}>{m.description}</div>
+                  <div className={styles.miniBottom}>
                     <button className={styles.primaryBtn} type="button">
                       Connecter
                     </button>
-                  ) : m.status === "connected" ? (
-                    <button className={styles.ghostBtn} type="button">
-                      Configurer
-                    </button>
-                  ) : (
-                    <button className={styles.ghostBtn} type="button" disabled>
-                      À venir
-                    </button>
-                  )}
+                  </div>
                 </div>
-
-                <div className={styles.moduleGlow} aria-hidden />
-              </article>
-            ))}
+              ))}
+            </div>
           </div>
 
-          {/* ✅ Admin + Actions rapides sur la même ligne */}
-          <div className={styles.lowerRow}>
-            <div className={styles.blockCard}>
-              <div className={styles.blockHead}>
-                <h3 className={styles.h3}>Admin</h3>
-                <span className={styles.smallMuted}>Pilotage</span>
-              </div>
-
-              <div className={styles.blockGrid2}>
-                {adminModules.map((m) => (
-                  <div key={m.key} className={`${styles.miniCard} ${styles[`accent_${m.accent}`]}`}>
-                    <div className={styles.miniTop}>
-                      <div className={styles.miniTitle}>{m.name}</div>
-                      <span className={`${styles.badge} ${statusClass(m.status)}`}>{statusLabel(m.status)}</span>
-                    </div>
-                    <div className={styles.miniDesc}>{m.description}</div>
-                    <div className={styles.miniBottom}>
-                      <button className={styles.primaryBtn} type="button">
-                        Connecter
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <div className={styles.blockCard}>
+            <div className={styles.blockHead}>
+              <h3 className={styles.h3}>Actions rapides</h3>
+              <span className={styles.smallMuted}>Conversion</span>
             </div>
 
-            <div className={styles.blockCard}>
-              <div className={styles.blockHead}>
-                <h3 className={styles.h3}>Actions rapides</h3>
-                <span className={styles.smallMuted}>Conversion</span>
-              </div>
-
-              <div className={styles.quickGrid}>
-                {quickActions.map((a) => (
-                  <button
-                    key={a.key}
-                    className={`${styles.quickBtn} ${styles[`quick_${a.accent}`]}`}
-                    type="button"
-                    disabled={!!a.disabled}
-                  >
-                    <span className={styles.quickTitle}>{a.title}</span>
-                    <span className={styles.quickSub}>{a.sub}</span>
-                    <span className={styles.quickBadge}>{a.disabled ? "Bientôt" : "Ouvrir"}</span>
-                  </button>
-                ))}
-              </div>
+            <div className={styles.quickGrid}>
+              {quickActions.map((a) => (
+                <button
+                  key={a.key}
+                  className={`${styles.quickBtn} ${styles[`quick_${a.accent}`]}`}
+                  type="button"
+                  disabled={!!a.disabled}
+                >
+                  <span className={styles.quickTitle}>{a.title}</span>
+                  <span className={styles.quickSub}>{a.sub}</span>
+                  <span className={styles.quickBadge}>{a.disabled ? "Bientôt" : "Ouvrir"}</span>
+                </button>
+              ))}
             </div>
           </div>
         </div>
-
-        {/* RIGHT — aligné avec Flux de contacts */}
-        <aside className={styles.rightCol}>
-          <div className={styles.panel}>
-            <div className={styles.panelHead}>
-              <h3 className={styles.h3}>Flux en direct</h3>
-              <span className={styles.smallMuted}>Derniers contacts</span>
-            </div>
-
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon} aria-hidden>
-                <div className={styles.emptyPulse} />
-              </div>
-              <div className={styles.emptyTitle}>Aucun contact pour le moment</div>
-              <div className={styles.emptyText}>
-                Connecte au moins <strong>Site iNrCy</strong> ou <strong>GMB</strong> : les contacts apparaîtront ici.
-              </div>
-
-              <div className={styles.emptyActions}>
-                <button className={styles.primaryBtn} type="button">
-                  Connecter Site iNrCy
-                </button>
-                <button className={styles.secondaryBtn} type="button">
-                  Connecter GMB
-                </button>
-              </div>
-
-              <div className={styles.emptyHint}>
-                Astuce : une fois le flux actif, tu pourras déclencher <strong>devis</strong> et <strong>factures</strong>.
-              </div>
-            </div>
-          </div>
-        </aside>
       </section>
 
       <footer className={styles.footer}>
