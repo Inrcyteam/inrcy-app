@@ -97,21 +97,23 @@ export default function DashboardPage() {
     }
   }
 
-  // Positionnement : cercle, pas d’animation auto, juste transition lors du changement d’active.
-  // On veut que le module actif soit "en bas devant".
+  // Positionnement en cercle (statique, sans anim auto)
   const N = modules.length;
   const step = (Math.PI * 2) / N;
-  const frontAngle = Math.PI / 2; // 90° = bas
 
-  // rayon : mobile plus petit
-  const radius = isMobile ? 170 : 255;
+  // ✅ module actif en bas (devant)
+  const frontAngle = Math.PI / 2;
+
+  // ✅ rayon ajusté pour que la bulle du bas arrive AU-DESSUS de la barre de nav
+  // (desktop plus grand, mobile plus petit)
+  const radius = isMobile ? 155 : 230;
 
   return (
     <main className={styles.page}>
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <div className={styles.brandMark}>iNrCy</div>
-          <div className={styles.brandSub}>Générateur de leads en location</div>
+          <div className={styles.brandSub}>Location de générateurs de leads</div>
         </div>
 
         <div className={styles.topbarRight}>
@@ -150,22 +152,18 @@ export default function DashboardPage() {
           <div className={styles.orbitLayer} aria-label="Modules autour du générateur">
             {modules.map((m, i) => {
               const d = shortestDelta(i, active, N);
-
-              // Astuce : on "fait tourner le ring" en changeant l’angle global via active.
               const angle = frontAngle + d * step;
 
-              // coord cercle
+              // cercle
               const x = Math.cos(angle) * radius;
               const y = Math.sin(angle) * radius;
 
-              // profondeur légère : actif devant, arrière un peu plus petit mais lisible
+              // profondeur douce : lisible derrière
               const depth = 1 - Math.abs(d) * 0.08;
-              const scale = clamp(0.78 + depth * 0.34, 0.78, 1.10);
-              const opacity = clamp(0.55 + depth * 0.55, 0.65, 1);
+              const scale = clamp(0.88 + depth * 0.26, 0.82, 1.10);
+              const opacity = clamp(0.72 + depth * 0.32, 0.72, 1);
 
-              // z-index pour mettre l’actif au-dessus
               const zIndex = 200 - Math.abs(d) * 10;
-
               const isActive = i === active;
 
               return (
@@ -191,13 +189,15 @@ export default function DashboardPage() {
                   </span>
                   <span className={styles.bubbleLabel}>{m.label}</span>
                   {m.desc ? <span className={styles.bubbleDesc}>{m.desc}</span> : null}
+
+                  {/* traînée */}
                   <span className={styles.trail} aria-hidden="true" />
                 </button>
               );
             })}
           </div>
 
-          {/* contrôles : visibles sur PC + mobile */}
+          {/* barre navigation */}
           <div className={styles.controls}>
             <button className={styles.arrowBtn} type="button" onClick={prev} aria-label="Module précédent">
               ←
@@ -217,7 +217,7 @@ export default function DashboardPage() {
         </div>
 
         <div className={styles.footerHint}>
-          PC : flèches ou clic sur un module • Mobile : swipe ou flèches — le module sélectionné passe devant
+          PC : flèches ou clic • Mobile : swipe ou flèches — le module sélectionné passe devant
         </div>
       </section>
     </main>

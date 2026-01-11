@@ -1,3 +1,6 @@
+/* =========================
+   FOND iNrCy premium (comme avant)
+   ========================= */
 .page {
   position: relative;
   z-index: 2;
@@ -65,7 +68,7 @@
   background: linear-gradient(90deg, rgba(0,180,255,1), rgba(255,55,140,1));
 }
 
-/* Stage */
+/* Stage container */
 .stageWrap {
   max-width: 1100px;
   margin: 0 auto;
@@ -82,10 +85,16 @@
   backdrop-filter: blur(18px);
   box-shadow: 0 28px 70px rgba(0,0,0,0.35);
   overflow: hidden;
+
+  /* ✅ point de centre UNIQUE : noyau + orbites */
+  --centerY: 46%;
 }
 
 @media (max-width: 860px) {
-  .stage { height: 760px; }
+  .stage {
+    height: 760px;
+    --centerY: 50%;
+  }
 }
 
 /* Rings */
@@ -99,19 +108,18 @@
 .ring, .ring2, .ring3 {
   position: absolute;
   left: 50%;
-  top: 46%;
+  top: var(--centerY);
   border-radius: 9999px;
   transform: translate(-50%, -50%);
   border: 1px solid rgba(234,240,255,0.10);
 }
 
-.ring { width: 560px; height: 560px; }
+.ring  { width: 560px; height: 560px; }
 .ring2 { width: 440px; height: 440px; opacity: 0.70; transform: translate(-50%, -50%) rotate(18deg); }
 .ring3 { width: 320px; height: 320px; opacity: 0.55; transform: translate(-50%, -50%) rotate(-14deg); }
 
 @media (max-width: 860px) {
-  .ring, .ring2, .ring3 { top: 50%; }
-  .ring { width: 440px; height: 440px; }
+  .ring  { width: 440px; height: 440px; }
   .ring2 { width: 350px; height: 350px; }
   .ring3 { width: 260px; height: 260px; }
 }
@@ -120,7 +128,7 @@
 .core {
   position: absolute;
   left: 50%;
-  top: 46%;
+  top: var(--centerY);
   transform: translate(-50%, -50%);
   width: 220px;
   height: 220px;
@@ -142,10 +150,6 @@
     0 0 0 1px rgba(0,180,255,0.12),
     0 40px 95px rgba(0,0,0,0.45);
   backdrop-filter: blur(14px);
-}
-
-@media (max-width: 860px) {
-  .core { top: 50%; }
 }
 
 .coreBadge {
@@ -175,18 +179,14 @@
   line-height: 1.25;
 }
 
-/* Orbit layer: on place les bulles via translate3d depuis le centre */
+/* Orbit layer: positionné EXACTEMENT au même centre que le core */
 .orbitLayer {
   position: absolute;
   left: 50%;
-  top: 46%;
+  top: var(--centerY);
   width: 0;
   height: 0;
   z-index: 40;
-}
-
-@media (max-width: 860px) {
-  .orbitLayer { top: 50%; }
 }
 
 /* Bubble */
@@ -232,40 +232,31 @@
   pointer-events: none;
 }
 
-/* Traînée (comète) — toujours un peu visible */
+/* Traînée comète */
 .trail {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 110px;
+  width: 112px;
   height: 18px;
-  transform: translate(-12px, -50%);
+  transform: translate(-14px, -50%);
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(255,255,255,0), var(--cA), rgba(255,255,255,0));
   filter: blur(7px);
-  opacity: 0.28;
+  opacity: 0.26;
   pointer-events: none;
 }
 
-/* Active devant */
 .moduleActive {
   border-color: rgba(255,255,255,0.26);
   box-shadow: 0 28px 95px rgba(0,0,0,0.48);
 }
-.moduleActive .trail {
-  opacity: 0.55;
-  filter: blur(8px);
-}
+.moduleActive .trail { opacity: 0.55; filter: blur(8px); }
 
-/* Inactive derrière: mais lisible */
 .moduleInactive {
   border-color: rgba(255,255,255,0.14);
 }
-.moduleInactive .trail {
-  opacity: 0.22;
-}
 
-/* contents */
 .bubbleIcon {
   width: 52px;
   height: 52px;
@@ -300,7 +291,7 @@
   white-space: nowrap;
 }
 
-/* Controls bottom */
+/* Controls bottom (barre nav) */
 .controls {
   position: absolute;
   left: 50%;
@@ -348,7 +339,6 @@
   margin-top: 2px;
 }
 
-/* Footer hint */
 .footerHint {
   margin: 14px auto 0;
   max-width: 880px;
@@ -357,7 +347,6 @@
   opacity: 0.75;
 }
 
-/* Accessibilité */
 @media (prefers-reduced-motion: reduce) {
   .moduleBubble { transition: none !important; }
 }
