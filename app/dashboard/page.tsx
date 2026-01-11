@@ -1,4 +1,10 @@
+"use client";
+
 import styles from "./dashboard.module.css";
+import { useRouter } from "next/navigation";
+
+// ✅ IMPORTANT : on utilise le même client que ta page login
+import { createClient } from "@/lib/supabaseClient";
 
 type ModuleStatus = "connected" | "available" | "coming";
 type Accent = "cyan" | "purple" | "pink" | "orange";
@@ -45,6 +51,22 @@ const quickActions: Array<{ key: string; title: string; sub: string; disabled?: 
 ];
 
 export default function DashboardPage() {
+  const router = useRouter();
+
+  // ✅ Déconnexion Supabase + retour /login
+  const handleLogout = async () => {
+    const supabase = createClient();
+
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error("Erreur déconnexion:", error.message);
+      return;
+    }
+
+    router.replace("/login");
+    router.refresh();
+  };
+
   const leadsToday = 0;
   const leadsWeek = 0;
   const leadsMonth = 0;
@@ -70,7 +92,14 @@ export default function DashboardPage() {
           <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
             Connecter un module
           </button>
-          <button className={styles.avatarBtn} type="button" title="Déconnexion">
+
+          {/* ✅ OUT déconnecte vraiment */}
+          <button
+            className={styles.avatarBtn}
+            type="button"
+            title="Déconnexion"
+            onClick={handleLogout}
+          >
             OUT
           </button>
         </div>
@@ -121,7 +150,6 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* ✅ Statut + mini core (petit, propre, ne touche rien) */}
             <div className={styles.generatorHeaderRight}>
               <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
                 <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
