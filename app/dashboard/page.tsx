@@ -64,7 +64,7 @@ export default function DashboardPage() {
         <div className={styles.brandZone}>
           <div className={styles.brand}>
             <div className={styles.logoWrap}>
-              <img className={styles.logoImg} src="/logo.png" alt="iNrCy" />
+              <img className={styles.logoImg} src="/logo-inrcy.png" alt="iNrCy" />
             </div>
             <div className={styles.brandText}>
               <div className={styles.brandName}>iNrCy</div>
