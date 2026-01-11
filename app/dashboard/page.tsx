@@ -1,226 +1,373 @@
-"use client";
-
-import React, { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./dashboard.module.css";
 
-type ModuleItem = {
+type ModuleStatus = "connected" | "available" | "coming";
+
+type Module = {
   key: string;
-  label: string;
-  desc: string;
-  icon: string;
-  colorA: string;
-  colorB: string;
-  href?: string;
+  name: string;
+  description: string;
+  status: ModuleStatus;
+  accent: "blue" | "green" | "purple" | "orange" | "pink" | "teal";
+  metricLabel: string;
+  metricValue: string;
 };
 
-function wrapIndex(i: number, len: number) {
-  return (i % len + len) % len;
-}
+const modules: Module[] = [
+  {
+    key: "facebook",
+    name: "Facebook",
+    description: "Campagnes & formulaires — capte la demande.",
+    status: "available",
+    accent: "blue",
+    metricLabel: "Leads 7j",
+    metricValue: "—",
+  },
+  {
+    key: "site",
+    name: "Site iNrCy",
+    description: "Landing + tracking — transforme en contacts.",
+    status: "connected",
+    accent: "green",
+    metricLabel: "Conversion",
+    metricValue: "4.8%",
+  },
+  {
+    key: "mail",
+    name: "Mail",
+    description: "Nurturing & relances — fait mûrir les leads.",
+    status: "available",
+    accent: "purple",
+    metricLabel: "Ouverture",
+    metricValue: "—",
+  },
+  {
+    key: "stats",
+    name: "Stats",
+    description: "ROI & performance — pilote comme un pro.",
+    status: "connected",
+    accent: "teal",
+    metricLabel: "ROI",
+    metricValue: "x3.1",
+  },
+  {
+    key: "annuaire",
+    name: "Annuaire",
+    description: "Présence locale — crédibilité & trafic.",
+    status: "available",
+    accent: "orange",
+    metricLabel: "Citations",
+    metricValue: "—",
+  },
+  {
+    key: "gmb",
+    name: "Google Business",
+    description: "Appels, itinéraires, avis — le local qui convertit.",
+    status: "available",
+    accent: "green",
+    metricLabel: "Actions",
+    metricValue: "—",
+  },
+  {
+    key: "houzz",
+    name: "Houzz",
+    description: "Demandes qualifiées — projets à valeur.",
+    status: "available",
+    accent: "pink",
+    metricLabel: "Demandes",
+    metricValue: "—",
+  },
+  {
+    key: "publier",
+    name: "Publier",
+    description: "Posts, actus, offres — nourrit tous les canaux.",
+    status: "coming",
+    accent: "purple",
+    metricLabel: "Planifié",
+    metricValue: "Bientôt",
+  },
+  {
+    key: "devis",
+    name: "Devis",
+    description: "Transformer un lead en devis en 30 secondes.",
+    status: "coming",
+    accent: "orange",
+    metricLabel: "Devis",
+    metricValue: "Bientôt",
+  },
+  {
+    key: "facturer",
+    name: "Facturer",
+    description: "Encaissement & suivi — propre et automatique.",
+    status: "coming",
+    accent: "teal",
+    metricLabel: "Factures",
+    metricValue: "Bientôt",
+  },
+];
 
-function toDeg(n: number) {
-  return `${n}deg`;
-}
+type Lead = {
+  id: string;
+  name: string;
+  service: string;
+  city: string;
+  source: string;
+  score: "Chaud" | "Tiède" | "Froid";
+  minutesAgo: number;
+};
 
-function clamp(n: number, a: number, b: number) {
-  return Math.max(a, Math.min(b, n));
+const leads: Lead[] = [
+  { id: "L-1021", name: "M. Dupont", service: "Toiture", city: "Calais", source: "Site iNrCy", score: "Chaud", minutesAgo: 6 },
+  { id: "L-1020", name: "Mme Martin", service: "Dératisation", city: "Berck", source: "Google Business", score: "Tiède", minutesAgo: 22 },
+  { id: "L-1019", name: "Société Lemoine", service: "Rénovation", city: "Boulogne-sur-Mer", source: "Facebook", score: "Froid", minutesAgo: 48 },
+];
+
+function statusLabel(s: ModuleStatus) {
+  if (s === "connected") return "Connecté";
+  if (s === "available") return "À connecter";
+  return "Bientôt";
 }
 
 export default function DashboardPage() {
-  const modules: ModuleItem[] = useMemo(
-    () => [
-      { key: "mail", label: "Mails", desc: "Relances & inbox", icon: "✉️", colorA: "rgba(0,180,255,1)", colorB: "rgba(120,90,255,1)" },
-      { key: "facebook", label: "Facebook", desc: "Pages & ads", icon: "📘", colorA: "rgba(59,130,246,1)", colorB: "rgba(0,180,255,1)" },
-      { key: "site-inrcy", label: "Site iNrCy", desc: "Pages + tracking", icon: "🧩", colorA: "rgba(168,85,247,1)", colorB: "rgba(255,55,140,1)" },
-      { key: "publish", label: "Publier", desc: "Posts multi-canaux", icon: "🛰️", colorA: "rgba(6,182,212,1)", colorB: "rgba(0,180,255,1)" },
-
-      { key: "houzz", label: "Houzz", desc: "Profil & posts", icon: "🏠", colorA: "rgba(16,185,129,1)", colorB: "rgba(0,180,255,1)" },
-      { key: "gmb", label: "GMB", desc: "Business Profile", icon: "📍", colorA: "rgba(34,197,94,1)", colorB: "rgba(250,204,21,1)" },
-      { key: "stats", label: "Stats", desc: "Clics, appels, leads", icon: "📈", colorA: "rgba(255,55,140,1)", colorB: "rgba(255,140,0,1)" },
-      { key: "devis", label: "Devis", desc: "Créer & envoyer", icon: "🧾", colorA: "rgba(120,90,255,1)", colorB: "rgba(0,180,255,1)" },
-
-      { key: "factures", label: "Factures", desc: "Paiements & PDF", icon: "🧮", colorA: "rgba(250,204,21,1)", colorB: "rgba(255,55,140,1)" },
-      { key: "crm", label: "CRM", desc: "Pipeline leads", icon: "🧠", colorA: "rgba(14,165,233,1)", colorB: "rgba(168,85,247,1)" },
-      { key: "tracking", label: "Tracking", desc: "Numéros & events", icon: "📞", colorA: "rgba(255,140,0,1)", colorB: "rgba(0,180,255,1)" },
-      { key: "settings", label: "Réglages", desc: "Compte & accès", icon: "⚙️", colorA: "rgba(148,163,184,1)", colorB: "rgba(120,90,255,1)" },
-    ],
-    []
-  );
-
-  const [active, setActive] = useState(0);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // swipe
-  const touchStartX = useRef<number | null>(null);
-  const touchStartY = useRef<number | null>(null);
-  const lastSwipeAt = useRef<number>(0);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 860px)");
-    const apply = () => setIsMobile(mq.matches);
-    apply();
-    mq.addEventListener?.("change", apply);
-    return () => mq.removeEventListener?.("change", apply);
-  }, []);
-
-  function prev() {
-    setActive((v) => wrapIndex(v - 1, modules.length));
-  }
-  function next() {
-    setActive((v) => wrapIndex(v + 1, modules.length));
-  }
-
-  function onTouchStart(e: React.TouchEvent) {
-    const t = e.touches[0];
-    touchStartX.current = t.clientX;
-    touchStartY.current = t.clientY;
-  }
-
-  function onTouchEnd(e: React.TouchEvent) {
-    const sx = touchStartX.current;
-    const sy = touchStartY.current;
-    touchStartX.current = null;
-    touchStartY.current = null;
-    if (sx == null || sy == null) return;
-
-    const t = e.changedTouches[0];
-    const dx = t.clientX - sx;
-    const dy = t.clientY - sy;
-
-    const now = Date.now();
-    if (now - lastSwipeAt.current < 180) return;
-
-    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-      lastSwipeAt.current = now;
-      if (dx < 0) next();
-      else prev();
-    }
-  }
-
-  function openModule(i: number) {
-    setActive(i);
-  }
-
-  /**
-   * Nouvelle logique (sans mouvement automatique)
-   * - Toutes les bulles sont sur UNE orbite autour du core.
-   * - Le swipe / les flèches changent l'index actif => on "tourne" l'ensemble par pas.
-   * - Impression avant/arrière via scale + opacité + blur + z-index.
-   */
-  const stepDeg = 360 / modules.length;
-  const radiusPx = isMobile ? 175 : 265;
+  const connected = modules.filter((m) => m.status === "connected").length;
+  const total = modules.length;
 
   return (
     <main className={styles.page}>
       <header className={styles.topbar}>
         <div className={styles.brand}>
-          <div className={styles.brandMark}>iNrCy</div>
-          <div className={styles.brandSub}>Location de générateurs de leads</div>
+          <div className={styles.logoMark} aria-hidden />
+          <div>
+            <div className={styles.brandName}>iNrCy</div>
+            <div className={styles.brandTag}>Générateur de leads — Hub connecté</div>
+          </div>
         </div>
 
-        <div className={styles.topbarRight}>
+        <div className={styles.topbarActions}>
           <button className={styles.ghostBtn} type="button">
-            Support
+            Centre d’aide
           </button>
           <button className={styles.primaryBtn} type="button">
-            Déconnexion
+            Connecter un module
           </button>
+          <div className={styles.avatar} title="Compte">
+            IN
+          </div>
         </div>
       </header>
 
-      <section className={styles.stageWrap}>
-        <div
-          className={styles.stage}
-          onTouchStart={onTouchStart}
-          onTouchEnd={onTouchEnd}
-          role="application"
-          aria-label="Dashboard atomique iNrCy"
-          style={{ ["--r" as any]: `${radiusPx}px` } as React.CSSProperties}
-        >
-          <div className={styles.rings} aria-hidden="true">
-            <div className={styles.ring} />
-            <div className={styles.ring2} />
-            <div className={styles.ring3} />
+      <section className={styles.hero}>
+        <div className={styles.heroLeft}>
+          <div className={styles.kicker}>Votre cockpit iNrCy</div>
+          <h1 className={styles.title}>
+            Un seul écran.
+            <span className={styles.titleAccent}> Tous vos canaux.</span>
+            <span className={styles.titleLine2}> Une seule machine à leads.</span>
+          </h1>
+
+          <p className={styles.subtitle}>
+            iNrCy est le <strong>Générateur</strong>. Chaque module (Facebook, Site, GMB, Email, Houzz, Annuaire…)
+            s’y branche pour <strong>produire, suivre et convertir</strong>.
+          </p>
+
+          <div className={styles.pills}>
+            <span className={styles.pill}>
+              <span className={styles.pillDot} aria-hidden />
+              {connected}/{total} modules connectés
+            </span>
+            <span className={styles.pillMuted}>Temps réel • ROI • Automatisations</span>
           </div>
+        </div>
 
-          <div className={styles.core}>
-            <div className={styles.coreBadge}>⚙️ Générateur</div>
-            <div className={styles.coreTitle}>iNrCy</div>
-            <div className={styles.coreSub}>Machine à leads • Automatisation • Tracking</div>
-          </div>
-
-          <div className={styles.orbitLayer} aria-label="Modules">
-            {modules.map((m, i) => {
-              const isA = i === active;
-
-              // active en bas (devant)
-              const angleDeg = 90 + (i - active) * stepDeg;
-              const angleRad = (angleDeg * Math.PI) / 180;
-
-              // profondeur: -1 (arrière) -> +1 (avant)
-              const depth = Math.sin(angleRad);
-              const t = (depth + 1) / 2; // 0..1
-
-              const scale = 0.78 + t * 0.34;
-              const opacity = 0.35 + t * 0.65;
-              const blurPx = (1 - t) * 1.4;
-              const z = 10 + Math.round(t * 80);
-
-              const safeOpacity = clamp(opacity, 0.22, 1);
-
-              return (
-                <button
-                  key={m.key}
-                  type="button"
-                  className={[
-                    styles.electron,
-                    isMobile ? styles.electronMobile : styles.electronDesktop,
-                    isA ? styles.activeElectron : styles.inactiveElectron,
-                  ].join(" ")}
-                  style={
-                    {
-                      ["--angle" as any]: toDeg(angleDeg),
-                      ["--s" as any]: scale,
-                      ["--o" as any]: safeOpacity,
-                      ["--blur" as any]: `${blurPx}px`,
-                      zIndex: z,
-                      ["--cA" as any]: m.colorA,
-                      ["--cB" as any]: m.colorB,
-                    } as React.CSSProperties
-                  }
-                  onClick={() => openModule(i)}
-                  aria-label={`${m.label} — ${m.desc}`}
-                  title={`${m.label} — ${m.desc}`}
-                >
-                  <span className={styles.bubbleIcon} aria-hidden="true">
-                    {m.icon}
-                  </span>
-                  <span className={styles.bubbleLabel}>{m.label}</span>
-                  <span className={styles.bubbleDesc}>{m.desc}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className={styles.mobileControls} aria-hidden={!isMobile}>
-            <button type="button" className={styles.arrowBtn} onClick={prev} aria-label="Module précédent">
-              ←
-            </button>
-
-            <div className={styles.mobileHint}>
-              <div className={styles.mobileHintTitle}>{modules[active]?.label}</div>
-              <div className={styles.mobileHintDesc}>{modules[active]?.desc}</div>
+        <div className={styles.generatorCard}>
+          <div className={styles.generatorHeader}>
+            <div>
+              <div className={styles.generatorTitle}>Le Générateur iNrCy</div>
+              <div className={styles.generatorDesc}>Le point central : collecte → qualification → conversion</div>
             </div>
 
-            <button type="button" className={styles.arrowBtn} onClick={next} aria-label="Module suivant">
-              →
+            <div className={styles.generatorStatus}>
+              <span className={styles.liveDot} aria-hidden />
+              Actif
+            </div>
+          </div>
+
+          <div className={styles.generatorGrid}>
+            <div className={styles.metricCard}>
+              <div className={styles.metricLabel}>Leads aujourd’hui</div>
+              <div className={styles.metricValue}>12</div>
+              <div className={styles.metricHint}>+18% vs hier</div>
+            </div>
+            <div className={styles.metricCard}>
+              <div className={styles.metricLabel}>Leads ce mois</div>
+              <div className={styles.metricValue}>248</div>
+              <div className={styles.metricHint}>Objectif: 300</div>
+            </div>
+            <div className={styles.metricCard}>
+              <div className={styles.metricLabel}>Valeur estimée</div>
+              <div className={styles.metricValue}>8 420 €</div>
+              <div className={styles.metricHint}>Basé sur vos conversions</div>
+            </div>
+            <div className={styles.metricCard}>
+              <div className={styles.metricLabel}>Temps de réponse</div>
+              <div className={styles.metricValue}>7 min</div>
+              <div className={styles.metricHint}>Plus bas = plus de deals</div>
+            </div>
+          </div>
+
+          <div className={styles.generatorFooter}>
+            <button className={styles.secondaryBtn} type="button">
+              Voir le flux
             </button>
+            <button className={styles.primaryBtn} type="button">
+              Lancer une action
+            </button>
+          </div>
+
+          <div className={styles.generatorGlow} aria-hidden />
+        </div>
+      </section>
+
+      <section className={styles.content}>
+        <div className={styles.leftCol}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.h2}>Modules rattachés</h2>
+            <p className={styles.h2Sub}>Connectez chaque brique au Générateur pour déclencher la machine.</p>
+          </div>
+
+          <div className={styles.moduleGrid}>
+            {modules.map((m) => (
+              <article
+                key={m.key}
+                className={`${styles.moduleCard} ${styles[`accent_${m.accent}`]}`}
+              >
+                <div className={styles.moduleTop}>
+                  <div className={styles.moduleName}>{m.name}</div>
+                  <span
+                    className={`${styles.badge} ${
+                      m.status === "connected"
+                        ? styles.badgeOk
+                        : m.status === "available"
+                        ? styles.badgeWarn
+                        : styles.badgeSoon
+                    }`}
+                  >
+                    {statusLabel(m.status)}
+                  </span>
+                </div>
+
+                <div className={styles.moduleDesc}>{m.description}</div>
+
+                <div className={styles.moduleBottom}>
+                  <div className={styles.moduleMetric}>
+                    <div className={styles.moduleMetricLabel}>{m.metricLabel}</div>
+                    <div className={styles.moduleMetricValue}>{m.metricValue}</div>
+                  </div>
+
+                  {m.status === "connected" ? (
+                    <button className={styles.ghostBtn} type="button">
+                      Configurer
+                    </button>
+                  ) : m.status === "available" ? (
+                    <button className={styles.primaryBtn} type="button">
+                      Connecter
+                    </button>
+                  ) : (
+                    <button className={styles.ghostBtn} type="button" disabled>
+                      À venir
+                    </button>
+                  )}
+                </div>
+
+                <div className={styles.moduleGlow} aria-hidden />
+              </article>
+            ))}
           </div>
         </div>
 
-        <div className={styles.footerHint}>
-          Swipe / flèches : rotation par pas • Profondeur : avant/arrière via scale + opacité
-        </div>
+        <aside className={styles.rightCol}>
+          <div className={styles.panel}>
+            <div className={styles.panelHead}>
+              <h3 className={styles.h3}>Flux de leads</h3>
+              <span className={styles.smallMuted}>Derniers entrants</span>
+            </div>
+
+            <div className={styles.leadList}>
+              {leads.map((l) => (
+                <div key={l.id} className={styles.leadRow}>
+                  <div className={styles.leadMain}>
+                    <div className={styles.leadTitle}>
+                      {l.name} <span className={styles.leadMuted}>• {l.service}</span>
+                    </div>
+                    <div className={styles.leadMeta}>
+                      <span className={styles.metaPill}>{l.city}</span>
+                      <span className={styles.metaPillSoft}>{l.source}</span>
+                      <span
+                        className={`${styles.score} ${
+                          l.score === "Chaud"
+                            ? styles.scoreHot
+                            : l.score === "Tiède"
+                            ? styles.scoreWarm
+                            : styles.scoreCold
+                        }`}
+                      >
+                        {l.score}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.leadSide}>
+                    <div className={styles.timeAgo}>{l.minutesAgo} min</div>
+                    <button className={styles.smallBtn} type="button">
+                      Ouvrir
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className={styles.panelFooter}>
+              <button className={styles.secondaryBtn} type="button">
+                Voir tous les leads
+              </button>
+              <button className={styles.primaryBtn} type="button">
+                Créer un devis
+              </button>
+            </div>
+          </div>
+
+          <div className={styles.panel}>
+            <div className={styles.panelHead}>
+              <h3 className={styles.h3}>Actions rapides</h3>
+              <span className={styles.smallMuted}>Votre routine iNrCy</span>
+            </div>
+
+            <div className={styles.quickGrid}>
+              <button className={styles.quickBtn} type="button">
+                <span className={styles.quickTitle}>Publier</span>
+                <span className={styles.quickSub}>Post GMB + réseaux</span>
+              </button>
+              <button className={styles.quickBtn} type="button">
+                <span className={styles.quickTitle}>Relancer</span>
+                <span className={styles.quickSub}>Email/SMS aux tièdes</span>
+              </button>
+              <button className={styles.quickBtn} type="button">
+                <span className={styles.quickTitle}>Optimiser</span>
+                <span className={styles.quickSub}>Pages & conversions</span>
+              </button>
+              <button className={styles.quickBtn} type="button">
+                <span className={styles.quickTitle}>Facturer</span>
+                <span className={styles.quickSub}>Paiement & suivi</span>
+              </button>
+            </div>
+          </div>
+        </aside>
       </section>
+
+      <footer className={styles.footer}>
+        <div className={styles.footerLeft}>© {new Date().getFullYear()} iNrCy — Générateur & modules connectés</div>
+        <div className={styles.footerRight}>
+          <span className={styles.smallMuted}>Astuce :</span> connecte d’abord <strong>Site iNrCy</strong> + <strong>GMB</strong> pour un ROI immédiat.
+        </div>
+      </footer>
     </main>
   );
 }
