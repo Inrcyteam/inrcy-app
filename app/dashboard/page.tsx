@@ -2,6 +2,7 @@
 
 import styles from "./dashboard.module.css";
 import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 // ✅ IMPORTANT : on utilise le même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
@@ -67,6 +68,32 @@ export default function DashboardPage() {
     router.refresh();
   };
 
+  // ✅ Menu hamburger (mobile)
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (!menuRef.current) return;
+      const target = e.target as Node;
+      if (!menuRef.current.contains(target)) setMenuOpen(false);
+    };
+
+    if (menuOpen) {
+      window.addEventListener("keydown", onKeyDown);
+      window.addEventListener("mousedown", onPointerDown);
+      window.addEventListener("touchstart", onPointerDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [menuOpen]);
+
   const leadsToday = 0;
   const leadsWeek = 0;
   const leadsMonth = 0;
@@ -80,11 +107,12 @@ export default function DashboardPage() {
         <div className={styles.brand}>
           <img className={styles.logoImg} src="/logo-inrcy.png" alt="iNrCy" />
           <div className={styles.brandText}>
-            <div className={styles.brandName}>iNrCy</div>
-            <div className={styles.brandTag}>Générateur de leads — Hub connecté</div>
+            {/* ✅ On enlève "iNrCy" blanc et on garde juste le texte */}
+            <div className={styles.brandTag}>Générateur de contacts — Hub connecté</div>
           </div>
         </div>
 
+        {/* Desktop actions (inchangées visuellement sur grand écran) */}
         <div className={styles.topbarActions}>
           <button className={styles.ghostBtn} type="button">
             Centre d’aide
@@ -92,16 +120,64 @@ export default function DashboardPage() {
           <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
             Connecter un module
           </button>
-
-          {/* ✅ OUT déconnecte vraiment */}
-          <button
-            className={styles.avatarBtn}
-            type="button"
-            title="Déconnexion"
-            onClick={handleLogout}
-          >
+          <button className={styles.avatarBtn} type="button" title="Déconnexion" onClick={handleLogout}>
             OUT
           </button>
+        </div>
+
+        {/* ✅ Hamburger (mobile) */}
+        <div className={styles.mobileMenuWrap} ref={menuRef}>
+          <button
+            type="button"
+            className={styles.hamburgerBtn}
+            aria-label="Ouvrir le menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <span className={styles.hamburgerIcon} aria-hidden />
+          </button>
+
+          {menuOpen && (
+            <div className={styles.mobileMenuPanel} role="menu" aria-label="Menu">
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  // Plus tard tu pourras router vers /help
+                }}
+              >
+                Centre d’aide
+              </button>
+
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  // Plus tard: ouvrir modal / page de connexion modules
+                }}
+              >
+                Connecter un module
+              </button>
+
+              <div className={styles.mobileMenuDivider} />
+
+              <button
+                className={`${styles.mobileMenuItem} ${styles.mobileMenuDanger}`}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  handleLogout();
+                }}
+              >
+                Déconnexion (OUT)
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -145,9 +221,7 @@ export default function DashboardPage() {
           <div className={styles.generatorHeader}>
             <div>
               <div className={styles.generatorTitle}>Générateur iNrCy</div>
-              <div className={styles.generatorDesc}>
-                Production en direct dès qu’un module est connecté.
-              </div>
+              <div className={styles.generatorDesc}>Production en direct dès qu’un module est connecté.</div>
             </div>
 
             <div className={styles.generatorHeaderRight}>
@@ -283,12 +357,7 @@ export default function DashboardPage() {
 
             <div className={styles.quickGrid}>
               {quickActions.map((a) => (
-                <button
-                  key={a.key}
-                  className={`${styles.quickBtn} ${styles[`quick_${a.accent}`]}`}
-                  type="button"
-                  disabled={!!a.disabled}
-                >
+                <button key={a.key} className={`${styles.quickBtn} ${styles[`quick_${a.accent}`]}`} type="button" disabled={!!a.disabled}>
                   <span className={styles.quickTitle}>{a.title}</span>
                   <span className={styles.quickSub}>{a.sub}</span>
                   <span className={styles.quickBadge}>{a.disabled ? "Bientôt" : "Ouvrir"}</span>
