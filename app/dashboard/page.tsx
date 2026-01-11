@@ -45,7 +45,6 @@ const quickActions: Array<{ key: string; title: string; sub: string; disabled?: 
 ];
 
 export default function DashboardPage() {
-  // neutre tant que rien n’est connecté
   const leadsToday = 0;
   const leadsWeek = 0;
   const leadsMonth = 0;
@@ -71,8 +70,6 @@ export default function DashboardPage() {
           <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
             Connecter un module
           </button>
-
-          {/* OUT = déconnexion */}
           <button className={styles.avatarBtn} type="button" title="Déconnexion">
             OUT
           </button>
@@ -104,7 +101,6 @@ export default function DashboardPage() {
             <span className={styles.pillMuted}>Centralisation • ROI • Automatisations</span>
           </div>
 
-          {/* ✅ Un seul bouton */}
           <div className={styles.ctaRow}>
             <button className={styles.primaryBtn} type="button">
               Compléter votre profil pro
@@ -112,11 +108,24 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Générateur (batterie) */}
+        {/* Générateur iNrCy + Core */}
         <div className={styles.generatorCard}>
           <div className={styles.generatorFX} aria-hidden />
           <div className={styles.generatorFX2} aria-hidden />
           <div className={styles.generatorFX3} aria-hidden />
+
+          {/* ✅ Core “charge” : gros, mais derrière le contenu */}
+          <div className={styles.coreWrap} aria-hidden>
+            <div className={styles.coreBeam} />
+            <div className={styles.core}>
+              <div className={styles.coreOuter} />
+              <div className={styles.coreRing} />
+              <div className={styles.coreRotor} />
+              <div className={styles.coreTicks} />
+              <div className={styles.coreGlass} />
+              <div className={styles.coreGlow} />
+            </div>
+          </div>
 
           <div className={styles.generatorHeader}>
             <div>
@@ -126,17 +135,9 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className={styles.generatorRight}>
-              <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
-                <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
-                {leadsMonth > 0 ? "Actif" : "En attente"}
-              </div>
-
-              {/* ✅ Batterie qui se recharge */}
-              <div className={styles.battery} title="Niveau d'alimentation du Générateur (simulation)">
-                <span className={styles.batteryCap} aria-hidden />
-                <span className={styles.batteryFill} aria-hidden />
-              </div>
+            <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
+              <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
+              {leadsMonth > 0 ? "Actif" : "En attente"}
             </div>
           </div>
 
