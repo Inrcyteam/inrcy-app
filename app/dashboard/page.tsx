@@ -45,17 +45,16 @@ const quickActions: Array<{ key: string; title: string; sub: string; disabled?: 
 ];
 
 export default function DashboardPage() {
-  // ✅ Pas de fake data : neutre tant que rien n’est connecté.
+  // neutre tant que rien n’est connecté
   const leadsToday = 0;
   const leadsWeek = 0;
   const leadsMonth = 0;
 
-  const avgBasket = 0; // viendra du profil (plus tard Supabase)
+  const avgBasket = 0;
   const estimatedValue = avgBasket > 0 ? avgBasket * leadsMonth : 0;
 
   return (
     <main className={styles.page}>
-      {/* TOPBAR */}
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <img className={styles.logoImg} src="/logo-inrcy.png" alt="iNrCy" />
@@ -69,7 +68,7 @@ export default function DashboardPage() {
           <button className={styles.ghostBtn} type="button">
             Centre d’aide
           </button>
-          <button className={styles.primaryBtn} type="button">
+          <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
             Connecter un module
           </button>
           <div className={styles.avatar} title="Compte">
@@ -78,7 +77,6 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* HERO */}
       <section className={styles.hero}>
         <div className={styles.heroLeft}>
           <div className={styles.kicker}>
@@ -106,7 +104,7 @@ export default function DashboardPage() {
 
           <div className={styles.ctaRow}>
             <button className={styles.primaryBtn} type="button">
-              Démarrer la configuration
+              Compléter votre profil pro
             </button>
             <button className={styles.secondaryBtn} type="button">
               Voir les modules
@@ -114,17 +112,32 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Générateur (dynamique) */}
+        {/* Générateur WOW */}
         <div className={styles.generatorCard}>
+          {/* FX profondeur / warp */}
           <div className={styles.generatorFX} aria-hidden />
           <div className={styles.generatorFX2} aria-hidden />
           <div className={styles.generatorFX3} aria-hidden />
+
+          {/* WOW: conduits d’énergie vers le bas */}
+          <div className={styles.powerOut} aria-hidden>
+            <span className={styles.powerLine} />
+            <span className={`${styles.powerLine} ${styles.powerLine2}`} />
+            <span className={`${styles.powerLine} ${styles.powerLine3}`} />
+            <span className={styles.powerPulse} />
+          </div>
+
+          {/* énergie interne (bar + scan) */}
+          <div className={styles.generatorEnergy} aria-hidden>
+            <div className={styles.energyBar} />
+            <div className={styles.energyScan} />
+          </div>
 
           <div className={styles.generatorHeader}>
             <div>
               <div className={styles.generatorTitle}>Générateur iNrCy</div>
               <div className={styles.generatorDesc}>
-                Production en direct dès qu’un module est connecté.
+                Alimenté par vos canaux : chaque connexion augmente le flux.
               </div>
             </div>
 
@@ -158,9 +171,7 @@ export default function DashboardPage() {
               <div className={styles.metricValue}>
                 {estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "—"}
               </div>
-              <div className={styles.metricHint}>
-                Panier moyen × nb leads (via Profil)
-              </div>
+              <div className={styles.metricHint}>Panier moyen × nb leads (via Profil)</div>
             </div>
           </div>
 
@@ -168,7 +179,7 @@ export default function DashboardPage() {
             <button className={styles.secondaryBtn} type="button">
               Voir le flux
             </button>
-            <button className={styles.primaryBtn} type="button">
+            <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
               Connecter un outil
             </button>
           </div>
@@ -177,7 +188,6 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* CONTENT — plein écran (on a récupéré la largeur) */}
       <section className={styles.contentFull}>
         <div className={styles.sectionHead}>
           <h2 className={styles.h2}>Flux de contacts</h2>
@@ -203,7 +213,7 @@ export default function DashboardPage() {
                 </div>
 
                 {m.status === "available" ? (
-                  <button className={styles.primaryBtn} type="button">
+                  <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
                     Connecter
                   </button>
                 ) : m.status === "connected" ? (
@@ -222,28 +232,23 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Admin + Actions rapides sur la même ligne */}
         <div className={styles.lowerRow}>
           <div className={styles.blockCard}>
             <div className={styles.blockHead}>
               <h3 className={styles.h3}>Admin</h3>
-              <div className={styles.blockHeadRight}>
-                <button className={styles.secondaryBtn} type="button">
-                  Profil pro
-                </button>
-              </div>
+              <span className={styles.smallMuted}>Pilotage</span>
             </div>
 
             <div className={styles.blockGrid2}>
               {adminModules.map((m) => (
-                <div key={m.key} className={`${styles.miniCard} ${styles[`accent_${m.accent}`]}`}>
+                <div key={m.key} className={styles.miniCard}>
                   <div className={styles.miniTop}>
                     <div className={styles.miniTitle}>{m.name}</div>
                     <span className={`${styles.badge} ${statusClass(m.status)}`}>{statusLabel(m.status)}</span>
                   </div>
                   <div className={styles.miniDesc}>{m.description}</div>
                   <div className={styles.miniBottom}>
-                    <button className={styles.primaryBtn} type="button">
+                    <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
                       Connecter
                     </button>
                   </div>
