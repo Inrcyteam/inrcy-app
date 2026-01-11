@@ -97,16 +97,22 @@ export default function DashboardPage() {
     }
   }
 
-  // Positionnement en cercle (statique, sans anim auto)
+  // =========================
+  // ORBITES PARFAITEMENT ÉQUILIBRÉES
+  // - positions = angles fixes i*step (espacement strict)
+  // - quand "active" change, on fait tourner TOUT l'anneau
+  // =========================
   const N = modules.length;
   const step = (Math.PI * 2) / N;
 
-  // ✅ module actif en bas (devant)
+  // on veut l'actif en bas (devant)
   const frontAngle = Math.PI / 2;
 
-  // ✅ rayon ajusté pour que la bulle du bas arrive AU-DESSUS de la barre de nav
-  // (desktop plus grand, mobile plus petit)
-  const radius = isMobile ? 155 : 230;
+  // rotation globale de l'anneau : amène index "active" sur frontAngle
+  const ringRotation = frontAngle - active * step;
+
+  // rayon : desktop un poil plus petit pour que la bulle du bas passe AU-DESSUS de la barre
+  const radius = isMobile ? 150 : 210;
 
   return (
     <main className={styles.page}>
@@ -149,21 +155,24 @@ export default function DashboardPage() {
           </div>
 
           {/* modules autour */}
-          <div className={styles.orbitLayer} aria-label="Modules autour du générateur">
+          <div
+            className={styles.orbitLayer}
+            style={{ ["--rot" as any]: `${ringRotation}rad` } as React.CSSProperties}
+            aria-label="Modules autour du générateur"
+          >
             {modules.map((m, i) => {
-              const d = shortestDelta(i, active, N);
-              const angle = frontAngle + d * step;
-
-              // cercle
+              // position FIXE sur le cercle = i*step (espacement parfait)
+              const angle = i * step;
               const x = Math.cos(angle) * radius;
               const y = Math.sin(angle) * radius;
 
-              // profondeur douce : lisible derrière
-              const depth = 1 - Math.abs(d) * 0.08;
-              const scale = clamp(0.88 + depth * 0.26, 0.82, 1.10);
-              const opacity = clamp(0.72 + depth * 0.32, 0.72, 1);
+              // depth / z-index basé sur la distance au module actif
+              const d = shortestDelta(i, active, N);
+              const depth = 1 - Math.abs(d) * 0.085;
+              const scale = clamp(0.90 + depth * 0.26, 0.82, 1.12);
+              const opacity = clamp(0.70 + depth * 0.34, 0.70, 1);
 
-              const zIndex = 200 - Math.abs(d) * 10;
+              const zIndex = 200 - Math.abs(d) * 12;
               const isActive = i === active;
 
               return (
@@ -173,7 +182,8 @@ export default function DashboardPage() {
                   className={`${styles.moduleBubble} ${isActive ? styles.moduleActive : styles.moduleInactive}`}
                   style={
                     {
-                      transform: `translate3d(${x}px, ${y}px, 0) scale(${scale})`,
+                      // parent = rotate(var(--rot)), donc on contre-rotate la bulle pour rester droite
+                      transform: `translate3d(${x}px, ${y}px, 0) rotate(${-ringRotation}rad) scale(${scale})`,
                       opacity,
                       zIndex,
                       ["--cA" as any]: m.colorA,
@@ -189,8 +199,6 @@ export default function DashboardPage() {
                   </span>
                   <span className={styles.bubbleLabel}>{m.label}</span>
                   {m.desc ? <span className={styles.bubbleDesc}>{m.desc}</span> : null}
-
-                  {/* traînée */}
                   <span className={styles.trail} aria-hidden="true" />
                 </button>
               );
