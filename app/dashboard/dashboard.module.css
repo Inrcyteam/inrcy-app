@@ -142,7 +142,6 @@
   top: 0;
 }
 
-/* panneau */
 .mobileMenuPanel {
   position: absolute;
   right: 0;
@@ -151,6 +150,11 @@
   border-radius: 16px;
   padding: 8px;
   z-index: 50;
+
+  /* ⭐ CE QUI MANQUAIT */
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* espace entre Centre d’aide / Connecter / Déconnexion */
 
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(18, 26, 56, 0.92);
