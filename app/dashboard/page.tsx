@@ -10,24 +10,15 @@ type ModuleItem = {
   icon: string;
   colorA: string;
   colorB: string;
-  href?: string; // plus tard
+  href?: string;
 };
-
-function clamp(n: number, a: number, b: number) {
-  return Math.max(a, Math.min(b, n));
-}
 
 function wrapIndex(i: number, len: number) {
   return (i % len + len) % len;
 }
 
-function shortestDelta(i: number, active: number, len: number) {
-  // delta dans [-len/2, len/2] (chemin le plus court)
-  let d = i - active;
-  const half = Math.floor(len / 2);
-  if (d > half) d -= len;
-  if (d < -half) d += len;
-  return d;
+function toDeg(n: number) {
+  return `${n}deg`;
 }
 
 export default function DashboardPage() {
@@ -37,10 +28,12 @@ export default function DashboardPage() {
       { key: "facebook", label: "Facebook", desc: "Pages & ads", icon: "📘", colorA: "rgba(59,130,246,1)", colorB: "rgba(0,180,255,1)" },
       { key: "site-inrcy", label: "Site iNrCy", desc: "Pages + tracking", icon: "🧩", colorA: "rgba(168,85,247,1)", colorB: "rgba(255,55,140,1)" },
       { key: "publish", label: "Publier", desc: "Posts multi-canaux", icon: "🛰️", colorA: "rgba(6,182,212,1)", colorB: "rgba(0,180,255,1)" },
+
       { key: "houzz", label: "Houzz", desc: "Profil & posts", icon: "🏠", colorA: "rgba(16,185,129,1)", colorB: "rgba(0,180,255,1)" },
       { key: "gmb", label: "GMB", desc: "Business Profile", icon: "📍", colorA: "rgba(34,197,94,1)", colorB: "rgba(250,204,21,1)" },
       { key: "stats", label: "Stats", desc: "Clics, appels, leads", icon: "📈", colorA: "rgba(255,55,140,1)", colorB: "rgba(255,140,0,1)" },
       { key: "devis", label: "Devis", desc: "Créer & envoyer", icon: "🧾", colorA: "rgba(120,90,255,1)", colorB: "rgba(0,180,255,1)" },
+
       { key: "factures", label: "Factures", desc: "Paiements & PDF", icon: "🧮", colorA: "rgba(250,204,21,1)", colorB: "rgba(255,55,140,1)" },
       { key: "crm", label: "CRM", desc: "Pipeline leads", icon: "🧠", colorA: "rgba(14,165,233,1)", colorB: "rgba(168,85,247,1)" },
       { key: "tracking", label: "Tracking", desc: "Numéros & events", icon: "📞", colorA: "rgba(255,140,0,1)", colorB: "rgba(0,180,255,1)" },
@@ -52,6 +45,7 @@ export default function DashboardPage() {
   const [active, setActive] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
 
+  // swipe
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
   const lastSwipeAt = useRef<number>(0);
@@ -91,6 +85,7 @@ export default function DashboardPage() {
     const now = Date.now();
     if (now - lastSwipeAt.current < 180) return;
 
+    // swipe horizontal dominant
     if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.2) {
       lastSwipeAt.current = now;
       if (dx < 0) next();
@@ -98,20 +93,34 @@ export default function DashboardPage() {
     }
   }
 
-  function openModule(m: ModuleItem) {
-    // plus tard : router.push(m.href)
-    if (isMobile) {
-      const idx = modules.findIndex((x) => x.key === m.key);
-      if (idx >= 0) setActive(idx);
-      return;
-    }
-    // eslint-disable-next-line no-alert
-    alert(`Module: ${m.label}\n(Bientôt relié)`);
+  function openModule(i: number) {
+    // Plus tard : router.push(modules[i].href)
+    setActive(i);
   }
 
-  // 4 orbites fixes
-  const radii = ["210px", "255px", "300px", "345px"];
-  const speeds = ["18s", "22s", "26s", "30s"];
+  /**
+   * 4 orbites / 3 modules par orbite (12 total)
+   * i -> ring: i%4, pos: floor(i/4) => 0..2
+   * phase: 0 / 120 / 240
+   */
+  const ring = (i: number) => i % 4;
+  const pos = (i: number) => Math.floor(i / 4);
+  const basePhaseDeg = (i: number) => pos(i) * 120;
+
+  // Orbites desktop
+  const radiiDesktop = ["210px", "255px", "300px", "345px"];
+  const speedsDesktop = ["18s", "22s", "26s", "30s"];
+
+  // Orbites mobile (un peu plus petites, mieux cadrées autour du core)
+  const radiiMobile = ["140px", "175px", "210px", "245px"];
+  const speedsMobile = ["16s", "20s", "24s", "28s"];
+
+  /**
+   * MOBILE: on fait tourner TOUT l'atome pour amener le module actif en bas (devant)
+   * Angle cible bas = 90deg (car rotate(90deg) + translateX = vers le bas)
+   */
+  const activePhase = basePhaseDeg(active);
+  const atomRot = 90 - activePhase; // deg
 
   return (
     <main className={styles.page}>
@@ -139,8 +148,14 @@ export default function DashboardPage() {
           onTouchEnd={onTouchEnd}
           role="application"
           aria-label="Dashboard atomique iNrCy"
+          style={
+            {
+              // uniquement utile en mobile
+              ["--atomRot" as any]: toDeg(atomRot),
+            } as React.CSSProperties
+          }
         >
-          {/* Orbital rings */}
+          {/* Rings */}
           <div className={styles.rings} aria-hidden="true">
             <div className={styles.ring} />
             <div className={styles.ring2} />
@@ -154,112 +169,73 @@ export default function DashboardPage() {
             <div className={styles.coreSub}>Machine à leads • Automatisation • Tracking</div>
           </div>
 
-          {/* Desktop orbit — 4 orbites / 3 bulles chacune */}
-          {!isMobile && (
-            <div className={styles.orbitLayer} aria-label="Modules">
-              {modules.map((m, i) => {
-                // 0..3 = orbite, 0..2 = position (3 bulles par orbite)
-                const ring = i % 4;
-                const pos = Math.floor(i / 4); // 0,1,2
-                const phase = `${pos * 120}deg`;
+          {/* ORBITES (desktop + mobile) : même logique, mais tailles/effets différents */}
+          <div className={styles.orbitLayer} aria-label="Modules">
+            {modules.map((m, i) => {
+              const isA = i === active;
 
-                return (
-                  <button
-                    key={m.key}
-                    type="button"
-                    className={`${styles.electron} ${styles.orbit}`}
-                    style={
-                      {
-                        ["--phase" as any]: phase,
-                        ["--r" as any]: radii[ring],
-                        ["--speed" as any]: speeds[ring],
-                        ["--cA" as any]: m.colorA,
-                        ["--cB" as any]: m.colorB,
-                      } as React.CSSProperties
-                    }
-                    onClick={() => openModule(m)}
-                    title={`${m.label} — ${m.desc}`}
-                    aria-label={`${m.label} — ${m.desc}`}
-                  >
-                    <span className={styles.bubbleIcon} aria-hidden="true">
-                      {m.icon}
-                    </span>
-                    <span className={styles.bubbleLabel}>{m.label}</span>
-                  </button>
-                );
-              })}
+              const phase = toDeg(basePhaseDeg(i));
+              const r = isMobile ? radiiMobile[ring(i)] : radiiDesktop[ring(i)];
+              const speed = isMobile ? speedsMobile[ring(i)] : speedsDesktop[ring(i)];
+
+              return (
+                <button
+                  key={m.key}
+                  type="button"
+                  className={[
+                    styles.electron,
+                    styles.orbit,
+                    isMobile ? styles.electronMobile : styles.electronDesktop,
+                    isMobile && isA ? styles.activeElectron : "",
+                    isMobile && !isA ? styles.inactiveElectron : "",
+                  ].join(" ")}
+                  style={
+                    {
+                      // orbit params
+                      ["--phase" as any]: phase,
+                      ["--r" as any]: r,
+                      ["--speed" as any]: speed,
+
+                      // colors
+                      ["--cA" as any]: m.colorA,
+                      ["--cB" as any]: m.colorB,
+                    } as React.CSSProperties
+                  }
+                  onClick={() => openModule(i)}
+                  aria-label={`${m.label} — ${m.desc}`}
+                  title={`${m.label} — ${m.desc}`}
+                >
+                  <span className={styles.bubbleIcon} aria-hidden="true">
+                    {m.icon}
+                  </span>
+                  <span className={styles.bubbleLabel}>{m.label}</span>
+
+                  {/* Sur mobile on laisse une micro-desc lisible */}
+                  <span className={styles.bubbleDesc}>{m.desc}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* MOBILE controls */}
+          <div className={styles.mobileControls} aria-hidden={!isMobile}>
+            <button type="button" className={styles.arrowBtn} onClick={prev} aria-label="Module précédent">
+              ←
+            </button>
+
+            <div className={styles.mobileHint}>
+              <div className={styles.mobileHintTitle}>{modules[active]?.label}</div>
+              <div className={styles.mobileHintDesc}>{modules[active]?.desc}</div>
             </div>
-          )}
 
-          {/* Mobile “orbital carousel” (swipe) — version bulles aussi */}
-          {isMobile && (
-            <>
-              <div className={styles.mobileOrbit} aria-label="Modules (swipe)">
-                {modules.map((m, i) => {
-                  const d = shortestDelta(i, active, modules.length);
-                  const step = 0.55; // rad
-                  const angle = d * step;
-
-                  const R = 145; // rayon
-                  const x = Math.sin(angle) * R;
-                  const y = -Math.cos(angle) * (R * 0.55) + 28; // perspective
-
-                  const depth = 1 - Math.abs(d) * 0.12;
-                  const scale = clamp(0.66 + depth * 0.40, 0.62, 1.08);
-                  const opacity = clamp(0.22 + depth * 0.85, 0.18, 1);
-                  const blur = clamp((1 - depth) * 3.2, 0, 3.2);
-                  const zIndex = 200 - Math.abs(d) * 10;
-
-                  const isActive = i === active;
-
-                  return (
-                    <button
-                      key={m.key}
-                      type="button"
-                      className={`${styles.electron} ${styles.mobileElectron} ${isActive ? styles.activeElectron : ""}`}
-                      style={
-                        {
-                          transform: `translate3d(${x}px, ${y}px, 0) scale(${scale})`,
-                          opacity,
-                          filter: `blur(${blur}px)`,
-                          zIndex,
-                          ["--cA" as any]: m.colorA,
-                          ["--cB" as any]: m.colorB,
-                        } as React.CSSProperties
-                      }
-                      onClick={() => openModule(m)}
-                      aria-label={`${m.label} — ${m.desc}`}
-                      title={`${m.label} — ${m.desc}`}
-                    >
-                      <span className={styles.bubbleIcon} aria-hidden="true">
-                        {m.icon}
-                      </span>
-                      <span className={styles.bubbleLabel}>{m.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className={styles.mobileControls}>
-                <button type="button" className={styles.arrowBtn} onClick={prev} aria-label="Module précédent">
-                  ←
-                </button>
-
-                <div className={styles.mobileHint}>
-                  <div className={styles.mobileHintTitle}>{modules[active]?.label}</div>
-                  <div className={styles.mobileHintDesc}>{modules[active]?.desc}</div>
-                </div>
-
-                <button type="button" className={styles.arrowBtn} onClick={next} aria-label="Module suivant">
-                  →
-                </button>
-              </div>
-            </>
-          )}
+            <button type="button" className={styles.arrowBtn} onClick={next} aria-label="Module suivant">
+              →
+            </button>
+          </div>
         </div>
 
         <div className={styles.footerHint}>
-          Desktop : 4 orbites • 3 bulles/orbite (0°/120°/240°) • Mobile : swipe / flèches pour focus
+          Desktop : 4 orbites • 3 bulles/orbite • Mobile : swipe / flèches (rotation de l’atome)
         </div>
       </section>
     </main>
