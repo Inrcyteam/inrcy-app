@@ -27,7 +27,7 @@
   max-width: 1220px;
   margin: 0 auto 14px;
   display: flex;
-  align-items: center; /* ✅ important pour éviter le “décalage” */
+  align-items: center;
   justify-content: space-between;
   gap: 14px;
 }
@@ -36,7 +36,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 0; /* ✅ permet au texte de se couper proprement sur mobile */
+  min-width: 0;
 }
 
 .logoImg {
@@ -48,7 +48,6 @@
 
 .brandText { line-height: 1.1; }
 
-/* ✅ brandName conservé au cas où, mais plus utilisé dans la page */
 .brandName {
   font-weight: 950;
   letter-spacing: -0.3px;
@@ -68,7 +67,6 @@
   padding-top: 2px;
 }
 
-/* OUT bouton */
 .avatarBtn {
   width: 44px;
   height: 44px;
@@ -79,7 +77,6 @@
   font-size: 12px;
   letter-spacing: -0.2px;
   cursor: pointer;
-
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.14);
   color: rgba(255, 255, 255, 0.88);
@@ -97,7 +94,7 @@
    Mobile hamburger menu
 ========================= */
 .mobileMenuWrap {
-  display: none; /* ✅ activé en mobile */
+  display: none;
   position: relative;
 }
 
@@ -138,7 +135,7 @@
   background: rgba(255, 255, 255, 0.88);
   box-shadow:
     0 0 0 1px rgba(0,0,0,0.02),
-    0 10px 0 rgba(255, 255, 255, 0.88); /* 2e barre */
+    0 10px 0 rgba(255, 255, 255, 0.88);
   top: 0;
 }
 
@@ -151,10 +148,9 @@
   padding: 8px;
   z-index: 50;
 
-  /* ⭐ CE QUI MANQUAIT */
   display: flex;
   flex-direction: column;
-  gap: 8px; /* espace entre Centre d’aide / Connecter / Déconnexion */
+  gap: 8px;
 
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(18, 26, 56, 0.92);
@@ -403,7 +399,6 @@
   color: rgba(255, 255, 255, 0.70);
 }
 
-/* ✅ wrap status + mini core */
 .generatorHeaderRight {
   display: inline-flex;
   align-items: center;
@@ -439,9 +434,7 @@
   box-shadow: 0 0 0 7px rgba(56, 189, 248, 0.16);
 }
 
-/* =========================
-   Mini Core (petit, à côté du status)
-========================= */
+/* Mini Core */
 .miniCore {
   width: 44px;
   height: 44px;
@@ -535,9 +528,7 @@
   100% { transform: scale(0.95); opacity: 0.35; }
 }
 
-/* =========================
-   Metrics
-========================= */
+/* Metrics */
 .generatorGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -633,14 +624,66 @@
 
 .moduleBottom {
   margin-top: 12px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
   gap: 10px;
 }
 
 .moduleMetaLabel { font-size: 11px; color: rgba(255, 255, 255, 0.60); }
 .moduleMetaValue { margin-top: 4px; font-weight: 950; letter-spacing: -0.2px; color: rgba(255, 255, 255, 0.82); }
+
+/* ✅ NOUVEAU : zone actions (multi-boutons) */
+.moduleActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  max-width: 320px;
+}
+
+/* ✅ NOUVEAU : boutons d’action (plus compacts) */
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 9px 11px;
+  font-weight: 950;
+  font-size: 11px;
+  cursor: pointer;
+
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.05);
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.actionBtn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.actionBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* style "voir" */
+.actionView {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* style danger si besoin plus tard */
+.actionDanger {
+  border-color: rgba(244, 114, 182, 0.22);
+  background: rgba(244, 114, 182, 0.10);
+}
 
 /* Lower row */
 .lowerRow {
@@ -860,15 +903,18 @@
   .titleLine2 { font-size: 22px; }
   .generatorGrid { grid-template-columns: 1fr; }
 
-  /* ✅ On cache les actions desktop et on affiche le hamburger */
+  /* hide desktop actions / show hamburger */
   .topbarActions { display: none; }
   .mobileMenuWrap { display: block; }
 
   .logoImg { width: 56px; height: 56px; }
 
-  /* mini core un peu plus petit sur très petit */
   .miniCore { width: 38px; height: 38px; }
 
-  /* Tag plus compact */
   .brandTag { margin-top: 0; font-size: 12px; line-height: 1.15; }
+
+  /* ✅ actions dans les cartes : largeur propre sur mobile */
+  .moduleBottom { grid-template-columns: 1fr; }
+  .moduleActions { justify-content: flex-start; max-width: 100%; }
+  .actionBtn { flex: 1 1 auto; }
 }

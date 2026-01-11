@@ -3,12 +3,22 @@
 import styles from "./dashboard.module.css";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
-// ✅ IMPORTANT : on utilise le même client que ta page login
+// ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
 
 type ModuleStatus = "connected" | "available" | "coming";
 type Accent = "cyan" | "purple" | "pink" | "orange";
+
+type ModuleAction = {
+  key: string;
+  label: string;
+  variant: "view" | "connect" | "danger";
+  href?: string; // si action "voir"
+  onClick?: () => void; // si action "connecter" (plus tard)
+  disabled?: boolean;
+};
 
 type Module = {
   key: string;
@@ -16,6 +26,7 @@ type Module = {
   description: string;
   status: ModuleStatus;
   accent: Accent;
+  actions: ModuleAction[];
 };
 
 function statusLabel(s: ModuleStatus) {
@@ -30,16 +41,79 @@ function statusClass(s: ModuleStatus) {
   return styles.badgeSoon;
 }
 
+// ✅ Tes 6 blocs avec tes actions (Voir + Connecter…)
 const fluxModules: Module[] = [
-  { key: "facebook", name: "Facebook", description: "Campagnes & formulaires : capte la demande.", status: "available", accent: "cyan" },
-  { key: "site_inrcy", name: "Site iNrCy", description: "Landing + tracking : transforme en contacts.", status: "available", accent: "purple" },
-  { key: "site_web", name: "Site web", description: "Formulaires & appels : récupère les intentions.", status: "available", accent: "pink" },
-  { key: "gmb", name: "Google Business", description: "Appels, itinéraires, avis : le local qui convertit.", status: "available", accent: "orange" },
-  { key: "houzz", name: "Houzz", description: "Demandes qualifiées : projets à valeur.", status: "available", accent: "pink" },
-  { key: "pages_jaunes", name: "Pages Jaunes", description: "Présence + leads : visibilité locale.", status: "available", accent: "orange" },
+  {
+    key: "site_inrcy",
+    name: "Site iNrCy",
+    description: "Landing iNrCy + tracking : capte et transforme en contacts.",
+    status: "available",
+    accent: "purple",
+    actions: [
+      { key: "view", label: "Voir le site", variant: "view", href: "#" },
+      { key: "ga4", label: "Connecter Analytics", variant: "connect", onClick: () => {} },
+      { key: "gsc", label: "Connecter Search Console", variant: "connect", onClick: () => {} },
+    ],
+  },
+  {
+    key: "site_web",
+    name: "Site web",
+    description: "Votre site existant : formulaires, appels, conversion.",
+    status: "available",
+    accent: "pink",
+    actions: [
+      { key: "view", label: "Voir le site", variant: "view", href: "#" },
+      { key: "ga4", label: "Connecter Analytics", variant: "connect", onClick: () => {} },
+      { key: "gsc", label: "Connecter Search Console", variant: "connect", onClick: () => {} },
+    ],
+  },
+  {
+    key: "facebook",
+    name: "Facebook",
+    description: "Pubs & formulaires Meta : capte la demande et mesure le coût.",
+    status: "available",
+    accent: "cyan",
+    actions: [
+      { key: "view", label: "Voir le compte", variant: "view", href: "#" },
+      { key: "connect", label: "Connecter Facebook", variant: "connect", onClick: () => {} },
+    ],
+  },
+  {
+    key: "gmb",
+    name: "Google Business",
+    description: "Fiche Google : appels, itinéraires, clics et messages.",
+    status: "available",
+    accent: "orange",
+    actions: [
+      { key: "view", label: "Voir la page", variant: "view", href: "#" },
+      { key: "connect", label: "Connecter Google", variant: "connect", onClick: () => {} },
+    ],
+  },
+  {
+    key: "houzz",
+    name: "Houzz",
+    description: "Demandes qualifiées : projets à valeur.",
+    status: "available",
+    accent: "pink",
+    actions: [{ key: "view", label: "Voir la page", variant: "view", href: "#" }],
+  },
+  {
+    key: "pages_jaunes",
+    name: "Pages Jaunes",
+    description: "Présence + visibilité locale : déclenche des demandes.",
+    status: "available",
+    accent: "orange",
+    actions: [{ key: "view", label: "Voir la page", variant: "view", href: "#" }],
+  },
 ];
 
-const adminModules: Module[] = [
+const adminModules: Array<{
+  key: string;
+  name: string;
+  description: string;
+  status: ModuleStatus;
+  accent: Accent;
+}> = [
   { key: "mails", name: "Mails", description: "Relances, notifications, nurturing.", status: "available", accent: "purple" },
   { key: "stats", name: "Stats", description: "ROI, performance et suivi des canaux.", status: "available", accent: "cyan" },
 ];
@@ -57,13 +131,11 @@ export default function DashboardPage() {
   // ✅ Déconnexion Supabase + retour /login
   const handleLogout = async () => {
     const supabase = createClient();
-
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error("Erreur déconnexion:", error.message);
       return;
     }
-
     router.replace("/login");
     router.refresh();
   };
@@ -94,6 +166,7 @@ export default function DashboardPage() {
     };
   }, [menuOpen]);
 
+  // (démo) valeurs neutres tant que rien n'est connecté
   const leadsToday = 0;
   const leadsWeek = 0;
   const leadsMonth = 0;
@@ -101,18 +174,54 @@ export default function DashboardPage() {
   const avgBasket = 0;
   const estimatedValue = avgBasket > 0 ? avgBasket * leadsMonth : 0;
 
+  // helper render action
+  const renderAction = (a: ModuleAction) => {
+    const className =
+      a.variant === "connect"
+        ? `${styles.actionBtn} ${styles.connectBtn}`
+        : a.variant === "danger"
+        ? `${styles.actionBtn} ${styles.actionDanger}`
+        : `${styles.actionBtn} ${styles.actionView}`;
+
+    if (a.href) {
+      // Pour l’instant href="#" (tu remplaceras par les vraies URLs)
+      return (
+        <Link
+          key={a.key}
+          href={a.href}
+          className={className}
+          target={a.href.startsWith("http") ? "_blank" : undefined}
+          rel={a.href.startsWith("http") ? "noreferrer" : undefined}
+        >
+          {a.label}
+        </Link>
+      );
+    }
+
+    return (
+      <button
+        key={a.key}
+        type="button"
+        className={className}
+        onClick={a.onClick}
+        disabled={a.disabled}
+      >
+        {a.label}
+      </button>
+    );
+  };
+
   return (
     <main className={styles.page}>
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <img className={styles.logoImg} src="/logo-inrcy.png" alt="iNrCy" />
           <div className={styles.brandText}>
-            {/* ✅ On enlève "iNrCy" blanc et on garde juste le texte */}
             <div className={styles.brandTag}>Générateur de contacts — Hub connecté</div>
           </div>
         </div>
 
-        {/* Desktop actions (inchangées visuellement sur grand écran) */}
+        {/* Desktop actions */}
         <div className={styles.topbarActions}>
           <button className={styles.ghostBtn} type="button">
             Centre d’aide
@@ -125,7 +234,7 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {/* ✅ Hamburger (mobile) */}
+        {/* Mobile hamburger */}
         <div className={styles.mobileMenuWrap} ref={menuRef}>
           <button
             type="button"
@@ -143,10 +252,7 @@ export default function DashboardPage() {
                 className={styles.mobileMenuItem}
                 type="button"
                 role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  // Plus tard tu pourras router vers /help
-                }}
+                onClick={() => setMenuOpen(false)}
               >
                 Centre d’aide
               </button>
@@ -155,10 +261,7 @@ export default function DashboardPage() {
                 className={styles.mobileMenuItem}
                 type="button"
                 role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  // Plus tard: ouvrir modal / page de connexion modules
-                }}
+                onClick={() => setMenuOpen(false)}
               >
                 Connecter un module
               </button>
@@ -194,7 +297,7 @@ export default function DashboardPage() {
           </h1>
 
           <p className={styles.subtitle}>
-            Connectez Facebook, GMB, Sites, Houzz, Pages Jaunes… iNrCy centralise le flux et vous aide à convertir :
+            Connectez vos sources (site, Facebook, Google…). iNrCy centralise le flux et vous aide à convertir :
             <strong> contacts → devis → factures</strong>.
           </p>
 
@@ -283,7 +386,7 @@ export default function DashboardPage() {
       <section className={styles.contentFull}>
         <div className={styles.sectionHead}>
           <h2 className={styles.h2}>Flux de contacts</h2>
-          <p className={styles.h2Sub}>Ce sont les entrées. Branche-les au Générateur.</p>
+          <p className={styles.h2Sub}>Les sources business. Voir → connecter → alimenter le Générateur.</p>
         </div>
 
         <div className={styles.moduleGrid}>
@@ -300,23 +403,13 @@ export default function DashboardPage() {
                 <div className={styles.moduleMeta}>
                   <div className={styles.moduleMetaLabel}>État</div>
                   <div className={styles.moduleMetaValue}>
-                    {m.status === "available" ? "Prêt à connecter" : m.status === "connected" ? "Connecté" : "Bientôt"}
+                    {m.status === "available" ? "Prêt à configurer" : m.status === "connected" ? "Connecté" : "Bientôt"}
                   </div>
                 </div>
 
-                {m.status === "available" ? (
-                  <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
-                    Connecter
-                  </button>
-                ) : m.status === "connected" ? (
-                  <button className={styles.ghostBtn} type="button">
-                    Configurer
-                  </button>
-                ) : (
-                  <button className={styles.ghostBtn} type="button" disabled>
-                    À venir
-                  </button>
-                )}
+                <div className={styles.moduleActions}>
+                  {m.actions.map(renderAction)}
+                </div>
               </div>
 
               <div className={styles.moduleGlow} aria-hidden />
@@ -357,7 +450,12 @@ export default function DashboardPage() {
 
             <div className={styles.quickGrid}>
               {quickActions.map((a) => (
-                <button key={a.key} className={`${styles.quickBtn} ${styles[`quick_${a.accent}`]}`} type="button" disabled={!!a.disabled}>
+                <button
+                  key={a.key}
+                  className={`${styles.quickBtn} ${styles[`quick_${a.accent}`]}`}
+                  type="button"
+                  disabled={!!a.disabled}
+                >
                   <span className={styles.quickTitle}>{a.title}</span>
                   <span className={styles.quickSub}>{a.sub}</span>
                   <span className={styles.quickBadge}>{a.disabled ? "Bientôt" : "Ouvrir"}</span>
