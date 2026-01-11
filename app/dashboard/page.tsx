@@ -21,6 +21,10 @@ function toDeg(n: number) {
   return `${n}deg`;
 }
 
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
+}
+
 export default function DashboardPage() {
   const modules: ModuleItem[] = useMemo(
     () => [
@@ -85,7 +89,6 @@ export default function DashboardPage() {
     const now = Date.now();
     if (now - lastSwipeAt.current < 180) return;
 
-    // swipe horizontal dominant
     if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.2) {
       lastSwipeAt.current = now;
       if (dx < 0) next();
@@ -94,37 +97,20 @@ export default function DashboardPage() {
   }
 
   function openModule(i: number) {
-    // Plus tard : router.push(modules[i].href)
     setActive(i);
   }
 
   /**
-   * 4 orbites / 3 modules par orbite (12 total)
-   * i -> ring: i%4, pos: floor(i/4) => 0..2
-   * phase: 0 / 120 / 240
+   * Nouvelle logique (sans mouvement automatique)
+   * - Toutes les bulles sont sur UNE orbite autour du core.
+   * - Le swipe / les flèches changent l'index actif => on "tourne" l'ensemble par pas.
+   * - Impression avant/arrière via scale + opacité + blur + z-index.
    */
-  const ring = (i: number) => i % 4;
-  const pos = (i: number) => Math.floor(i / 4);
-  const basePhaseDeg = (i: number) => pos(i) * 120;
-
-  // Orbites desktop
-  const radiiDesktop = ["210px", "255px", "300px", "345px"];
-  const speedsDesktop = ["18s", "22s", "26s", "30s"];
-
-  // Orbites mobile (un peu plus petites, mieux cadrées autour du core)
-  const radiiMobile = ["140px", "175px", "210px", "245px"];
-  const speedsMobile = ["16s", "20s", "24s", "28s"];
-
-  /**
-   * MOBILE: on fait tourner TOUT l'atome pour amener le module actif en bas (devant)
-   * Angle cible bas = 90deg (car rotate(90deg) + translateX = vers le bas)
-   */
-  const activePhase = basePhaseDeg(active);
-  const atomRot = 90 - activePhase; // deg
+  const stepDeg = 360 / modules.length;
+  const radiusPx = isMobile ? 175 : 265;
 
   return (
     <main className={styles.page}>
-      {/* Top bar */}
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <div className={styles.brandMark}>iNrCy</div>
@@ -148,35 +134,38 @@ export default function DashboardPage() {
           onTouchEnd={onTouchEnd}
           role="application"
           aria-label="Dashboard atomique iNrCy"
-          style={
-            {
-              // uniquement utile en mobile
-              ["--atomRot" as any]: toDeg(atomRot),
-            } as React.CSSProperties
-          }
+          style={{ ["--r" as any]: `${radiusPx}px` } as React.CSSProperties}
         >
-          {/* Rings */}
           <div className={styles.rings} aria-hidden="true">
             <div className={styles.ring} />
             <div className={styles.ring2} />
             <div className={styles.ring3} />
           </div>
 
-          {/* Core */}
           <div className={styles.core}>
             <div className={styles.coreBadge}>⚙️ Générateur</div>
             <div className={styles.coreTitle}>iNrCy</div>
             <div className={styles.coreSub}>Machine à leads • Automatisation • Tracking</div>
           </div>
 
-          {/* ORBITES (desktop + mobile) : même logique, mais tailles/effets différents */}
           <div className={styles.orbitLayer} aria-label="Modules">
             {modules.map((m, i) => {
               const isA = i === active;
 
-              const phase = toDeg(basePhaseDeg(i));
-              const r = isMobile ? radiiMobile[ring(i)] : radiiDesktop[ring(i)];
-              const speed = isMobile ? speedsMobile[ring(i)] : speedsDesktop[ring(i)];
+              // active en bas (devant)
+              const angleDeg = 90 + (i - active) * stepDeg;
+              const angleRad = (angleDeg * Math.PI) / 180;
+
+              // profondeur: -1 (arrière) -> +1 (avant)
+              const depth = Math.sin(angleRad);
+              const t = (depth + 1) / 2; // 0..1
+
+              const scale = 0.78 + t * 0.34;
+              const opacity = 0.35 + t * 0.65;
+              const blurPx = (1 - t) * 1.4;
+              const z = 10 + Math.round(t * 80);
+
+              const safeOpacity = clamp(opacity, 0.22, 1);
 
               return (
                 <button
@@ -184,19 +173,16 @@ export default function DashboardPage() {
                   type="button"
                   className={[
                     styles.electron,
-                    styles.orbit,
                     isMobile ? styles.electronMobile : styles.electronDesktop,
-                    isMobile && isA ? styles.activeElectron : "",
-                    isMobile && !isA ? styles.inactiveElectron : "",
+                    isA ? styles.activeElectron : styles.inactiveElectron,
                   ].join(" ")}
                   style={
                     {
-                      // orbit params
-                      ["--phase" as any]: phase,
-                      ["--r" as any]: r,
-                      ["--speed" as any]: speed,
-
-                      // colors
+                      ["--angle" as any]: toDeg(angleDeg),
+                      ["--s" as any]: scale,
+                      ["--o" as any]: safeOpacity,
+                      ["--blur" as any]: `${blurPx}px`,
+                      zIndex: z,
                       ["--cA" as any]: m.colorA,
                       ["--cB" as any]: m.colorB,
                     } as React.CSSProperties
@@ -209,15 +195,12 @@ export default function DashboardPage() {
                     {m.icon}
                   </span>
                   <span className={styles.bubbleLabel}>{m.label}</span>
-
-                  {/* Sur mobile on laisse une micro-desc lisible */}
                   <span className={styles.bubbleDesc}>{m.desc}</span>
                 </button>
               );
             })}
           </div>
 
-          {/* MOBILE controls */}
           <div className={styles.mobileControls} aria-hidden={!isMobile}>
             <button type="button" className={styles.arrowBtn} onClick={prev} aria-label="Module précédent">
               ←
@@ -235,7 +218,7 @@ export default function DashboardPage() {
         </div>
 
         <div className={styles.footerHint}>
-          Desktop : 4 orbites • 3 bulles/orbite • Mobile : swipe / flèches (rotation de l’atome)
+          Swipe / flèches : rotation par pas • Profondeur : avant/arrière via scale + opacité
         </div>
       </section>
     </main>

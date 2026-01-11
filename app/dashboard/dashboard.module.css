@@ -119,8 +119,8 @@
   box-shadow: 0 28px 70px rgba(0,0,0,0.35);
   overflow: hidden;
 
-  /* rotation mobile (par défaut 0) */
-  --atomRot: 0deg;
+  /* rayon de l'orbite (réglé en inline depuis React) */
+  --r: 265px;
 }
 
 @media (max-width: 860px) {
@@ -228,6 +228,12 @@
   left: 50%;
   top: 50%;
 
+  /* variables pilotées depuis React */
+  --angle: 90deg;
+  --s: 1;
+  --o: 1;
+  --blur: 0px;
+
   width: 118px;
   height: 118px;
   border-radius: 9999px;
@@ -239,6 +245,25 @@
 
   padding: 10px;
   cursor: pointer;
+
+  /* ✅ Tous les éléments partagent le même repère (même translate(-50%,-50%)) */
+  transform:
+    translate(-50%, -50%)
+    rotate(var(--angle))
+    translateX(var(--r))
+    rotate(calc(-1 * var(--angle)))
+    scale(var(--s));
+
+  opacity: var(--o);
+  filter: blur(var(--blur));
+
+  transition:
+    transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 320ms ease,
+    filter 320ms ease,
+    box-shadow 320ms ease,
+    border-color 320ms ease;
+  will-change: transform, opacity, filter;
 
   color: rgba(234,240,255,0.92);
   border: 1px solid rgba(255,255,255,0.16);
@@ -276,13 +301,11 @@
   pointer-events: none;
 }
 
-/* la traînée s’allume légèrement en hover/active */
 .electron:hover::after,
 .activeElectron::after {
   opacity: 0.55;
 }
 
-/* Glow couleur sur la traînée */
 .electron:hover::after,
 .activeElectron::after {
   background: linear-gradient(90deg, rgba(255,255,255,0), var(--cA), rgba(255,255,255,0));
@@ -328,9 +351,7 @@
 }
 
 /* Desktop vs Mobile sizing tweaks */
-.electronDesktop {
-  /* rien, mais on garde la classe pour ajuster si besoin */
-}
+.electronDesktop { }
 
 @media (max-width: 860px) {
   .electronMobile {
@@ -348,47 +369,14 @@
 }
 
 /* =========================
-   ORBIT ANIMATION
-   4 orbites / 3 positions (0/120/240)
-   MOBILE : on ajoute --atomRot pour tourner l'atome
+   Depth cues
+   (la profondeur est calculée en JS via --s/--o/--blur et z-index)
    ========================= */
-@keyframes orbitSpin {
-  from {
-    transform:
-      translate(-50%, -50%)
-      rotate(calc(var(--atomRot) + var(--phase)))
-      translateX(var(--r))
-      rotate(calc(-1 * (var(--atomRot) + var(--phase))));
-  }
-  to {
-    transform:
-      translate(-50%, -50%)
-      rotate(calc(var(--atomRot) + var(--phase) + 360deg))
-      translateX(var(--r))
-      rotate(calc(-1 * (var(--atomRot) + var(--phase) + 360deg)));
-  }
-}
+.inactiveElectron { }
 
-.orbit {
-  animation: orbitSpin var(--speed) linear infinite;
-}
-
-/* MOBILE depth: lisible, pas trop flouté */
-@media (max-width: 860px) {
-  .inactiveElectron {
-    opacity: 0.72;          /* visible */
-    filter: blur(0.6px);    /* léger, lisible */
-    transform-origin: center;
-  }
-
-  .activeElectron {
-    opacity: 1;
-    filter: blur(0px);
-    transform-origin: center;
-    /* petit boost visuel */
-    box-shadow: 0 26px 90px rgba(0,0,0,0.46);
-    border-color: rgba(255,255,255,0.26);
-  }
+.activeElectron {
+  box-shadow: 0 26px 90px rgba(0,0,0,0.46);
+  border-color: rgba(255,255,255,0.26);
 }
 
 /* Controls mobile */
@@ -441,5 +429,5 @@
 
 /* Accessibility */
 @media (prefers-reduced-motion: reduce) {
-  .orbit { animation: none !important; }
+  .electron { transition: none !important; }
 }
