@@ -1205,8 +1205,6 @@
   }
 }
 
-
-
 /* un peu plus doux */
 .generatorCoreCenter .miniCoreGlow{
   opacity:0.4;
@@ -1234,4 +1232,29 @@
   grid-row: 3;
 }
 
+/* Mobile : on garde une grille 2x2 pour centrer la roue */
+@media (max-width: 768px) {
+  .generatorGrid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr; /* deux lignes égales */
+    gap: 14px; /* plus serré sur mobile */
+  }
+
+  /* Chaque carte a la même hauteur */
+  .metricCard {
+    min-height: 140px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  /* La roue au centre de la grille */
+  .generatorCoreCenter {
+    top: 50%;
+    left: 50%;
+    width: 72px;
+    height: 72px;
+    opacity: 0.9;
+  }
+}
 
