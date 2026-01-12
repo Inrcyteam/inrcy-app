@@ -774,6 +774,22 @@
   }
 }
 
+@media (max-width: 768px) {
+  .metricCard {
+    min-height: 110px;
+    padding: 14px;
+  }
+
+  .metricLabel {
+    font-size: 13px;
+  }
+
+  .metricHint {
+    font-size: 11px;
+  }
+}
+
+
 .metricCard {
   border-radius: 16px;
   padding: 12px 12px 11px;
