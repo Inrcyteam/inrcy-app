@@ -763,6 +763,12 @@
   /* 3 lignes : haut / espace moteur / bas */
   grid-template-rows: auto 10px auto;
 
+@media (max-width: 768px) {
+  .generatorGrid{
+    grid-template-rows: auto 10px auto;
+  }
+}
+
   gap: 22px;
   position: relative;
 }
@@ -1237,7 +1243,7 @@
   .generatorGrid {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr; /* deux lignes égales */
-    gap: 14px; /* plus serré sur mobile */
+    gap: 10px; /* plus serré sur mobile */
   }
 
   /* Chaque carte a la même hauteur */
@@ -1252,8 +1258,8 @@
   .generatorCoreCenter {
     top: 50%;
     left: 50%;
-    width: 72px;
-    height: 72px;
+    width: 64px;
+    height: 64px;
     opacity: 0.9;
   }
 }
