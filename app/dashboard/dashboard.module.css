@@ -1243,7 +1243,7 @@
   .generatorGrid {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr; /* deux lignes égales */
-    gap: 10px; /* plus serré sur mobile */
+    gap: 2px; /* plus serré sur mobile */
   }
 
   /* Chaque carte a la même hauteur */
@@ -1258,8 +1258,8 @@
   .generatorCoreCenter {
     top: 50%;
     left: 50%;
-    width: 44px;
-    height: 44px;
+    width: 60px;
+    height: 60px;
     opacity: 0.9;
   }
 }
