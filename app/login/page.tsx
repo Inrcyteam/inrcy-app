@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 
@@ -93,7 +93,22 @@ export default function LoginPage() {
         return;
       }
 
+      // ✅ attendre que la session soit bien créée/stockée
+      let session = (await supabase.auth.getSession()).data.session;
+
+      // petit délai de sécurité (évite le redirect trop tôt)
+      if (!session) {
+        await new Promise((r) => setTimeout(r, 200));
+        session = (await supabase.auth.getSession()).data.session;
+      }
+
+      if (!session) {
+        setError("Connexion OK mais session non récupérée. Réessaie.");
+        return;
+      }
+
       router.replace("/dashboard");
+      router.refresh();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur de connexion");
     } finally {
@@ -201,15 +216,12 @@ export default function LoginPage() {
               />
             </div>
 
-            <div className="text-sm font-semibold tracking-wide text-slate-700">
-              Espace Client
-            </div>
-            <div className="text-xs text-slate-500 text-center">
-              Accède à ton dashboard et à tes ressources.
-            </div>
+            <div className="text-sm font-semibold tracking-wide text-slate-700">Espace Client</div>
+            <div className="text-xs text-slate-500 text-center">Accède à ton dashboard et à tes ressources.</div>
           </div>
 
-          <form onSubmit={onSubmit} className="space-y-3">
+          {/* ✅ évite l’overlay hydration quand une extension modifie les inputs */}
+          <form suppressHydrationWarning onSubmit={onSubmit} className="space-y-3">
             <div className="relative">
               <input
                 className="inrcy-input"
@@ -220,9 +232,7 @@ export default function LoginPage() {
                 autoComplete="email"
                 required
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
-                ✉️
-              </span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">✉️</span>
             </div>
 
             <div className="relative">
@@ -235,9 +245,7 @@ export default function LoginPage() {
                 autoComplete="current-password"
                 required
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
-                🔒
-              </span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">🔒</span>
             </div>
 
             {error ? (
@@ -262,3 +270,4 @@ export default function LoginPage() {
     </main>
   );
 }
+
