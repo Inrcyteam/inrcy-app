@@ -1199,6 +1199,13 @@
   z-index: 1;
 }
 
+@media (max-width: 768px) {
+  .generatorCoreCenter {
+    top: 56%;
+  }
+}
+
+
 
 /* un peu plus doux */
 .generatorCoreCenter .miniCoreGlow{
