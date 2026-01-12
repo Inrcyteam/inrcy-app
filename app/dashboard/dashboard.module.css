@@ -763,7 +763,7 @@
   /* 3 lignes : haut / espace moteur / bas */
   grid-template-rows: auto 10px auto;
 
-  gap: 22px;
+  gap: 8px;
   position: relative;
 }
 
@@ -794,7 +794,18 @@
   padding: 12px 12px 11px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.05);
+
+  /* CENTRAGE du contenu */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+
+  position: relative;
+  z-index: 2;
 }
+
 
 .metricLabel { font-size: 12px; color: rgba(255, 255, 255, 0.70); }
 .metricValue { margin-top: 6px; font-size: 22px; font-weight: 950; letter-spacing: -0.3px; }
