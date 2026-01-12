@@ -789,7 +789,6 @@
   }
 }
 
-
 .metricCard {
   border-radius: 16px;
   padding: 12px 12px 11px;
@@ -1281,3 +1280,11 @@
   }
 }
 
+@media (max-width: 768px) {
+  .generatorGrid > :nth-child(1),
+  .generatorGrid > :nth-child(2),
+  .generatorGrid > :nth-child(3),
+  .generatorGrid > :nth-child(4) {
+    grid-row: auto !important;
+  }
+}
