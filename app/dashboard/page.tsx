@@ -140,6 +140,46 @@ export default function DashboardPage() {
     router.refresh();
   };
 
+  // ✅ Menu utilisateur (desktop)
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? null);
+    });
+  }, []);
+
+  // Ferme le menu utilisateur (clic dehors / Escape)
+  useEffect(() => {
+    if (!userMenuOpen) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setUserMenuOpen(false);
+    };
+
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (!userMenuRef.current) return;
+      const target = e.target as Node;
+      if (!userMenuRef.current.contains(target)) setUserMenuOpen(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("touchstart", onPointerDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [userMenuOpen]);
+
+  const userFirstLetter = (userEmail?.trim()?.[0] ?? "U").toUpperCase();
+
   // ✅ Menu hamburger (mobile)
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -199,13 +239,7 @@ export default function DashboardPage() {
     }
 
     return (
-      <button
-        key={a.key}
-        type="button"
-        className={className}
-        onClick={a.onClick}
-        disabled={a.disabled}
-      >
+      <button key={a.key} type="button" className={className} onClick={a.onClick} disabled={a.disabled}>
         {a.label}
       </button>
     );
@@ -226,12 +260,58 @@ export default function DashboardPage() {
           <button className={styles.ghostBtn} type="button">
             Centre d’aide
           </button>
-          <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
-            Connecter un module
-          </button>
-          <button className={styles.avatarBtn} type="button" title="Déconnexion" onClick={handleLogout}>
-            OUT
-          </button>
+
+          {/* ✅ Menu utilisateur (remplace OUT) */}
+          <div className={styles.userMenuWrap} ref={userMenuRef}>
+            <button
+  className={styles.userBubbleBtn}
+  type="button"
+  aria-haspopup="menu"
+  aria-expanded={userMenuOpen}
+  onClick={() => setUserMenuOpen((v) => !v)}
+  title={userEmail ?? "Utilisateur"}
+>
+  <span className={styles.userBubble} aria-hidden>
+    {userFirstLetter}
+  </span>
+</button>
+
+            {userMenuOpen && (
+              <div className={styles.userMenuPanel} role="menu" aria-label="Menu utilisateur">
+                <Link
+                  className={styles.userMenuItem}
+                  href="/dashboard/profil"
+                  role="menuitem"
+                  onClick={() => setUserMenuOpen(false)}
+                >
+                  Mon profil
+                </Link>
+
+                <Link
+                  className={styles.userMenuItem}
+                  href="/dashboard/abonnement"
+                  role="menuitem"
+                  onClick={() => setUserMenuOpen(false)}
+                >
+                  Mon abonnement
+                </Link>
+
+                <div className={styles.userMenuDivider} />
+
+                <button
+                  className={`${styles.userMenuItem} ${styles.userMenuDanger}`}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    handleLogout();
+                  }}
+                >
+                  Déconnexion
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Mobile hamburger */}
@@ -257,16 +337,28 @@ export default function DashboardPage() {
                 Centre d’aide
               </button>
 
-              <button
+              {/* ✅ AJOUT : Profil + Abonnement (mobile) */}
+              <Link
                 className={styles.mobileMenuItem}
-                type="button"
+                href="/dashboard/profil"
                 role="menuitem"
                 onClick={() => setMenuOpen(false)}
               >
-                Connecter un module
-              </button>
+                Mon profil
+              </Link>
+
+              <Link
+                className={styles.mobileMenuItem}
+                href="/dashboard/abonnement"
+                role="menuitem"
+                onClick={() => setMenuOpen(false)}
+              >
+                Mon abonnement
+              </Link>
 
               <div className={styles.mobileMenuDivider} />
+
+              {/* ❌ SUPPRIMÉ : "Connecter un module" */}
 
               <button
                 className={`${styles.mobileMenuItem} ${styles.mobileMenuDanger}`}
@@ -277,7 +369,7 @@ export default function DashboardPage() {
                   handleLogout();
                 }}
               >
-                Déconnexion (OUT)
+                Déconnexion
               </button>
             </div>
           )}
@@ -292,14 +384,20 @@ export default function DashboardPage() {
           </div>
 
           <h1 className={styles.title}>
-            Le <span className={styles.titleAccent}>Générateur</span>
-            <span className={styles.titleLine2}>branche tous vos canaux, au même endroit.</span>
-          </h1>
+  <span className={styles.titleAccent}>Le Générateur branche tous vos canaux au même endroit.</span>
+</h1>
 
-          <p className={styles.subtitle}>
-            Connectez vos sources (site, Facebook, Google…). iNrCy centralise le flux et vous aide à convertir :
-            <strong> contacts → devis → factures</strong>.
-          </p>
+<p className={styles.subtitle}>
+  Il centralise les flux et vous aide à convertir :
+  <br />
+  <span className={styles.signatureFlow}>
+    <span>Contacts</span>
+    <span className={styles.flowArrow}>→</span>
+    <span>Devis</span>
+    <span className={styles.flowArrow}>→</span>
+    <span>Factures</span>
+  </span>
+</p>
 
           <div className={styles.pills}>
             <span className={styles.pill}>
@@ -311,7 +409,7 @@ export default function DashboardPage() {
 
           <div className={styles.ctaRow}>
             <button className={styles.primaryBtn} type="button">
-              Compléter votre profil pro
+              Compléter votre profil professionnel
             </button>
           </div>
         </div>
@@ -328,18 +426,12 @@ export default function DashboardPage() {
             </div>
 
             <div className={styles.generatorHeaderRight}>
-              <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
-                <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
-                {leadsMonth > 0 ? "Actif" : "En attente"}
-              </div>
+  <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
+    <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
+    {leadsMonth > 0 ? "Actif" : "En attente"}
+  </div>
+</div>
 
-              <div className={styles.miniCore} title="Alimentation du Générateur (simulation)" aria-hidden>
-                <div className={styles.miniCoreRing} />
-                <div className={styles.miniCoreRotor} />
-                <div className={styles.miniCoreGlass} />
-                <div className={styles.miniCoreGlow} />
-              </div>
-            </div>
           </div>
 
           <div className={styles.generatorGrid}>
@@ -348,6 +440,14 @@ export default function DashboardPage() {
               <div className={styles.metricValue}>{leadsToday}</div>
               <div className={styles.metricHint}>Temps réel</div>
             </div>
+
+	<div className={styles.generatorCoreCenter} aria-hidden>
+  		<div className={styles.miniCoreRing} />
+  		<div className={styles.miniCoreRotor} />
+  		<div className={styles.miniCoreGlass} />
+  		<div className={styles.miniCoreGlow} />
+	</div>
+
 
             <div className={styles.metricCard}>
               <div className={styles.metricLabel}>Cette semaine</div>
@@ -366,20 +466,19 @@ export default function DashboardPage() {
               <div className={styles.metricValue}>
                 {estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "—"}
               </div>
-              <div className={styles.metricHint}>Panier moyen × nb leads (via Profil)</div>
+              <div className={styles.metricHint}>Estimation basée sur votre profil</div>
             </div>
           </div>
 
           <div className={styles.generatorFooter}>
-            <button className={styles.secondaryBtn} type="button">
-              Voir le flux
-            </button>
-            <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
+
+            {/* ✅ On enlève le bouton "Connecter un outil" si tu veux éviter "connecter un module" partout */}
+            {/* <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
               Connecter un outil
-            </button>
+            </button> */}
           </div>
 
-          <div className={styles.generatorGlow} aria-hidden />
+                  <div className={styles.generatorGlow} aria-hidden />
         </div>
       </section>
 
@@ -407,9 +506,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <div className={styles.moduleActions}>
-                  {m.actions.map(renderAction)}
-                </div>
+                <div className={styles.moduleActions}>{m.actions.map(renderAction)}</div>
               </div>
 
               <div className={styles.moduleGlow} aria-hidden />
@@ -475,3 +572,4 @@ export default function DashboardPage() {
     </main>
   );
 }
+

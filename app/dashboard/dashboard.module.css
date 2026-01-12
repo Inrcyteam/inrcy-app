@@ -67,6 +67,233 @@
   padding-top: 2px;
 }
 
+/* =========================
+   User menu (desktop)
+========================= */
+.userMenuWrap {
+  position: relative;
+}
+
+.userBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.30);
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  max-width: 320px;
+}
+
+/* ===== User bubble (compact) ===== */
+.userBubbleBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.userBubble {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+
+  font-weight: 950;
+  font-size: 13px;
+  letter-spacing: -0.2px;
+
+  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(10px);
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.userBubbleBtn:hover .userBubble {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.20);
+}
+
+/* ===== User bubble (iNrCy premium) ===== */
+.userBubbleBtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.userBubble {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+
+  font-weight: 950;
+  font-size: 13px;
+  letter-spacing: -0.2px;
+  color: #fff;
+
+  position: relative;
+  z-index: 1;
+
+  background: linear-gradient(
+    120deg,
+    #38bdf8,
+    #a78bfa,
+    #f472b6,
+    #fb923c
+  );
+  background-size: 300% 300%;
+  animation: bubbleShift 8s ease infinite;
+
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.25),
+    0 12px 40px rgba(0,0,0,0.55),
+    0 0 22px rgba(120,90,255,0.45);
+
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.userBubbleBtn:hover .userBubble {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.35),
+    0 18px 60px rgba(0,0,0,0.6),
+    0 0 30px rgba(120,90,255,0.7);
+}
+
+@keyframes bubbleShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.userBtn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.userAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 950;
+  font-size: 12px;
+  letter-spacing: -0.2px;
+
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(
+    90deg,
+    rgba(56, 189, 248, 0.22),
+    rgba(167, 139, 250, 0.18),
+    rgba(244, 114, 182, 0.16),
+    rgba(251, 146, 60, 0.12)
+  );
+}
+
+.userText {
+  display: grid;
+  line-height: 1.1;
+  min-width: 0;
+}
+
+.userTop {
+  font-weight: 950;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.userSub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.70);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 210px;
+}
+
+.userChevron {
+  opacity: 0.8;
+  font-size: 12px;
+  margin-left: 2px;
+}
+
+.userMenuPanel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: 240px;
+  border-radius: 16px;
+  padding: 8px;
+  z-index: 60;
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(18, 26, 56, 0.92);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(12px);
+}
+
+.userMenuItem {
+  width: 100%;
+  text-align: left;
+  padding: 10px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-decoration: none;
+
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.90);
+
+  font-weight: 850;
+  font-size: 12px;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.userMenuItem:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.userMenuDivider {
+  height: 1px;
+  margin: 8px 4px;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.userMenuDanger {
+  border-color: rgba(244, 114, 182, 0.22);
+  background: rgba(244, 114, 182, 0.10);
+}
+
+
 .avatarBtn {
   width: 44px;
   height: 44px;
@@ -532,7 +759,12 @@
 .generatorGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+
+  /* 3 lignes : haut / espace moteur / bas */
+  grid-template-rows: auto 10px auto;
+
+  gap: 22px;
+  position: relative;
 }
 
 .metricCard {
@@ -918,3 +1150,80 @@
   .moduleActions { justify-content: flex-start; max-width: 100%; }
   .actionBtn { flex: 1 1 auto; }
 }
+
+/* ===== iNrCy signature flow ===== */
+.signatureFlow {
+  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: -0.2px;
+
+  background: linear-gradient(
+    90deg,
+    rgba(56,189,248,0.15),
+    rgba(167,139,250,0.18),
+    rgba(244,114,182,0.16),
+    rgba(251,146,60,0.14)
+  );
+  border: 1px solid rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.95);
+
+  box-shadow:
+    0 10px 30px rgba(0,0,0,0.35),
+    inset 0 0 0 1px rgba(255,255,255,0.05);
+}
+
+.flowArrow {
+  opacity: 0.7;
+  font-weight: 900;
+}
+
+/* Générateur central */
+.generatorCoreCenter {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+
+  width: 80px;
+  height: 80px;
+  opacity: 0.95;
+  pointer-events: none;
+  z-index: 1;
+}
+
+
+/* un peu plus doux */
+.generatorCoreCenter .miniCoreGlow{
+  opacity:0.4;
+  filter: blur(20px);
+}
+
+.generatorCoreCenter .miniCoreRing{
+  opacity:0.7;
+}
+
+.metricCard{
+  position:relative;
+  z-index:2;
+}
+
+/* haut */
+.generatorGrid > :nth-child(1),
+.generatorGrid > :nth-child(2) {
+  grid-row: 1;
+}
+
+/* bas */
+.generatorGrid > :nth-child(3),
+.generatorGrid > :nth-child(4) {
+  grid-row: 3;
+}
+
+
