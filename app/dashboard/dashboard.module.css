@@ -437,6 +437,10 @@
   background: rgba(255, 255, 255, 0.05);
   box-shadow: 0 20px 70px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(12px);
+
+display: flex;
+  flex-direction: column;
+  min-height: 100%;              /* ✅ prend toute la hauteur disponible */
 }
 
 .kicker {
@@ -481,7 +485,7 @@
 }
 
 .subtitle {
-  margin: 0;
+  margin-top: 16px;      /* 👈 descend "Tous vos canaux..." */
   max-width: 62ch;
   color: rgba(255, 255, 255, 0.76);
   line-height: 1.58;
@@ -489,9 +493,9 @@
 }
 
 .pills {
-  margin-top: 14px;
+  margin-top: auto;   /* 👈 pousse le bloc en bas */
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: wrap;   /* 👈 autorise le retour à la ligne */
   gap: 10px;
   align-items: center;
 }
@@ -1186,7 +1190,7 @@
 
 /* ===== iNrCy signature flow ===== */
 .signatureFlow {
-  margin-top: 12px;
+  margin-top: 40px;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -1299,3 +1303,10 @@
     grid-row: auto !important;
   }
 }
+
+.kicker{
+  align-self: flex-start;     /* ✅ empêche de s’étirer */
+  width: fit-content;         /* ✅ taille = contenu */
+  max-width: max-content;     /* ✅ sécurité */
+}
+

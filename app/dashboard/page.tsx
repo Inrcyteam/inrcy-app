@@ -384,18 +384,18 @@ export default function DashboardPage() {
           </div>
 
           <h1 className={styles.title}>
-  <span className={styles.titleAccent}>Le Générateur branche tous vos canaux au même endroit.</span>
+  <span className={styles.titleAccent}>Le Générateur est lancé !</span>
 </h1>
 
 <p className={styles.subtitle}>
-  Il centralise les flux et vous aide à convertir :
+  Tous vos canaux alimentent maintenant une seule et même machine.
   <br />
   <span className={styles.signatureFlow}>
     <span>Contacts</span>
     <span className={styles.flowArrow}>→</span>
     <span>Devis</span>
     <span className={styles.flowArrow}>→</span>
-    <span>Factures</span>
+    <span>Chiffre d'affaires</span>
   </span>
 </p>
 
@@ -403,15 +403,9 @@ export default function DashboardPage() {
           <div className={styles.pills}>
             <span className={styles.pill}>
               <span className={styles.pillDot} aria-hidden />
-              Flux de contacts • Admin • Actions rapides
+              Flux de contacts • Tableau de bord • Boîte de vitesse
             </span>
-            <span className={styles.pillMuted}>Centralisation • ROI • Automatisations</span>
-          </div>
-
-          <div className={styles.ctaRow}>
-            <button className={styles.primaryBtn} type="button">
-              Compléter votre profil professionnel
-            </button>
+            <span className={styles.pillMuted}>Centralisé • Rentable • Automatisé</span>
           </div>
         </div>
 
@@ -486,7 +480,7 @@ export default function DashboardPage() {
       <section className={styles.contentFull}>
         <div className={styles.sectionHead}>
           <h2 className={styles.h2}>Flux de contacts</h2>
-          <p className={styles.h2Sub}>Les sources business. Voir → connecter → alimenter le Générateur.</p>
+          <p className={styles.h2Sub}>Votre autoroute de demandes entrantes</p>
         </div>
 
         <div className={styles.moduleGrid}>
@@ -542,7 +536,7 @@ export default function DashboardPage() {
 
           <div className={styles.blockCard}>
             <div className={styles.blockHead}>
-              <h3 className={styles.h3}>Actions rapides</h3>
+              <h3 className={styles.h3}>Boîte de vitesse</h3>
               <span className={styles.smallMuted}>Conversion</span>
             </div>
 
@@ -573,4 +567,3 @@ export default function DashboardPage() {
     </main>
   );
 }
-
