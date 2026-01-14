@@ -1324,3 +1324,357 @@ display: flex;
     justify-content: center;   /* texte centré dans chaque bulle */
   }
 }
+
+/* =========================
+   Flux - Site iNrCy en BULLE
+========================= */
+
+.moduleBubble{
+position: relative;     /* ✅ ajoute ça */
+  border-radius: 9999px;
+  padding: 22px 26px;
+  overflow: hidden;
+padding: 26px 22px 28px;   /* + de padding en bas */
+  min-height: 220px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.045);
+  box-shadow:
+    0 30px 120px rgba(0,0,0,0.55),
+    inset 0 0 0 1px rgba(255,255,255,0.06);
+
+  /* ✅ AJOUTE ÇA */
+  max-width: 560px;          /* empêche la bulle géante */
+  margin: 0 auto;            /* centre dans la cellule */
+  display: flex;             /* centre le contenu */
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* ✅ Sur la bulle : on coupe le gros décor des cartes */
+.moduleBubble .moduleGlow{
+  display: none !important;
+}
+
+/* Si ta carte utilise aussi des pseudo-éléments décoratifs */
+.moduleBubble::after{
+  content: none !important;
+  display: none !important;
+}
+
+
+/* Halo “bulle” (vraiment rond) */
+.moduleBubble::before{
+  content:"";
+  position:absolute;
+  inset:-15%;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 25% 35%, rgba(56,189,248,0.22), transparent 55%),
+    radial-gradient(circle at 70% 45%, rgba(167,139,250,0.16), transparent 60%),
+    radial-gradient(circle at 55% 80%, rgba(244,114,182,0.14), transparent 62%);
+  opacity: 0.9;
+  pointer-events:none;
+  z-index:0;
+}
+
+.moduleBubble > *{
+  position: relative;
+  z-index: 1;
+}
+
+/* texte */
+.moduleBubble .moduleDesc{
+  min-height: unset;
+  margin-top: 10px;
+}
+
+/* Footer version bulle */
+.moduleBottomBubble{
+  margin-top: 16px;
+}
+
+/* ✅ seulement 2 boutons */
+.moduleActionsBubble{
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* bouton principal “Configurer” */
+.actionMain{
+  min-width: 180px;
+  justify-content: center;
+  padding: 12px 16px;
+  font-size: 12px;
+}
+
+/* Mobile : 2 boutons en colonne */
+@media (max-width: 560px){
+  .moduleActionsBubble{
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .moduleActionsBubble .actionBtn{
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* =========================
+   Bulle verticale - étages
+========================= */
+
+.moduleBubble{
+  position: relative;
+
+  /* ✅ vraie forme de bulle (stable) */
+  width: 100%;
+  max-width: 360px;
+aspect-ratio: 2.8 / 4;
+  margin: 0 auto;
+
+  border-radius: 9999px;
+  padding: 26px 22px 30px; /* + padding en bas (pour le bouton) */
+  overflow: hidden;
+
+  border: 1px solid rgba(255,255,255,0.16);
+
+  /* ✅ fond “orb” */
+  background:
+    radial-gradient(circle at 28% 22%,
+      rgba(56,189,248,0.16),
+      rgba(255,255,255,0.04) 44%,
+      rgba(255,255,255,0.01) 60%,
+      rgba(0,0,0,0.00) 75%),
+    rgba(255,255,255,0.04);
+
+  box-shadow:
+    0 40px 140px rgba(0,0,0,0.60),
+    inset 0 0 0 1px rgba(255,255,255,0.06),
+    inset 0 -40px 80px rgba(0,0,0,0.25);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ✅ halo couleur interne */
+.moduleBubble::before{
+  content:"";
+  position:absolute;
+  inset:-15%;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 25% 35%, rgba(56,189,248,0.18), transparent 58%),
+    radial-gradient(circle at 75% 55%, rgba(167,139,250,0.14), transparent 62%),
+    radial-gradient(circle at 55% 85%, rgba(244,114,182,0.12), transparent 64%);
+  opacity: 0.9;
+  pointer-events:none;
+  z-index:0;
+}
+
+/* ✅ reflet “bulle” */
+.moduleBubble::after{
+  content:"";
+  position:absolute;
+  left: 10%;
+  top: 7%;
+  width: 58%;
+  height: 36%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 30% 30%,
+    rgba(255,255,255,0.22),
+    rgba(255,255,255,0.10) 35%,
+    transparent 70%);
+  filter: blur(2px);
+  opacity: 0.85;
+  pointer-events:none;
+  z-index:0;
+}
+
+.moduleBubble > *{
+  position: relative;
+  z-index: 1;
+}
+
+/* coupe le décor des autres cartes sur la bulle */
+.moduleBubble .moduleGlow{ display:none !important; }
+.moduleBubble::after{ content:none !important; display:none !important; }
+
+/* Contenu vertical */
+.bubbleStack{
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
+  gap: 10px;
+  justify-items: center;
+  text-align: center;
+}
+
+/* Picto couleur */
+.bubbleIcon{
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.06);
+  box-shadow:
+    0 12px 40px rgba(0,0,0,0.35),
+    inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+
+.bubbleIconDot{
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(56,189,248,0.95);
+  box-shadow: 0 0 18px rgba(56,189,248,0.55);
+}
+
+.bubbleTitle{
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.4px;
+  margin-top: 2px;
+}
+
+/* Statut */
+.bubbleStatusRow{
+  display: flex;
+  justify-content: center;
+}
+
+/* “Accélération” */
+.bubbleBoost{
+  width: 92%;
+  border-radius: 999px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bubbleBoostLabel{
+  opacity: 0.8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bubbleBoostValue{
+  font-size: 12px;
+  font-weight: 900;
+  opacity: 0.95;
+}
+
+/* Boutons en colonne */
+.bubbleActions{
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.bubbleActions .actionBtn{
+  justify-content: center;
+}
+
+.bubbleActions .actionMain{
+  width: 86%;               /* pas 100% */
+  max-width: 320px;         /* évite de déborder */
+  border-radius: 999px;
+}
+
+/* Mobile */
+@media (max-width: 560px){
+  .moduleBubble{ max-width: 100%; }
+  .bubbleBoost{ width: 100%; }
+  .bubbleActions .actionMain{ width: 100%; }
+}
+
+/* Mini logo au-dessus */
+.bubbleLogo{
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  box-shadow:
+    0 12px 40px rgba(0,0,0,0.35),
+    inset 0 0 0 1px rgba(255,255,255,0.05);
+}
+
+.bubbleLogoMark{
+  width: 14px;
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(
+    135deg,
+    rgba(56,189,248,0.95),
+    rgba(167,139,250,0.85),
+    rgba(244,114,182,0.85),
+    rgba(251,146,60,0.85)
+  );
+  box-shadow: 0 0 18px rgba(56,189,248,0.35);
+}
+
+/* Status compact (dot + label) */
+.bubbleStatusCompact{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+}
+
+.statusDot{
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  box-shadow: 0 0 14px rgba(56,189,248,0.35);
+}
+
+.dotAvailable{
+  background: rgba(56,189,248,0.95);  /* bleu */
+}
+.bubbleLogo
+.dotConnected{
+  background: rgba(34,197,94,0.95);   /* vert */
+  box-shadow: 0 0 14px rgba(34,197,94,0.35);
+}
+
+.dotComing{
+  background: rgba(251,146,60,0.95);  /* orange */
+  box-shadow: 0 0 14px rgba(251,146,60,0.30);
+}
+
+.bubbleStatusText{
+  font-weight: 800;
+  font-size: 12px;
+  opacity: 0.92;
+}
+
+.bubbleStack{
+  gap: 10px;
+}
+.bubbleTitle{
+  margin-top: 2px;
+}
+
+.bubbleActions{
+  align-self: end;   /* colle Configurer en bas */
+  margin-bottom: 6px;
+}
+

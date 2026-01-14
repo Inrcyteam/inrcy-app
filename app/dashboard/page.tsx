@@ -118,7 +118,6 @@ const adminModules: Array<{
   { key: "stats", name: "Stats", description: "ROI, performance et suivi des canaux.", status: "available", accent: "cyan" },
   { key: "agenda", name: "Agenda", description: "Rdv, réunion et échéances", status: "available", accent: "purple" },
   { key: "crm", name: "CRM", description: "Fichier clients et propects", status: "available", accent: "cyan" },
-
 ];
 
 const quickActions: Array<{ key: string; title: string; sub: string; disabled?: boolean; accent: Accent }> = [
@@ -267,17 +266,17 @@ export default function DashboardPage() {
           {/* ✅ Menu utilisateur (remplace OUT) */}
           <div className={styles.userMenuWrap} ref={userMenuRef}>
             <button
-  className={styles.userBubbleBtn}
-  type="button"
-  aria-haspopup="menu"
-  aria-expanded={userMenuOpen}
-  onClick={() => setUserMenuOpen((v) => !v)}
-  title={userEmail ?? "Utilisateur"}
->
-  <span className={styles.userBubble} aria-hidden>
-    {userFirstLetter}
-  </span>
-</button>
+              className={styles.userBubbleBtn}
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={userMenuOpen}
+              onClick={() => setUserMenuOpen((v) => !v)}
+              title={userEmail ?? "Utilisateur"}
+            >
+              <span className={styles.userBubble} aria-hidden>
+                {userFirstLetter}
+              </span>
+            </button>
 
             {userMenuOpen && (
               <div className={styles.userMenuPanel} role="menu" aria-label="Menu utilisateur">
@@ -331,37 +330,19 @@ export default function DashboardPage() {
 
           {menuOpen && (
             <div className={styles.mobileMenuPanel} role="menu" aria-label="Menu">
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => setMenuOpen(false)}
-              >
+              <button className={styles.mobileMenuItem} type="button" role="menuitem" onClick={() => setMenuOpen(false)}>
                 Centre d’aide
               </button>
 
-              {/* ✅ AJOUT : Profil + Abonnement (mobile) */}
-              <Link
-                className={styles.mobileMenuItem}
-                href="/dashboard/profil"
-                role="menuitem"
-                onClick={() => setMenuOpen(false)}
-              >
+              <Link className={styles.mobileMenuItem} href="/dashboard/profil" role="menuitem" onClick={() => setMenuOpen(false)}>
                 Mon profil
               </Link>
 
-              <Link
-                className={styles.mobileMenuItem}
-                href="/dashboard/abonnement"
-                role="menuitem"
-                onClick={() => setMenuOpen(false)}
-              >
+              <Link className={styles.mobileMenuItem} href="/dashboard/abonnement" role="menuitem" onClick={() => setMenuOpen(false)}>
                 Mon abonnement
               </Link>
 
               <div className={styles.mobileMenuDivider} />
-
-              {/* ❌ SUPPRIMÉ : "Connecter un module" */}
 
               <button
                 className={`${styles.mobileMenuItem} ${styles.mobileMenuDanger}`}
@@ -387,21 +368,20 @@ export default function DashboardPage() {
           </div>
 
           <h1 className={styles.title}>
-  <span className={styles.titleAccent}>Le Générateur est lancé&nbsp;!</span>
-</h1>
+            <span className={styles.titleAccent}>Le Générateur est lancé&nbsp;!</span>
+          </h1>
 
-<p className={styles.subtitle}>
-  Tous vos canaux alimentent maintenant une seule et même machine.
-  <br />
-  <span className={styles.signatureFlow}>
-    <span>Contacts</span>
-    <span className={styles.flowArrow}>→</span>
-    <span>Devis</span>
-    <span className={styles.flowArrow}>→</span>
-    <span>Chiffre d'affaires</span>
-  </span>
-</p>
-
+          <p className={styles.subtitle}>
+            Tous vos canaux alimentent maintenant une seule et même machine.
+            <br />
+            <span className={styles.signatureFlow}>
+              <span>Contacts</span>
+              <span className={styles.flowArrow}>→</span>
+              <span>Devis</span>
+              <span className={styles.flowArrow}>→</span>
+              <span>Chiffre d'affaires</span>
+            </span>
+          </p>
 
           <div className={styles.pills}>
             <span className={styles.pill}>
@@ -424,12 +404,11 @@ export default function DashboardPage() {
             </div>
 
             <div className={styles.generatorHeaderRight}>
-  <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
-    <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
-    {leadsMonth > 0 ? "Actif" : "En attente"}
-  </div>
-</div>
-
+              <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
+                <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
+                {leadsMonth > 0 ? "Actif" : "En attente"}
+              </div>
+            </div>
           </div>
 
           <div className={styles.generatorGrid}>
@@ -439,13 +418,12 @@ export default function DashboardPage() {
               <div className={styles.metricHint}>Temps réel</div>
             </div>
 
-	<div className={styles.generatorCoreCenter} aria-hidden>
-  		<div className={styles.miniCoreRing} />
-  		<div className={styles.miniCoreRotor} />
-  		<div className={styles.miniCoreGlass} />
-  		<div className={styles.miniCoreGlow} />
-	</div>
-
+            <div className={styles.generatorCoreCenter} aria-hidden>
+              <div className={styles.miniCoreRing} />
+              <div className={styles.miniCoreRotor} />
+              <div className={styles.miniCoreGlass} />
+              <div className={styles.miniCoreGlow} />
+            </div>
 
             <div className={styles.metricCard}>
               <div className={styles.metricLabel}>Cette semaine</div>
@@ -461,22 +439,19 @@ export default function DashboardPage() {
 
             <div className={styles.metricCard}>
               <div className={styles.metricLabel}>Valeur estimée</div>
-              <div className={styles.metricValue}>
-                {estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "—"}
-              </div>
+              <div className={styles.metricValue}>{estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "—"}</div>
               <div className={styles.metricHint}>Estimation basée sur votre profil</div>
             </div>
           </div>
 
           <div className={styles.generatorFooter}>
-
             {/* ✅ On enlève le bouton "Connecter un outil" si tu veux éviter "connecter un module" partout */}
             {/* <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
               Connecter un outil
             </button> */}
           </div>
 
-                  <div className={styles.generatorGlow} aria-hidden />
+          <div className={styles.generatorGlow} aria-hidden />
         </div>
       </section>
 
@@ -486,30 +461,60 @@ export default function DashboardPage() {
           <p className={styles.h2Sub}>Votre autoroute de demandes entrantes</p>
         </div>
 
+        {/* ✅ 6 bulles homogènes (uniquement cette section modifiée) */}
         <div className={styles.moduleGrid}>
-          {fluxModules.map((m) => (
-            <article key={m.key} className={`${styles.moduleCard} ${styles[`accent_${m.accent}`]}`}>
-              <div className={styles.moduleTop}>
-                <div className={styles.moduleName}>{m.name}</div>
-                <span className={`${styles.badge} ${statusClass(m.status)}`}>{statusLabel(m.status)}</span>
-              </div>
+          {fluxModules.map((m) => {
+            const viewAction = m.actions.find((a) => a.variant === "view");
 
-              <div className={styles.moduleDesc}>{m.description}</div>
+            return (
+              <article
+                key={m.key}
+                className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles[`accent_${m.accent}`]}`}
+              >
+                <div className={styles.bubbleStack}>
+                  <div className={styles.bubbleLogo} aria-hidden>
+                    <span className={styles.bubbleLogoMark} />
+                  </div>
 
-              <div className={styles.moduleBottom}>
-                <div className={styles.moduleMeta}>
-                  <div className={styles.moduleMetaLabel}>État</div>
-                  <div className={styles.moduleMetaValue}>
-                    {m.status === "available" ? "Prêt à configurer" : m.status === "connected" ? "Connecté" : "Bientôt"}
+                  <div className={styles.bubbleTitle}>{m.name}</div>
+
+                  <div className={styles.bubbleStatusCompact}>
+                    <span
+                      className={[
+                        styles.statusDot,
+                        m.status === "connected"
+                          ? styles.dotConnected
+                          : m.status === "available"
+                          ? styles.dotAvailable
+                          : styles.dotComing,
+                      ].join(" ")}
+                      aria-hidden
+                    />
+                    <span className={styles.bubbleStatusText}>{statusLabel(m.status)}</span>
+                  </div>
+
+                  <div className={styles.bubbleTagline}>{m.description}</div>
+
+                  <div className={styles.bubbleActions}>
+                    {viewAction ? (
+                      renderAction(viewAction)
+                    ) : (
+                      <button className={`${styles.actionBtn} ${styles.actionView}`} type="button">
+                        Voir
+                      </button>
+                    )}
+
+                    <button className={`${styles.actionBtn} ${styles.connectBtn} ${styles.actionMain}`} type="button">
+                      Configurer
+                    </button>
                   </div>
                 </div>
 
-                <div className={styles.moduleActions}>{m.actions.map(renderAction)}</div>
-              </div>
-
-              <div className={styles.moduleGlow} aria-hidden />
-            </article>
-          ))}
+                {/* On garde le glow existant si tu veux, mais on pourra le couper en CSS pour les bulles */}
+                <div className={styles.moduleGlow} aria-hidden />
+              </article>
+            );
+          })}
         </div>
 
         <div className={styles.lowerRow}>
@@ -545,12 +550,7 @@ export default function DashboardPage() {
 
             <div className={styles.quickGrid}>
               {quickActions.map((a) => (
-                <button
-                  key={a.key}
-                  className={`${styles.quickBtn} ${styles[`quick_${a.accent}`]}`}
-                  type="button"
-                  disabled={!!a.disabled}
-                >
+                <button key={a.key} className={`${styles.quickBtn} ${styles[`quick_${a.accent}`]}`} type="button" disabled={!!a.disabled}>
                   <span className={styles.quickTitle}>{a.title}</span>
                   <span className={styles.quickSub}>{a.sub}</span>
                   <span className={styles.quickBadge}>{a.disabled ? "Bientôt" : "Ouvrir"}</span>
