@@ -1190,7 +1190,7 @@ display: flex;
 
 /* ===== iNrCy signature flow ===== */
 .signatureFlow {
-  margin-top: 40px;
+  margin: 40px auto 0;   /* ✅ centre horizontalement + descend */
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -1310,3 +1310,17 @@ display: flex;
   max-width: max-content;     /* ✅ sécurité */
 }
 
+@media (max-width: 560px) {
+  .pills {
+    display: grid;              /* passe en layout vertical */
+    grid-template-columns: 1fr; /* une bulle par ligne */
+    gap: 12px;
+    margin-top: 18px;           /* un peu d’air au-dessus */
+  }
+
+  .pill,
+  .pillMuted {
+    width: 100%;
+    justify-content: center;   /* texte centré dans chaque bulle */
+  }
+}

@@ -387,7 +387,7 @@ export default function DashboardPage() {
           </div>
 
           <h1 className={styles.title}>
-  <span className={styles.titleAccent}>Le Générateur est lancé !</span>
+  <span className={styles.titleAccent}>Le Générateur est lancé&nbsp;!</span>
 </h1>
 
 <p className={styles.subtitle}>
