@@ -116,6 +116,9 @@ const adminModules: Array<{
 }> = [
   { key: "mails", name: "Mails", description: "Relances, notifications, nurturing.", status: "available", accent: "purple" },
   { key: "stats", name: "Stats", description: "ROI, performance et suivi des canaux.", status: "available", accent: "cyan" },
+  { key: "agenda", name: "Agenda", description: "Rdv, réunion et échéances", status: "available", accent: "purple" },
+  { key: "crm", name: "CRM", description: "Fichier clients et propects", status: "available", accent: "cyan" },
+
 ];
 
 const quickActions: Array<{ key: string; title: string; sub: string; disabled?: boolean; accent: Accent }> = [
@@ -512,7 +515,7 @@ export default function DashboardPage() {
         <div className={styles.lowerRow}>
           <div className={styles.blockCard}>
             <div className={styles.blockHead}>
-              <h3 className={styles.h3}>Admin</h3>
+              <h3 className={styles.h3}>Tableau de bord</h3>
               <span className={styles.smallMuted}>Pilotage</span>
             </div>
 
