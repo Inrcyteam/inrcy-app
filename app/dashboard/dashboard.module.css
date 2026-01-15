@@ -1953,8 +1953,8 @@ font-size: 12px;
   --bubbleSize: 320px;
 }
 
-/* ✅ Mobile normal (app + web mobile tactile) */
-@media (hover: none) and (pointer: coarse) and (max-width: 560px) {
+/* ✅ Mobile normal (app + web mobile) */
+@media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
   .bubbleStack{
     padding: 18px 16px 16px;
     gap: 10px;
@@ -1985,7 +1985,9 @@ font-size: 12px;
 }
 
 /* ✅ Mobile + "Version ordinateur" : rendu PC dans les bulles */
-@media (hover: none) and (pointer: coarse) and (min-width: 560px){
+@media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px){
+
+  /* 1) bulles : géométrie fixe */
   .moduleBubbleCard{
     width: 330px !important;
     height: 330px !important;
@@ -1999,6 +2001,7 @@ font-size: 12px;
     height: 330px !important;
   }
 
+  /* 2) intérieur : spacing PC */
   .bubbleStack{
     padding: 22px 20px 18px !important;
     gap: 8px !important;
@@ -2015,18 +2018,19 @@ font-size: 12px;
     width: 82% !important;
     gap: 10px !important;
   }
-}
 
-.page{ overflow-x: hidden; }
-
-@media (max-width: 560px){
-  .page{
-    padding-left: clamp(8px, 3vw, 14px);
-    padding-right: clamp(8px, 3vw, 14px);
+  /* 3) ✅ boutons STRICTEMENT identiques */
+  .bubbleActions .actionBtn,
+  .bubbleActions .actionMain{
+    width: 100% !important;
+    max-width: 240px !important;
+    min-width: 0 !important;
+    padding: 11px 14px !important;
   }
 }
 
-@media (hover: none) and (pointer: coarse) and (min-width: 560px){
+/* ✅ Grille en mode "Version ordinateur" sur mobile : 2 colonnes par défaut */
+@media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px){
   .moduleGrid{
     grid-template-columns: repeat(2, 330px) !important;
     justify-content: center !important;
@@ -2035,10 +2039,19 @@ font-size: 12px;
   }
 }
 
-/* si vraiment ça a la place -> 3 colonnes */
-@media (hover: none) and (pointer: coarse) and (min-width: 980px){
+/* ✅ Si ça a la place -> 3 colonnes (toujours en any-pointer/any-hover) */
+@media (any-hover: none) and (any-pointer: coarse) and (min-width: 980px){
   .moduleGrid{
     grid-template-columns: repeat(3, 330px) !important;
   }
 }
 
+/* ✅ anti-scroll horizontal */
+.page{ overflow-x: hidden; }
+
+@media (max-width: 560px){
+  .page{
+    padding-left: clamp(8px, 3vw, 14px);
+    padding-right: clamp(8px, 3vw, 14px);
+  }
+}
