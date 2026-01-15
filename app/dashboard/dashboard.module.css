@@ -1838,6 +1838,14 @@ font-size: 12px;
     gap: 10px;
   }
 
+@media (max-width: 560px){
+  .moduleBubbleCard{
+    width: min(92vw, 360px);
+    margin-inline: auto;
+    padding-inline: 6px; /* marge de sécurité anti découpe */
+  }
+}
+
 /* ✅ mêmes dimensions pour les 2 boutons */
   .bubbleActions .actionBtn{
     width: 100%;
