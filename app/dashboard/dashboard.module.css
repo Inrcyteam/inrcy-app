@@ -2965,3 +2965,10 @@ transform: scale(1.50);
     transform: translateX(-8px);
   }
 }
+
+/* ✅ CORRECTION DÉCALAGE BOÎTE DE VITESSE — MOBILE */
+@media (any-hover: none) and (any-pointer: coarse){
+  .gearGrid{
+    transform: translateX(-16px) !important;
+  }
+}
