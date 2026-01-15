@@ -2074,36 +2074,35 @@ font-size: 12px;
 /* ✅ Téléphone + viewport large (= mobile en “Version ordinateur”) */
 @media (min-width: 560px){
   :global(html.isTouch) .bubbleStack{
-    height: 100%;
+    height: 100% !important;
     padding: 18px 18px 16px !important;
 
     display: grid !important;
-    grid-template-rows: auto auto auto 1fr auto !important;
-    align-items: start !important;
+
+    /* 4 éléments en haut + espace flexible + boutons en bas */
+    grid-template-rows: auto auto auto auto 1fr !important;
+
     justify-items: center !important;
+    align-content: stretch !important;
 
     gap: 10px !important;
-
-    padding-top: 26px !important;
     transform: none !important;
   }
 
-  :global(html.isTouch) .bubbleTitle{
+  /* ✅ on force les boutons à rester en bas */
+  :global(html.isTouch) .bubbleActions{
+    grid-row: 5 !important;
+    align-self: end !important;
+    width: 82% !important;
+    gap: 10px !important;
     margin-top: 0 !important;
   }
 
+  /* ✅ on retire les “micro-translate” qui peuvent faire chevaucher */
   :global(html.isTouch) .bubbleTagline{
-  margin: 6px 0 10px !important;  /* espace avant les boutons */
-  transform: none !important;
-  max-width: 220px !important;
-  line-height: 1.3 !important;
-}
-
-  :global(html.isTouch) .bubbleActions{
-  margin-top: 14px !important;   /* crée l’espace */
-  padding-bottom: 8px !important; /* sécurité anti-chevauchement */
-  align-self: end !important;
-  width: 82% !important;
-  gap: 10px !important;
-}
+    transform: none !important;
+    margin: 6px 0 0 !important;
+    max-width: 220px !important;
+    line-height: 1.3 !important;
+  }
 }
