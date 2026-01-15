@@ -2491,6 +2491,7 @@ transform: scale(1.50);
 
   /* On évite tout débordement et on donne de la hauteur */
   .loopWrap{
+    position: relative;
     min-height: auto;
     padding: 14px 0;
     overflow: hidden;
@@ -2507,6 +2508,8 @@ transform: scale(1.50);
 
   /* On abandonne le 3x3 */
   .loopGrid{
+    position: relative;
+    z-index: 2;
     grid-template-columns: 1fr;
     grid-template-rows: auto;
     gap: 14px;
@@ -2544,6 +2547,50 @@ transform: scale(1.50);
     right: 10px;
     width: 30px;
     height: 30px;
+  }
+
+  /* HUB mobile + rail */
+
+  .signalHub{
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%,-50%);
+
+    display: block;
+    width: 44px;
+    height: 44px;
+    opacity: 0.35;
+    z-index: 1;
+  }
+
+  .signalCore{
+    inset: 14px;
+    opacity: 0.7;
+  }
+
+  .signalWave{
+    opacity: 0.08;
+  }
+
+  /* Ligne verticale derrière les cartes */
+  .loopWrap::before{
+    content:"";
+    position:absolute;
+    left: 50%;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    transform: translateX(-50%);
+    background: linear-gradient(
+      to bottom,
+      rgba(255,255,255,0),
+      rgba(56,189,248,0.20),
+      rgba(255,255,255,0)
+    );
+    opacity: 0.35;
+    z-index: 0;
+    pointer-events:none;
   }
 }
 
