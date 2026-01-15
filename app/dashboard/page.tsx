@@ -55,7 +55,7 @@ const fluxModules: Module[] = [
   {
     key: "site_inrcy",
     name: "Site iNrCy",
-    description: "Votre machine à leads",
+    description: "Votre machine à leads ⚡",
     status: "available",
     accent: "purple",
     actions: [
@@ -67,7 +67,7 @@ const fluxModules: Module[] = [
   {
     key: "site_web",
     name: "Site web",
-    description: "Convertit vos visiteurs",
+    description: "Convertit vos visiteurs 💡",
     status: "available",
     accent: "pink",
     actions: [
@@ -79,7 +79,7 @@ const fluxModules: Module[] = [
     {
     key: "gmb",
     name: "Google Business",
-    description: "Augmente les appels",
+    description: "Augmente les appels 📞",
     status: "available",
     accent: "orange",
     actions: [
@@ -90,7 +90,7 @@ const fluxModules: Module[] = [
  {
     key: "facebook",
     name: "Facebook",
-    description: "Crée de la demande",
+    description: "Crée de la demande 📈",
     status: "available",
     accent: "cyan",
     actions: [
@@ -101,7 +101,7 @@ const fluxModules: Module[] = [
   {
     key: "houzz",
     name: "Houzz",
-    description: "Apporte des projets premium",
+    description: "Livre des projets premium 🔥",
     status: "available",
     accent: "pink",
     actions: [{ key: "view", label: "Voir la page", variant: "view", href: "#" }],
@@ -109,7 +109,7 @@ const fluxModules: Module[] = [
   {
     key: "pages_jaunes",
     name: "Pages Jaunes",
-    description: "Capte la recherche locale",
+    description: "Capte la recherche locale 📍",
     status: "available",
     accent: "orange",
     actions: [{ key: "view", label: "Voir la page", variant: "view", href: "#" }],
