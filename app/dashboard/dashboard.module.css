@@ -1818,7 +1818,7 @@ font-size: 12px;
   /* On annule les "triches" de placement sur mobile */
   .bubbleStack{
     transform: none;
-    padding: 10px 16px 16px;
+    padding: 4px 16px 16px;
     gap: 8px;
   }
 
