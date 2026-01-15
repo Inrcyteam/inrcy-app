@@ -2484,5 +2484,67 @@ transform: scale(1.50);
   to { transform: rotate(360deg); }
 }
 
+/* =========================
+   MOBILE — Stack layout
+========================= */
+@media (max-width: 700px){
+
+  /* On évite tout débordement et on donne de la hauteur */
+  .loopWrap{
+    min-height: auto;
+    padding: 14px 0;
+    overflow: hidden;
+  }
+
+  /* Volant : on le cache (ou tu peux juste baisser l'opacité) */
+  .loopWheel{
+    display: none;
+    /* alternative:
+    opacity: 0.12;
+    transform: none;
+    */
+  }
+
+  /* On abandonne le 3x3 */
+  .loopGrid{
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    gap: 14px;
+    min-height: auto;
+  }
+
+  /* On neutralise les positions cardinaux */
+  .loopTop,
+  .loopRight,
+  .loopBottom,
+  .loopLeft{
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  /* Cartes : plus larges, moins hautes */
+  .loopNode{
+    min-height: 140px;
+    padding: 18px 16px 18px;
+    border-radius: 20px;
+  }
+
+  /* Texte un peu plus confortable */
+  .loopTitle{ font-size: 14px; }
+  .loopSub{ max-width: 32ch; font-size: 13px; }
+
+  /* Bouton : largeur auto mais pas trop petit */
+  .loopActions .actionBtn{
+    min-width: 190px;
+  }
+
+  /* Roulette : coin stable */
+  .loopGearBtn{
+    top: 10px;
+    right: 10px;
+    width: 30px;
+    height: 30px;
+  }
+}
 
 
