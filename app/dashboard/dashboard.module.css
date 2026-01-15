@@ -1814,6 +1814,28 @@ font-size: 12px;
     justify-self: center;    /* ✅ centre dans la grille */
     min-height: unset;       /* ✅ évite la hauteur chelou */
   }
+
+  /* On annule les "triches" de placement sur mobile */
+  .bubbleStack{
+    transform: none;
+    padding: 18px 16px 16px;
+    gap: 8px;
+  }
+
+  .bubbleTagline{
+    transform: none;
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.25;
+    max-width: 240px;
+  }
+
+  .bubbleActions{
+    transform: none;       /* 🔑 stop la remontée qui superpose */
+    margin-top: 12px;      /* espace naturel */
+    width: 86%;
+    gap: 10px;
+  }
 }
 
 /* Le conteneur garde sa largeur -> le texte ne bouge pas */
