@@ -445,7 +445,7 @@ useEffect(() => {
             <div className={styles.metricCard}>
               <div className={styles.metricLabel}>Cette semaine</div>
               <div className={styles.metricValue}>{leadsWeek}</div>
-              <div className={styles.metricHint}>Demandes générées</div>
+              <div className={styles.metricHint}>Demandes captées</div>
             </div>
 
             <div className={styles.metricCard}>
@@ -684,7 +684,7 @@ useEffect(() => {
 </svg>
 </button>
 
-      <div className={styles.loopSub}>Transformez les contacts en rendez-vous</div>
+      <div className={styles.loopSub}>Transformez les contacts en RDV</div>
       <div className={styles.loopActions}>
         <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button">
           Voir l’agenda
@@ -724,15 +724,48 @@ useEffect(() => {
               <span className={styles.smallMuted}>Conversion</span>
             </div>
 
-            <div className={styles.quickGrid}>
-              {quickActions.map((a) => (
-                <button key={a.key} className={`${styles.quickBtn} ${styles[`quick_${a.accent}`]}`} type="button" disabled={!!a.disabled}>
-                  <span className={styles.quickTitle}>{a.title}</span>
-                  <span className={styles.quickSub}>{a.sub}</span>
-                  <span className={styles.quickBadge}>{a.disabled ? "Bientôt" : "Ouvrir"}</span>
-                </button>
-              ))}
-            </div>
+            <div className={styles.gearWrap}>
+  <div className={styles.gearRail} aria-hidden />
+
+  <div className={styles.gearGrid}>
+    {/* Publier */}
+    <button className={`${styles.gearCapsule} ${styles.gear_cyan}`} type="button">
+      <div className={styles.gearInner}>
+        <div className={styles.gearTitle}>Publier</div>
+        <div className={styles.gearSub}>Active tous vos canaux</div>
+        <div className={styles.gearBtn}>Publier maintenant</div>
+      </div>
+    </button>
+
+    {/* Devis */}
+    <button className={`${styles.gearCapsule} ${styles.gear_purple}`} type="button">
+      <div className={styles.gearInner}>
+        <div className={styles.gearTitle}>Devis</div>
+        <div className={styles.gearSub}>Déclenche des opportunités</div>
+        <div className={styles.gearBtn}>Créer un devis</div>
+      </div>
+    </button>
+
+    {/* Facturer */}
+    <button className={`${styles.gearCapsule} ${styles.gear_pink}`} type="button">
+      <div className={styles.gearInner}>
+        <div className={styles.gearTitle}>Facturer</div>
+        <div className={styles.gearSub}>Transforme en CA</div>
+        <div className={styles.gearBtn}>Créer une facture</div>
+      </div>
+    </button>
+
+    {/* Fidéliser */}
+    <button className={`${styles.gearCapsule} ${styles.gear_orange}`} type="button">
+      <div className={styles.gearInner}>
+        <div className={styles.gearTitle}>Fidéliser</div>
+        <div className={styles.gearSub}>Pérennise votre activité</div>
+        <div className={styles.gearBtn}>Communiquer</div>
+      </div>
+    </button>
+  </div>
+</div>
+
           </div>
         </div>
       </section>
