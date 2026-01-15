@@ -2691,21 +2691,39 @@ transform: scale(1.50);
   overflow: hidden;
 }
 
-/* rail mécanique en Z */
+/* Rail mécanique (version unique) */
 .gearRail{
   position: absolute;
-  inset: 10px 10px 14px;
-  border-radius: 20px;
+  inset: 18px 18px 22px;
+  border-radius: 24px;
   pointer-events: none;
   z-index: 0;
 
-  background:
-    radial-gradient(70% 70% at 40% 30%, rgba(255,255,255,0.10), transparent 62%),
-    linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
   border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.02);
 }
 
-/* Grille Z décalée */
+/* Rail en Z (PC) */
+.gearRail::before{
+  content:"";
+  position:absolute;
+  inset: 0;
+  border-radius: inherit;
+
+  background:
+    linear-gradient(90deg, rgba(56,189,248,0.0), rgba(56,189,248,0.35), rgba(56,189,248,0.0)) 18% 18% / 64% 3px no-repeat,
+    linear-gradient(180deg, rgba(56,189,248,0.0), rgba(56,189,248,0.35), rgba(56,189,248,0.0)) 78% 28% / 3px 56% no-repeat,
+    linear-gradient(90deg, rgba(56,189,248,0.0), rgba(56,189,248,0.35), rgba(56,189,248,0.0)) 18% 82% / 64% 3px no-repeat,
+    linear-gradient(180deg, rgba(56,189,248,0.0), rgba(56,189,248,0.35), rgba(56,189,248,0.0)) 22% 44% / 3px 38% no-repeat;
+
+  opacity: 0.7;
+  filter: blur(0.2px);
+  box-shadow:
+    0 0 16px rgba(56,189,248,0.18),
+    0 0 34px rgba(56,189,248,0.10);
+}
+
+/* Grille Z décalée (PC) */
 .gearGrid{
   position: relative;
   z-index: 1;
@@ -2716,13 +2734,13 @@ transform: scale(1.50);
   padding: 6px;
 }
 
-/* Positions Z */
+/* Positions Z (PC) */
 .gearGrid > :nth-child(1){ grid-column: 1; grid-row: 1; justify-self: start; }
 .gearGrid > :nth-child(2){ grid-column: 2; grid-row: 2; justify-self: end; }
 .gearGrid > :nth-child(3){ grid-column: 1; grid-row: 3; justify-self: start; }
 .gearGrid > :nth-child(4){ grid-column: 2; grid-row: 4; justify-self: end; }
 
-/* Capsule verticale */
+/* Capsule */
 .gearCapsule{
   width: 270px;
   height: 110px;
@@ -2783,8 +2801,9 @@ transform: scale(1.50);
   grid-template-rows: auto auto auto;
   place-items: center;
   text-align: center;
+
   padding: 16px 14px;
-padding-top: 6px;
+  padding-top: 6px;
   gap: 10px;
 }
 
@@ -2794,11 +2813,16 @@ padding-top: 6px;
   letter-spacing: -0.2px;
 }
 
+/* ✅ une seule définition, 1 ligne max */
 .gearSub{
   font-size: 14px;
   line-height: 1.4;
   color: rgba(255,255,255,0.75);
-  max-width: 20ch;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 26ch;
 }
 
 /* bouton pilule */
@@ -2814,48 +2838,11 @@ padding-top: 6px;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
 }
 
-.gearRail{
-  position: absolute;
-  inset: 18px 18px 22px;
-  border-radius: 24px;
-  pointer-events: none;
-  z-index: 0;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.02);
-}
-
-.gearRail::before{
-  content:"";
-  position:absolute;
-  inset: 0;
-  border-radius: inherit;
-
-  /* rail en Z */
-  background:
-    linear-gradient(90deg, rgba(56,189,248,0.0), rgba(56,189,248,0.35), rgba(56,189,248,0.0)) 18% 18% / 64% 3px no-repeat,
-    linear-gradient(180deg, rgba(56,189,248,0.0), rgba(56,189,248,0.35), rgba(56,189,248,0.0)) 78% 28% / 3px 56% no-repeat,
-    linear-gradient(90deg, rgba(56,189,248,0.0), rgba(56,189,248,0.35), rgba(56,189,248,0.0)) 18% 82% / 64% 3px no-repeat,
-    linear-gradient(180deg, rgba(56,189,248,0.0), rgba(56,189,248,0.35), rgba(56,189,248,0.0)) 22% 44% / 3px 38% no-repeat;
-
-  opacity: 0.7;
-  filter: blur(0.2px);
-  box-shadow:
-    0 0 16px rgba(56,189,248,0.18),
-    0 0 34px rgba(56,189,248,0.10);
-}
-
-.gearSub{
-  white-space: nowrap;          /* interdit le retour à la ligne */
-  overflow: hidden;             /* cache le dépassement */
-  text-overflow: ellipsis;      /* … si trop long */
-  max-width: 26ch;              /* largeur visuelle maîtrisée */
-}
-
-/* MOBILE */
+/* MOBILE “classique” (si viewport < 700px) */
 @media (max-width: 700px){
 
   .gearWrap{
-    overflow: hidden;          /* empêche les débordements */
+    overflow: hidden;
     padding: 6px 0 2px;
   }
 
@@ -2864,30 +2851,33 @@ padding-top: 6px;
     grid-template-rows: auto;
     gap: 12px;
     justify-items: center;
-    padding: 6px 10px;         /* marge intérieure */
+    padding: 6px 10px;
   }
 
   /* neutralise le Z + centre tout */
-  .gearGrid > *{
+  .gearGrid > :nth-child(1),
+  .gearGrid > :nth-child(2),
+  .gearGrid > :nth-child(3),
+  .gearGrid > :nth-child(4){
     grid-column: auto;
     grid-row: auto;
     justify-self: center;
   }
 
   .gearCapsule{
-    width: min(92vw, 360px);   /* ✅ ne dépasse jamais l’écran */
+    width: min(92vw, 520px);
     height: 130px;
     max-width: 100%;
+    margin: 0 auto;
   }
 
-  /* rail plus discret (optionnel) */
   .gearRail{
     inset: 12px 12px 16px;
     opacity: 0.55;
   }
 }
 
-
+/* Titres de blocs */
 .h3{
   font-size: 20px;
   font-weight: 900;
@@ -2899,13 +2889,16 @@ padding-top: 6px;
   opacity: 0.95;
 }
 
-/* ✅ FIX MOBILE REAL (téléphones/tablettes tactiles) */
+/* ✅ FIX MOBILE REAL (téléphones/tablettes tactiles)
+   -> Même si le viewport est "grand" (mode desktop / zoom), on FORCE le centrage mobile
+*/
 @media (any-hover: none) and (any-pointer: coarse){
 
+  /* les 2 blocs du bas en 1 colonne */
   .lowerRow{
     margin-top: 14px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) !important; /* ✅ 1 colonne */
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 12px;
   }
 
@@ -2921,7 +2914,7 @@ padding-top: 6px;
 
   .blockHead{
     min-width: 0;
-    flex-wrap: wrap; /* évite les titres qui poussent */
+    flex-wrap: wrap;
   }
 
   .h3{
@@ -2932,6 +2925,26 @@ padding-top: 6px;
     margin-left: auto;
     white-space: nowrap;
   }
+
+  /* ✅ IMPORTANT : on FORCE aussi la boîte de vitesse en mode mobile */
+  .gearGrid{
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto !important;
+    justify-items: center !important;
+  }
+
+  .gearGrid > :nth-child(1),
+  .gearGrid > :nth-child(2),
+  .gearGrid > :nth-child(3),
+  .gearGrid > :nth-child(4){
+    grid-column: auto !important;
+    grid-row: auto !important;
+    justify-self: center !important;
+  }
+
+  .gearCapsule{
+    width: min(92vw, 520px) !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+  }
 }
-
-

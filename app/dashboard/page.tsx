@@ -455,7 +455,7 @@ useEffect(() => {
             </div>
 
             <div className={styles.metricCard}>
-              <div className={styles.metricLabel}>CHIFFRE D'AFFAIRES GÉNÉRÉ</div>
+              <div className={styles.metricLabel}>CA GÉNÉRÉ</div>
               <div className={styles.metricValue}>{estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "0 €"}</div>
               <div className={styles.metricHint}>Montant basé sur votre profil</div>
             </div>
