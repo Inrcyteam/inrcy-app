@@ -1800,6 +1800,7 @@ font-size: 12px;
 /* Mobile */
 @media (max-width: 560px){
   .moduleGrid{
+    grid-template-columns: 1fr;
     gap: 18px;
     justify-items: center;
     align-items: start;
