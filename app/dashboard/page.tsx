@@ -772,10 +772,7 @@ useEffect(() => {
 
       <footer className={styles.footer}>
         <div className={styles.footerLeft}>© {new Date().getFullYear()} iNrCy</div>
-        <div className={styles.footerRight}>
-          <span className={styles.smallMuted}>Prochaine étape :</span> connecter les modules, puis activer devis/factures.
-        </div>
-      </footer>
+        </footer>
     </main>
   );
 }

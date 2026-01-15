@@ -2902,9 +2902,7 @@ transform: scale(1.50);
     gap: 12px;
   }
 
-  .lowerRow > *{
-    min-width: 0;
-  }
+  .lowerRow > *{ min-width: 0; }
 
   .blockCard{
     min-width: 0;
@@ -2917,22 +2915,32 @@ transform: scale(1.50);
     flex-wrap: wrap;
   }
 
-  .h3{
-    min-width: 0;
-  }
+  .h3{ min-width: 0; }
 
   .smallMuted{
     margin-left: auto;
     white-space: nowrap;
   }
 
-  /* ✅ IMPORTANT : on FORCE aussi la boîte de vitesse en mode mobile */
+  /* ✅ FORCE Boîte de vitesse en mode mobile + centrage */
+  .gearWrap{
+    overflow: hidden;
+    padding-left: 0;
+    padding-right: 0;
+    display: flex;
+    justify-content: center;
+  }
+
   .gearGrid{
+    width: 100%;
+    max-width: 100%;
     grid-template-columns: 1fr !important;
     grid-template-rows: auto !important;
     justify-items: center !important;
+    padding: 10px 12px !important; /* contrôlé ici */
   }
 
+  /* écrase les positions Z */
   .gearGrid > :nth-child(1),
   .gearGrid > :nth-child(2),
   .gearGrid > :nth-child(3),
@@ -2946,5 +2954,10 @@ transform: scale(1.50);
     width: min(92vw, 520px) !important;
     max-width: 100% !important;
     margin: 0 auto !important;
+  }
+
+  /* ✅ micro recentrage si ça parait encore trop à droite */
+  .gearGrid{
+    transform: translateX(-8px);
   }
 }
