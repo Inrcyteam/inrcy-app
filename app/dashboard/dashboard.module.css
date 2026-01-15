@@ -2126,3 +2126,363 @@ font-size: 12px;
     padding: 11px 14px !important;
   }
 }
+
+/* =========================
+   Tableau de bord — Loop + Signal Hub (desktop)
+========================= */
+
+.loopWrap{
+  position: relative;
+  min-height: 300px;
+overflow: hidden;
+}
+
+.loopGrid{
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr 1fr;
+  gap: 10px;
+  min-height: 300px;
+}
+
+/* Positions */
+.loopTop{ grid-column: 2; grid-row: 1; }
+.loopRight{ grid-column: 3; grid-row: 2; }
+.loopBottom{ grid-column: 2; grid-row: 3; }
+.loopLeft{ grid-column: 1; grid-row: 2; }
+
+/* Nodes */
+.loopNode{
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  padding: 12px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 18px 60px rgba(0,0,0,0.18);
+  transition: transform .18s ease, border-color .18s ease, background .18s ease;
+}
+
+.loopNode:hover{
+  transform: translateY(-2px);
+  border-color: rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.07);
+}
+
+.loopNode::after{
+  content:"";
+  position:absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(120% 80% at 25% 15%,
+    rgba(255,255,255,0.18),
+    rgba(255,255,255,0.00) 55%);
+  opacity: 0.8;
+  pointer-events:none;
+  z-index: 0;
+}
+
+.loopTopRow{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.loopTitle{
+  font-weight: 950;
+  letter-spacing: -0.2px;
+  font-size: 12px;
+  opacity: 0.95;
+}
+
+.loopSub{
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(255,255,255,0.72);
+  min-height: 32px;
+}
+
+.loopActions{
+  margin-top: 10px;
+  display:flex;
+  justify-content:flex-end;
+}
+
+/* Mini “roulette machine” (settings) */
+.loopGearBtn{
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.05);
+  display:grid;
+  place-items:center;
+  cursor:pointer;
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
+}
+
+.loopGearBtn:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.08);
+}
+
+.loopGearIcon{
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,0.72);
+  position: relative;
+  opacity: 0.9;
+}
+
+.loopGearIcon::before,
+.loopGearIcon::after{
+  content:"";
+  position:absolute;
+  inset:-6px;
+  border-radius: 999px;
+  border: 1px dashed rgba(255,255,255,0.22);
+}
+
+.loopGearIcon::after{
+  inset:-10px;
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+/* Accent glows (cohérent avec tes quick_*) */
+.loop_cyan::after,
+.loop_purple::after,
+.loop_pink::after,
+.loop_orange::after{
+  content:"";
+  position:absolute;
+  inset:auto -70px -70px auto;
+  width: 240px;
+  height: 240px;
+  border-radius: 999px;
+  opacity: 0.26;
+  pointer-events:none;
+}
+
+.loop_cyan::after{ background: radial-gradient(circle at 30% 30%, rgba(56,189,248,0.40), transparent 60%); }
+.loop_purple::after{ background: radial-gradient(circle at 30% 30%, rgba(167,139,250,0.40), transparent 60%); }
+.loop_pink::after{ background: radial-gradient(circle at 30% 30%, rgba(244,114,182,0.40), transparent 60%); }
+.loop_orange::after{ background: radial-gradient(circle at 30% 30%, rgba(251,146,60,0.40), transparent 60%); }
+
+/* Signal Hub */
+.signalHub{
+  position:absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%,-50%);
+  width: 64px;
+  height: 64px;
+  pointer-events:none;
+  z-index: 2;
+}
+
+.signalCore{
+  position:absolute;
+  inset: 18px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.20);
+  box-shadow:
+    0 0 20px rgba(56,189,248,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+
+.signalWave{
+  position:absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.18);
+  opacity: 0.22;
+  animation: wave 2.8s ease-in-out infinite;
+}
+
+.wave1{ animation-delay: 0s; }
+.wave2{ animation-delay: .35s; }
+.wave3{ animation-delay: .7s; }
+.wave4{ animation-delay: 1.05s; }
+
+@keyframes wave{
+  0%{ transform: scale(0.70); opacity: 0.26; }
+  55%{ transform: scale(1.05); opacity: 0.08; }
+  100%{ transform: scale(1.20); opacity: 0.00; }
+}
+
+/* Arrows overlay */
+.loopWheel{
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.70;
+filter: blur(0.4px) saturate(0.8);
+transform: scale(1.50);
+  transform-origin: center;
+   }
+
+/* =========================
+   LOOP CARDS — NEON LIGHT
+========================= */
+
+.loopNode{
+  border-radius: 22px;
+  padding: 18px 16px 20px;
+  background:
+    linear-gradient(180deg,
+      rgba(255,255,255,0.18),
+      rgba(255,255,255,0.09)
+    );
+  border: 1px solid rgba(255,255,255,0.25);
+  backdrop-filter: blur(14px);
+  box-shadow:
+    0 20px 60px rgba(0,0,0,0.35),
+    inset 0 0 0 1px rgba(255,255,255,0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  min-height: 150px;
+}
+
+/* Halo néon fonctionnel */
+.loop_cyan::before,
+.loop_purple::before,
+.loop_orange::before,
+.loop_pink::before{
+  content:"";
+  position:absolute;
+  inset:-40%;
+  border-radius: 999px;
+  opacity:0.45;
+  z-index:0;
+  filter: blur(40px);
+}
+
+.loop_cyan::before{
+  background: radial-gradient(circle, rgba(56,189,248,0.45), transparent 60%);
+}
+.loop_purple::before{
+  background: radial-gradient(circle, rgba(167,139,250,0.45), transparent 60%);
+}
+.loop_orange::before{
+  background: radial-gradient(circle, rgba(251,146,60,0.45), transparent 60%);
+}
+.loop_pink::before{
+  background: radial-gradient(circle, rgba(244,114,182,0.45), transparent 60%);
+}
+
+.loopNode > *{
+  position: relative;
+  z-index: 1;
+}
+
+/* TITRE */
+.loopTitle{
+  font-weight: 950;
+  letter-spacing: 0.4px;
+  font-size: 13px;
+}
+
+/* Sous-titre */
+.loopSub{
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(255,255,255,0.85);
+  max-width: 22ch;
+}
+
+/* Boutons centrés */
+.loopActions{
+  margin-top: 6px;
+}
+
+/* Bouton principal version néon */
+.loopActions .actionBtn{
+  padding: 10px 16px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.35);
+  background:
+    linear-gradient(90deg,
+      rgba(255,255,255,0.18),
+      rgba(255,255,255,0.06)
+    );
+  box-shadow:
+    0 0 18px rgba(255,255,255,0.25),
+    inset 0 0 0 1px rgba(255,255,255,0.25);
+}
+
+/* Roulette ⚙ : toujours en haut à droite, au-dessus de tout */
+.loopGearBtn{
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+
+  border: 1px solid rgba(255,255,255,0.40);
+  background: radial-gradient(120% 120% at 30% 25%,
+    rgba(255,255,255,0.18),
+    rgba(255,255,255,0.07) 55%,
+    rgba(255,255,255,0.10) 100%);
+
+  backdrop-filter: blur(10px);
+
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+
+  box-shadow:
+    0 0 18px rgba(255,255,255,0.22),
+    0 0 26px rgba(56,189,248,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.18);
+
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
+}
+
+.loopGearBtn:hover{
+  transform: translateY(-1px) scale(1.03);
+  background: rgba(255,255,255,0.14);
+  border-color: rgba(255,255,255,0.55);
+}
+
+.loopGearSvg{
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: rgba(255,255,255,0.92);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px rgba(255,255,255,0.28));
+  opacity: 0.95;
+}
+
+.loopGearBtn:hover .loopGearSvg{
+  animation: gearSpin .9s linear infinite;
+}
+
+@keyframes gearSpin{
+  to { transform: rotate(360deg); }
+}
+
+
+
