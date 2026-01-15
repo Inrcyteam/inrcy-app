@@ -2025,3 +2025,20 @@ font-size: 12px;
     padding-right: clamp(8px, 3vw, 14px);
   }
 }
+
+@media (hover: none) and (pointer: coarse) and (min-width: 560px){
+  .moduleGrid{
+    grid-template-columns: repeat(2, 330px) !important;
+    justify-content: center !important;
+    column-gap: 28px !important;
+    row-gap: 12px !important;
+  }
+}
+
+/* si vraiment ça a la place -> 3 colonnes */
+@media (hover: none) and (pointer: coarse) and (min-width: 980px){
+  .moduleGrid{
+    grid-template-columns: repeat(3, 330px) !important;
+  }
+}
+
