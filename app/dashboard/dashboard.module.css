@@ -1982,6 +1982,19 @@ font-size: 12px;
   }
 }
 
+/* ✅ Mobile en "Version ordinateur" : on stabilise la taille de la bulle */
+@media (hover: none) and (pointer: coarse) and (min-width: 560px){
+  .moduleBubbleCard::before{
+    width: 330px;   /* taille PC */
+    height: 330px;  /* taille PC */
+  }
+
+  /* et on annule les micro-translates “PC” si ça gêne l’alignement */
+  .bubbleStack{ transform: none; }
+  .bubbleTagline{ transform: none; }
+}
+
+
 @media (max-width: 560px){
   .moduleBubbleCard::before{
     width: min(92vw, 330px);
@@ -1999,46 +2012,4 @@ font-size: 12px;
     padding-right: clamp(8px, 3vw, 14px);
   }
 }
-
-/* =========================================================
-   Mobile + "Version ordinateur" (viewport large mais device tactile)
-   => on corrige le contenu interne des bulles sans toucher au PC
-========================================================= */
-@media (hover: none) and (pointer: coarse) {
-  /* On annule les "triches" desktop qui écrasent sur petit écran */
-  .bubbleStack{
-    transform: none !important;
-    padding: 18px 14px 16px !important;
-    gap: 8px !important;
-  }
-
-  .bubbleTitle{
-    font-size: 16px !important;
-    margin-top: 2px !important;
-  }
-
-  .bubbleTagline{
-    transform: none !important;
-    margin: 10px 0 !important;
-    max-width: 220px !important;
-    line-height: 1.25 !important;
-    font-size: 12px !important;
-  }
-
-  .bubbleActions{
-    transform: none !important;
-    width: 70% !important;
-    gap: 8px !important;
-    justify-items: center !important;
-  }
-
-  .bubbleActions .actionBtn,
-  .bubbleActions .actionMain{
-    width: 100% !important;
-    max-width: 240px !important;
-    padding: 10px 12px !important;
-    font-size: 11px !important;
-  }
-}
-
 
