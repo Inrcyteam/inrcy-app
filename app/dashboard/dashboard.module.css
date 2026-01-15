@@ -1992,3 +1992,10 @@ font-size: 12px;
 .page{
   overflow-x: hidden;
 }
+
+@media (max-width: 560px){
+  .moduleBubbleCard::before{
+    transform: translate(-53%, -50%);
+  }
+}
+
