@@ -1866,8 +1866,8 @@ font-size: 12px;
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 330px;
-  height: 330px;
+  width: min(330px, 100%);
+  height: min(330px, 100%);
   transform: translate(-50%, -50%);
   border-radius: 9999px;
   overflow: hidden;
@@ -1928,26 +1928,32 @@ font-size: 12px;
   --bubbleSize: 320px; /* adapte si tes bulles font 300/340 */
 }
 
-/* =========================
-   ModuleGrid : colonnes SAFE
-   (ne casse pas l'app)
-========================= */
-.moduleGrid{
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
+/* ✅ Mobile device même si "Version ordinateur" est activée */
+@media (hover: none) and (pointer: coarse) {
 
-/* tablette / petit desktop */
-@media (max-width: 900px){
-  .moduleGrid{
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* on redonne de l’air dans les bulles */
+  .bubbleStack{
+    padding: 18px 16px 16px;
+    gap: 10px;
   }
-}
 
-/* vrai mobile (app + web mobile normal) */
-@media (max-width: 560px){
-  .moduleGrid{
-    grid-template-columns: 1fr;
+  .bubbleTitle{
+    font-size: 18px;
+  }
+
+  .bubbleTagline{
+    font-size: 13px;
+    line-height: 1.25;
+    max-width: 240px;
+  }
+
+  .bubbleActions{
+    width: 78%;
+    gap: 10px;
+  }
+
+  .bubbleActions .actionBtn{
+    padding: 11px 14px;
   }
 }
 
