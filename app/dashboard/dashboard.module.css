@@ -1800,11 +1800,19 @@ font-size: 12px;
 
 /* Mobile */
 @media (max-width: 560px){
-  .moduleGrid{ gap: 18px; }
+  .moduleGrid{
+    gap: 18px;
+    justify-items: center;
+    align-items: start;
+  }
+
   .moduleBubbleCard{
-    aspect-ratio: auto;
-    border-radius: 28px;
-    min-height: 240px;
+    margin-inline: auto;
+    aspect-ratio: 1 / 1;      /* ✅ on garde rond */
+    border-radius: 9999px;   /* ✅ on garde rond */
+    width: min(92vw, 360px); /* ✅ taille propre sur mobile */
+    justify-self: center;    /* ✅ centre dans la grille */
+    min-height: unset;       /* ✅ évite la hauteur chelou */
   }
 }
 
@@ -1884,5 +1892,6 @@ font-size: 12px;
 :root{
   --bubbleSize: 320px; /* adapte si tes bulles font 300/340 */
 }
+
 
 
