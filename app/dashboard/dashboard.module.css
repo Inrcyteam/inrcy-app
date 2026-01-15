@@ -1928,5 +1928,27 @@ font-size: 12px;
   --bubbleSize: 320px; /* adapte si tes bulles font 300/340 */
 }
 
+/* =========================
+   ModuleGrid : colonnes SAFE
+   (ne casse pas l'app)
+========================= */
+.moduleGrid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* tablette / petit desktop */
+@media (max-width: 900px){
+  .moduleGrid{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* vrai mobile (app + web mobile normal) */
+@media (max-width: 560px){
+  .moduleGrid{
+    grid-template-columns: 1fr;
+  }
+}
 
 
