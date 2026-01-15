@@ -2951,10 +2951,13 @@ transform: scale(1.50);
   }
 
   .gearCapsule{
-    width: min(92vw, 520px) !important;
-    max-width: 100% !important;
-    margin: 0 auto !important;
-    margin-left: -16px;   /* 👈 DÉCALAGE À GAUCHE */
+  width: min(92vw, 520px) !important;
+  max-width: 100% !important;
+
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  margin-right: auto !important;
+  margin-left: -16px !important;    /* 👈 */
   }
 
   /* ✅ micro recentrage si ça parait encore trop à droite */
