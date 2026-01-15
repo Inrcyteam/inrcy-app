@@ -2898,5 +2898,29 @@ padding-top: 6px;
   opacity: 0.95;
 }
 
+/* ✅ FIX MOBILE REAL (même si "version ordinateur" / viewport large) */
+@media (any-hover: none) and (any-pointer: coarse){
+  .lowerRow{
+    grid-template-columns: 1fr !important; /* 1 colonne sur téléphone */
+  }
+
+  .blockCard{
+    max-width: 100%;
+    overflow: hidden; /* évite les halos/shadows qui débordent */
+  }
+
+  .blockHead{
+    flex-wrap: wrap;  /* évite que "Boîte de vitesse" + "Conversion" se poussent dehors */
+  }
+
+  .h3{
+    min-width: 0;
+  }
+
+  .smallMuted{
+    margin-left: auto;
+    white-space: nowrap;
+  }
+}
 
 
