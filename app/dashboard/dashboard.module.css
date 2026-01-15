@@ -2075,7 +2075,7 @@ font-size: 12px;
 @media (min-width: 560px){
   :global(html.isTouch) .bubbleStack{
     height: 100% !important;
-    padding: 16px 18px 14px !important;
+    padding: 8px 18px 14px !important;
 
     display: grid !important;
     grid-template-rows: auto auto auto auto !important; /* 4 lignes */
