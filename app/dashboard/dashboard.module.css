@@ -1162,7 +1162,6 @@ display: flex;
 @media (max-width: 1080px) {
   .hero { grid-template-columns: 1fr; }
   .generatorGrid { grid-template-columns: 1fr 1fr; }
-  .moduleGrid { grid-template-columns: 1fr; }
   .lowerRow { grid-template-columns: 1fr; }
   .blockGrid2 { grid-template-columns: 1fr; }
 }
