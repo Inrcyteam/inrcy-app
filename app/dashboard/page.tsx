@@ -41,12 +41,21 @@ function statusClass(s: ModuleStatus) {
   return styles.badgeSoon;
 }
 
+const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
+  site_inrcy: { src: "/icons/inrcy.png", alt: "iNrCy" },
+  site_web: { src: "/icons/site-web.jpg", alt: "Site web" },
+  facebook: { src: "/icons/facebook.png", alt: "Facebook" },
+  gmb: { src: "/icons/google.jpg", alt: "Google Business" },
+  houzz: { src: "/icons/houzz.png", alt: "Houzz" },
+  pages_jaunes: { src: "/icons/pagesjaunes.png", alt: "Pages Jaunes" },
+};
+
 // ✅ Tes 6 blocs avec tes actions (Voir + Connecter…)
 const fluxModules: Module[] = [
   {
     key: "site_inrcy",
     name: "Site iNrCy",
-    description: "Landing iNrCy + tracking : capte et transforme en contacts.",
+    description: "Votre machine à leads",
     status: "available",
     accent: "purple",
     actions: [
@@ -58,7 +67,7 @@ const fluxModules: Module[] = [
   {
     key: "site_web",
     name: "Site web",
-    description: "Votre site existant : formulaires, appels, conversion.",
+    description: "Convertit vos visiteurs",
     status: "available",
     accent: "pink",
     actions: [
@@ -67,10 +76,21 @@ const fluxModules: Module[] = [
       { key: "gsc", label: "Connecter Search Console", variant: "connect", onClick: () => {} },
     ],
   },
-  {
+    {
+    key: "gmb",
+    name: "Google Business",
+    description: "Augmente les appels",
+    status: "available",
+    accent: "orange",
+    actions: [
+      { key: "view", label: "Voir la page", variant: "view", href: "#" },
+      { key: "connect", label: "Connecter Google", variant: "connect", onClick: () => {} },
+    ],
+  },
+ {
     key: "facebook",
     name: "Facebook",
-    description: "Pubs & formulaires Meta : capte la demande et mesure le coût.",
+    description: "Crée de la demande",
     status: "available",
     accent: "cyan",
     actions: [
@@ -79,20 +99,9 @@ const fluxModules: Module[] = [
     ],
   },
   {
-    key: "gmb",
-    name: "Google Business",
-    description: "Fiche Google : appels, itinéraires, clics et messages.",
-    status: "available",
-    accent: "orange",
-    actions: [
-      { key: "view", label: "Voir la page", variant: "view", href: "#" },
-      { key: "connect", label: "Connecter Google", variant: "connect", onClick: () => {} },
-    ],
-  },
-  {
     key: "houzz",
     name: "Houzz",
-    description: "Demandes qualifiées : projets à valeur.",
+    description: "Apporte des projets premium",
     status: "available",
     accent: "pink",
     actions: [{ key: "view", label: "Voir la page", variant: "view", href: "#" }],
@@ -100,7 +109,7 @@ const fluxModules: Module[] = [
   {
     key: "pages_jaunes",
     name: "Pages Jaunes",
-    description: "Présence + visibilité locale : déclenche des demandes.",
+    description: "Capte la recherche locale",
     status: "available",
     accent: "orange",
     actions: [{ key: "view", label: "Voir la page", variant: "view", href: "#" }],
@@ -400,7 +409,7 @@ export default function DashboardPage() {
           <div className={styles.generatorHeader}>
             <div>
               <div className={styles.generatorTitle}>Générateur iNrCy</div>
-              <div className={styles.generatorDesc}>Production en direct dès qu’un module est connecté.</div>
+              <div className={styles.generatorDesc}>Production de prospects et de clients dès qu’un module est connecté</div>
             </div>
 
             <div className={styles.generatorHeaderRight}>
@@ -415,7 +424,7 @@ export default function DashboardPage() {
             <div className={styles.metricCard}>
               <div className={styles.metricLabel}>Leads aujourd’hui</div>
               <div className={styles.metricValue}>{leadsToday}</div>
-              <div className={styles.metricHint}>Temps réel</div>
+              <div className={styles.metricHint}>Opportunités en temps réel</div>
             </div>
 
             <div className={styles.generatorCoreCenter} aria-hidden>
@@ -428,19 +437,19 @@ export default function DashboardPage() {
             <div className={styles.metricCard}>
               <div className={styles.metricLabel}>Cette semaine</div>
               <div className={styles.metricValue}>{leadsWeek}</div>
-              <div className={styles.metricHint}>Synthèse 7 jours</div>
+              <div className={styles.metricHint}>Demandes générées</div>
             </div>
 
             <div className={styles.metricCard}>
               <div className={styles.metricLabel}>Ce mois</div>
               <div className={styles.metricValue}>{leadsMonth}</div>
-              <div className={styles.metricHint}>Synthèse mensuelle</div>
+              <div className={styles.metricHint}>Contacts de CA potentiel</div>
             </div>
 
             <div className={styles.metricCard}>
-              <div className={styles.metricLabel}>Valeur estimée</div>
-              <div className={styles.metricValue}>{estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "—"}</div>
-              <div className={styles.metricHint}>Estimation basée sur votre profil</div>
+              <div className={styles.metricLabel}>CHIFFRE D'AFFAIRES GÉNÉRÉ</div>
+              <div className={styles.metricValue}>{estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "0 €"}</div>
+              <div className={styles.metricHint}>Montant basé sur votre profil</div>
             </div>
           </div>
 
@@ -473,8 +482,12 @@ export default function DashboardPage() {
               >
                 <div className={styles.bubbleStack}>
                   <div className={styles.bubbleLogo} aria-hidden>
-                    <span className={styles.bubbleLogoMark} />
-                  </div>
+ <img
+    className={styles.bubbleLogoImg}
+    src={MODULE_ICONS[m.key]?.src}
+    alt={MODULE_ICONS[m.key]?.alt}
+  />
+</div>
 
                   <div className={styles.bubbleTitle}>{m.name}</div>
 
