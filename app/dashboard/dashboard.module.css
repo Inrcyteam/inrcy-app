@@ -2954,6 +2954,7 @@ transform: scale(1.50);
     width: min(92vw, 520px) !important;
     max-width: 100% !important;
     margin: 0 auto !important;
+    margin-left: -16px;   /* 👈 DÉCALAGE À GAUCHE */
   }
 
   /* ✅ micro recentrage si ça parait encore trop à droite */
