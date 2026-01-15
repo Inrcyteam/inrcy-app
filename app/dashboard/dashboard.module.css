@@ -2573,25 +2573,30 @@ transform: scale(1.50);
     opacity: 0.08;
   }
 
-  /* Ligne verticale derrière les cartes */
   .loopWrap::before{
-    content:"";
-    position:absolute;
-    left: 50%;
-    top: 8px;
-    bottom: 8px;
-    width: 2px;
-    transform: translateX(-50%);
-    background: linear-gradient(
-      to bottom,
-      rgba(255,255,255,0),
-      rgba(56,189,248,0.20),
-      rgba(255,255,255,0)
-    );
-    opacity: 0.35;
-    z-index: 0;
-    pointer-events:none;
-  }
+  content:"";
+  position:absolute;
+  left: 50%;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  transform: translateX(-50%);
+
+  background: linear-gradient(
+    to bottom,
+    rgba(56,189,248,0),
+    rgba(56,189,248,0.55),
+    rgba(56,189,248,0)
+  );
+
+  box-shadow:
+    0 0 12px rgba(56,189,248,0.35),
+    0 0 24px rgba(56,189,248,0.18);
+
+  opacity: 0.70;
+  z-index: 0;
+  pointer-events:none;
+}
 }
 
 
