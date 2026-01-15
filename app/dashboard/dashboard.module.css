@@ -2079,10 +2079,12 @@ font-size: 12px;
 
     display: grid !important;
     grid-template-rows: auto auto auto 1fr auto !important;
-    align-items: center !important;
+    align-items: start !important;
     justify-items: center !important;
 
     gap: 10px !important;
+
+    padding-top: 26px !important;
     transform: none !important;
   }
 
