@@ -1966,4 +1966,13 @@ font-size: 12px;
   }
 }
 
+@media (max-width: 560px){
+  .moduleBubbleCard::before{
+    width: min(92vw, 330px);
+    height: min(92vw, 330px);
+  }
+}
 
+.page{
+  overflow-x: hidden;
+}
