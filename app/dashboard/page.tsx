@@ -164,6 +164,14 @@ export default function DashboardPage() {
     });
   }, []);
 
+useEffect(() => {
+  const isTouch =
+    typeof window !== "undefined" &&
+    ("ontouchstart" in window || navigator.maxTouchPoints > 0);
+
+  document.documentElement.classList.toggle("isTouch", isTouch);
+}, []);
+
   // Ferme le menu utilisateur (clic dehors / Escape)
   useEffect(() => {
     if (!userMenuOpen) return;

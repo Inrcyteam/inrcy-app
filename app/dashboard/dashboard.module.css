@@ -2055,3 +2055,39 @@ font-size: 12px;
     padding-right: clamp(8px, 3vw, 14px);
   }
 }
+
+/* ✅ Important : empêche Safari/Chrome de “grossir” le texte en mode desktop */
+:global(html){
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* ✅ Téléphone détecté (même en “Version ordinateur”) */
+:global(html.isTouch) .bubbleActions .actionBtn,
+:global(html.isTouch) .bubbleActions .actionMain{
+  width: 100% !important;
+  max-width: 240px !important;
+  min-width: 0 !important;
+  padding: 11px 14px !important;
+}
+
+/* ✅ Téléphone + viewport large (= mobile en “Version ordinateur”) */
+@media (min-width: 560px){
+  :global(html.isTouch) .bubbleStack{
+    padding: 22px 20px 18px !important;
+    gap: 8px !important;
+    transform: translateY(6px) !important;
+  }
+
+  :global(html.isTouch) .bubbleTagline{
+    transform: translateY(10px) !important;
+    max-width: 220px !important;
+    line-height: 1.35 !important;
+  }
+
+  :global(html.isTouch) .bubbleActions{
+    width: 82% !important;
+    gap: 10px !important;
+  }
+}
+
