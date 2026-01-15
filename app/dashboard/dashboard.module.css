@@ -828,6 +828,7 @@ display: flex;
 .contentFull {
   max-width: 1220px;
   margin: 0 auto;
+  overflow-x: hidden;   /* 🔑 bloque tout ce qui dépasse à droite */
 }
 
 .sectionHead { padding: 10px 2px 10px; }
@@ -1854,7 +1855,7 @@ font-size: 12px;
 /* Le conteneur garde sa largeur -> le texte ne bouge pas */
 .moduleBubbleCard{
   position: relative;
-  overflow: visible;          /* important: on ne clippe pas le conteneur */
+  overflow: hidden;         
   border: none;
   background: transparent;
   box-shadow: none;
