@@ -2932,13 +2932,14 @@ transform: scale(1.50);
   }
 
   .gearGrid{
-    width: 100%;
-    max-width: 100%;
-    grid-template-columns: 1fr !important;
-    grid-template-rows: auto !important;
-    justify-items: center !important;
-    padding: 10px 12px !important; /* contrôlé ici */
-  }
+  width: 100%;
+  max-width: 100%;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: auto !important;
+  justify-items: center !important;
+  padding: 10px 12px !important;
+  box-sizing: border-box;
+}
 
   /* écrase les positions Z */
   .gearGrid > :nth-child(1),
@@ -2950,25 +2951,11 @@ transform: scale(1.50);
     justify-self: center !important;
   }
 
-  .gearCapsule{
-  width: min(92vw, 520px) !important;
-  max-width: 100% !important;
+.gearCapsule{
+  width: 100% !important;
+  max-width: 520px !important;
 
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-  margin-right: auto !important;
-  margin-left: -16px !important;    /* 👈 */
-  }
-
-  /* ✅ micro recentrage si ça parait encore trop à droite */
-  .gearGrid{
-    transform: translateX(-8px);
-  }
+  margin: 0 auto !important;
+  box-sizing: border-box;
 }
-
-/* ✅ CORRECTION DÉCALAGE BOÎTE DE VITESSE — MOBILE */
-@media (any-hover: none) and (any-pointer: coarse){
-  .gearGrid{
-    transform: translateX(-16px) !important;
-  }
 }
