@@ -1818,23 +1818,36 @@ font-size: 12px;
   /* On annule les "triches" de placement sur mobile */
   .bubbleStack{
     transform: none;
-    padding: 18px 16px 16px;
+    padding: 10px 16px 16px;
     gap: 8px;
   }
 
   .bubbleTagline{
     transform: none;
-    margin-top: 6px;
-    font-size: 13px;
+    margin: 12px 0;
     line-height: 1.25;
     max-width: 240px;
   }
 
   .bubbleActions{
     transform: none;       /* 🔑 stop la remontée qui superpose */
-    margin-top: 12px;      /* espace naturel */
-    width: 86%;
+    align-items: center;  /* centre horizontalement */
+    margin-top: 10px;      /* espace naturel */
+    width: 78%;
     gap: 10px;
+  }
+
+/* ✅ mêmes dimensions pour les 2 boutons */
+  .bubbleActions .actionBtn{
+    width: 100%;
+    max-width: 240px;        /* ✅ limite la largeur (donc “Configurer” moins large) */
+    padding: 12px 16px;      /* ✅ même hauteur/épaisseur */
+    border-radius: 999px;
+  }
+
+  /* ✅ override du bouton principal */
+  .bubbleActions .actionMain{
+    min-width: 0 !important; /* ✅ annule ton min-width desktop */
   }
 }
 
