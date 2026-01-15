@@ -1833,7 +1833,7 @@ font-size: 12px;
     transform: none;       /* 🔑 stop la remontée qui superpose */
     align-items: center;  /* centre horizontalement */
     margin-top: 10px;      /* espace naturel */
-    width: 68%;
+    width: 60%;
     gap: 10px;
   }
 
