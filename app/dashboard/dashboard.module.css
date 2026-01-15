@@ -1711,8 +1711,24 @@ font-size: 12px;
 /* === Flux de contacts : bulles sphériques === */
 
 .moduleGrid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   column-gap: 36px;  /* espace entre les bulles horizontalement */
   row-gap: 10px;     /* 🔽 espace entre la rangée du haut et celle du bas */
+}
+
+/* ✅ Sur mobile: 1 colonne + centrage strict */
+@media (max-width: 560px){
+  .moduleGrid{
+    grid-template-columns: 1fr;
+    justify-items: center;
+    column-gap: 0;
+  }
+
+  .moduleBubbleCard{
+    width: min(92vw, 360px);
+    margin-inline: auto;
+  }
 }
 
 /* La sphère */
@@ -1875,8 +1891,8 @@ font-size: 12px;
   position: absolute;
   left: 50%;
   top: 50%;
-  width: min(330px, 100%);
-  height: min(330px, 100%);
+  width: min(88vw, 330px);
+  height: min(88vw, 330px);
   transform: translate(-50%, -50%);
   border-radius: 9999px;
   overflow: hidden;
