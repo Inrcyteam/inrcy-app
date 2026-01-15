@@ -2071,38 +2071,58 @@ font-size: 12px;
   padding: 11px 14px !important;
 }
 
-/* ✅ Téléphone + viewport large (= mobile en “Version ordinateur”) */
+/* ✅ Mobile "Version ordinateur" : 4 lignes fixes, plus de chevauchement */
 @media (min-width: 560px){
   :global(html.isTouch) .bubbleStack{
     height: 100% !important;
-    padding: 10px 18px 16px !important;
+    padding: 16px 18px 14px !important;
 
     display: grid !important;
-
-    /* 4 éléments en haut + espace flexible + boutons en bas */
-    grid-template-rows: auto auto auto auto 1fr !important;
-
+    grid-template-rows: auto auto auto auto !important; /* 4 lignes */
     justify-items: center !important;
-    align-content: stretch !important;
+    align-content: start !important;
 
-    gap: 10px !important;
+    gap: 8px !important;
     transform: none !important;
   }
 
-  /* ✅ on force les boutons à rester en bas */
-  :global(html.isTouch) .bubbleActions{
-    grid-row: 5 !important;
-    align-self: end !important;
-    width: 82% !important;
-    gap: 10px !important;
-    margin-top: 0 !important;
+  /* ✅ Ligne 1 : logo + titre (on les serre ensemble) */
+  :global(html.isTouch) .bubbleLogo{
+    margin: 0 !important;
+  }
+  :global(html.isTouch) .bubbleTitle{
+    margin: 0 !important;
   }
 
-  /* ✅ on retire les “micro-translate” qui peuvent faire chevaucher */
+  /* ✅ Ligne 2 : badge "À connecter" */
+  :global(html.isTouch) .bubbleStatusRow{
+    margin: 0 !important;
+  }
+
+  /* ✅ Ligne 3 : tagline */
   :global(html.isTouch) .bubbleTagline{
+    margin: 2px 0 0 !important;
     transform: none !important;
-    margin: 6px 0 0 !important;
     max-width: 220px !important;
-    line-height: 1.3 !important;
+    line-height: 1.25 !important;
+  }
+
+  /* ✅ Ligne 4 : boutons (et surtout : on enlève le margin-top:auto) */
+  :global(html.isTouch) .bubbleActions{
+    margin-top: 6px !important;   /* au lieu de auto */
+    width: 82% !important;
+    display: grid !important;
+    gap: 10px !important;
+    justify-items: center !important;
+    transform: none !important;
+  }
+
+  /* ✅ mêmes tailles pour les 2 boutons */
+  :global(html.isTouch) .bubbleActions .actionBtn,
+  :global(html.isTouch) .bubbleActions .actionMain{
+    width: 100% !important;
+    max-width: 240px !important;
+    min-width: 0 !important;
+    padding: 11px 14px !important;
   }
 }
