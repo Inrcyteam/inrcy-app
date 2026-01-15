@@ -1994,8 +1994,10 @@ font-size: 12px;
 }
 
 @media (max-width: 560px){
-  .moduleBubbleCard::before{
-    transform: translate(-53%, -50%);
+  .page{
+    padding-left: clamp(8px, 3vw, 14px);
+    padding-right: clamp(8px, 3vw, 14px);
   }
 }
+
 
