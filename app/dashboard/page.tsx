@@ -635,6 +635,8 @@ useEffect(() => {
 
   <div className={styles.loopGrid}>
     <div className={`${styles.loopNode} ${styles.loopTop} ${styles.loop_cyan}`}>
+<span className={`${styles.loopBadge} ${styles.badgeCyan}`}></span>
+
       <div className={styles.loopTopRow}>
         <div className={styles.loopTitle}>STATS</div>
       </div>
@@ -647,6 +649,8 @@ useEffect(() => {
     </div>
 
     <div className={`${styles.loopNode} ${styles.loopRight} ${styles.loop_purple}`}>
+<span className={`${styles.loopBadge} ${styles.badgePurple}`}></span>
+
      <div className={styles.loopTopRow}>
   <div className={styles.loopTitle}>MAILS</div>
 </div>
@@ -667,6 +671,8 @@ useEffect(() => {
     </div>
 
     <div className={`${styles.loopNode} ${styles.loopBottom} ${styles.loop_orange}`}>
+<span className={`${styles.loopBadge} ${styles.badgeOrange}`}></span>
+
       <div className={styles.loopTopRow}>
   <div className={styles.loopTitle}>AGENDA</div>
 </div>
@@ -687,6 +693,8 @@ useEffect(() => {
     </div>
 
     <div className={`${styles.loopNode} ${styles.loopLeft} ${styles.loop_pink}`}>
+<span className={`${styles.loopBadge} ${styles.badgePink}`}></span>
+
       <div className={styles.loopTopRow}>
         <div className={styles.loopTitle}>CRM</div>
       </div>
