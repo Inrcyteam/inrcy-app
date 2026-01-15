@@ -2091,16 +2091,17 @@ font-size: 12px;
   }
 
   :global(html.isTouch) .bubbleTagline{
-    margin: 4px 0 0 !important;
-    transform: none !important;
-    max-width: 220px !important;
-    line-height: 1.3 !important;
-  }
+  margin: 6px 0 10px !important;  /* espace avant les boutons */
+  transform: none !important;
+  max-width: 220px !important;
+  line-height: 1.3 !important;
+}
 
   :global(html.isTouch) .bubbleActions{
-    margin-top: 0 !important;
-    align-self: end !important;
-    width: 82% !important;
-    gap: 10px !important;
-  }
+  margin-top: 14px !important;   /* crée l’espace */
+  padding-bottom: 8px !important; /* sécurité anti-chevauchement */
+  align-self: end !important;
+  width: 82% !important;
+  gap: 10px !important;
+}
 }
