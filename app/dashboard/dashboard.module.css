@@ -496,7 +496,7 @@ display: flex;
   margin-top: auto;   /* 👈 pousse le bloc en bas */
   display: flex;
   flex-wrap: wrap;   /* 👈 autorise le retour à la ligne */
-  gap: 10px;
+  gap: 10px 12px;
   align-items: center;
 }
 
