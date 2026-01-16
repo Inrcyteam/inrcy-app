@@ -1705,7 +1705,8 @@ font-size: 12px;
 }
 
 .bubbleActions{
-  align-self: end;   /* colle Configurer en bas */
+  align-self: center;      /* ✅ recentre horizontalement */
+  justify-self: center;    /* ✅ si parent = grid */
   margin-bottom: 6px;
 }
 
@@ -2960,3 +2961,21 @@ transform: scale(1.50);
   box-sizing: border-box;
 }
 }
+
+@media (min-width: 560px){
+  :global(html.isTouch) .pills{
+    row-gap: 10px;
+  }
+
+  :global(html.isTouch) .pills > :first-child{
+    margin-bottom: 6px;
+  }
+}
+
+:global(html.isTouch) .bubbleActions .actionBtn,
+:global(html.isTouch) .bubbleActions .actionMain{
+  max-width: 210px !important;   /* ✅ plus étroit */
+  width: 100% !important;
+  box-sizing: border-box;
+}
+
