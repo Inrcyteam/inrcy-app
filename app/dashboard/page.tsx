@@ -270,7 +270,7 @@ useEffect(() => {
         <div className={styles.brand}>
           <img className={styles.logoImg} src="/logo-inrcy.png" alt="iNrCy" />
           <div className={styles.brandText}>
-            <div className={styles.brandTag}>Générateur de contacts — Hub connecté</div>
+            <div className={styles.brandTag}>Générateur de contacts</div>
           </div>
         </div>
 
@@ -402,8 +402,7 @@ useEffect(() => {
 
           <div className={styles.pills}>
             <span className={styles.pill}>
-              <span className={styles.pillDot} aria-hidden />
-              Flux de contacts • Tableau de bord • Boîte de vitesse
+             Canaux • Tableau de bord • Boîte de vitesse
             </span>
             <span className={styles.pillMuted}>Centralisé • Rentable • Automatisé</span>
           </div>
@@ -474,8 +473,8 @@ useEffect(() => {
 
       <section className={styles.contentFull}>
         <div className={styles.sectionHead}>
-          <h2 className={styles.h2}>Flux de contacts</h2>
-          <p className={styles.h2Sub}>Votre autoroute de demandes entrantes</p>
+          <h2 className={styles.h2}>Canaux</h2>
+          <p className={styles.h2Sub}>Votre autoroute de contacts entrants</p>
         </div>
 
         {/* ✅ 6 bulles homogènes (uniquement cette section modifiée) */}
@@ -776,3 +775,5 @@ useEffect(() => {
     </main>
   );
 }
+
+
