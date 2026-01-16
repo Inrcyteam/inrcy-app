@@ -2962,16 +2962,6 @@ transform: scale(1.50);
 }
 }
 
-@media (min-width: 560px){
-  :global(html.isTouch) .pills{
-    row-gap: 10px;
-  }
-
-  :global(html.isTouch) .pills > :first-child{
-    margin-bottom: 6px;
-  }
-}
-
 :global(html.isTouch) .bubbleActions .actionBtn,
 :global(html.isTouch) .bubbleActions .actionMain{
   max-width: 210px !important;   /* ✅ plus étroit */
@@ -2979,3 +2969,9 @@ transform: scale(1.50);
   box-sizing: border-box;
 }
 
+/* ✅ Mobile + "Version ordinateur" : espace entre le flux (Contacts → Devis → CA) et les pills */
+@media (min-width: 560px){
+  :global(html.isTouch) .pills{
+    margin-top: 16px !important;
+  }
+}
