@@ -1,9 +1,13 @@
 "use client";
 
 import styles from "./dashboard.module.css";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import SettingsDrawer from "./SettingsDrawer";
+import ProfilContent from "./settings/_components/ProfilContent";
+import AbonnementContent from "./settings/_components/AbonnementContent";
+import ContactContent from "./settings/_components/ContactContent";
 
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
@@ -138,6 +142,22 @@ const quickActions: Array<{ key: string; title: string; sub: string; disabled?: 
 
 export default function DashboardPage() {
   const router = useRouter();
+
+const searchParams = useSearchParams();
+const panel = searchParams.get("panel"); // "contact" | "profil" | "abonnement" | null
+
+const openPanel = (name: "contact" | "profil" | "abonnement") => {
+  const params = new URLSearchParams(searchParams.toString());
+  params.set("panel", name);
+  router.push(`/dashboard?${params.toString()}`);
+};
+
+const closePanel = () => {
+  const params = new URLSearchParams(searchParams.toString());
+  params.delete("panel");
+  const qs = params.toString();
+  router.push(qs ? `/dashboard?${qs}` : "/dashboard");
+};
 
   // ✅ Déconnexion Supabase + retour /login
   const handleLogout = async () => {
@@ -276,9 +296,14 @@ useEffect(() => {
 
         {/* Desktop actions */}
         <div className={styles.topbarActions}>
-          <button className={styles.ghostBtn} type="button">
-            Centre d’aide
-          </button>
+          <button
+  type="button"
+  className={styles.ghostBtn}
+  onClick={() => openPanel("contact")}
+>
+  Nous contacter
+</button>
+
 
           {/* ✅ Menu utilisateur (remplace OUT) */}
           <div className={styles.userMenuWrap} ref={userMenuRef}>
@@ -297,23 +322,30 @@ useEffect(() => {
 
             {userMenuOpen && (
               <div className={styles.userMenuPanel} role="menu" aria-label="Menu utilisateur">
-                <Link
-                  className={styles.userMenuItem}
-                  href="/dashboard/profil"
-                  role="menuitem"
-                  onClick={() => setUserMenuOpen(false)}
-                >
-                  Mon profil
-                </Link>
+               <button
+  type="button"
+  className={styles.userMenuItem}
+  role="menuitem"
+  onClick={() => {
+    setUserMenuOpen(false);
+    openPanel("profil");
+  }}
+>
+  Mon profil
+</button>
 
-                <Link
-                  className={styles.userMenuItem}
-                  href="/dashboard/abonnement"
-                  role="menuitem"
-                  onClick={() => setUserMenuOpen(false)}
-                >
-                  Mon abonnement
-                </Link>
+
+                <button
+  type="button"
+  className={styles.userMenuItem}
+  role="menuitem"
+  onClick={() => {
+    setUserMenuOpen(false);
+    openPanel("abonnement");
+  }}
+>
+  Mon abonnement
+</button>
 
                 <div className={styles.userMenuDivider} />
 
@@ -345,35 +377,60 @@ useEffect(() => {
             <span className={styles.hamburgerIcon} aria-hidden />
           </button>
 
-          {menuOpen && (
-            <div className={styles.mobileMenuPanel} role="menu" aria-label="Menu">
-              <button className={styles.mobileMenuItem} type="button" role="menuitem" onClick={() => setMenuOpen(false)}>
-                Centre d’aide
-              </button>
+       {menuOpen && (
+  <div className={styles.mobileMenuPanel} role="menu" aria-label="Menu">
+    <button
+      className={styles.mobileMenuItem}
+      type="button"
+      role="menuitem"
+      onClick={() => {
+        setMenuOpen(false);
+        openPanel("contact");
+      }}
+    >
+      Nous contacter
+    </button>
 
-              <Link className={styles.mobileMenuItem} href="/dashboard/profil" role="menuitem" onClick={() => setMenuOpen(false)}>
-                Mon profil
-              </Link>
+    <button
+      className={styles.mobileMenuItem}
+      type="button"
+      role="menuitem"
+      onClick={() => {
+        setMenuOpen(false);
+        openPanel("profil");
+      }}
+    >
+      Mon profil
+    </button>
 
-              <Link className={styles.mobileMenuItem} href="/dashboard/abonnement" role="menuitem" onClick={() => setMenuOpen(false)}>
-                Mon abonnement
-              </Link>
+    <button
+      className={styles.mobileMenuItem}
+      type="button"
+      role="menuitem"
+      onClick={() => {
+        setMenuOpen(false);
+        openPanel("abonnement");
+      }}
+    >
+      Mon abonnement
+    </button>
 
-              <div className={styles.mobileMenuDivider} />
+    <div className={styles.mobileMenuDivider} />
 
-              <button
-                className={`${styles.mobileMenuItem} ${styles.mobileMenuDanger}`}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  handleLogout();
-                }}
-              >
-                Déconnexion
-              </button>
-            </div>
-          )}
+    <button
+      className={`${styles.mobileMenuItem} ${styles.mobileMenuDanger}`}
+      type="button"
+      role="menuitem"
+      onClick={() => {
+        setMenuOpen(false);
+        handleLogout();
+      }}
+    >
+      Déconnexion
+    </button>
+  </div>
+)}
+
         </div>
       </header>
 
@@ -768,6 +825,26 @@ useEffect(() => {
           </div>
         </div>
       </section>
+
+<SettingsDrawer
+  title={
+    panel === "contact"
+      ? "Nous contacter"
+      : panel === "profil"
+      ? "Mon profil"
+      : panel === "abonnement"
+      ? "Mon abonnement"
+      : ""
+  }
+  isOpen={panel === "contact" || panel === "profil" || panel === "abonnement"}
+  onClose={closePanel}
+>
+  {panel === "contact" && <ContactContent mode="drawer" />}
+
+  {panel === "profil" && <ProfilContent mode="drawer" />}
+
+  {panel === "abonnement" && <AbonnementContent mode="drawer" />}
+</SettingsDrawer>
 
       <footer className={styles.footer}>
         <div className={styles.footerLeft}>© {new Date().getFullYear()} iNrCy</div>
