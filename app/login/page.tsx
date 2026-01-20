@@ -32,31 +32,39 @@ export default function LoginPage() {
   const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
 
-  useEffect(() => {
-  if (typeof window === "undefined") return;
+ useEffect(() => {
+  (async () => {
+    if (typeof window === "undefined") return;
 
-  const hash = window.location.hash;
-  if (!hash || !hash.includes("access_token=")) return;
+    const hash = window.location.hash;
+    if (!hash || !hash.includes("access_token=")) return;
 
-  const params = new URLSearchParams(hash.slice(1)); // enlève "#"
-  const type = params.get("type"); // "invite" | "recovery" | etc.
+    const params = new URLSearchParams(hash.slice(1));
+    const access_token = params.get("access_token");
+    const refresh_token = params.get("refresh_token");
+    const type = params.get("type"); // "invite" | "recovery" | etc.
 
-  // Nettoie l’URL (on enlève le hash mais on garde le pathname actuel)
-  window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    if (!access_token || !refresh_token) return;
 
-  if (type === "invite") {
-    router.replace("/set-password?mode=invite");
-    return;
-  }
+    // 1) Pose la session localement
+    await supabase.auth.setSession({ access_token, refresh_token });
 
-  if (type === "recovery") {
-    router.replace("/set-password?mode=reset");
-    return;
-  }
+    // 2) Nettoie l’URL (enlève le hash)
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
 
-  // fallback: si on a un token mais pas de type, on considère "invite" (ou tu peux mettre login normal)
-  router.replace("/set-password?mode=invite");
-}, [router]);
+    // 3) Redirige vers la bonne page
+    if (type === "invite") {
+      router.replace("/set-password?mode=invite");
+    } else if (type === "recovery") {
+      router.replace("/set-password?mode=reset");
+    } else {
+      router.replace("/dashboard");
+    }
+
+    router.refresh();
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
