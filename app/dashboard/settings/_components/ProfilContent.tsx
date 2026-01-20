@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-
+import { createClient } from "@/lib/supabaseClient";
 
 type Props = {
   mode?: "page" | "drawer";
@@ -99,14 +99,64 @@ const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [globalError, setGlobalError] = useState<string>("");
 
-  // Charger depuis localStorage (preview dev)
   useEffect(() => {
-    const stored = safeJsonParse<Partial<ProfilForm>>(localStorage.getItem(STORAGE_KEY));
-    if (stored) {
-      setForm((prev) => ({ ...prev, ...stored }));
+  const load = async () => {
+    try {
+      const supabase = createClient();
+
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr) throw new Error(authErr.message);
+      const user = authData?.user;
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+      if (!data) return;
+
+      setForm((prev) => ({
+        ...prev,
+        contactEmail: data.contact_email ?? prev.contactEmail,
+        firstName: data.first_name ?? "",
+        lastName: data.last_name ?? "",
+        phone: data.phone ?? "",
+
+        logoPreview: data.logo_url ?? "",
+        logoFile: null,
+
+        companyLegalName: data.company_legal_name ?? "",
+        legalForm: (data.legal_form ?? "EI") as ProfilForm["legalForm"],
+        legalFormOther: data.legal_form_other ?? "",
+
+        hqAddress: data.hq_address ?? "",
+        hqZip: data.hq_zip ?? "",
+        hqCity: data.hq_city ?? "",
+        hqCountry: data.hq_country ?? "France",
+
+        siren: data.siren ?? "",
+        rcsCity: data.rcs_city ?? "",
+
+        capitalSocial: data.capital_social ?? "",
+        capitalDispenseEI: !!data.capital_dispense_ei,
+
+        vatNumber: data.vat_number ?? "",
+        vatDispense: !!data.vat_dispense,
+
+        avgBasket: data.avg_basket ?? 250,
+        leadConversionRate: data.lead_conversion_rate ?? 20,
+      }));
+    } catch (e) {
+      console.error(e);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  };
+
+  load();
+}, []);
+
 
   // Auto règles EI / TVA
   useEffect(() => {
@@ -211,19 +261,106 @@ const validate = () => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = () => {
-    setGlobalError("");
-    const ok = validate();
-    if (!ok) {
-      setSaved(false);
-      setGlobalError("Merci de compléter tous les champs obligatoires avant d’enregistrer.");
-      return;
+  async function uploadLogoIfNeeded(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  file: File
+) {
+  const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+  const path = `${userId}/logo.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("logos")
+    .upload(path, file, { upsert: true });
+
+  if (uploadError) throw new Error(uploadError.message);
+
+  // Bucket privé => URL signée (7 jours)
+  const { data, error: signError } = await supabase.storage
+    .from("logos")
+    .createSignedUrl(path, 60 * 60 * 24 * 7);
+
+  if (signError || !data?.signedUrl) {
+    throw new Error(signError?.message || "Erreur création URL signée");
+  }
+
+  return { path, signedUrl: data.signedUrl };
+}
+
+const handleSave = async () => {
+  setGlobalError("");
+  const ok = validate();
+  if (!ok) {
+    setSaved(false);
+    setGlobalError("Merci de compléter tous les champs obligatoires avant d’enregistrer.");
+    return;
+  }
+
+  try {
+    const supabase = createClient();
+
+    const { data: authData, error: authErr } = await supabase.auth.getUser();
+    if (authErr) throw new Error(authErr.message);
+    const user = authData?.user;
+    if (!user) throw new Error("Utilisateur non connecté.");
+
+    // 1) Upload du logo si un fichier est sélectionné
+    let logoUrl = form.logoPreview || "";
+
+    if (form.logoFile) {
+      const { signedUrl } = await uploadLogoIfNeeded(supabase, user.id, form.logoFile);
+      logoUrl = signedUrl;
+
+      // on remplace l'aperçu local par l'URL signée
+      onChange("logoPreview", logoUrl);
+      onChange("logoFile", null);
     }
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
+    // 2) Upsert dans la table profiles
+    const payload = {
+      user_id: user.id,
+
+      contact_email: form.contactEmail.trim(),
+      first_name: form.firstName.trim(),
+      last_name: form.lastName.trim(),
+      phone: form.phone.trim(),
+
+      company_legal_name: form.companyLegalName.trim(),
+      legal_form: form.legalForm,
+      legal_form_other: form.legalForm === "AUTRE" ? form.legalFormOther.trim() : "",
+
+      hq_address: form.hqAddress.trim(),
+      hq_zip: form.hqZip.trim(),
+      hq_city: form.hqCity.trim(),
+      hq_country: form.hqCountry.trim(),
+
+      siren: form.siren.trim(),
+      rcs_city: form.rcsCity.trim(),
+
+      capital_dispense_ei: form.capitalDispenseEI,
+      capital_social: form.capitalDispenseEI ? "" : form.capitalSocial.trim(),
+
+      vat_dispense: form.vatDispense,
+      vat_number: form.vatDispense ? "" : form.vatNumber.trim(),
+
+      avg_basket: form.avgBasket,
+      lead_conversion_rate: form.leadConversionRate,
+
+      logo_url: logoUrl,
+    };
+
+    const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
+    if (error) throw new Error(error.message);
+
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
-  };
+  } catch (err: any) {
+    console.error(err);
+    setSaved(false);
+    setGlobalError(err?.message || "Erreur inconnue.");
+  }
+};
+
 
   const handleReset = () => {
     const ok = window.confirm(
@@ -231,7 +368,7 @@ const validate = () => {
     );
     if (!ok) return;
 
-    localStorage.removeItem(STORAGE_KEY);
+    // reset juste en UI pour l’instant (on fera un delete en DB plus tard si tu veux)
     setErrors({});
     setGlobalError("");
     setForm(initial);
