@@ -843,7 +843,8 @@ useEffect(() => {
 
   {panel === "profil" && <ProfilContent mode="drawer" />}
 
-  {panel === "abonnement" && <AbonnementContent mode="drawer" />}
+  {panel === "abonnement" && <AbonnementContent mode="drawer" onOpenContact={() => openPanel("contact")} />}
+
 </SettingsDrawer>
 
       <footer className={styles.footer}>

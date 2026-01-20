@@ -58,7 +58,7 @@ const STORAGE_KEY = "inrcy_profile_preview_v1";
 export default function ProfilContent({ mode = "page" }: Props) {
   const defaultEmail = "pro@exemple.com"; // placeholder tant que Supabase n'est pas branché
 
-const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const initial: ProfilForm = useMemo(
     () => ({
@@ -100,63 +100,62 @@ const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [globalError, setGlobalError] = useState<string>("");
 
   useEffect(() => {
-  const load = async () => {
-    try {
-      const supabase = createClient();
+    const load = async () => {
+      try {
+        const supabase = createClient();
 
-      const { data: authData, error: authErr } = await supabase.auth.getUser();
-      if (authErr) throw new Error(authErr.message);
-      const user = authData?.user;
-      if (!user) return;
+        const { data: authData, error: authErr } = await supabase.auth.getUser();
+        if (authErr) throw new Error(authErr.message);
+        const user = authData?.user;
+        if (!user) return;
 
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle();
 
-      if (error) throw new Error(error.message);
-      if (!data) return;
+        if (error) throw new Error(error.message);
+        if (!data) return;
 
-      setForm((prev) => ({
-        ...prev,
-        contactEmail: data.contact_email ?? prev.contactEmail,
-        firstName: data.first_name ?? "",
-        lastName: data.last_name ?? "",
-        phone: data.phone ?? "",
+        setForm((prev) => ({
+          ...prev,
+          contactEmail: data.contact_email ?? prev.contactEmail,
+          firstName: data.first_name ?? "",
+          lastName: data.last_name ?? "",
+          phone: data.phone ?? "",
 
-        logoPreview: data.logo_url ?? "",
-        logoFile: null,
+          logoPreview: data.logo_url ?? "",
+          logoFile: null,
 
-        companyLegalName: data.company_legal_name ?? "",
-        legalForm: (data.legal_form ?? "EI") as ProfilForm["legalForm"],
-        legalFormOther: data.legal_form_other ?? "",
+          companyLegalName: data.company_legal_name ?? "",
+          legalForm: (data.legal_form ?? "EI") as ProfilForm["legalForm"],
+          legalFormOther: data.legal_form_other ?? "",
 
-        hqAddress: data.hq_address ?? "",
-        hqZip: data.hq_zip ?? "",
-        hqCity: data.hq_city ?? "",
-        hqCountry: data.hq_country ?? "France",
+          hqAddress: data.hq_address ?? "",
+          hqZip: data.hq_zip ?? "",
+          hqCity: data.hq_city ?? "",
+          hqCountry: data.hq_country ?? "France",
 
-        siren: data.siren ?? "",
-        rcsCity: data.rcs_city ?? "",
+          siren: data.siren ?? "",
+          rcsCity: data.rcs_city ?? "",
 
-        capitalSocial: data.capital_social ?? "",
-        capitalDispenseEI: !!data.capital_dispense_ei,
+          capitalSocial: data.capital_social ?? "",
+          capitalDispenseEI: !!data.capital_dispense_ei,
 
-        vatNumber: data.vat_number ?? "",
-        vatDispense: !!data.vat_dispense,
+          vatNumber: data.vat_number ?? "",
+          vatDispense: !!data.vat_dispense,
 
-        avgBasket: data.avg_basket ?? 250,
-        leadConversionRate: data.lead_conversion_rate ?? 20,
-      }));
-    } catch (e) {
-      console.error(e);
-    }
-  };
+          avgBasket: data.avg_basket ?? 250,
+          leadConversionRate: data.lead_conversion_rate ?? 20,
+        }));
+      } catch (e) {
+        console.error(e);
+      }
+    };
 
-  load();
-}, []);
-
+    load();
+  }, []);
 
   // Auto règles EI / TVA
   useEffect(() => {
@@ -172,79 +171,75 @@ const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isEI = form.legalForm === "EI";
   const showOtherLegalForm = form.legalForm === "AUTRE";
 
-const validate = () => {
-  const e: Record<string, string> = {};
+  const validate = () => {
+    const e: Record<string, string> = {};
 
-  const requiredStr = (key: keyof ProfilForm, label: string) => {
-    const v = form[key];
-    if (typeof v === "string" && v.trim() === "") {
-      e[String(key)] = `${label} est obligatoire.`;
+    const requiredStr = (key: keyof ProfilForm, label: string) => {
+      const v = form[key];
+      if (typeof v === "string" && v.trim() === "") {
+        e[String(key)] = `${label} est obligatoire.`;
+      }
+    };
+
+    // =====================
+    // Carte 1 — Compte
+    // =====================
+    requiredStr("firstName", "Prénom");
+    requiredStr("lastName", "Nom");
+    requiredStr("phone", "Téléphone");
+    requiredStr("contactEmail", "Email");
+
+    // Format email
+    if (!e.contactEmail && !/^\S+@\S+\.\S+$/.test(form.contactEmail.trim())) {
+      e.contactEmail = "Email invalide.";
     }
+
+    // =====================
+    // Carte 2 — Légal
+    // =====================
+    requiredStr("companyLegalName", "Raison sociale");
+    requiredStr("hqAddress", "Adresse du siège social");
+    requiredStr("hqZip", "Code postal");
+    requiredStr("hqCity", "Ville");
+    requiredStr("hqCountry", "Pays");
+    requiredStr("siren", "SIREN");
+    requiredStr("rcsCity", "RCS (ville)");
+
+    if (form.legalForm === "AUTRE" && form.legalFormOther.trim() === "") {
+      e.legalFormOther = "Merci de préciser la forme juridique.";
+    }
+
+    // Capital social
+    if (!form.capitalDispenseEI && form.capitalSocial.trim() === "") {
+      e.capitalSocial = "Capital social requis (ou coche Dispensé).";
+    }
+
+    // TVA
+    if (!form.vatDispense && form.vatNumber.trim() === "") {
+      e.vatNumber = "TVA intracommunautaire requise (ou coche Dispensé TVA).";
+    }
+
+    // =====================
+    // Carte 3 — Business
+    // =====================
+    if (!form.avgBasket || form.avgBasket <= 0) {
+      e.avgBasket = "Panier moyen > 0 requis.";
+    }
+
+    if (!form.leadConversionRate || form.leadConversionRate <= 0) {
+      e.leadConversionRate = "Taux de conversion > 0 requis.";
+    }
+
+    if (form.leadConversionRate > 100) {
+      e.leadConversionRate = "Taux de conversion ≤ 100 requis.";
+    }
+
+    // =====================
+    // Final
+    // =====================
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
-
-  // =====================
-  // Carte 1 — Compte
-  // =====================
-  requiredStr("firstName", "Prénom");
-  requiredStr("lastName", "Nom");
-  requiredStr("phone", "Téléphone");
-  requiredStr("contactEmail", "Email");
-
-  // Format email
-  if (
-    !e.contactEmail &&
-    !/^\S+@\S+\.\S+$/.test(form.contactEmail.trim())
-  ) {
-    e.contactEmail = "Email invalide.";
-  }
-
-  // =====================
-  // Carte 2 — Légal
-  // =====================
-  requiredStr("companyLegalName", "Raison sociale");
-  requiredStr("hqAddress", "Adresse du siège social");
-  requiredStr("hqZip", "Code postal");
-  requiredStr("hqCity", "Ville");
-  requiredStr("hqCountry", "Pays");
-  requiredStr("siren", "SIREN");
-  requiredStr("rcsCity", "RCS (ville)");
-
-  if (form.legalForm === "AUTRE" && form.legalFormOther.trim() === "") {
-    e.legalFormOther = "Merci de préciser la forme juridique.";
-  }
-
-  // Capital social
-  if (!form.capitalDispenseEI && form.capitalSocial.trim() === "") {
-    e.capitalSocial = "Capital social requis (ou coche Dispensé).";
-  }
-
-  // TVA
-  if (!form.vatDispense && form.vatNumber.trim() === "") {
-    e.vatNumber = "TVA intracommunautaire requise (ou coche Dispensé TVA).";
-  }
-
-  // =====================
-  // Carte 3 — Business
-  // =====================
-  if (!form.avgBasket || form.avgBasket <= 0) {
-    e.avgBasket = "Panier moyen > 0 requis.";
-  }
-
-  if (!form.leadConversionRate || form.leadConversionRate <= 0) {
-    e.leadConversionRate = "Taux de conversion > 0 requis.";
-  }
-
-  if (form.leadConversionRate > 100) {
-    e.leadConversionRate = "Taux de conversion ≤ 100 requis.";
-  }
-
-  // =====================
-  // Final
-  // =====================
-  setErrors(e);
-  return Object.keys(e).length === 0;
-};
-
 
   const onChange = <K extends keyof ProfilForm>(key: K, value: ProfilForm[K]) => {
     setSaved(false);
@@ -261,106 +256,96 @@ const validate = () => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  async function uploadLogoIfNeeded(
-  supabase: ReturnType<typeof createClient>,
-  userId: string,
-  file: File
-) {
-  const ext = file.name.split(".").pop()?.toLowerCase() || "png";
-  const path = `${userId}/logo.${ext}`;
+  async function uploadLogoIfNeeded(supabase: ReturnType<typeof createClient>, userId: string, file: File) {
+    const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+    const path = `${userId}/logo.${ext}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from("logos")
-    .upload(path, file, { upsert: true });
+    const { error: uploadError } = await supabase.storage.from("logos").upload(path, file, { upsert: true });
+    if (uploadError) throw new Error(uploadError.message);
 
-  if (uploadError) throw new Error(uploadError.message);
+    // Bucket privé => URL signée (7 jours)
+    const { data, error: signError } = await supabase.storage.from("logos").createSignedUrl(path, 60 * 60 * 24 * 7);
 
-  // Bucket privé => URL signée (7 jours)
-  const { data, error: signError } = await supabase.storage
-    .from("logos")
-    .createSignedUrl(path, 60 * 60 * 24 * 7);
-
-  if (signError || !data?.signedUrl) {
-    throw new Error(signError?.message || "Erreur création URL signée");
-  }
-
-  return { path, signedUrl: data.signedUrl };
-}
-
-const handleSave = async () => {
-  setGlobalError("");
-  const ok = validate();
-  if (!ok) {
-    setSaved(false);
-    setGlobalError("Merci de compléter tous les champs obligatoires avant d’enregistrer.");
-    return;
-  }
-
-  try {
-    const supabase = createClient();
-
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr) throw new Error(authErr.message);
-    const user = authData?.user;
-    if (!user) throw new Error("Utilisateur non connecté.");
-
-    // 1) Upload du logo si un fichier est sélectionné
-    let logoUrl = form.logoPreview || "";
-
-    if (form.logoFile) {
-      const { signedUrl } = await uploadLogoIfNeeded(supabase, user.id, form.logoFile);
-      logoUrl = signedUrl;
-
-      // on remplace l'aperçu local par l'URL signée
-      onChange("logoPreview", logoUrl);
-      onChange("logoFile", null);
+    if (signError || !data?.signedUrl) {
+      throw new Error(signError?.message || "Erreur création URL signée");
     }
 
-    // 2) Upsert dans la table profiles
-    const payload = {
-      user_id: user.id,
-
-      contact_email: form.contactEmail.trim(),
-      first_name: form.firstName.trim(),
-      last_name: form.lastName.trim(),
-      phone: form.phone.trim(),
-
-      company_legal_name: form.companyLegalName.trim(),
-      legal_form: form.legalForm,
-      legal_form_other: form.legalForm === "AUTRE" ? form.legalFormOther.trim() : "",
-
-      hq_address: form.hqAddress.trim(),
-      hq_zip: form.hqZip.trim(),
-      hq_city: form.hqCity.trim(),
-      hq_country: form.hqCountry.trim(),
-
-      siren: form.siren.trim(),
-      rcs_city: form.rcsCity.trim(),
-
-      capital_dispense_ei: form.capitalDispenseEI,
-      capital_social: form.capitalDispenseEI ? "" : form.capitalSocial.trim(),
-
-      vat_dispense: form.vatDispense,
-      vat_number: form.vatDispense ? "" : form.vatNumber.trim(),
-
-      avg_basket: form.avgBasket,
-      lead_conversion_rate: form.leadConversionRate,
-
-      logo_url: logoUrl,
-    };
-
-    const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
-    if (error) throw new Error(error.message);
-
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  } catch (err: any) {
-    console.error(err);
-    setSaved(false);
-    setGlobalError(err?.message || "Erreur inconnue.");
+    return { path, signedUrl: data.signedUrl };
   }
-};
 
+  const handleSave = async () => {
+    setGlobalError("");
+    const ok = validate();
+    if (!ok) {
+      setSaved(false);
+      setGlobalError("Merci de compléter tous les champs obligatoires avant d’enregistrer.");
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr) throw new Error(authErr.message);
+      const user = authData?.user;
+      if (!user) throw new Error("Utilisateur non connecté.");
+
+      // 1) Upload du logo si un fichier est sélectionné
+      let logoUrl = form.logoPreview || "";
+
+      if (form.logoFile) {
+        const { signedUrl } = await uploadLogoIfNeeded(supabase, user.id, form.logoFile);
+        logoUrl = signedUrl;
+
+        // on remplace l'aperçu local par l'URL signée
+        onChange("logoPreview", logoUrl);
+        onChange("logoFile", null);
+      }
+
+      // 2) Upsert dans la table profiles
+      const payload = {
+        user_id: user.id,
+
+        contact_email: form.contactEmail.trim(),
+        first_name: form.firstName.trim(),
+        last_name: form.lastName.trim(),
+        phone: form.phone.trim(),
+
+        company_legal_name: form.companyLegalName.trim(),
+        legal_form: form.legalForm,
+        legal_form_other: form.legalForm === "AUTRE" ? form.legalFormOther.trim() : "",
+
+        hq_address: form.hqAddress.trim(),
+        hq_zip: form.hqZip.trim(),
+        hq_city: form.hqCity.trim(),
+        hq_country: form.hqCountry.trim(),
+
+        siren: form.siren.trim(),
+        rcs_city: form.rcsCity.trim(),
+
+        capital_dispense_ei: form.capitalDispenseEI,
+        capital_social: form.capitalDispenseEI ? "" : form.capitalSocial.trim(),
+
+        vat_dispense: form.vatDispense,
+        vat_number: form.vatDispense ? "" : form.vatNumber.trim(),
+
+        avg_basket: form.avgBasket,
+        lead_conversion_rate: form.leadConversionRate,
+
+        logo_url: logoUrl,
+      };
+
+      const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
+      if (error) throw new Error(error.message);
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err: any) {
+      console.error(err);
+      setSaved(false);
+      setGlobalError(err?.message || "Erreur inconnue.");
+    }
+  };
 
   const handleReset = () => {
     const ok = window.confirm(
@@ -380,25 +365,33 @@ const handleSave = async () => {
     border: errors[String(key)] ? "1px solid rgba(255,120,120,0.85)" : inputStyle.border,
   });
 
+  // ✅ petites touches iNrCy (discrètes)
+  const titleAccent: React.CSSProperties = {
+    margin: 0,
+    fontSize: 16,
+    paddingLeft: 10,
+    borderLeft: "3px solid transparent",
+    borderImage: "linear-gradient(180deg, rgba(255,77,166,0.95), rgba(97,87,255,0.85), rgba(0,200,255,0.75)) 1",
+  };
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
       {/* CARTE 1 — Compte */}
       <div style={cardStyle}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Compte</h2>
-        
+        <h2 style={titleAccent}>Compte</h2>
 
         <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
           <label style={labelStyle}>
-  <span style={labelTextStyle}>Email professionnel *</span>
-  <input
-    type="email"
-    value={form.contactEmail}
-    onChange={(e) => onChange("contactEmail", e.target.value)}
-    placeholder="Ex : contact@entreprise.fr"
-    style={fieldStyle("contactEmail")}
-  />
-  {errors.contactEmail ? <div style={errorTextStyle}>{errors.contactEmail}</div> : null}
-</label>
+            <span style={labelTextStyle}>Email professionnel *</span>
+            <input
+              type="email"
+              value={form.contactEmail}
+              onChange={(e) => onChange("contactEmail", e.target.value)}
+              placeholder="Ex : contact@entreprise.fr"
+              style={fieldStyle("contactEmail")}
+            />
+            {errors.contactEmail ? <div style={errorTextStyle}>{errors.contactEmail}</div> : null}
+          </label>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <label style={labelStyle}>
@@ -437,147 +430,142 @@ const handleSave = async () => {
         </div>
       </div>
 
-<label style={{ ...labelStyle, marginTop: 6 }}>
-  <span style={labelTextStyle}>Logo de l’entreprise</span>
+      <label style={{ ...labelStyle, marginTop: 6 }}>
+        <span style={labelTextStyle}>Logo de l’entreprise</span>
 
-  <div
-    style={{
-      display: "flex",
-      gap: 12,
-      alignItems: "center",
-      marginTop: 6,
-      minWidth: 0,
-    }}
-  >
-    {/* Input file caché */}
-    <input
-      ref={fileInputRef}
-      type="file"
-      accept="image/png,image/jpeg,image/svg+xml"
-      style={{ display: "none" }}
-      onChange={(e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        if (form.logoPreview) URL.revokeObjectURL(form.logoPreview);
-
-        const url = URL.createObjectURL(file);
-        onChange("logoFile", file);
-        onChange("logoPreview", url);
-      }}
-    />
-
-    {/* Zone cliquable Logo */}
-    <div
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        fileInputRef.current?.click();
-      }}
-      style={{
-        width: 64,
-        height: 64,
-        borderRadius: 8,
-        cursor: "pointer",
-        flex: "0 0 auto",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(255,255,255,0.04)",
-        border: form.logoPreview
-          ? "1px solid rgba(255,255,255,0.12)"
-          : "1px dashed rgba(255,255,255,0.25)",
-      }}
-      title="Cliquer pour choisir un logo"
-    >
-      {form.logoPreview ? (
-        <img
-          src={form.logoPreview}
-          alt="Logo"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            fileInputRef.current?.click();
-          }}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
-            borderRadius: 8,
-          }}
-        />
-      ) : (
-        <span style={{ fontSize: 12, opacity: 0.6 }}>Logo</span>
-      )}
-    </div>
-
-    {/* Infos fichier */}
-    <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-      <span style={{ fontSize: 13, opacity: 0.85 }}>
-        Choisir un fichier :
-      </span>
-
-      {form.logoFile ? (
         <div
           style={{
-            fontSize: 12,
-            opacity: 0.75,
-            maxWidth: "100%",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            marginTop: 6,
+            minWidth: 0,
           }}
-          title={form.logoFile.name}
         >
-          {form.logoFile.name}
+          {/* Input file caché */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/svg+xml"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+
+              if (form.logoPreview) URL.revokeObjectURL(form.logoPreview);
+
+              const url = URL.createObjectURL(file);
+              onChange("logoFile", file);
+              onChange("logoPreview", url);
+            }}
+          />
+
+          {/* Zone cliquable Logo */}
+          <div
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              fileInputRef.current?.click();
+            }}
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: 8,
+              cursor: "pointer",
+              flex: "0 0 auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(255,255,255,0.04)",
+              border: form.logoPreview
+                ? "1px solid rgba(255,255,255,0.12)"
+                : "1px dashed rgba(255,255,255,0.25)",
+            }}
+            title="Cliquer pour choisir un logo"
+          >
+            {form.logoPreview ? (
+              <img
+                src={form.logoPreview}
+                alt="Logo"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  borderRadius: 8,
+                }}
+              />
+            ) : (
+              <span style={{ fontSize: 12, opacity: 0.6 }}>Logo</span>
+            )}
+          </div>
+
+          {/* Infos fichier */}
+          <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
+            <span style={{ fontSize: 13, opacity: 0.85 }}>Choisir un fichier :</span>
+
+            {form.logoFile ? (
+              <div
+                style={{
+                  fontSize: 12,
+                  opacity: 0.75,
+                  maxWidth: "100%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={form.logoFile.name}
+              >
+                {form.logoFile.name}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, opacity: 0.6 }}>Aucun fichier sélectionné</div>
+            )}
+          </div>
         </div>
-      ) : (
-        <div style={{ fontSize: 12, opacity: 0.6 }}>
-          Aucun fichier sélectionné
+
+        {/* Bouton supprimer */}
+        <div style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+
+              if (form.logoPreview) URL.revokeObjectURL(form.logoPreview);
+
+              onChange("logoFile", null);
+              onChange("logoPreview", "");
+
+              if (fileInputRef.current) {
+                fileInputRef.current.value = "";
+              }
+            }}
+            disabled={!form.logoPreview}
+            style={{
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "transparent",
+              color: "white",
+              borderRadius: 12,
+              padding: "8px 10px",
+              cursor: form.logoPreview ? "pointer" : "not-allowed",
+              opacity: form.logoPreview ? 0.95 : 0.5,
+              fontSize: 13,
+            }}
+          >
+            Supprimer le logo
+          </button>
         </div>
-      )}
-    </div>
-  </div>
-
-  {/* Bouton supprimer */}
-  <div style={{ marginTop: 8 }}>
-    <button
-      type="button"
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (form.logoPreview) URL.revokeObjectURL(form.logoPreview);
-
-        onChange("logoFile", null);
-        onChange("logoPreview", "");
-
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
-      }}
-      disabled={!form.logoPreview}
-      style={{
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "transparent",
-        color: "white",
-        borderRadius: 12,
-        padding: "8px 10px",
-        cursor: form.logoPreview ? "pointer" : "not-allowed",
-        opacity: form.logoPreview ? 0.95 : 0.5,
-        fontSize: 13,
-      }}
-    >
-      Supprimer le logo
-    </button>
-  </div>
-</label>
-
+      </label>
 
       {/* CARTE 2 — Informations légales */}
       <div style={cardStyle}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Informations légales de l'entreprise</h2>
-        
+        <h2 style={titleAccent}>Informations légales de l'entreprise</h2>
+
         <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
           <label style={labelStyle}>
             <span style={labelTextStyle}>Raison sociale *</span>
@@ -594,23 +582,34 @@ const handleSave = async () => {
             <label style={labelStyle}>
               <span style={labelTextStyle}>Forme juridique *</span>
               <select
-  value={form.legalForm}
-  onChange={(e) => onChange("legalForm", e.target.value as ProfilForm["legalForm"])}
-  style={{
-    ...fieldStyle("legalForm"),
-    whiteSpace: "normal",
-    color: "white",
-    background: "rgba(255,255,255,0.04)",
-  }}
->
-  <option value="EI" style={{ background: "#111", color: "white" }}>EI</option>
-  <option value="EURL" style={{ background: "#111", color: "white" }}>EURL</option>
-  <option value="SARL" style={{ background: "#111", color: "white" }}>SARL</option>
-  <option value="SAS" style={{ background: "#111", color: "white" }}>SAS</option>
-  <option value="SASU" style={{ background: "#111", color: "white" }}>SASU</option>
-  <option value="AUTRE" style={{ background: "#111", color: "white" }}>Autre</option>
-</select>
-
+                value={form.legalForm}
+                onChange={(e) => onChange("legalForm", e.target.value as ProfilForm["legalForm"])}
+                style={{
+                  ...fieldStyle("legalForm"),
+                  whiteSpace: "normal",
+                  color: "white",
+                  background: "rgba(255,255,255,0.04)",
+                }}
+              >
+                <option value="EI" style={{ background: "#111", color: "white" }}>
+                  EI
+                </option>
+                <option value="EURL" style={{ background: "#111", color: "white" }}>
+                  EURL
+                </option>
+                <option value="SARL" style={{ background: "#111", color: "white" }}>
+                  SARL
+                </option>
+                <option value="SAS" style={{ background: "#111", color: "white" }}>
+                  SAS
+                </option>
+                <option value="SASU" style={{ background: "#111", color: "white" }}>
+                  SASU
+                </option>
+                <option value="AUTRE" style={{ background: "#111", color: "white" }}>
+                  Autre
+                </option>
+              </select>
             </label>
 
             {showOtherLegalForm ? (
@@ -640,52 +639,49 @@ const handleSave = async () => {
             {errors.hqAddress ? <div style={errorTextStyle}>{errors.hqAddress}</div> : null}
           </label>
 
-         {/* CP + Ville (même ligne) */}
-<div
-  style={{
-    display: "grid",
-    gridTemplateColumns: "110px minmax(0, 1fr)",
-    gap: 10,
-  }}
->
-  <label style={labelStyle}>
-    <span style={labelTextStyle}>Code postal *</span>
-    <input
-      value={form.hqZip}
-      onChange={(e) =>
-        onChange("hqZip", e.target.value.replace(/\D/g, "").slice(0, 5))
-      }
-      placeholder="75000"
-      inputMode="numeric"
-      maxLength={5}
-      style={fieldStyle("hqZip")}
-    />
-    {errors.hqZip ? <div style={errorTextStyle}>{errors.hqZip}</div> : null}
-  </label>
+          {/* CP + Ville (même ligne) */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "110px minmax(0, 1fr)",
+              gap: 10,
+            }}
+          >
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>Code postal *</span>
+              <input
+                value={form.hqZip}
+                onChange={(e) => onChange("hqZip", e.target.value.replace(/\D/g, "").slice(0, 5))}
+                placeholder="75000"
+                inputMode="numeric"
+                maxLength={5}
+                style={fieldStyle("hqZip")}
+              />
+              {errors.hqZip ? <div style={errorTextStyle}>{errors.hqZip}</div> : null}
+            </label>
 
-  <label style={labelStyle}>
-    <span style={labelTextStyle}>Ville *</span>
-    <input
-      value={form.hqCity}
-      onChange={(e) => onChange("hqCity", e.target.value)}
-      placeholder="Paris"
-      style={fieldStyle("hqCity")}
-    />
-    {errors.hqCity ? <div style={errorTextStyle}>{errors.hqCity}</div> : null}
-  </label>
-</div>
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>Ville *</span>
+              <input
+                value={form.hqCity}
+                onChange={(e) => onChange("hqCity", e.target.value)}
+                placeholder="Paris"
+                style={fieldStyle("hqCity")}
+              />
+              {errors.hqCity ? <div style={errorTextStyle}>{errors.hqCity}</div> : null}
+            </label>
+          </div>
 
-{/* Pays (ligne seule) */}
-<label style={labelStyle}>
-  <span style={labelTextStyle}>Pays *</span>
-  <input
-    value={form.hqCountry}
-    onChange={(e) => onChange("hqCountry", e.target.value)}
-    style={fieldStyle("hqCountry")}
-  />
-  {errors.hqCountry ? <div style={errorTextStyle}>{errors.hqCountry}</div> : null}
-</label>
-
+          {/* Pays (ligne seule) */}
+          <label style={labelStyle}>
+            <span style={labelTextStyle}>Pays *</span>
+            <input
+              value={form.hqCountry}
+              onChange={(e) => onChange("hqCountry", e.target.value)}
+              style={fieldStyle("hqCountry")}
+            />
+            {errors.hqCountry ? <div style={errorTextStyle}>{errors.hqCountry}</div> : null}
+          </label>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <label style={labelStyle}>
@@ -724,9 +720,7 @@ const handleSave = async () => {
                   opacity: form.capitalDispenseEI ? 0.55 : 1,
                 }}
               />
-              {!form.capitalDispenseEI && errors.capitalSocial ? (
-                <div style={errorTextStyle}>{errors.capitalSocial}</div>
-              ) : null}
+              {!form.capitalDispenseEI && errors.capitalSocial ? <div style={errorTextStyle}>{errors.capitalSocial}</div> : null}
             </label>
 
             <label style={{ display: "flex", gap: 8, alignItems: "center", paddingBottom: 6, opacity: 0.9 }}>
@@ -756,11 +750,7 @@ const handleSave = async () => {
             </label>
 
             <label style={{ display: "flex", gap: 8, alignItems: "center", paddingBottom: 6, opacity: 0.9 }}>
-              <input
-                type="checkbox"
-                checked={form.vatDispense}
-                onChange={(e) => onChange("vatDispense", e.target.checked)}
-              />
+              <input type="checkbox" checked={form.vatDispense} onChange={(e) => onChange("vatDispense", e.target.checked)} />
               <span style={{ fontSize: 13 }}>Dispensé TVA</span>
             </label>
           </div>
@@ -769,8 +759,8 @@ const handleSave = async () => {
 
       {/* CARTE 3 — Business */}
       <div style={cardStyle}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Indicateurs de performance</h2>
-        
+        <h2 style={titleAccent}>Indicateurs de performance</h2>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
           <label style={labelStyle}>
             <span style={labelTextStyle}>Panier moyen (€) *</span>
@@ -830,20 +820,21 @@ const handleSave = async () => {
             type="button"
             onClick={handleSave}
             style={{
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.14)",
+              background:
+                "linear-gradient(135deg, rgba(255,77,166,0.28), rgba(97,87,255,0.22), rgba(0,200,255,0.18))",
               color: "white",
               borderRadius: 12,
               padding: "10px 12px",
               cursor: "pointer",
-              fontWeight: 700,
+              fontWeight: 800,
             }}
           >
             Enregistrer
           </button>
         </div>
       </div>
-      </div>
+    </div>
   );
 }
 
@@ -863,6 +854,9 @@ const cardStyle: React.CSSProperties = {
   padding: 16,
   borderRadius: 12,
   border: "1px solid rgba(255,255,255,0.08)",
+  // 🎨 glow ultra léger (optionnel mais classe)
+  background:
+    "linear-gradient(135deg, rgba(255,77,166,0.045), rgba(97,87,255,0.03) 55%, rgba(0,200,255,0.02))",
 };
 
 const labelStyle: React.CSSProperties = { display: "grid", gap: 6 };
