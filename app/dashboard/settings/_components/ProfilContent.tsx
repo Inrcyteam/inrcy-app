@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+
 
 type Props = {
   mode?: "page" | "drawer";
@@ -23,6 +24,10 @@ type ProfilForm = {
   firstName: string;
   lastName: string;
   phone: string;
+
+  // Logo
+  logoPreview: string;
+  logoFile: File | null;
 
   // Légal
   companyLegalName: string; // raison sociale
@@ -53,12 +58,16 @@ const STORAGE_KEY = "inrcy_profile_preview_v1";
 export default function ProfilContent({ mode = "page" }: Props) {
   const defaultEmail = "pro@exemple.com"; // placeholder tant que Supabase n'est pas branché
 
+const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const initial: ProfilForm = useMemo(
     () => ({
       contactEmail: defaultEmail,
       firstName: "",
       lastName: "",
       phone: "",
+      logoPreview: "",
+      logoFile: null,
 
       companyLegalName: "",
       legalForm: "EI",
@@ -291,6 +300,104 @@ const validate = () => {
         </div>
       </div>
 
+<label style={{ ...labelStyle, marginTop: 6 }}>
+  <span style={labelTextStyle}>Logo de l’entreprise</span>
+
+  <div
+    style={{
+      display: "flex",
+      gap: 12,
+      alignItems: "center",
+      marginTop: 6,
+    }}
+  >
+    {/* Aperçu */}
+    {form.logoPreview ? (
+      <img
+        src={form.logoPreview}
+        alt="Logo"
+        style={{
+          width: 64,
+          height: 64,
+          objectFit: "contain",
+          borderRadius: 8,
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.12)",
+        }}
+      />
+    ) : (
+      <div
+        style={{
+          width: 64,
+          height: 64,
+          borderRadius: 8,
+          background: "rgba(255,255,255,0.04)",
+          border: "1px dashed rgba(255,255,255,0.25)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 12,
+          opacity: 0.6,
+        }}
+      >
+        Logo
+      </div>
+    )}
+
+    {/* Upload */}
+    <input
+    ref={fileInputRef}
+    type="file"
+    accept="image/png,image/jpeg,image/svg+xml"
+    onChange={(e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      if (form.logoPreview) URL.revokeObjectURL(form.logoPreview);
+
+      const url = URL.createObjectURL(file);
+      onChange("logoFile", file);
+      onChange("logoPreview", url);
+    }}
+  />
+
+
+  </div>
+
+  {/* Bouton supprimer */}
+  <div style={{ marginTop: 8 }}>
+    <button
+      type="button"
+      onClick={() => {
+  if (form.logoPreview) URL.revokeObjectURL(form.logoPreview);
+
+  onChange("logoFile", null);
+  onChange("logoPreview", "");
+
+  // 🔥 reset réel du champ file
+  if (fileInputRef.current) {
+    fileInputRef.current.value = "";
+  }
+}}
+
+      disabled={!form.logoPreview}
+      style={{
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "transparent",
+        color: "white",
+        borderRadius: 12,
+        padding: "8px 10px",
+        cursor: form.logoPreview ? "pointer" : "not-allowed",
+        opacity: form.logoPreview ? 0.95 : 0.5,
+        fontSize: 13,
+      }}
+    >
+      Supprimer le logo
+    </button>
+  </div>
+</label>
+
+
       {/* CARTE 2 — Informations légales */}
       <div style={cardStyle}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Informations légales de l'entreprise</h2>
@@ -357,45 +464,52 @@ const validate = () => {
             {errors.hqAddress ? <div style={errorTextStyle}>{errors.hqAddress}</div> : null}
           </label>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(120px, 160px) minmax(0, 1fr) minmax(0, 1fr)",
-              gap: 10,
-            }}
-          >
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>Code postal *</span>
-              <input
-                value={form.hqZip}
-                onChange={(e) => onChange("hqZip", e.target.value)}
-                placeholder="75000"
-                style={fieldStyle("hqZip")}
-              />
-              {errors.hqZip ? <div style={errorTextStyle}>{errors.hqZip}</div> : null}
-            </label>
+         {/* CP + Ville (même ligne) */}
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "110px minmax(0, 1fr)",
+    gap: 10,
+  }}
+>
+  <label style={labelStyle}>
+    <span style={labelTextStyle}>Code postal *</span>
+    <input
+      value={form.hqZip}
+      onChange={(e) =>
+        onChange("hqZip", e.target.value.replace(/\D/g, "").slice(0, 5))
+      }
+      placeholder="75000"
+      inputMode="numeric"
+      maxLength={5}
+      style={fieldStyle("hqZip")}
+    />
+    {errors.hqZip ? <div style={errorTextStyle}>{errors.hqZip}</div> : null}
+  </label>
 
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>Ville *</span>
-              <input
-                value={form.hqCity}
-                onChange={(e) => onChange("hqCity", e.target.value)}
-                placeholder="Paris"
-                style={fieldStyle("hqCity")}
-              />
-              {errors.hqCity ? <div style={errorTextStyle}>{errors.hqCity}</div> : null}
-            </label>
+  <label style={labelStyle}>
+    <span style={labelTextStyle}>Ville *</span>
+    <input
+      value={form.hqCity}
+      onChange={(e) => onChange("hqCity", e.target.value)}
+      placeholder="Paris"
+      style={fieldStyle("hqCity")}
+    />
+    {errors.hqCity ? <div style={errorTextStyle}>{errors.hqCity}</div> : null}
+  </label>
+</div>
 
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>Pays *</span>
-              <input
-                value={form.hqCountry}
-                onChange={(e) => onChange("hqCountry", e.target.value)}
-                style={fieldStyle("hqCountry")}
-              />
-              {errors.hqCountry ? <div style={errorTextStyle}>{errors.hqCountry}</div> : null}
-            </label>
-          </div>
+{/* Pays (ligne seule) */}
+<label style={labelStyle}>
+  <span style={labelTextStyle}>Pays *</span>
+  <input
+    value={form.hqCountry}
+    onChange={(e) => onChange("hqCountry", e.target.value)}
+    style={fieldStyle("hqCountry")}
+  />
+  {errors.hqCountry ? <div style={errorTextStyle}>{errors.hqCountry}</div> : null}
+</label>
+
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <label style={labelStyle}>
