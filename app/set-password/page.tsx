@@ -75,6 +75,9 @@ function SetPasswordInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
+  const mode = (searchParams.get("mode") ?? "reset") as "invite" | "reset";
+  const isInvite = mode === "invite";
+
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -166,7 +169,11 @@ function SetPasswordInner() {
         return;
       }
 
-      setOk("Mot de passe mis à jour. Redirection…");
+      setOk(
+  isInvite
+    ? "Mot de passe créé avec succès. Redirection vers votre espace…"
+    : "Mot de passe réinitialisé. Redirection…"
+);
       router.replace("/dashboard");
       router.refresh();
     } finally {
@@ -259,10 +266,15 @@ function SetPasswordInner() {
               />
             </div>
 
-            <div className="text-sm font-semibold tracking-wide text-slate-700">Réinitialisation</div>
-            <div className="text-xs text-slate-500 text-center">
-              Définis un nouveau mot de passe pour accéder à ton espace iNrCy.
-            </div>
+            <div className="text-sm font-semibold tracking-wide text-slate-700">
+  {isInvite ? "Création du mot de passe" : "Réinitialisation du mot de passe"}
+</div>
+
+<div className="text-xs text-slate-500 text-center">
+  {isInvite
+    ? "Bienvenue sur iNrCy. Définis ton mot de passe pour activer ton espace client."
+    : "Définis un nouveau mot de passe pour accéder à ton espace iNrCy."}
+</div>
           </div>
 
           <form onSubmit={onSubmit} className="space-y-3">
@@ -376,7 +388,11 @@ function SetPasswordInner() {
                     : ""
               }
             >
-              {loading ? "Enregistrement..." : "Valider"}
+              {loading
+  ? "Enregistrement..."
+  : isInvite
+    ? "Créer mon mot de passe"
+    : "Réinitialiser mon mot de passe"}
             </button>
 
             <a className="block w-full text-center text-xs underline text-slate-600" href="/login">
