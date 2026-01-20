@@ -309,77 +309,116 @@ const validate = () => {
       gap: 12,
       alignItems: "center",
       marginTop: 6,
+      minWidth: 0,
     }}
   >
-    {/* Aperçu */}
-    {form.logoPreview ? (
-      <img
-        src={form.logoPreview}
-        alt="Logo"
-        style={{
-          width: 64,
-          height: 64,
-          objectFit: "contain",
-          borderRadius: 8,
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.12)",
-        }}
-      />
-    ) : (
-      <div
-        style={{
-          width: 64,
-          height: 64,
-          borderRadius: 8,
-          background: "rgba(255,255,255,0.04)",
-          border: "1px dashed rgba(255,255,255,0.25)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 12,
-          opacity: 0.6,
-        }}
-      >
-        Logo
-      </div>
-    )}
-
-    {/* Upload */}
+    {/* Input file caché */}
     <input
-    ref={fileInputRef}
-    type="file"
-    accept="image/png,image/jpeg,image/svg+xml"
-    onChange={(e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+      ref={fileInputRef}
+      type="file"
+      accept="image/png,image/jpeg,image/svg+xml"
+      style={{ display: "none" }}
+      onChange={(e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
 
-      if (form.logoPreview) URL.revokeObjectURL(form.logoPreview);
+        if (form.logoPreview) URL.revokeObjectURL(form.logoPreview);
 
-      const url = URL.createObjectURL(file);
-      onChange("logoFile", file);
-      onChange("logoPreview", url);
-    }}
-  />
+        const url = URL.createObjectURL(file);
+        onChange("logoFile", file);
+        onChange("logoPreview", url);
+      }}
+    />
 
+    {/* Zone cliquable Logo */}
+    <div
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        fileInputRef.current?.click();
+      }}
+      style={{
+        width: 64,
+        height: 64,
+        borderRadius: 8,
+        cursor: "pointer",
+        flex: "0 0 auto",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(255,255,255,0.04)",
+        border: form.logoPreview
+          ? "1px solid rgba(255,255,255,0.12)"
+          : "1px dashed rgba(255,255,255,0.25)",
+      }}
+      title="Cliquer pour choisir un logo"
+    >
+      {form.logoPreview ? (
+        <img
+          src={form.logoPreview}
+          alt="Logo"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            fileInputRef.current?.click();
+          }}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            borderRadius: 8,
+          }}
+        />
+      ) : (
+        <span style={{ fontSize: 12, opacity: 0.6 }}>Logo</span>
+      )}
+    </div>
 
+    {/* Infos fichier */}
+    <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
+      <span style={{ fontSize: 13, opacity: 0.85 }}>
+        Choisir un fichier :
+      </span>
+
+      {form.logoFile ? (
+        <div
+          style={{
+            fontSize: 12,
+            opacity: 0.75,
+            maxWidth: "100%",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+          title={form.logoFile.name}
+        >
+          {form.logoFile.name}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, opacity: 0.6 }}>
+          Aucun fichier sélectionné
+        </div>
+      )}
+    </div>
   </div>
 
   {/* Bouton supprimer */}
   <div style={{ marginTop: 8 }}>
     <button
       type="button"
-      onClick={() => {
-  if (form.logoPreview) URL.revokeObjectURL(form.logoPreview);
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
 
-  onChange("logoFile", null);
-  onChange("logoPreview", "");
+        if (form.logoPreview) URL.revokeObjectURL(form.logoPreview);
 
-  // 🔥 reset réel du champ file
-  if (fileInputRef.current) {
-    fileInputRef.current.value = "";
-  }
-}}
+        onChange("logoFile", null);
+        onChange("logoPreview", "");
 
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      }}
       disabled={!form.logoPreview}
       style={{
         border: "1px solid rgba(255,255,255,0.12)",
