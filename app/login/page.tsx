@@ -30,8 +30,34 @@ function rint(min: number, max: number) {
 export default function LoginPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-
   const [email, setEmail] = useState("");
+
+  useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const hash = window.location.hash;
+  if (!hash || !hash.includes("access_token=")) return;
+
+  const params = new URLSearchParams(hash.slice(1)); // enlève "#"
+  const type = params.get("type"); // "invite" | "recovery" | etc.
+
+  // Nettoie l’URL (on enlève le hash mais on garde le pathname actuel)
+  window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+
+  if (type === "invite") {
+    router.replace("/set-password?mode=invite");
+    return;
+  }
+
+  if (type === "recovery") {
+    router.replace("/set-password?mode=reset");
+    return;
+  }
+
+  // fallback: si on a un token mais pas de type, on considère "invite" (ou tu peux mettre login normal)
+  router.replace("/set-password?mode=invite");
+}, [router]);
+
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
