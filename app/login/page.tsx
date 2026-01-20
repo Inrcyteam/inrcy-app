@@ -37,6 +37,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ✅ ajout : message info (succès reset password)
+  const [info, setInfo] = useState<string | null>(null);
+
   const dotColors = useMemo(
     () => [
       { a: "rgba(0,180,255,1)", b: "rgba(120,90,255,1)" },
@@ -77,9 +80,43 @@ export default function LoginPage() {
     setDots(newDots);
   }, []);
 
+  // ✅ ajout : reset password
+  async function onForgotPassword() {
+  setError(null);
+  setInfo(null);
+
+  if (!email) {
+    setError("Entre ton email d’abord.");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const origin = window.location.origin;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${origin}/auth/callback?next=/set-password`,
+    });
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setInfo("Email envoyé. Vérifie ta boîte mail (et tes spams).");
+  } catch (err: unknown) {
+    setError(err instanceof Error ? err.message : "Erreur lors de l’envoi de l’email");
+  } finally {
+    setLoading(false);
+  }
+}
+
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    setInfo(null); // ✅ ajout : on nettoie le message info quand on tente une connexion
     setLoading(true);
 
     try {
@@ -254,8 +291,25 @@ export default function LoginPage() {
               </div>
             ) : null}
 
+            {/* ✅ ajout : message succès */}
+            {info ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                {info}
+              </div>
+            ) : null}
+
             <button className="inrcy-btn w-full" type="submit" disabled={loading}>
               {loading ? "Connexion..." : "Se connecter"}
+            </button>
+
+            {/* ✅ ajout : mot de passe oublié */}
+            <button
+              type="button"
+              onClick={onForgotPassword}
+              className="w-full text-xs underline text-slate-600"
+              disabled={loading}
+            >
+              Mot de passe oublié ?
             </button>
           </form>
 
@@ -270,4 +324,3 @@ export default function LoginPage() {
     </main>
   );
 }
-
