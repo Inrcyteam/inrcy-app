@@ -33,6 +33,7 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +97,8 @@ export default function LoginPage() {
     const origin = window.location.origin;
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/auth/callback?next=/set-password`,
+      redirectTo: `${origin}/set-password`
+
     });
 
     if (error) {
@@ -273,17 +275,25 @@ export default function LoginPage() {
             </div>
 
             <div className="relative">
-              <input
-                className="inrcy-input"
-                type="password"
-                placeholder="Mot de passe"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">🔒</span>
-            </div>
+  <input
+    className="inrcy-input"
+    type={showPassword ? "text" : "password"}
+    placeholder="Mot de passe"
+    value={password}
+    onChange={(e) => setPassword(e.target.value)}
+    autoComplete="current-password"
+    required
+  />
+
+  <button
+    type="button"
+    onClick={() => setShowPassword((v) => !v)}
+    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+    aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+  >
+    {showPassword ? "🙈" : "👁️"}
+  </button>
+</div>
 
             {error ? (
               <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
