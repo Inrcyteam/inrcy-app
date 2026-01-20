@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 
@@ -31,44 +31,8 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
-
- useEffect(() => {
-  (async () => {
-    if (typeof window === "undefined") return;
-
-    const hash = window.location.hash;
-    if (!hash || !hash.includes("access_token=")) return;
-
-    const params = new URLSearchParams(hash.slice(1));
-    const access_token = params.get("access_token");
-    const refresh_token = params.get("refresh_token");
-    const type = params.get("type"); // "invite" | "recovery" | etc.
-
-    if (!access_token || !refresh_token) return;
-
-    // 1) Pose la session localement
-    await supabase.auth.setSession({ access_token, refresh_token });
-
-    // 2) Nettoie l’URL (enlève le hash)
-    window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-
-    // 3) Redirige vers la bonne page
-    if (type === "invite") {
-      router.replace("/set-password?mode=invite");
-    } else if (type === "recovery") {
-      router.replace("/set-password?mode=reset");
-    } else {
-      router.replace("/dashboard");
-    }
-
-    router.refresh();
-  })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
-
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,8 +57,46 @@ export default function LoginPage() {
 
   const [mounted, setMounted] = useState(false);
   const [dots, setDots] = useState<WanderDot[]>([]);
+  const handledHashRef = useRef(false);
 
-  useEffect(() => {
+
+   useEffect(() => {
+  (async () => {
+    if (typeof window === "undefined") return;
+
+    // évite double exécution (React strict mode + rerenders)
+    if (handledHashRef.current) return;
+    handledHashRef.current = true;
+
+    const hash = window.location.hash;
+    if (!hash || !hash.includes("access_token=")) return;
+
+    const params = new URLSearchParams(hash.slice(1));
+    const access_token = params.get("access_token");
+    const refresh_token = params.get("refresh_token");
+    const type = params.get("type"); // invite | recovery | etc.
+
+    if (!access_token || !refresh_token) return;
+
+    const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+    if (error) {
+      console.error("setSession error:", error);
+      return;
+    }
+
+    // on redirige d'abord (sans tuer le hash avant)
+    const target =
+      type === "recovery"
+        ? "/set-password?mode=reset"
+        : "/set-password?mode=invite";
+
+    // hard redirect + on garde l'historique propre
+    window.location.replace(target);
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+useEffect(() => {
     setMounted(true);
 
     const newDots: WanderDot[] = Array.from({ length: 20 }).map(() => ({
