@@ -44,11 +44,7 @@ function getPasswordStrength(pw: string) {
 
   const score = Object.values(rules).filter(Boolean).length; // 0..5
   const percent = (score / 5) * 100;
-
-  // Labels
   const label = score <= 2 ? "Faible" : score <= 4 ? "Moyen" : "Fort";
-
-  // FORT = toutes les règles OK
   const isStrong = score === 5;
 
   return { rules, score, percent, label, isStrong };
@@ -87,30 +83,6 @@ function SetPasswordInner() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
-
-useEffect(() => {
-  const code = searchParams.get("code");
-  if (!code) return;
-
-  (async () => {
-    setLoading(true);
-
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-    setLoading(false);
-
-    if (error) {
-  setMsg(`Erreur Supabase: ${error.message}`);
-  return;
-}
-
-    // Nettoyage de l’URL (on supprime ?code=)
-    router.replace(`/set-password?mode=${mode}`);
-    router.refresh();
-  })();
-}, [searchParams, supabase, router, mode]);
-
-
 
   const strength = useMemo(() => getPasswordStrength(password), [password]);
 
@@ -152,6 +124,7 @@ useEffect(() => {
     setDots(newDots);
   }, []);
 
+  // ✅ Affiche un message clair si Supabase renvoie une erreur dans l’URL
   useEffect(() => {
     const code = searchParams.get("error_code");
     const desc = searchParams.get("error_description");
@@ -180,23 +153,28 @@ useEffect(() => {
 
     setLoading(true);
     try {
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) {
-        setMsg("Session introuvable. Refais une demande de réinitialisation depuis la page de connexion.");
+      // ✅ Pour le reset password Supabase (recovery), on NE FAIT PAS exchangeCodeForSession.
+      // On vérifie juste que l’utilisateur est bien authentifié via le lien.
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data.user) {
+        setMsg(
+          "Lien de réinitialisation invalide ou expiré. Refais une demande depuis la page de connexion."
+        );
         return;
       }
 
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) {
-        setMsg(error.message);
+      const { error: updErr } = await supabase.auth.updateUser({ password });
+      if (updErr) {
+        setMsg(updErr.message);
         return;
       }
 
       setOk(
-  isInvite
-    ? "Mot de passe créé avec succès. Redirection vers votre espace…"
-    : "Mot de passe réinitialisé. Redirection…"
-);
+        isInvite
+          ? "Mot de passe créé avec succès. Redirection vers votre espace…"
+          : "Mot de passe réinitialisé. Redirection…"
+      );
+
       router.replace("/dashboard");
       router.refresh();
     } finally {
@@ -290,18 +268,17 @@ useEffect(() => {
             </div>
 
             <div className="text-sm font-semibold tracking-wide text-slate-700">
-  {isInvite ? "Création du mot de passe" : "Réinitialisation du mot de passe"}
-</div>
+              {isInvite ? "Création du mot de passe" : "Réinitialisation du mot de passe"}
+            </div>
 
-<div className="text-xs text-slate-500 text-center">
-  {isInvite
-    ? "Bienvenue sur iNrCy. Définis ton mot de passe pour activer ton espace client."
-    : "Définis un nouveau mot de passe pour accéder à ton espace iNrCy."}
-</div>
+            <div className="text-xs text-slate-500 text-center">
+              {isInvite
+                ? "Bienvenue sur iNrCy. Définis ton mot de passe pour activer ton espace client."
+                : "Définis un nouveau mot de passe pour accéder à ton espace iNrCy."}
+            </div>
           </div>
 
           <form onSubmit={onSubmit} className="space-y-3">
-            {/* Nouveau mot de passe */}
             <div className="relative">
               <input
                 className="inrcy-input pr-10"
@@ -322,7 +299,6 @@ useEffect(() => {
               </button>
             </div>
 
-            {/* Barre + règles */}
             <div className="-mt-1">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-500">Niveau de protection</span>
@@ -331,8 +307,8 @@ useEffect(() => {
                     strength.label === "Fort"
                       ? "text-emerald-600"
                       : strength.label === "Moyen"
-                        ? "text-amber-600"
-                        : "text-rose-600"
+                      ? "text-amber-600"
+                      : "text-rose-600"
                   }
                 >
                   {strength.label}
@@ -358,7 +334,6 @@ useEffect(() => {
               </div>
             </div>
 
-            {/* Confirmation */}
             <div className="relative">
               <input
                 className="inrcy-input pr-10"
@@ -379,7 +354,6 @@ useEffect(() => {
               </button>
             </div>
 
-            {/* Live feedback confirmation */}
             {confirmTouched ? (
               confirmOk ? (
                 <div className="text-xs text-emerald-600">Les mots de passe correspondent.</div>
@@ -407,15 +381,11 @@ useEffect(() => {
                 !strength.isStrong
                   ? "Mot de passe requis : 8+ caractères, lettre, chiffre, majuscule et symbole."
                   : password !== confirm
-                    ? "Les mots de passe ne correspondent pas."
-                    : ""
+                  ? "Les mots de passe ne correspondent pas."
+                  : ""
               }
             >
-              {loading
-  ? "Enregistrement..."
-  : isInvite
-    ? "Créer mon mot de passe"
-    : "Réinitialiser mon mot de passe"}
+              {loading ? "Enregistrement..." : isInvite ? "Créer mon mot de passe" : "Réinitialiser mon mot de passe"}
             </button>
 
             <a className="block w-full text-center text-xs underline text-slate-600" href="/login">
