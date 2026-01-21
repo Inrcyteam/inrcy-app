@@ -271,12 +271,6 @@ function SetPasswordInner() {
               {isInvite ? "Création du mot de passe" : "Réinitialisation du mot de passe"}
             </div>
 
-{!isInvite && (
-  <div className="text-[11px] text-slate-500 text-center">
-    Astuce : ouvrez le lien de réinitialisation dans le même navigateur que celui utilisé pour la demande.
-  </div>
-)}
-
             <div className="text-xs text-slate-500 text-center">
               {isInvite
                 ? "Bienvenue sur iNrCy. Définis ton mot de passe pour activer ton espace client."
