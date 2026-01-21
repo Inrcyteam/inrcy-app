@@ -59,6 +59,39 @@ export default function LoginPage() {
   const [dots, setDots] = useState<WanderDot[]>([]);
   const handledHashRef = useRef(false);
 
+// ✅ gestion lien expiré / invalide (2e clic invitation)
+useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const hash = window.location.hash;
+  if (!hash || !hash.includes("error=")) return;
+
+  const params = new URLSearchParams(hash.slice(1));
+  const errorCode = params.get("error_code");
+  const errorDesc = params.get("error_description") || "";
+
+  if (
+    errorCode === "otp_expired" ||
+    errorDesc.toLowerCase().includes("expired") ||
+    errorDesc.toLowerCase().includes("invalid")
+  ) {
+    setInfo(
+      "Ce lien n’est plus valide (il a déjà été utilisé ou a expiré). " +
+      "Clique sur « Mot de passe oublié » pour en recevoir un nouveau."
+    );
+  } else {
+    setInfo(
+      "Le lien de connexion est invalide. Clique sur « Mot de passe oublié » pour recevoir un nouveau lien."
+    );
+  }
+
+  // nettoie l’URL (supprime le #error=...)
+  window.history.replaceState(
+    {},
+    document.title,
+    window.location.pathname + window.location.search
+  );
+}, []);
 
    useEffect(() => {
   (async () => {
