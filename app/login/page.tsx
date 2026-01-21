@@ -166,9 +166,8 @@ useEffect(() => {
     const origin = window.location.origin;
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/auth/callback?next=${encodeURIComponent("/set-password?mode=reset")}`
-
-    });
+  redirectTo: `${origin}/set-password?mode=reset`,
+});
 
     if (error) {
       setError(error.message);
