@@ -158,7 +158,7 @@ function SetPasswordInner() {
       const { data, error } = await supabase.auth.getUser();
       if (error || !data.user) {
         setMsg(
-          "Lien de réinitialisation invalide ou expiré. Refais une demande depuis la page de connexion."
+          "Lien invalide/expiré ou ouvert dans un autre navigateur. Copiez-collez le lien dans le même navigateur ou refaites une demande."
         );
         return;
       }
@@ -270,6 +270,12 @@ function SetPasswordInner() {
             <div className="text-sm font-semibold tracking-wide text-slate-700">
               {isInvite ? "Création du mot de passe" : "Réinitialisation du mot de passe"}
             </div>
+
+{!isInvite && (
+  <div className="text-[11px] text-slate-500 text-center">
+    Astuce : ouvrez le lien de réinitialisation dans le même navigateur que celui utilisé pour la demande.
+  </div>
+)}
 
             <div className="text-xs text-slate-500 text-center">
               {isInvite
