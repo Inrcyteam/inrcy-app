@@ -10,7 +10,7 @@ type Props = {
 
 type SubData = {
   plan: "Démarrage" | "Accélération" | "Pleine vitesse";
-  status: "trial" | "active" | "paused" | "canceled";
+  status: "essai" | "actif" | "suspendu" | "résilié";
   monthly_price_eur: number;
   start_date: string; // YYYY-MM-DD
 };
@@ -78,10 +78,10 @@ function addMonthsSafe(date: Date, months: number) {
   return res;
 }
 
-function statusLabel(s: SubData["status"]) {
-  if (s === "active") return "ACTIF";
-  if (s === "trial") return "ESSAI";
-  if (s === "paused") return "SUSPENDU";
+function statusLabel(raw: string) {
+  if (raw === "actif" || raw === "active") return "ACTIF";
+  if (raw === "essai" || raw === "trial") return "ESSAI";
+  if (raw === "suspendu" || raw === "paused") return "SUSPENDU";
   return "RÉSILIÉ";
 }
 

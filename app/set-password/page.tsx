@@ -78,6 +78,27 @@ function SetPasswordInner() {
   const mode = (searchParams.get("mode") ?? "reset") as "invite" | "reset";
   const isInvite = mode === "invite";
 
+useEffect(() => {
+  const code = searchParams.get("code");
+  if (!code) return;
+
+  (async () => {
+    setLoading(true);
+
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+    setLoading(false);
+
+    if (error) {
+      setMsg("Lien de réinitialisation invalide ou expiré. Refais une demande depuis la page de connexion.");
+      return;
+    }
+
+    // Nettoyage de l’URL (on supprime ?code=)
+    router.replace(`/set-password?mode=${mode}`);
+    router.refresh();
+  })();
+}, [searchParams, supabase, router, mode]);
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
