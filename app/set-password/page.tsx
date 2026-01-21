@@ -78,6 +78,16 @@ function SetPasswordInner() {
   const mode = (searchParams.get("mode") ?? "reset") as "invite" | "reset";
   const isInvite = mode === "invite";
 
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+
 useEffect(() => {
   const code = searchParams.get("code");
   if (!code) return;
@@ -90,9 +100,9 @@ useEffect(() => {
     setLoading(false);
 
     if (error) {
-      setMsg("Lien de réinitialisation invalide ou expiré. Refais une demande depuis la page de connexion.");
-      return;
-    }
+  setMsg(`Erreur Supabase: ${error.message}`);
+  return;
+}
 
     // Nettoyage de l’URL (on supprime ?code=)
     router.replace(`/set-password?mode=${mode}`);
@@ -100,15 +110,7 @@ useEffect(() => {
   })();
 }, [searchParams, supabase, router, mode]);
 
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
 
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
 
   const strength = useMemo(() => getPasswordStrength(password), [password]);
 
