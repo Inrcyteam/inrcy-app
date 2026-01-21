@@ -3105,3 +3105,27 @@ transform: scale(1.50);
   border-color: rgba(255,255,255,0.22);
 }
 
+/* =========================
+   Hamburger – profil incomplet
+========================= */
+
+.hamburgerBtn{
+  position: relative;
+}
+
+.hamburgerWarnDot{
+  position: absolute;
+  top: 6px;
+  right: 6px;
+
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+
+  background: rgba(251, 146, 60, 0.95);
+  box-shadow:
+    0 0 0 3px rgba(251,146,60,0.16),
+    0 0 14px rgba(251,146,60,0.32);
+
+  pointer-events: none;
+}

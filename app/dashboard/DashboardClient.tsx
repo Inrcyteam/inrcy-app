@@ -441,17 +441,38 @@ export default function DashboardClient() {
         {/* Mobile hamburger */}
         <div className={styles.mobileMenuWrap} ref={menuRef}>
           <button
-            type="button"
-            className={styles.hamburgerBtn}
-            aria-label="Ouvrir le menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((v) => !v)}
-          >
-            <span className={styles.hamburgerIcon} aria-hidden />
-          </button>
+  type="button"
+  className={styles.hamburgerBtn}
+  aria-label="Ouvrir le menu"
+  aria-expanded={menuOpen}
+  onClick={() => setMenuOpen((v) => !v)}
+>
+  <span className={styles.hamburgerIcon} aria-hidden />
+
+  {profileIncomplete && (
+    <span
+      className={styles.hamburgerWarnDot}
+      aria-hidden
+    />
+  )}
+</button>
 
           {menuOpen && (
             <div className={styles.mobileMenuPanel} role="menu" aria-label="Menu">
+
+{profileIncomplete && (
+  <button
+    className={styles.mobileMenuItem}
+    type="button"
+    role="menuitem"
+    onClick={() => {
+      setMenuOpen(false);
+      openPanel("profil");
+    }}
+  >
+    ⚠️ Profil incomplet — compléter
+  </button>
+)}
               <button
                 className={styles.mobileMenuItem}
                 type="button"
