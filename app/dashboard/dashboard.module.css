@@ -2998,3 +2998,110 @@ transform: scale(1.50);
     font-size: 13px !important;
   }
 }
+
+/* =========================
+   Profil incomplete indicator (mini)
+========================= */
+
+.profileIndicatorWrap{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profileWarnBtn{
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.08);
+  cursor: pointer;
+
+  display: grid;
+  place-items: center;
+
+  box-shadow: 0 10px 26px rgba(0,0,0,0.35);
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
+}
+
+.profileWarnBtn:hover{
+  transform: translateY(-1px) scale(1.05);
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.35);
+}
+
+.profileWarnDot{
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(251, 146, 60, 0.95); /* orange premium */
+  box-shadow:
+    0 0 0 3px rgba(251,146,60,0.16),
+    0 0 14px rgba(251,146,60,0.32);
+}
+
+.profileTooltip{
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: 260px;
+
+  padding: 10px 12px;
+  padding-top: 14px;
+  border-radius: 14px;
+
+  background: rgba(10,10,15,0.92);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+
+  color: rgba(255,255,255,0.92);
+  font-size: 12px;
+  line-height: 1.35;
+
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+
+  transition: opacity .14s ease, transform .14s ease;
+  z-index: 80;
+}
+
+.profileTooltip::before{
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -14px;
+  height: 14px;
+}
+
+.profileIndicatorWrap:hover .profileTooltip,
+.profileTooltip:hover{
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.profileTooltip strong{
+  color: #fff;
+}
+
+.profileTooltipBtn{
+  margin-top: 8px;
+  width: 100%;
+  border-radius: 12px;
+  padding: 8px 10px;
+
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  font-weight: 800;
+
+  cursor: pointer;
+}
+.profileTooltipBtn:hover{
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.22);
+}
+

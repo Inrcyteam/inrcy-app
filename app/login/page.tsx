@@ -324,7 +324,7 @@ useEffect(() => {
             </div>
 
             <div className="text-sm font-semibold tracking-wide text-slate-700">Espace Client</div>
-            <div className="text-xs text-slate-500 text-center">Accède à ton dashboard et à tes ressources.</div>
+            <div className="text-xs text-slate-500 text-center">Accèdez à votre générateur et ses ressources.</div>
           </div>
 
           {/* ✅ évite l’overlay hydration quand une extension modifie les inputs */}

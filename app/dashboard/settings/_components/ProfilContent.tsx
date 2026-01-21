@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabaseClient";
 
 type Props = {
   mode?: "page" | "drawer";
+  onProfileSaved?: () => void;
+  onProfileReset?: () => void;
 };
 
 // Petit helper pour éviter les crashs sur JSON invalide
@@ -55,8 +57,12 @@ type ProfilForm = {
 
 const STORAGE_KEY = "inrcy_profile_preview_v1";
 
-export default function ProfilContent({ mode = "page" }: Props) {
-  const defaultEmail = "pro@exemple.com"; // placeholder tant que Supabase n'est pas branché
+export default function ProfilContent({
+  mode = "page",
+  onProfileSaved,
+  onProfileReset,
+}: Props) {
+  const defaultEmail = "pro@exemple.com";    // placeholder tant que Supabase n'est pas branché
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -340,6 +346,7 @@ export default function ProfilContent({ mode = "page" }: Props) {
 
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
+      onProfileSaved?.();
     } catch (err: any) {
       console.error(err);
       setSaved(false);
@@ -358,6 +365,7 @@ export default function ProfilContent({ mode = "page" }: Props) {
     setGlobalError("");
     setForm(initial);
     setSaved(false);
+    onProfileReset?.();
   };
 
   const fieldStyle = (key: keyof ProfilForm): React.CSSProperties => ({

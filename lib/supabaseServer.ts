@@ -18,6 +18,9 @@ export async function createSupabaseServer() {
           });
         },
       },
+      auth: {
+        flowType: "implicit",
+      },
     }
   );
 }
