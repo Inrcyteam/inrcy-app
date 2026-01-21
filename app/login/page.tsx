@@ -174,7 +174,7 @@ useEffect(() => {
       return;
     }
 
-    setInfo("Email envoyé. Vérifie ta boîte mail (et tes spams).");
+    setInfo("Email envoyé. Vérifiez votre boîte mail (et vos spams).");
   } catch (err: unknown) {
     setError(err instanceof Error ? err.message : "Erreur lors de l’envoi de l’email");
   } finally {

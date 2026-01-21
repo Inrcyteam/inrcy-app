@@ -273,8 +273,8 @@ function SetPasswordInner() {
 
             <div className="text-xs text-slate-500 text-center">
               {isInvite
-                ? "Bienvenue sur iNrCy. Définis ton mot de passe pour activer ton espace client."
-                : "Définis un nouveau mot de passe pour accéder à ton espace iNrCy."}
+                ? "Bienvenue sur iNrCy. Définissez votre mot de passe pour activer votre espace client."
+                : "Définissez un nouveau mot de passe pour accéder à votre espace iNrCy."}
             </div>
           </div>
 
