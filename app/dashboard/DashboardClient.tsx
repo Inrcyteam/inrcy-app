@@ -184,7 +184,7 @@ export default function DashboardClient() {
     });
   }, []);
 
-  // ✅ Mini-indicateur "profil incomplet" (discret, tooltip au hover)
+  // ✅ AJOUT : profil incomplet -> mini pastille + tooltip
   const [profileIncomplete, setProfileIncomplete] = useState(false);
 
   const REQUIRED_PROFILE_FIELDS = [
@@ -312,7 +312,7 @@ export default function DashboardClient() {
         : `${styles.actionBtn} ${styles.actionView}`;
 
     if (a.href) {
-      // Pour l’instant href="#" (tu remplaceras par les vraies URLs)
+      // Pour l’instant href="#" (tu replaceras par les vraies URLs)
       return (
         <Link
           key={a.key}
@@ -364,7 +364,7 @@ export default function DashboardClient() {
               </span>
             </button>
 
-            {/* ✅ Mini indicateur + tooltip au hover */}
+            {/* ✅ AJOUT : mini pastille + tooltip */}
             {profileIncomplete && (
               <div className={styles.profileIndicatorWrap} style={{ marginLeft: 6 }}>
                 <button
@@ -589,7 +589,12 @@ export default function DashboardClient() {
             </div>
           </div>
 
-          <div className={styles.generatorFooter}>{/* (inchangé) */}</div>
+          <div className={styles.generatorFooter}>
+            {/* ✅ On enlève le bouton "Connecter un outil" si tu veux éviter "connecter un module" partout */}
+            {/* <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
+              Connecter un outil
+            </button> */}
+          </div>
 
           <div className={styles.generatorGlow} aria-hidden />
         </div>
@@ -650,6 +655,7 @@ export default function DashboardClient() {
                   </div>
                 </div>
 
+                {/* On garde le glow existant si tu veux, mais on pourra le couper en CSS pour les bulles */}
                 <div className={styles.moduleGlow} aria-hidden />
               </article>
             );
@@ -657,13 +663,206 @@ export default function DashboardClient() {
         </div>
 
         <div className={styles.lowerRow}>
-          {/* ... inchangé ... */}
           <div className={styles.blockCard}>
-            {/* ... inchangé ... */}
+            <div className={styles.blockHead}>
+              <h3 className={styles.h3}>Tableau de bord</h3>
+              <span className={styles.smallMuted}>Pilotage</span>
+            </div>
+
+            <div className={styles.loopWrap}>
+              {/* ✅ TON CONTENU PILOTAGE (inchangé) */}
+              {/* (tout ton SVG + loopGrid est conservé tel quel) */}
+              {/* --- START --- */}
+              <svg className={styles.loopWheel} viewBox="0 0 300 300" aria-hidden="true">
+                <defs>
+                  <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feGaussianBlur stdDeviation="2.4" result="b" />
+                    <feMerge>
+                      <feMergeNode in="b" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+
+                  <radialGradient id="rimGrad" cx="50%" cy="45%" r="65%">
+                    <stop offset="0%" stopColor="rgba(255,255,255,0.28)" />
+                    <stop offset="55%" stopColor="rgba(255,255,255,0.10)" />
+                    <stop offset="100%" stopColor="rgba(255,255,255,0.04)" />
+                  </radialGradient>
+
+                  <radialGradient id="rimInner" cx="50%" cy="50%" r="60%">
+                    <stop offset="0%" stopColor="rgba(56,189,248,0.18)" />
+                    <stop offset="70%" stopColor="rgba(255,255,255,0.06)" />
+                    <stop offset="100%" stopColor="rgba(255,255,255,0.02)" />
+                  </radialGradient>
+
+                  <marker id="chev" markerWidth="10" markerHeight="10" refX="6.5" refY="5" orient="auto">
+                    <path
+                      d="M1,1 L7,5 L1,9"
+                      fill="none"
+                      stroke="rgba(255,255,255,0.70)"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </marker>
+                </defs>
+
+                <circle cx="150" cy="150" r="92" fill="none" stroke="url(#rimGrad)" strokeWidth="10" filter="url(#softGlow)" />
+                <circle cx="150" cy="150" r="84" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="2" />
+
+                <circle cx="150" cy="150" r="70" fill="none" stroke="url(#rimInner)" strokeWidth="18" opacity="0.55" />
+
+                <g filter="url(#softGlow)">
+                  <path d="M150 150 L150 78" stroke="rgba(255,255,255,0.18)" strokeWidth="6" strokeLinecap="round" />
+                  <path d="M150 150 L222 150" stroke="rgba(255,255,255,0.18)" strokeWidth="6" strokeLinecap="round" />
+                  <path d="M150 150 L150 222" stroke="rgba(255,255,255,0.18)" strokeWidth="6" strokeLinecap="round" />
+                  <path d="M150 150 L78 150" stroke="rgba(255,255,255,0.18)" strokeWidth="6" strokeLinecap="round" />
+                </g>
+
+                <g>
+                  <path d="M150 150 L150 78" stroke="rgba(255,255,255,0.55)" strokeWidth="1.6" strokeLinecap="round" />
+                  <path d="M150 150 L222 150" stroke="rgba(255,255,255,0.55)" strokeWidth="1.6" strokeLinecap="round" />
+                  <path d="M150 150 L150 222" stroke="rgba(255,255,255,0.55)" strokeWidth="1.6" strokeLinecap="round" />
+                  <path d="M150 150 L78 150" stroke="rgba(255,255,255,0.55)" strokeWidth="1.6" strokeLinecap="round" />
+                </g>
+
+                <g filter="url(#softGlow)">
+                  <circle cx="150" cy="150" r="18" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.35)" strokeWidth="1.4" />
+                  <circle cx="150" cy="150" r="8" fill="rgba(56,189,248,0.20)" stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+                </g>
+              </svg>
+
+              <div className={styles.loopGrid}>
+    <div className={`${styles.loopNode} ${styles.loopTop} ${styles.loop_cyan}`}>
+<span className={`${styles.loopBadge} ${styles.badgeCyan}`}></span>
+
+      <div className={styles.loopTopRow}>
+        <div className={styles.loopTitle}>STATS</div>
+      </div>
+      <div className={styles.loopSub}>Tous vos leads, enfin visibles</div>
+      <div className={styles.loopActions}>
+        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button">
+          Voir les stats
+        </button>
+      </div>
+    </div>
+
+    <div className={`${styles.loopNode} ${styles.loopRight} ${styles.loop_purple}`}>
+<span className={`${styles.loopBadge} ${styles.badgePurple}`}></span>
+
+     <div className={styles.loopTopRow}>
+  <div className={styles.loopTitle}>MAILS</div>
+</div>
+
+<button className={styles.loopGearBtn} type="button" aria-label="Réglages Mails" title="Réglages">
+  <svg className={styles.loopGearSvg} viewBox="0 0 24 24" aria-hidden="true">
+  <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+  <path d="M19.4 15a7.9 7.9 0 0 0 .1-1 7.9 7.9 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7.7 7.7 0 0 0-1.7-1l-.4-2.6H10l-.4 2.6a7.7 7.7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.9 7.9 0 0 0-.1 1 7.9 7.9 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.5-2-1.5Z" />
+</svg>
+</button>
+
+      <div className={styles.loopSub}>Toutes vos demandes arrivent ici</div>
+      <div className={styles.loopActions}>
+        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button">
+          Ouvrir l’iNr'Box
+        </button>
+      </div>
+    </div>
+
+    <div className={`${styles.loopNode} ${styles.loopBottom} ${styles.loop_orange}`}>
+<span className={`${styles.loopBadge} ${styles.badgeOrange}`}></span>
+
+      <div className={styles.loopTopRow}>
+  <div className={styles.loopTitle}>AGENDA</div>
+</div>
+
+<button className={styles.loopGearBtn} type="button" aria-label="Réglages Agenda" title="Réglages">
+  <svg className={styles.loopGearSvg} viewBox="0 0 24 24" aria-hidden="true">
+  <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+  <path d="M19.4 15a7.9 7.9 0 0 0 .1-1 7.9 7.9 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7.7 7.7 0 0 0-1.7-1l-.4-2.6H10l-.4 2.6a7.7 7.7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.9 7.9 0 0 0-.1 1 7.9 7.9 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.5-2-1.5Z" />
+</svg>
+</button>
+
+      <div className={styles.loopSub}>Transformez les contacts en RDV</div>
+      <div className={styles.loopActions}>
+        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button">
+          Voir l’agenda
+        </button>
+      </div>
+    </div>
+
+    <div className={`${styles.loopNode} ${styles.loopLeft} ${styles.loop_pink}`}>
+<span className={`${styles.loopBadge} ${styles.badgePink}`}></span>
+
+      <div className={styles.loopTopRow}>
+        <div className={styles.loopTitle}>CRM</div>
+      </div>
+      <div className={styles.loopSub}>Vos prospects et clients centralisés</div>
+      <div className={styles.loopActions}>
+        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button">
+          Ouvrir le CRM
+        </button>
+      </div>
+    </div>
+
+    <div className={styles.signalHub} aria-hidden="true">
+      <span className={styles.signalCore} />
+      <span className={`${styles.signalWave} ${styles.wave1}`} />
+      <span className={`${styles.signalWave} ${styles.wave2}`} />
+      <span className={`${styles.signalWave} ${styles.wave3}`} />
+      <span className={`${styles.signalWave} ${styles.wave4}`} />
+    </div>
+  </div>
+</div>
+
           </div>
 
           <div className={styles.blockCard}>
-            {/* ... inchangé ... */}
+            <div className={styles.blockHead}>
+              <h3 className={styles.h3}>Boîte de vitesse</h3>
+              <span className={styles.smallMuted}>Conversion</span>
+            </div>
+
+            <div className={styles.gearWrap}>
+              {/* ✅ TON CONTENU BOÎTE DE VITESSE (inchangé) */}
+              {/* --- START --- */}
+              <div className={styles.gearRail} aria-hidden />
+
+              <div className={styles.gearGrid}>
+                <button className={`${styles.gearCapsule} ${styles.gear_cyan}`} type="button">
+                  <div className={styles.gearInner}>
+                    <div className={styles.gearTitle}>Publier</div>
+                    <div className={styles.gearSub}>Active tous vos canaux</div>
+                    <div className={styles.gearBtn}>Publier maintenant</div>
+                  </div>
+                </button>
+
+                <button className={`${styles.gearCapsule} ${styles.gear_purple}`} type="button">
+                  <div className={styles.gearInner}>
+                    <div className={styles.gearTitle}>Devis</div>
+                    <div className={styles.gearSub}>Déclenche des opportunités</div>
+                    <div className={styles.gearBtn}>Créer un devis</div>
+                  </div>
+                </button>
+
+                <button className={`${styles.gearCapsule} ${styles.gear_pink}`} type="button">
+                  <div className={styles.gearInner}>
+                    <div className={styles.gearTitle}>Facturer</div>
+                    <div className={styles.gearSub}>Transforme en CA</div>
+                    <div className={styles.gearBtn}>Créer une facture</div>
+                  </div>
+                </button>
+
+                <button className={`${styles.gearCapsule} ${styles.gear_orange}`} type="button">
+                  <div className={styles.gearInner}>
+                    <div className={styles.gearTitle}>Fidéliser</div>
+                    <div className={styles.gearSub}>Pérennise votre activité</div>
+                    <div className={styles.gearBtn}>Communiquer</div>
+                  </div>
+                </button>
+              </div>
+              {/* --- END --- */}
+            </div>
           </div>
         </div>
       </section>
@@ -683,13 +882,10 @@ export default function DashboardClient() {
       >
         {panel === "contact" && <ContactContent mode="drawer" />}
 
+        {/* ✅ AJOUT : callbacks pour mise à jour immédiate de la pastille */}
         {panel === "profil" && (
-  <ProfilContent
-    mode="drawer"
-    onProfileSaved={checkProfile}
-    onProfileReset={checkProfile}
-  />
-)}
+          <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} />
+        )}
 
         {panel === "abonnement" && <AbonnementContent mode="drawer" onOpenContact={() => openPanel("contact")} />}
       </SettingsDrawer>
