@@ -30,6 +30,7 @@ function GlassCard({
 }) {
   return (
     <div
+      className="mailsSettings_glassCard"
       style={{
         borderRadius: 18,
         border: "1px solid rgba(255,255,255,0.14)",
@@ -42,10 +43,21 @@ function GlassCard({
         <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: "-0.2px", color: "rgba(255,255,255,0.92)" }}>
           {title}
         </div>
-        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.68)" }}>{subtitle}</div>
+        <div
+          style={{
+            fontSize: 13,
+            color: "rgba(255,255,255,0.68)",
+            wordBreak: "break-word",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {subtitle}
+        </div>
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>{children}</div>
+      <div className="mailsSettings_glassChildren" style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -150,6 +162,31 @@ React.useEffect(() => {
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
+      {/* Responsive tweaks (mobile only) */}
+      <style jsx>{`
+        .mailsSettings_cardsGrid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+
+        @media (max-width: 640px) {
+          .mailsSettings_cardsGrid {
+            grid-template-columns: 1fr;
+          }
+
+          /* Buttons stack vertically + take full width on mobile */
+          .mailsSettings_glassChildren {
+            flex-direction: column;
+            align-items: stretch;
+            flex-wrap: nowrap;
+          }
+          .mailsSettings_glassChildren > button {
+            width: 100%;
+          }
+        }
+      `}</style>
+
       <div
         style={{
           borderRadius: 18,
@@ -182,7 +219,7 @@ React.useEffect(() => {
 )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="mailsSettings_cardsGrid">
         {slots.map((i) => {
           const acc = mailAccounts[i];
 
