@@ -161,7 +161,9 @@ export default function NewFacturePage() {
   return (
     <div className={dash.page}>
       <div className={styles.container}>
-        <h2>Créer une facture</h2>
+        {/* Formulaire */}
+        <div className={styles.panel}>
+          <h2>Créer une facture</h2>
 
         <div className={styles.field}>
           <label>Client</label>
@@ -293,15 +295,16 @@ export default function NewFacturePage() {
           </button>
         </div>
 
-        {vatDispense ? (
-          <p style={{ marginTop: 12, opacity: 0.9 }}>
-            TVA désactivée :{" "}
-            <strong>TVA non applicable (article 293 B du CGI)</strong>
-          </p>
-        ) : null}
-      </div>
+          {vatDispense ? (
+            <p style={{ marginTop: 12, opacity: 0.9 }}>
+              TVA désactivée :{" "}
+              <strong>TVA non applicable (article 293 B du CGI)</strong>
+            </p>
+          ) : null}
+        </div>
 
-      <div className={styles.preview}>
+        {/* Aperçu document */}
+        <div className={styles.preview}>
         <div className={styles.header}>
           <div>
             <div className={styles.title}>FACTURE</div>
@@ -548,6 +551,7 @@ export default function NewFacturePage() {
               <strong>Statut :</strong> {status}
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>

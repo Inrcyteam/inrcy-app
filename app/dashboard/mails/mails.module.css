@@ -125,7 +125,9 @@
 .grid {
   box-sizing: border-box;
 
+  /* Desktop: largeur "design". Mobile: 100% (voir media query en bas) */
   width: 1188px;
+  max-width: 100%;
   margin: 0 auto;
 
   flex: 1;
@@ -135,6 +137,63 @@
   display: grid;
   grid-template-columns: 310px 450px 400px;
   gap: 14px;
+}
+
+/* =========================
+   Responsive (mobile)
+   - On utilise les panneaux (Dossiers / Messages / Action) déjà gérés en TSX.
+   - On supprime les largeurs fixes et on simplifie la grille.
+========================= */
+
+@media (max-width: 980px) {
+  .page {
+    /* Le padding desktop est trop large sur mobile */
+    padding: 14px 12px 28px;
+    height: 100dvh; /* plus fiable que 100vh sur mobile */
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0 12px;
+  }
+
+  .actions {
+    width: 100%;
+  }
+
+  .mobilePanes {
+    display: flex;
+  }
+
+  .grid {
+    width: 100%;
+    margin: 0;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .gridList,
+  .gridAction {
+    grid-template-columns: 1fr;
+  }
+
+  .cardHeader {
+    padding: 10px 12px;
+  }
+
+  .nav {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 420px) {
+  .btnGhost,
+  .btnPrimary {
+    padding: 9px 10px;
+    border-radius: 12px;
+  }
 }
 
 /* ✅ NOUVEAU : variantes 2 colonnes / action plein écran */

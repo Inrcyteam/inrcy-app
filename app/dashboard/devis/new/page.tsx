@@ -136,7 +136,9 @@ export default function NewDevisPage() {
   return (
     <div className={dash.page}>
       <div className={styles.container}>
-        <h2>Créer un devis</h2>
+        {/* Formulaire */}
+        <div className={styles.panel}>
+          <h2>Créer un devis</h2>
 
         <div className={styles.field}>
           <label>Client</label>
@@ -195,224 +197,202 @@ export default function NewDevisPage() {
             <strong>TVA non applicable (article 293 B du CGI)</strong>
           </p>
         ) : null}
-      </div>
-
-      <div className={styles.preview}>
-        <div className={styles.header}>
-          <div>
-            <div className={styles.title}>DEVIS</div>
-            <div>{number || "—"}</div>
-            <div style={{ marginTop: 6, color: "#444" }}>
-              Date :{" "}
-              {docDateISO
-                ? new Date(docDateISO).toLocaleDateString("fr-FR")
-                : "—"}
-            </div>
-          </div>
-          {profile?.logo_url ? (
-  <img src={profile.logo_url} alt="Logo" className={styles.logo} />
-) : null}
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 24,
-            marginBottom: 18,
-          }}
-        >
-          <div>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Prestataire</div>
-            <div style={{ fontWeight: 600 }}>
-              {profile?.company_legal_name ?? "—"}
-            </div>
-            <div>{profile?.hq_address ?? ""}</div>
+        {/* Aperçu document */}
+        <div className={styles.preview}>
+          <div className={styles.header}>
             <div>
-              {(profile?.hq_zip ?? "")} {(profile?.hq_city ?? "")}
+              <div className={styles.title}>DEVIS</div>
+              <div>{number || "—"}</div>
+              <div style={{ marginTop: 6, color: "#444" }}>
+                Date :{" "}
+                {docDateISO
+                  ? new Date(docDateISO).toLocaleDateString("fr-FR")
+                  : "—"}
+              </div>
             </div>
-            <div style={{ marginTop: 6, fontSize: 13, color: "#444" }}>
-              {profile?.phone ? (
-                <>
-                  Tél : {profile.phone}
-                  <br />
-                </>
-              ) : null}
-              {profile?.contact_email ? (
-                <>
-                  Email : {profile.contact_email}
-                  <br />
-                </>
-              ) : null}
-              {profile?.siren ? (
-                <>
-                  SIREN : {profile.siren}
-                  <br />
-                </>
-              ) : null}
-              {profile?.vat_number ? (
-                <>
-                  TVA : {profile.vat_number}
-                  <br />
-                </>
-              ) : null}
+
+            {profile?.logo_url ? (
+              <img src={profile.logo_url} alt="Logo" className={styles.logo} />
+            ) : null}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 24,
+              marginBottom: 18,
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Prestataire</div>
+              <div style={{ fontWeight: 600 }}>
+                {profile?.company_legal_name ?? "—"}
+              </div>
+              <div>{profile?.hq_address ?? ""}</div>
+              <div>
+                {(profile?.hq_zip ?? "")} {(profile?.hq_city ?? "")}
+              </div>
+
+              <div style={{ marginTop: 6, fontSize: 13, color: "#444" }}>
+                {profile?.phone ? (
+                  <>
+                    Tél : {profile.phone}
+                    <br />
+                  </>
+                ) : null}
+                {profile?.contact_email ? (
+                  <>
+                    Email : {profile.contact_email}
+                    <br />
+                  </>
+                ) : null}
+                {profile?.siren ? (
+                  <>
+                    SIREN : {profile.siren}
+                    <br />
+                  </>
+                ) : null}
+                {profile?.vat_number ? (
+                  <>
+                    TVA : {profile.vat_number}
+                    <br />
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Client</div>
+              <div style={{ fontWeight: 600 }}>{clientName || "—"}</div>
+              <div>{clientAddress || ""}</div>
+              <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>
+                {clientEmail || ""}
+              </div>
             </div>
           </div>
 
-          <div>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Client</div>
-            <div style={{ fontWeight: 600 }}>{clientName || "—"}</div>
-            <div>{clientAddress || ""}</div>
-            <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>
-              {clientEmail || ""}
-            </div>
-          </div>
-        </div>
-
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Désignation</th>
-              <th style={{ width: 70 }}>Qté</th>
-              <th style={{ width: 120 }}>PU HT</th>
-              <th style={{ width: 90 }}>TVA</th>
-              <th style={{ width: 120, textAlign: "right" }}>Total HT</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l) => (
-              <tr key={l.id}>
-                <td>
-                  <input
-                    value={l.label}
-                    onChange={(e) =>
-                      updateLine(l.id, { label: e.target.value })
-                    }
-                    placeholder="Ex: Entretien boîte de vitesse"
-                    style={{
-                      width: "100%",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 8,
-                      padding: "8px 10px",
-                    }}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    value={l.qty}
-                    onChange={(e) =>
-                      updateLine(l.id, { qty: Number(e.target.value) })
-                    }
-                    style={{
-                      width: 64,
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 8,
-                      padding: "8px 10px",
-                    }}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    value={l.unitPrice}
-                    onChange={(e) =>
-                      updateLine(l.id, { unitPrice: Number(e.target.value) })
-                    }
-                    style={{
-                      width: 110,
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 8,
-                      padding: "8px 10px",
-                    }}
-                  />
-                </td>
-                <td>
-                  <select
-                    value={vatDispense ? 0 : l.vatRate}
-                    disabled={vatDispense}
-                    onChange={(e) =>
-                      updateLine(l.id, { vatRate: Number(e.target.value) })
-                    }
-                    style={{
-                      width: 80,
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 8,
-                      padding: "8px 10px",
-                    }}
-                  >
-                    {VAT_OPTIONS.map((v) => (
-                      <option key={v} value={v}>
-                        {v}%
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {formatEuro(calcLineHT(l))}
-                </td>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Désignation</th>
+                <th style={{ width: 70 }}>Qté</th>
+                <th style={{ width: 120 }}>PU HT</th>
+                <th style={{ width: 90 }}>TVA</th>
+                <th style={{ width: 120, textAlign: "right" }}>Total HT</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {lines.map((l) => (
+                <tr key={l.id}>
+                  <td>
+                    <input
+                      value={l.label}
+                      onChange={(e) => updateLine(l.id, { label: e.target.value })}
+                      placeholder="Ex: Entretien boîte de vitesse"
+                      style={{
+                        width: "100%",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      value={l.qty}
+                      onChange={(e) => updateLine(l.id, { qty: Number(e.target.value) })}
+                      style={{
+                        width: 64,
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      value={l.unitPrice}
+                      onChange={(e) =>
+                        updateLine(l.id, { unitPrice: Number(e.target.value) })
+                      }
+                      style={{
+                        width: 110,
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      value={vatDispense ? 0 : l.vatRate}
+                      disabled={vatDispense}
+                      onChange={(e) =>
+                        updateLine(l.id, { vatRate: Number(e.target.value) })
+                      }
+                      style={{
+                        width: 80,
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                      }}
+                    >
+                      {VAT_OPTIONS.map((v) => (
+                        <option key={v} value={v}>
+                          {v}%
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {formatEuro(calcLineHT(l))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 260px",
-            marginTop: 18,
-            gap: 24,
-          }}
-        >
-          <div style={{ fontSize: 12, color: "#444", lineHeight: 1.4 }}>
-            {vatDispense ? (
-              <>
-                <strong>TVA non applicable</strong> — Article 293 B du CGI.
-              </>
-            ) : (
-              <>Les prix sont exprimés en euros. Le devis est valable {validityDays} jours.</>
-            )}
-          </div>
-          <div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 6,
-              }}
-            >
-              <span>Total HT</span>
-              <strong>{formatEuro(totals.totalHT)}</strong>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 260px",
+              marginTop: 18,
+              gap: 24,
+            }}
+          >
+            <div style={{ fontSize: 12, color: "#444", lineHeight: 1.4 }}>
+              {vatDispense ? (
+                <>
+                  <strong>TVA non applicable</strong> — Article 293 B du CGI.
+                </>
+              ) : (
+                <>Les prix sont exprimés en euros. Le devis est valable {validityDays} jours.</>
+              )}
             </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 6,
-              }}
-            >
-              <span>TVA</span>
-              <strong>{formatEuro(totals.totalTVA)}</strong>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginTop: 10,
-                fontSize: 18,
-              }}
-            >
-              <span>Total TTC</span>
-              <strong>{formatEuro(totals.totalTTC)}</strong>
+
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span>Total HT</span>
+                <strong>{formatEuro(totals.totalHT)}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span>TVA</span>
+                <strong>{formatEuro(totals.totalTVA)}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 18 }}>
+                <span>Total TTC</span>
+                <strong>{formatEuro(totals.totalTTC)}</strong>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+        </div> 
+      </div>  
+    </div>  
   );
 }
+

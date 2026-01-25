@@ -6,6 +6,54 @@
   padding: 24px;
 }
 
+/* ✅ Responsive: sur mobile on empile formulaire + aperçu */
+@media (max-width: 900px) {
+  .container {
+    grid-template-columns: 1fr;
+    padding: 14px;
+    gap: 14px;
+  }
+
+  .panel {
+    padding: 16px;
+    border-radius: 14px;
+  }
+
+  .preview {
+    padding: 18px;
+  }
+
+  .header {
+    min-height: 0;
+    padding-top: 0;
+  }
+
+  .logo {
+    position: static;
+    display: block;
+    margin-left: auto;
+    height: 92px;
+    max-width: 55vw;
+  }
+
+  /* Les tableaux sont trop larges sur mobile => scroll horizontal */
+  .table,
+  .listTable {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .listHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .primaryBtn {
+    width: 100%;
+  }
+}
+
 .panel {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -145,9 +193,32 @@
   overflow: hidden;
 }
 
+/* ✅ Permet le scroll horizontal si la table déborde (mobile) */
+.tableCard {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Le tableau de liste a souvent besoin d'une largeur minimale */
+.listTable {
+  min-width: 720px;
+}
+
+@media (max-width: 900px) {
+  .tableCard {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 .listTable {
   width: 100%;
   border-collapse: collapse;
+}
+
+/* Empêche les colonnes d'être écrasées dans un écran étroit */
+.listTable {
+  min-width: 680px;
 }
 
 .listTable th,
