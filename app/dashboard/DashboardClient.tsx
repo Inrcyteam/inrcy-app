@@ -8,6 +8,8 @@ import SettingsDrawer from "./SettingsDrawer";
 import ProfilContent from "./settings/_components/ProfilContent";
 import AbonnementContent from "./settings/_components/AbonnementContent";
 import ContactContent from "./settings/_components/ContactContent";
+import MailsSettingsContent from "./settings/_components/MailsSettingsContent";
+
 
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
@@ -134,8 +136,8 @@ const adminModules: Array<{
 ];
 
 const quickActions: Array<{ key: string; title: string; sub: string; disabled?: boolean; accent: Accent }> = [
-  { key: "facturer", title: "Facturer", sub: "Factures & paiements", disabled: true, accent: "orange" },
-  { key: "devis", title: "Faire devis", sub: "Devis en 30 sec", disabled: true, accent: "pink" },
+  { key: "facturer", title: "Facturer", sub: "Factures & paiements", disabled: false, accent: "orange" },
+  { key: "devis", title: "Faire devis", sub: "Devis en 30 sec", disabled: false, accent: "pink" },
   { key: "publier", title: "Publier", sub: "Posts & contenus", disabled: true, accent: "purple" },
   { key: "newsletter", title: "Communiquer", sub: "Newsletter & promos", disabled: true, accent: "cyan" },
 ];
@@ -144,9 +146,9 @@ export default function DashboardClient() {
   const router = useRouter();
 
   const searchParams = useSearchParams();
-  const panel = searchParams.get("panel"); // "contact" | "profil" | "abonnement" | null
+  const panel = searchParams.get("panel"); // "contact" | "profil" | "abonnement" | "mails" | null
 
-  const openPanel = (name: "contact" | "profil" | "abonnement") => {
+   const openPanel = (name: "contact" | "profil" | "abonnement" | "mails") => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", name);
     router.push(`/dashboard?${params.toString()}`);
@@ -775,7 +777,13 @@ export default function DashboardClient() {
   <div className={styles.loopTitle}>MAILS</div>
 </div>
 
-<button className={styles.loopGearBtn} type="button" aria-label="Réglages Mails" title="Réglages">
+<button
+  className={styles.loopGearBtn}
+  type="button"
+  aria-label="Réglages Mails"
+  title="Réglages"
+  onClick={() => openPanel("mails")}
+>
   <svg className={styles.loopGearSvg} viewBox="0 0 24 24" aria-hidden="true">
   <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
   <path d="M19.4 15a7.9 7.9 0 0 0 .1-1 7.9 7.9 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7.7 7.7 0 0 0-1.7-1l-.4-2.6H10l-.4 2.6a7.7 7.7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.9 7.9 0 0 0-.1 1 7.9 7.9 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.5-2-1.5Z" />
@@ -784,9 +792,13 @@ export default function DashboardClient() {
 
       <div className={styles.loopSub}>Toutes vos demandes arrivent ici</div>
       <div className={styles.loopActions}>
-        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button">
-          Ouvrir l’iNr'Box
-        </button>
+        <button
+  className={`${styles.actionBtn} ${styles.connectBtn}`}
+  type="button"
+  onClick={() => router.push("/dashboard/mails")}
+>
+  Ouvrir iNr'Box
+</button>
       </div>
     </div>
 
@@ -806,9 +818,25 @@ export default function DashboardClient() {
 
       <div className={styles.loopSub}>Transformez les contacts en RDV</div>
       <div className={styles.loopActions}>
-        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button">
-          Voir l’agenda
-        </button>
+        <button
+  className={`${styles.actionBtn} ${styles.connectBtn}`}
+  type="button"
+  onClick={async () => {
+    const r = await fetch("/api/calendar/status");
+    if (!r.ok) {
+      window.location.href = "/api/integrations/google-calendar/start";
+      return;
+    }
+    const j = await r.json().catch(() => ({}));
+    if (!j.connected) {
+      window.location.href = "/api/integrations/google-calendar/start";
+      return;
+    }
+    router.push("/dashboard/agenda");
+  }}
+>
+  Voir l’agenda
+</button>
       </div>
     </div>
 
@@ -858,7 +886,11 @@ export default function DashboardClient() {
                   </div>
                 </button>
 
-                <button className={`${styles.gearCapsule} ${styles.gear_purple}`} type="button">
+                <button
+                  className={`${styles.gearCapsule} ${styles.gear_purple}`}
+                  type="button"
+                  onClick={() => router.push("/dashboard/devis/new")}
+                >
                   <div className={styles.gearInner}>
                     <div className={styles.gearTitle}>Devis</div>
                     <div className={styles.gearSub}>Déclenche des opportunités</div>
@@ -866,7 +898,11 @@ export default function DashboardClient() {
                   </div>
                 </button>
 
-                <button className={`${styles.gearCapsule} ${styles.gear_pink}`} type="button">
+                <button
+                  className={`${styles.gearCapsule} ${styles.gear_pink}`}
+                  type="button"
+                  onClick={() => router.push("/dashboard/factures/new")}
+                >
                   <div className={styles.gearInner}>
                     <div className={styles.gearTitle}>Facturer</div>
                     <div className={styles.gearSub}>Transforme en CA</div>
@@ -896,12 +932,15 @@ export default function DashboardClient() {
             ? "Mon profil"
             : panel === "abonnement"
             ? "Mon abonnement"
+            : panel === "mails"
+            ? "Réglages iNr’Box"
             : ""
         }
-        isOpen={panel === "contact" || panel === "profil" || panel === "abonnement"}
+        isOpen={panel === "contact" || panel === "profil" || panel === "abonnement" || panel === "mails"}
         onClose={closePanel}
       >
         {panel === "contact" && <ContactContent mode="drawer" />}
+        {panel === "mails" && <MailsSettingsContent />}
 
         {/* ✅ AJOUT : callbacks pour mise à jour immédiate de la pastille */}
         {panel === "profil" && (

@@ -1,0 +1,237 @@
+/* --- Layout create page --- */
+.container {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: 24px;
+  padding: 24px;
+}
+
+.panel {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.panel h2 {
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.field label {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.field input {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: white;
+  outline: none;
+}
+
+.panel button {
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: white;
+  cursor: pointer;
+}
+
+.panel button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.preview {
+  position: relative; /* <— IMPORTANT : l’absolu se cale sur la page blanche */
+  background: white;
+  color: #111;
+  border-radius: 12px;
+  padding: 40px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+}
+
+.header {
+  position: relative; /* référence pour l’absolu */
+  padding-top: 20px;
+  min-height: 150px;  /* espace réservé pour le logo */
+}
+
+.logo {
+  position: absolute;
+  top: 0px;     /* ajuste si besoin */
+  right: 24px;   /* ajuste si besoin */
+  height: 180px;  /* tu peux monter à 110px */
+  width: auto;
+  object-fit: contain;
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 8px;
+  vertical-align: top;
+}
+
+.total {
+  text-align: right;
+  font-size: 18px;
+  font-weight: 700;
+  margin-top: 24px;
+}
+
+/* --- List pages --- */
+.listWrap {
+  padding: 24px;
+}
+
+.listHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.listTitle {
+  font-size: 22px;
+  margin: 0;
+}
+
+.listSub {
+  margin: 6px 0 0;
+  opacity: 0.8;
+  font-size: 13px;
+}
+
+.primaryBtn {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 10px 14px;
+  color: white;
+  cursor: pointer;
+}
+
+.primaryBtn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.tableCard {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.listTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.listTable th,
+.listTable td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  text-align: left;
+  color: white;
+}
+
+.listTable th {
+  opacity: 0.85;
+  font-weight: 650;
+}
+
+.listTable tr:last-child td {
+  border-bottom: none;
+}
+
+.ghostBtn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: white;
+  cursor: pointer;
+}
+
+.ghostBtn:hover {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.empty {
+  padding: 18px;
+  color: white;
+  opacity: 0.9;
+}
+
+/* --- Print --- */
+@media print {
+  /* On cache toute l’UI (formulaire + listes + boutons) */
+  .panel,
+  .listWrap,
+  .listHeader,
+  .tableCard,
+  .primaryBtn,
+  .ghostBtn,
+  .container {
+    display: none !important;
+  }
+
+  /* On n’imprime QUE le document */
+  .preview {
+    display: block !important;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+  }
+
+  /* Les inputs dans le tableau doivent “ressembler” à du texte */
+  .preview input,
+  .preview textarea,
+  .preview select {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+    padding: 0 !important;
+  }
+}
+
+
+/* Select */
+.field select {
+  color: white;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Dropdown options */
+.field select option {
+  color: #111;              /* TEXTE NOIR */
+  background: #fff;         /* FOND BLANC */
+}
+
+
+
