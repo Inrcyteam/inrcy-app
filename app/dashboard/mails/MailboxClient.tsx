@@ -1087,27 +1087,54 @@ const singleMoveToSpam = async () => {
           </div>
 
           <div className={styles.actions}>
-            {viewMode === "action" && (
+            {viewMode === "action" && !isMobile && (
               <button className={styles.btnGhost} type="button" onClick={closeAction} title="Retour à la liste">
                 ← Retour
               </button>
             )}
-            <button
-              className={styles.btnGhost}
-              title="Réglages iNr’Box"
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-            >
-              ⚙️ Réglages
-            </button>
 
-            <button className={styles.btnPrimary} onClick={openComposeBlank} type="button">
-              ✍️ Écrire
-            </button>
+            {!isMobile ? (
+              <>
+                <button
+                  className={styles.btnGhost}
+                  title="Réglages iNr’Box"
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  ⚙️ Réglages
+                </button>
 
-            <Link href="/dashboard" className={styles.btnGhost} title="Fermer iNr’Box">
-              Fermer
-            </Link>
+                <button className={styles.btnPrimary} onClick={openComposeBlank} type="button">
+                  ✍️ Écrire
+                </button>
+
+                <Link href="/dashboard" className={styles.btnGhost} title="Fermer iNr’Box">
+                  Fermer
+                </Link>
+              </>
+            ) : (
+              <div className={styles.mobileHeaderIcons}>
+                <button
+                  className={styles.iconOnly}
+                  title="Réglages"
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  ⚙️
+                </button>
+                <button
+                  className={styles.iconOnlyPrimary}
+                  title="Écrire"
+                  type="button"
+                  onClick={openComposeBlank}
+                >
+                  ✍️
+                </button>
+                <Link href="/dashboard" className={styles.iconOnly} title="Fermer">
+                  ✖️
+                </Link>
+              </div>
+            )}
           </div>
         </div>
 

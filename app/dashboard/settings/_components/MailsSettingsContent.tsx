@@ -310,11 +310,6 @@ React.useEffect(() => {
           )}
         </GlassCard>
       </div>
-
-      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
-        Note : on commence par une version “propre et simple” : iNr’Box affiche les dernières conversations en live, sans
-        tout stocker.
       </div>
-    </div>
   );
 }

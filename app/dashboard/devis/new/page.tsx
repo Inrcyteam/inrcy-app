@@ -50,6 +50,58 @@ export default function NewDevisPage() {
 
   const [validityDays, setValidityDays] = useState<number>(30);
 
+  // --- Mobile: obligatoire en paysage (overlay en portrait) ---
+  const [needLandscape, setNeedLandscape] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(max-width: 900px) and (orientation: portrait)");
+
+    const update = () => setNeedLandscape(mq.matches);
+    update();
+
+    // Tentative de lock paysage (non garanti selon navigateur/OS)
+    const tryLock = async () => {
+      try {
+        // @ts-ignore
+        if (screen?.orientation?.lock) {
+          // @ts-ignore
+          await screen.orientation.lock("landscape");
+        }
+      } catch {
+        // ignore
+      }
+    };
+    tryLock();
+
+    if ("addEventListener" in mq) mq.addEventListener("change", update);
+    // @ts-ignore (Safari)
+    else mq.addListener(update);
+
+    window.addEventListener("orientationchange", update);
+    window.addEventListener("resize", update);
+
+    return () => {
+      if ("removeEventListener" in mq) mq.removeEventListener("change", update);
+      // @ts-ignore (Safari)
+      else mq.removeListener(update);
+
+      window.removeEventListener("orientationchange", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const prev = document.body.style.overflow;
+    if (needLandscape) document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [needLandscape]);
+
+
   // IMPORTANT: id stable au 1er render
   const [lines, setLines] = useState<LineItem[]>([
     { id: "l_1", label: "Prestation", qty: 1, unitPrice: 100, vatRate: 20 },
@@ -135,6 +187,18 @@ export default function NewDevisPage() {
 
   return (
     <div className={dash.page}>
+      {needLandscape ? (
+        <div className={styles.landscapeGate} role="dialog" aria-modal="true">
+          <div className={styles.landscapeGateCard}>
+            <div className={styles.landscapeGateIcon}>🔄</div>
+            <div className={styles.landscapeGateTitle}>Passez en mode paysage</div>
+            <div className={styles.landscapeGateText}>
+              La création de devis est optimisée en écran paysage sur mobile.
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className={styles.container}>
         {/* Formulaire */}
         <div className={styles.panel}>

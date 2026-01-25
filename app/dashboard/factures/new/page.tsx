@@ -47,6 +47,47 @@ export default function NewFacturePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const vatDispense = !!profile?.vat_dispense;
 
+  // --- Mobile: this screen is unusable in portrait -> require landscape
+  const [mustRotate, setMustRotate] = useState(false);
+
+  const tryLockLandscape = async () => {
+    try {
+      // Works only on some mobile browsers and often requires a user gesture
+      // so we also keep a blocking overlay until the user rotates.
+      // @ts-ignore
+      await screen?.orientation?.lock?.("landscape");
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    const update = () => {
+      if (typeof window === "undefined") return;
+      const isMobile = window.matchMedia("(max-width: 900px)").matches;
+      const isPortrait = window.matchMedia("(orientation: portrait)").matches;
+      setMustRotate(isMobile && isPortrait);
+    };
+
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.style.overflow = mustRotate ? "hidden" : "";
+    if (mustRotate) void tryLockLandscape();
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mustRotate]);
+
   // IMPORTANT: valeur stable SSR/CSR -> on initialise à vide, puis on remplit après mount
   const [number, setNumber] = useState<string>("");
   const [invoiceDate, setInvoiceDate] = useState<string>("");
@@ -159,7 +200,32 @@ export default function NewFacturePage() {
     PAYMENT_METHODS.find((m) => m.key === paymentMethod)?.label ?? "—";
 
   return (
-    <div className={dash.page}>
+
+    <>
+      {mustRotate ? (
+        <div className={styles.rotateOverlay} role="dialog" aria-modal="true">
+          <div className={styles.rotateCard}>
+            <h3 className={styles.rotateTitle}>Passe en mode paysage</h3>
+            <p className={styles.rotateText}>
+              La création de facture est conçue pour un écran large. Tourne ton téléphone en{" "}
+              <strong>paysage</strong> pour continuer.
+            </p>
+            <div className={styles.rotateActions}>
+              <button type="button" className={styles.rotateBtn} onClick={() => void tryLockLandscape()}>
+                Basculer en paysage
+              </button>
+              <button type="button" className={styles.rotateBtn} onClick={() => history.back()}>
+                Retour
+              </button>
+            </div>
+            <div className={styles.rotateHint}>
+              Si le bouton ne fonctionne pas, fais juste pivoter l’écran.
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className={dash.page}>
       <div className={styles.container}>
         {/* Formulaire */}
         <div className={styles.panel}>
@@ -555,5 +621,6 @@ export default function NewFacturePage() {
         </div>
       </div>
     </div>
+    </>
   );
 }
