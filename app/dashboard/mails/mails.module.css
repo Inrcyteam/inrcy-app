@@ -988,6 +988,25 @@ width: 100%;
   border-top: 1px solid rgba(255,255,255,0.08);
 }
 
+.bulkLeft,
+.bulkActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bulkIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.bulkText {
+  margin-left: 6px;
+}
+
 .bulkInfo {
   font-size: 12px;
   font-weight: 900;
@@ -1423,3 +1442,58 @@ width: 100%;
 
 /* Navigation mail précédent / suivant */
 .iconBtnNav { }
+
+
+
+@media (max-width: 980px) {
+  /* Search + Filtrer sur la même ligne (colonne Messages) */
+  .filtersWrap {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+  .searchRow {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+  .filterBar {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .filterBtn {
+    padding: 9px 10px;
+    white-space: nowrap;
+  }
+  .filterPanel {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 0;
+  }
+
+  /* Barre multi-sélection plus compacte + actions en icônes */
+  .bulkBar {
+    flex-wrap: nowrap;
+  }
+  .bulkLeft,
+  .bulkActions {
+    flex-wrap: nowrap;
+  }
+  .bulkBtn,
+  .bulkBtnDanger {
+    padding: 9px 10px;
+    min-width: 38px;
+  }
+  .bulkText {
+    display: none;
+  }
+  /* ✅ Cache le compteur "xx visible(s) / xx sélectionné(s)" en mobile */
+  .bulkInfo {
+    display: none !important;
+  }
+  .bulkIcon {
+    margin: 0;
+    font-size: 16px;
+  }
+}

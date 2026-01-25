@@ -1298,7 +1298,7 @@ const singleMoveToSpam = async () => {
 
   {/* Actions rapides (grandes, ordonnées) */}
   <div className={styles.actionTiles}>
-    {/* ⭐ Important / retirer important */}
+    {/* <span className={styles.bulkIcon}>⭐</span><span className={styles.bulkText}>Important</span> / retirer important */}
     {(selected.source === "Gmail" ? (selected.labelIds || []).includes("IMPORTANT") : selected.folder === "important") ? (
       <button
         className={styles.actionTile}
@@ -1562,7 +1562,7 @@ const singleMoveToSpam = async () => {
   {folder === "trash" && (
     <div style={{ width: "100%", display: "flex", gap: 10, flexWrap: "wrap" }}>
       <button className={styles.btnGhost} type="button" onClick={emptyTrash} title="Vider la corbeille">
-        🧹 Vider corbeille
+        <span className={styles.bulkIcon}>🧹</span><span className={styles.bulkText}>Vider corbeille</span>
       </button>
     </div>
   )}
@@ -1665,7 +1665,7 @@ const singleMoveToSpam = async () => {
 
                 {/* ✅ Barre actions multi-sélection */}
                 <div className={styles.bulkBar}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <div className={styles.bulkLeft}>
                     <button
                       className={styles.bulkBtn}
                       type="button"
@@ -1680,7 +1680,7 @@ const singleMoveToSpam = async () => {
                     </span>
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <div className={styles.bulkActions}>
                     {/* Important */}
                     {folder !== "important" ? (
                       <button
@@ -1690,7 +1690,7 @@ const singleMoveToSpam = async () => {
                         onClick={bulkImportant}
                         title="Mettre en Importants"
                       >
-                        ⭐ Important
+                        <span className={styles.bulkIcon}>⭐</span><span className={styles.bulkText}>Important</span>
                       </button>
                     ) : (
                       <button
@@ -1700,7 +1700,7 @@ const singleMoveToSpam = async () => {
                         onClick={bulkUnImportant}
                         title="Retirer des Importants"
                       >
-                        ⭐ Retirer
+                        <span className={styles.bulkIcon}>⭐</span><span className={styles.bulkText}>Retirer</span>
                       </button>
                     )}
 
@@ -1714,7 +1714,7 @@ const singleMoveToSpam = async () => {
                           onClick={bulkRestoreFromTrash}
                           title="Restaurer depuis corbeille"
                         >
-                          ♻️ Restaurer
+                          <span className={styles.bulkIcon}>♻️</span><span className={styles.bulkText}>Restaurer</span>
                         </button>
                         <button
                           className={styles.bulkBtnDanger}
@@ -1723,7 +1723,7 @@ const singleMoveToSpam = async () => {
                           onClick={bulkDeleteForever}
                           title="Supprimer définitivement"
                         >
-                          🧨 Supprimer
+                          <span className={styles.bulkIcon}>🧨</span><span className={styles.bulkText}>Supprimer</span>
                         </button>
                         <button
                           className={styles.bulkBtnDanger}
@@ -1731,7 +1731,7 @@ const singleMoveToSpam = async () => {
                           onClick={emptyTrash}
                           title="Vider corbeille"
                         >
-                          🧹 Vider
+                          <span className={styles.bulkIcon}>🧹</span><span className={styles.bulkText}>Vider</span>
                         </button>
                       </>
                     ) : folder === "spam" ? (
@@ -1743,7 +1743,7 @@ const singleMoveToSpam = async () => {
                           onClick={bulkLegitFromSpam}
                           title="Courrier légitime"
                         >
-                          ✅ Légitime
+                          <span className={styles.bulkIcon}>✅</span><span className={styles.bulkText}>Légitime</span>
                         </button>
                         <button
                           className={styles.bulkBtnDanger}
@@ -1752,7 +1752,7 @@ const singleMoveToSpam = async () => {
                           onClick={bulkDeleteToTrash}
                           title="Supprimer (vers corbeille)"
                         >
-                          🗑️ Supprimer
+                          <span className={styles.bulkIcon}>🗑️</span><span className={styles.bulkText}>Supprimer</span>
                         </button>
                       </>
                     ) : (
@@ -1763,7 +1763,7 @@ const singleMoveToSpam = async () => {
                         onClick={bulkDeleteToTrash}
                         title="Supprimer (vers corbeille)"
                       >
-                        🗑️ Supprimer
+                        <span className={styles.bulkIcon}>🗑️</span><span className={styles.bulkText}>Supprimer</span>
                       </button>
                     )}
                   </div>
