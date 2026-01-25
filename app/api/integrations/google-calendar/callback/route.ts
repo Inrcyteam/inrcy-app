@@ -1,4 +1,3 @@
-
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 
@@ -20,20 +19,39 @@ type GoogleUserInfo = {
 
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const code = searchParams.get("code");
-    if (!code) return NextResponse.json({ error: "Missing ?code" }, { status: 400 });
+    const url = new URL(req.url);
+    const code = url.searchParams.get("code");
+    const oauthError = url.searchParams.get("error");
 
-    const clientId = process.env.GOOGLE_CLIENT_ID!;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
-    const redirectUri = process.env.GOOGLE_CALENDAR_REDIRECT_URI!;
+    // Google peut renvoyer ?error=access_denied si l’utilisateur annule
+    if (oauthError) {
+      return NextResponse.redirect(new URL(`/dashboard/agenda?toast=denied`, url.origin));
+    }
 
-    if (!clientId || !clientSecret || !redirectUri) {
-      return NextResponse.json({ error: "Missing GOOGLE_* env vars" }, { status: 500 });
+    if (!code) {
+      return NextResponse.json({ error: "Missing ?code" }, { status: 400 });
+    }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+    // ✅ IMPORTANT: on calcule le redirectUri (prod/preview/local)
+    const origin = url.origin;
+    const redirectUri = `${origin}/api/integrations/google-calendar/callback`;
+
+    if (!clientId || !clientSecret) {
+      return NextResponse.json(
+        {
+          error: "Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET env vars",
+          hint: "Set them in Vercel (Production) and redeploy.",
+        },
+        { status: 500 }
+      );
     }
 
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
+
     if (authErr || !authData?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -54,7 +72,14 @@ export async function GET(req: Request) {
     const tokenData = (await tokenRes.json()) as TokenResponse;
 
     if (!tokenRes.ok || !tokenData.access_token) {
-      return NextResponse.json({ error: "Token exchange failed", tokenData }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: "Token exchange failed",
+          details: tokenData?.error_description || tokenData?.error || "unknown",
+          tokenData,
+        },
+        { status: 500 }
+      );
     }
 
     // 2) Get user email
@@ -65,7 +90,13 @@ export async function GET(req: Request) {
     const userInfo = (await userRes.json()) as GoogleUserInfo;
 
     if (!userRes.ok || !userInfo?.email) {
-      return NextResponse.json({ error: "Userinfo fetch failed", userInfo }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: "Userinfo fetch failed",
+          userInfo,
+        },
+        { status: 500 }
+      );
     }
 
     const userId = authData.user.id;
@@ -108,9 +139,11 @@ export async function GET(req: Request) {
       .from("calendar_accounts")
       .upsert(payload, { onConflict: "user_id,provider,email_address" });
 
-    if (upErr) return NextResponse.json({ error: "DB upsert failed", upErr }, { status: 500 });
+    if (upErr) {
+      return NextResponse.json({ error: "DB upsert failed", upErr }, { status: 500 });
+    }
 
-    return NextResponse.redirect(new URL("/dashboard/agenda?toast=connected", req.url));
+    return NextResponse.redirect(new URL("/dashboard/agenda?toast=connected", origin));
   } catch (e: any) {
     return NextResponse.json(
       { error: "Unhandled exception", message: e?.message, stack: e?.stack },
