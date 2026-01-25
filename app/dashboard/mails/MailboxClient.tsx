@@ -1468,32 +1468,6 @@ const singleMoveToSpam = async () => {
 
   {/* Actions business (Devis / Facture / CRM) */}
   <div className={styles.actionTilesBusiness}>
-    {/* 📄 Devis */}
-    <button
-      className={`${styles.actionTile} ${styles.actionTileOverlay}`}
-      type="button"
-      title="Envoyer un devis"
-      onClick={() => {
-        if (!selected) return;
-        const { name, email } = getContactPrefill(selected);
-        const params = new URLSearchParams({
-          name,
-          email,
-          source: selected.source,
-          from: "inrbox",
-        });
-        router.push(`/dashboard/devis?${params.toString()}`);
-      }}
-    >
-      <span className={styles.actionTileIcon} aria-hidden="true">
-        📄
-      </span>
-      <span className={styles.actionTileLabel}>Devis</span>
-      <span className={`${styles.iconOverlayBadge} ${styles.badgeDevis} ${styles.actionTileBadge}`} aria-hidden="true">
-        ✍️
-      </span>
-    </button>
-
     {/* 🧾 Facture */}
     <button
       className={`${styles.actionTile} ${styles.actionTileOverlay}`}
@@ -1520,6 +1494,32 @@ const singleMoveToSpam = async () => {
         aria-hidden="true"
       >
         €
+      </span>
+    </button>
+
+    {/* 📄 Devis */}
+    <button
+      className={`${styles.actionTile} ${styles.actionTileOverlay}`}
+      type="button"
+      title="Envoyer un devis"
+      onClick={() => {
+        if (!selected) return;
+        const { name, email } = getContactPrefill(selected);
+        const params = new URLSearchParams({
+          name,
+          email,
+          source: selected.source,
+          from: "inrbox",
+        });
+        router.push(`/dashboard/devis?${params.toString()}`);
+      }}
+    >
+      <span className={styles.actionTileIcon} aria-hidden="true">
+        📄
+      </span>
+      <span className={styles.actionTileLabel}>Devis</span>
+      <span className={`${styles.iconOverlayBadge} ${styles.badgeDevis} ${styles.actionTileBadge}`} aria-hidden="true">
+        ✍️
       </span>
     </button>
 

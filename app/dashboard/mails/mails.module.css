@@ -1594,3 +1594,65 @@ width: 100%;
   .actionTileIcon { font-size: 26px; }
   .actionTileSvg { width: 26px; height: 26px; }
 }
+
+
+/* =========================
+   MOBILE (Action tiles) — layout demandé
+   - Ligne 1 : CTA Envoyer (actionHero) (déjà full-width)
+   - Ligne 2 : Important + Brouillon + Houzz/Spam + Corbeille (4 icônes)
+   - Ligne 3 : Facture + Devis + CRM (3 icônes)
+   - "Cadres" au format icône (carrés)
+========================= */
+@media (max-width: 980px) {
+  /* 4 icônes sur une ligne (si la place manque, le navigateur peut quand même wrap) */
+  .actionTiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  /* 3 icônes sur une ligne */
+  .actionTilesBusiness {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  /* Cadres "à l'échelle de l'icône" */
+  .actionTile {
+    height: 64px;
+    padding: 0;
+    grid-template-rows: 1fr; /* icône only */
+    gap: 0;
+  }
+
+  .actionTileIcon {
+    font-size: 22px;
+  }
+
+  .actionTileSvg {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* Labels cachés sur mobile => icônes only */
+  .actionTileLabel {
+    display: none;
+  }
+
+  /* Badge (✍ / €) bien accroché à l'icône */
+  .actionTileOverlay .iconOverlayBadge.actionTileBadge {
+    top: 8px !important;
+    left: 50% !important;
+    transform: translate(14px, -8px) !important;
+  }
+}
+
+/* Ultra-narrow : on évite que ça devienne trop serré */
+@media (max-width: 360px) {
+  .actionTiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .actionTilesBusiness {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
