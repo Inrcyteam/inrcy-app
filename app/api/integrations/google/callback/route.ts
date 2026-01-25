@@ -28,14 +28,16 @@ export async function GET(req: Request) {
 
     const clientId = process.env.GOOGLE_CLIENT_ID!;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI!;
+    const origin = new URL(req.url).origin;
+const redirectUri = `${origin}/api/integrations/google/callback`;
 
-    if (!clientId || !clientSecret || !redirectUri) {
-      return NextResponse.json(
-        { error: "Missing GOOGLE_* env vars" },
-        { status: 500 }
-      );
-    }
+
+    if (!clientId || !clientSecret) {
+  return NextResponse.json(
+    { error: "Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET" },
+    { status: 500 }
+  );
+}
 
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
