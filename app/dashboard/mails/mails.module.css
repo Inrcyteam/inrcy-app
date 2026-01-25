@@ -703,6 +703,17 @@ width: 100%;
   transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease;
 }
 
+.actionHeroIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+}
+
+.actionHeroText {
+  display: inline;
+}
+
 .actionHero:hover {
   transform: translateY(-1px);
   border-color: rgba(255,255,255,0.24);
@@ -1547,4 +1558,39 @@ width: 100%;
   font-size: 18px;
   cursor: pointer;
   font-weight: 900;
+}
+
+
+/* =========================
+   MOBILE (Action) : icônes only + centrage
+   ========================= */
+@media (max-width: 980px) {
+  /* Header du mail (ACTION) centré */
+  .readerTitle {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .readerH {
+    width: 100%;
+    text-align: center;
+  }
+  .readerMeta {
+    text-align: center;
+  }
+
+  /* CTA principal : icône seule */
+  .actionHeroText { display: none; }
+  .actionHeroIcon { font-size: 20px; line-height: 1; }
+
+  /* Tuiles d'actions : icônes seules (gagne de la hauteur) */
+  .actionTileLabel { display: none; }
+  .actionTile {
+    height: 56px;
+    grid-template-rows: 1fr;
+    gap: 0;
+  }
+  .actionTileIcon { font-size: 26px; }
+  .actionTileSvg { width: 26px; height: 26px; }
 }

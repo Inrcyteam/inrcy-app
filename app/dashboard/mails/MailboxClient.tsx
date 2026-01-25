@@ -1320,7 +1320,8 @@ const singleMoveToSpam = async () => {
     onClick={openReply}
     title="Répondre au message"
   >
-    🚀 Répondre & Convertir
+    <span className={styles.actionHeroIcon} aria-hidden="true">🚀</span>
+    <span className={styles.actionHeroText}>Répondre & Convertir</span>
   </button>
 
   {/* Actions rapides (grandes, ordonnées) */}

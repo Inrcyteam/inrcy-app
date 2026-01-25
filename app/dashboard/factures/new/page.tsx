@@ -203,23 +203,12 @@ export default function NewFacturePage() {
 
     <>
       {mustRotate ? (
-        <div className={styles.rotateOverlay} role="dialog" aria-modal="true">
-          <div className={styles.rotateCard}>
-            <h3 className={styles.rotateTitle}>Passe en mode paysage</h3>
-            <p className={styles.rotateText}>
-              La création de facture est conçue pour un écran large. Tourne ton téléphone en{" "}
-              <strong>paysage</strong> pour continuer.
-            </p>
-            <div className={styles.rotateActions}>
-              <button type="button" className={styles.rotateBtn} onClick={() => void tryLockLandscape()}>
-                Basculer en paysage
-              </button>
-              <button type="button" className={styles.rotateBtn} onClick={() => history.back()}>
-                Retour
-              </button>
-            </div>
-            <div className={styles.rotateHint}>
-              Si le bouton ne fonctionne pas, fais juste pivoter l’écran.
+        <div className={styles.landscapeGate} role="dialog" aria-modal="true">
+          <div className={styles.landscapeGateCard}>
+            <div className={styles.landscapeGateIcon}>🔁</div>
+            <div className={styles.landscapeGateTitle}>Passez en mode paysage</div>
+            <div className={styles.landscapeGateText}>
+              La création de facture est optimisée en écran <strong>paysage</strong> sur mobile.
             </div>
           </div>
         </div>
