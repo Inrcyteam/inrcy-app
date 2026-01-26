@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 
     // Google peut renvoyer ?error=access_denied si l’utilisateur annule
     if (oauthError) {
-      return NextResponse.redirect(new URL(`/dashboard/agenda?toast=denied`, url.origin));
+      return NextResponse.redirect(new URL(`/dashboard?panel=agenda&toast=denied`, url.origin));
     }
 
     if (!code) {
@@ -143,7 +143,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "DB upsert failed", upErr }, { status: 500 });
     }
 
-    return NextResponse.redirect(new URL("/dashboard/agenda?toast=connected", origin));
+    return NextResponse.redirect(new URL("/dashboard?panel=agenda&toast=connected", origin));
   } catch (e: any) {
     return NextResponse.json(
       { error: "Unhandled exception", message: e?.message, stack: e?.stack },

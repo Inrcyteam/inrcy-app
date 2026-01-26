@@ -66,10 +66,45 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
 
-  // par défaut : événements à venir sur 14 jours
-  const days = Number(searchParams.get("days") ?? "14");
-  const timeMin = new Date().toISOString();
-  const timeMax = new Date(Date.now() + days * 24 * 3600 * 1000).toISOString();
+  // ✅ Support d'un range explicite (utile pour l'affichage calendrier)
+  // - Si timeMin/timeMax sont fournis, on s'aligne dessus.
+  // - Sinon, fallback sur ?days=14.
+  const qTimeMin = searchParams.get("timeMin");
+  const qTimeMax = searchParams.get("timeMax");
+
+  let timeMin: string;
+  let timeMax: string;
+
+  if (qTimeMin || qTimeMax) {
+    // On exige les deux pour éviter les surprises.
+    if (!qTimeMin || !qTimeMax) {
+      return NextResponse.json({ ok: false, error: "timeMin et timeMax sont requis ensemble" }, { status: 400 });
+    }
+
+    const tMin = Date.parse(qTimeMin);
+    const tMax = Date.parse(qTimeMax);
+    if (Number.isNaN(tMin) || Number.isNaN(tMax) || tMax <= tMin) {
+      return NextResponse.json({ ok: false, error: "Range invalide" }, { status: 400 });
+    }
+
+    // Garde-fou perf : max 120 jours.
+    const maxDays = 120;
+    const diffDays = (tMax - tMin) / (24 * 3600 * 1000);
+    if (diffDays > maxDays) {
+      return NextResponse.json(
+        { ok: false, error: `Range trop large (max ${maxDays} jours)` },
+        { status: 400 }
+      );
+    }
+
+    timeMin = new Date(tMin).toISOString();
+    timeMax = new Date(tMax).toISOString();
+  } else {
+    // par défaut : événements à venir sur 14 jours
+    const days = Number(searchParams.get("days") ?? "14");
+    timeMin = new Date().toISOString();
+    timeMax = new Date(Date.now() + days * 24 * 3600 * 1000).toISOString();
+  }
 
   const { accessToken } = await getCalendarToken(supabase, auth.user.id);
 
@@ -80,7 +115,7 @@ export async function GET(req: Request) {
       timeMax,
       singleEvents: "true",
       orderBy: "startTime",
-      maxResults: "50",
+      maxResults: "250",
     });
 
   const r = await fetch(url, {

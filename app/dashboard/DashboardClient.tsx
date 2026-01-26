@@ -9,6 +9,7 @@ import ProfilContent from "./settings/_components/ProfilContent";
 import AbonnementContent from "./settings/_components/AbonnementContent";
 import ContactContent from "./settings/_components/ContactContent";
 import MailsSettingsContent from "./settings/_components/MailsSettingsContent";
+import AgendaSettingsContent from "./settings/_components/AgendaSettingsContent";
 
 
 // ✅ IMPORTANT : même client que ta page login
@@ -146,9 +147,9 @@ export default function DashboardClient() {
   const router = useRouter();
 
   const searchParams = useSearchParams();
-  const panel = searchParams.get("panel"); // "contact" | "profil" | "abonnement" | "mails" | null
+  const panel = searchParams.get("panel"); // "contact" | "profil" | "abonnement" | "mails" | "agenda" | null
 
-   const openPanel = (name: "contact" | "profil" | "abonnement" | "mails") => {
+   const openPanel = (name: "contact" | "profil" | "abonnement" | "mails" | "agenda" | "site_inrcy") => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", name);
     router.push(`/dashboard?${params.toString()}`);
@@ -178,6 +179,12 @@ export default function DashboardClient() {
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
+// ✅ Site iNrCy (ownership + url + config)
+const [siteInrcyOwnership, setSiteInrcyOwnership] = useState<"rented" | "sold">("rented");
+const [siteInrcyUrl, setSiteInrcyUrl] = useState<string>("");
+const [siteInrcyContactEmail, setSiteInrcyContactEmail] = useState<string>("");
+const [siteInrcySettingsText, setSiteInrcySettingsText] = useState<string>("{}");
+const [siteInrcySettingsError, setSiteInrcySettingsError] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -185,6 +192,80 @@ export default function DashboardClient() {
       setUserEmail(data.user?.email ?? null);
     });
   }, []);
+
+// ✅ Charge infos Site iNrCy depuis Supabase (profiles + site_configs)
+const loadSiteInrcy = useCallback(async () => {
+  const supabase = createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (!user) return;
+
+  const [profileRes, configRes] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("inrcy_site_ownership,inrcy_site_url")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("site_configs")
+      .select("contact_email,settings,site_url")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+  ]);
+
+  const profile = profileRes.data as any | null;
+  const config = configRes.data as any | null;
+
+  const ownership = (profile?.inrcy_site_ownership ?? "rented") as "rented" | "sold";
+  setSiteInrcyOwnership(ownership);
+
+  const url = (profile?.inrcy_site_url ?? config?.site_url ?? "") as string;
+  setSiteInrcyUrl(url);
+
+  const email = (config?.contact_email ?? "") as string;
+  setSiteInrcyContactEmail(email);
+
+  const settingsObj = config?.settings ?? {};
+  try {
+    setSiteInrcySettingsText(JSON.stringify(settingsObj, null, 2));
+  } catch {
+    setSiteInrcySettingsText("{}");
+  }
+  setSiteInrcySettingsError(null);
+}, []);
+
+useEffect(() => {
+  loadSiteInrcy();
+}, [loadSiteInrcy]);
+
+const saveSiteInrcySettings = useCallback(async () => {
+  if (siteInrcyOwnership !== "sold") return;
+
+  let parsed: any;
+  try {
+    parsed = siteInrcySettingsText?.trim() ? JSON.parse(siteInrcySettingsText) : {};
+  } catch (e) {
+    setSiteInrcySettingsError("JSON invalide. Vérifie la syntaxe (guillemets, virgules, accolades…)." );
+    return;
+  }
+
+  const supabase = createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (!user) return;
+
+  const { error } = await supabase
+    .from("site_configs")
+    .update({ settings: parsed })
+    .eq("user_id", user.id);
+
+  if (error) {
+    setSiteInrcySettingsError(error.message);
+    return;
+  }
+
+  setSiteInrcySettingsError(null);
+}, [siteInrcyOwnership, siteInrcySettingsText]);
 
   // ✅ AJOUT : profil incomplet -> mini pastille + tooltip
   const [profileIncomplete, setProfileIncomplete] = useState(false);
@@ -390,7 +471,16 @@ export default function DashboardClient() {
 
 
   const renderFluxBubble = (m: Module, keyOverride?: string) => {
-    const viewAction = m.actions.find((a) => a.variant === "view");
+    const viewActionRaw = m.actions.find((a) => a.variant === "view");
+    const viewAction =
+      m.key === "site_inrcy" && viewActionRaw
+        ? {
+            ...viewActionRaw,
+            href: siteInrcyUrl
+              ? (siteInrcyUrl.startsWith("http") ? siteInrcyUrl : `https://${siteInrcyUrl}`)
+              : "#",
+          }
+        : viewActionRaw;
 
     return (
       <article
@@ -430,7 +520,22 @@ export default function DashboardClient() {
               </button>
             )}
 
-            <button className={`${styles.actionBtn} ${styles.connectBtn} ${styles.actionMain}`} type="button">
+            <button
+              className={`${styles.actionBtn} ${styles.connectBtn} ${styles.actionMain}`}
+              type="button"
+              onClick={() => {
+                if (m.key === "site_inrcy") {
+                  if (siteInrcyOwnership !== "sold") return;
+                  openPanel("site_inrcy");
+                }
+              }}
+              disabled={m.key === "site_inrcy" ? siteInrcyOwnership !== "sold" : false}
+              title={
+                m.key === "site_inrcy" && siteInrcyOwnership !== "sold"
+                  ? "Configuration disponible uniquement si le site est vendu"
+                  : undefined
+              }
+            >
               Configurer
             </button>
           </div>
@@ -1074,7 +1179,13 @@ export default function DashboardClient() {
   <div className={styles.loopTitle}>AGENDA</div>
 </div>
 
-<button className={styles.loopGearBtn} type="button" aria-label="Réglages Agenda" title="Réglages">
+<button
+  className={styles.loopGearBtn}
+  type="button"
+  aria-label="Réglages Agenda"
+  title="Réglages"
+  onClick={() => openPanel("agenda")}
+>
   <svg className={styles.loopGearSvg} viewBox="0 0 24 24" aria-hidden="true">
   <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
   <path d="M19.4 15a7.9 7.9 0 0 0 .1-1 7.9 7.9 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7.7 7.7 0 0 0-1.7-1l-.4-2.6H10l-.4 2.6a7.7 7.7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.9 7.9 0 0 0-.1 1 7.9 7.9 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.5-2-1.5Z" />
@@ -1086,19 +1197,7 @@ export default function DashboardClient() {
         <button
   className={`${styles.actionBtn} ${styles.connectBtn}`}
   type="button"
-  onClick={async () => {
-    const r = await fetch("/api/calendar/status");
-    if (!r.ok) {
-      window.location.href = "/api/integrations/google-calendar/start";
-      return;
-    }
-    const j = await r.json().catch(() => ({}));
-    if (!j.connected) {
-      window.location.href = "/api/integrations/google-calendar/start";
-      return;
-    }
-    router.push("/dashboard/agenda");
-  }}
+  onClick={() => router.push("/dashboard/agenda")}
 >
   Voir l’agenda
 </button>
@@ -1199,13 +1298,147 @@ export default function DashboardClient() {
             ? "Mon abonnement"
             : panel === "mails"
             ? "Réglages iNr’Box"
+            : panel === "agenda"
+            ? "Réglages Agenda"
+            : panel === "site_inrcy"
+            ? "Configuration — Site iNrCy"
             : ""
         }
-        isOpen={panel === "contact" || panel === "profil" || panel === "abonnement" || panel === "mails"}
+        isOpen={
+          panel === "contact" ||
+          panel === "profil" ||
+          panel === "abonnement" ||
+          panel === "mails" ||
+          panel === "agenda" ||
+          panel === "site_inrcy"
+        }
         onClose={closePanel}
       >
         {panel === "contact" && <ContactContent mode="drawer" />}
         {panel === "mails" && <MailsSettingsContent />}
+        {panel === "agenda" && <AgendaSettingsContent />}
+
+        {panel === "site_inrcy" && (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: "8px 10px",
+                  borderRadius: 999,
+                  color: "rgba(255,255,255,0.92)",
+                  fontSize: 13,
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 999,
+                    background: siteInrcyOwnership === "sold" ? "rgba(34,197,94,0.95)" : "rgba(245,158,11,0.95)",
+                  }}
+                />
+                Statut : <strong>{siteInrcyOwnership === "sold" ? "Vendu" : "Loué"}</strong>
+              </span>
+
+              {!!siteInrcyContactEmail && (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "8px 10px",
+                    borderRadius: 999,
+                    color: "rgba(255,255,255,0.85)",
+                    fontSize: 13,
+                  }}
+                >
+                  Email : <strong style={{ marginLeft: 6 }}>{siteInrcyContactEmail}</strong>
+                </span>
+              )}
+            </div>
+
+            <label style={{ display: "grid", gap: 8 }}>
+              <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Lien du site (géré par iNrCy)</span>
+              <input
+                value={siteInrcyUrl}
+                disabled
+                placeholder="https://..."
+                style={{
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: "10px 12px",
+                  color: "rgba(255,255,255,0.75)",
+                  outline: "none",
+                }}
+              />
+            </label>
+
+            <label style={{ display: "grid", gap: 8 }}>
+              <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
+                Configuration (JSON) — clés, IDs, réglages
+              </span>
+              <textarea
+                value={siteInrcySettingsText}
+                onChange={(e) => setSiteInrcySettingsText(e.target.value)}
+                disabled={siteInrcyOwnership !== "sold"}
+                rows={10}
+                placeholder='{"ga4":{"property_id":"..."}}'
+                style={{
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: "10px 12px",
+                  color: "white",
+                  outline: "none",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+                  fontSize: 12,
+                  opacity: siteInrcyOwnership === "sold" ? 1 : 0.6,
+                }}
+              />
+              {siteInrcyOwnership !== "sold" && (
+                <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
+                  Configuration gérée par iNrCy (site loué).
+                </div>
+              )}
+              {siteInrcySettingsError && (
+                <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 12 }}>{siteInrcySettingsError}</div>
+              )}
+            </label>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className={`${styles.actionBtn} ${styles.connectBtn}`}
+                onClick={() => {
+                  if (siteInrcyUrl) window.open(siteInrcyUrl, "_blank", "noopener,noreferrer");
+                }}
+                disabled={!siteInrcyUrl}
+              >
+                Voir le site
+              </button>
+
+              <button
+                type="button"
+                className={`${styles.actionBtn} ${styles.connectBtn}`}
+                onClick={saveSiteInrcySettings}
+                disabled={siteInrcyOwnership !== "sold"}
+                title={siteInrcyOwnership !== "sold" ? "Disponible uniquement si le site est vendu" : undefined}
+              >
+                Enregistrer
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ✅ AJOUT : callbacks pour mise à jour immédiate de la pastille */}
         {panel === "profil" && (
