@@ -438,47 +438,79 @@ export default function DashboardClient() {
   // Carousel state (infinite loop)
   const baseModules = fluxModules;
   const hasCarousel = baseModules.length > 1;
+
+  // clones: [last, ...real, first]
   const carouselItems = hasCarousel
     ? [baseModules[baseModules.length - 1], ...baseModules, baseModules[0]]
     : baseModules;
 
+  const carouselRef = useRef<HTMLDivElement | null>(null);
+
+  // index in carouselItems (includes clones)
   const [carouselIndex, setCarouselIndex] = useState(1);
   const [carouselTransition, setCarouselTransition] = useState(true);
+
+  // drag (track follows finger)
   const touchStartX = useRef<number | null>(null);
-  const touchDeltaX = useRef(0);
+  const isDragging = useRef(false);
+  const [dragPx, setDragPx] = useState(0);
 
-  const totalBubbles = baseModules.length;
-  const activeDot = totalBubbles ? ((carouselIndex - 1 + totalBubbles) % totalBubbles) : 0;
+  const goPrev = useCallback(() => {
+    if (!hasCarousel) return;
+    setCarouselIndex((i) => i - 1);
+  }, [hasCarousel]);
 
+  const goNext = useCallback(() => {
+    if (!hasCarousel) return;
+    setCarouselIndex((i) => i + 1);
+  }, [hasCarousel]);
+
+  // reset cleanly when switching to carousel (mobile)
   useEffect(() => {
-    if (!isMobile || bubbleView !== "carousel") return;
+    if (!isMobile) return;
+    if (bubbleView !== "carousel") return;
+
     setCarouselTransition(false);
     setCarouselIndex(1);
+    setDragPx(0);
+
     const id = window.setTimeout(() => setCarouselTransition(true), 0);
     return () => window.clearTimeout(id);
   }, [bubbleView, isMobile]);
 
-  const goPrev = useCallback(() => setCarouselIndex((i) => i - 1), []);
-  const goNext = useCallback(() => setCarouselIndex((i) => i + 1), []);
-
   const onCarouselTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
+    if (!hasCarousel) return;
     touchStartX.current = e.touches[0]?.clientX ?? null;
-    touchDeltaX.current = 0;
+    isDragging.current = true;
+
+    // during drag: no transition
+    setCarouselTransition(false);
+    setDragPx(0);
   };
 
   const onCarouselTouchMove = (e: ReactTouchEvent<HTMLDivElement>) => {
-    if (touchStartX.current == null) return;
+    if (!hasCarousel) return;
+    if (!isDragging.current || touchStartX.current == null) return;
+
     const x = e.touches[0]?.clientX ?? 0;
-    touchDeltaX.current = x - touchStartX.current;
+    setDragPx(x - touchStartX.current);
   };
 
   const onCarouselTouchEnd = () => {
-    const dx = touchDeltaX.current;
-    touchStartX.current = null;
-    touchDeltaX.current = 0;
-
     if (!hasCarousel) return;
-    if (Math.abs(dx) < 40) return;
+
+    const dx = dragPx;
+
+    isDragging.current = false;
+    touchStartX.current = null;
+
+    const threshold = 60;
+
+    // snap back to slide positions with transition
+    setCarouselTransition(true);
+    setDragPx(0);
+
+    if (Math.abs(dx) < threshold) return;
 
     if (dx < 0) goNext();
     else goPrev();
@@ -486,8 +518,11 @@ export default function DashboardClient() {
 
   const onCarouselTransitionEnd = () => {
     if (!hasCarousel) return;
+    if (isDragging.current) return;
 
     const lastReal = baseModules.length;
+
+    // infinite loop: jump without transition after animation ends
     if (carouselIndex === 0) {
       setCarouselTransition(false);
       setCarouselIndex(lastReal);
@@ -499,6 +534,9 @@ export default function DashboardClient() {
     }
   };
 
+  const activeDot = hasCarousel
+    ? (((carouselIndex - 1) % baseModules.length) + baseModules.length) % baseModules.length
+    : 0;
 
 
   return (
@@ -741,18 +779,6 @@ export default function DashboardClient() {
                 {leadsMonth > 0 ? "Actif" : "En attente"}
               </div>
             </div>
-
-            {baseModules.length > 1 && (
-              <div className={styles.carouselDots} aria-label="Position dans le carrousel">
-                {baseModules.map((_, i) => (
-                  <span
-                    key={i}
-                    className={`${styles.carouselDot} ${i === activeDot ? styles.carouselDotActive : ""}`}
-                    aria-hidden="true"
-                  />
-                ))}
-              </div>
-            )}
           </div>
 
           <div className={styles.generatorGrid}>
@@ -830,30 +856,46 @@ export default function DashboardClient() {
 
         {/* ✅ Mobile: carrousel infini / Desktop: liste */}
         {isMobile && bubbleView === "carousel" ? (
-          <div
-            className={styles.mobileCarousel}
-            onTouchStart={onCarouselTouchStart}
-            onTouchMove={onCarouselTouchMove}
-            onTouchEnd={onCarouselTouchEnd}
-          >
+          <>
             <div
-              className={styles.carouselTrack}
-              style={{
-                transform: `translateX(-${carouselIndex * 100}%)`,
-                transition: carouselTransition ? "transform 260ms ease" : "none",
-              }}
-              onTransitionEnd={onCarouselTransitionEnd}
+              className={styles.mobileCarousel}
+              ref={carouselRef}
+              onTouchStart={onCarouselTouchStart}
+              onTouchMove={onCarouselTouchMove}
+              onTouchEnd={onCarouselTouchEnd}
             >
-              {carouselItems.map((m, idx) => (
-                <div className={styles.carouselSlide} key={`${m.key}_${idx}`}>
-                  {renderFluxBubble(m, `${m.key}_${idx}`)}
-                </div>
-              ))}
+              <div
+                className={styles.carouselTrack}
+                style={{
+                  transform: `translateX(calc(-${carouselIndex * 100}% + ${dragPx}px))`,
+                  transition: carouselTransition ? "transform 260ms ease" : "none",
+                }}
+                onTransitionEnd={onCarouselTransitionEnd}
+              >
+                {carouselItems.map((m, idx) => (
+                  <div className={styles.carouselSlide} key={`${m.key}_${idx}`}>
+                    {renderFluxBubble(m, `${m.key}_${idx}`)}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+
+            {hasCarousel && (
+              <div className={styles.carouselDots} aria-label="Position dans le carrousel">
+                {baseModules.map((_, i) => (
+                  <span
+                    key={i}
+                    className={`${styles.carouselDot} ${i === activeDot ? styles.carouselDotActive : ""}`}
+                    aria-hidden="true"
+                  />
+                ))}
+              </div>
+            )}
+          </>
         ) : (
           <div className={styles.moduleGrid}>{fluxModules.map((m) => renderFluxBubble(m))}</div>
         )}
+
 
         <div className={styles.lowerRow}>
           <div className={styles.blockCard}>

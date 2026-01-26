@@ -202,7 +202,7 @@ export default function NewDevisPage() {
       <div className={styles.container}>
         {/* Formulaire */}
         <div className={styles.panel}>
-          <div className={styles.header}>
+          <div className={styles.panelHeader}>
   <h1>Créer un devis</h1>
 
   <button
@@ -276,7 +276,7 @@ export default function NewDevisPage() {
 
         {/* Aperçu document */}
         <div className={styles.preview}>
-          <div className={styles.header}>
+        <div className={styles.previewHeader}>
             <div>
               <div className={styles.title}>DEVIS</div>
               <div>{number || "—"}</div>

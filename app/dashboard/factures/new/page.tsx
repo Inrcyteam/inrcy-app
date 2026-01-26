@@ -218,7 +218,7 @@ export default function NewFacturePage() {
       <div className={styles.container}>
         {/* Formulaire */}
         <div className={styles.panel}>
-          <div className={styles.header}>
+         <div className={styles.panelHeader}>
   <h1>Créer une facture</h1>
 
   <button
@@ -370,7 +370,7 @@ export default function NewFacturePage() {
 
         {/* Aperçu document */}
         <div className={styles.preview}>
-        <div className={styles.header}>
+        <div className={styles.previewHeader}>
           <div>
             <div className={styles.title}>FACTURE</div>
             <div>{number || "—"}</div>

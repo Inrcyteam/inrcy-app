@@ -23,7 +23,8 @@
     padding: 18px;
   }
 
-  .header {
+  /* ✅ aperçu: on retire la réserve logo en mobile (comme avant) */
+  .previewHeader {
     min-height: 0;
     padding-top: 0;
   }
@@ -61,6 +62,30 @@
   padding: 20px;
 }
 
+/* ✅ header du panel GAUCHE (Créer une facture) */
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  /* 🔥 ce que tu veux : démarrer à 2px sous la bordure */
+  padding-top: 2px;
+  margin-top: 0;
+}
+
+/* ✅ supprime les marges natives du h1 dans le panel */
+.panelHeader h1 {
+  margin: 0;
+  /* si tu veux un petit espace sous le header, mets plutôt padding-bottom sur .panelHeader */
+}
+
+/* (optionnel) si tu veux un petit espace propre sous le header du panel */
+.panelHeader {
+  padding-bottom: 12px;
+}
+
+/* h2 reste comme avant */
 .panel h2 {
   font-size: 18px;
   margin-bottom: 12px;
@@ -109,17 +134,18 @@
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
 }
 
-.header {
+/* ✅ header de l’APERÇU (FACTURE + logo) */
+.previewHeader {
   position: relative; /* référence pour l’absolu */
   padding-top: 20px;
-  min-height: 150px;  /* espace réservé pour le logo */
+  min-height: 150px; /* espace réservé pour le logo */
 }
 
 .logo {
   position: absolute;
-  top: 0px;     /* ajuste si besoin */
-  right: 24px;   /* ajuste si besoin */
-  height: 180px;  /* tu peux monter à 110px */
+  top: 0px; /* ajuste si besoin */
+  right: 24px; /* ajuste si besoin */
+  height: 180px; /* tu peux monter à 110px */
   width: auto;
   object-fit: contain;
 }
@@ -304,8 +330,6 @@
   }
 }
 
-
-
 /* Select */
 .field select {
   color: white;
@@ -314,13 +338,9 @@
 
 /* Dropdown options */
 .field select option {
-  color: #111;              /* TEXTE NOIR */
-  background: #fff;         /* FOND BLANC */
+  color: #111; /* TEXTE NOIR */
+  background: #fff; /* FOND BLANC */
 }
-
-
-
-
 
 /* --- Mobile: bloque en portrait (oblige paysage) --- */
 .landscapeGate {
@@ -371,7 +391,6 @@
   }
 }
 
-
 /* Alias: anciens noms (compat) */
 .rotateOverlay {
   position: fixed;
@@ -407,17 +426,10 @@
 }
 
 /* ===== Header actions (Facture / Devis) ===== */
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
+/* (inchangé) */
 .closeBtn {
   background: transparent;
-  border: 1px solid rgba(0,0,0,0.08);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 10px;
   padding: 8px 14px;
   font-size: 14px;
@@ -427,8 +439,8 @@
 }
 
 .closeBtn:hover {
-  background: rgba(0,0,0,0.04);
-  border-color: rgba(0,0,0,0.16);
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.16);
 }
 
 .closeIcon {
@@ -454,20 +466,6 @@
 }
 
 /* ===== Fix spacing top for editor pages (Facture / Devis) ===== */
-
 .editorPage {
   padding-top: 0 !important;
 }
-
-/* ===== Fix spacing inside panel (Créer facture / devis) ===== */
-
-.panel {
-  padding-top: 0px !important;
-}
-
-.panel h1 {
-  margin-top: 0 !important;
-  margin-bottom: 12px;
-}
-
-
