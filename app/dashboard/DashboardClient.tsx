@@ -517,22 +517,36 @@ export default function DashboardClient() {
   };
 
   const onCarouselTransitionEnd = () => {
-    if (!hasCarousel) return;
-    if (isDragging.current) return;
+  if (!hasCarousel) return;
+  if (isDragging.current) return;
 
-    const lastReal = baseModules.length;
+  const lastReal = baseModules.length;
 
-    // infinite loop: jump without transition after animation ends
-    if (carouselIndex === 0) {
-      setCarouselTransition(false);
-      setCarouselIndex(lastReal);
-      window.setTimeout(() => setCarouselTransition(true), 0);
-    } else if (carouselIndex === lastReal + 1) {
-      setCarouselTransition(false);
-      setCarouselIndex(1);
-      window.setTimeout(() => setCarouselTransition(true), 0);
-    }
-  };
+  // clone -> vrai dernier (boucle arrière)
+  if (carouselIndex === 0) {
+    setCarouselTransition(false);
+    setCarouselIndex(lastReal);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setCarouselTransition(true);
+      });
+    });
+    return;
+  }
+
+  // clone -> vrai premier (✨ effet fluide, pas de reset visible)
+  if (carouselIndex === lastReal + 1) {
+    setCarouselTransition(false);
+    setCarouselIndex(1);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setCarouselTransition(true);
+      });
+    });
+  }
+};
 
   const activeDot = hasCarousel
     ? (((carouselIndex - 1) % baseModules.length) + baseModules.length) % baseModules.length
