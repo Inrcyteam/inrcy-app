@@ -1759,3 +1759,51 @@ width: 100%;
     justify-content: space-between;
   }
 }
+
+
+/* ===============================
+   iNrBox – Compact multi-select
+   =============================== */
+
+/* Row becomes overlay container */
+.itemRow {
+  position: relative;
+  display: block;
+}
+
+/* Small, discreet checkbox */
+.checkWrap {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  cursor: pointer;
+}
+
+.checkWrap input {
+  width: 14px;
+  height: 14px;
+  accent-color: rgba(167,139,250,0.9);
+}
+
+/* Space so text never collides */
+.item {
+  padding-left: 36px;
+}
+
+/* Mobile fine-tuning */
+@media (max-width: 980px) {
+  .checkWrap {
+    top: 6px;
+    left: 6px;
+  }
+
+  .checkWrap input {
+    width: 13px;
+    height: 13px;
+  }
+
+  .item {
+    padding-left: 32px;
+  }
+}
