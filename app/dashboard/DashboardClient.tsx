@@ -346,7 +346,7 @@ export default function DashboardClient() {
   // =========================
   type BubbleViewMode = "list" | "carousel";
   const [bubbleView, setBubbleView] = useState<BubbleViewMode>("list");
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -372,16 +372,22 @@ export default function DashboardClient() {
     if (saved === "list" || saved === "carousel") setBubbleView(saved);
   }, []);
 
-  // Force desktop to list + persist mobile preference
   useEffect(() => {
-    if (typeof window === "undefined") return;
+  if (typeof window === "undefined") return;
 
-    if (!isMobile) {
-      setBubbleView("list");
-      return;
-    }
-    window.localStorage.setItem("inrcy_bubble_view", bubbleView);
-  }, [bubbleView, isMobile]);
+  // ⛔ tant qu'on ne sait pas encore si c'est mobile, on ne fait rien
+  if (isMobile === null) return;
+
+  if (isMobile === false) {
+    // desktop: toujours list
+    setBubbleView("list");
+    return;
+  }
+
+  // mobile: on persiste le choix
+  window.localStorage.setItem("inrcy_bubble_view", bubbleView);
+}, [bubbleView, isMobile]);
+
 
   const renderFluxBubble = (m: Module, keyOverride?: string) => {
     const viewAction = m.actions.find((a) => a.variant === "view");
