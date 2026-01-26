@@ -1810,13 +1810,24 @@ const singleMoveToSpam = async () => {
 
                     return (
                       <div key={m.id} className={`${styles.itemRow} ${active ? styles.itemRowActive : ""} ${checked ? styles.itemRowSelected : ""}`}>
-                        <label
+                        <div
                           className={`${styles.checkWrap} ${checked ? styles.checkWrapChecked : ""}`}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSelect(m.id);
+                          }}
                           title="Sélection multiple"
+                          role="button"
+                          aria-label="Sélection multiple"
                         >
-                          <input type="checkbox" checked={checked} onChange={() => toggleSelect(m.id)} />
-                        </label>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={() => toggleSelect(m.id)}
+                            aria-label="Sélectionner ce message"
+                          />
+                        </div>
 
                         <button
                           className={`${styles.item} ${active ? styles.itemActive : ""}`}
