@@ -790,8 +790,7 @@ export default function DashboardClient() {
       <section className={styles.hero}>
         <div className={styles.heroLeft}>
           <div className={styles.kicker}>
-            <span className={styles.kickerDot} aria-hidden />
-            Votre cockpit iNrCy
+            <span className={styles.kickerText}>Votre cockpit iNrCy</span>
           </div>
 
           <h1 className={styles.title}>

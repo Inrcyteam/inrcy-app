@@ -433,6 +433,10 @@
 .heroLeft {
   padding: 18px;
   border-radius: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center; 
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.05);
   box-shadow: 0 20px 70px rgba(0, 0, 0, 0.35);
@@ -444,23 +448,69 @@ display: flex;
 }
 
 .kicker {
+  align-self: center;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
+  justify-content: center;
+  text-align: center;
+  padding: 9px 14px;
   border-radius: 999px;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.78);
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  color: rgba(255, 255, 255, 0.90);
+  position: relative;
+  z-index: 1;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.045);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.32);
 }
 
 .kickerDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--c-cyan);
-  box-shadow: 0 0 0 7px rgba(56, 189, 248, 0.16);
+  display: none;
+}
+
+.kicker::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(90deg,
+    rgba(56, 189, 248, 0.70),
+    rgba(167, 139, 250, 0.60),
+    rgba(244, 114, 182, 0.50),
+    rgba(251, 146, 60, 0.45)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.kicker::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 20% 50%, rgba(56, 189, 248, 0.22), transparent 60%),
+    radial-gradient(circle at 70% 50%, rgba(167, 139, 250, 0.18), transparent 62%),
+    radial-gradient(circle at 55% 80%, rgba(244, 114, 182, 0.14), transparent 64%),
+    radial-gradient(circle at 35% 20%, rgba(251, 146, 60, 0.12), transparent 66%);
+  filter: blur(10px);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.kickerText {
+  background: linear-gradient(90deg, var(--c-cyan), var(--c-purple), var(--c-pink), var(--c-orange));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .title {
@@ -1396,12 +1446,6 @@ display: flex;
   .generatorGrid > :nth-child(4) {
     grid-row: auto !important;
   }
-}
-
-.kicker{
-  align-self: flex-start;     /* ✅ empêche de s’étirer */
-  width: fit-content;         /* ✅ taille = contenu */
-  max-width: max-content;     /* ✅ sécurité */
 }
 
 @media (max-width: 560px) {
