@@ -363,6 +363,9 @@ useEffect(() => {
 
   // ✅ Helpers
 
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
+
   const clearSelection = () => setSelectedIds(new Set());
 
   const isSelected = (id: string) => selectedIds.has(id);
@@ -1800,15 +1803,15 @@ const singleMoveToSpam = async () => {
 
               {/* Liste */}
               <div className={`${styles.scrollArea} ${styles.scrollAreaMessages}`}>
-                <div className={styles.list}>
+                <div className={`${styles.list} ${hasSelection ? styles.selectionMode : ""}`}>
                   {filteredMessages.map((m) => {
                     const active = m.id === selectedId;
                     const checked = isSelected(m.id);
 
                     return (
-                      <div key={m.id} className={`${styles.itemRow} ${active ? styles.itemRowActive : ""}`}>
+                      <div key={m.id} className={`${styles.itemRow} ${active ? styles.itemRowActive : ""} ${checked ? styles.itemRowSelected : ""}`}>
                         <label
-                          className={styles.checkWrap}
+                          className={`${styles.checkWrap} ${checked ? styles.checkWrapChecked : ""}`}
                           onClick={(e) => e.stopPropagation()}
                           title="Sélection multiple"
                         >
@@ -1817,8 +1820,40 @@ const singleMoveToSpam = async () => {
 
                         <button
                           className={`${styles.item} ${active ? styles.itemActive : ""}`}
-                          onClick={() => onSelectMessage(m.id)}
+                          onClick={() => {
+                            if (isMobile && hasSelection) {
+                              toggleSelect(m.id);
+                              return;
+                            }
+                            onSelectMessage(m.id);
+                          }}
                           onDoubleClick={() => openAction(m.id)}
+                          onPointerDown={() => {
+                            if (!isMobile) return;
+                            longPressTriggeredRef.current = false;
+                            if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
+                            longPressTimerRef.current = window.setTimeout(() => {
+                              longPressTriggeredRef.current = true;
+                              toggleSelect(m.id);
+                            }, 450);
+                          }}
+                          onPointerUp={(e) => {
+                            if (!isMobile) return;
+                            if (longPressTimerRef.current) {
+                              window.clearTimeout(longPressTimerRef.current);
+                              longPressTimerRef.current = null;
+                            }
+                            if (longPressTriggeredRef.current) {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }
+                          }}
+                          onPointerCancel={() => {
+                            if (longPressTimerRef.current) {
+                              window.clearTimeout(longPressTimerRef.current);
+                              longPressTimerRef.current = null;
+                            }
+                          }}
                           type="button"
                         >
                           <div className={styles.itemTop}>

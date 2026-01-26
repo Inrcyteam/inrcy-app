@@ -186,7 +186,7 @@ export default function NewDevisPage() {
   const print = () => window.print();
 
   return (
-    <div className={dash.page}>
+    <div className={`${dash.page} ${styles.editorPage}`}>
       {needLandscape ? (
         <div className={styles.landscapeGate} role="dialog" aria-modal="true">
           <div className={styles.landscapeGateCard}>
@@ -202,7 +202,18 @@ export default function NewDevisPage() {
       <div className={styles.container}>
         {/* Formulaire */}
         <div className={styles.panel}>
-          <h2>Créer un devis</h2>
+          <div className={styles.header}>
+  <h1>Créer un devis</h1>
+
+  <button
+    className={styles.closeBtn}
+    onClick={() => router.push("/dashboard")}
+  >
+    <span className={styles.closeText}>Fermer</span>
+    <span className={styles.closeIcon}>✕</span>
+  </button>
+</div>
+
 
         <div className={styles.field}>
           <label>Client</label>

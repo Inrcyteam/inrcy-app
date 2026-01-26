@@ -214,11 +214,21 @@ export default function NewFacturePage() {
         </div>
       ) : null}
 
-      <div className={dash.page}>
+      <div className={`${dash.page} ${styles.editorPage}`}>
       <div className={styles.container}>
         {/* Formulaire */}
         <div className={styles.panel}>
-          <h2>Créer une facture</h2>
+          <div className={styles.header}>
+  <h1>Créer une facture</h1>
+
+  <button
+    className={styles.closeBtn}
+    onClick={() => router.push("/dashboard")}
+  >
+    <span className={styles.closeText}>Fermer</span>
+    <span className={styles.closeIcon}>✕</span>
+  </button>
+</div>
 
         <div className={styles.field}>
           <label>Client</label>

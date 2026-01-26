@@ -833,6 +833,99 @@ display: flex;
 
 .sectionHead { padding: 10px 2px 10px; }
 
+/* =========================
+   Mobile: toggle Liste / Carrousel (Canaux)
+========================= */
+
+.sectionHeadTop{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mobileViewToggle{
+  display: none; /* only mobile */
+  align-items: center;
+  gap: 6px;
+
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(10px);
+}
+
+.viewToggleBtn{
+  border: 0;
+  cursor: pointer;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255,255,255,0.78);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  transition: background .15s ease, color .15s ease, transform .15s ease;
+}
+
+.viewToggleBtn:active{ transform: scale(0.98); }
+
+.viewToggleActive{
+  background: rgba(255,255,255,0.14);
+  color: rgba(255,255,255,0.95);
+}
+
+@media (max-width: 560px){
+  .mobileViewToggle{ display: inline-flex; }
+}
+
+/* =========================
+   Mobile carousel (infinite)
+========================= */
+
+.mobileCarousel{
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  padding: 8px 0 6px;
+  touch-action: pan-y;
+}
+
+.carouselTrack{
+  display: flex;
+  width: 100%;
+  will-change: transform;
+}
+
+.carouselSlide{
+  flex: 0 0 100%;
+  display: flex;
+  justify-content: center;
+}
+
+
+.carouselDots{
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding-top: 10px;
+}
+
+.carouselDot{
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.25);
+  transition: background .15s ease, transform .15s ease;
+}
+
+.carouselDotActive{
+  background: rgba(255,255,255,0.9);
+  transform: scale(1.05);
+}
+
+
 .h2 { margin: 0; font-size: 20px; letter-spacing: -0.2px; }
 
 .h2Sub {

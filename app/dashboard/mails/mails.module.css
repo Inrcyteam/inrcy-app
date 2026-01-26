@@ -1656,3 +1656,106 @@ width: 100%;
   }
 }
 
+
+
+
+/* ===== Mobile UI improvements (responsive only) ===== */
+
+.itemRowSelected {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.checkWrapChecked {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+@media (max-width: 980px) {
+  /* Action tiles: perfect squares like the top-right header icons */
+  .actionTiles {
+    grid-template-columns: repeat(4, 56px);
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .actionTilesBusiness {
+    grid-template-columns: repeat(3, 56px);
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .actionTile {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    padding: 0;
+    grid-template-rows: 1fr;
+    gap: 0;
+  }
+
+  /* Mail selection: discreet floating pill (shown only in multi-select mode) */
+  .itemRow {
+    grid-template-columns: 1fr;
+    position: relative;
+  }
+
+  .checkWrap {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border-radius: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(10, 12, 26, 0.70);
+    display: grid;
+    place-items: center;
+    z-index: 3;
+
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.92);
+    transition: opacity 120ms ease, transform 120ms ease;
+  }
+
+  .selectionMode .checkWrap {
+    opacity: 1;
+    pointer-events: auto;
+    transform: scale(1);
+  }
+
+  .checkWrap input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+  }
+
+  .checkWrapChecked::after {
+    content: "✓";
+    font-size: 12px;
+    font-weight: 950;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  /* Keep content full width (pill floats over it) */
+  .item {
+    padding-left: 12px;
+  }
+}
+
+@media (max-width: 360px) {
+  .actionTiles {
+    grid-template-columns: repeat(2, 56px);
+    justify-content: space-between;
+  }
+
+  .actionTilesBusiness {
+    grid-template-columns: repeat(2, 56px);
+    justify-content: space-between;
+  }
+}

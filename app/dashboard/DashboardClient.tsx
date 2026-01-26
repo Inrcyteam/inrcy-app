@@ -2,7 +2,7 @@
 
 import styles from "./dashboard.module.css";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, type TouchEvent as ReactTouchEvent } from "react";
 import Link from "next/link";
 import SettingsDrawer from "./SettingsDrawer";
 import ProfilContent from "./settings/_components/ProfilContent";
@@ -251,20 +251,23 @@ export default function DashboardClient() {
       if (e.key === "Escape") setUserMenuOpen(false);
     };
 
-    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+    const closeIfOutside = (target: EventTarget | null) => {
       if (!userMenuRef.current) return;
-      const target = e.target as Node;
-      if (!userMenuRef.current.contains(target)) setUserMenuOpen(false);
+      if (!target) return;
+      if (!userMenuRef.current.contains(target as Node)) setUserMenuOpen(false);
     };
 
+    const onPointerDownMouse = (e: MouseEvent) => closeIfOutside(e.target);
+    const onPointerDownTouch = (e: TouchEvent) => closeIfOutside(e.target);
+
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("touchstart", onPointerDown);
+    window.addEventListener("mousedown", onPointerDownMouse);
+    window.addEventListener("touchstart", onPointerDownTouch, { passive: true });
 
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("touchstart", onPointerDown);
+      window.removeEventListener("mousedown", onPointerDownMouse);
+      window.removeEventListener("touchstart", onPointerDownTouch);
     };
   }, [userMenuOpen]);
 
@@ -278,21 +281,24 @@ export default function DashboardClient() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setMenuOpen(false);
     };
-    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+    const closeIfOutside = (target: EventTarget | null) => {
       if (!menuRef.current) return;
-      const target = e.target as Node;
-      if (!menuRef.current.contains(target)) setMenuOpen(false);
+      if (!target) return;
+      if (!menuRef.current.contains(target as Node)) setMenuOpen(false);
     };
+
+    const onPointerDownMouse = (e: MouseEvent) => closeIfOutside(e.target);
+    const onPointerDownTouch = (e: TouchEvent) => closeIfOutside(e.target);
 
     if (menuOpen) {
       window.addEventListener("keydown", onKeyDown);
-      window.addEventListener("mousedown", onPointerDown);
-      window.addEventListener("touchstart", onPointerDown);
+      window.addEventListener("mousedown", onPointerDownMouse);
+      window.addEventListener("touchstart", onPointerDownTouch, { passive: true });
     }
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("touchstart", onPointerDown);
+      window.removeEventListener("mousedown", onPointerDownMouse);
+      window.removeEventListener("touchstart", onPointerDownTouch);
     };
   }, [menuOpen]);
 
@@ -334,6 +340,166 @@ export default function DashboardClient() {
       </button>
     );
   };
+
+  // =========================
+  // Mobile-only: list vs carousel for the 6 bubbles (Canaux)
+  // =========================
+  type BubbleViewMode = "list" | "carousel";
+  const [bubbleView, setBubbleView] = useState<BubbleViewMode>("list");
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(max-width: 560px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+
+    // Safari fallback for older addListener/removeListener
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
+    };
+  }, []);
+
+  // Load saved preference
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("inrcy_bubble_view");
+    if (saved === "list" || saved === "carousel") setBubbleView(saved);
+  }, []);
+
+  // Force desktop to list + persist mobile preference
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (!isMobile) {
+      setBubbleView("list");
+      return;
+    }
+    window.localStorage.setItem("inrcy_bubble_view", bubbleView);
+  }, [bubbleView, isMobile]);
+
+  const renderFluxBubble = (m: Module, keyOverride?: string) => {
+    const viewAction = m.actions.find((a) => a.variant === "view");
+
+    return (
+      <article
+        key={keyOverride ?? m.key}
+        className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles[`accent_${m.accent}`]}`}
+      >
+        <div className={styles.bubbleStack}>
+          <div className={styles.bubbleLogo} aria-hidden>
+            <img className={styles.bubbleLogoImg} src={MODULE_ICONS[m.key]?.src} alt={MODULE_ICONS[m.key]?.alt} />
+          </div>
+
+          <div className={styles.bubbleTitle}>{m.name}</div>
+
+          <div className={styles.bubbleStatusCompact}>
+            <span
+              className={[
+                styles.statusDot,
+                m.status === "connected"
+                  ? styles.dotConnected
+                  : m.status === "available"
+                  ? styles.dotAvailable
+                  : styles.dotComing,
+              ].join(" ")}
+              aria-hidden
+            />
+            <span className={styles.bubbleStatusText}>{statusLabel(m.status)}</span>
+          </div>
+
+          <div className={styles.bubbleTagline}>{m.description}</div>
+
+          <div className={styles.bubbleActions}>
+            {viewAction ? (
+              renderAction(viewAction)
+            ) : (
+              <button className={`${styles.actionBtn} ${styles.actionView}`} type="button">
+                Voir
+              </button>
+            )}
+
+            <button className={`${styles.actionBtn} ${styles.connectBtn} ${styles.actionMain}`} type="button">
+              Configurer
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.moduleGlow} aria-hidden />
+      </article>
+    );
+  };
+
+  // Carousel state (infinite loop)
+  const baseModules = fluxModules;
+  const hasCarousel = baseModules.length > 1;
+  const carouselItems = hasCarousel
+    ? [baseModules[baseModules.length - 1], ...baseModules, baseModules[0]]
+    : baseModules;
+
+  const [carouselIndex, setCarouselIndex] = useState(1);
+  const [carouselTransition, setCarouselTransition] = useState(true);
+  const touchStartX = useRef<number | null>(null);
+  const touchDeltaX = useRef(0);
+
+  const totalBubbles = baseModules.length;
+  const activeDot = totalBubbles ? ((carouselIndex - 1 + totalBubbles) % totalBubbles) : 0;
+
+  useEffect(() => {
+    if (!isMobile || bubbleView !== "carousel") return;
+    setCarouselTransition(false);
+    setCarouselIndex(1);
+    const id = window.setTimeout(() => setCarouselTransition(true), 0);
+    return () => window.clearTimeout(id);
+  }, [bubbleView, isMobile]);
+
+  const goPrev = useCallback(() => setCarouselIndex((i) => i - 1), []);
+  const goNext = useCallback(() => setCarouselIndex((i) => i + 1), []);
+
+  const onCarouselTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+    touchDeltaX.current = 0;
+  };
+
+  const onCarouselTouchMove = (e: ReactTouchEvent<HTMLDivElement>) => {
+    if (touchStartX.current == null) return;
+    const x = e.touches[0]?.clientX ?? 0;
+    touchDeltaX.current = x - touchStartX.current;
+  };
+
+  const onCarouselTouchEnd = () => {
+    const dx = touchDeltaX.current;
+    touchStartX.current = null;
+    touchDeltaX.current = 0;
+
+    if (!hasCarousel) return;
+    if (Math.abs(dx) < 40) return;
+
+    if (dx < 0) goNext();
+    else goPrev();
+  };
+
+  const onCarouselTransitionEnd = () => {
+    if (!hasCarousel) return;
+
+    const lastReal = baseModules.length;
+    if (carouselIndex === 0) {
+      setCarouselTransition(false);
+      setCarouselIndex(lastReal);
+      window.setTimeout(() => setCarouselTransition(true), 0);
+    } else if (carouselIndex === lastReal + 1) {
+      setCarouselTransition(false);
+      setCarouselIndex(1);
+      window.setTimeout(() => setCarouselTransition(true), 0);
+    }
+  };
+
+
 
   return (
     <main className={styles.page}>
@@ -575,6 +741,18 @@ export default function DashboardClient() {
                 {leadsMonth > 0 ? "Actif" : "En attente"}
               </div>
             </div>
+
+            {baseModules.length > 1 && (
+              <div className={styles.carouselDots} aria-label="Position dans le carrousel">
+                {baseModules.map((_, i) => (
+                  <span
+                    key={i}
+                    className={`${styles.carouselDot} ${i === activeDot ? styles.carouselDotActive : ""}`}
+                    aria-hidden="true"
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           <div className={styles.generatorGrid}>
@@ -625,65 +803,57 @@ export default function DashboardClient() {
 
       <section className={styles.contentFull}>
         <div className={styles.sectionHead}>
-          <h2 className={styles.h2}>Canaux</h2>
+          <div className={styles.sectionHeadTop}>
+            <h2 className={styles.h2}>Canaux</h2>
+
+            {/* Mobile only: choix Liste / Carrousel */}
+            <div className={styles.mobileViewToggle} aria-label="Affichage des canaux">
+              <button
+                type="button"
+                className={`${styles.viewToggleBtn} ${bubbleView === "list" ? styles.viewToggleActive : ""}`}
+                onClick={() => setBubbleView("list")}
+              >
+                Liste
+              </button>
+              <button
+                type="button"
+                className={`${styles.viewToggleBtn} ${bubbleView === "carousel" ? styles.viewToggleActive : ""}`}
+                onClick={() => setBubbleView("carousel")}
+              >
+                Carrousel
+              </button>
+            </div>
+          </div>
+
           <p className={styles.h2Sub}>Votre autoroute de contacts entrants</p>
         </div>
 
-        {/* ✅ 6 bulles homogènes (uniquement cette section modifiée) */}
-        <div className={styles.moduleGrid}>
-          {fluxModules.map((m) => {
-            const viewAction = m.actions.find((a) => a.variant === "view");
-
-            return (
-              <article
-                key={m.key}
-                className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles[`accent_${m.accent}`]}`}
-              >
-                <div className={styles.bubbleStack}>
-                  <div className={styles.bubbleLogo} aria-hidden>
-                    <img className={styles.bubbleLogoImg} src={MODULE_ICONS[m.key]?.src} alt={MODULE_ICONS[m.key]?.alt} />
-                  </div>
-
-                  <div className={styles.bubbleTitle}>{m.name}</div>
-
-                  <div className={styles.bubbleStatusCompact}>
-                    <span
-                      className={[
-                        styles.statusDot,
-                        m.status === "connected"
-                          ? styles.dotConnected
-                          : m.status === "available"
-                          ? styles.dotAvailable
-                          : styles.dotComing,
-                      ].join(" ")}
-                      aria-hidden
-                    />
-                    <span className={styles.bubbleStatusText}>{statusLabel(m.status)}</span>
-                  </div>
-
-                  <div className={styles.bubbleTagline}>{m.description}</div>
-
-                  <div className={styles.bubbleActions}>
-                    {viewAction ? (
-                      renderAction(viewAction)
-                    ) : (
-                      <button className={`${styles.actionBtn} ${styles.actionView}`} type="button">
-                        Voir
-                      </button>
-                    )}
-
-                    <button className={`${styles.actionBtn} ${styles.connectBtn} ${styles.actionMain}`} type="button">
-                      Configurer
-                    </button>
-                  </div>
+        {/* ✅ Mobile: carrousel infini / Desktop: liste */}
+        {isMobile && bubbleView === "carousel" ? (
+          <div
+            className={styles.mobileCarousel}
+            onTouchStart={onCarouselTouchStart}
+            onTouchMove={onCarouselTouchMove}
+            onTouchEnd={onCarouselTouchEnd}
+          >
+            <div
+              className={styles.carouselTrack}
+              style={{
+                transform: `translateX(-${carouselIndex * 100}%)`,
+                transition: carouselTransition ? "transform 260ms ease" : "none",
+              }}
+              onTransitionEnd={onCarouselTransitionEnd}
+            >
+              {carouselItems.map((m, idx) => (
+                <div className={styles.carouselSlide} key={`${m.key}_${idx}`}>
+                  {renderFluxBubble(m, `${m.key}_${idx}`)}
                 </div>
-
-                {/* On garde le glow existant si tu veux, mais on pourra le couper en CSS pour les bulles */}
-                <div className={styles.moduleGlow} aria-hidden />
-              </article>
-            );
-          })}
-        </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className={styles.moduleGrid}>{fluxModules.map((m) => renderFluxBubble(m))}</div>
+        )}
 
         <div className={styles.lowerRow}>
           <div className={styles.blockCard}>
