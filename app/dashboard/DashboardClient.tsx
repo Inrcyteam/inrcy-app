@@ -456,6 +456,9 @@ export default function DashboardClient() {
   const [carouselIndex, setCarouselIndex] = useState(1);
   const [carouselTransition, setCarouselTransition] = useState(true);
 
+  // prevent swipe spamming / interrupted transitions on mobile
+  const isAnimating = useRef(false);
+
   // drag (track follows finger)
   const touchStartX = useRef<number | null>(null);
   const isDragging = useRef(false);
@@ -463,11 +466,15 @@ export default function DashboardClient() {
 
   const goPrev = useCallback(() => {
     if (!hasCarousel) return;
+    if (isAnimating.current) return;
+    isAnimating.current = true;
     setCarouselIndex((i) => i - 1);
   }, [hasCarousel]);
 
   const goNext = useCallback(() => {
     if (!hasCarousel) return;
+    if (isAnimating.current) return;
+    isAnimating.current = true;
     setCarouselIndex((i) => i + 1);
   }, [hasCarousel]);
 
@@ -486,6 +493,7 @@ export default function DashboardClient() {
 
   const onCarouselTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
     if (!hasCarousel) return;
+    if (isAnimating.current) return;
     touchStartX.current = e.touches[0]?.clientX ?? null;
     isDragging.current = true;
 
@@ -536,12 +544,13 @@ export default function DashboardClient() {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         setCarouselTransition(true);
+        isAnimating.current = false;
       });
     });
     return;
   }
 
-  // clone -> vrai premier (✨ effet fluide, pas de reset visible)
+  // clone -> vrai premier (boucle avant)
   if (carouselIndex === lastReal + 1) {
     setCarouselTransition(false);
     setCarouselIndex(1);
@@ -549,10 +558,35 @@ export default function DashboardClient() {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         setCarouselTransition(true);
+        isAnimating.current = false;
       });
     });
+    return;
   }
+
+  // normal slide end
+  isAnimating.current = false;
 };
+
+  // Safety net: if transitionend doesn't fire (mobile can cancel transitions),
+  // keep index within [0, lastReal + 1] so we never drift to huge translateX values.
+  useEffect(() => {
+    if (!hasCarousel) return;
+    const lastReal = baseModules.length;
+
+    if (carouselIndex < 0) {
+      setCarouselTransition(false);
+      setCarouselIndex(lastReal);
+      requestAnimationFrame(() => requestAnimationFrame(() => setCarouselTransition(true)));
+      isAnimating.current = false;
+    } else if (carouselIndex > lastReal + 1) {
+      setCarouselTransition(false);
+      setCarouselIndex(1);
+      requestAnimationFrame(() => requestAnimationFrame(() => setCarouselTransition(true)));
+      isAnimating.current = false;
+    }
+  }, [carouselIndex, baseModules.length, hasCarousel]);
+
 
   const activeDot = hasCarousel
     ? (((carouselIndex - 1) % baseModules.length) + baseModules.length) % baseModules.length
