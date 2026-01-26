@@ -50,13 +50,25 @@ function badgeClass(source: Source) {
 
 function useIsMobile(breakpointPx = 980) {
   const [isMobile, setIsMobile] = useState(false);
+
   useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${breakpointPx}px)`);
-    const onChange = () => setIsMobile(mq.matches);
-    onChange();
-    mq.addEventListener?.("change", onChange);
-    return () => mq.removeEventListener?.("change", onChange);
+    // Mobile UI = small viewport + touch device (coarse pointer / no hover).
+    // This prevents "small desktop windows" from being treated like mobile.
+    const mqCoarse = window.matchMedia(`(max-width: ${breakpointPx}px) and (pointer: coarse)`);
+    const mqNoHover = window.matchMedia(`(max-width: ${breakpointPx}px) and (hover: none)`);
+
+    const compute = () => setIsMobile(mqCoarse.matches || mqNoHover.matches);
+
+    compute();
+    mqCoarse.addEventListener?.("change", compute);
+    mqNoHover.addEventListener?.("change", compute);
+
+    return () => {
+      mqCoarse.removeEventListener?.("change", compute);
+      mqNoHover.removeEventListener?.("change", compute);
+    };
   }, [breakpointPx]);
+
   return isMobile;
 }
 
@@ -152,52 +164,8 @@ export default function MailboxClient() {
     notify(`${s} : ${connectedSources[s] ? "déconnecté (mock)" : "connecté (mock)"}`);
   };
 
-  const [messages, setMessages] = useState<MessageItem[]>([
-    {
-      id: "1",
-      folder: "inbox",
-      from: "Houzz",
-      subject: "Nouveau message reçu",
-      preview: "Vous avez reçu un nouveau message sur Houzz…",
-      body:
-        "Vous avez reçu un nouveau message sur Houzz.\n\n👉 Ouvrez Houzz via votre canal Houzz pour répondre.\n\n(iNrCy centralise l’information, et vous garde le bon canal d’action.)",
-      source: "Houzz",
-      dateLabel: "Aujourd’hui",
-      unread: true,
-    },
-    {
-      id: "2",
-      folder: "inbox",
-      from: "Jean Dupont",
-      subject: "Devis toiture – retour",
-      preview: "Bonjour, j’ai bien reçu votre devis…",
-      body:
-        "Bonjour,\n\nJ’ai bien reçu votre devis. Pouvez-vous me confirmer vos disponibilités pour la semaine prochaine ?\n\nMerci.",
-      source: "Gmail",
-      dateLabel: "Hier",
-      unread: true,
-    },
-    {
-      id: "3",
-      folder: "inbox",
-      from: "Messenger",
-      subject: "Message Facebook",
-      preview: "Salut, vous faites des interventions sur…",
-      body: "Salut ! Vous intervenez bien sur Berck et alentours ? J’aurais besoin d’un devis rapide.",
-      source: "Messenger",
-      dateLabel: "Hier",
-    },
-    {
-      id: "4",
-      folder: "inbox",
-      from: "contact@monsite.fr",
-      subject: "Demande client – infos",
-      preview: "Bonjour, je souhaite un rendez-vous…",
-      body: "Bonjour,\n\nJe souhaite un rendez-vous pour discuter de vos prestations.\n\nCordialement.",
-      source: "OVH",
-      dateLabel: "Lun.",
-    },
-  ]);
+  const [messages, setMessages] = useState<MessageItem[]>([]);
+
 
   
 // ===========================
@@ -343,6 +311,8 @@ useEffect(() => {
       }
     }
   };
+
+
 
   start();
 

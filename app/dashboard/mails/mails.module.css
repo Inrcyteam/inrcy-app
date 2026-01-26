@@ -1807,3 +1807,176 @@ width: 100%;
     padding-left: 32px;
   }
 }
+
+/* ===============================
+   Alignement mails à gauche
+   =============================== */
+
+/* Supprime l’espace inutile côté gauche */
+.list .item {
+  padding-left: 7px; /* avant : ~36px */
+}
+
+/* Mobile : encore plus compact */
+@media (max-width: 980px) {
+  .list .item {
+    padding-left: 0px;
+  }
+}
+
+
+
+/* =====================================================
+   iNrBox – Multi-select FINAL (fix: desktop small widths)
+   - Checkbox is ALWAYS visible on desktop (even <980px if pointer is fine)
+   - Mobile/touch: no checkbox, long-press selection + highlight
+   ===================================================== */
+
+
+.itemRow {
+  position: relative;
+}
+
+/* on réserve la place à droite pour la case */
+.item {
+  padding-right: 46px;
+}
+
+/* case en haut à droite de la ligne */
+.checkWrap {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  left: auto !important;
+  z-index: 5;
+}
+
+.checkWrap input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: rgba(167,139,250,0.95); /* iNrCy violet */
+  position: static;
+  opacity: 1;
+}
+
+/* Selected row: classy iNrCy glow */
+.itemRowSelected {
+  background: linear-gradient(
+    90deg,
+    rgba(56,189,248,0.14) 0%,
+    rgba(167,139,250,0.10) 55%,
+    rgba(255,255,255,0.02) 100%
+  );
+}
+
+.itemRowSelected::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(56,189,248,0.95), rgba(167,139,250,0.95));
+  opacity: 0.9;
+}
+
+.checkWrapChecked {
+  border-color: rgba(56,189,248,0.30);
+  background: rgba(56,189,248,0.12);
+}
+
+/* Narrow desktop (<980px) but NOT touch: force checkbox visible (override old mobile block) */
+@media (max-width: 980px) and (pointer: fine) {
+  .checkWrap {
+    display: grid !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: none !important;
+    right: 10px !important;
+    left: auto !important;
+    top: 10px !important;
+  }
+
+  .checkWrap input {
+    position: static !important;
+    opacity: 1 !important;
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  .item {
+    padding-right: 44px !important;
+  }
+}
+
+/* Mobile/touch: hide checkbox */
+@media (max-width: 980px) and (pointer: coarse) {
+  .checkWrap {
+    display: none !important;
+  }
+  .item {
+    padding-right: 12px !important; /* give space back */
+  }
+  .itemRowSelected::before {
+    top: 8px;
+    bottom: 8px;
+  }
+}
+
+@media (max-width: 980px) and (hover: none) {
+  .checkWrap {
+    display: none !important;
+  }
+  .item {
+    padding-right: 12px !important;
+  }
+}
+
+
+/* =====================================================
+   ✅ FIX PC: checkboxes always visible (top-right) on desktop
+   - Prevents any mobile/selection-mode rules from hiding them on PC
+   ===================================================== */
+@media (min-width: 981px) {
+  .itemRow { position: relative; }
+
+  /* Reserve space so date + checkbox never overlap */
+  .item { padding-right: 62px; }
+
+  .checkWrap {
+    position: absolute !important;
+    top: 10px !important;
+    right: 450px !important;
+    left: auto !important;
+
+    display: grid !important;
+    place-items: center !important;
+
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: none !important;
+
+    z-index: 10 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .checkWrap input {
+    width: 14px !important;
+    height: 14px !important;
+    margin: 0 !important;
+
+    position: static !important;
+    opacity: 1 !important;
+
+    accent-color: rgba(167,139,250,0.95);
+  }
+}
+
+/* Colonne Messages (le card du milieu) */
+.messagesCard {
+  min-width: 0;
+}
+
