@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import styles from "../../_documents/documents.module.css";
 import dash from "../../dashboard.module.css";
@@ -42,6 +42,7 @@ const PAYMENT_METHODS = [
 
 export default function NewFacturePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
 
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -96,6 +97,18 @@ export default function NewFacturePage() {
   const [clientName, setClientName] = useState("");
   const [clientAddress, setClientAddress] = useState("");
   const [clientEmail, setClientEmail] = useState("");
+
+
+  // ✅ Pré-remplissage depuis CRM / iNrBox
+  useEffect(() => {
+    const name = searchParams.get("clientName") || searchParams.get("name") || "";
+    const email = searchParams.get("clientEmail") || searchParams.get("email") || "";
+    const address = searchParams.get("clientAddress") || searchParams.get("address") || "";
+    if (name) setClientName((prev) => prev || name);
+    if (email) setClientEmail((prev) => prev || email);
+    if (address) setClientAddress((prev) => prev || address);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [status, setStatus] = useState<DocRecord["status"]>("brouillon");
 

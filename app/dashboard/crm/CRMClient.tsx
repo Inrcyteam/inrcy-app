@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./crm.module.css";
 
@@ -29,7 +29,7 @@ type CrmContact = {
 const CATEGORY_LABEL: Record<Exclude<Category, "">, string> = {
   particulier: "Particulier",
   professionnel: "Professionnel",
-  collectivite_publique: "Collectivité publique",
+  collectivite_publique: "Institution",
 };
 
 const TYPE_LABEL: Record<Exclude<ContactType, "">, string> = {
@@ -53,6 +53,122 @@ function emptyDraft() {
     contact_type: "" as ContactType,
     notes: "",
     important: false,
+  };
+
+}
+
+function downloadTextFile(filename: string, content: string, mime = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function toCsvValue(v: any) {
+  const s = String(v ?? "");
+  const needsWrap = /[",;\n\r]/.test(s);
+  const escaped = s.replace(/"/g, '""');
+  return needsWrap ? `"${escaped}"` : escaped;
+}
+
+function contactsToCsv(rows: any[]) {
+  const headers = [
+    "display_name",
+    "last_name",
+    "first_name",
+    "company_name",
+    "siret",
+    "email",
+    "phone",
+    "address",
+    "city",
+    "postal_code",
+    "category",
+    "contact_type",
+  ];
+  const lines = [
+    headers.join(";"),
+    ...rows.map((r) => headers.map((h) => toCsvValue((r as any)[h])).join(";")),
+  ];
+  return lines.join("\n");
+}
+
+function detectDelimiter(line: string) {
+  const c = (line.match(/,/g) || []).length;
+  const s = (line.match(/;/g) || []).length;
+  const t = (line.match(/\t/g) || []).length;
+  if (s >= c && s >= t) return ";";
+  if (t >= c && t >= s) return "\t";
+  return ",";
+}
+
+function parseCsv(text: string) {
+  const clean = (text || "").replace(/^\uFEFF/, "");
+  const lines = clean.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return [] as Record<string, string>[];
+  const delim = detectDelimiter(lines[0]);
+
+  const parseLine = (line: string) => {
+    const out: string[] = [];
+    let cur = "";
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        const next = line[i + 1];
+        if (inQ && next === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQ = !inQ;
+        }
+      } else if (!inQ && ch === delim) {
+        out.push(cur);
+        cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out.map((x) => x.trim());
+  };
+
+  const headers = parseLine(lines[0]).map((h) => h.trim());
+  return lines.slice(1).map((ln) => {
+    const cols = parseLine(ln);
+    const obj: Record<string, string> = {};
+    headers.forEach((h, idx) => (obj[h] = cols[idx] ?? ""));
+    return obj;
+  });
+}
+
+function normalizeImportedRow(row: any) {
+  // mapping souple (CSV/Excel)
+  const pick = (...keys: string[]) => {
+    for (const k of keys) {
+      if (row?.[k] != null && String(row[k]).trim() !== "") return row[k];
+    }
+    return "";
+  };
+
+  return {
+    display_name: String(pick("display_name", "Nom / RS", "Nom", "Raison sociale", "Entreprise")).trim(),
+    last_name: String(pick("last_name", "Nom")).trim(),
+    first_name: String(pick("first_name", "Prénom", "Prenom")).trim(),
+    company_name: String(pick("company_name", "Entreprise", "Raison sociale", "Societe", "Société")).trim(),
+    siret: String(pick("siret")).trim(),
+    email: String(pick("email", "Email", "Mail", "E-mail")).trim(),
+    phone: String(pick("phone", "Téléphone", "Telephone", "Tel")).trim(),
+    address: String(pick("address", "Adresse")).trim(),
+    city: String(pick("city", "Ville")).trim(),
+    postal_code: String(pick("postal_code", "Code postal", "CP")).trim(),
+    category: String(pick("category", "Categorie", "Catégorie")).trim(),
+    contact_type: String(pick("contact_type", "Type", "Type de contact")).trim(),
   };
 }
 
@@ -101,6 +217,9 @@ export default function CRMClient() {
 
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [query, setQuery] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // ✅ Sélection multi-contacts (pour actions : mail, etc.)
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(() => new Set());
@@ -154,25 +273,48 @@ export default function CRMClient() {
 
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return contacts;
-    return contacts.filter((c) => {
-      const blob = [
-        buildDisplayName(c),
-        c.siret ?? "",
-        c.email,
-        c.phone,
-        c.address,
-        c.city ?? "",
-        c.postal_code ?? "",
-        c.category ? CATEGORY_LABEL[c.category as Exclude<Category, "">] : "",
-        c.contact_type ? TYPE_LABEL[c.contact_type as Exclude<ContactType, "">] : "",
-      ]
-        .join(" ")
-        .toLowerCase();
-      return blob.includes(q);
-    });
-  }, [contacts, query]);
+  const raw = query.trim();
+  const q = raw.toLowerCase();
+  if (!q) return contacts;
+
+  // Helpers
+  const digits = raw.replace(/\D/g, ""); // enlève espaces, +33, etc.
+  const hasLetters = /[a-z]/i.test(raw);
+  const isNumericSearch = !hasLetters && digits.length > 0;
+
+  return contacts.filter((c) => {
+    // ✅ Cas "je tape des chiffres"
+    if (isNumericSearch) {
+      const cpDigits = String(c.postal_code ?? "").replace(/\D/g, "");
+      if (digits.length < 6) {
+        // < 6 chiffres => فقط CP
+        return cpDigits.includes(digits);
+      }
+
+      // >= 6 chiffres => téléphone (et on laisse CP aussi, pratique)
+      const phoneDigits = String(c.phone ?? "").replace(/\D/g, "");
+      return phoneDigits.includes(digits) || cpDigits.includes(digits);
+    }
+
+    // ✅ Cas texte "normal" (on garde ton comportement)
+    const blob = [
+      buildDisplayName(c),
+      c.siret ?? "",
+      c.email, // ici OK car ce n'est pas une recherche "chiffres uniquement"
+      c.phone,
+      c.address,
+      c.city ?? "",
+      c.postal_code ?? "",
+      c.category ? CATEGORY_LABEL[c.category as Exclude<Category, "">] : "",
+      c.contact_type ? TYPE_LABEL[c.contact_type as Exclude<ContactType, "">] : "",
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return blob.includes(q);
+  });
+}, [contacts, query]);
+
 
   // ✅ KPI (lecture rapide)
   const kpis = useMemo(() => {
@@ -275,10 +417,118 @@ export default function CRMClient() {
   };
 
 
-  const sendMailToSelected = () => {
+  
+async function importContacts(rows: any[]) {
+  const cleaned = rows
+    .map(normalizeImportedRow)
+    .filter((r) => r.display_name || r.email || r.phone || r.last_name || r.company_name);
+
+  if (cleaned.length === 0) {
+    alert("Aucune ligne exploitable trouvée dans le fichier.");
+    return;
+  }
+
+  setImporting(true);
+  setError(null);
+  try {
+    const r = await fetch("/api/crm/contacts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contacts: cleaned }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j?.error || "Import impossible.");
+    await loadContacts();
+    alert(`✅ Import terminé : ${j?.inserted ?? cleaned.length} contact(s)`);
+  } catch (e: any) {
+    setError(e?.message || "Erreur import");
+  } finally {
+    setImporting(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+}
+
+async function handleImportFile(file: File) {
+  const name = (file?.name || "").toLowerCase();
+
+  // JSON array
+  if (name.endsWith(".json")) {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) throw new Error("Le JSON doit être un tableau de contacts.");
+    await importContacts(parsed);
+    return;
+  }
+
+  // CSV (Excel)
+  const text = await file.text();
+  const rows = parseCsv(text);
+  await importContacts(rows);
+}
+
+const triggerImport = () => fileInputRef.current?.click();
+
+const exportCsv = () => {
+  setExporting(true);
+  try {
+    const rows = (filtered.length ? filtered : contacts).map((c) => ({
+      display_name: buildDisplayName(c),
+      last_name: c.last_name ?? "",
+      first_name: c.first_name ?? "",
+      company_name: c.company_name ?? "",
+      siret: c.siret ?? "",
+      email: c.email ?? "",
+      phone: c.phone ?? "",
+      address: c.address ?? "",
+      city: c.city ?? "",
+      postal_code: c.postal_code ?? "",
+      category: c.category ?? "",
+      contact_type: c.contact_type ?? "",
+    }));
+    const csv = contactsToCsv(rows);
+    downloadTextFile(`crm_inrcy_${new Date().toISOString().slice(0, 10)}.csv`, csv, "text/csv;charset=utf-8");
+  } finally {
+    setExporting(false);
+  }
+};
+
+const sendMailToSelected = () => {
     if (selectedEmails.length === 0) return;
     const params = new URLSearchParams({ compose: "1", to: selectedEmails.join(",") , from: "crm" });
     router.push(`/dashboard/mails?${params.toString()}`);
+  };
+
+  const sendMailToContact = (c: CrmContact) => {
+    const to = (c.email || "").trim();
+    if (!to) return;
+    const params = new URLSearchParams({ compose: "1", to, from: "crm" });
+    router.push(`/dashboard/mails?${params.toString()}`);
+  };
+
+  const buildDocPrefillParams = (c: CrmContact) => {
+    const clientName = buildDisplayName(c);
+    const clientEmail = (c.email || "").trim();
+    const addrParts = [c.address, c.postal_code ?? "", c.city ?? ""]
+      .map((s) => (s || "").trim())
+      .filter(Boolean);
+    const clientAddress = addrParts.join(" ").trim();
+    const params = new URLSearchParams();
+    if (clientName) params.set("clientName", clientName);
+    if (clientEmail) params.set("clientEmail", clientEmail);
+    if (clientAddress) params.set("clientAddress", clientAddress);
+    params.set("from", "crm");
+    params.set("contactId", c.id);
+    return params;
+  };
+
+  const goNewDevis = (c: CrmContact) => {
+    const params = buildDocPrefillParams(c);
+    router.push(`/dashboard/devis/new?${params.toString()}`);
+  };
+
+  const goNewFacture = (c: CrmContact) => {
+    const params = buildDocPrefillParams(c);
+    router.push(`/dashboard/factures/new?${params.toString()}`);
   };
 
   function startNew() {
@@ -484,7 +734,7 @@ export default function CRMClient() {
                 
 <div className={styles.formGrid}>
   {/* Ligne 1 */}
-  <label className={`${styles.label} ${styles.col4}`}>
+  <label className={`${styles.label} ${styles.col3}`}>
     <span>Nom Prénom / Raison sociale</span>
     <input
       className={styles.input}
@@ -495,7 +745,7 @@ export default function CRMClient() {
     />
   </label>
 
-  <label className={`${styles.label} ${styles.col1}`}>
+  <label className={`${styles.label} ${styles.col2}`}>
     <span>SIREN</span>
     <input
       className={styles.input}
@@ -516,7 +766,7 @@ export default function CRMClient() {
       <option value="">—</option>
       <option value="particulier">Particulier</option>
       <option value="professionnel">Professionnel</option>
-      <option value="collectivite_publique">Collectivité publique</option>
+      <option value="collectivite_publique">Institution</option>
     </select>
   </label>
 
@@ -536,7 +786,7 @@ export default function CRMClient() {
     </select>
   </label>
 
-  <label className={`${styles.label} ${styles.col1}`}>
+  <label className={`${styles.label} ${styles.col2}`}>
     <span>Téléphone</span>
     <input
       className={styles.input}
@@ -548,8 +798,8 @@ export default function CRMClient() {
   </label>
 
 
-  <label className={`${styles.label} ${styles.starField} ${styles.col2}`}>
-    <span>⭐ Important</span>
+  <label className={`${styles.label} ${styles.starField} ${styles.col1}`}>
+    <span>Important</span>
     <button
       type="button"
       className={styles.starToggle}
@@ -577,7 +827,7 @@ export default function CRMClient() {
     />
   </label>
 
-  <label className={`${styles.label} ${styles.col4}`}>
+  <label className={`${styles.label} ${styles.col3}`}>
     <span>Adresse</span>
     <input
       className={styles.input}
@@ -612,7 +862,7 @@ export default function CRMClient() {
   </label>
 
 
-  <label className={`${styles.label} ${styles.col2}`}>
+  <label className={`${styles.label} ${styles.col3}`}>
     <span>Notes</span>
     <input
       className={styles.input}
@@ -671,6 +921,45 @@ export default function CRMClient() {
         <div className={styles.cardHead}>
           <h2 className={styles.h2}>Tableau CRM</h2>
           <div className={styles.tableToolbar}>
+  <input
+    ref={fileInputRef}
+    type="file"
+    accept=".csv,.json,text/csv,application/json"
+    style={{ display: "none" }}
+    onChange={async (e) => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      try {
+        await handleImportFile(f);
+      } catch (err: any) {
+        setError(err?.message || "Import impossible.");
+        setImporting(false);
+      }
+    }}
+  />
+
+  <div className={styles.importExportActions}>
+    <button
+      className={styles.ghostBtn}
+      type="button"
+      onClick={triggerImport}
+      disabled={saving || importing}
+      title="Importer un fichier CSV (Excel) ou JSON"
+    >
+      {importing ? "Import…" : "Importer"}
+    </button>
+
+    <button
+      className={styles.ghostBtn}
+      type="button"
+      onClick={exportCsv}
+      disabled={saving || exporting || contacts.length === 0}
+      title="Exporter en CSV (ouvrable dans Excel)"
+    >
+      {exporting ? "Export…" : "Exporter"}
+    </button>
+  </div>
+
             <div className={styles.searchWrap}>
               <input
                 className={styles.search}
@@ -703,16 +992,39 @@ export default function CRMClient() {
                 🗑️
               </button>
 
-              <button aria-label="action"
-                className={styles.primaryBtn}
+              <button
+                className={`${styles.actionIconBtn} ${styles.toolbarIcon}`}
                 type="button"
+                title="Envoyer un mail"
+                aria-label="Envoyer un mail"
                 onClick={sendMailToSelected}
-                disabled={selectedEmails.length === 0}
-                title={selectedEmails.length === 0 ? "Sélectionne 1 ou plusieurs contacts avec un email" : "Ouvrir iNr'Box avec les destinataires pré-remplis"}
+                disabled={selectedEmails.length === 0 || saving}
               >
-                Envoyer un mail{selectedContactIds.size ? ` (${selectedContactIds.size})` : ""}
+                ✉️
               </button>
-            </div>
+
+              <button
+                className={`${styles.actionIconBtn} ${styles.toolbarIcon}`}
+                type="button"
+                title="Créer un devis"
+                aria-label="Créer un devis"
+                onClick={() => selectedContacts[0] && goNewDevis(selectedContacts[0])}
+                disabled={selectedContacts.length !== 1 || saving}
+              >
+                📄
+              </button>
+
+              <button
+                className={`${styles.actionIconBtn} ${styles.toolbarIcon}`}
+                type="button"
+                title="Créer une facture"
+                aria-label="Créer une facture"
+                onClick={() => selectedContacts[0] && goNewFacture(selectedContacts[0])}
+                disabled={selectedContacts.length !== 1 || saving}
+              >
+                🧾
+              </button>
+</div>
           </div>
         </div>
 
@@ -735,17 +1047,16 @@ export default function CRMClient() {
                 <th>Nom Prénom / RS</th>
                 <th>Mail</th>
                 <th>Téléphone</th>
-                <th>Ville</th>
-                <th>CP</th>
+<th>CP</th>
                 <th>Catégorie</th>
                 <th>Type</th>
-                <th>⭐</th>
+<th className={styles.thStar}>⭐</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className={styles.empty}>
+                  <td colSpan={8} className={styles.empty}>
                     Aucun contact pour le moment.
                   </td>
                 </tr>
@@ -765,8 +1076,7 @@ export default function CRMClient() {
                     <td>{buildDisplayName(c)}</td>
                     <td className={styles.mono}>{c.email}</td>
                     <td className={styles.mono}>{c.phone}</td>
-                    <td>{c.city ?? ""}</td>
-                    <td className={styles.mono}>{c.postal_code ?? ""}</td>
+<td className={styles.mono}>{c.postal_code ?? ""}</td>
                     <td>
                       {c.category ? (
                         <span className={categoryBadgeClass(c.category)}>{CATEGORY_LABEL[c.category as Exclude<Category, "">]}</span>
@@ -781,19 +1091,10 @@ export default function CRMClient() {
                         <span className={styles.dash}>—</span>
                       )}
                     </td>
-                    <td>
-                      <button
-                        type="button"
-                        className={styles.starBtn}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleImportant(c.id);
-                        }}
-                        aria-label={importantIds.has(c.id) ? "Retirer des importants" : "Marquer important"}
-                        title={importantIds.has(c.id) ? "Important" : "Marquer important"}
-                      >
-                        {importantIds.has(c.id) ? "★" : "☆"}
-                      </button>
+<td>
+                      {importantIds.has(c.id) ? (
+                        <span className={styles.starStatic} title="Important" aria-label="Important">★</span>
+                      ) : null}
                     </td>
                   </tr>
                 ))

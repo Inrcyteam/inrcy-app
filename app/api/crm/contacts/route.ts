@@ -59,7 +59,47 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json().catch(() => ({}));
+const body = await req.json().catch(() => ({}));
+
+// ✅ Bulk import: POST { contacts: [...] }
+if (Array.isArray(body?.contacts)) {
+  const rows = body.contacts;
+  const payloads = rows
+    .map((row: any) => {
+      const fromDisplay = parseDisplayName(row.display_name);
+      const p = {
+        user_id: userData.user.id,
+        last_name: fromDisplay.last_name || cleanString(row.last_name),
+        first_name: fromDisplay.first_name || cleanString(row.first_name),
+        company_name: fromDisplay.company_name || cleanString(row.company_name),
+        siret: cleanString(row.siret),
+        email: cleanString(row.email),
+        phone: cleanString(row.phone),
+        address: cleanString(row.address),
+        city: cleanString(row.city),
+        postal_code: cleanString(row.postal_code),
+        category: isCategory(row.category) ? row.category : ("particulier" as Category),
+        contact_type: isContactType(row.contact_type) ? row.contact_type : ("prospect" as ContactType),
+      };
+
+      // Minimum validation
+      if (!p.last_name && !p.first_name && !p.company_name && !p.email && !p.phone) return null;
+      return p;
+    })
+    .filter(Boolean) as any[];
+
+  if (payloads.length === 0) {
+    return NextResponse.json({ error: "Aucune ligne importable." }, { status: 400 });
+  }
+
+  const { error } = await supabase.from("crm_contacts").insert(payloads);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, inserted: payloads.length });
+}
 
   const fromDisplay = parseDisplayName(body.display_name);
 
@@ -107,7 +147,47 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json().catch(() => ({}));
+const body = await req.json().catch(() => ({}));
+
+// ✅ Bulk import: POST { contacts: [...] }
+if (Array.isArray(body?.contacts)) {
+  const rows = body.contacts;
+  const payloads = rows
+    .map((row: any) => {
+      const fromDisplay = parseDisplayName(row.display_name);
+      const p = {
+        user_id: userData.user.id,
+        last_name: fromDisplay.last_name || cleanString(row.last_name),
+        first_name: fromDisplay.first_name || cleanString(row.first_name),
+        company_name: fromDisplay.company_name || cleanString(row.company_name),
+        siret: cleanString(row.siret),
+        email: cleanString(row.email),
+        phone: cleanString(row.phone),
+        address: cleanString(row.address),
+        city: cleanString(row.city),
+        postal_code: cleanString(row.postal_code),
+        category: isCategory(row.category) ? row.category : ("particulier" as Category),
+        contact_type: isContactType(row.contact_type) ? row.contact_type : ("prospect" as ContactType),
+      };
+
+      // Minimum validation
+      if (!p.last_name && !p.first_name && !p.company_name && !p.email && !p.phone) return null;
+      return p;
+    })
+    .filter(Boolean) as any[];
+
+  if (payloads.length === 0) {
+    return NextResponse.json({ error: "Aucune ligne importable." }, { status: 400 });
+  }
+
+  const { error } = await supabase.from("crm_contacts").insert(payloads);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, inserted: payloads.length });
+}
   const id = cleanString(body.id);
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 

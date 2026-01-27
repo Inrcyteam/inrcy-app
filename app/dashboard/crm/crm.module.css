@@ -1229,6 +1229,8 @@
 }
 .starToggle{
   height: 44px;
+  width: 44px;
+  padding: 0;
   border-radius: 16px;
   border: 1px solid rgba(255,255,255,.14);
   background: rgba(0,0,0,.18);
@@ -1246,4 +1248,168 @@
   transform: translateY(-1px) scale(1.02);
   border-color: rgba(255,255,255,.22);
   background: rgba(0,0,0,.26);
+}
+
+
+/* =========================
+   CRM tweak (Jan 2026) — remove "Ville" column + rebalance widths
+   ========================= */
+.table th:nth-child(1), .table td:nth-child(1){ width: 44px !important; }  /* Select */
+.table th:nth-child(2), .table td:nth-child(2){ width: 26% !important; }  /* Nom / RS */
+.table th:nth-child(3), .table td:nth-child(3){ width: 22% !important; }  /* Mail */
+.table th:nth-child(4), .table td:nth-child(4){ width: 14% !important; }  /* Téléphone */
+.table th:nth-child(5), .table td:nth-child(5){ width: 8% !important; }   /* CP */
+.table th:nth-child(6), .table td:nth-child(6){ width: 14% !important; }  /* Catégorie */
+.table th:nth-child(7), .table td:nth-child(7){ width: 12% !important; }  /* Type */
+.table th:nth-child(8), .table td:nth-child(8){ width: 44px !important; } /* Star */
+
+
+
+/* Star static (only shown for important contacts) */
+.starStatic{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width: 44px;
+  height: 44px;
+  color: #facc15;
+  font-size: 18px;
+  line-height: 1;
+}
+
+
+/* =========================
+   CRM tweak — No horizontal scrollbar + ellipsis in cells (Jan 2026)
+   ========================= */
+.tableWrap{
+  overflow-x: hidden !important; /* no horizontal scrollbar */
+}
+
+.table{
+  min-width: 0 !important;       /* allow table to shrink to container */
+  width: 100% !important;
+  table-layout: fixed !important;
+}
+
+.table th,
+.table td{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;       /* long text truncates instead of overlapping */
+}
+
+/* Column widths (9 cols: Select, Nom, Mail, Tel, CP, Cat, Type, Actions, Star) */
+.table th:nth-child(1), .table td:nth-child(1){ width: 44px !important; text-align: center; }
+.table th:nth-child(2), .table td:nth-child(2){ width: 26% !important; }
+.table th:nth-child(3), .table td:nth-child(3){ width: 22% !important; }
+.table th:nth-child(4), .table td:nth-child(4){ width: 14% !important; }
+.table th:nth-child(5), .table td:nth-child(5){ width: 8% !important; }
+.table th:nth-child(6), .table td:nth-child(6){ width: 12% !important; }
+.table th:nth-child(7), .table td:nth-child(7){ width: 10% !important; }
+.table th:nth-child(8), .table td:nth-child(8){ width: 120px !important; text-align: center; }
+.table th:nth-child(9), .table td:nth-child(9){ width: 44px !important; text-align: center; }
+
+/* Ensure badges don't expand columns */
+.typeBadge, .catBadge{
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dernière colonne (⭐) : centrage */
+.table td:last-child,
+.table th:last-child{
+  width: 44px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.table td,
+.table th{
+  vertical-align: middle;
+}
+
+
+
+
+/* Row actions (Mail / Devis / Facture) */
+.rowActions{
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+}
+
+.actionIconBtn{
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  backdrop-filter: blur(10px);
+  color: rgba(255,255,255,.92);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 16px;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+}
+
+.actionIconBtn:hover{
+  transform: translateY(-1px) scale(1.03);
+  border-color: rgba(255,255,255,.22);
+  background: rgba(0,0,0,.26);
+}
+
+.actionIconBtn:disabled{
+  opacity: .35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+
+
+/* Toolbar action icons (next to trash) */
+.toolbarIcon{
+  width: 48px;
+  height: 48px;
+  font-size: 20px;
+  border-radius: 14px;
+}
+
+
+/* Actions column removed */
+.thActions{ display:none; }
+
+
+
+/* 🔒 Force-disable Actions column (safety) */
+.thActions,
+.actionsCell{
+  display: none !important;
+  width: 0 !important;
+}
+
+
+
+/* === CRM table rebalance (final) === */
+/* Columns: Select | Nom | Mail | Tel | CP | Catégorie | Type | Star */
+.table th:nth-child(2), .table td:nth-child(2){ width: 20% !important; } /* Nom */
+.table th:nth-child(3), .table td:nth-child(3){ width: 23% !important; } /* Mail (serré) */
+.table th:nth-child(4), .table td:nth-child(4){ width: 14% !important; } /* Téléphone */
+.table th:nth-child(5), .table td:nth-child(5){ width: 8% !important; }  /* CP */
+.table th:nth-child(6), .table td:nth-child(6){ width: 12% !important; } /* Catégorie */
+.table th:nth-child(7), .table td:nth-child(7){ width: 12% !important; } /* Type */
+.table th:nth-child(8), .table td:nth-child(8){ width: 64px !important; } /* Star */
+
+
+/* Import / Export buttons in table toolbar */
+.importExportActions{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
