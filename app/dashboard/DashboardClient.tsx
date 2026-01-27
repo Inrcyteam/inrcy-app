@@ -1652,7 +1652,11 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
       </div>
       <div className={styles.loopSub}>Vos prospects et clients centralisés</div>
       <div className={styles.loopActions}>
-        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button">
+        <button
+          className={`${styles.actionBtn} ${styles.connectBtn}`}
+          type="button"
+          onClick={() => router.push("/dashboard/crm")}
+        >
           Ouvrir le CRM
         </button>
       </div>

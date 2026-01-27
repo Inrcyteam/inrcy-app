@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./mails.module.css";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import SettingsDrawer from "../SettingsDrawer";
 import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
 
@@ -108,6 +108,7 @@ function cleanInjectedEmailHtml(html: string) {
 export default function MailboxClient() {
   const isMobile = useIsMobile(980);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [folder, setFolder] = useState<Folder>("inbox");
   const [selectedId, setSelectedId] = useState<string>("1");
@@ -129,6 +130,45 @@ export default function MailboxClient() {
   const [mobilePane, setMobilePane] = useState<MobilePane>("messages");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedHtml, setSelectedHtml] = useState<string | null>(null);
+
+  const splitName = (full: string) => {
+    const t = (full || "").trim();
+    if (!t) return { first_name: "", last_name: "" };
+    const parts = t.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return { first_name: "", last_name: parts[0] };
+    return { first_name: parts.slice(0, -1).join(" "), last_name: parts.slice(-1).join(" ") };
+  };
+
+  async function addToCrm(m: MessageItem) {
+    const { name, email } = getContactPrefill(m);
+    if (!email) {
+      notify("Impossible : aucun email détecté.");
+      return;
+    }
+    const { first_name, last_name } = splitName(name);
+
+    try {
+      const r = await fetch("/api/crm/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name,
+          last_name,
+          email,
+          phone: "",
+          address: "",
+          category: "particulier",
+          contact_type: "prospect",
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.error || "Impossible d'ajouter au CRM.");
+      setCrmAddedIds((prev) => new Set(prev).add(m.id));
+      notify("Ajouté au CRM");
+    } catch (e: any) {
+      notify(e?.message || "Erreur");
+    }
+  }
 
   const getContactPrefill = (m: { from: string }) => {
     // Si un jour tu as "Jean <jean@mail.com>", on récupère l'email.
@@ -680,6 +720,25 @@ const onSelectMessage = (id: string) => {
   const [composeBody, setComposeBody] = useState("");
   const [composeSource, setComposeSource] = useState<Source>("Gmail");
   const [composeFiles, setComposeFiles] = useState<File[]>([]);
+
+  // ✅ Pré-remplissage depuis le CRM (ex: /dashboard/mails?compose=1&to=a@x.fr,b@y.fr)
+  useEffect(() => {
+    const compose = searchParams.get("compose");
+    const to = (searchParams.get("to") || "").trim();
+    if ((compose === "1" || compose === "true") && to) {
+      setComposeTo(to);
+      setComposeSubject("");
+      setComposeBody("Bonjour,\n\n");
+      setComposeOpen(true);
+
+      // Nettoie l'URL (évite de ré-ouvrir la fenêtre au refresh/back)
+      const cleaned = new URL(window.location.href);
+      cleaned.searchParams.delete("compose");
+      cleaned.searchParams.delete("to");
+      cleaned.searchParams.delete("from");
+      router.replace(cleaned.pathname + (cleaned.search ? cleaned.search : ""));
+    }
+  }, [searchParams]);
 
   const createMessagePreview = (body: string) => {
     const firstLine = body.replace(/\n+/g, " ").trim();
@@ -1504,8 +1563,7 @@ const singleMoveToSpam = async () => {
         title="Ajouter au CRM"
         onClick={() => {
           if (!selected) return;
-          setCrmAddedIds((prev) => new Set(prev).add(selected.id));
-          notify("Ajouté au CRM");
+          addToCrm(selected);
         }}
       >
         <svg className={styles.actionTileSvg} viewBox="0 0 24 24" fill="none" aria-hidden="true">

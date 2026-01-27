@@ -1,0 +1,1249 @@
+/* iNrCy CRM — look & feel aligned with iNrbox / Agenda (glass + neon accents)
+   Notes:
+   - Works with existing classnames in CRMClient.tsx
+   - Uses CSS variables when available, and graceful fallbacks
+*/
+
+:root{
+  --inrcy-bg: #0b0d12;
+  --inrcy-card: rgba(18, 22, 32, .70);
+  --inrcy-card-2: rgba(18, 22, 32, .55);
+  --inrcy-border: rgba(255,255,255,.10);
+  --inrcy-border-2: rgba(255,255,255,.14);
+  --inrcy-text: rgba(255,255,255,.92);
+  --inrcy-muted: rgba(255,255,255,.70);
+  --inrcy-muted-2: rgba(255,255,255,.55);
+  --inrcy-shadow: 0 18px 50px rgba(0,0,0,.35);
+  --inrcy-radius: 22px;
+  --inrcy-radius-sm: 14px;
+
+  --inrcy-cyan: rgba(0, 255, 255, .55);
+  --inrcy-violet: rgba(157, 78, 255, .60);
+  --inrcy-pink: rgba(255, 60, 120, .50);
+
+  --inrcy-grad: linear-gradient(135deg, var(--inrcy-cyan), var(--inrcy-violet));
+  --inrcy-grad-soft: linear-gradient(135deg, rgba(0,255,255,.22), rgba(157,78,255,.22));
+}
+
+.shell{
+  min-height: 100vh;
+  padding: 24px 18px 56px;
+  max-width: 1180px;
+  margin: 0 auto;
+  position: relative;
+}
+
+/* soft background like other iNrCy modules */
+.shell::before{
+  content:"";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(900px 480px at 10% 10%, rgba(0,255,255,.10), transparent 55%),
+    radial-gradient(900px 520px at 95% 20%, rgba(157,78,255,.12), transparent 55%),
+    radial-gradient(700px 540px at 65% 95%, rgba(255,60,120,.08), transparent 55%),
+    linear-gradient(180deg, rgba(10,12,18,1), rgba(8,10,15,1));
+}
+
+/* subtle dot grid */
+.shell::after{
+  content:"";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    radial-gradient(rgba(255,255,255,.055) 1px, transparent 1px);
+  background-size: 18px 18px;
+  opacity: .55;
+  pointer-events: none;
+}
+
+.header{
+  display:flex;
+  align-items:flex-start;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.backBtn{
+  border: 1px solid var(--inrcy-border);
+  background: rgba(0,0,0,.22);
+  color: var(--inrcy-text);
+  border-radius: 999px;
+  padding: 10px 14px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+  box-shadow: 0 10px 24px rgba(0,0,0,.22);
+}
+
+.backBtn:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,.18);
+  background: rgba(0,0,0,.28);
+}
+
+.headText{ flex:1; }
+
+.h1{
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: .2px;
+  color: var(--inrcy-text);
+  display:flex;
+  align-items:center;
+  gap: 10px;
+}
+
+.h1::after{
+  content:"";
+  height: 10px;
+  width: 10px;
+  border-radius: 999px;
+  background: var(--inrcy-grad);
+  box-shadow: 0 0 0 6px rgba(0,255,255,.08), 0 0 28px rgba(157,78,255,.25);
+}
+
+.sub{
+  margin: 6px 0 0;
+  color: var(--inrcy-muted);
+  font-size: 13px;
+}
+
+.card{
+  background: var(--inrcy-card);
+  border: 1px solid var(--inrcy-border);
+  border-radius: var(--inrcy-radius);
+  padding: 14px 14px 16px;
+  box-shadow: var(--inrcy-shadow);
+  margin-top: 14px;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(14px);
+}
+
+.card::before{
+  content:"";
+  position:absolute;
+  inset: 0;
+  background: radial-gradient(520px 240px at 18% 0%, rgba(0,255,255,.10), transparent 60%),
+              radial-gradient(520px 240px at 90% 0%, rgba(157,78,255,.12), transparent 62%);
+  pointer-events: none;
+}
+
+.cardHead{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.h2{
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: .2px;
+  color: var(--inrcy-text);
+  display:flex;
+  align-items:center;
+  gap: 10px;
+}
+
+.h2::before{
+  content:"";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.65);
+  opacity: .65;
+}
+
+.cardActions{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+}
+
+.primaryBtn{
+  border: 0;
+  background: var(--inrcy-grad);
+  color: rgba(255,255,255,.96);
+  border-radius: 999px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: .1px;
+  transition: transform .12s ease, filter .12s ease, box-shadow .12s ease;
+  box-shadow: 0 12px 30px rgba(0,255,255,.10), 0 14px 34px rgba(157,78,255,.12);
+}
+
+.primaryBtn:hover{
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+.ghostBtn{
+  border: 1px solid var(--inrcy-border);
+  background: rgba(0,0,0,.22);
+  color: var(--inrcy-text);
+  border-radius: 999px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+  backdrop-filter: blur(10px);
+}
+
+.ghostBtn:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,.18);
+  background: rgba(0,0,0,.28);
+}
+
+.primaryBtn:disabled,
+.ghostBtn:disabled,
+.smallBtn:disabled,
+.backBtn:disabled{
+  opacity: .55;
+  cursor:not-allowed;
+  transform: none;
+  filter: none;
+}
+
+.error{
+  background: rgba(255, 60, 120, .12);
+  border: 1px solid rgba(255,60,120,.30);
+  padding: 10px 12px;
+  border-radius: 16px;
+  color: rgba(255,255,255,.94);
+  font-size: 13px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.error::before{
+  content:"";
+  position:absolute;
+  inset: 0;
+  background: radial-gradient(520px 180px at 20% 0%, rgba(255,60,120,.12), transparent 55%);
+  pointer-events:none;
+}
+
+.formGrid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  position: relative;
+}
+
+.full{
+  grid-column: 1 / -1;
+}
+
+.label{
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--inrcy-muted);
+  font-size: 12px;
+}
+
+.input,.select,.search{
+  border: 1px solid var(--inrcy-border-2);
+  background: rgba(0,0,0,.22);
+  color: var(--inrcy-text);
+  border-radius: 16px;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color .12s ease, box-shadow .12s ease, background .12s ease;
+  backdrop-filter: blur(10px);
+}
+
+.input::placeholder,.search::placeholder{ color: rgba(255,255,255,.42); }
+
+.input:focus,.select:focus,.search:focus{
+  border-color: rgba(0,255,255,.30);
+  box-shadow: 0 0 0 4px rgba(0,255,255,.08), 0 0 0 1px rgba(157,78,255,.10);
+  background: rgba(0,0,0,.28);
+}
+
+/* nicer select arrow */
+.select{
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(255,255,255,.72) 50%),
+    linear-gradient(135deg, rgba(255,255,255,.72) 50%, transparent 50%),
+    linear-gradient(to right, transparent, transparent);
+  background-position:
+    calc(100% - 18px) 52%,
+    calc(100% - 12px) 52%,
+    0 0;
+  background-size:
+    6px 6px,
+    6px 6px,
+    100% 100%;
+  background-repeat: no-repeat;
+  padding-right: 34px;
+}
+
+.searchWrap{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+}
+
+.search{
+  width: 260px;
+  border-radius: 999px;
+}
+
+.count{
+  min-width: 38px;
+  text-align:center;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--inrcy-border);
+  color: var(--inrcy-muted);
+  font-size: 12px;
+  background: rgba(0,0,0,.18);
+  backdrop-filter: blur(10px);
+}
+
+.tableWrap{
+  width: 100%;
+  overflow: auto;
+  border-radius: 18px;
+  border: 1px solid var(--inrcy-border);
+  background: rgba(0,0,0,.12);
+  position: relative;
+}
+
+.table{
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 720px;
+}
+
+.table th, .table td{
+  padding: 11px 12px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  vertical-align: top;
+  font-size: 13px;
+  color: rgba(255,255,255,.86);
+}
+
+.table th{
+  position: sticky;
+  top: 0;
+  background: rgba(12, 14, 20, .92);
+  color: rgba(255,255,255,.82);
+  text-align: left;
+  font-size: 12px;
+  letter-spacing: .25px;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255,255,255,.10);
+}
+
+/* zebra + hover like iNrbox lists */
+.table tbody tr:nth-child(odd){
+  background: rgba(255,255,255,.02);
+}
+.table tbody tr:hover{
+  background: linear-gradient(90deg, rgba(0,255,255,.05), rgba(157,78,255,.05));
+}
+
+.thActions{ width: 170px; }
+
+.mono{
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  color: rgba(255,255,255,.84);
+}
+
+.actionsCell{
+  display:flex;
+  gap: 8px;
+  align-items:center;
+}
+
+.smallBtn{
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  color: rgba(255,255,255,.92);
+  border-radius: 999px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+  backdrop-filter: blur(10px);
+}
+
+.smallBtn:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,.20);
+  background: rgba(0,0,0,.26);
+}
+
+.dangerBtn{
+  border-color: rgba(255,60,120,.32);
+  background: rgba(255,60,120,.10);
+}
+
+.dangerBtn:hover{
+  border-color: rgba(255,60,120,.40);
+  background: rgba(255,60,120,.14);
+}
+
+.empty{
+  text-align:center;
+  padding: 18px 10px;
+  color: var(--inrcy-muted);
+}
+
+.muted{
+  color: var(--inrcy-muted);
+  font-size: 13px;
+  margin: 8px 0 12px;
+}
+
+.footerNote{
+  margin-top: 12px;
+  color: var(--inrcy-muted-2);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* Responsive */
+@media (max-width: 760px){
+  .formGrid{ grid-template-columns: 1fr; }
+  .search{ width: 100%; }
+  .cardHead{ flex-direction: column; align-items: flex-start; }
+  .cardActions{ width: 100%; }
+  .primaryBtn, .ghostBtn{ width: 100%; justify-content: center; }
+}
+
+
+/* =========================
+   iNrCy Dream UI Enhancements
+   ========================= */
+
+:root{
+  --inrcy-cyan: rgb(56,189,248);
+  --inrcy-violet: rgb(157,78,255);
+  --inrcy-pink: rgb(255,60,120);
+}
+
+/* Glass cards */
+.card{
+  background: rgba(12,14,20,0.72);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 18px;
+  box-shadow:
+    0 18px 50px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.card::after{
+  content:"";
+  position:absolute;
+  inset:-1px;
+  border-radius:inherit;
+  padding:1px;
+  background:linear-gradient(
+    135deg,
+    rgba(56,189,248,.45),
+    rgba(157,78,255,.45),
+    rgba(255,60,120,.35)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask-composite:exclude;
+  pointer-events:none;
+  opacity:.55;
+}
+
+/* Primary action */
+.primaryBtn{
+  position:relative;
+  background:linear-gradient(
+    135deg,
+    rgba(56,189,248,.95),
+    rgba(157,78,255,.95)
+  );
+  border-radius:999px;
+  font-weight:600;
+  letter-spacing:.3px;
+  box-shadow:
+    0 10px 34px rgba(56,189,248,.35),
+    0 0 0 1px rgba(255,255,255,.12);
+  overflow:hidden;
+}
+
+.primaryBtn::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(
+    120deg,
+    transparent 20%,
+    rgba(255,255,255,.45),
+    transparent 80%
+  );
+  transform:translateX(-100%);
+  animation:inrcyShine 3.6s infinite;
+}
+
+@keyframes inrcyShine{
+  0%{transform:translateX(-100%)}
+  60%{transform:translateX(120%)}
+  100%{transform:translateX(120%)}
+}
+
+/* Inputs focus */
+.input:focus,.select:focus,.search:focus{
+  border-color:var(--inrcy-cyan);
+  box-shadow:
+    0 0 0 4px rgba(56,189,248,.12),
+    0 0 0 1px rgba(157,78,255,.18);
+}
+
+/* Table hover */
+.table tbody tr:hover{
+  background:linear-gradient(
+    90deg,
+    rgba(56,189,248,.06),
+    rgba(157,78,255,.06),
+    rgba(255,60,120,.04)
+  );
+}
+
+/* Error accent */
+.error{
+  border-color:rgba(255,60,120,.55);
+  box-shadow:0 14px 44px rgba(255,60,120,.15);
+}
+
+
+/* ===== Header iNrCy Upgrade ===== */
+
+.header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+}
+
+.titleWrap{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  flex-wrap:wrap;
+}
+
+.titleBubble{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 18px;
+  border-radius:999px;
+  background:linear-gradient(
+    135deg,
+    rgba(0,255,255,.18),
+    rgba(157,78,255,.18)
+  );
+  border:1px solid rgba(255,255,255,.18);
+  box-shadow:
+    0 0 0 6px rgba(0,255,255,.06),
+    0 12px 40px rgba(157,78,255,.25);
+}
+
+.logoDot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:linear-gradient(
+    135deg,
+    rgb(56,189,248),
+    rgb(157,78,255)
+  );
+  box-shadow:
+    0 0 12px rgba(56,189,248,.9),
+    0 0 18px rgba(157,78,255,.6);
+}
+
+.subInline{
+  color:rgba(255,255,255,.70);
+  font-size:13px;
+  white-space:nowrap;
+}
+
+@media (max-width: 760px){
+  .header{
+    align-items:flex-start;
+  }
+  .titleWrap{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .subInline{
+    white-space:normal;
+  }
+}
+
+
+/* =========================
+   iNrCy CRM — UI Upgrade v2
+   (plus clair, plus lisible, responsive, + toolbar)
+   ========================= */
+
+.shell::before{
+  /* background slightly brighter */
+  background:
+    radial-gradient(900px 520px at 10% 10%, rgba(0,255,255,.14), transparent 55%),
+    radial-gradient(900px 560px at 95% 20%, rgba(157,78,255,.16), transparent 55%),
+    radial-gradient(720px 560px at 65% 95%, rgba(255,60,120,.10), transparent 56%),
+    linear-gradient(180deg, rgba(14,18,28,1), rgba(10,12,18,1));
+}
+
+.h1{ font-size: 24px; }
+.subInline{ font-size: 14px; }
+.label{ font-size: 13px; }
+.table th, .table td{ font-size: 14px; }
+.muted{ font-size: 14px; }
+
+/* Header layout (right back button + bubble title) */
+.header{
+  align-items:center;
+}
+
+.titleWrap{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  flex-wrap:wrap;
+}
+
+.titleBubble{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 18px;
+  border-radius:999px;
+  background: linear-gradient(135deg, rgba(0,255,255,.18), rgba(157,78,255,.18));
+  border:1px solid rgba(255,255,255,.20);
+  box-shadow: 0 0 0 6px rgba(0,255,255,.06), 0 12px 40px rgba(157,78,255,.22);
+}
+
+.logoDot{
+  width:10px; height:10px; border-radius:999px;
+  background: linear-gradient(135deg, rgb(56,189,248), rgb(157,78,255));
+  box-shadow: 0 0 12px rgba(56,189,248,.9), 0 0 18px rgba(157,78,255,.6);
+}
+
+/* Make back/close button border more visible */
+.backBtn{
+  border-color: rgba(255,255,255,.22);
+  background: rgba(0,0,0,.18);
+}
+.backBtn:hover{
+  border-color: rgba(255,255,255,.30);
+}
+
+/* Better separation between sections */
+.card{
+  margin-top: 16px;
+}
+.card + .card{
+  margin-top: 18px;
+}
+.card + .card::before{
+  /* add a stronger top glow separator */
+  background:
+    radial-gradient(700px 220px at 50% 0%, rgba(0,255,255,.12), transparent 60%),
+    radial-gradient(700px 220px at 70% 0%, rgba(157,78,255,.12), transparent 62%);
+}
+
+/* White dropdowns (requested) */
+.select{
+  background: #ffffff !important;
+  color: rgba(10,12,18,0.92) !important;
+  border-color: rgba(255,255,255,.22) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
+}
+.select:focus{
+  outline: none;
+  border-color: rgba(56,189,248,.65) !important;
+  box-shadow: 0 0 0 4px rgba(56,189,248,.18);
+}
+
+/* Slightly lighter inputs while keeping dark glass */
+.input, .search{
+  background: rgba(255,255,255,.06);
+}
+.input:focus, .search:focus{
+  background: rgba(255,255,255,.08);
+}
+
+/* Toolbar above table */
+.tableToolbar{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.bulkActions{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Selection column */
+.thSelect{ width: 44px; }
+.tdSelect{ width: 44px; }
+
+.checkbox{
+  width: 16px;
+  height: 16px;
+  accent-color: rgb(56,189,248);
+  cursor: pointer;
+}
+
+.rowSelected{
+  background: linear-gradient(90deg, rgba(0,255,255,.08), rgba(157,78,255,.08), rgba(255,60,120,.05)) !important;
+}
+
+/* Make table easier on small screens */
+.tableWrap{
+  border-color: rgba(255,255,255,.14);
+}
+.table{
+  min-width: 960px;
+}
+
+@media (max-width: 980px){
+  .shell{ padding: 18px 14px 46px; }
+  .h1{ font-size: 22px; }
+  .subInline{ white-space: normal; }
+  .table{ min-width: 900px; }
+}
+
+@media (max-width: 760px){
+  .header{
+    align-items:flex-start;
+  }
+  .titleWrap{
+    flex-direction: column;
+    align-items:flex-start;
+    gap: 10px;
+  }
+  .backBtn{
+    padding: 10px 12px;
+  }
+  .tableToolbar{
+    width: 100%;
+  }
+  .bulkActions{
+    width: 100%;
+  }
+  .bulkActions .primaryBtn, .bulkActions .ghostBtn{
+    width: 100%;
+    justify-content:center;
+  }
+  .searchWrap{
+    width: 100%;
+  }
+  .search{
+    width: 100%;
+  }
+}
+
+
+/* =========================
+   iNrCy CRM — Ultra polish
+   ========================= */
+
+.shell::before{
+  background:
+    radial-gradient(980px 560px at 10% 10%, rgba(0,255,255,.16), transparent 56%),
+    radial-gradient(980px 600px at 95% 20%, rgba(157,78,255,.18), transparent 56%),
+    radial-gradient(820px 640px at 65% 95%, rgba(255,60,120,.12), transparent 58%),
+    linear-gradient(180deg, rgba(18,24,38,1), rgba(12,14,22,1));
+}
+
+.h1{ font-size: 26px; }
+.h2{ font-size: 18px; }
+.label span{ font-size: 13px; }
+.input,.select,.search{ font-size: 14px; }
+
+/* Back/close button border more visible */
+.backBtn{
+  border: 1px solid rgba(255,255,255,.26);
+  background: rgba(255,255,255,.06);
+}
+.backBtn:hover{
+  border-color: rgba(255,255,255,.36);
+  background: rgba(255,255,255,.08);
+}
+
+/* KPI row */
+.kpiRow{
+  display:grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 10px;
+}
+
+.kpiCard{
+  position: relative;
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 16px 44px rgba(0,0,0,.22);
+  overflow: hidden;
+}
+
+.kpiCard::after{
+  content:"";
+  position:absolute;
+  inset:-1px;
+  border-radius:inherit;
+  padding:1px;
+  background: linear-gradient(135deg, rgba(56,189,248,.36), rgba(157,78,255,.32), rgba(255,60,120,.22));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask-composite:exclude;
+  pointer-events:none;
+  opacity:.65;
+}
+
+.kpiLabel{
+  color: rgba(255,255,255,.72);
+  font-size: 12px;
+}
+
+.kpiValue{
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: .2px;
+  color: rgba(255,255,255,.92);
+}
+
+/* Distinguish top vs bottom blocks */
+.cardTop{
+}
+.cardBottom{
+  margin-top: 18px;
+}
+
+.cardBottom{
+  background: rgba(12,14,20,.76);
+}
+
+.cardBottom::before{
+  background:
+    radial-gradient(820px 260px at 50% 0%, rgba(56,189,248,.12), transparent 60%),
+    radial-gradient(820px 260px at 72% 0%, rgba(157,78,255,.12), transparent 62%);
+}
+
+/* White dropdowns (requested) */
+.select{
+  background: #ffffff !important;
+  color: rgba(10,12,18,0.92) !important;
+  border-color: rgba(255,255,255,.24) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.40);
+}
+.select:focus{
+  border-color: rgba(56,189,248,.70) !important;
+  box-shadow: 0 0 0 4px rgba(56,189,248,.18);
+}
+
+/* Badges */
+.typeBadge, .catBadge{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .2px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.06);
+}
+
+.typeProspect{ border-color: rgba(56,189,248,.28); box-shadow: 0 0 0 3px rgba(56,189,248,.07); }
+.typeClient{ border-color: rgba(34,197,94,.30); box-shadow: 0 0 0 3px rgba(34,197,94,.07); }
+.typeFournisseur{ border-color: rgba(245,158,11,.30); box-shadow: 0 0 0 3px rgba(245,158,11,.07); }
+.typePartenaire{ border-color: rgba(157,78,255,.30); box-shadow: 0 0 0 3px rgba(157,78,255,.07); }
+
+.catPart{ border-color: rgba(255,255,255,.18); }
+.catPro{ border-color: rgba(56,189,248,.22); }
+.catPublic{ border-color: rgba(255,60,120,.22); }
+
+/* Table readability */
+.table th, .table td{ font-size: 14px; }
+.tableWrap{ border-color: rgba(255,255,255,.14); }
+
+/* Toolbar responsiveness */
+.tableToolbar{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.bulkActions{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Selection visuals */
+.checkbox{
+  width: 16px;
+  height: 16px;
+  accent-color: rgb(56,189,248);
+}
+
+.rowSelected{
+  background: linear-gradient(90deg, rgba(0,255,255,.08), rgba(157,78,255,.08), rgba(255,60,120,.05)) !important;
+}
+
+@media (max-width: 980px){
+  .kpiRow{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px){
+  .kpiRow{ grid-template-columns: 1fr; }
+  .kpiValue{ font-size: 22px; }
+  .bulkActions .primaryBtn, .bulkActions .ghostBtn{ width: 100%; justify-content:center; }
+  .searchWrap{ width: 100%; }
+  .search{ width: 100%; }
+}
+
+
+
+/* =========================
+   CRM layout adjustments (Jan 2026)
+   - Form grid 3 lignes (12 colonnes)
+   - KPI label + value sur 1 ligne
+   - Selects un peu moins blancs
+   ========================= */
+
+.formGrid{
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.col1{ grid-column: span 1; }
+.col3{ grid-column: span 3; }
+.col4{ grid-column: span 4; }
+.col6{ grid-column: span 6; }
+
+.selectSoft{
+  background: rgba(255,255,255,.88) !important;
+  color: rgba(10,12,18,0.92) !important;
+}
+
+.dash{
+  color: var(--inrcy-muted-2);
+}
+
+/* KPI: 1 ligne */
+.kpiCard{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.kpiValue{
+  margin-top: 0;
+  font-size: 22px;
+}
+
+/* Typography balance */
+.h2{ font-size: 16px; }
+.label{ font-size: 13px; }
+.input,.select,.search{ font-size: 14px; }
+
+@media (max-width: 760px){
+  .formGrid{ grid-template-columns: 1fr; }
+  .col1,.col3,.col4,.col6{ grid-column: auto; }
+}
+
+
+/* Actions icons */
+.actions button {
+  font-size: 1rem;
+  padding: 6px 8px;
+  min-width: auto;
+}
+
+/* Smaller checkbox */
+.table input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  transform: scale(0.9);
+}
+
+/* Table compaction */
+.table td, .table th {
+  padding: 8px 10px;
+}
+
+
+/* Row 3: catégorie / type + plus button */
+.row3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.row3 select, .row3 input {
+  background: rgba(255,255,255,0.08);
+}
+
+/* Plus button aligned with fields */
+.plusButton {
+  height: 44px;
+  width: 44px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  line-height: 1;
+  padding: 0;
+}
+
+
+.col2{ grid-column: span 2; }
+.col5{ grid-column: span 5; }
+
+/* Plus button in form line 3 */
+.plusBtn{
+  grid-column: span 2;
+  height: 44px;
+  width: 100%;
+  max-width: 56px;
+  justify-self: end;
+  border-radius: 14px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+}
+
+@media (max-width: 760px){
+  .plusBtn{
+    grid-column: auto;
+    max-width: none;
+    width: 100%;
+  }
+}
+
+/* Corner actions (bottom-right of the form card) */
+.card { position: relative; }
+
+.cornerActions{
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Plus button becomes a square FAB */
+.plusBtn{
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border-radius: 16px;
+  font-size: 22px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: none; /* override previous */
+}
+
+/* Mobile: actions below the grid */
+@media (max-width: 760px){
+  .cornerActions{
+    position: static;
+    margin-top: 14px;
+    justify-content: flex-end;
+  }
+  .plusBtn{
+    width: 100%;
+    height: 46px;
+    border-radius: 14px;
+  }
+}
+
+
+/* === Table header single-line & width rebalance === */
+
+/* Force headers on one line */
+.table th{
+  white-space: nowrap;
+}
+
+/* Give more space to "Nom Prénom / Raison sociale" */
+.table th:nth-child(2),
+.table td:nth-child(2){
+  min-width: 220px;
+}
+
+/* Compact selection column */
+.table th:nth-child(1),
+.table td:nth-child(1){ width: 44px; }
+
+/* Compact technical columns */
+.table th:nth-child(8),
+.table td:nth-child(8){ width: 70px; } /* CP */
+
+.table th:nth-child(9),
+.table td:nth-child(9),
+.table th:nth-child(10),
+.table td:nth-child(10){
+  width: 140px;
+}
+
+/* Actions aligned right */
+.thActions{
+  width: 140px;
+  text-align: right;
+}
+.actionsCell{
+  justify-content: flex-end;
+}
+
+
+
+/* =========================
+   CRM form v3 (2 lignes)
+   - Actions inline (boutons à droite sur ligne 2)
+   - Selects same glass style as inputs (no white)
+   ========================= */
+
+.formActions{
+  display:flex;
+  gap: 10px;
+  align-items: flex-end;
+  justify-content: flex-end;
+  align-self: end;
+}
+
+/* Icon buttons (plus / update / back) */
+.iconBtn{
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* Override old "white dropdown" rules */
+.select{
+  background: rgba(255,255,255,.06) !important;
+  color: var(--inrcy-text) !important;
+  border-color: var(--inrcy-border-2) !important;
+  box-shadow: none !important;
+}
+
+.select:focus{
+  border-color: rgba(0,255,255,.30) !important;
+  box-shadow: 0 0 0 4px rgba(0,255,255,.08), 0 0 0 1px rgba(157,78,255,.10) !important;
+  background: rgba(255,255,255,.08) !important;
+}
+
+@media (max-width: 760px){
+  .formActions{
+    width: 100%;
+  }
+  .iconBtn{
+    width: 100%;
+    height: 46px;
+    border-radius: 14px;
+  }
+}
+
+/* === Fix dropdown contrast (dark UI) === */
+.select option{
+  background-color: #0b0d12;
+  color: rgba(255,255,255,.92);
+}
+
+.select option:disabled{
+  color: rgba(255,255,255,.45);
+}
+
+
+/* === Table column rebalance (essential view) === */
+.table{
+  table-layout: fixed;
+}
+
+.table th:nth-child(2), .table td:nth-child(2){ width: 22%; } /* Nom / RS */
+.table th:nth-child(3), .table td:nth-child(3){ width: 18%; } /* Mail (resserré) */
+.table th:nth-child(4), .table td:nth-child(4){ width: 12%; } /* Téléphone */
+.table th:nth-child(5), .table td:nth-child(5){ width: 10%; } /* Ville */
+.table th:nth-child(6), .table td:nth-child(6){ width: 7%; }  /* CP */
+.table th:nth-child(7), .table td:nth-child(7){ width: 12%; } /* Catégorie */
+.table th:nth-child(8), .table td:nth-child(8){ width: 11%; } /* Type */
+.table th:nth-child(9), .table td:nth-child(9){ width: 44px; } /* Star */
+
+/* Star button */
+.starBtn{
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: #facc15;
+}
+.starBtn:hover{ transform: scale(1.15); }
+
+
+/* === Form important ⭐ field === */
+.starField{
+  display:flex;
+}
+.starToggle{
+  height: 44px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  color: #facc15;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+  backdrop-filter: blur(10px);
+}
+.starToggle:hover{
+  transform: translateY(-1px) scale(1.02);
+  border-color: rgba(255,255,255,.22);
+  background: rgba(0,0,0,.26);
+}

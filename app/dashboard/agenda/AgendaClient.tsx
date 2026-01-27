@@ -273,7 +273,7 @@ export default function AgendaClient() {
             <button className={styles.btnGhost} onClick={openAgendaSettings}>
               ⚙️ Réglages
             </button>
-            <button className={styles.btnGhost} onClick={() => router.push("/dashboard")}>⟵ Dashboard</button>
+            <button className={styles.btnGhost} onClick={() => router.push("/dashboard")}>Fermer</button>
           </div>
         </div>
 
