@@ -17,6 +17,7 @@ import { createClient } from "@/lib/supabaseClient";
 
 type ModuleStatus = "connected" | "available" | "coming";
 type Accent = "cyan" | "purple" | "pink" | "orange";
+type Ownership = "none" | "rented" | "sold";
 
 type ModuleAction = {
   key: string;
@@ -149,7 +150,7 @@ export default function DashboardClient() {
   const searchParams = useSearchParams();
   const panel = searchParams.get("panel"); // "contact" | "profil" | "abonnement" | "mails" | "agenda" | null
 
-   const openPanel = (name: "contact" | "profil" | "abonnement" | "mails" | "agenda" | "site_inrcy") => {
+   const openPanel = (name: "contact" | "profil" | "abonnement" | "mails" | "agenda" | "site_inrcy" | "site_web" | "houzz" | "pages_jaunes" | "gmb" | "facebook") => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", name);
     router.push(`/dashboard?${params.toString()}`);
@@ -180,11 +181,39 @@ export default function DashboardClient() {
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
 // ✅ Site iNrCy (ownership + url + config)
-const [siteInrcyOwnership, setSiteInrcyOwnership] = useState<"rented" | "sold">("rented");
+const [siteInrcyOwnership, setSiteInrcyOwnership] = useState<Ownership>("none");
 const [siteInrcyUrl, setSiteInrcyUrl] = useState<string>("");
 const [siteInrcyContactEmail, setSiteInrcyContactEmail] = useState<string>("");
 const [siteInrcySettingsText, setSiteInrcySettingsText] = useState<string>("{}");
 const [siteInrcySettingsError, setSiteInrcySettingsError] = useState<string | null>(null);
+const [ga4MeasurementId, setGa4MeasurementId] = useState<string>("");
+
+// ✅ Google Search Console
+const [gscProperty, setGscProperty] = useState<string>("");
+
+// ✅ Site web (indépendant)
+const [siteWebUrl, setSiteWebUrl] = useState<string>("");
+const [siteWebSettingsText, setSiteWebSettingsText] = useState<string>("{}");
+const [siteWebSettingsError, setSiteWebSettingsError] = useState<string | null>(null);
+const [siteWebGa4MeasurementId, setSiteWebGa4MeasurementId] = useState<string>("");
+const [siteWebGscProperty, setSiteWebGscProperty] = useState<string>("");
+
+// ✅ Houzz & Pages Jaunes (liens uniquement)
+const [houzzUrl, setHouzzUrl] = useState<string>("");
+const [pagesJaunesUrl, setPagesJaunesUrl] = useState<string>("");
+
+// ✅ Google Business & Facebook (liens + connexion)
+const [gmbUrl, setGmbUrl] = useState<string>("");
+const [gmbConnected, setGmbConnected] = useState<boolean>(false);
+const [facebookUrl, setFacebookUrl] = useState<string>("");
+const [facebookConnected, setFacebookConnected] = useState<boolean>(false);
+
+// (optionnel) champs "clés" (placeholder en attendant l’API)
+const [facebookAppId, setFacebookAppId] = useState<string>("");
+const [facebookAppSecret, setFacebookAppSecret] = useState<string>("");
+const [gmbClientId, setGmbClientId] = useState<string>("");
+const [gmbClientSecret, setGmbClientSecret] = useState<string>("");
+
 
   useEffect(() => {
     const supabase = createClient();
@@ -216,7 +245,7 @@ const loadSiteInrcy = useCallback(async () => {
   const profile = profileRes.data as any | null;
   const config = configRes.data as any | null;
 
-  const ownership = (profile?.inrcy_site_ownership ?? "rented") as "rented" | "sold";
+  const ownership = (profile?.inrcy_site_ownership ?? "none") as Ownership;
   setSiteInrcyOwnership(ownership);
 
   const url = (profile?.inrcy_site_url ?? config?.site_url ?? "") as string;
@@ -232,11 +261,45 @@ const loadSiteInrcy = useCallback(async () => {
     setSiteInrcySettingsText("{}");
   }
   setSiteInrcySettingsError(null);
+  setGa4MeasurementId((settingsObj as any)?.ga4?.measurement_id ?? "");
+setGscProperty((settingsObj as any)?.gsc?.property ?? "");
+
+  // ✅ Site web (stocké dans site_configs.settings.site_web)
+  const siteWebObj = (settingsObj as any)?.site_web ?? {};
+  try {
+    setSiteWebSettingsText(JSON.stringify(siteWebObj, null, 2));
+  } catch {
+    setSiteWebSettingsText("{}");
+  }
+  setSiteWebSettingsError(null);
+  setSiteWebUrl((siteWebObj as any)?.url ?? "");
+  setSiteWebGa4MeasurementId((siteWebObj as any)?.ga4?.measurement_id ?? "");
+  setSiteWebGscProperty((siteWebObj as any)?.gsc?.property ?? "");
+
+// ✅ Houzz & Pages Jaunes (stockés dans site_configs.settings.houzz / site_configs.settings.pages_jaunes)
+setHouzzUrl(((settingsObj as any)?.houzz ?? {})?.url ?? "");
+setPagesJaunesUrl(((settingsObj as any)?.pages_jaunes ?? {})?.url ?? "");
+
+// ✅ Google Business & Facebook
+const gmbObj = ((settingsObj as any)?.gmb ?? {}) as any;
+setGmbUrl(gmbObj?.url ?? "");
+setGmbConnected(!!gmbObj?.connected);
+setGmbClientId(gmbObj?.client_id ?? "");
+setGmbClientSecret(gmbObj?.client_secret ?? "");
+
+const fbObj = ((settingsObj as any)?.facebook ?? {}) as any;
+setFacebookUrl(fbObj?.url ?? "");
+setFacebookConnected(!!fbObj?.connected);
+setFacebookAppId(fbObj?.app_id ?? "");
+setFacebookAppSecret(fbObj?.app_secret ?? "");
 }, []);
 
 useEffect(() => {
   loadSiteInrcy();
 }, [loadSiteInrcy]);
+
+const canViewSite = siteInrcyOwnership !== "none" && !!siteInrcyUrl;
+const canConfigureSite = siteInrcyOwnership === "sold";
 
 const saveSiteInrcySettings = useCallback(async () => {
   if (siteInrcyOwnership !== "sold") return;
@@ -266,6 +329,237 @@ const saveSiteInrcySettings = useCallback(async () => {
 
   setSiteInrcySettingsError(null);
 }, [siteInrcyOwnership, siteInrcySettingsText]);
+
+
+const attachGoogleAnalytics = useCallback(async () => {
+  const measurement = ga4MeasurementId.trim();
+  if (!measurement) {
+    setSiteInrcySettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX).");
+    return;
+  }
+
+  let parsed: any;
+  try {
+    parsed = siteInrcySettingsText?.trim() ? JSON.parse(siteInrcySettingsText) : {};
+  } catch {
+    setSiteInrcySettingsError("JSON invalide. Corrige la configuration avant de rattacher Google Analytics.");
+    return;
+  }
+
+  parsed.ga4 = { ...(parsed.ga4 ?? {}), measurement_id: measurement };
+
+  const supabase = createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (!user) return;
+
+  const { error } = await supabase
+    .from("site_configs")
+    .update({ settings: parsed })
+    .eq("user_id", user.id);
+
+  if (error) {
+    setSiteInrcySettingsError(error.message);
+    return;
+  }
+
+  setSiteInrcySettingsText(JSON.stringify(parsed, null, 2));
+  setSiteInrcySettingsError(null);
+}, [ga4MeasurementId, siteInrcySettingsText]);
+
+
+const attachGoogleSearchConsole = useCallback(async () => {
+  const property = gscProperty.trim();
+  if (!property) {
+    setSiteInrcySettingsError("Renseigne une propriété Search Console (ex: sc-domain:monsite.fr ou https://monsite.fr/).");
+    return;
+  }
+
+  let parsed: any;
+  try {
+    parsed = siteInrcySettingsText?.trim() ? JSON.parse(siteInrcySettingsText) : {};
+  } catch {
+    setSiteInrcySettingsError("JSON invalide. Corrige la configuration avant de rattacher Search Console.");
+    return;
+  }
+
+  parsed.gsc = { ...(parsed.gsc ?? {}), property };
+
+  const supabase = createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (!user) return;
+
+  const { error } = await supabase.from("site_configs").update({ settings: parsed }).eq("user_id", user.id);
+
+  if (error) {
+    setSiteInrcySettingsError(error.message);
+    return;
+  }
+
+  setSiteInrcySettingsText(JSON.stringify(parsed, null, 2));
+  setSiteInrcySettingsError(null);
+}, [gscProperty, siteInrcySettingsText]);
+
+
+
+// =========================
+// ✅ Site web (indépendant)
+// - données stockées dans site_configs.settings.site_web
+// =========================
+const updateSiteWebSettings = useCallback(
+  async (nextSiteWeb: any) => {
+    const supabase = createClient();
+    const { data: authData } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (!user) return;
+
+    // Récupère les settings actuels pour ne pas écraser les autres clés
+    const { data: row, error: readErr } = await supabase
+      .from("site_configs")
+      .select("settings")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (readErr) {
+      setSiteWebSettingsError(readErr.message);
+      return;
+    }
+
+    const current = (row as any)?.settings ?? {};
+    const merged = { ...(current ?? {}), site_web: nextSiteWeb ?? {} };
+
+    const { error } = await supabase.from("site_configs").update({ settings: merged }).eq("user_id", user.id);
+    if (error) {
+      setSiteWebSettingsError(error.message);
+      return;
+    }
+
+    setSiteWebSettingsError(null);
+    try {
+      setSiteWebSettingsText(JSON.stringify(nextSiteWeb ?? {}, null, 2));
+    } catch {
+      setSiteWebSettingsText("{}");
+    }
+  },
+  []
+);
+
+// ✅ Houzz / Pages Jaunes (liens uniquement, stockés dans site_configs.settings)
+const updateRootSettingsKey = useCallback(
+  async (key: "houzz" | "pages_jaunes" | "gmb" | "facebook", nextObj: any) => {
+    const supabase = createClient();
+    const { data: authData } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (!user) return;
+
+    const { data: row, error: readErr } = await supabase
+      .from("site_configs")
+      .select("settings")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (readErr) return;
+
+    const current = (row as any)?.settings ?? {};
+    const merged = { ...(current ?? {}), [key]: nextObj ?? {} };
+
+    await supabase.from("site_configs").update({ settings: merged }).eq("user_id", user.id);
+  },
+  []
+);
+
+const saveHouzzLink = useCallback(async () => {
+  const url = houzzUrl.trim();
+  await updateRootSettingsKey("houzz", { url });
+}, [houzzUrl, updateRootSettingsKey]);
+
+const savePagesJaunesLink = useCallback(async () => {
+  const url = pagesJaunesUrl.trim();
+  await updateRootSettingsKey("pages_jaunes", { url });
+}, [pagesJaunesUrl, updateRootSettingsKey]);
+
+const saveGmbLink = useCallback(async () => {
+  const url = gmbUrl.trim();
+  await updateRootSettingsKey("gmb", { url, connected: gmbConnected, client_id: gmbClientId.trim(), client_secret: gmbClientSecret.trim() });
+}, [gmbUrl, gmbConnected, gmbClientId, gmbClientSecret, updateRootSettingsKey]);
+
+const saveFacebookLink = useCallback(async () => {
+  const url = facebookUrl.trim();
+  await updateRootSettingsKey("facebook", { url, connected: facebookConnected, app_id: facebookAppId.trim(), app_secret: facebookAppSecret.trim() });
+}, [facebookUrl, facebookConnected, facebookAppId, facebookAppSecret, updateRootSettingsKey]);
+
+const connectGmbAccount = useCallback(async () => {
+  // Placeholder : on "active" la connexion (les routes OAuth viendront plus tard)
+  setGmbConnected(true);
+  const url = gmbUrl.trim();
+  await updateRootSettingsKey("gmb", { url, connected: true, client_id: gmbClientId.trim(), client_secret: gmbClientSecret.trim() });
+}, [gmbUrl, gmbClientId, gmbClientSecret, updateRootSettingsKey]);
+
+const connectFacebookAccount = useCallback(async () => {
+  setFacebookConnected(true);
+  const url = facebookUrl.trim();
+  await updateRootSettingsKey("facebook", { url, connected: true, app_id: facebookAppId.trim(), app_secret: facebookAppSecret.trim() });
+}, [facebookUrl, facebookAppId, facebookAppSecret, updateRootSettingsKey]);
+
+const saveSiteWebSettings = useCallback(async () => {
+  let parsed: any;
+  try {
+    parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
+  } catch {
+    setSiteWebSettingsError("JSON invalide. Vérifie la syntaxe (guillemets, virgules, accolades…).");
+    return;
+  }
+
+  // Sync url input -> JSON (source de vérité: settings.site_web.url)
+  parsed.url = siteWebUrl.trim();
+
+  await updateSiteWebSettings(parsed);
+}, [siteWebSettingsText, siteWebUrl, updateSiteWebSettings]);
+
+const attachWebsiteGoogleAnalytics = useCallback(async () => {
+  const measurement = siteWebGa4MeasurementId.trim();
+  if (!measurement) {
+    setSiteWebSettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX).");
+    return;
+  }
+
+  let parsed: any;
+  try {
+    parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
+  } catch {
+    setSiteWebSettingsError("JSON invalide. Corrige la configuration avant de rattacher Google Analytics.");
+    return;
+  }
+
+  parsed.url = siteWebUrl.trim();
+  parsed.ga4 = { ...(parsed.ga4 ?? {}), measurement_id: measurement };
+
+  await updateSiteWebSettings(parsed);
+}, [siteWebGa4MeasurementId, siteWebSettingsText, siteWebUrl, updateSiteWebSettings]);
+
+const attachWebsiteGoogleSearchConsole = useCallback(async () => {
+  const property = siteWebGscProperty.trim();
+  if (!property) {
+    setSiteWebSettingsError("Renseigne une propriété Search Console (ex: sc-domain:monsite.fr ou https://monsite.fr/).");
+    return;
+  }
+
+  let parsed: any;
+  try {
+    parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
+  } catch {
+    setSiteWebSettingsError("JSON invalide. Corrige la configuration avant de rattacher Search Console.");
+    return;
+  }
+
+  parsed.url = siteWebUrl.trim();
+  parsed.gsc = { ...(parsed.gsc ?? {}), property };
+
+  await updateSiteWebSettings(parsed);
+}, [siteWebGscProperty, siteWebSettingsText, siteWebUrl, updateSiteWebSettings]);
+
+
 
   // ✅ AJOUT : profil incomplet -> mini pastille + tooltip
   const [profileIncomplete, setProfileIncomplete] = useState(false);
@@ -473,14 +767,73 @@ const saveSiteInrcySettings = useCallback(async () => {
   const renderFluxBubble = (m: Module, keyOverride?: string) => {
     const viewActionRaw = m.actions.find((a) => a.variant === "view");
     const viewAction =
-      m.key === "site_inrcy" && viewActionRaw
+      (m.key === "site_inrcy" && viewActionRaw)
         ? {
             ...viewActionRaw,
             href: siteInrcyUrl
               ? (siteInrcyUrl.startsWith("http") ? siteInrcyUrl : `https://${siteInrcyUrl}`)
               : "#",
           }
+        : (m.key === "site_web" && viewActionRaw)
+        ? {
+            ...viewActionRaw,
+            href: siteWebUrl
+              ? (siteWebUrl.startsWith("http") ? siteWebUrl : `https://${siteWebUrl}`)
+              : "#",
+          }
+                : (m.key === "houzz" && viewActionRaw)
+        ? {
+            ...viewActionRaw,
+            href: houzzUrl
+              ? (houzzUrl.startsWith("http") ? houzzUrl : `https://${houzzUrl}`)
+              : "#",
+          }
+        : (m.key === "pages_jaunes" && viewActionRaw)
+        ? {
+            ...viewActionRaw,
+            href: pagesJaunesUrl
+              ? (pagesJaunesUrl.startsWith("http") ? pagesJaunesUrl : `https://${pagesJaunesUrl}`)
+              : "#",
+          }
         : viewActionRaw;
+
+    // ✅ Pastilles (statuts) dynamiques selon tes règles
+    const { status: bubbleStatus, text: bubbleStatusText } = (() => {
+      if (m.key === "site_inrcy") {
+        if (siteInrcyOwnership === "none") return { status: "coming" as ModuleStatus, text: "Aucun site" };
+        if (!siteInrcyUrl?.trim()) return { status: "available" as ModuleStatus, text: "A connecter" };
+        return { status: "connected" as ModuleStatus, text: "Connecté" };
+      }
+
+      if (m.key === "site_web") {
+        if (!siteWebUrl?.trim()) return { status: "available" as ModuleStatus, text: "A connecter" };
+        if (siteWebGa4MeasurementId?.trim()) return { status: "connected" as ModuleStatus, text: "Connecté" };
+        return { status: "available" as ModuleStatus, text: "A connecter" };
+      }
+
+      if (m.key === "houzz") {
+        if (houzzUrl?.trim()) return { status: "connected" as ModuleStatus, text: "Connecté" };
+        return { status: "available" as ModuleStatus, text: "A connecter" };
+      }
+
+      if (m.key === "pages_jaunes") {
+        if (pagesJaunesUrl?.trim()) return { status: "connected" as ModuleStatus, text: "Connecté" };
+        return { status: "available" as ModuleStatus, text: "A connecter" };
+      }
+
+      if (m.key === "gmb") {
+        if (gmbUrl?.trim() && gmbConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
+        return { status: "available" as ModuleStatus, text: "A connecter" };
+      }
+
+      if (m.key === "facebook") {
+        if (facebookUrl?.trim() && facebookConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
+        return { status: "available" as ModuleStatus, text: "A connecter" };
+      }
+
+      return { status: m.status, text: statusLabel(m.status) };
+    })();
+
 
     return (
       <article
@@ -498,21 +851,87 @@ const saveSiteInrcySettings = useCallback(async () => {
             <span
               className={[
                 styles.statusDot,
-                m.status === "connected"
+                bubbleStatus === "connected"
                   ? styles.dotConnected
-                  : m.status === "available"
+                  : bubbleStatus === "available"
                   ? styles.dotAvailable
                   : styles.dotComing,
               ].join(" ")}
               aria-hidden
             />
-            <span className={styles.bubbleStatusText}>{statusLabel(m.status)}</span>
+            <span className={styles.bubbleStatusText}>{bubbleStatusText}</span>
           </div>
 
           <div className={styles.bubbleTagline}>{m.description}</div>
 
           <div className={styles.bubbleActions}>
-            {viewAction ? (
+            {m.key === "site_inrcy" ? (
+              <a
+                href={canViewSite ? (siteInrcyUrl.startsWith("http") ? siteInrcyUrl : `https://${siteInrcyUrl}`) : "#"}
+                className={`${styles.actionBtn} ${styles.actionView}`}
+                target={canViewSite ? "_blank" : undefined}
+                rel="noreferrer"
+                aria-disabled={!canViewSite}
+                style={{ opacity: !canViewSite ? 0.5 : 1, pointerEvents: !canViewSite ? "none" : "auto" }}
+              >
+                Voir le site
+              </a>
+            ) : m.key === "site_web" ? (
+              <a
+                href={siteWebUrl ? (siteWebUrl.startsWith("http") ? siteWebUrl : `https://${siteWebUrl}`) : "#"}
+                className={`${styles.actionBtn} ${styles.actionView}`}
+                target={siteWebUrl ? "_blank" : undefined}
+                rel="noreferrer"
+                aria-disabled={!siteWebUrl}
+                style={{ opacity: !siteWebUrl ? 0.5 : 1, pointerEvents: !siteWebUrl ? "none" : "auto" }}
+              >
+                Voir le site
+              </a>
+            ) : m.key === "houzz" ? (
+              <a
+                href={houzzUrl ? (houzzUrl.startsWith("http") ? houzzUrl : `https://${houzzUrl}`) : "#"}
+                className={`${styles.actionBtn} ${styles.actionView}`}
+                target={houzzUrl ? "_blank" : undefined}
+                rel="noreferrer"
+                aria-disabled={!houzzUrl}
+                style={{ opacity: !houzzUrl ? 0.5 : 1, pointerEvents: !houzzUrl ? "none" : "auto" }}
+              >
+                Voir la page
+              </a>
+            ) : m.key === "pages_jaunes" ? (
+              <a
+                href={pagesJaunesUrl ? (pagesJaunesUrl.startsWith("http") ? pagesJaunesUrl : `https://${pagesJaunesUrl}`) : "#"}
+                className={`${styles.actionBtn} ${styles.actionView}`}
+                target={pagesJaunesUrl ? "_blank" : undefined}
+                rel="noreferrer"
+                aria-disabled={!pagesJaunesUrl}
+                style={{ opacity: !pagesJaunesUrl ? 0.5 : 1, pointerEvents: !pagesJaunesUrl ? "none" : "auto" }}
+              >
+                Voir la page
+              </a>
+            ) : m.key === "gmb" ? (
+              <a
+                href={gmbUrl ? (gmbUrl.startsWith("http") ? gmbUrl : `https://${gmbUrl}`) : "#"}
+                className={`${styles.actionBtn} ${styles.actionView}`}
+                target={gmbUrl ? "_blank" : undefined}
+                rel="noreferrer"
+                aria-disabled={!gmbUrl}
+                style={{ opacity: !gmbUrl ? 0.5 : 1, pointerEvents: !gmbUrl ? "none" : "auto" }}
+              >
+                Voir la page
+              </a>
+            ) : m.key === "facebook" ? (
+              <a
+                href={facebookUrl ? (facebookUrl.startsWith("http") ? facebookUrl : `https://${facebookUrl}`) : "#"}
+                className={`${styles.actionBtn} ${styles.actionView}`}
+                target={facebookUrl ? "_blank" : undefined}
+                rel="noreferrer"
+                aria-disabled={!facebookUrl}
+                style={{ opacity: !facebookUrl ? 0.5 : 1, pointerEvents: !facebookUrl ? "none" : "auto" }}
+              >
+                Voir le compte
+              </a>
+            ) : viewAction ? (
               renderAction(viewAction)
             ) : (
               <button className={`${styles.actionBtn} ${styles.actionView}`} type="button">
@@ -525,13 +944,34 @@ const saveSiteInrcySettings = useCallback(async () => {
               type="button"
               onClick={() => {
                 if (m.key === "site_inrcy") {
-                  if (siteInrcyOwnership !== "sold") return;
+                  if (!canConfigureSite) return;
                   openPanel("site_inrcy");
+                  return;
+                }
+                if (m.key === "site_web") {
+                  openPanel("site_web");
+                  return;
+                }
+                if (m.key === "houzz") {
+                  openPanel("houzz");
+                  return;
+                }
+                if (m.key === "pages_jaunes") {
+                  openPanel("pages_jaunes");
+                  return;
+                }
+                if (m.key === "gmb") {
+                  openPanel("gmb");
+                  return;
+                }
+                if (m.key === "facebook") {
+                  openPanel("facebook");
+                  return;
                 }
               }}
-              disabled={m.key === "site_inrcy" ? siteInrcyOwnership !== "sold" : false}
+              disabled={m.key === "site_inrcy" ? !canConfigureSite : false}
               title={
-                m.key === "site_inrcy" && siteInrcyOwnership !== "sold"
+                m.key === "site_inrcy" && !canConfigureSite
                   ? "Configuration disponible uniquement si le site est vendu"
                   : undefined
               }
@@ -1302,6 +1742,16 @@ const saveSiteInrcySettings = useCallback(async () => {
             ? "Réglages Agenda"
             : panel === "site_inrcy"
             ? "Configuration — Site iNrCy"
+            : panel === "site_web"
+            ? "Configuration — Site web"
+            : panel === "houzz"
+            ? "Configuration — Houzz"
+            : panel === "pages_jaunes"
+            ? "Configuration — Pages Jaunes"
+            : panel === "gmb"
+            ? "Configuration — Google Business"
+            : panel === "facebook"
+            ? "Configuration — Facebook"
             : ""
         }
         isOpen={
@@ -1311,6 +1761,16 @@ const saveSiteInrcySettings = useCallback(async () => {
           panel === "mails" ||
           panel === "agenda" ||
           panel === "site_inrcy"
+        ||
+          panel === "site_web"
+        ||
+          panel === "houzz"
+        ||
+          panel === "pages_jaunes"
+        ||
+          panel === "gmb"
+        ||
+          panel === "facebook"
         }
         onClose={closePanel}
       >
@@ -1340,10 +1800,15 @@ const saveSiteInrcySettings = useCallback(async () => {
                     width: 8,
                     height: 8,
                     borderRadius: 999,
-                    background: siteInrcyOwnership === "sold" ? "rgba(34,197,94,0.95)" : "rgba(245,158,11,0.95)",
+                    background:
+                      siteInrcyOwnership === "sold"
+                        ? "rgba(34,197,94,0.95)"
+                        : siteInrcyOwnership === "rented"
+                        ? "rgba(245,158,11,0.95)"
+                        : "rgba(148,163,184,0.9)",
                   }}
                 />
-                Statut : <strong>{siteInrcyOwnership === "sold" ? "Vendu" : "Loué"}</strong>
+                Statut : <strong>{siteInrcyOwnership === "sold" ? "Connecté" : siteInrcyOwnership === "rented" ? "Connecté" : "Aucun site"}</strong>
               </span>
 
               {!!siteInrcyContactEmail && (
@@ -1415,14 +1880,111 @@ const saveSiteInrcySettings = useCallback(async () => {
               )}
             </label>
 
+            
+
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: 14,
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 600 }}>Google Analytics (GA4)</div>
+                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>Rattache le tracking à ton site iNrCy</div>
+              </div>
+
+              <label style={{ display: "grid", gap: 8 }}>
+                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>ID de mesure (ex: G-XXXXXXXXXX)</span>
+                <input
+                  value={ga4MeasurementId}
+                  onChange={(e) => setGa4MeasurementId(e.target.value)}
+                  placeholder="G-XXXXXXXXXX"
+                  style={{
+                    width: "100%",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "10px 12px",
+                    color: "white",
+                    outline: "none",
+                  }}
+                />
+              </label>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={attachGoogleAnalytics}
+                  disabled={siteInrcyOwnership === "none"}
+                  title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined}
+                >
+                  Rattacher Google Analytics
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: 14,
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 600 }}>Google Search Console</div>
+                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>Active le suivi SEO (requêtes, impressions, clics)</div>
+              </div>
+
+              <label style={{ display: "grid", gap: 8 }}>
+                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
+                  Propriété (ex: <code>sc-domain:monsite.fr</code> ou <code>https://monsite.fr/</code>)
+                </span>
+                <input
+                  value={gscProperty}
+                  onChange={(e) => setGscProperty(e.target.value)}
+                  placeholder="sc-domain:monsite.fr"
+                  style={{
+                    width: "100%",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "10px 12px",
+                    color: "white",
+                    outline: "none",
+                  }}
+                />
+              </label>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={attachGoogleSearchConsole}
+                  disabled={siteInrcyOwnership === "none"}
+                  title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined}
+                >
+                  Rattacher Search Console
+                </button>
+              </div>
+            </div>
+
+
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
               <button
                 type="button"
                 className={`${styles.actionBtn} ${styles.connectBtn}`}
                 onClick={() => {
-                  if (siteInrcyUrl) window.open(siteInrcyUrl, "_blank", "noopener,noreferrer");
+                  if (canViewSite) window.open(siteInrcyUrl.startsWith("http") ? siteInrcyUrl : `https://${siteInrcyUrl}`, "_blank", "noopener,noreferrer");
                 }}
-                disabled={!siteInrcyUrl}
+                disabled={!canViewSite}
               >
                 Voir le site
               </button>
@@ -1438,14 +2000,476 @@ const saveSiteInrcySettings = useCallback(async () => {
               </button>
             </div>
           </div>
+
+
+
+                )}
+
+{panel === "site_web" && (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: "8px 10px",
+                  borderRadius: 999,
+                  color: "rgba(255,255,255,0.92)",
+                  fontSize: 13,
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 999,
+                    background: siteWebUrl ? "rgba(34,197,94,0.95)" : "rgba(148,163,184,0.9)",
+                  }}
+                />
+                Statut : <strong>{siteWebUrl ? "Connecté" : "À configurer"}</strong>
+              </span>
+            </div>
+
+            <label style={{ display: "grid", gap: 8 }}>
+              <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Lien du site (accessible)</span>
+              <input
+                value={siteWebUrl}
+                onChange={(e) => setSiteWebUrl(e.target.value)}
+                placeholder="https://votre-site.fr"
+                style={{
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: "10px 12px",
+                  color: "white",
+                  outline: "none",
+                }}
+              />
+              <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+                Le bouton <strong>Voir le site</strong> de la bulle utilisera ce lien.
+              </div>
+            </label>
+
+            <label style={{ display: "grid", gap: 8 }}>
+              <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
+                Configuration (JSON) — clés, IDs, réglages (stockée dans <code>settings.site_web</code>)
+              </span>
+              <textarea
+                value={siteWebSettingsText}
+                onChange={(e) => setSiteWebSettingsText(e.target.value)}
+                rows={10}
+                placeholder='{"url":"https://votre-site.fr","ga4":{"measurement_id":"G-XXXX"},"gsc":{"property":"sc-domain:votre-site.fr"}}'
+                style={{
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: "10px 12px",
+                  color: "white",
+                  outline: "none",
+                  fontFamily:
+                    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+                  fontSize: 12,
+                }}
+              />
+              {siteWebSettingsError && (
+                <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 12 }}>{siteWebSettingsError}</div>
+              )}
+            </label>
+
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: 14,
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 600 }}>Google Analytics (GA4)</div>
+                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>Rattache le tracking à ton site web</div>
+              </div>
+
+              <label style={{ display: "grid", gap: 8 }}>
+                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>ID de mesure (ex: G-XXXXXXXXXX)</span>
+                <input
+                  value={siteWebGa4MeasurementId}
+                  onChange={(e) => setSiteWebGa4MeasurementId(e.target.value)}
+                  placeholder="G-XXXXXXXXXX"
+                  style={{
+                    width: "100%",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "10px 12px",
+                    color: "white",
+                    outline: "none",
+                  }}
+                />
+              </label>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={attachWebsiteGoogleAnalytics}
+                >
+                  Rattacher Google Analytics
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: 14,
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 600 }}>Google Search Console</div>
+                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>Active le suivi SEO (requêtes, impressions, clics)</div>
+              </div>
+
+              <label style={{ display: "grid", gap: 8 }}>
+                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
+                  Propriété (ex: <code>sc-domain:monsite.fr</code> ou <code>https://monsite.fr/</code>)
+                </span>
+                <input
+                  value={siteWebGscProperty}
+                  onChange={(e) => setSiteWebGscProperty(e.target.value)}
+                  placeholder="sc-domain:monsite.fr"
+                  style={{
+                    width: "100%",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "10px 12px",
+                    color: "white",
+                    outline: "none",
+                  }}
+                />
+              </label>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={attachWebsiteGoogleSearchConsole}
+                >
+                  Rattacher Search Console
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className={`${styles.actionBtn} ${styles.connectBtn}`}
+                onClick={() => {
+                  if (siteWebUrl) window.open(siteWebUrl.startsWith("http") ? siteWebUrl : `https://${siteWebUrl}`, "_blank", "noopener,noreferrer");
+                }}
+                disabled={!siteWebUrl}
+              >
+                Voir le site
+              </button>
+
+              <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={saveSiteWebSettings}>
+                Enregistrer
+              </button>
+            </div>
+          </div>
         )}
 
-        {/* ✅ AJOUT : callbacks pour mise à jour immédiate de la pastille */}
-        {panel === "profil" && (
+              {/* ✅ AJOUT : callbacks pour mise à jour immédiate de la pastille */}
+        
+{panel === "houzz" && (
+  <div style={{ display: "grid", gap: 14 }}>
+    <label style={{ display: "grid", gap: 8 }}>
+      <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Lien Houzz (accessible)</span>
+      <input
+        value={houzzUrl}
+        onChange={(e) => setHouzzUrl(e.target.value)}
+        placeholder="https://www.houzz.fr/pro/..."
+        style={{
+          width: "100%",
+          borderRadius: 12,
+          border: "1px solid rgba(255,255,255,0.14)",
+          background: "rgba(255,255,255,0.04)",
+          padding: "10px 12px",
+          color: "white",
+          outline: "none",
+        }}
+      />
+      <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+        Le bouton <strong>Voir la page</strong> ouvrira ce lien dans un nouvel onglet.
+      </div>
+    </label>
+
+    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+      <button
+        type="button"
+        className={`${styles.actionBtn} ${styles.connectBtn}`}
+        onClick={() => {
+          const u = houzzUrl.trim();
+          if (u) window.open(u.startsWith("http") ? u : `https://${u}`, "_blank", "noopener,noreferrer");
+        }}
+        disabled={!houzzUrl.trim()}
+        title={!houzzUrl.trim() ? "Ajoute un lien pour pouvoir l'ouvrir" : undefined}
+      >
+        Voir la page
+      </button>
+
+      <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={saveHouzzLink}>
+        Enregistrer
+      </button>
+    </div>
+  </div>
+)}
+
+{panel === "pages_jaunes" && (
+  <div style={{ display: "grid", gap: 14 }}>
+    <label style={{ display: "grid", gap: 8 }}>
+      <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Lien Pages Jaunes (accessible)</span>
+      <input
+        value={pagesJaunesUrl}
+        onChange={(e) => setPagesJaunesUrl(e.target.value)}
+        placeholder="https://www.pagesjaunes.fr/pros/..."
+        style={{
+          width: "100%",
+          borderRadius: 12,
+          border: "1px solid rgba(255,255,255,0.14)",
+          background: "rgba(255,255,255,0.04)",
+          padding: "10px 12px",
+          color: "white",
+          outline: "none",
+        }}
+      />
+      <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+        Le bouton <strong>Voir la page</strong> ouvrira ce lien dans un nouvel onglet.
+      </div>
+    </label>
+
+    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+      <button
+        type="button"
+        className={`${styles.actionBtn} ${styles.connectBtn}`}
+        onClick={() => {
+          const u = pagesJaunesUrl.trim();
+          if (u) window.open(u.startsWith("http") ? u : `https://${u}`, "_blank", "noopener,noreferrer");
+        }}
+        disabled={!pagesJaunesUrl.trim()}
+        title={!pagesJaunesUrl.trim() ? "Ajoute un lien pour pouvoir l'ouvrir" : undefined}
+      >
+        Voir la page
+      </button>
+
+      <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={savePagesJaunesLink}>
+        Enregistrer
+      </button>
+    </div>
+  </div>
+)}
+
+{panel === "profil" && (
           <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} />
         )}
 
         {panel === "abonnement" && <AbonnementContent mode="drawer" onOpenContact={() => openPanel("contact")} />}
+        {panel === "gmb" && (
+          <div style={{ display: "grid", gap: 14 }}>
+            <label style={{ display: "grid", gap: 8 }}>
+              <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Lien de la fiche Google (Google Business Profile)</span>
+              <input
+                value={gmbUrl}
+                onChange={(e) => setGmbUrl(e.target.value)}
+                placeholder="https://..."
+                style={{
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: "10px 12px",
+                  color: "white",
+                  outline: "none",
+                }}
+              />
+            </label>
+
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: 14,
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 600 }}>Connexion Google</div>
+                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+                  {gmbConnected ? "Compte connecté" : "Connecte ton compte Google (à brancher à l’API plus tard)"}
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                <label style={{ display: "grid", gap: 8 }}>
+                  <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Client ID (optionnel)</span>
+                  <input
+                    value={gmbClientId}
+                    onChange={(e) => setGmbClientId(e.target.value)}
+                    placeholder="xxxx.apps.googleusercontent.com"
+                    style={{
+                      width: "100%",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.04)",
+                      padding: "10px 12px",
+                      color: "white",
+                      outline: "none",
+                    }}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: 8 }}>
+                  <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Client Secret (optionnel)</span>
+                  <input
+                    value={gmbClientSecret}
+                    onChange={(e) => setGmbClientSecret(e.target.value)}
+                    placeholder="********"
+                    style={{
+                      width: "100%",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.04)",
+                      padding: "10px 12px",
+                      color: "white",
+                      outline: "none",
+                    }}
+                  />
+                </label>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button type="button" className={`${styles.actionBtn} ${styles.actionView}`} onClick={saveGmbLink}>
+                  Enregistrer le lien
+                </button>
+
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={connectGmbAccount}
+                >
+                  {gmbConnected ? "Google connecté" : "Connecter Google"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {panel === "facebook" && (
+          <div style={{ display: "grid", gap: 14 }}>
+            <label style={{ display: "grid", gap: 8 }}>
+              <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Lien de la page Facebook</span>
+              <input
+                value={facebookUrl}
+                onChange={(e) => setFacebookUrl(e.target.value)}
+                placeholder="https://facebook.com/..."
+                style={{
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: "10px 12px",
+                  color: "white",
+                  outline: "none",
+                }}
+              />
+            </label>
+
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: 14,
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 600 }}>Connexion Facebook Pro</div>
+                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+                  {facebookConnected ? "Compte connecté" : "Connecte ton compte Facebook (à brancher à l’API plus tard)"}
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                <label style={{ display: "grid", gap: 8 }}>
+                  <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>App ID (optionnel)</span>
+                  <input
+                    value={facebookAppId}
+                    onChange={(e) => setFacebookAppId(e.target.value)}
+                    placeholder="1234567890"
+                    style={{
+                      width: "100%",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.04)",
+                      padding: "10px 12px",
+                      color: "white",
+                      outline: "none",
+                    }}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: 8 }}>
+                  <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>App Secret (optionnel)</span>
+                  <input
+                    value={facebookAppSecret}
+                    onChange={(e) => setFacebookAppSecret(e.target.value)}
+                    placeholder="********"
+                    style={{
+                      width: "100%",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.04)",
+                      padding: "10px 12px",
+                      color: "white",
+                      outline: "none",
+                    }}
+                  />
+                </label>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button type="button" className={`${styles.actionBtn} ${styles.actionView}`} onClick={saveFacebookLink}>
+                  Enregistrer le lien
+                </button>
+
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={connectFacebookAccount}
+                >
+                  {facebookConnected ? "Facebook connecté" : "Connecter Facebook"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </SettingsDrawer>
 
       <footer className={styles.footer}>
