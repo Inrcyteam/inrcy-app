@@ -34,6 +34,33 @@ export function calcTotals(lines: LineItem[], vatDispense = false) {
   return { totalHT, totalTVA, totalTTC };
 }
 
+export type DiscountKind = "percent" | "amount";
+
+export function calcDiscountTTC(
+  totalTTC: number,
+  discountKind?: DiscountKind | null,
+  discountValue?: number | null
+) {
+  const ttc = Number(totalTTC) || 0;
+  const v = Math.max(0, Number(discountValue) || 0);
+  if (!discountKind || v <= 0 || ttc <= 0) return 0;
+  const raw =
+    discountKind === "percent" ? (ttc * Math.min(100, v)) / 100 : v;
+  return round2(Math.min(ttc, Math.max(0, raw)));
+}
+
+export function calcTotalsWithDiscount(
+  lines: LineItem[],
+  vatDispense = false,
+  discountKind?: DiscountKind | null,
+  discountValue?: number | null
+) {
+  const base = calcTotals(lines, vatDispense);
+  const discountTTC = calcDiscountTTC(base.totalTTC, discountKind, discountValue);
+  const totalDue = round2(Math.max(0, base.totalTTC - discountTTC));
+  return { ...base, discountTTC, totalDue };
+}
+
 export function generateNumber(prefix: "FAC" | "DEV") {
   const d = new Date();
   const y = d.getFullYear();
@@ -58,6 +85,14 @@ export type DocRecord = {
   lines: LineItem[];
   vatDispense?: boolean;
   validityDays?: number; // pour devis (ex: 30)
+  // Remise commerciale (appliquée sur le TOTAL TTC)
+  discountKind?: DiscountKind;
+  discountValue?: number;
+  discountDetails?: string;
+  // Champs complémentaires (facture)
+  paymentMethod?: string;
+  paymentDetails?: string;
+  notes?: string;
 };
 
 const LS_KEY = "inrcy_docs_v1";
@@ -150,6 +185,8 @@ export function transformDevisToFacture(id: string) {
     status: "brouillon",
     lines: doc.lines.map((l) => ({ ...l, id: uid("l") })),
     vatDispense: !!doc.vatDispense,
+    discountKind: doc.discountKind,
+    discountValue: doc.discountValue,
   };
 
   upsertDoc(facture);

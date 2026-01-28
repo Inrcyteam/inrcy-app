@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import styles from "../_documents/documents.module.css";
 import {
   DocRecord,
-  calcTotals,
+  calcTotalsWithDiscount,
   deleteDoc,
   duplicateDoc,
   formatEuro,
@@ -34,7 +34,7 @@ function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
 
   const rows = useMemo(() => {
     return docs.map((d) => {
-      const totals = calcTotals(d.lines, !!d.vatDispense);
+      const totals = calcTotalsWithDiscount(d.lines, !!d.vatDispense, d.discountKind, d.discountValue);
       return { ...d, totals };
     });
   }, [docs]);
@@ -112,7 +112,7 @@ function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
                   <td>{new Date(d.createdAtISO).toLocaleDateString("fr-FR")}</td>
                   <td>{d.status}</td>
                   <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                    {formatEuro(d.totals.totalTTC)}
+                    {formatEuro((d.totals as any).totalDue ?? d.totals.totalTTC)}
                   </td>
                   <td style={{ textAlign: "right", display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
                     <button type="button" onClick={() => onDuplicate(d.id)} className={styles.ghostBtn}>

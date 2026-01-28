@@ -29,6 +29,15 @@ type MessageItem = {
   internalDate?: number;
 };
 
+type CrmContact = {
+  id: string;
+  last_name?: string | null;
+  first_name?: string | null;
+  company_name?: string | null;
+  email?: string | null;
+};
+
+
 type MobilePane = "folders" | "cockpit" | "messages";
 
 type ViewMode = "list" | "action";
@@ -716,10 +725,33 @@ const onSelectMessage = (id: string) => {
 
   // ✅ Compose state (local)
   const [composeTo, setComposeTo] = useState("");
+
+  // --- CRM: import d'un contact dans le compose mail
+  const [crmContacts, setCrmContacts] = useState<CrmContact[]>([]);
+  const [crmLoading, setCrmLoading] = useState(false);
+  const [crmError, setCrmError] = useState<string | null>(null);
+  const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
+
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [composeSource, setComposeSource] = useState<Source>("Gmail");
   const [composeFiles, setComposeFiles] = useState<File[]>([]);
+
+  // ✅ Applique un contact CRM au compose (pré-remplit le destinataire et optionnellement une salutation)
+  const applyCrmContactToCompose = (c: CrmContact) => {
+    const email = (c.email || "").trim();
+    if (email) setComposeTo(email);
+
+    // Ajoute une salutation si le body est vide ou juste "Bonjour,".
+    const fullName = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
+    const displayName = fullName || (c.company_name || "").trim();
+    const normalized = (composeBody || "").trim();
+    const looksEmpty = normalized === "" || normalized === "Bonjour," || normalized === "Bonjour";
+    if (looksEmpty) {
+      const greet = displayName ? `Bonjour ${displayName},\n\n` : "Bonjour,\n\n";
+      setComposeBody(greet);
+    }
+  };
 
   // ✅ Pré-remplissage depuis le CRM (ex: /dashboard/mails?compose=1&to=a@x.fr,b@y.fr)
   useEffect(() => {
@@ -1945,7 +1977,44 @@ const singleMoveToSpam = async () => {
               </div>
 
               <div className={styles.modalBody}>
-                <div className={styles.formGrid}>
+                
+                  <div className={styles.formRow}>
+                    <label className={styles.formLabel}>Importer un contact (CRM)</label>
+                    <select
+                      className={styles.formInput}
+                      value={selectedCrmContactId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setSelectedCrmContactId(id);
+                        const c = crmContacts.find((x) => String(x.id) === String(id));
+                        if (c) applyCrmContactToCompose(c);
+                      }}
+                      disabled={crmLoading}
+                    >
+                      <option value="">
+                        {crmLoading ? "Chargement..." : "Sélectionner un contact"}
+                      </option>
+                      {crmContacts.map((c) => {
+                        const label =
+                          (c.company_name && c.company_name.trim()) ||
+                          [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
+                          (c.last_name || "").trim() ||
+                          "(Sans nom)";
+                        return (
+                          <option key={c.id} value={c.id}>
+                            {label}{c.email ? ` — ${c.email}` : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    {crmError ? (
+                      <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
+                        ⚠️ {crmError}
+                      </div>
+                    ) : null}
+                  </div>
+
+<div className={styles.formGrid}>
                   <div className={styles.formRow}>
                     <label className={styles.formLabel}>À</label>
                     <input

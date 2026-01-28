@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import styles from "../../_documents/documents.module.css";
@@ -9,11 +9,11 @@ import {
   DocRecord,
   LineItem,
   calcLineHT,
-  calcTotals,
+  calcTotalsWithDiscount,
+  DiscountKind,
   formatEuro,
   generateNumber,
   uid,
-  upsertDoc,
 } from "../../_documents/docUtils";
 
 type Profile = {
@@ -31,13 +31,28 @@ type Profile = {
   logo_url?: string | null;
 };
 
+type CrmContact = {
+  id: string;
+  last_name?: string | null;
+  first_name?: string | null;
+  company_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  postal_code?: string | null;
+};
+
+
 const VAT_OPTIONS = [0, 5.5, 10, 20] as const;
 
 const PAYMENT_METHODS = [
+  { key: "", label: "—" },
   { key: "virement", label: "Virement bancaire" },
   { key: "cb", label: "Carte bancaire" },
   { key: "cheque", label: "Chèque" },
   { key: "especes", label: "Espèces" },
+  { key: "abonnement", label: "Abonnement" },
 ] as const;
 
 export default function NewFacturePage() {
@@ -98,6 +113,44 @@ export default function NewFacturePage() {
   const [clientAddress, setClientAddress] = useState("");
   const [clientEmail, setClientEmail] = useState("");
 
+  // --- Remise commerciale (appliquée sur le total TTC)
+  const [discountKind, setDiscountKind] = useState<DiscountKind | "">("");
+  const [discountValue, setDiscountValue] = useState<number>(0);
+  const [discountDetails, setDiscountDetails] = useState<string>("" );
+
+
+  // --- CRM: import d'un contact pour pré-remplir automatiquement
+  const [crmContacts, setCrmContacts] = useState<CrmContact[]>([]);
+  const [crmLoading, setCrmLoading] = useState(false);
+  const [crmError, setCrmError] = useState<string | null>(null);
+  const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
+
+  const [crmOpen, setCrmOpen] = useState(false);
+  const crmSelectRef = useRef<HTMLDivElement | null>(null);
+
+  const crmLabel = (c: CrmContact) => {
+    const name =
+      (c.company_name && c.company_name.trim()) ||
+      [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
+      (c.last_name || "").trim() ||
+      "(Sans nom)";
+    return name;
+  };
+
+  const sortedCrmContacts = useMemo(() => {
+    const copy = [...crmContacts];
+    copy.sort((a, b) => crmLabel(a).localeCompare(crmLabel(b), "fr", { sensitivity: "base" }));
+    return copy;
+  }, [crmContacts]);
+
+  const selectedCrmLabel = useMemo(() => {
+    if (!selectedCrmContactId) return "";
+    const c = crmContacts.find((x) => String(x.id) === String(selectedCrmContactId));
+    if (!c) return "";
+    return crmLabel(c) + (c.email ? ` — ${c.email}` : "");
+  }, [crmContacts, selectedCrmContactId]);
+
+
 
   // ✅ Pré-remplissage depuis CRM / iNrBox
   useEffect(() => {
@@ -110,7 +163,66 @@ export default function NewFacturePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [status, setStatus] = useState<DocRecord["status"]>("brouillon");
+  // ✅ Liste des contacts CRM pour import dans ce formulaire
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setCrmLoading(true);
+      setCrmError(null);
+
+      try {
+        const res = await fetch("/api/crm/contacts", { method: "GET" });
+        const json = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(json?.error || "Impossible de charger les contacts CRM");
+        }
+
+        const contacts: CrmContact[] = Array.isArray(json?.contacts) ? json.contacts : [];
+        if (!cancelled) setCrmContacts(contacts);
+      } catch (e: any) {
+        if (!cancelled) setCrmError(e?.message || "Erreur CRM");
+      } finally {
+        if (!cancelled) setCrmLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const applyCrmContact = (c: CrmContact) => {
+    const displayName =
+      (c.company_name && c.company_name.trim()) ||
+      [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
+      (c.last_name || "").trim();
+
+    const addrParts = [c.address, c.postal_code, c.city].filter(Boolean).map((s) => String(s).trim());
+    const fullAddress = addrParts.join(" ").trim();
+
+    setClientName(displayName);
+    setClientEmail((c.email || "").trim());
+    setClientAddress(fullAddress);
+  };
+
+
+  // Ferme le menu quand on clique en dehors
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!crmOpen) return;
+      const el = crmSelectRef.current;
+      if (!el) return;
+      if (e.target instanceof Node && !el.contains(e.target)) setCrmOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [crmOpen]);
+
+
+  const [status, setStatus] = useState<DocRecord["status"] | "en_attente_paiement" | "">("brouillon");
 
   const [paymentMethod, setPaymentMethod] =
     useState<(typeof PAYMENT_METHODS)[number]["key"]>("virement");
@@ -158,9 +270,63 @@ export default function NewFacturePage() {
   }, [supabase]);
 
   const totals = useMemo(
-    () => calcTotals(lines, vatDispense),
-    [lines, vatDispense]
+    () =>
+      calcTotalsWithDiscount(
+        lines,
+        vatDispense,
+        discountKind ? (discountKind as DiscountKind) : null,
+        discountValue
+      ),
+    [lines, vatDispense, discountKind, discountValue]
   );
+
+  // --- Sauvegardes (brouillons locaux)
+  type FactureDraft = {
+    id: string;
+    savedAtISO: string;
+    snapshot: {
+      number: string;
+      invoiceDate: string;
+      dueDate: string;
+      clientName: string;
+      clientAddress: string;
+      clientEmail: string;
+      status: DocRecord["status"];
+      paymentMethod: (typeof PAYMENT_METHODS)[number]["key"];
+      paymentDetails: string;
+      notes: string;
+      lines: LineItem[];
+      discountKind: DiscountKind | "";
+      discountValue: number;
+      discountDetails: string;
+    };
+  };
+
+  const DRAFTS_KEY = "inrcy_facture_drafts_v1";
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [drafts, setDrafts] = useState<FactureDraft[]>([]);
+
+  const loadDrafts = () => {
+    if (typeof window === "undefined") return [] as FactureDraft[];
+    try {
+      const raw = window.localStorage.getItem(DRAFTS_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? (parsed as FactureDraft[]) : [];
+    } catch {
+      return [] as FactureDraft[];
+    }
+  };
+
+  const persistDrafts = (next: FactureDraft[]) => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(DRAFTS_KEY, JSON.stringify(next));
+    setDrafts(next);
+  };
+
+  useEffect(() => {
+    setDrafts(loadDrafts());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const addLine = () =>
     setLines((prev) => [
@@ -182,29 +348,65 @@ export default function NewFacturePage() {
       prev.map((l) => (l.id === id ? { ...l, ...patch } : l))
     );
 
-  const save = () => {
-    // Sécurité : si l’utilisateur clique ultra vite
+
+  const saveDraft = () => {
+    const now = new Date();
     const finalNumber = number || generateNumber("FAC");
     if (!number) setNumber(finalNumber);
 
-    const safeInvoiceDate = invoiceDate || new Date().toISOString().slice(0, 10);
-    const safeDueDate = dueDate || "";
-
-    const doc: DocRecord = {
-      id: uid("doc"),
-      kind: "facture",
+    const snapshot: FactureDraft["snapshot"] = {
       number: finalNumber,
-      createdAtISO: new Date(safeInvoiceDate).toISOString(),
-      dueAtISO: safeDueDate ? new Date(safeDueDate).toISOString() : null,
-      clientName: clientName.trim() || "—",
-      clientAddress: clientAddress.trim(),
-      clientEmail: clientEmail.trim(),
-      status,
+      invoiceDate: invoiceDate || new Date().toISOString().slice(0, 10),
+      dueDate,
+      clientName,
+      clientAddress,
+      clientEmail,
+      status: (status as any) || "brouillon",
+      paymentMethod,
+      paymentDetails,
+      notes,
       lines,
-      vatDispense,
+      discountKind,
+      discountValue: Number(discountValue) || 0,
+      discountDetails,
     };
-    upsertDoc(doc);
-    router.push("/dashboard/factures");
+
+    const draft: FactureDraft = {
+      id: uid("draft"),
+      savedAtISO: now.toISOString(),
+      snapshot,
+    };
+
+    const existing = loadDrafts();
+    const next = [draft, ...existing]
+      .sort((a, b) => (a.savedAtISO < b.savedAtISO ? 1 : -1))
+      .slice(0, 20);
+    persistDrafts(next);
+    setDraftsOpen(true);
+  };
+
+  const openDraft = (d: FactureDraft) => {
+    const s = d.snapshot;
+    setNumber(s.number);
+    setInvoiceDate(s.invoiceDate);
+    setDueDate(s.dueDate);
+    setClientName(s.clientName);
+    setClientAddress(s.clientAddress);
+    setClientEmail(s.clientEmail);
+    setStatus(s.status);
+    setPaymentMethod(s.paymentMethod);
+    setPaymentDetails(s.paymentDetails);
+    setNotes(s.notes);
+    setLines(s.lines);
+    setDiscountKind(s.discountKind);
+    setDiscountValue(s.discountValue);
+    setDiscountDetails(s.discountDetails || "");
+    setDraftsOpen(false);
+  };
+
+  const deleteDraft = (id: string) => {
+    const next = loadDrafts().filter((d) => d.id !== id);
+    persistDrafts(next);
   };
 
   const print = () => window.print();
@@ -231,19 +433,193 @@ export default function NewFacturePage() {
       <div className={styles.container}>
         {/* Formulaire */}
         <div className={styles.panel}>
-         <div className={styles.panelHeader}>
+         <div className={styles.panelHeaderStack}>
   <h1>Créer une facture</h1>
 
-  <button
-    className={styles.closeBtn}
-    onClick={() => router.push("/dashboard")}
-  >
-    <span className={styles.closeText}>Fermer</span>
-    <span className={styles.closeIcon}>✕</span>
-  </button>
+  <div className={styles.panelHeaderActions}>
+    <button
+      type="button"
+      className={styles.closeBtn}
+      onClick={() => {
+        setDrafts(loadDrafts());
+        setDraftsOpen(true);
+      }}
+    >
+      Sauvegardes
+    </button>
+    <button
+      type="button"
+      className={styles.closeBtn}
+      onClick={() => {
+        setSelectedCrmContactId("");
+        setCrmOpen(false);
+
+        setClientName("");
+        setClientEmail("");
+        setClientAddress("");
+
+        setNumber(generateNumber("FAC"));
+        const d = new Date();
+        setInvoiceDate(d.toISOString().slice(0, 10));
+        const dd = new Date();
+        dd.setDate(dd.getDate() + 30);
+        setDueDate(dd.toISOString().slice(0, 10));
+
+        setStatus("brouillon");
+        setPaymentMethod("virement");
+        setPaymentDetails("");
+        setNotes("");
+
+        setDiscountKind("");
+        setDiscountValue(0);
+        setDiscountDetails("");
+
+        setLines([{ id: "l_1", label: "Prestation", qty: 1, unitPrice: 120, vatRate: 20 }]);
+      }}
+    >
+      Réinitialiser
+    </button>
+
+    <button
+      className={styles.closeBtn}
+      onClick={() => router.push("/dashboard")}
+    >
+      <span className={styles.closeText}>Fermer</span>
+      <span className={styles.closeIcon}>✕</span>
+    </button>
+  </div>
 </div>
 
+        {draftsOpen ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.55)",
+              zIndex: 9999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+            }}
+            onClick={() => setDraftsOpen(false)}
+          >
+            <div
+              style={{
+                width: "min(720px, 100%)",
+                background: "#111",
+                border: "1px solid rgba(255,255,255,0.14)",
+                borderRadius: 16,
+                padding: 14,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div style={{ fontWeight: 750, fontSize: 16 }}>Sauvegardes (max 20)</div>
+                <button type="button" className={styles.closeBtn} onClick={() => setDraftsOpen(false)}>
+                  Fermer
+                </button>
+              </div>
+
+              {drafts.length === 0 ? (
+                <div style={{ marginTop: 12, opacity: 0.85 }}>Aucune facture sauvegardée.</div>
+              ) : (
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {drafts.map((d) => {
+                    const label = d.snapshot.number || "(Sans numéro)";
+                    const who = d.snapshot.clientName?.trim() ? ` — ${d.snapshot.clientName.trim()}` : "";
+                    return (
+                      <div
+                        key={d.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 10,
+                          padding: 10,
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          borderRadius: 14,
+                          background: "rgba(255,255,255,0.04)",
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {label}
+                            {who}
+                          </div>
+                          <div style={{ fontSize: 12, opacity: 0.8 }}>
+                            Sauvegardé le {new Date(d.savedAtISO).toLocaleString("fr-FR")}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          <button type="button" onClick={() => openDraft(d)}>
+                            Ouvrir
+                          </button>
+                          <button type="button" className={styles.ghostBtn} onClick={() => deleteDraft(d.id)}>
+                            Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        
         <div className={styles.field}>
+          <label>Importer un contact (CRM)</label>
+
+          <div className={styles.crmSelect} ref={crmSelectRef}>
+            <button
+              type="button"
+              className={styles.crmSelectButton}
+              onClick={() => setCrmOpen((v) => !v)}
+              disabled={crmLoading}
+            >
+              <span>
+                {selectedCrmLabel ||
+                  (crmLoading ? "Chargement..." : "Sélectionner un contact")}
+              </span>
+              <span className={styles.crmSelectChevron}>▾</span>
+            </button>
+
+            {crmOpen ? (
+              <div className={styles.crmSelectDropdown} role="listbox">
+                {sortedCrmContacts.map((c) => {
+                  const label = crmLabel(c);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={styles.crmSelectItem}
+                      onClick={() => {
+                        setSelectedCrmContactId(String(c.id));
+                        applyCrmContact(c);
+                        setCrmOpen(false);
+                      }}
+                    >
+                      {label}
+                      {c.email ? ` — ${c.email}` : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+
+          {crmError ? (
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
+              ⚠️ {crmError}
+            </div>
+          ) : null}
+        </div>
+
+<div className={styles.field}>
           <label>Client</label>
           <input
             value={clientName}
@@ -270,9 +646,16 @@ export default function NewFacturePage() {
           />
         </div>
 
-        <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}
-        >
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className={styles.field}>
+            <label>Numéro de facture</label>
+            <input
+              value={number}
+              onChange={(e) => setNumber(e.target.value)}
+              placeholder="FAC-YYYYMMDD-XXXX"
+            />
+          </div>
+
           <div className={styles.field}>
             <label>Date de facture</label>
             <input
@@ -281,14 +664,15 @@ export default function NewFacturePage() {
               onChange={(e) => setInvoiceDate(e.target.value)}
             />
           </div>
-          <div className={styles.field}>
-            <label>Échéance</label>
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
-          </div>
+        </div>
+
+        <div className={styles.field}>
+          <label>Échéance</label>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+          />
         </div>
 
         <div
@@ -309,7 +693,9 @@ export default function NewFacturePage() {
                 color: "white",
               }}
             >
+              <option value="">—</option>
               <option value="brouillon">brouillon</option>
+              <option value="en_attente_paiement">en attente de paiement</option>
               <option value="envoye">envoyé</option>
               <option value="paye">payé</option>
             </select>
@@ -365,8 +751,20 @@ export default function NewFacturePage() {
           <button type="button" onClick={addLine}>
             + Ajouter une ligne
           </button>
-          <button type="button" onClick={save}>
-            Enregistrer
+          <button type="button" onClick={saveDraft}>
+            Sauvegarder
+          </button>          <button
+            type="button"
+            onClick={() => {
+              const to = (clientEmail || "").trim();
+              if (!to) {
+                alert("Ajoute d'abord un email client pour envoyer un mail.");
+                return;
+              }
+              router.push(`/dashboard/mails?compose=1&to=${encodeURIComponent(to)}`);
+            }}
+          >
+            Envoyer par mail
           </button>
           <button type="button" onClick={print}>
             Imprimer / PDF
@@ -594,6 +992,49 @@ export default function NewFacturePage() {
             {notes ? <div style={{ marginTop: 8 }}>{notes}</div> : null}
           </div>
           <div>
+            <div style={{ marginBottom: 8 }} className={styles.noPrint}>
+              <div style={{ fontWeight: 650, marginBottom: 6 }}>Remise commerciale</div>
+              <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 8 }}>
+                <select
+                  value={discountKind}
+                  onChange={(e) => {
+                    const v = e.target.value as any;
+                    setDiscountKind(v);
+                    if (!v) { setDiscountValue(0); setDiscountDetails(""); }
+                  }}
+                  style={{
+                    background: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    color: "#111",
+                  }}
+                >
+                  <option value="">Aucune</option>
+                  <option value="percent">%</option>
+                  <option value="amount">€</option>
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(Number(e.target.value) || 0)}
+                  placeholder={discountKind === "percent" ? "Ex: 10" : "Ex: 50"}
+                  disabled={!discountKind}
+                style={{ width: "100%", background: "white", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 12px", color: "#111" }}
+                />
+                <textarea
+                  value={discountDetails}
+                  onChange={(e) => setDiscountDetails(e.target.value)}
+                  placeholder="Détail de la remise (optionnel)"
+                  disabled={!discountKind}
+                  rows={2}
+                  style={{ gridColumn: "1 / -1", width: "100%", background: "white", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 12px", color: "#111", resize: "vertical" }}
+                />
+              </div>
+            </div>
+
             <div
               style={{
                 display: "flex",
@@ -625,6 +1066,23 @@ export default function NewFacturePage() {
               <span>Total TTC</span>
               <strong>{formatEuro(totals.totalTTC)}</strong>
             </div>
+            {totals.discountTTC > 0 ? (
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+                <span>Remise</span>
+                <strong>- {formatEuro(totals.discountTTC)}</strong>
+              </div>
+            ) : null}
+            {discountDetails && totals.discountTTC > 0 ? (
+              <div style={{ fontSize: 12, color: "#444", marginTop: 4 }}>
+                {discountDetails}
+              </div>
+            ) : null}
+            {totals.discountTTC > 0 ? (
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 18 }}>
+                <span>Total à payer</span>
+                <strong>{formatEuro(totals.totalDue)}</strong>
+              </div>
+            ) : null}
             <div style={{ marginTop: 10, fontSize: 12, color: "#444" }}>
               <strong>Statut :</strong> {status}
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import styles from "../../_documents/documents.module.css";
@@ -9,11 +9,11 @@ import {
   DocRecord,
   LineItem,
   calcLineHT,
-  calcTotals,
+  calcTotalsWithDiscount,
+  DiscountKind,
   formatEuro,
   generateNumber,
   uid,
-  upsertDoc,
 } from "../../_documents/docUtils";
 
 type Profile = {
@@ -31,7 +31,37 @@ type Profile = {
   logo_url?: string | null;
 };
 
+type CrmContact = {
+  id: string;
+  last_name?: string | null;
+  first_name?: string | null;
+  company_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  postal_code?: string | null;
+};
+
 const VAT_OPTIONS = [0, 5.5, 10, 20];
+
+function normalizeLabel(s: string) {
+  // tri FR, sans casse/accents (stable)
+  return s
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+function contactDisplayName(c: CrmContact) {
+  const label =
+    (c.company_name && c.company_name.trim()) ||
+    [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
+    (c.last_name || "").trim() ||
+    "(Sans nom)";
+  return label;
+}
 
 export default function NewDevisPage() {
   const router = useRouter();
@@ -49,6 +79,20 @@ export default function NewDevisPage() {
   const [clientAddress, setClientAddress] = useState("");
   const [clientEmail, setClientEmail] = useState("");
 
+  // --- Remise commerciale (appliquée sur le total TTC)
+  const [discountKind, setDiscountKind] = useState<DiscountKind | "">("");
+  const [discountValue, setDiscountValue] = useState<number>(0);
+  const [discountDetails, setDiscountDetails] = useState<string>("" );
+
+  // --- CRM: import d'un contact pour pré-remplir automatiquement
+  const [crmContacts, setCrmContacts] = useState<CrmContact[]>([]);
+  const [crmLoading, setCrmLoading] = useState(false);
+  const [crmError, setCrmError] = useState<string | null>(null);
+  const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
+
+  // UI dropdown custom (style "select blanc", 10 items visibles + scroll)
+  const [crmOpen, setCrmOpen] = useState(false);
+  const crmBoxRef = useRef<HTMLDivElement | null>(null);
 
   // ✅ Pré-remplissage depuis CRM / iNrBox
   useEffect(() => {
@@ -60,6 +104,90 @@ export default function NewDevisPage() {
     if (address) setClientAddress((prev) => prev || address);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ✅ Liste des contacts CRM pour import dans ce formulaire
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setCrmLoading(true);
+      setCrmError(null);
+
+      try {
+        const res = await fetch("/api/crm/contacts", { method: "GET" });
+        const json = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(json?.error || "Impossible de charger les contacts CRM");
+        }
+
+        const contacts: CrmContact[] = Array.isArray(json?.contacts) ? json.contacts : [];
+        if (!cancelled) setCrmContacts(contacts);
+      } catch (e: any) {
+        if (!cancelled) setCrmError(e?.message || "Erreur CRM");
+      } finally {
+        if (!cancelled) setCrmLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const applyCrmContact = (c: CrmContact) => {
+    const displayName = contactDisplayName(c);
+
+    const addrParts = [c.address, c.postal_code, c.city]
+      .filter(Boolean)
+      .map((s) => String(s).trim());
+    const fullAddress = addrParts.join(" ").trim();
+
+    setClientName(displayName);
+    setClientEmail((c.email || "").trim());
+    setClientAddress(fullAddress);
+  };
+
+  const sortedCrmContacts = useMemo(() => {
+    const arr = [...crmContacts];
+    arr.sort((a, b) => {
+      const aKey = normalizeLabel(contactDisplayName(a));
+      const bKey = normalizeLabel(contactDisplayName(b));
+      return aKey.localeCompare(bKey, "fr", { sensitivity: "base" });
+    });
+    return arr;
+  }, [crmContacts]);
+
+  const selectedCrmContact = useMemo(() => {
+    if (!selectedCrmContactId) return null;
+    return sortedCrmContacts.find((x) => String(x.id) === String(selectedCrmContactId)) || null;
+  }, [selectedCrmContactId, sortedCrmContacts]);
+
+  // fermer le dropdown au clic extérieur
+  useEffect(() => {
+    if (!crmOpen) return;
+
+    const onDown = (e: MouseEvent) => {
+      const el = crmBoxRef.current;
+      if (!el) return;
+      if (e.target instanceof Node && !el.contains(e.target)) setCrmOpen(false);
+    };
+
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [crmOpen]);
+
+  const clearCrmSelection = () => {
+    setSelectedCrmContactId("");
+    setCrmOpen(false);
+  };
+
+  const selectCrmContact = (c: CrmContact) => {
+    setSelectedCrmContactId(String(c.id));
+    applyCrmContact(c);
+    setCrmOpen(false);
+  };
 
   const [validityDays, setValidityDays] = useState<number>(30);
 
@@ -114,7 +242,6 @@ export default function NewDevisPage() {
     };
   }, [needLandscape]);
 
-
   // IMPORTANT: id stable au 1er render
   const [lines, setLines] = useState<LineItem[]>([
     { id: "l_1", label: "Prestation", qty: 1, unitPrice: 100, vatRate: 20 },
@@ -147,9 +274,59 @@ export default function NewDevisPage() {
   }, [supabase]);
 
   const totals = useMemo(
-    () => calcTotals(lines, vatDispense),
-    [lines, vatDispense]
+    () =>
+      calcTotalsWithDiscount(
+        lines,
+        vatDispense,
+        discountKind ? (discountKind as DiscountKind) : null,
+        discountValue
+      ),
+    [lines, vatDispense, discountKind, discountValue]
   );
+
+  // --- Sauvegardes (brouillons locaux)
+  type DevisDraft = {
+    id: string;
+    savedAtISO: string;
+    snapshot: {
+      number: string;
+      docDateISO: string;
+      clientName: string;
+      clientAddress: string;
+      clientEmail: string;
+      validityDays: number;
+      lines: LineItem[];
+      discountKind: DiscountKind | "";
+      discountValue: number;
+      discountDetails: string;
+    };
+  };
+
+  const DRAFTS_KEY = "inrcy_devis_drafts_v1";
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [drafts, setDrafts] = useState<DevisDraft[]>([]);
+
+  const loadDrafts = () => {
+    if (typeof window === "undefined") return [] as DevisDraft[];
+    try {
+      const raw = window.localStorage.getItem(DRAFTS_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? (arr as DevisDraft[]) : ([] as DevisDraft[]);
+    } catch {
+      return [] as DevisDraft[];
+    }
+  };
+
+  const persistDrafts = (next: DevisDraft[]) => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(DRAFTS_KEY, JSON.stringify(next));
+    setDrafts(next);
+  };
+
+  useEffect(() => {
+    setDrafts(loadDrafts());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const addLine = () =>
     setLines((prev) => [
@@ -163,40 +340,66 @@ export default function NewDevisPage() {
       },
     ]);
 
-  const removeLine = (id: string) =>
-    setLines((prev) => prev.filter((l) => l.id !== id));
-
   const updateLine = (id: string, patch: Partial<LineItem>) =>
-    setLines((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, ...patch } : l))
-    );
+    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
 
-  const save = () => {
+  const saveDraft = () => {
+    const now = new Date();
     const finalNumber = number || generateNumber("DEV");
     if (!number) setNumber(finalNumber);
 
-    const createdAtISO = docDateISO
-      ? new Date(docDateISO).toISOString()
-      : new Date().toISOString();
-
-    const doc: DocRecord = {
-      id: uid("doc"),
-      kind: "devis",
+    const snapshot: DevisDraft["snapshot"] = {
       number: finalNumber,
-      createdAtISO,
-      clientName: clientName.trim() || "—",
-      clientAddress: clientAddress.trim(),
-      clientEmail: clientEmail.trim(),
-      status: "brouillon",
+      docDateISO: docDateISO || new Date().toISOString().slice(0, 10),
+      clientName,
+      clientAddress,
+      clientEmail,
+      validityDays,
       lines,
-      vatDispense,
-     validityDays,
+      discountKind,
+      discountValue: Number(discountValue) || 0,
+      discountDetails,
     };
-    upsertDoc(doc);
-    router.push("/dashboard/devis");
+
+    const draft: DevisDraft = { id: uid("draft"), savedAtISO: now.toISOString(), snapshot };
+    const existing = loadDrafts();
+    const next = [draft, ...existing]
+      .sort((a, b) => (a.savedAtISO < b.savedAtISO ? 1 : -1))
+      .slice(0, 10);
+    persistDrafts(next);
+    setDraftsOpen(true);
+  };
+
+  const openDraft = (d: DevisDraft) => {
+    const s = d.snapshot;
+    setNumber(s.number);
+    setDocDateISO(s.docDateISO);
+    setClientName(s.clientName);
+    setClientAddress(s.clientAddress);
+    setClientEmail(s.clientEmail);
+    setValidityDays(s.validityDays);
+    setLines(s.lines);
+    setDiscountKind(s.discountKind);
+    setDiscountValue(s.discountValue);
+    setDiscountDetails(s.discountDetails || "");
+    setDraftsOpen(false);
+  };
+
+  const deleteDraft = (id: string) => {
+    const next = loadDrafts().filter((d) => d.id !== id);
+    persistDrafts(next);
   };
 
   const print = () => window.print();
+
+  const crmButtonText = useMemo(() => {
+    if (crmLoading) return "Chargement...";
+    if (selectedCrmContact) {
+      const name = contactDisplayName(selectedCrmContact);
+      return selectedCrmContact.email ? `${name} — ${selectedCrmContact.email}` : name;
+    }
+    return "Sélectionner un contact";
+  }, [crmLoading, selectedCrmContact]);
 
   return (
     <div className={`${dash.page} ${styles.editorPage}`}>
@@ -215,110 +418,279 @@ export default function NewDevisPage() {
       <div className={styles.container}>
         {/* Formulaire */}
         <div className={styles.panel}>
-          <div className={styles.panelHeader}>
-  <h1>Créer un devis</h1>
+          <div className={styles.panelHeaderStack}>
+            <h1>Créer un devis</h1>
 
-  <button
-    className={styles.closeBtn}
-    onClick={() => router.push("/dashboard")}
-  >
-    <span className={styles.closeText}>Fermer</span>
-    <span className={styles.closeIcon}>✕</span>
-  </button>
-</div>
+            <div className={styles.panelHeaderActions}>
+              <button
+                type="button"
+                className={styles.closeBtn}
+                onClick={() => {
+                  setDrafts(loadDrafts());
+                  setDraftsOpen(true);
+                }}
+              >
+                Sauvegardes
+              </button>
+              <button
+                type="button"
+                className={styles.closeBtn}
+                onClick={() => {
+                  // CRM
+                  setSelectedCrmContactId("");
+                  setCrmOpen(false);
 
+                  // Client
+                  setClientName("");
+                  setClientEmail("");
+                  setClientAddress("");
 
-        <div className={styles.field}>
-          <label>Client</label>
-          <input
-            value={clientName}
-            onChange={(e) => setClientName(e.target.value)}
-            placeholder="Nom du client"
-          />
-        </div>
+                  // Devis
+                  setNumber(generateNumber("DEV"));
+                  setDocDateISO(new Date().toISOString().slice(0, 10));
+                  setValidityDays(30);
 
-        <div className={styles.field}>
-          <label>Adresse client</label>
-          <input
-            value={clientAddress}
-            onChange={(e) => setClientAddress(e.target.value)}
-            placeholder="Adresse, ville"
-          />
-        </div>
+                  setDiscountKind("");
+                  setDiscountValue(0);
+                  setDiscountDetails("");
 
-        <div className={styles.field}>
-          <label>Email client</label>
-          <input
-            value={clientEmail}
-            onChange={(e) => setClientEmail(e.target.value)}
-            placeholder="email@client.fr"
-          />
-        </div>
+                  // Lignes
+                  setLines([{ id: "l_1", label: "Prestation", qty: 1, unitPrice: 100, vatRate: 20 }]);
+                }}
+              >
+                Réinitialiser
+              </button>
 
-<div className={styles.field}>
-  <label>Durée de validité (jours)</label>
-  <input
-    type="number"
-    min={1}
-    value={validityDays}
-    onChange={(e) => setValidityDays(Math.max(1, Number(e.target.value) || 1))}
-    placeholder="30"
-  />
-</div>
+              <button className={styles.closeBtn} onClick={() => router.push("/dashboard")}>
+                <span className={styles.closeText}>Fermer</span>
+                <span className={styles.closeIcon}>✕</span>
+              </button>
+            </div>
+          </div>
 
+          {draftsOpen ? (
+            <div
+              role="dialog"
+              aria-modal="true"
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.55)",
+                zIndex: 9999,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 18,
+              }}
+              onClick={() => setDraftsOpen(false)}
+            >
+              <div
+                style={{
+                  width: "min(720px, 100%)",
+                  background: "#0b1220",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: 16,
+                  padding: 14,
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <div style={{ fontWeight: 750, fontSize: 16 }}>Sauvegardes (max 10)</div>
+                  <button type="button" className={styles.closeBtn} onClick={() => setDraftsOpen(false)}>
+                    Fermer
+                  </button>
+                </div>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-          <button type="button" onClick={addLine}>
-            + Ajouter une ligne
-          </button>
-          <button type="button" onClick={save}>
-            Enregistrer
-          </button>
-          <button type="button" onClick={print}>
-            Imprimer / PDF
-          </button>
-        </div>
+                {drafts.length === 0 ? (
+                  <div style={{ marginTop: 12, opacity: 0.85 }}>Aucune sauvegarde pour l’instant.</div>
+                ) : (
+                  <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                    {drafts.map((d) => {
+                      const s = d.snapshot;
+                      const label = `${s.number || "(sans numéro)"} — ${s.clientName || "Client"}`;
+                      return (
+                        <div
+                          key={d.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            padding: "10px 12px",
+                            border: "1px solid rgba(255,255,255,0.12)",
+                            borderRadius: 12,
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {label}
+                            </div>
+                            <div style={{ fontSize: 12, opacity: 0.8 }}>
+                              Sauvegardé le {new Date(d.savedAtISO).toLocaleString("fr-FR")}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            <button type="button" onClick={() => openDraft(d)}>
+                              Ouvrir
+                            </button>
+                            <button type="button" onClick={() => deleteDraft(d.id)}>
+                              Supprimer
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
 
-        {vatDispense ? (
-          <p style={{ marginTop: 12, opacity: 0.9 }}>
-            TVA désactivée :{" "}
-            <strong>TVA non applicable (article 293 B du CGI)</strong>
-          </p>
-        ) : null}
+          {/* ✅ Champ CRM style "select blanc" + liste sur 1 ligne + scrollbar au-delà de 10 */}
+          <div className={styles.field} ref={crmBoxRef}>
+            <label>Importer un contact (CRM)</label>
+
+            <div className={styles.crmSelectWrap}>
+              <button
+                type="button"
+                className={styles.crmSelectBtn}
+                onClick={() => setCrmOpen((v) => !v)}
+                disabled={crmLoading}
+                aria-haspopup="listbox"
+                aria-expanded={crmOpen}
+              >
+                <span className={styles.crmSelectBtnText} title={crmButtonText}>
+                  {crmButtonText}
+                </span>
+                <span className={styles.crmSelectChevron} aria-hidden="true">
+                  ▾
+                </span>
+              </button>
+
+              {crmOpen ? (
+                <div className={styles.crmDropdown} role="listbox">
+{sortedCrmContacts.map((c) => {
+                    const name = contactDisplayName(c);
+                    const line = c.email ? `${name} — ${c.email}` : name;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={styles.crmOption}
+                        onClick={() => selectCrmContact(c)}
+                        title={line}
+                      >
+                        {line}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+
+            {crmError ? (
+              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>⚠️ {crmError}</div>
+            ) : null}
+          </div>
+
+          <div className={styles.field}>
+            <label>Client</label>
+            <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Nom du client" />
+          </div>
+
+          <div className={styles.field}>
+            <label>Adresse client</label>
+            <input
+              value={clientAddress}
+              onChange={(e) => setClientAddress(e.target.value)}
+              placeholder="Adresse, ville"
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label>Email client</label>
+            <input value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="email@client.fr" />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className={styles.field}>
+              <label>Numéro de devis</label>
+              <input
+                value={number}
+                onChange={(e) => setNumber(e.target.value)}
+                placeholder="DEV-YYYYMMDD-XXXX"
+              />
+            </div>
+
+            <div className={styles.field}>
+              <label>Date du devis</label>
+              <input
+                type="date"
+                value={docDateISO}
+                onChange={(e) => setDocDateISO(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className={styles.field}>
+            <label>Durée de validité (jours)</label>
+            <input
+              type="number"
+              min={1}
+              value={validityDays}
+              onChange={(e) => setValidityDays(Math.max(1, Number(e.target.value) || 1))}
+              placeholder="30"
+            />
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+            <button type="button" onClick={addLine}>
+              + Ajouter une ligne
+            </button>
+            <button type="button" onClick={saveDraft}>Sauvegarder</button>
+            <button
+              type="button"
+              onClick={() => {
+                const to = (clientEmail || "").trim();
+                if (!to) {
+                  alert("Ajoute d'abord un email client pour envoyer un mail.");
+                  return;
+                }
+                router.push(`/dashboard/mails?compose=1&to=${encodeURIComponent(to)}`);
+              }}
+            >
+              Envoyer par mail
+            </button>
+            <button type="button" onClick={print}>
+              Imprimer / PDF
+            </button>
+          </div>
+
+          {vatDispense ? (
+            <p style={{ marginTop: 12, opacity: 0.9 }}>
+              TVA désactivée : <strong>TVA non applicable (article 293 B du CGI)</strong>
+            </p>
+          ) : null}
         </div>
 
         {/* Aperçu document */}
         <div className={styles.preview}>
-        <div className={styles.previewHeader}>
+          <div className={styles.previewHeader}>
             <div>
               <div className={styles.title}>DEVIS</div>
               <div>{number || "—"}</div>
               <div style={{ marginTop: 6, color: "#444" }}>
-                Date :{" "}
-                {docDateISO
-                  ? new Date(docDateISO).toLocaleDateString("fr-FR")
-                  : "—"}
+                Date : {docDateISO ? new Date(docDateISO).toLocaleDateString("fr-FR") : "—"}
               </div>
             </div>
 
-            {profile?.logo_url ? (
-              <img src={profile.logo_url} alt="Logo" className={styles.logo} />
-            ) : null}
+            {profile?.logo_url ? <img src={profile.logo_url} alt="Logo" className={styles.logo} /> : null}
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 24,
-              marginBottom: 18,
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 18 }}>
             <div>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Prestataire</div>
-              <div style={{ fontWeight: 600 }}>
-                {profile?.company_legal_name ?? "—"}
-              </div>
+              <div style={{ fontWeight: 600 }}>{profile?.company_legal_name ?? "—"}</div>
               <div>{profile?.hq_address ?? ""}</div>
               <div>
                 {(profile?.hq_zip ?? "")} {(profile?.hq_city ?? "")}
@@ -356,9 +728,7 @@ export default function NewDevisPage() {
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Client</div>
               <div style={{ fontWeight: 600 }}>{clientName || "—"}</div>
               <div>{clientAddress || ""}</div>
-              <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>
-                {clientEmail || ""}
-              </div>
+              <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>{clientEmail || ""}</div>
             </div>
           </div>
 
@@ -380,12 +750,7 @@ export default function NewDevisPage() {
                       value={l.label}
                       onChange={(e) => updateLine(l.id, { label: e.target.value })}
                       placeholder="Ex: Entretien boîte de vitesse"
-                      style={{
-                        width: "100%",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 8,
-                        padding: "8px 10px",
-                      }}
+                      style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}
                     />
                   </td>
                   <td>
@@ -393,42 +758,23 @@ export default function NewDevisPage() {
                       type="number"
                       value={l.qty}
                       onChange={(e) => updateLine(l.id, { qty: Number(e.target.value) })}
-                      style={{
-                        width: 64,
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 8,
-                        padding: "8px 10px",
-                      }}
+                      style={{ width: 64, border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}
                     />
                   </td>
                   <td>
                     <input
                       type="number"
                       value={l.unitPrice}
-                      onChange={(e) =>
-                        updateLine(l.id, { unitPrice: Number(e.target.value) })
-                      }
-                      style={{
-                        width: 110,
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 8,
-                        padding: "8px 10px",
-                      }}
+                      onChange={(e) => updateLine(l.id, { unitPrice: Number(e.target.value) })}
+                      style={{ width: 110, border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}
                     />
                   </td>
                   <td>
                     <select
                       value={vatDispense ? 0 : l.vatRate}
                       disabled={vatDispense}
-                      onChange={(e) =>
-                        updateLine(l.id, { vatRate: Number(e.target.value) })
-                      }
-                      style={{
-                        width: 80,
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 8,
-                        padding: "8px 10px",
-                      }}
+                      onChange={(e) => updateLine(l.id, { vatRate: Number(e.target.value) })}
+                      style={{ width: 80, border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}
                     >
                       {VAT_OPTIONS.map((v) => (
                         <option key={v} value={v}>
@@ -437,22 +783,13 @@ export default function NewDevisPage() {
                       ))}
                     </select>
                   </td>
-                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                    {formatEuro(calcLineHT(l))}
-                  </td>
+                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{formatEuro(calcLineHT(l))}</td>
                 </tr>
               ))}
             </tbody>
           </table>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 260px",
-              marginTop: 18,
-              gap: 24,
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", marginTop: 18, gap: 24 }}>
             <div style={{ fontSize: 12, color: "#444", lineHeight: 1.4 }}>
               {vatDispense ? (
                 <>
@@ -464,6 +801,49 @@ export default function NewDevisPage() {
             </div>
 
             <div>
+              <div className={styles.noPrint} style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 650, marginBottom: 6 }}>Remise commerciale</div>
+                <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8 }}>
+                  <select
+                    value={discountKind}
+                    onChange={(e) => {
+                      const v = e.target.value as any;
+                      setDiscountKind(v);
+                      if (!v) { setDiscountValue(0); setDiscountDetails(""); }
+                    }}
+                    style={{
+                      background: "white",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      padding: "10px 12px",
+                      color: "#111",
+                    }}
+                  >
+                    <option value="">Aucune</option>
+                    <option value="percent">%</option>
+                    <option value="amount">€</option>
+                  </select>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(Number(e.target.value) || 0)}
+                    placeholder={discountKind === "percent" ? "Ex: 10" : "Ex: 50"}
+                    disabled={!discountKind}
+                    style={{ width: "100%", background: "white", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 12px", color: "#111" }}
+                  />
+                  <textarea
+                    value={discountDetails}
+                    onChange={(e) => setDiscountDetails(e.target.value)}
+                    placeholder="Détail de la remise (optionnel)"
+                    disabled={!discountKind}
+                    rows={2}
+                    style={{ gridColumn: "1 / -1", width: "100%", background: "white", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 12px", color: "#111", resize: "vertical" }}
+                  />
+                </div>
+              </div>
+
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                 <span>Total HT</span>
                 <strong>{formatEuro(totals.totalHT)}</strong>
@@ -476,11 +856,51 @@ export default function NewDevisPage() {
                 <span>Total TTC</span>
                 <strong>{formatEuro(totals.totalTTC)}</strong>
               </div>
+              {totals.discountTTC > 0 ? (
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+                  <span>Remise</span>
+                  <strong>- {formatEuro(totals.discountTTC)}</strong>
+                </div>
+              ) : null}
+              {discountDetails && totals.discountTTC > 0 ? (
+                <div style={{ fontSize: 12, color: "#444", marginTop: 4 }}>
+                  {discountDetails}
+                </div>
+              ) : null}
+              {totals.discountTTC > 0 ? (
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 18 }}>
+                  <span>Total à payer</span>
+                  <strong>{formatEuro(totals.totalDue)}</strong>
+                </div>
+              ) : null}
             </div>
           </div>
-        </div> 
-      </div>  
-    </div>  
+
+          {/* ✅ Bon pour accord / Signature */}
+          <div
+            style={{
+              marginTop: 18,
+              display: "grid",
+              gridTemplateColumns: "1fr 260px",
+              gap: 24,
+              alignItems: "end",
+            }}
+          >
+            <div />
+            <div
+              style={{
+                border: "2px solid #111",
+                borderRadius: 12,
+                padding: 12,
+                minHeight: 90,
+              }}
+            >
+              <div style={{ fontWeight: 750, marginBottom: 6 }}>Bon pour accord</div>
+              <div style={{ fontSize: 12, color: "#444" }}>Signature :</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
-

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import styles from "../_documents/documents.module.css";
 import {
   DocRecord,
-  calcTotals,
+  calcTotalsWithDiscount,
   deleteDoc,
   duplicateDoc,
   formatEuro,
@@ -21,7 +21,7 @@ type Props = {
   ctaHref: string;
 };
 
-type Row = DocRecord & { totals: ReturnType<typeof calcTotals> };
+type Row = DocRecord & { totals: ReturnType<typeof calcTotalsWithDiscount> };
 
 export default function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
   const router = useRouter();
@@ -36,7 +36,10 @@ export default function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
   }, [refresh]);
 
   const rows: Row[] = useMemo(() => {
-    return docs.map((d) => ({ ...d, totals: calcTotals(d.lines, !!d.vatDispense) }));
+    return docs.map((d) => ({
+      ...d,
+      totals: calcTotalsWithDiscount(d.lines, !!d.vatDispense, d.discountKind, d.discountValue),
+    }));
   }, [docs]);
 
   const onDuplicate = (id: string) => {
@@ -107,7 +110,7 @@ export default function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
                     <td>{new Date(d.createdAtISO).toLocaleDateString("fr-FR")}</td>
                     <td>{d.status}</td>
                     <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {formatEuro(d.totals.totalTTC)}
+                      {formatEuro(d.totals.totalDue ?? d.totals.totalTTC)}
                     </td>
                     <td
                       style={{

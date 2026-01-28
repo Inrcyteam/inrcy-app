@@ -90,8 +90,6 @@ function contactsToCsv(rows: any[]) {
     "postal_code",
     "category",
     "contact_type",
-    "notes",
-    "important",
   ];
   const lines = [
     headers.join(";"),
@@ -171,8 +169,6 @@ function normalizeImportedRow(row: any) {
     postal_code: String(pick("postal_code", "Code postal", "CP")).trim(),
     category: String(pick("category", "Categorie", "Catégorie")).trim(),
     contact_type: String(pick("contact_type", "Type", "Type de contact")).trim(),
-    notes: String(pick("notes", "Notes", "Note", "Commentaires", "Commentaire")).trim(),
-    important: String(pick("important", "Important", "Star", "Etoile", "Étoile")).trim(),
   };
 }
 
@@ -438,11 +434,7 @@ async function importContacts(rows: any[]) {
     const r = await fetch("/api/crm/contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contacts: cleaned.map((r:any)=>({
-        ...r,
-        notes: String(r.notes ?? "").trim(),
-        important: ["1","true","vrai","yes","y","oui","x","★","*"].includes(String(r.important ?? "").trim().toLowerCase()),
-      })) }),
+      body: JSON.stringify({ contacts: cleaned }),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j?.error || "Import impossible.");
@@ -492,8 +484,8 @@ const exportCsv = () => {
       postal_code: c.postal_code ?? "",
       category: c.category ?? "",
       contact_type: c.contact_type ?? "",
-      notes: c.notes ?? "",
-      important: Boolean(c.important),
+      notes: (c.notes ?? "") as string,
+      important: Boolean((c as any).important),
     }));
     const csv = contactsToCsv(rows);
     downloadTextFile(`crm_inrcy_${new Date().toISOString().slice(0, 10)}.csv`, csv, "text/csv;charset=utf-8");
@@ -561,7 +553,7 @@ const sendMailToSelected = () => {
       category: ((c.category as any) ?? "") as Category,
       contact_type: ((c.contact_type as any) ?? "") as ContactType,
       notes: ((c.notes as any) ?? "") as string,
-      important: importantIds.has(c.id),
+      important: Boolean((c as any).important ?? importantIds.has(c.id)),
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -688,7 +680,7 @@ const sendMailToSelected = () => {
       }}
     >
       <header className={styles.header}>
-        <div className={styles.titleWrap}>
+      <div className={styles.titleWrap}>
   <img
     src="/inrcrm-logo.png"
     alt="iNr’CRM"
@@ -699,6 +691,7 @@ const sendMailToSelected = () => {
     Un tableau simple et connecté pour suivre tous vos contacts.
   </p>
 </div>
+
 
         <button aria-label="action"
           className={styles.backBtn}

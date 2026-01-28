@@ -85,6 +85,43 @@
   padding-bottom: 12px;
 }
 
+/* ✅ Variante: titre AU-DESSUS des boutons (facture / devis) */
+.panelHeaderStack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+
+  padding-top: 2px;
+  margin-top: 0;
+  padding-bottom: 12px;
+}
+
+.panelHeaderActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* ✅ Impression: masquer les champs de saisie, garder uniquement le résultat */
+.noPrint {
+  display: block;
+}
+
+.printOnly {
+  display: none;
+}
+
+@media print {
+  .noPrint {
+    display: none !important;
+  }
+  .printOnly {
+    display: block !important;
+  }
+}
+
 /* h2 reste comme avant */
 .panel h2 {
   font-size: 18px;
@@ -332,8 +369,12 @@
 
 /* Select */
 .field select {
-  color: white;
   background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: white;
+  outline: none;
 }
 
 /* Dropdown options */
@@ -468,4 +509,223 @@
 /* ===== Fix spacing top for editor pages (Facture / Devis) ===== */
 .editorPage {
   padding-top: 0 !important;
+}
+
+
+/* ===== CRM dropdown (custom) ===== */
+.crmSelect {
+  position: relative;
+}
+
+.crmSelectButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: white;
+  cursor: pointer;
+}
+
+.crmSelectButton:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.crmSelectChevron {
+  opacity: 0.9;
+}
+
+.crmSelectDropdown {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+
+  /* ✅ Menu déroulant BLANC (comme avant) */
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 12px;
+  padding: 6px;
+
+  /* ✅ ~10 items visibles puis scrollbar */
+  max-height: 420px;
+  overflow-y: auto;
+
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+
+.crmSelectItem {
+  width: 100%;
+  text-align: left;
+  padding: 10px 10px;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid transparent;
+
+  /* ✅ Texte noir sur fond blanc */
+  color: #111;
+  cursor: pointer;
+
+  /* ✅ 1 ligne par contact */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ✅ IMPORTANT: les items du dropdown sont des <button> dans .panel
+   -> .panel button applique color:white; il faut surcharger avec + de spécificité */
+.panel .crmSelectDropdown .crmSelectItem {
+  color: #111 !important;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.panel .crmSelectDropdown .crmSelectItem:hover,
+.panel .crmSelectDropdown .crmSelectItem:focus-visible {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
+  outline: none;
+}
+
+.crmSelectItem:hover {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+
+
+/* ===== CRM dropdown (Devis) – aligné sur Facture ===== */
+.crmSelectWrap {
+  position: relative;
+}
+
+.crmSelectBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  /* ✅ même style que Facture : bouton sombre */
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #fff;
+  cursor: pointer;
+}
+
+.crmSelectBtnText {
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crmSelectChevron {
+  color: #111;
+  opacity: 0.9;
+}
+
+.crmDropdown {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.14);
+  border-radius: 12px;
+  padding: 6px;
+  max-height: 420px;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.crmOption {
+  width: 100%;
+  text-align: left;
+  padding: 10px 10px;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #111;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crmOption:hover {
+  background: rgba(0,0,0,0.06);
+  border-color: rgba(0,0,0,0.08);
+}
+
+
+/* === CRM dropdown list style === */
+.crmSelectDropdown {
+  background: #f9fafb;
+}
+
+.crmSelectItem + .crmSelectItem {
+  border-top: 1px solid rgba(0,0,0,0.06);
+  border-radius: 0;
+}
+
+.crmSelectItem:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.crmSelectItem:last-child {
+  border-radius: 0 0 8px 8px;
+}
+
+
+/* === CRM dropdown list style (Devis) === */
+.crmDropdown {
+  background: #f9fafb;
+}
+
+.crmOption + .crmOption {
+  border-top: 1px solid rgba(0,0,0,0.06);
+  border-radius: 0;
+}
+
+.crmOption:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.crmOption:last-child {
+  border-radius: 0 0 8px 8px;
+}
+
+
+/* ✅ Devis: chevron blanc dans le bouton */
+.crmSelectWrap .crmSelectChevron {
+  color: #fff;
+  opacity: 0.9;
+}
+
+
+/* ✅ IMPORTANT (Devis): les options du dropdown sont des <button> dans .panel
+   -> .panel button applique color:white; on surcharge pour avoir texte noir */
+.panel .crmDropdown .crmOption {
+  color: #111 !important;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.panel .crmDropdown .crmOption:hover,
+.panel .crmDropdown .crmOption:focus-visible {
+  background: rgba(0,0,0,0.06);
+  border-color: rgba(0,0,0,0.08);
+  outline: none;
 }

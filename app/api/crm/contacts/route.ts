@@ -41,7 +41,8 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("crm_contacts")
-    .select("id, last_name, first_name, company_name, siret, email, phone, address, city, postal_code, category, contact_type, created_at")
+    .select("id, user_id, last_name, first_name, company_name, siret, email, phone, address, city, postal_code, category, contact_type, notes, important, created_at")
+    .eq("user_id", userData.user.id)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
 
 const body = await req.json().catch(() => ({}));
 
-// ✅ Bulk import: POST { contacts: [...] }
+// ✅ Bulk import: PUT { contacts: [...] }
 if (Array.isArray(body?.contacts)) {
   const rows = body.contacts;
   const payloads = rows
@@ -80,9 +81,9 @@ if (Array.isArray(body?.contacts)) {
         postal_code: cleanString(row.postal_code),
         category: isCategory(row.category) ? row.category : ("particulier" as Category),
         contact_type: isContactType(row.contact_type) ? row.contact_type : ("prospect" as ContactType),
-                  notes: cleanString(row.notes),
-                  important: Boolean(row.important),
-                };
+      notes: cleanString(row.notes),
+        important: Boolean(row.important),
+      };
 
       // Minimum validation
       if (!p.last_name && !p.first_name && !p.company_name && !p.email && !p.phone) return null;
@@ -118,7 +119,7 @@ if (Array.isArray(body?.contacts)) {
     postal_code: cleanString(body.postal_code),
     category: isCategory(body.category) ? body.category : ("particulier" as Category),
     contact_type: isContactType(body.contact_type) ? body.contact_type : ("prospect" as ContactType),
-    notes: cleanString(body.notes),
+  notes: cleanString(body.notes),
     important: Boolean(body.important),
   };
 
@@ -153,7 +154,7 @@ export async function PUT(req: Request) {
 
 const body = await req.json().catch(() => ({}));
 
-// ✅ Bulk import: POST { contacts: [...] }
+// ✅ Bulk import: PUT { contacts: [...] }
 if (Array.isArray(body?.contacts)) {
   const rows = body.contacts;
   const payloads = rows
