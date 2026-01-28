@@ -283,7 +283,8 @@ export default function NewFacturePage() {
   // --- Sauvegardes (brouillons locaux)
   type FactureDraft = {
     id: string;
-    savedAtISO: string;
+    updatedAtISO: string;
+    name?: string | null;
     snapshot: {
       number: string;
       invoiceDate: string;
@@ -302,33 +303,68 @@ export default function NewFacturePage() {
     };
   };
 
-  const DRAFTS_KEY = "inrcy_facture_drafts_v1";
+  const SAVES_LIMIT = 30;
+  const SAVES_TYPE = "facture" as const;
+
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [drafts, setDrafts] = useState<FactureDraft[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
 
-  const loadDrafts = () => {
-    if (typeof window === "undefined") return [] as FactureDraft[];
+  const cleanupOldSaves = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    await supabase
+      .from("doc_saves")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("type", SAVES_TYPE)
+      .lt("updated_at", cutoff);
+  };
+
+  const refreshSaves = async () => {
+    setDraftsLoading(true);
     try {
-      const raw = window.localStorage.getItem(DRAFTS_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? (parsed as FactureDraft[]) : [];
-    } catch {
-      return [] as FactureDraft[];
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Fallback cleanup (the real cleanup is done server-side via cron)
+      await cleanupOldSaves();
+
+      const { data, error } = await supabase
+        .from("doc_saves")
+        .select("id,updated_at,name,payload")
+        .eq("user_id", user.id)
+        .eq("type", SAVES_TYPE)
+        .order("updated_at", { ascending: false });
+
+      if (error) throw error;
+
+      const mapped: FactureDraft[] = (data ?? []).map((row: any) => ({
+        id: row.id,
+        updatedAtISO: row.updated_at,
+        name: row.name,
+        snapshot: row.payload,
+      }));
+
+      setDrafts(mapped);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDraftsLoading(false);
     }
   };
 
-  const persistDrafts = (next: FactureDraft[]) => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(DRAFTS_KEY, JSON.stringify(next));
-    setDrafts(next);
-  };
-
   useEffect(() => {
-    setDrafts(loadDrafts());
+    void refreshSaves();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const addLine = () =>
+const addLine = () =>
     setLines((prev) => [
       ...prev,
       {
@@ -349,8 +385,7 @@ export default function NewFacturePage() {
     );
 
 
-  const saveDraft = () => {
-    const now = new Date();
+  const saveDraft = async () => {
     const finalNumber = number || generateNumber("FAC");
     if (!number) setNumber(finalNumber);
 
@@ -371,17 +406,51 @@ export default function NewFacturePage() {
       discountDetails,
     };
 
-    const draft: FactureDraft = {
-      id: uid("draft"),
-      savedAtISO: now.toISOString(),
-      snapshot,
-    };
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) return;
 
-    const existing = loadDrafts();
-    const next = [draft, ...existing]
-      .sort((a, b) => (a.savedAtISO < b.savedAtISO ? 1 : -1))
-      .slice(0, 20);
-    persistDrafts(next);
+    const autoName =
+      (clientName || "").trim() ||
+      (clientEmail || "").trim() ||
+      snapshot.number ||
+      "Sauvegarde";
+
+    const { error } = await supabase.from("doc_saves").insert({
+      user_id: user.id,
+      type: SAVES_TYPE,
+      name: autoName,
+      payload: snapshot,
+    });
+
+    if (error) {
+      console.error(error);
+      alert("Impossible de sauvegarder pour le moment.");
+      return;
+    }
+
+    // Enforce limit (keep most recent)
+    const { data: ids } = await supabase
+      .from("doc_saves")
+      .select("id,updated_at")
+      .eq("user_id", user.id)
+      .eq("type", SAVES_TYPE)
+      .order("updated_at", { ascending: false });
+
+    const extra = (ids ?? []).slice(SAVES_LIMIT);
+    if (extra.length) {
+      await supabase
+        .from("doc_saves")
+        .delete()
+        .in(
+          "id",
+          extra.map((x: any) => x.id)
+        );
+    }
+
+    await refreshSaves();
     setDraftsOpen(true);
   };
 
@@ -404,9 +473,20 @@ export default function NewFacturePage() {
     setDraftsOpen(false);
   };
 
-  const deleteDraft = (id: string) => {
-    const next = loadDrafts().filter((d) => d.id !== id);
-    persistDrafts(next);
+  const deleteDraft = async (id: string) => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from("doc_saves")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("type", SAVES_TYPE)
+      .eq("id", id);
+
+    await refreshSaves();
   };
 
   const print = () => window.print();
@@ -441,7 +521,7 @@ export default function NewFacturePage() {
       type="button"
       className={styles.closeBtn}
       onClick={() => {
-        setDrafts(loadDrafts());
+        void refreshSaves();
         setDraftsOpen(true);
       }}
     >
@@ -550,7 +630,7 @@ export default function NewFacturePage() {
                             {who}
                           </div>
                           <div style={{ fontSize: 12, opacity: 0.8 }}>
-                            Sauvegardé le {new Date(d.savedAtISO).toLocaleString("fr-FR")}
+                            Sauvegardé le {new Date(d.updatedAtISO).toLocaleString("fr-FR")}
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>

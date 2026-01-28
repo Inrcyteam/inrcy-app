@@ -287,48 +287,83 @@ export default function NewDevisPage() {
   // --- Sauvegardes (brouillons locaux)
   type DevisDraft = {
     id: string;
-    savedAtISO: string;
+    updatedAtISO: string;
+    name?: string | null;
     snapshot: {
-      number: string;
-      docDateISO: string;
-      clientName: string;
-      clientAddress: string;
-      clientEmail: string;
-      validityDays: number;
-      lines: LineItem[];
-      discountKind: DiscountKind | "";
-      discountValue: number;
-      discountDetails: string;
-    };
+  number: string;
+  docDateISO: string;
+  clientName: string;
+  clientAddress: string;
+  clientEmail: string;
+  validityDays: number; // ✅ AJOUT
+  lines: LineItem[];
+  discountKind: DiscountKind | "";
+  discountValue: number;
+  discountDetails: string;
+};
   };
 
-  const DRAFTS_KEY = "inrcy_devis_drafts_v1";
+  const SAVES_LIMIT = 20;
+  const SAVES_TYPE = "devis" as const;
+
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [drafts, setDrafts] = useState<DevisDraft[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
 
-  const loadDrafts = () => {
-    if (typeof window === "undefined") return [] as DevisDraft[];
+  const cleanupOldSaves = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    await supabase
+      .from("doc_saves")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("type", SAVES_TYPE)
+      .lt("updated_at", cutoff);
+  };
+
+  const refreshSaves = async () => {
+    setDraftsLoading(true);
     try {
-      const raw = window.localStorage.getItem(DRAFTS_KEY);
-      const arr = raw ? JSON.parse(raw) : [];
-      return Array.isArray(arr) ? (arr as DevisDraft[]) : ([] as DevisDraft[]);
-    } catch {
-      return [] as DevisDraft[];
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await cleanupOldSaves();
+
+      const { data, error } = await supabase
+        .from("doc_saves")
+        .select("id,updated_at,name,payload")
+        .eq("user_id", user.id)
+        .eq("type", SAVES_TYPE)
+        .order("updated_at", { ascending: false });
+
+      if (error) throw error;
+
+      const mapped: DevisDraft[] = (data ?? []).map((row: any) => ({
+        id: row.id,
+        updatedAtISO: row.updated_at,
+        name: row.name,
+        snapshot: row.payload,
+      }));
+
+      setDrafts(mapped);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDraftsLoading(false);
     }
   };
 
-  const persistDrafts = (next: DevisDraft[]) => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(DRAFTS_KEY, JSON.stringify(next));
-    setDrafts(next);
-  };
-
   useEffect(() => {
-    setDrafts(loadDrafts());
+    void refreshSaves();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const addLine = () =>
+const addLine = () =>
     setLines((prev) => [
       ...prev,
       {
@@ -343,30 +378,67 @@ export default function NewDevisPage() {
   const updateLine = (id: string, patch: Partial<LineItem>) =>
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
 
-  const saveDraft = () => {
-    const now = new Date();
+  const saveDraft = async () => {
     const finalNumber = number || generateNumber("DEV");
     if (!number) setNumber(finalNumber);
 
-    const snapshot: DevisDraft["snapshot"] = {
-      number: finalNumber,
-      docDateISO: docDateISO || new Date().toISOString().slice(0, 10),
-      clientName,
-      clientAddress,
-      clientEmail,
-      validityDays,
-      lines,
-      discountKind,
-      discountValue: Number(discountValue) || 0,
-      discountDetails,
-    };
+   const snapshot: DevisDraft["snapshot"] = {
+  number: finalNumber,
+  docDateISO: docDateISO || new Date().toISOString().slice(0, 10),
+  clientName,
+  clientAddress,
+  clientEmail,
+  validityDays, // ✅ AJOUT
+  lines,
+  discountKind,
+  discountValue: Number(discountValue) || 0,
+  discountDetails,
+};
 
-    const draft: DevisDraft = { id: uid("draft"), savedAtISO: now.toISOString(), snapshot };
-    const existing = loadDrafts();
-    const next = [draft, ...existing]
-      .sort((a, b) => (a.savedAtISO < b.savedAtISO ? 1 : -1))
-      .slice(0, 10);
-    persistDrafts(next);
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) return;
+
+    const autoName =
+      (clientName || "").trim() ||
+      (clientEmail || "").trim() ||
+      snapshot.number ||
+      "Sauvegarde";
+
+    const { error } = await supabase.from("doc_saves").insert({
+      user_id: user.id,
+      type: SAVES_TYPE,
+      name: autoName,
+      payload: snapshot,
+    });
+
+    if (error) {
+      console.error(error);
+      alert("Impossible de sauvegarder pour le moment.");
+      return;
+    }
+
+    const { data: ids } = await supabase
+      .from("doc_saves")
+      .select("id,updated_at")
+      .eq("user_id", user.id)
+      .eq("type", SAVES_TYPE)
+      .order("updated_at", { ascending: false });
+
+    const extra = (ids ?? []).slice(SAVES_LIMIT);
+    if (extra.length) {
+      await supabase
+        .from("doc_saves")
+        .delete()
+        .in(
+          "id",
+          extra.map((x: any) => x.id)
+        );
+    }
+
+    await refreshSaves();
     setDraftsOpen(true);
   };
 
@@ -385,9 +457,20 @@ export default function NewDevisPage() {
     setDraftsOpen(false);
   };
 
-  const deleteDraft = (id: string) => {
-    const next = loadDrafts().filter((d) => d.id !== id);
-    persistDrafts(next);
+  const deleteDraft = async (id: string) => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from("doc_saves")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("type", SAVES_TYPE)
+      .eq("id", id);
+
+    await refreshSaves();
   };
 
   const print = () => window.print();
@@ -426,7 +509,7 @@ export default function NewDevisPage() {
                 type="button"
                 className={styles.closeBtn}
                 onClick={() => {
-                  setDrafts(loadDrafts());
+                  void refreshSaves();
                   setDraftsOpen(true);
                 }}
               >
@@ -526,7 +609,7 @@ export default function NewDevisPage() {
                               {label}
                             </div>
                             <div style={{ fontSize: 12, opacity: 0.8 }}>
-                              Sauvegardé le {new Date(d.savedAtISO).toLocaleString("fr-FR")}
+                              Sauvegardé le {new Date(d.updatedAtISO).toLocaleString("fr-FR")}
                             </div>
                           </div>
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
