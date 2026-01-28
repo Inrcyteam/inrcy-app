@@ -987,7 +987,7 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
   };
 
   // Carousel state (infinite loop)
-  const baseModules = fluxModules;
+  const baseModules = fluxModules.filter((m) => m.key !== "stats");
   const hasCarousel = baseModules.length > 1;
 
   // clones: [last, ...real, first]
@@ -1491,7 +1491,7 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
             )}
           </>
         ) : (
-          <div className={styles.moduleGrid}>{fluxModules.map((m) => renderFluxBubble(m))}</div>
+          <div className={styles.moduleGrid}>{baseModules.map((m) => renderFluxBubble(m))}</div>
         )}
 
 
@@ -1574,9 +1574,7 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
       </div>
       <div className={styles.loopSub}>Tous vos leads, enfin visibles</div>
       <div className={styles.loopActions}>
-        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button">
-          Voir les stats
-        </button>
+        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button" onClick={() => router.push("/dashboard/stats")}>Voir les stats</button>
       </div>
     </div>
 
