@@ -90,6 +90,8 @@ function contactsToCsv(rows: any[]) {
     "postal_code",
     "category",
     "contact_type",
+    "notes",
+    "important",
   ];
   const lines = [
     headers.join(";"),
@@ -169,6 +171,8 @@ function normalizeImportedRow(row: any) {
     postal_code: String(pick("postal_code", "Code postal", "CP")).trim(),
     category: String(pick("category", "Categorie", "Catégorie")).trim(),
     contact_type: String(pick("contact_type", "Type", "Type de contact")).trim(),
+    notes: String(pick("notes", "Notes", "Note", "Commentaires", "Commentaire")).trim(),
+    important: String(pick("important", "Important", "Star", "Etoile", "Étoile")).trim(),
   };
 }
 
@@ -434,7 +438,11 @@ async function importContacts(rows: any[]) {
     const r = await fetch("/api/crm/contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contacts: cleaned }),
+      body: JSON.stringify({ contacts: cleaned.map((r:any)=>({
+        ...r,
+        notes: String(r.notes ?? "").trim(),
+        important: ["1","true","vrai","yes","y","oui","x","★","*"].includes(String(r.important ?? "").trim().toLowerCase()),
+      })) }),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j?.error || "Import impossible.");
@@ -484,6 +492,8 @@ const exportCsv = () => {
       postal_code: c.postal_code ?? "",
       category: c.category ?? "",
       contact_type: c.contact_type ?? "",
+      notes: c.notes ?? "",
+      important: Boolean(c.important),
     }));
     const csv = contactsToCsv(rows);
     downloadTextFile(`crm_inrcy_${new Date().toISOString().slice(0, 10)}.csv`, csv, "text/csv;charset=utf-8");
@@ -679,14 +689,16 @@ const sendMailToSelected = () => {
     >
       <header className={styles.header}>
         <div className={styles.titleWrap}>
-          <div className={styles.titleBubble}>
-            <span className={styles.logoDot}></span>
-            <h1 className={styles.h1}>CRM iNrCy</h1>
-          </div>
-          <p className={styles.subInline}>
-            Un tableau simple et connecté pour suivre tous vos contacts.
-          </p>
-        </div>
+  <img
+    src="/inrcrm-logo.png"
+    alt="iNr’CRM"
+    style={{ width: 154, height: 64, display: "block" }}
+  />
+
+  <p className={styles.subInline}>
+    Un tableau simple et connecté pour suivre tous vos contacts.
+  </p>
+</div>
 
         <button aria-label="action"
           className={styles.backBtn}
