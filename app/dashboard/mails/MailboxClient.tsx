@@ -6,6 +6,7 @@ import styles from "./mails.module.css";
 import { useRouter, useSearchParams } from "next/navigation";
 import SettingsDrawer from "../SettingsDrawer";
 import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
+import { createClient } from "@/lib/supabaseClient";
 
 type Folder = "inbox" | "important" | "sent" | "drafts" | "spam" | "trash";
 type Source = "Gmail" | "Outlook" | "OVH" | "Messenger" | "Houzz";
@@ -118,6 +119,10 @@ export default function MailboxClient() {
   const isMobile = useIsMobile(980);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const supabase = createClient();
+
+  // Bucket Supabase Storage où on dépose les PDF (devis/factures) à joindre dans iNrbox
+  const ATTACH_BUCKET = "inrbox_attachments";
 
   const [folder, setFolder] = useState<Folder>("inbox");
   const [selectedId, setSelectedId] = useState<string>("1");
@@ -757,20 +762,45 @@ const onSelectMessage = (id: string) => {
   useEffect(() => {
     const compose = searchParams.get("compose");
     const to = (searchParams.get("to") || "").trim();
+    const attachKey = (searchParams.get("attachKey") || "").trim();
+    const attachName = (searchParams.get("attachName") || "").trim();
     if ((compose === "1" || compose === "true") && to) {
       setComposeTo(to);
       setComposeSubject("");
       setComposeBody("Bonjour,\n\n");
       setComposeOpen(true);
 
+      // ✅ Si un PDF a été uploadé dans Supabase Storage, on le récupère et on l'ajoute en PJ
+      // (utile pour facture/devis → iNrbox)
+      if (attachKey) {
+        (async () => {
+          try {
+            const { data, error } = await supabase
+              .storage
+              .from(ATTACH_BUCKET)
+              .download(attachKey);
+            if (error) throw error;
+
+            const blob = data as Blob;
+            const name = attachName || attachKey.split("/").pop() || "document.pdf";
+            const file = new File([blob], name, { type: blob.type || "application/pdf" });
+            setComposeFiles((prev) => [file, ...prev]);
+          } catch (e) {
+            console.error("Impossible de charger la pièce jointe", e);
+          }
+        })();
+      }
+
       // Nettoie l'URL (évite de ré-ouvrir la fenêtre au refresh/back)
       const cleaned = new URL(window.location.href);
       cleaned.searchParams.delete("compose");
       cleaned.searchParams.delete("to");
       cleaned.searchParams.delete("from");
+      cleaned.searchParams.delete("attachKey");
+      cleaned.searchParams.delete("attachName");
       router.replace(cleaned.pathname + (cleaned.search ? cleaned.search : ""));
     }
-  }, [searchParams]);
+  }, [searchParams, supabase]);
 
   const createMessagePreview = (body: string) => {
     const firstLine = body.replace(/\n+/g, " ").trim();

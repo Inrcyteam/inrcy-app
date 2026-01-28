@@ -60,6 +60,10 @@ export default function NewFacturePage() {
   const searchParams = useSearchParams();
   const supabase = createClient();
 
+  // PDF → Supabase Storage (PJ iNrbox)
+  const ATTACH_BUCKET = "inrbox_attachments";
+  const previewRef = useRef<HTMLDivElement | null>(null);
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const vatDispense = !!profile?.vat_dispense;
 
@@ -491,6 +495,88 @@ const addLine = () =>
 
   const print = () => window.print();
 
+  const buildPdfBlob = async (): Promise<Blob | null> => {
+    if (typeof window === "undefined") return null;
+    const el = previewRef.current;
+    if (!el) return null;
+
+    const noPrintEls = Array.from(el.querySelectorAll(`.${styles.noPrint}`)) as HTMLElement[];
+    const prev = noPrintEls.map((n) => n.style.display);
+    noPrintEls.forEach((n) => (n.style.display = "none"));
+
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
+
+    let canvas: HTMLCanvasElement;
+    try {
+      canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+    } finally {
+      noPrintEls.forEach((n, i) => (n.style.display = prev[i] || ""));
+    }
+
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new jsPDF("p", "mm", "a4");
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imgProps = (pdf as any).getImageProperties(imgData);
+    const imgWidth = pageWidth;
+    const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+
+    let position = 0;
+    let heightLeft = imgHeight;
+
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
+    return pdf.output("blob") as Blob;
+  };
+
+  const uploadPdfAndOpenCompose = async (to: string, filename: string) => {
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      alert("Vous devez être connecté pour envoyer par mail.");
+      return;
+    }
+
+    const pdfBlob = await buildPdfBlob();
+    if (!pdfBlob) {
+      alert("Impossible de générer le PDF pour le moment.");
+      return;
+    }
+
+    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const key = `${user.id}/factures/${Date.now()}_${safeName}`;
+
+    const { error: upErr } = await supabase.storage
+      .from(ATTACH_BUCKET)
+      .upload(key, pdfBlob, { contentType: "application/pdf", upsert: true });
+
+    if (upErr) {
+      console.error(upErr);
+      alert("Upload du PDF impossible (Supabase Storage).");
+      return;
+    }
+
+    router.push(
+      `/dashboard/mails?compose=1&to=${encodeURIComponent(to)}&attachKey=${encodeURIComponent(
+        key
+      )}&attachName=${encodeURIComponent(safeName)}`
+    );
+  };
+
   const paymentLabel =
     PAYMENT_METHODS.find((m) => m.key === paymentMethod)?.label ?? "—";
 
@@ -833,15 +919,20 @@ const addLine = () =>
           </button>
           <button type="button" onClick={saveDraft}>
             Sauvegarder
-          </button>          <button
+          </button>
+          <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               const to = (clientEmail || "").trim();
               if (!to) {
                 alert("Ajoute d'abord un email client pour envoyer un mail.");
                 return;
               }
-              router.push(`/dashboard/mails?compose=1&to=${encodeURIComponent(to)}`);
+
+              const finalNumber = number || generateNumber("FAC");
+              if (!number) setNumber(finalNumber);
+
+              await uploadPdfAndOpenCompose(to, `${finalNumber}.pdf`);
             }}
           >
             Envoyer par mail
@@ -860,7 +951,7 @@ const addLine = () =>
         </div>
 
         {/* Aperçu document */}
-        <div className={styles.preview}>
+        <div className={styles.preview} ref={previewRef}>
         <div className={styles.previewHeader}>
           <div>
             <div className={styles.title}>FACTURE</div>
