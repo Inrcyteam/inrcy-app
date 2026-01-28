@@ -187,6 +187,7 @@ const [siteInrcyContactEmail, setSiteInrcyContactEmail] = useState<string>("");
 const [siteInrcySettingsText, setSiteInrcySettingsText] = useState<string>("{}");
 const [siteInrcySettingsError, setSiteInrcySettingsError] = useState<string | null>(null);
 const [ga4MeasurementId, setGa4MeasurementId] = useState<string>("");
+const [ga4PropertyId, setGa4PropertyId] = useState<string>("");
 
 // ✅ Google Search Console
 const [gscProperty, setGscProperty] = useState<string>("");
@@ -196,6 +197,7 @@ const [siteWebUrl, setSiteWebUrl] = useState<string>("");
 const [siteWebSettingsText, setSiteWebSettingsText] = useState<string>("{}");
 const [siteWebSettingsError, setSiteWebSettingsError] = useState<string | null>(null);
 const [siteWebGa4MeasurementId, setSiteWebGa4MeasurementId] = useState<string>("");
+const [siteWebGa4PropertyId, setSiteWebGa4PropertyId] = useState<string>("");
 const [siteWebGscProperty, setSiteWebGscProperty] = useState<string>("");
 
 // ✅ Houzz & Pages Jaunes (liens uniquement)
@@ -262,7 +264,8 @@ const loadSiteInrcy = useCallback(async () => {
   }
   setSiteInrcySettingsError(null);
   setGa4MeasurementId((settingsObj as any)?.ga4?.measurement_id ?? "");
-setGscProperty((settingsObj as any)?.gsc?.property ?? "");
+  setGa4PropertyId(String((settingsObj as any)?.ga4?.property_id ?? ""));
+  setGscProperty((settingsObj as any)?.gsc?.property ?? "");
 
   // ✅ Site web (stocké dans site_configs.settings.site_web)
   const siteWebObj = (settingsObj as any)?.site_web ?? {};
@@ -274,6 +277,7 @@ setGscProperty((settingsObj as any)?.gsc?.property ?? "");
   setSiteWebSettingsError(null);
   setSiteWebUrl((siteWebObj as any)?.url ?? "");
   setSiteWebGa4MeasurementId((siteWebObj as any)?.ga4?.measurement_id ?? "");
+  setSiteWebGa4PropertyId(String((siteWebObj as any)?.ga4?.property_id ?? ""));
   setSiteWebGscProperty((siteWebObj as any)?.gsc?.property ?? "");
 
 // ✅ Houzz & Pages Jaunes (stockés dans site_configs.settings.houzz / site_configs.settings.pages_jaunes)
@@ -333,8 +337,13 @@ const saveSiteInrcySettings = useCallback(async () => {
 
 const attachGoogleAnalytics = useCallback(async () => {
   const measurement = ga4MeasurementId.trim();
+  const propertyIdRaw = ga4PropertyId.trim();
   if (!measurement) {
     setSiteInrcySettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX).");
+    return;
+  }
+  if (!propertyIdRaw || !/^\d+$/.test(propertyIdRaw)) {
+    setSiteInrcySettingsError("Renseigne le Property ID GA4 (numérique, ex: 123456789).");
     return;
   }
 
@@ -346,7 +355,11 @@ const attachGoogleAnalytics = useCallback(async () => {
     return;
   }
 
-  parsed.ga4 = { ...(parsed.ga4 ?? {}), measurement_id: measurement };
+  parsed.ga4 = {
+    ...(parsed.ga4 ?? {}),
+    measurement_id: measurement,
+    property_id: Number(propertyIdRaw),
+  };
 
   const supabase = createClient();
   const { data: authData } = await supabase.auth.getUser();
@@ -365,7 +378,7 @@ const attachGoogleAnalytics = useCallback(async () => {
 
   setSiteInrcySettingsText(JSON.stringify(parsed, null, 2));
   setSiteInrcySettingsError(null);
-}, [ga4MeasurementId, siteInrcySettingsText]);
+}, [ga4MeasurementId, ga4PropertyId, siteInrcySettingsText]);
 
 
 const attachGoogleSearchConsole = useCallback(async () => {
@@ -519,8 +532,13 @@ const saveSiteWebSettings = useCallback(async () => {
 
 const attachWebsiteGoogleAnalytics = useCallback(async () => {
   const measurement = siteWebGa4MeasurementId.trim();
+  const propertyIdRaw = siteWebGa4PropertyId.trim();
   if (!measurement) {
     setSiteWebSettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX).");
+    return;
+  }
+  if (!propertyIdRaw || !/^\d+$/.test(propertyIdRaw)) {
+    setSiteWebSettingsError("Renseigne le Property ID GA4 (numérique, ex: 123456789).");
     return;
   }
 
@@ -533,10 +551,10 @@ const attachWebsiteGoogleAnalytics = useCallback(async () => {
   }
 
   parsed.url = siteWebUrl.trim();
-  parsed.ga4 = { ...(parsed.ga4 ?? {}), measurement_id: measurement };
+  parsed.ga4 = { ...(parsed.ga4 ?? {}), measurement_id: measurement, property_id: Number(propertyIdRaw) };
 
   await updateSiteWebSettings(parsed);
-}, [siteWebGa4MeasurementId, siteWebSettingsText, siteWebUrl, updateSiteWebSettings]);
+}, [siteWebGa4MeasurementId, siteWebGa4PropertyId, siteWebSettingsText, siteWebUrl, updateSiteWebSettings]);
 
 const attachWebsiteGoogleSearchConsole = useCallback(async () => {
   const property = siteWebGscProperty.trim();
@@ -987,7 +1005,7 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
   };
 
   // Carousel state (infinite loop)
-  const baseModules = fluxModules.filter((m) => m.key !== "stats");
+  const baseModules = fluxModules;
   const hasCarousel = baseModules.length > 1;
 
   // clones: [last, ...real, first]
@@ -1491,7 +1509,7 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
             )}
           </>
         ) : (
-          <div className={styles.moduleGrid}>{baseModules.map((m) => renderFluxBubble(m))}</div>
+          <div className={styles.moduleGrid}>{fluxModules.map((m) => renderFluxBubble(m))}</div>
         )}
 
 
@@ -1574,7 +1592,9 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
       </div>
       <div className={styles.loopSub}>Tous vos leads, enfin visibles</div>
       <div className={styles.loopActions}>
-        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button" onClick={() => router.push("/dashboard/stats")}>Voir les stats</button>
+        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button">
+          Voir les stats
+        </button>
       </div>
     </div>
 
@@ -1917,6 +1937,28 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
                 />
               </label>
 
+              <label style={{ display: "grid", gap: 8 }}>
+                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Property ID (numérique, ex: 123456789)</span>
+                <input
+                  value={ga4PropertyId}
+                  onChange={(e) => setGa4PropertyId(e.target.value)}
+                  placeholder="123456789"
+                  inputMode="numeric"
+                  style={{
+                    width: "100%",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "10px 12px",
+                    color: "white",
+                    outline: "none",
+                  }}
+                />
+                <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+                  Dans GA4: Admin → Paramètres de la propriété → Détails de la propriété → <b>ID de la propriété</b>.
+                </div>
+              </label>
+
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button
                   type="button"
@@ -2115,6 +2157,28 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
                     outline: "none",
                   }}
                 />
+              </label>
+
+              <label style={{ display: "grid", gap: 8 }}>
+                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Property ID (numérique, ex: 123456789)</span>
+                <input
+                  value={siteWebGa4PropertyId}
+                  onChange={(e) => setSiteWebGa4PropertyId(e.target.value)}
+                  placeholder="123456789"
+                  inputMode="numeric"
+                  style={{
+                    width: "100%",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "10px 12px",
+                    color: "white",
+                    outline: "none",
+                  }}
+                />
+                <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+                  Dans GA4: Admin → Paramètres de la propriété → Détails de la propriété → <b>ID de la propriété</b>.
+                </div>
               </label>
 
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
