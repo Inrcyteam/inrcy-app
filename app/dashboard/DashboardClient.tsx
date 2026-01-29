@@ -265,7 +265,7 @@ const loadSiteInrcy = useCallback(async () => {
   setSiteInrcySettingsError(null);
   setGa4MeasurementId((settingsObj as any)?.ga4?.measurement_id ?? "");
   setGa4PropertyId(String((settingsObj as any)?.ga4?.property_id ?? ""));
-  setGscProperty((settingsObj as any)?.gsc?.property ?? "");
+setGscProperty((settingsObj as any)?.gsc?.property ?? "");
 
   // ✅ Site web (stocké dans site_configs.settings.site_web)
   const siteWebObj = (settingsObj as any)?.site_web ?? {};
@@ -342,8 +342,9 @@ const attachGoogleAnalytics = useCallback(async () => {
     setSiteInrcySettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX).");
     return;
   }
+
   if (!propertyIdRaw || !/^\d+$/.test(propertyIdRaw)) {
-    setSiteInrcySettingsError("Renseigne le Property ID GA4 (numérique, ex: 123456789).");
+    setSiteInrcySettingsError("Renseigne un Property ID GA4 (numérique, ex: 123456789).");
     return;
   }
 
@@ -355,11 +356,7 @@ const attachGoogleAnalytics = useCallback(async () => {
     return;
   }
 
-  parsed.ga4 = {
-    ...(parsed.ga4 ?? {}),
-    measurement_id: measurement,
-    property_id: Number(propertyIdRaw),
-  };
+  parsed.ga4 = { ...(parsed.ga4 ?? {}), measurement_id: measurement, property_id: propertyIdRaw };
 
   const supabase = createClient();
   const { data: authData } = await supabase.auth.getUser();
@@ -415,6 +412,41 @@ const attachGoogleSearchConsole = useCallback(async () => {
 }, [gscProperty, siteInrcySettingsText]);
 
 
+
+
+const connectSiteInrcyGa4 = useCallback(() => {
+  if (siteInrcyOwnership !== "sold") {
+    setSiteInrcySettingsError("Connexion Google Analytics indisponible : mode rented ou aucun site iNrCy.");
+    return;
+  }
+  const measurement = ga4MeasurementId.trim();
+  const propertyIdRaw = ga4PropertyId.trim();
+  if (!measurement) {
+    setSiteInrcySettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX) avant de connecter.");
+    return;
+  }
+  if (!propertyIdRaw || !/^\d+$/.test(propertyIdRaw)) {
+    setSiteInrcySettingsError("Renseigne le Property ID GA4 (numérique) avant de connecter.");
+    return;
+  }
+  // L'OAuth stats est séparé de l'OAuth Gmail (mails).
+  window.location.href =
+    "/api/integrations/google-stats/start?source=site_inrcy&product=ga4&force=1";
+}, [siteInrcyOwnership, ga4MeasurementId, ga4PropertyId]);
+
+const connectSiteInrcyGsc = useCallback(() => {
+  if (siteInrcyOwnership !== "sold") {
+    setSiteInrcySettingsError("Connexion Search Console indisponible : mode rented ou aucun site iNrCy.");
+    return;
+  }
+  const property = gscProperty.trim();
+  if (!property) {
+    setSiteInrcySettingsError("Renseigne une propriété Search Console avant de connecter.");
+    return;
+  }
+  window.location.href =
+    "/api/integrations/google-stats/start?source=site_inrcy&product=gsc&force=1";
+}, [siteInrcyOwnership, gscProperty]);
 
 // =========================
 // ✅ Site web (indépendant)
@@ -537,8 +569,9 @@ const attachWebsiteGoogleAnalytics = useCallback(async () => {
     setSiteWebSettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX).");
     return;
   }
+
   if (!propertyIdRaw || !/^\d+$/.test(propertyIdRaw)) {
-    setSiteWebSettingsError("Renseigne le Property ID GA4 (numérique, ex: 123456789).");
+    setSiteWebSettingsError("Renseigne un Property ID GA4 (numérique, ex: 123456789).");
     return;
   }
 
@@ -551,7 +584,7 @@ const attachWebsiteGoogleAnalytics = useCallback(async () => {
   }
 
   parsed.url = siteWebUrl.trim();
-  parsed.ga4 = { ...(parsed.ga4 ?? {}), measurement_id: measurement, property_id: Number(propertyIdRaw) };
+  parsed.ga4 = { ...(parsed.ga4 ?? {}), measurement_id: measurement, property_id: propertyIdRaw };
 
   await updateSiteWebSettings(parsed);
 }, [siteWebGa4MeasurementId, siteWebGa4PropertyId, siteWebSettingsText, siteWebUrl, updateSiteWebSettings]);
@@ -579,73 +612,31 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
 
 
 
-// =========================
-// ✅ Connexion OAuth Google (GA4 + Search Console)
-// - ouvre le flux OAuth côté serveur (/api/integrations/google/start)
-// - ne s'exécute que si les IDs requis sont renseignés correctement
-// =========================
-const startGoogleOAuth = useCallback((source: string, product: string) => {
-  const qs = new URLSearchParams({ source, product });
-  // redirection "plein écran" pour éviter les popups bloquées
-  window.location.href = `/api/integrations/google/start?${qs.toString()}`;
-}, []);
-
-const connectSiteInrcyGa4 = useCallback(() => {
-  const measurement = ga4MeasurementId.trim();
-  const propertyIdRaw = ga4PropertyId.trim();
-
-  if (!measurement) {
-    setSiteInrcySettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX) avant de connecter Google Analytics.");
-    return;
-  }
-  if (!propertyIdRaw || !/^\d+$/.test(propertyIdRaw)) {
-    setSiteInrcySettingsError("Renseigne le Property ID GA4 (numérique) avant de connecter Google Analytics.");
-    return;
-  }
-
-  setSiteInrcySettingsError(null);
-  startGoogleOAuth("site_inrcy", "ga4");
-}, [ga4MeasurementId, ga4PropertyId, startGoogleOAuth]);
-
-const connectSiteInrcyGsc = useCallback(() => {
-  const property = gscProperty.trim();
-  if (!property) {
-    setSiteInrcySettingsError("Renseigne une propriété Search Console avant de connecter Google Search Console.");
-    return;
-  }
-
-  setSiteInrcySettingsError(null);
-  startGoogleOAuth("site_inrcy", "gsc");
-}, [gscProperty, startGoogleOAuth]);
 
 const connectSiteWebGa4 = useCallback(() => {
   const measurement = siteWebGa4MeasurementId.trim();
   const propertyIdRaw = siteWebGa4PropertyId.trim();
-
   if (!measurement) {
-    setSiteWebSettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX) avant de connecter Google Analytics.");
+    setSiteWebSettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX) avant de connecter.");
     return;
   }
   if (!propertyIdRaw || !/^\d+$/.test(propertyIdRaw)) {
-    setSiteWebSettingsError("Renseigne le Property ID GA4 (numérique) avant de connecter Google Analytics.");
+    setSiteWebSettingsError("Renseigne le Property ID GA4 (numérique) avant de connecter.");
     return;
   }
-
-  setSiteWebSettingsError(null);
-  startGoogleOAuth("site_web", "ga4");
-}, [siteWebGa4MeasurementId, siteWebGa4PropertyId, startGoogleOAuth]);
+  window.location.href =
+    "/api/integrations/google-stats/start?source=site_web&product=ga4&force=1";
+}, [siteWebGa4MeasurementId, siteWebGa4PropertyId]);
 
 const connectSiteWebGsc = useCallback(() => {
   const property = siteWebGscProperty.trim();
   if (!property) {
-    setSiteWebSettingsError("Renseigne une propriété Search Console avant de connecter Google Search Console.");
+    setSiteWebSettingsError("Renseigne une propriété Search Console avant de connecter.");
     return;
   }
-
-  setSiteWebSettingsError(null);
-  startGoogleOAuth("site_web", "gsc");
-}, [siteWebGscProperty, startGoogleOAuth]);
-
+  window.location.href =
+    "/api/integrations/google-stats/start?source=site_web&product=gsc&force=1";
+}, [siteWebGscProperty]);
 
   // ✅ AJOUT : profil incomplet -> mini pastille + tooltip
   const [profileIncomplete, setProfileIncomplete] = useState(false);
@@ -1660,7 +1651,7 @@ const connectSiteWebGsc = useCallback(() => {
       </div>
       <div className={styles.loopSub}>Tous vos leads, enfin visibles</div>
       <div className={styles.loopActions}>
-        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button">
+        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button" onClick={() => router.push("/dashboard/stats")}>
           Voir les stats
         </button>
       </div>
@@ -2005,13 +1996,14 @@ const connectSiteWebGsc = useCallback(() => {
                 />
               </label>
 
+
               <label style={{ display: "grid", gap: 8 }}>
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Property ID (numérique, ex: 123456789)</span>
                 <input
                   value={ga4PropertyId}
                   onChange={(e) => setGa4PropertyId(e.target.value)}
-                  placeholder="123456789"
                   inputMode="numeric"
+                  placeholder="123456789"
                   style={{
                     width: "100%",
                     borderRadius: 12,
@@ -2022,33 +2014,29 @@ const connectSiteWebGsc = useCallback(() => {
                     outline: "none",
                   }}
                 />
-                <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-                  Dans GA4: Admin → Paramètres de la propriété → Détails de la propriété → <b>ID de la propriété</b>.
-                </div>
               </label>
 
-                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-    <button
-      type="button"
-      className={`${styles.actionBtn} ${styles.connectBtn}`}
-      onClick={attachGoogleAnalytics}
-      disabled={siteInrcyOwnership !== "sold"}
-      title={siteInrcyOwnership !== "sold" ? "Configuration non autorisée (mode rent / aucun site)" : undefined}
-    >
-      Enregistrer
-    </button>
-
-    <button
-      type="button"
-      className={`${styles.actionBtn} ${styles.connectBtn}`}
-      onClick={connectSiteInrcyGa4}
-      disabled={siteInrcyOwnership !== "sold"}
-      title={siteInrcyOwnership !== "sold" ? "Configuration non autorisée (mode rent / aucun site)" : undefined}
-    >
-      Connecter Google Analytics
-    </button>
-  </div>
-</div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={attachGoogleAnalytics}
+                  disabled={siteInrcyOwnership !== "sold"}
+                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la configuration est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : undefined}
+                >
+                  Enregistrer
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={connectSiteInrcyGa4}
+                  disabled={siteInrcyOwnership !== "sold"}
+                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la connexion Google est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : undefined}
+                >
+                  Connecter Google Analytics
+                </button>
+              </div>
+            </div>
 
             <div
               style={{
@@ -2085,28 +2073,27 @@ const connectSiteWebGsc = useCallback(() => {
                 />
               </label>
 
-                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-    <button
-      type="button"
-      className={`${styles.actionBtn} ${styles.connectBtn}`}
-      onClick={attachGoogleSearchConsole}
-      disabled={siteInrcyOwnership !== "sold"}
-      title={siteInrcyOwnership !== "sold" ? "Configuration non autorisée (mode rent / aucun site)" : undefined}
-    >
-      Enregistrer
-    </button>
-
-    <button
-      type="button"
-      className={`${styles.actionBtn} ${styles.connectBtn}`}
-      onClick={connectSiteInrcyGsc}
-      disabled={siteInrcyOwnership !== "sold"}
-      title={siteInrcyOwnership !== "sold" ? "Configuration non autorisée (mode rent / aucun site)" : undefined}
-    >
-      Connecter Google Search Console
-    </button>
-  </div>
-</div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={attachGoogleSearchConsole}
+                  disabled={siteInrcyOwnership !== "sold"}
+                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la configuration est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : undefined}
+                >
+                  Enregistrer
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={connectSiteInrcyGsc}
+                  disabled={siteInrcyOwnership !== "sold"}
+                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la connexion Google est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : undefined}
+                >
+                  Connecter Google Search Console
+                </button>
+              </div>
+            </div>
 
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
@@ -2247,13 +2234,14 @@ const connectSiteWebGsc = useCallback(() => {
                 />
               </label>
 
+
               <label style={{ display: "grid", gap: 8 }}>
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Property ID (numérique, ex: 123456789)</span>
                 <input
                   value={siteWebGa4PropertyId}
                   onChange={(e) => setSiteWebGa4PropertyId(e.target.value)}
-                  placeholder="123456789"
                   inputMode="numeric"
+                  placeholder="123456789"
                   style={{
                     width: "100%",
                     borderRadius: 12,
@@ -2264,29 +2252,25 @@ const connectSiteWebGsc = useCallback(() => {
                     outline: "none",
                   }}
                 />
-                <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-                  Dans GA4: Admin → Paramètres de la propriété → Détails de la propriété → <b>ID de la propriété</b>.
-                </div>
               </label>
 
-                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-    <button
-      type="button"
-      className={`${styles.actionBtn} ${styles.connectBtn}`}
-      onClick={attachWebsiteGoogleAnalytics}
-    >
-      Enregistrer
-    </button>
-
-    <button
-      type="button"
-      className={`${styles.actionBtn} ${styles.connectBtn}`}
-      onClick={connectSiteWebGa4}
-    >
-      Connecter Google Analytics
-    </button>
-  </div>
-</div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={attachWebsiteGoogleAnalytics}
+                >
+                  Enregistrer
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={connectSiteWebGa4}
+                >
+                  Connecter Google Analytics
+                </button>
+              </div>
+            </div>
 
             <div
               style={{
@@ -2323,24 +2307,23 @@ const connectSiteWebGsc = useCallback(() => {
                 />
               </label>
 
-                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-    <button
-      type="button"
-      className={`${styles.actionBtn} ${styles.connectBtn}`}
-      onClick={attachWebsiteGoogleSearchConsole}
-    >
-      Enregistrer
-    </button>
-
-    <button
-      type="button"
-      className={`${styles.actionBtn} ${styles.connectBtn}`}
-      onClick={connectSiteWebGsc}
-    >
-      Connecter Google Search Console
-    </button>
-  </div>
-</div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={attachWebsiteGoogleSearchConsole}
+                >
+                  Enregistrer
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  onClick={connectSiteWebGsc}
+                >
+                  Connecter Google Search Console
+                </button>
+              </div>
+            </div>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
               <button
