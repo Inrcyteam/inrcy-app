@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import styles from "./stats.module.css";
 
 type Overview = {
@@ -38,25 +39,25 @@ function fmtSeconds(s: number) {
 }
 
 export default function StatsClient() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [days, setDays] = useState(28);
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const connectedBadges = useMemo(() => {
-    if (!data?.sources) return [];
-    const out: Array<{ label: string; ok: boolean }> = [];
-    const s = data.sources;
-    out.push({ label: "Site iNrCy · GA4", ok: !!s?.site_inrcy?.connected?.ga4 });
-    out.push({ label: "Site iNrCy · GSC", ok: !!s?.site_inrcy?.connected?.gsc });
-    out.push({ label: "Site Web · GA4", ok: !!s?.site_web?.connected?.ga4 });
-    out.push({ label: "Site Web · GSC", ok: !!s?.site_web?.connected?.gsc });
-    out.push({ label: "GMB", ok: false });
-    out.push({ label: "Facebook", ok: false });
-    return out;
+    const s = data?.sources;
+    return [
+      { label: "Site iNrCy · GA4", ok: !!s?.site_inrcy?.connected?.ga4 },
+      { label: "Site iNrCy · GSC", ok: !!s?.site_inrcy?.connected?.gsc },
+      { label: "Site Web · GA4", ok: !!s?.site_web?.connected?.ga4 },
+      { label: "Site Web · GSC", ok: !!s?.site_web?.connected?.gsc },
+      { label: "GMB", ok: false },
+      { label: "Facebook", ok: false },
+    ];
   }, [data]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -70,32 +71,51 @@ export default function StatsClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [days]);
+
+  // Affiche les stats directement à l’ouverture du module
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
-    <main className={styles.wrap}>
+    <main className={styles.shell}>
       <header className={styles.header}>
-        <div className={styles.titleBlock}>
-          <h1 className={styles.h1}>Statistiques</h1>
-          <p className={styles.subtitle}>
+        <div className={styles.titleWrap}>
+          <img
+            src="/inrstats-logo.png"
+            alt="iNr'Stats"
+            className={styles.logo}
+          />
+          <p className={styles.subInline}>
             Un seul écran. Les chiffres qui comptent. Agrégé sur vos outils connectés.
           </p>
         </div>
 
-        <div className={styles.actions}>
-          <div className={styles.range}>
-            <span className={styles.rangeLabel}>Période</span>
-            <select className={styles.select} value={days} onChange={(e) => setDays(Number(e.target.value))}>
-              <option value={7}>7 jours</option>
-              <option value={14}>14 jours</option>
-              <option value={28}>28 jours</option>
-              <option value={60}>60 jours</option>
-              <option value={90}>90 jours</option>
-            </select>
+        <div className={styles.headerRight}>
+          <div className={styles.actions}>
+            <div className={styles.range}>
+              <span className={styles.rangeLabel}>Période</span>
+              <select className={styles.select} value={days} onChange={(e) => setDays(Number(e.target.value))}>
+                <option value={7}>7 jours</option>
+                <option value={14}>14 jours</option>
+                <option value={28}>28 jours</option>
+                <option value={60}>60 jours</option>
+                <option value={90}>90 jours</option>
+              </select>
+            </div>
+
+            <button className={styles.primaryBtn} onClick={load} disabled={loading}>
+              {loading ? "Chargement…" : "Rafraîchir"}
+            </button>
           </div>
 
-          <button className={styles.primaryBtn} onClick={load} disabled={loading}>
-            {loading ? "Chargement…" : "Voir les stats"}
+          <button
+            className={styles.backBtn}
+            type="button"
+            onClick={() => router.push("/dashboard")}
+          >
+            Fermer
           </button>
         </div>
       </header>
@@ -116,10 +136,10 @@ export default function StatsClient() {
           <div className={styles.emptyCard}>
             <div className={styles.emptyTitle}>Prêt quand vous l’êtes.</div>
             <div className={styles.emptyText}>
-              Cliquez sur <strong>Voir les stats</strong> pour agréger vos données (site iNrCy, site web…).
+              Connectez vos outils (GA4 / Search Console…) pour afficher vos chiffres ici.
             </div>
             <div className={styles.emptyHint}>
-              Les connexions se font dans <strong>Configurer</strong> des modules (sauf Site iNrCy en mode rent).
+              Puis cliquez sur <strong>Rafraîchir</strong> (en haut à droite).
             </div>
           </div>
         </div>
