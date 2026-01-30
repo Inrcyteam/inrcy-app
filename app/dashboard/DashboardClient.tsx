@@ -49,6 +49,38 @@ function statusClass(s: ModuleStatus) {
   return styles.badgeSoon;
 }
 
+function SaveIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M7 3h10l3 3v15a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 3v6h10V3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 21v-8h6v8"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+
 const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
   site_inrcy: { src: "/icons/inrcy.png", alt: "iNrCy" },
   site_web: { src: "/icons/site-web.jpg", alt: "Site web" },
@@ -186,6 +218,11 @@ const [siteInrcyUrl, setSiteInrcyUrl] = useState<string>("");
 const [siteInrcyContactEmail, setSiteInrcyContactEmail] = useState<string>("");
 const [siteInrcySettingsText, setSiteInrcySettingsText] = useState<string>("{}");
 const [siteInrcySettingsError, setSiteInrcySettingsError] = useState<string | null>(null);
+  const [siteInrcyGa4Notice, setSiteInrcyGa4Notice] = useState<string | null>(null);
+  const [siteInrcyGscNotice, setSiteInrcyGscNotice] = useState<string | null>(null);
+  const [siteWebGa4Notice, setSiteWebGa4Notice] = useState<string | null>(null);
+  const [siteWebGscNotice, setSiteWebGscNotice] = useState<string | null>(null);
+
 const [ga4MeasurementId, setGa4MeasurementId] = useState<string>("");
 const [ga4PropertyId, setGa4PropertyId] = useState<string>("");
 
@@ -374,6 +411,9 @@ const attachGoogleAnalytics = useCallback(async () => {
   }
 
   setSiteInrcySettingsText(JSON.stringify(parsed, null, 2));
+  setSiteInrcyGa4Notice("✅ Enregistrement GA4 validé");
+  window.setTimeout(() => setSiteInrcyGa4Notice(null), 2500);
+
   setSiteInrcySettingsError(null);
 }, [ga4MeasurementId, ga4PropertyId, siteInrcySettingsText]);
 
@@ -408,6 +448,9 @@ const attachGoogleSearchConsole = useCallback(async () => {
   }
 
   setSiteInrcySettingsText(JSON.stringify(parsed, null, 2));
+  setSiteInrcyGscNotice("✅ Enregistrement Search Console validé");
+  window.setTimeout(() => setSiteInrcyGscNotice(null), 2500);
+
   setSiteInrcySettingsError(null);
 }, [gscProperty, siteInrcySettingsText]);
 
@@ -447,6 +490,23 @@ const connectSiteInrcyGsc = useCallback(() => {
   window.location.href =
     "/api/integrations/google-stats/start?source=site_inrcy&product=gsc&force=1";
 }, [siteInrcyOwnership, gscProperty]);
+
+
+const disconnectSiteInrcyGa4 = useCallback(() => {
+  if (siteInrcyOwnership !== "sold") {
+    setSiteInrcySettingsError("Déconnexion Google Analytics indisponible : mode rented ou aucun site iNrCy.");
+    return;
+  }
+  window.location.href = "/api/integrations/google-stats/disconnect?source=site_inrcy&product=ga4";
+}, [siteInrcyOwnership]);
+
+const disconnectSiteInrcyGsc = useCallback(() => {
+  if (siteInrcyOwnership !== "sold") {
+    setSiteInrcySettingsError("Déconnexion Search Console indisponible : mode rented ou aucun site iNrCy.");
+    return;
+  }
+  window.location.href = "/api/integrations/google-stats/disconnect?source=site_inrcy&product=gsc";
+}, [siteInrcyOwnership]);
 
 // =========================
 // ✅ Site web (indépendant)
@@ -560,6 +620,9 @@ const saveSiteWebSettings = useCallback(async () => {
   parsed.url = siteWebUrl.trim();
 
   await updateSiteWebSettings(parsed);
+  setSiteWebGa4Notice("✅ Enregistrement GA4 validé");
+  window.setTimeout(() => setSiteWebGa4Notice(null), 2500);
+
 }, [siteWebSettingsText, siteWebUrl, updateSiteWebSettings]);
 
 const attachWebsiteGoogleAnalytics = useCallback(async () => {
@@ -587,6 +650,9 @@ const attachWebsiteGoogleAnalytics = useCallback(async () => {
   parsed.ga4 = { ...(parsed.ga4 ?? {}), measurement_id: measurement, property_id: propertyIdRaw };
 
   await updateSiteWebSettings(parsed);
+  setSiteWebGscNotice("✅ Enregistrement Search Console validé");
+  window.setTimeout(() => setSiteWebGscNotice(null), 2500);
+
 }, [siteWebGa4MeasurementId, siteWebGa4PropertyId, siteWebSettingsText, siteWebUrl, updateSiteWebSettings]);
 
 const attachWebsiteGoogleSearchConsole = useCallback(async () => {
@@ -637,6 +703,15 @@ const connectSiteWebGsc = useCallback(() => {
   window.location.href =
     "/api/integrations/google-stats/start?source=site_web&product=gsc&force=1";
 }, [siteWebGscProperty]);
+
+
+const disconnectSiteWebGa4 = useCallback(() => {
+  window.location.href = "/api/integrations/google-stats/disconnect?source=site_web&product=ga4";
+}, []);
+
+const disconnectSiteWebGsc = useCallback(() => {
+  window.location.href = "/api/integrations/google-stats/disconnect?source=site_web&product=gsc";
+}, []);
 
   // ✅ AJOUT : profil incomplet -> mini pastille + tooltip
   const [profileIncomplete, setProfileIncomplete] = useState(false);
@@ -1926,7 +2001,19 @@ const connectSiteWebGsc = useCallback(() => {
                   outline: "none",
                 }}
               />
-            </label>
+            
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+                <a
+                  href={siteInrcyUrl || "#"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`${styles.actionBtn} ${styles.viewBtn}`}
+                  style={{ pointerEvents: siteInrcyUrl ? "auto" : "none", opacity: siteInrcyUrl ? 1 : 0.5 }}
+                >
+                  Voir le site
+                </a>
+              </div>
+</label>
 
             <label style={{ display: "grid", gap: 8 }}>
               <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
@@ -2019,12 +2106,13 @@ const connectSiteWebGsc = useCallback(() => {
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  className={`${styles.actionBtn} ${styles.iconBtn}`}
                   onClick={attachGoogleAnalytics}
                   disabled={siteInrcyOwnership !== "sold"}
-                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la configuration est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : undefined}
+                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la configuration est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : "Enregistrer (GA4)"}
+                  aria-label="Enregistrer (GA4)"
                 >
-                  Enregistrer
+                  <SaveIcon />
                 </button>
                 <button
                   type="button"
@@ -2035,8 +2123,19 @@ const connectSiteWebGsc = useCallback(() => {
                 >
                   Connecter Google Analytics
                 </button>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                  onClick={disconnectSiteInrcyGa4}
+                  disabled={siteInrcyOwnership !== "sold"}
+                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la déconnexion est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : "Déconnecter (GA4)"}
+                >
+                  Déconnecter
+                </button>
               </div>
             </div>
+            {siteInrcyGa4Notice && <div className={styles.successNote}>{siteInrcyGa4Notice}</div>}
+
 
             <div
               style={{
@@ -2076,12 +2175,13 @@ const connectSiteWebGsc = useCallback(() => {
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  className={`${styles.actionBtn} ${styles.iconBtn}`}
                   onClick={attachGoogleSearchConsole}
                   disabled={siteInrcyOwnership !== "sold"}
-                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la configuration est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : undefined}
+                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la configuration est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : "Enregistrer (GSC)"}
+                  aria-label="Enregistrer (GSC)"
                 >
-                  Enregistrer
+                  <SaveIcon />
                 </button>
                 <button
                   type="button"
@@ -2092,8 +2192,19 @@ const connectSiteWebGsc = useCallback(() => {
                 >
                   Connecter Google Search Console
                 </button>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                  onClick={disconnectSiteInrcyGsc}
+                  disabled={siteInrcyOwnership !== "sold"}
+                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la déconnexion est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : "Déconnecter (GSC)"}
+                >
+                  Déconnecter
+                </button>
               </div>
             </div>
+            {siteInrcyGscNotice && <div className={styles.successNote}>{siteInrcyGscNotice}</div>}
+
 
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
@@ -2172,7 +2283,19 @@ const connectSiteWebGsc = useCallback(() => {
               <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
                 Le bouton <strong>Voir le site</strong> de la bulle utilisera ce lien.
               </div>
-            </label>
+            
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+                <a
+                  href={siteWebUrl || "#"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`${styles.actionBtn} ${styles.viewBtn}`}
+                  style={{ pointerEvents: siteWebUrl ? "auto" : "none", opacity: siteWebUrl ? 1 : 0.5 }}
+                >
+                  Voir le site
+                </a>
+              </div>
+</label>
 
             <label style={{ display: "grid", gap: 8 }}>
               <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
@@ -2257,10 +2380,12 @@ const connectSiteWebGsc = useCallback(() => {
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  className={`${styles.actionBtn} ${styles.iconBtn}`}
                   onClick={attachWebsiteGoogleAnalytics}
+                  title="Enregistrer (GA4)"
+                  aria-label="Enregistrer (GA4)"
                 >
-                  Enregistrer
+                  <SaveIcon />
                 </button>
                 <button
                   type="button"
@@ -2269,8 +2394,18 @@ const connectSiteWebGsc = useCallback(() => {
                 >
                   Connecter Google Analytics
                 </button>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                  onClick={disconnectSiteWebGa4}
+                  title="Déconnecter (GA4)"
+                >
+                  Déconnecter
+                </button>
               </div>
             </div>
+            {siteWebGa4Notice && <div className={styles.successNote}>{siteWebGa4Notice}</div>}
+
 
             <div
               style={{
@@ -2310,10 +2445,12 @@ const connectSiteWebGsc = useCallback(() => {
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  className={`${styles.actionBtn} ${styles.connectBtn}`}
+                  className={`${styles.actionBtn} ${styles.iconBtn}`}
                   onClick={attachWebsiteGoogleSearchConsole}
+                  title="Enregistrer (GSC)"
+                  aria-label="Enregistrer (GSC)"
                 >
-                  Enregistrer
+                  <SaveIcon />
                 </button>
                 <button
                   type="button"
@@ -2322,8 +2459,18 @@ const connectSiteWebGsc = useCallback(() => {
                 >
                   Connecter Google Search Console
                 </button>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                  onClick={disconnectSiteWebGsc}
+                  title="Déconnecter (GSC)"
+                >
+                  Déconnecter
+                </button>
               </div>
             </div>
+            {siteWebGscNotice && <div className={styles.successNote}>{siteWebGscNotice}</div>}
+
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
               <button
