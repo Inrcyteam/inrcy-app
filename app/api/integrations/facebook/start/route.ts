@@ -1,0 +1,36 @@
+import { NextResponse } from "next/server";
+
+export async function GET(request: Request) {
+  const appId = process.env.FACEBOOK_APP_ID;
+  const redirectFromEnv = process.env.FACEBOOK_REDIRECT_URI;
+
+  const origin = new URL(request.url).origin;
+  const redirectUri = redirectFromEnv || `${origin}/api/integrations/facebook/callback`;
+
+  if (!appId) {
+    return NextResponse.json({ error: "Missing FACEBOOK_APP_ID" }, { status: 500 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const returnTo = searchParams.get("returnTo") || "/dashboard?panel=facebook";
+
+  const state = Buffer.from(JSON.stringify({ returnTo })).toString("base64url");
+
+  const params = new URLSearchParams({
+    client_id: appId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    state,
+    // NOTE: Facebook expects comma-separated scopes.
+    scope: [
+      "public_profile",
+      "email",
+      "pages_show_list",
+      "pages_read_engagement",
+      "read_insights",
+    ].join(","),
+  });
+
+  const url = `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
+  return NextResponse.redirect(url);
+}

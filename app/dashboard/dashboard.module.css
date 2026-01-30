@@ -3306,3 +3306,33 @@ transform: scale(1.50);
 .viewBtn{
   opacity: 0.95;
 }
+
+/* === Drawer blocks (title + status aligned) === */
+.blockHeaderRow{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.blockTitle{
+  color: rgba(255,255,255,0.92);
+  font-weight: 650;
+}
+
+.blockSub{
+  margin-top: 6px;
+  color: rgba(255,255,255,0.65);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.resetBtn{
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.10);
+}
+
+.resetBtn:hover{
+  border-color: rgba(248, 113, 113, 0.50);
+  background: rgba(248, 113, 113, 0.16);
+}
