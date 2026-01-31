@@ -1423,7 +1423,6 @@ const singleMoveToSpam = async () => {
             >
               <div className={styles.sheetHandle} />
               <div className={styles.sheetTitleRow}>
-                <div className={styles.sheetTitle}>Actions</div>
                 <button className={styles.sheetClose} type="button" onClick={() => setListActionSheetOpen(false)} aria-label="Fermer">
                   ✕
                 </button>
@@ -1498,7 +1497,6 @@ const singleMoveToSpam = async () => {
             >
               <div className={styles.sheetHandle} />
               <div className={styles.sheetTitleRow}>
-                <div className={styles.sheetTitle}>Actions</div>
                 <button className={styles.sheetClose} type="button" onClick={() => setActionSheetOpen(false)} aria-label="Fermer">
                   ✕
                 </button>
@@ -1679,10 +1677,6 @@ const singleMoveToSpam = async () => {
           {/* ACTION plein écran (au double-clic) */}
           {showCockpit && (
             <section className={styles.card}>
-              <div className={styles.cardHeader}>
-                <div className={styles.cardTitle}>ACTION</div>
-              </div>
-
               <div className={`${styles.scrollArea} ${styles.scrollAreaAction}`}>
                 <div style={{ minHeight: "100%" }}>
                   {!selected ? (
@@ -1708,51 +1702,51 @@ const singleMoveToSpam = async () => {
                     </div>
                   ) : (
                     <div className={styles.reader}>
+                      {/* ✅ Header compact (2 lignes max) */}
+                      <div className={styles.readerHeader}>
+                        <div className={styles.readerSubject}>{selected.subject}</div>
 
-<div className={styles.readerTitle}>
-  <div className={styles.readerH}>{selected.subject}</div>
+                        <div className={styles.readerInfoRow}>
+                          <span className={badgeClass(selected.source)}>{selected.source}</span>
 
-  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-    <span className={badgeClass(selected.source)}>{selected.source}</span>
+                          <span className={styles.readerInfoText} title={`${selected.from} • ${selected.dateLabel}`}>
+                            <b style={{ color: "rgba(255,255,255,0.90)" }}>{selected.from}</b> • {selected.dateLabel}
+                          </span>
 
-    {/* Navigation dans la liste visible (Option A) */}
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <button
-        type="button"
-        className={styles.iconBtn}
-        title="Message précédent"
-        onClick={() => {
-          const idx = filteredMessages.findIndex((x) => x.id === selected.id);
-          if (idx > 0) onSelectMessage(filteredMessages[idx - 1].id);
-        }}
-        disabled={filteredMessages.findIndex((x) => x.id === selected.id) <= 0}
-      >
-        ←
-      </button>
-      <button
-        type="button"
-        className={styles.iconBtn}
-        title="Message suivant"
-        onClick={() => {
-          const idx = filteredMessages.findIndex((x) => x.id === selected.id);
-          if (idx >= 0 && idx < filteredMessages.length - 1)
-            onSelectMessage(filteredMessages[idx + 1].id);
-        }}
-        disabled={
-          (() => {
-            const idx = filteredMessages.findIndex((x) => x.id === selected.id);
-            return idx < 0 || idx >= filteredMessages.length - 1;
-          })()
-        }
-      >
-        →
-      </button>
-    </div>
-  </div>
-</div>
-<div className={styles.readerMeta}>
-                        De <b style={{ color: "rgba(255,255,255,0.90)" }}>{selected.from}</b> •{" "}
-                        {selected.dateLabel}
+                          {/* Navigation dans la liste visible */}
+                          <div className={styles.readerNav}>
+                            <button
+                              type="button"
+                              className={styles.iconBtn}
+                              title="Message précédent"
+                              onClick={() => {
+                                const idx = filteredMessages.findIndex((x) => x.id === selected.id);
+                                if (idx > 0) onSelectMessage(filteredMessages[idx - 1].id);
+                              }}
+                              disabled={filteredMessages.findIndex((x) => x.id === selected.id) <= 0}
+                            >
+                              ←
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.iconBtn}
+                              title="Message suivant"
+                              onClick={() => {
+                                const idx = filteredMessages.findIndex((x) => x.id === selected.id);
+                                if (idx >= 0 && idx < filteredMessages.length - 1)
+                                  onSelectMessage(filteredMessages[idx + 1].id);
+                              }}
+                              disabled={
+                                (() => {
+                                  const idx = filteredMessages.findIndex((x) => x.id === selected.id);
+                                  return idx < 0 || idx >= filteredMessages.length - 1;
+                                })()
+                              }
+                            >
+                              →
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
                       <div className={`${styles.actionStack} ${styles.actionFixedWidth}`}> 
@@ -2060,10 +2054,6 @@ const singleMoveToSpam = async () => {
           {/* Colonne droite: messages (LISTE) */}
           {showMessages && (
             <section className={styles.card}>
-              <div className={styles.cardHeader}>
-                <div className={styles.cardTitle}>Messages</div>
-              </div>
-
               {/* Mobile premium search (sticky) */}
               {isMobile && viewMode === "list" && (
                 <div className={styles.mobileSearchSticky}>
