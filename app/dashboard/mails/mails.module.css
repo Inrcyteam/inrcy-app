@@ -188,6 +188,12 @@
   .nav {
     padding: 10px;
   }
+
+  /* Mobile: don't reserve desktop scrollbar space (causes weird widths/overflows) */
+  .scrollAreaMessages .list,
+  .scrollAreaMessages .itemRow {
+    padding-right: 0;
+  }
 }
 
 @media (max-width: 420px) {
@@ -2435,6 +2441,10 @@ width: 100%;
   overflow: hidden;
   overflow-x: hidden;
 }
+.swipeRowActive{
+  /* Slight lift while swiping */
+  box-shadow: 0 16px 40px rgba(0,0,0,0.26);
+}
 .swipeRowEnabled{ touch-action: pan-y; }
 .swipeBgLeft, .swipeBgRight{
   position:absolute;
@@ -2446,6 +2456,9 @@ width: 100%;
   padding: 0 14px;
   font-weight: 950;
   letter-spacing: -.2px;
+  /* Keep backgrounds strictly behind the foreground row */
+  z-index: 0;
+  pointer-events: none;
 }
 .swipeBgLeft{
   left:0;
@@ -2461,5 +2474,11 @@ width: 100%;
 }
 .swipeBgIcon{ font-size: 18px; }
 .swipeBgText{ opacity: .92; }
-.swipeFg{ will-change: transform; }
+.swipeFg{
+  /* Foreground must fully cover the background until the user swipes */
+  position: relative;
+  z-index: 1;
+  background: rgba(10, 12, 26, 0.90);
+  will-change: transform;
+}
 .swipeAnimating{ transition: transform 220ms cubic-bezier(.2,.9,.2,1); }

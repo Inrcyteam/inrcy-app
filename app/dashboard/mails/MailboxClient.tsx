@@ -2363,19 +2363,23 @@ const singleMoveToSpam = async () => {
                         key={m.id}
                         className={`${styles.swipeRow} ${swipeEnabled ? styles.swipeRowEnabled : ""} ${dx !== 0 ? styles.swipeRowActive : ""}`}
                       >
-                        {/* Swipe backgrounds */}
-                        <div className={styles.swipeBgLeft} aria-hidden="true">
-                          <div className={styles.swipeBgIcon}>⭐</div>
-                          <div className={styles.swipeBgText}>{isImportantMessage(m) ? "Retirer" : "Important"}</div>
-                        </div>
-                        <div className={styles.swipeBgRight} aria-hidden="true">
-                          <div className={styles.swipeBgIcon}>🗑️</div>
-                          <div className={styles.swipeBgText}>Supprimer</div>
-                        </div>
+                        {/* Swipe backgrounds (rendered only when swipe is enabled to avoid overlay) */}
+                        {swipeEnabled && (
+                          <>
+                            <div className={styles.swipeBgLeft} aria-hidden="true">
+                              <div className={styles.swipeBgIcon}>⭐</div>
+                              <div className={styles.swipeBgText}>{isImportantMessage(m) ? "Retirer" : "Important"}</div>
+                            </div>
+                            <div className={styles.swipeBgRight} aria-hidden="true">
+                              <div className={styles.swipeBgIcon}>🗑️</div>
+                              <div className={styles.swipeBgText}>Supprimer</div>
+                            </div>
+                          </>
+                        )}
 
                         {/* Foreground */}
                         <div
-                          className={`${styles.itemRow} ${active ? styles.itemRowActive : ""} ${checked ? styles.itemRowSelected : ""} ${styles.swipeFg} ${animClass}`}
+                          className={`${styles.itemRow} ${active ? styles.itemRowActive : ""} ${checked ? styles.itemRowSelected : ""} ${swipeEnabled ? styles.swipeFg : ""} ${animClass}`}
                           style={swipeEnabled ? ({ transform: `translateX(${dx}px)` } as any) : undefined}
                         >
                         <label
