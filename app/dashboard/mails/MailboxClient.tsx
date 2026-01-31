@@ -52,6 +52,9 @@ const FOLDERS: { key: Folder; label: string }[] = [
   { key: "trash", label: "Corbeille" },
 ];
 
+
+const SOURCES: Source[] = ["Gmail", "Outlook", "OVH", "Messenger"];
+
 function badgeClass(source: Source) {
   if (source === "Messenger") return `${styles.badge} ${styles.badgeMessenger}`;
   if (source === "Houzz") return `${styles.badge} ${styles.badgeHouzz}`;
@@ -142,8 +145,23 @@ export default function MailboxClient() {
   const [replyFiles, setReplyFiles] = useState<File[]>([]);
 
   const [mobilePane, setMobilePane] = useState<MobilePane>("messages");
+  const [navOpen, setNavOpen] = useState(false);
+  const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedHtml, setSelectedHtml] = useState<string | null>(null);
+
+  // ✅ Mobile swipe actions (premium)
+  const [swipeState, setSwipeState] = useState<{ id: string | null; dx: number; anim: boolean }>(
+    { id: null, dx: 0, anim: false }
+  );
+  const swipeRef = useRef<{
+    id: string | null;
+    startX: number;
+    startY: number;
+    dragging: boolean;
+    swiped: boolean;
+    pointerId: number | null;
+  }>({ id: null, startX: 0, startY: 0, dragging: false, swiped: false, pointerId: null });
 
   const splitName = (full: string) => {
     const t = (full || "").trim();
@@ -245,6 +263,21 @@ const matchesFolder = (m: MessageItem, f: Folder) => {
 };
 
 const folderCount = (f: Folder) => messages.filter((m) => matchesFolder(m, f)).length;
+
+// Drawer badge counts (respect source filter for a coherent UX)
+const counts = useMemo(() => {
+  const pool = messages.filter((m) => (sourceFilter === "ALL" ? true : m.source === sourceFilter));
+  const countFor = (f: Folder) => pool.filter((m) => matchesFolder(m, f)).length;
+
+  return {
+    inbox: countFor("inbox"),
+    important: countFor("important"),
+    sent: countFor("sent"),
+    drafts: countFor("drafts"),
+    spam: countFor("spam"),
+    trash: countFor("trash"),
+  } as Record<Folder, number>;
+}, [messages, sourceFilter]);
 
 const fetchGmailFolder = async (f: Folder) => {
   // Important is derived from Inbox + IMPORTANT label
@@ -724,9 +757,17 @@ const onSelectMessage = (id: string) => {
     trash: "Corbeille",
   };
 
-  const showFolders = viewMode === "list" && (!isMobile || mobilePane === "folders");
-  const showCockpit = viewMode === "action" && (!isMobile || mobilePane === "cockpit");
-  const showMessages = viewMode === "list" && (!isMobile || mobilePane === "messages");
+  const showFolders = viewMode === "list" && !isMobile;
+  const showCockpit = viewMode === "action";
+  const showMessages = viewMode === "list";
+
+  // Mobile: close overlays when leaving mobile layout
+  useEffect(() => {
+    if (!isMobile) {
+      setNavOpen(false);
+      setActionSheetOpen(false);
+    }
+  }, [isMobile]);
 
   // ✅ Compose state (local)
   const [composeTo, setComposeTo] = useState("");
@@ -1167,18 +1208,81 @@ const singleMoveToSpam = async () => {
     notify("Reprendre le brouillon");
   };
 
+  // ✅ Swipe helpers (operate on a specific message id)
+  const isImportantMessage = (m?: MessageItem | null) => {
+    if (!m) return false;
+    if (m.source === "Gmail") return (m.labelIds || []).includes("IMPORTANT");
+    return m.folder === "important";
+  };
+
+  const swipeReset = () => {
+    setSwipeState((prev) => ({ id: prev.id, dx: 0, anim: true }));
+    window.setTimeout(() => setSwipeState({ id: null, dx: 0, anim: false }), 220);
+  };
+
+  const swipeDeleteToTrash = async (id: string) => {
+    setSelectedId(id);
+    await moveToTrashMany([id]);
+    notify("Supprimé → Corbeille");
+    swipeReset();
+  };
+
+  const swipeToggleImportant = async (id: string) => {
+    const m = messages.find((x) => x.id === id);
+    if (!m) return;
+    setSelectedId(id);
+    if (isImportantMessage(m)) {
+      await unImportantMany([id]);
+      notify("Retiré des Importants");
+    } else {
+      await makeImportantMany([id]);
+      notify("Ajouté aux Importants");
+    }
+    swipeReset();
+  };
+
   return (
     <div className={styles.page}>
       <div className={styles.wrap}>
         {/* Header */}
         <div className={styles.topbar}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <img
-              src="/inrbox-logo.png"
-              alt="iNr’Box"
-              style={{ width: 154, height: 64, display: "block" }}
-            />
-          </div>
+          {!isMobile ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <img
+                src="/inrbox-logo.png"
+                alt="iNr’Box"
+                style={{ width: 154, height: 64, display: "block" }}
+              />
+            </div>
+          ) : (
+            <div className={styles.mobileTopbarLeft}>
+              {viewMode === "action" ? (
+                <button
+                  className={styles.mobileNavBtn}
+                  type="button"
+                  onClick={closeAction}
+                  aria-label="Retour"
+                  title="Retour"
+                >
+                  ←
+                </button>
+              ) : (
+                <button
+                  className={styles.mobileNavBtn}
+                  type="button"
+                  onClick={() => setNavOpen(true)}
+                  aria-label="Menu"
+                  title="Menu"
+                >
+                  ☰
+                </button>
+              )}
+
+              <div className={styles.mobileTopbarTitle}>
+                {viewMode === "action" ? "Action" : titleByFolder[folder]}
+              </div>
+            </div>
+          )}
 
           <div className={styles.actions}>
             {viewMode === "action" && !isMobile && (
@@ -1207,69 +1311,274 @@ const singleMoveToSpam = async () => {
                 </Link>
               </>
             ) : (
-              <div className={styles.mobileHeaderIcons}>
+              <div className={styles.mobileTopbarRight}>
                 <button
-                  className={styles.iconOnly}
-                  title="Réglages"
-                  type="button"
-                  onClick={() => setSettingsOpen(true)}
-                >
-                  ⚙️
-                </button>
-                <button
-                  className={styles.iconOnlyPrimary}
+                  className={styles.mobileIconBtnPrimary}
                   title="Écrire"
                   type="button"
                   onClick={openComposeBlank}
                 >
                   ✍️
                 </button>
-                <Link href="/dashboard" className={styles.iconOnly} title="Fermer">
-                  ✖️
-                </Link>
+
+                {viewMode === "action" ? (
+                  <button
+                    className={styles.mobileActionsPill}
+                    type="button"
+                    onClick={() => setActionSheetOpen(true)}
+                    title="Ouvrir les actions"
+                  >
+                    ☰ Actions
+                  </button>
+                ) : (
+                  <button
+                    className={styles.mobileIconBtn}
+                    title="Recherche (bientôt)"
+                    type="button"
+                    onClick={() => notify("Recherche bientôt disponible")}
+                  >
+                    🔎
+                  </button>
+                )}
               </div>
             )}
           </div>
         </div>
 
-        {/* Mobile panes */}
-        <div className={styles.mobilePanes}>
-          {viewMode === "list" ? (
-            <>
-              <button
-                className={`${styles.paneBtn} ${mobilePane === "folders" ? styles.paneBtnActive : ""}`}
-                onClick={() => setMobilePane("folders")}
-                type="button"
-              >
-                Dossiers
-              </button>
-              <button
-                className={`${styles.paneBtn} ${mobilePane === "messages" ? styles.paneBtnActive : ""}`}
-                onClick={() => setMobilePane("messages")}
-                type="button"
-              >
-                Messages
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                className={styles.paneBtn}
-                onClick={closeAction}
-                type="button"
-              >
-                ← Retour
-              </button>
-              <button
-                className={`${styles.paneBtn} ${styles.paneBtnActive}`}
-                onClick={() => setMobilePane("cockpit")}
-                type="button"
-              >
-                Action
-              </button>
-            </>
-          )}
-        </div>
+        {/* Mobile navigation drawer */}
+        {isMobile && (
+          <>
+            <div
+              className={`${styles.mobileOverlay} ${navOpen ? styles.mobileOverlayOpen : ""}`}
+              onClick={() => setNavOpen(false)}
+              aria-hidden="true"
+            />
+            <aside
+              className={`${styles.mobileDrawer} ${navOpen ? styles.mobileDrawerOpen : ""}`}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menu iNr’Box"
+            >
+              <div className={styles.mobileDrawerHeader}>
+                <div className={styles.mobileDrawerBrand}>iNr’Box</div>
+                <button
+                  className={styles.mobileDrawerClose}
+                  type="button"
+                  onClick={() => setNavOpen(false)}
+                  aria-label="Fermer"
+                  title="Fermer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className={styles.mobileDrawerSection}>
+                <div className={styles.mobileDrawerSectionTitle}>Dossiers</div>
+                <div className={styles.mobileDrawerList}>
+                  {FOLDERS.map((f) => {
+                    const active = f.key === folder;
+                    return (
+                      <button
+                        key={f.key}
+                        type="button"
+                        className={`${styles.mobileDrawerItem} ${active ? styles.mobileDrawerItemActive : ""}`}
+                        onClick={() => {
+                          setFolder(f.key);
+                          setNavOpen(false);
+                          setViewMode("list");
+                        }}
+                      >
+                        <span className={styles.mobileDrawerItemLabel}>{f.label}</span>
+                        {counts[f.key] > 0 && (
+                          <span className={styles.mobileDrawerBadge} aria-label={`${counts[f.key]} messages`}>
+                            {counts[f.key]}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className={styles.mobileDrawerSection}>
+                <div className={styles.mobileDrawerSectionTitle}>Comptes</div>
+                <div className={styles.mobileDrawerChips}>
+                  {(["ALL", ...SOURCES] as const).map((s) => {
+                    const active = sourceFilter === s;
+                    const label = s === "ALL" ? "Tous" : s;
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        className={`${styles.mobileChip} ${active ? styles.mobileChipActive : ""}`}
+                        onClick={() => {
+                          setSourceFilter(s);
+                          setNavOpen(false);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className={styles.mobileDrawerFooter}>
+                <button
+                  className={styles.mobileDrawerFooterBtn}
+                  type="button"
+                  onClick={() => {
+                    setSettingsOpen(true);
+                    setNavOpen(false);
+                  }}
+                >
+                  ⚙️ Réglages
+                </button>
+                <Link href="/dashboard" className={styles.mobileDrawerFooterBtn} onClick={() => setNavOpen(false)}>
+                  ✖️ Fermer
+                </Link>
+              </div>
+            </aside>
+          </>
+        )}
+
+        {/* Mobile action sheet */}
+        {isMobile && viewMode === "action" && selected && (
+          <>
+            <div
+              className={`${styles.sheetOverlay} ${actionSheetOpen ? styles.sheetOverlayOpen : ""}`}
+              onClick={() => setActionSheetOpen(false)}
+              aria-hidden="true"
+            />
+            <div
+              className={`${styles.sheet} ${actionSheetOpen ? styles.sheetOpen : ""}`}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Actions"
+            >
+              <div className={styles.sheetHandle} />
+              <div className={styles.sheetTitleRow}>
+                <div className={styles.sheetTitle}>Actions</div>
+                <button className={styles.sheetClose} type="button" onClick={() => setActionSheetOpen(false)} aria-label="Fermer">
+                  ✕
+                </button>
+              </div>
+
+              <div className={styles.sheetPrimary}>
+                <button className={styles.sheetPrimaryBtn} type="button" onClick={() => { setActionSheetOpen(false); openReply(); }}>
+                  🚀 Répondre & Convertir
+                </button>
+              </div>
+
+              <div className={styles.sheetList}>
+                {/* Important toggle */}
+                {(selected.source === "Gmail" ? (selected.labelIds || []).includes("IMPORTANT") : selected.folder === "important") ? (
+                  <button className={styles.sheetItem} type="button" onClick={() => { setActionSheetOpen(false); singleUnImportant(); }}>
+                    ⭐ Retirer des importants
+                  </button>
+                ) : (
+                  <button className={styles.sheetItem} type="button" onClick={() => { setActionSheetOpen(false); singleImportant(); }}>
+                    ⭐ Mettre en important
+                  </button>
+                )}
+
+                {/* Draft */}
+                {selected.folder === "drafts" ? (
+                  <button className={styles.sheetItem} type="button" onClick={() => { setActionSheetOpen(false); singleResumeDraft(); }}>
+                    ▶️ Reprendre le brouillon
+                  </button>
+                ) : (
+                  <button
+                    className={styles.sheetItem}
+                    type="button"
+                    onClick={() => {
+                      setActionSheetOpen(false);
+                      const id = `${Date.now()}`;
+                      const draft: MessageItem = {
+                        id,
+                        folder: "drafts",
+                        from: selected.from,
+                        subject: `Brouillon — ${selected.subject}`,
+                        preview: selected.preview,
+                        body: selected.body,
+                        source: selected.source,
+                        dateLabel: "Brouillon",
+                        unread: false,
+                      };
+                      setMessages((prev) => [draft, ...prev]);
+                      notify("Brouillon créé");
+                      setFolder("drafts");
+                      setSelectedId(id);
+                      setSelectedIds(new Set([id]));
+                    }}
+                  >
+                    📝 Créer un brouillon
+                  </button>
+                )}
+
+                {/* Spam / Legit */}
+                {selected.folder === "spam" ? (
+                  <button className={styles.sheetItem} type="button" onClick={() => { setActionSheetOpen(false); singleLegit(); }}>
+                    ✅ Marquer légitime
+                  </button>
+                ) : (
+                  <button className={styles.sheetItem} type="button" onClick={() => { setActionSheetOpen(false); singleMoveToSpam(); }}>
+                    🚫 Mettre en spam
+                  </button>
+                )}
+
+                {/* Trash / Restore */}
+                {selected.folder === "trash" ? (
+                  <button className={styles.sheetItem} type="button" onClick={() => { setActionSheetOpen(false); singleRestore(); }}>
+                    ♻️ Restaurer
+                  </button>
+                ) : (
+                  <button className={`${styles.sheetItem} ${styles.sheetItemDanger}`} type="button" onClick={() => { setActionSheetOpen(false); singleMoveToTrash(); }}>
+                    🗑️ Supprimer
+                  </button>
+                )}
+
+                {/* Business */}
+                <button
+                  className={styles.sheetItem}
+                  type="button"
+                  onClick={() => {
+                    setActionSheetOpen(false);
+                    const params = new URLSearchParams();
+                    params.set("from", selected.from);
+                    params.set("subject", selected.subject);
+                    router.push(`/dashboard/facture?${params.toString()}`);
+                  }}
+                >
+                  🧾 Facture
+                </button>
+                <button
+                  className={styles.sheetItem}
+                  type="button"
+                  onClick={() => {
+                    setActionSheetOpen(false);
+                    const params = new URLSearchParams();
+                    params.set("from", selected.from);
+                    params.set("subject", selected.subject);
+                    router.push(`/dashboard/devis?${params.toString()}`);
+                  }}
+                >
+                  📄 Devis
+                </button>
+                <button
+                  className={styles.sheetItem}
+                  type="button"
+                  onClick={() => {
+                    setActionSheetOpen(false);
+                    notify("Ajout CRM (bientôt)");
+                  }}
+                >
+                  👤 Ajouter CRM
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* GRID */}
         <div className={`${styles.grid} ${viewMode === "list" ? styles.gridList : styles.gridAction}`}>
@@ -1407,6 +1716,17 @@ const singleMoveToSpam = async () => {
                       </div>
 
                       <div className={`${styles.actionStack} ${styles.actionFixedWidth}`}>
+  {isMobile && (
+    <div className={styles.mobileActionBar}>
+      <button className={styles.mobilePrimaryCta} type="button" onClick={openReply}>
+        🚀 Répondre & Convertir
+      </button>
+      <button className={styles.mobileSecondaryCta} type="button" onClick={() => setActionSheetOpen(true)}>
+        ☰ Actions
+      </button>
+    </div>
+  )}
+
   {/* CTA principal */}
   <button
     className={styles.actionHero}
@@ -1708,8 +2028,69 @@ const singleMoveToSpam = async () => {
                 <div className={styles.cardTitle}>Messages</div>
               </div>
 
+              {/* Mobile premium search (sticky) */}
+              {isMobile && viewMode === "list" && (
+                <div className={styles.mobileSearchSticky}>
+                  <div className={styles.mobileSearchPill}>
+                    <span className={styles.mobileSearchIcon} aria-hidden="true">🔎</span>
+                    <input
+                      className={styles.mobileSearchInput}
+                      placeholder="Rechercher dans iNr’Box…"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      inputMode="search"
+                    />
+                    {query ? (
+                      <button
+                        type="button"
+                        className={styles.mobileSearchClear}
+                        onClick={() => setQuery("")}
+                        aria-label="Effacer"
+                        title="Effacer"
+                      >
+                        ✕
+                      </button>
+                    ) : (
+                      <span className={styles.mobileSearchHint} aria-hidden="true">⌘</span>
+                    )}
+                  </div>
+
+                  <div className={styles.mobileQuickFilters}>
+                    <button
+                      type="button"
+                      className={`${styles.mobileQuickChip} ${unreadOnly ? styles.mobileQuickChipActive : ""}`}
+                      onClick={() => setUnreadOnly((v) => !v)}
+                      title="Afficher seulement les non lus"
+                    >
+                      Non lus
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.mobileQuickChip}
+                      onClick={() => setNavOpen(true)}
+                      title="Choisir une source"
+                    >
+                      {sourceFilter === "ALL" ? "Tous" : sourceFilter}
+                    </button>
+                    {(sourceFilter !== "ALL" || unreadOnly) && (
+                      <button
+                        type="button"
+                        className={styles.mobileQuickChip}
+                        onClick={() => {
+                          setSourceFilter("ALL");
+                          setUnreadOnly(false);
+                        }}
+                        title="Réinitialiser"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Search + filters */}
-              <div className={styles.filtersWrap}>
+              <div className={`${styles.filtersWrap} ${isMobile ? styles.filtersWrapDesktopOnly : ""}`}>
                 <div className={styles.searchRow}>
                   <input
                     className={styles.searchInput}
@@ -1898,8 +2279,30 @@ const singleMoveToSpam = async () => {
                     const active = m.id === selectedId;
                     const checked = isSelected(m.id);
 
+                    const swipeEnabled = isMobile && viewMode === "list" && !hasSelection;
+                    const dx = swipeState.id === m.id ? swipeState.dx : 0;
+                    const animClass = swipeState.id === m.id && swipeState.anim ? styles.swipeAnimating : "";
+
                     return (
-                      <div key={m.id} className={`${styles.itemRow} ${active ? styles.itemRowActive : ""} ${checked ? styles.itemRowSelected : ""}`}>
+                      <div
+                        key={m.id}
+                        className={`${styles.swipeRow} ${swipeEnabled ? styles.swipeRowEnabled : ""}`}
+                      >
+                        {/* Swipe backgrounds */}
+                        <div className={styles.swipeBgLeft} aria-hidden="true">
+                          <div className={styles.swipeBgIcon}>⭐</div>
+                          <div className={styles.swipeBgText}>{isImportantMessage(m) ? "Retirer" : "Important"}</div>
+                        </div>
+                        <div className={styles.swipeBgRight} aria-hidden="true">
+                          <div className={styles.swipeBgIcon}>🗑️</div>
+                          <div className={styles.swipeBgText}>Supprimer</div>
+                        </div>
+
+                        {/* Foreground */}
+                        <div
+                          className={`${styles.itemRow} ${active ? styles.itemRowActive : ""} ${checked ? styles.itemRowSelected : ""} ${styles.swipeFg} ${animClass}`}
+                          style={swipeEnabled ? ({ transform: `translateX(${dx}px)` } as any) : undefined}
+                        >
                         <label
                           className={`${styles.checkWrap} ${checked ? styles.checkWrapChecked : ""}`}
                           onClick={(e) => e.stopPropagation()}
@@ -1911,6 +2314,10 @@ const singleMoveToSpam = async () => {
                         <button
                           className={`${styles.item} ${active ? styles.itemActive : ""}`}
                           onClick={() => {
+                            if (isMobile && swipeRef.current.swiped) {
+                              swipeRef.current.swiped = false;
+                              return;
+                            }
                             if (isMobile && hasSelection) {
                               toggleSelect(m.id);
                               return;
@@ -1918,8 +2325,25 @@ const singleMoveToSpam = async () => {
                             onSelectMessage(m.id);
                           }}
                           onDoubleClick={() => openAction(m.id)}
-                          onPointerDown={() => {
+                          onPointerDown={(e) => {
                             if (!isMobile) return;
+
+                            // init swipe reference
+                            if (swipeEnabled && e.pointerType !== "mouse") {
+                              swipeRef.current.id = m.id;
+                              swipeRef.current.startX = e.clientX;
+                              swipeRef.current.startY = e.clientY;
+                              swipeRef.current.dragging = false;
+                              swipeRef.current.pointerId = e.pointerId;
+                              setSwipeState({ id: m.id, dx: 0, anim: false });
+
+                              // capture pointer to keep receiving move events
+                              try {
+                                (e.currentTarget as any).setPointerCapture?.(e.pointerId);
+                              } catch {}
+                            }
+
+                            // long-press -> multi-select
                             longPressTriggeredRef.current = false;
                             if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
                             longPressTimerRef.current = window.setTimeout(() => {
@@ -1927,8 +2351,65 @@ const singleMoveToSpam = async () => {
                               toggleSelect(m.id);
                             }, 450);
                           }}
+                          onPointerMove={(e) => {
+                            if (!swipeEnabled) return;
+                            if (e.pointerType === "mouse") return;
+
+                            const s = swipeRef.current;
+                            // init on first move if needed
+                            if (s.id !== m.id) {
+                              s.id = m.id;
+                              s.startX = e.clientX;
+                              s.startY = e.clientY;
+                              s.dragging = false;
+                              s.pointerId = e.pointerId;
+                              setSwipeState({ id: m.id, dx: 0, anim: false });
+                            }
+
+                            const dxNow = e.clientX - s.startX;
+                            const dyNow = e.clientY - s.startY;
+                            const absX = Math.abs(dxNow);
+                            const absY = Math.abs(dyNow);
+
+                            if (!s.dragging) {
+                              if (absX > 8 && absX > absY * 1.2) {
+                                s.dragging = true;
+                                // cancel long press if user swipes
+                                if (longPressTimerRef.current) {
+                                  window.clearTimeout(longPressTimerRef.current);
+                                  longPressTimerRef.current = null;
+                                }
+                              } else {
+                                return;
+                              }
+                            }
+
+                            // clamp
+                            const clamped = Math.max(-120, Math.min(120, dxNow));
+                            setSwipeState({ id: m.id, dx: clamped, anim: false });
+                          }}
                           onPointerUp={(e) => {
                             if (!isMobile) return;
+
+                            if (swipeEnabled && swipeRef.current.id === m.id && swipeRef.current.dragging) {
+                              const finalDx = swipeState.id === m.id ? swipeState.dx : 0;
+                              swipeRef.current.dragging = false;
+                              swipeRef.current.swiped = true;
+
+                              // threshold actions
+                              if (finalDx <= -80) {
+                                // left swipe -> delete
+                                swipeDeleteToTrash(m.id);
+                              } else if (finalDx >= 80) {
+                                // right swipe -> important toggle
+                                swipeToggleImportant(m.id);
+                              } else {
+                                // snap back
+                                setSwipeState({ id: m.id, dx: 0, anim: true });
+                                window.setTimeout(() => setSwipeState({ id: null, dx: 0, anim: false }), 220);
+                              }
+                            }
+
                             if (longPressTimerRef.current) {
                               window.clearTimeout(longPressTimerRef.current);
                               longPressTimerRef.current = null;
@@ -1942,6 +2423,11 @@ const singleMoveToSpam = async () => {
                             if (longPressTimerRef.current) {
                               window.clearTimeout(longPressTimerRef.current);
                               longPressTimerRef.current = null;
+                            }
+
+                            if (swipeEnabled && swipeState.id === m.id) {
+                              setSwipeState({ id: m.id, dx: 0, anim: true });
+                              window.setTimeout(() => setSwipeState({ id: null, dx: 0, anim: false }), 220);
                             }
                           }}
                           type="button"
@@ -1957,6 +2443,7 @@ const singleMoveToSpam = async () => {
                           <div className={styles.subject}>{m.subject}</div>
                           <div className={styles.preview}>{m.preview}</div>
                         </button>
+                        </div>
                       </div>
                     );
                   })}

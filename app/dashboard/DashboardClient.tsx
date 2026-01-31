@@ -2259,16 +2259,6 @@ const disconnectSiteWebGsc = useCallback(() => {
                   }}
                 />
 
-                <a
-                  href={siteInrcyUrl || "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`${styles.actionBtn} ${styles.viewBtn}`}
-                  style={{ pointerEvents: siteInrcyUrl ? "auto" : "none", opacity: siteInrcyUrl ? 1 : 0.5 }}
-                >
-                  Voir le site
-                </a>
-
                 <button
                   type="button"
                   className={`${styles.actionBtn} ${styles.iconBtn}`}
@@ -2279,6 +2269,16 @@ const disconnectSiteWebGsc = useCallback(() => {
                 >
                   <SaveIcon />
                 </button>
+
+                <a
+                  href={siteInrcyUrl || "#"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`${styles.actionBtn} ${styles.viewBtn}`}
+                  style={{ pointerEvents: siteInrcyUrl ? "auto" : "none", opacity: siteInrcyUrl ? 1 : 0.5 }}
+                >
+                  Voir le site
+                </a>
               </div>
               {siteInrcyUrlNotice && <div className={styles.successNote}>{siteInrcyUrlNotice}</div>}
             </div>
@@ -2531,16 +2531,6 @@ const disconnectSiteWebGsc = useCallback(() => {
                   }}
                 />
 
-                <a
-                  href={siteWebUrl || "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`${styles.actionBtn} ${styles.viewBtn}`}
-                  style={{ pointerEvents: siteWebUrl ? "auto" : "none", opacity: siteWebUrl ? 1 : 0.5 }}
-                >
-                  Voir le site
-                </a>
-
                 <button
                   type="button"
                   className={`${styles.actionBtn} ${styles.iconBtn}`}
@@ -2550,6 +2540,16 @@ const disconnectSiteWebGsc = useCallback(() => {
                 >
                   <SaveIcon />
                 </button>
+
+                <a
+                  href={siteWebUrl || "#"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`${styles.actionBtn} ${styles.viewBtn}`}
+                  style={{ pointerEvents: siteWebUrl ? "auto" : "none", opacity: siteWebUrl ? 1 : 0.5 }}
+                >
+                  Voir le site
+                </a>
               </div>
               {siteWebUrlNotice && <div className={styles.successNote}>{siteWebUrlNotice}</div>}
             </div>
