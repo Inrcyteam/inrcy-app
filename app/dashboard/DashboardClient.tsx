@@ -1057,13 +1057,38 @@ const disconnectSiteWebGsc = useCallback(() => {
     };
   }, [menuOpen]);
 
-  // (démo) valeurs neutres tant que rien n'est connecté
-  const leadsToday = 0;
-  const leadsWeek = 0;
-  const leadsMonth = 0;
 
-  const avgBasket = 0;
-  const estimatedValue = avgBasket > 0 ? avgBasket * leadsMonth : 0;
+  // ✅ KPIs Générateur (1 seul endpoint)
+  const [kpis, setKpis] = useState<null | {
+    leads: { today: number; week: number; month: number };
+    estimatedValue: number;
+  }>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/generator/kpis", { cache: "no-store" });
+        if (!res.ok) throw new Error(`KPIs fetch failed: ${res.status}`);
+        const json = await res.json();
+        if (!cancelled) setKpis(json);
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) setKpis(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const leadsToday = kpis?.leads?.today ?? 0;
+  const leadsWeek = kpis?.leads?.week ?? 0;
+  const leadsMonth = kpis?.leads?.month ?? 0;
+
+  const estimatedValue = kpis?.estimatedValue ?? 0;
 
   // helper render action
   const renderAction = (a: ModuleAction) => {
