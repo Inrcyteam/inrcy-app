@@ -3336,3 +3336,143 @@ transform: scale(1.50);
   border-color: rgba(248, 113, 113, 0.50);
   background: rgba(248, 113, 113, 0.16);
 }
+
+/* =========================
+   Hub pages (Booster / Fidéliser)
+========================= */
+
+.hubHero{
+  max-width: 1220px;
+  margin: 0 auto 14px;
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.hubHeroLeft{
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  box-shadow: 0 26px 90px rgba(0,0,0,0.42);
+  backdrop-filter: blur(14px);
+  padding: 18px;
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.hubHeroRight{
+  display: grid;
+  gap: 10px;
+}
+
+.hubOrb,
+.hubOrbAlt{
+  width: 110px;
+  height: 110px;
+  border-radius: 999px;
+  filter: blur(0px);
+  box-shadow:
+    0 0 28px rgba(56,189,248,0.20),
+    0 0 60px rgba(167,139,250,0.18),
+    0 0 90px rgba(244,114,182,0.12);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.hubOrb{
+  background:
+    radial-gradient(circle at 30% 30%, rgba(56,189,248,0.95), transparent 60%),
+    radial-gradient(circle at 70% 50%, rgba(167,139,250,0.85), transparent 62%),
+    radial-gradient(circle at 55% 80%, rgba(244,114,182,0.65), transparent 62%),
+    rgba(255,255,255,0.02);
+}
+
+.hubOrbAlt{
+  background:
+    radial-gradient(circle at 30% 30%, rgba(244,114,182,0.85), transparent 60%),
+    radial-gradient(circle at 70% 50%, rgba(56,189,248,0.80), transparent 62%),
+    radial-gradient(circle at 55% 80%, rgba(251,146,60,0.55), transparent 62%),
+    rgba(255,255,255,0.02);
+}
+
+.hubHeroText{
+  display: grid;
+  gap: 8px;
+}
+
+.hubHeroTitle{
+  font-size: 18px;
+  font-weight: 950;
+  color: rgba(255,255,255,0.95);
+  letter-spacing: -0.02em;
+}
+
+.hubHeroSub{
+  font-size: 13px;
+  color: rgba(255,255,255,0.72);
+  line-height: 1.45;
+}
+
+.hubHeroActions{
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.hubSection{
+  max-width: 1220px;
+  margin: 0 auto;
+  padding-top: 6px;
+}
+
+.hubGrid{
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hubCardBtn{
+  text-align: left;
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.hubCardBtn:hover{
+  transform: translateY(-2px);
+  border-color: rgba(56,189,248,0.28);
+  background: rgba(255,255,255,0.06);
+}
+
+.hubCardBtn:active{
+  transform: translateY(0px) scale(0.995);
+}
+
+.hubCardFooter{
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Responsive */
+@media (max-width: 980px){
+  .hubHero{
+    grid-template-columns: 1fr;
+  }
+  .hubHeroLeft{
+    grid-template-columns: 92px 1fr;
+  }
+  .hubGrid{
+    grid-template-columns: 1fr;
+  }
+}

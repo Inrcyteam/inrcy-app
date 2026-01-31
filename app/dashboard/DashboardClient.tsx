@@ -175,8 +175,8 @@ const adminModules: Array<{
 const quickActions: Array<{ key: string; title: string; sub: string; disabled?: boolean; accent: Accent }> = [
   { key: "facturer", title: "Facturer", sub: "Factures & paiements", disabled: false, accent: "orange" },
   { key: "devis", title: "Faire devis", sub: "Devis en 30 sec", disabled: false, accent: "pink" },
-  { key: "publier", title: "Publier", sub: "Posts & contenus", disabled: true, accent: "purple" },
-  { key: "newsletter", title: "Communiquer", sub: "Newsletter & promos", disabled: true, accent: "cyan" },
+  { key: "booster", title: "Booster", sub: "Visibilité & communication", disabled: false, accent: "purple" },
+  { key: "fideliser", title: "Fidéliser", sub: "Informer & suivi client", disabled: false, accent: "cyan" },
 ];
 
 export default function DashboardClient() {
@@ -2071,13 +2071,17 @@ const disconnectSiteWebGsc = useCallback(() => {
               <div className={styles.gearRail} aria-hidden />
 
               <div className={styles.gearGrid}>
-                <button className={`${styles.gearCapsule} ${styles.gear_cyan}`} type="button">
-                  <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>Publier</div>
-                    <div className={styles.gearSub}>Active tous vos canaux</div>
-                    <div className={styles.gearBtn}>Publier maintenant</div>
-                  </div>
-                </button>
+                <button
+    type="button"
+    className={`${styles.gearCapsule} ${styles.gear_cyan}`}
+    onClick={() => router.push("/dashboard/booster")}
+  >
+    <div className={styles.gearInner}>
+      <div className={styles.gearTitle}>Booster</div>
+      <div className={styles.gearSub}>Active tous vos canaux</div>
+      <div className={styles.gearBtn}>Agir maintenant</div>
+    </div>
+  </button>
 
                 <button
                   className={`${styles.gearCapsule} ${styles.gear_purple}`}
@@ -2103,13 +2107,17 @@ const disconnectSiteWebGsc = useCallback(() => {
                   </div>
                 </button>
 
-                <button className={`${styles.gearCapsule} ${styles.gear_orange}`} type="button">
-                  <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>Fidéliser</div>
-                    <div className={styles.gearSub}>Pérennise votre activité</div>
-                    <div className={styles.gearBtn}>Communiquer</div>
-                  </div>
-                </button>
+                <button
+    type="button"
+    className={`${styles.gearCapsule} ${styles.gear_purple}`}
+    onClick={() => router.push("/dashboard/fideliser")}
+  >
+    <div className={styles.gearInner}>
+      <div className={styles.gearTitle}>Fidéliser</div>
+      <div className={styles.gearSub}>Pérennise votre activité</div>
+      <div className={styles.gearBtn}>Communiquer</div>
+    </div>
+  </button>
               </div>
               {/* --- END --- */}
             </div>
