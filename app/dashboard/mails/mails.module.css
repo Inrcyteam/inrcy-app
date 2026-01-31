@@ -188,12 +188,6 @@
   .nav {
     padding: 10px;
   }
-
-  /* Mobile: don't reserve desktop scrollbar space (causes weird widths/overflows) */
-  .scrollAreaMessages .list,
-  .scrollAreaMessages .itemRow {
-    padding-right: 0;
-  }
 }
 
 @media (max-width: 420px) {
@@ -2434,51 +2428,3 @@ width: 100%;
   background: rgba(56,189,248,.14);
 }
 
-/* ===== Swipe rows (mobile premium) ===== */
-.swipeRow{
-  position: relative;
-  border-radius: 18px;
-  overflow: hidden;
-  overflow-x: hidden;
-}
-.swipeRowActive{
-  /* Slight lift while swiping */
-  box-shadow: 0 16px 40px rgba(0,0,0,0.26);
-}
-.swipeRowEnabled{ touch-action: pan-y; }
-.swipeBgLeft, .swipeBgRight{
-  position:absolute;
-  top:0; bottom:0;
-  width: 50%;
-  display:flex;
-  align-items:center;
-  gap: 8px;
-  padding: 0 14px;
-  font-weight: 950;
-  letter-spacing: -.2px;
-  /* Keep backgrounds strictly behind the foreground row */
-  z-index: 0;
-  pointer-events: none;
-}
-.swipeBgLeft{
-  left:0;
-  justify-content:flex-start;
-  background: linear-gradient(90deg, rgba(56,189,248,.22), rgba(56,189,248,.06));
-  border-right: 1px solid rgba(255,255,255,.06);
-}
-.swipeBgRight{
-  right:0;
-  justify-content:flex-end;
-  background: linear-gradient(270deg, rgba(255,79,79,.22), rgba(255,79,79,.06));
-  border-left: 1px solid rgba(255,255,255,.06);
-}
-.swipeBgIcon{ font-size: 18px; }
-.swipeBgText{ opacity: .92; }
-.swipeFg{
-  /* Foreground must fully cover the background until the user swipes */
-  position: relative;
-  z-index: 1;
-  background: rgba(10, 12, 26, 0.90);
-  will-change: transform;
-}
-.swipeAnimating{ transition: transform 220ms cubic-bezier(.2,.9,.2,1); }
