@@ -1953,7 +1953,8 @@ const singleMoveToSpam = async () => {
     </>
   )}
 
-  {/* Actions business (Devis / Facture / CRM) */}
+  {/* Actions business (Devis / Facture / CRM) - desktop only */}
+  {!isMobile && (
   <div className={styles.actionTilesBusiness}>
     {/* 🧾 Facture */}
     <button
@@ -2071,6 +2072,7 @@ const singleMoveToSpam = async () => {
       </button>
     )}
   </div>
+  )}
 
   {/* Actions dossier “Corbeille” en plus */}
   {folder === "trash" && (

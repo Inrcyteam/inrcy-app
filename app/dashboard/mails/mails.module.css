@@ -9,6 +9,7 @@
   height: 100vh;
   padding: 18px 18px 40px;
   overflow: hidden;
+  overflow-x: hidden;
   background:
     radial-gradient(900px 520px at 12% 8%, rgba(56, 189, 248, 0.18), transparent 62%),
     radial-gradient(900px 520px at 90% 12%, rgba(167, 139, 250, 0.18), transparent 62%),
@@ -133,6 +134,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  overflow-x: hidden;
 
   display: grid;
   grid-template-columns: 310px 450px 400px;
@@ -213,6 +215,7 @@
   backdrop-filter: blur(10px);
   box-shadow: 0 18px 50px rgba(0,0,0,0.28);
   overflow: hidden;
+  overflow-x: hidden;
   min-width: 0; /* ⬅️ OBLIGATOIRE en CSS Grid */
 
   /* Important pour scroll interne */
@@ -356,6 +359,7 @@
   letter-spacing: -0.2px;
   white-space: nowrap;
   overflow: hidden;
+  overflow-x: hidden;
   text-overflow: ellipsis;
   max-width: 220px;
 }
@@ -372,6 +376,7 @@
   color: rgba(255,255,255,0.88);
   white-space: nowrap;
   overflow: hidden;
+  overflow-x: hidden;
   text-overflow: ellipsis;
 }
 
@@ -381,6 +386,7 @@
   color: rgba(255,255,255,0.60);
   white-space: nowrap;
   overflow: hidden;
+  overflow-x: hidden;
   text-overflow: ellipsis;
 }
 
@@ -420,7 +426,8 @@
   letter-spacing: -0.2px;
 
   min-width: 0;            /* ✅ essentiel en flex */
-  overflow: hidden;        /* ✅ */
+  overflow: hidden;
+  overflow-x: hidden;        /* ✅ */
   text-overflow: ellipsis; /* ✅ */
   white-space: nowrap;     /* ✅ */
 }
@@ -464,7 +471,10 @@
   position: relative;
   display: flex;
   align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
+
 
 .searchIcon {
   width: 34px;
@@ -479,7 +489,9 @@
 }
 
 .searchInput {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
   height: 38px;
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,0.14);
@@ -488,6 +500,7 @@
   padding: 0 44px 0 12px; /* place pour l’icône à droite */
   outline: none;
 }
+
 
 .searchIconRight {
   position: absolute;
@@ -625,6 +638,7 @@
   box-shadow: 0 18px 50px rgba(0,0,0,0.22);
   white-space: nowrap;
   overflow: hidden;
+  overflow-x: hidden;
   text-overflow: ellipsis;
 }
 
@@ -699,6 +713,7 @@ width: 100%;
   box-shadow: 0 18px 50px rgba(0,0,0,0.22);
   white-space: nowrap;
   overflow: hidden;
+  overflow-x: hidden;
   text-overflow: ellipsis;
   transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease;
 }
@@ -768,6 +783,7 @@ width: 100%;
   user-select: none;
   position: relative;
   overflow: hidden;
+  overflow-x: hidden;
 }
 
 .actionTile::before {
@@ -1329,6 +1345,7 @@ width: 100%;
   box-shadow: 0 18px 50px rgba(0,0,0,0.38);
 
   overflow: hidden;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -2099,6 +2116,7 @@ width: 100%;
   box-shadow: 0 30px 80px rgba(0,0,0,.50);
   z-index: 60;
   overflow: hidden;
+  overflow-x: hidden;
   transition: transform .22s cubic-bezier(.2,.8,.2,1);
   display:flex;
   flex-direction:column;
@@ -2415,6 +2433,7 @@ width: 100%;
   position: relative;
   border-radius: 18px;
   overflow: hidden;
+  overflow-x: hidden;
 }
 .swipeRowEnabled{ touch-action: pan-y; }
 .swipeBgLeft, .swipeBgRight{
@@ -2427,16 +2446,7 @@ width: 100%;
   padding: 0 14px;
   font-weight: 950;
   letter-spacing: -.2px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 160ms ease;
 }
-
-.swipeRowActive .swipeBgLeft,
-.swipeRowActive .swipeBgRight{
-  opacity: 1;
-}
-
 .swipeBgLeft{
   left:0;
   justify-content:flex-start;
