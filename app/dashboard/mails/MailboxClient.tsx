@@ -152,19 +152,6 @@ export default function MailboxClient() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedHtml, setSelectedHtml] = useState<string | null>(null);
 
-  // ✅ Mobile swipe actions (premium)
-  const [swipeState, setSwipeState] = useState<{ id: string | null; dx: number; anim: boolean }>(
-    { id: null, dx: 0, anim: false }
-  );
-  const swipeRef = useRef<{
-    id: string | null;
-    startX: number;
-    startY: number;
-    dragging: boolean;
-    swiped: boolean;
-    pointerId: number | null;
-  }>({ id: null, startX: 0, startY: 0, dragging: false, swiped: false, pointerId: null });
-
   const splitName = (full: string) => {
     const t = (full || "").trim();
     if (!t) return { first_name: "", last_name: "" };
@@ -752,8 +739,8 @@ const onSelectMessage = (id: string) => {
   }, []);
 
   const titleByFolder: Record<Folder, string> = {
-    inbox: "Chronologique global • tous canaux",
-    important: "Vos messages priorisés",
+    inbox: "Messages",
+    important: "Importants",
     sent: "Envoyés",
     drafts: "Brouillons",
     spam: "Indésirables",
@@ -1218,32 +1205,6 @@ const singleMoveToSpam = async () => {
     return m.folder === "important";
   };
 
-  const swipeReset = () => {
-    setSwipeState((prev) => ({ id: prev.id, dx: 0, anim: true }));
-    window.setTimeout(() => setSwipeState({ id: null, dx: 0, anim: false }), 220);
-  };
-
-  const swipeDeleteToTrash = async (id: string) => {
-    setSelectedId(id);
-    await moveToTrashMany([id]);
-    notify("Supprimé → Corbeille");
-    swipeReset();
-  };
-
-  const swipeToggleImportant = async (id: string) => {
-    const m = messages.find((x) => x.id === id);
-    if (!m) return;
-    setSelectedId(id);
-    if (isImportantMessage(m)) {
-      await unImportantMany([id]);
-      notify("Retiré des Importants");
-    } else {
-      await makeImportantMany([id]);
-      notify("Ajouté aux Importants");
-    }
-    swipeReset();
-  };
-
   return (
     <div className={styles.page}>
       <div className={styles.wrap}>
@@ -1462,7 +1423,6 @@ const singleMoveToSpam = async () => {
             >
               <div className={styles.sheetHandle} />
               <div className={styles.sheetTitleRow}>
-                <div className={styles.sheetTitle}>Actions</div>
                 <button className={styles.sheetClose} type="button" onClick={() => setListActionSheetOpen(false)} aria-label="Fermer">
                   ✕
                 </button>
@@ -1537,7 +1497,6 @@ const singleMoveToSpam = async () => {
             >
               <div className={styles.sheetHandle} />
               <div className={styles.sheetTitleRow}>
-                <div className={styles.sheetTitle}>Actions</div>
                 <button className={styles.sheetClose} type="button" onClick={() => setActionSheetOpen(false)} aria-label="Fermer">
                   ✕
                 </button>
@@ -1718,10 +1677,6 @@ const singleMoveToSpam = async () => {
           {/* ACTION plein écran (au double-clic) */}
           {showCockpit && (
             <section className={styles.card}>
-              <div className={styles.cardHeader}>
-                <div className={styles.cardTitle}>ACTION</div>
-              </div>
-
               <div className={`${styles.scrollArea} ${styles.scrollAreaAction}`}>
                 <div style={{ minHeight: "100%" }}>
                   {!selected ? (
@@ -1747,51 +1702,51 @@ const singleMoveToSpam = async () => {
                     </div>
                   ) : (
                     <div className={styles.reader}>
+                      {/* ✅ Header compact (2 lignes max) */}
+                      <div className={styles.readerHeader}>
+                        <div className={styles.readerSubject}>{selected.subject}</div>
 
-<div className={styles.readerTitle}>
-  <div className={styles.readerH}>{selected.subject}</div>
+                        <div className={styles.readerInfoRow}>
+                          <span className={badgeClass(selected.source)}>{selected.source}</span>
 
-  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-    <span className={badgeClass(selected.source)}>{selected.source}</span>
+                          <span className={styles.readerInfoText} title={`${selected.from} • ${selected.dateLabel}`}>
+                            <b style={{ color: "rgba(255,255,255,0.90)" }}>{selected.from}</b> • {selected.dateLabel}
+                          </span>
 
-    {/* Navigation dans la liste visible (Option A) */}
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <button
-        type="button"
-        className={styles.iconBtn}
-        title="Message précédent"
-        onClick={() => {
-          const idx = filteredMessages.findIndex((x) => x.id === selected.id);
-          if (idx > 0) onSelectMessage(filteredMessages[idx - 1].id);
-        }}
-        disabled={filteredMessages.findIndex((x) => x.id === selected.id) <= 0}
-      >
-        ←
-      </button>
-      <button
-        type="button"
-        className={styles.iconBtn}
-        title="Message suivant"
-        onClick={() => {
-          const idx = filteredMessages.findIndex((x) => x.id === selected.id);
-          if (idx >= 0 && idx < filteredMessages.length - 1)
-            onSelectMessage(filteredMessages[idx + 1].id);
-        }}
-        disabled={
-          (() => {
-            const idx = filteredMessages.findIndex((x) => x.id === selected.id);
-            return idx < 0 || idx >= filteredMessages.length - 1;
-          })()
-        }
-      >
-        →
-      </button>
-    </div>
-  </div>
-</div>
-<div className={styles.readerMeta}>
-                        De <b style={{ color: "rgba(255,255,255,0.90)" }}>{selected.from}</b> •{" "}
-                        {selected.dateLabel}
+                          {/* Navigation dans la liste visible */}
+                          <div className={styles.readerNav}>
+                            <button
+                              type="button"
+                              className={styles.iconBtn}
+                              title="Message précédent"
+                              onClick={() => {
+                                const idx = filteredMessages.findIndex((x) => x.id === selected.id);
+                                if (idx > 0) onSelectMessage(filteredMessages[idx - 1].id);
+                              }}
+                              disabled={filteredMessages.findIndex((x) => x.id === selected.id) <= 0}
+                            >
+                              ←
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.iconBtn}
+                              title="Message suivant"
+                              onClick={() => {
+                                const idx = filteredMessages.findIndex((x) => x.id === selected.id);
+                                if (idx >= 0 && idx < filteredMessages.length - 1)
+                                  onSelectMessage(filteredMessages[idx + 1].id);
+                              }}
+                              disabled={
+                                (() => {
+                                  const idx = filteredMessages.findIndex((x) => x.id === selected.id);
+                                  return idx < 0 || idx >= filteredMessages.length - 1;
+                                })()
+                              }
+                            >
+                              →
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
                       <div className={`${styles.actionStack} ${styles.actionFixedWidth}`}> 
@@ -2099,10 +2054,6 @@ const singleMoveToSpam = async () => {
           {/* Colonne droite: messages (LISTE) */}
           {showMessages && (
             <section className={styles.card}>
-              <div className={styles.cardHeader}>
-                <div className={styles.cardTitle}>Messages</div>
-              </div>
-
               {/* Mobile premium search (sticky) */}
               {isMobile && viewMode === "list" && (
                 <div className={styles.mobileSearchSticky}>
@@ -2354,30 +2305,11 @@ const singleMoveToSpam = async () => {
                     const active = m.id === selectedId;
                     const checked = isSelected(m.id);
 
-                    const swipeEnabled = isMobile && viewMode === "list" && !hasSelection;
-                    const dx = swipeState.id === m.id ? swipeState.dx : 0;
-                    const animClass = swipeState.id === m.id && swipeState.anim ? styles.swipeAnimating : "";
-
                     return (
                       <div
                         key={m.id}
-                        className={`${styles.swipeRow} ${swipeEnabled ? styles.swipeRowEnabled : ""} ${dx !== 0 ? styles.swipeRowActive : ""}`}
+                        className={`${styles.itemRow} ${active ? styles.itemRowActive : ""} ${checked ? styles.itemRowSelected : ""}`}
                       >
-                        {/* Swipe backgrounds */}
-                        <div className={styles.swipeBgLeft} aria-hidden="true">
-                          <div className={styles.swipeBgIcon}>⭐</div>
-                          <div className={styles.swipeBgText}>{isImportantMessage(m) ? "Retirer" : "Important"}</div>
-                        </div>
-                        <div className={styles.swipeBgRight} aria-hidden="true">
-                          <div className={styles.swipeBgIcon}>🗑️</div>
-                          <div className={styles.swipeBgText}>Supprimer</div>
-                        </div>
-
-                        {/* Foreground */}
-                        <div
-                          className={`${styles.itemRow} ${active ? styles.itemRowActive : ""} ${checked ? styles.itemRowSelected : ""} ${styles.swipeFg} ${animClass}`}
-                          style={swipeEnabled ? ({ transform: `translateX(${dx}px)` } as any) : undefined}
-                        >
                         <label
                           className={`${styles.checkWrap} ${checked ? styles.checkWrapChecked : ""}`}
                           onClick={(e) => e.stopPropagation()}
@@ -2389,10 +2321,6 @@ const singleMoveToSpam = async () => {
                         <button
                           className={`${styles.item} ${active ? styles.itemActive : ""}`}
                           onClick={() => {
-                            if (isMobile && swipeRef.current.swiped) {
-                              swipeRef.current.swiped = false;
-                              return;
-                            }
                             if (isMobile && hasSelection) {
                               toggleSelect(m.id);
                               return;
@@ -2400,94 +2328,21 @@ const singleMoveToSpam = async () => {
                             onSelectMessage(m.id);
                           }}
                           onDoubleClick={() => openAction(m.id)}
-                          onPointerDown={(e) => {
+                          onPointerDown={() => {
                             if (!isMobile) return;
 
-                            // init swipe reference
-                            if (swipeEnabled && e.pointerType !== "mouse") {
-                              swipeRef.current.id = m.id;
-                              swipeRef.current.startX = e.clientX;
-                              swipeRef.current.startY = e.clientY;
-                              swipeRef.current.dragging = false;
-                              swipeRef.current.pointerId = e.pointerId;
-                              setSwipeState({ id: m.id, dx: 0, anim: false });
-
-                              // capture pointer to keep receiving move events
-                              try {
-                                (e.currentTarget as any).setPointerCapture?.(e.pointerId);
-                              } catch {}
-                            }
-
-                            // long-press -> multi-select
+                            // long-press -> actions (important / supprimer / ouvrir)
                             longPressTriggeredRef.current = false;
                             if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
                             longPressTimerRef.current = window.setTimeout(() => {
                               longPressTriggeredRef.current = true;
-                              // Ouvre un menu d'actions premium (au lieu d'afficher les actions dans la ligne)
                               setSelectedId(m.id);
                               setListActionMessageId(m.id);
                               setListActionSheetOpen(true);
                             }, 450);
                           }}
-                          onPointerMove={(e) => {
-                            if (!swipeEnabled) return;
-                            if (e.pointerType === "mouse") return;
-
-                            const s = swipeRef.current;
-                            // init on first move if needed
-                            if (s.id !== m.id) {
-                              s.id = m.id;
-                              s.startX = e.clientX;
-                              s.startY = e.clientY;
-                              s.dragging = false;
-                              s.pointerId = e.pointerId;
-                              setSwipeState({ id: m.id, dx: 0, anim: false });
-                            }
-
-                            const dxNow = e.clientX - s.startX;
-                            const dyNow = e.clientY - s.startY;
-                            const absX = Math.abs(dxNow);
-                            const absY = Math.abs(dyNow);
-
-                            if (!s.dragging) {
-                              if (absX > 8 && absX > absY * 1.2) {
-                                s.dragging = true;
-                            if (longPressTimerRef.current) { window.clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
-                                // cancel long press if user swipes
-                                if (longPressTimerRef.current) {
-                                  window.clearTimeout(longPressTimerRef.current);
-                                  longPressTimerRef.current = null;
-                                }
-                              } else {
-                                return;
-                              }
-                            }
-
-                            // clamp
-                            const clamped = Math.max(-120, Math.min(120, dxNow));
-                            setSwipeState({ id: m.id, dx: clamped, anim: false });
-                          }}
                           onPointerUp={(e) => {
                             if (!isMobile) return;
-
-                            if (swipeEnabled && swipeRef.current.id === m.id && swipeRef.current.dragging) {
-                              const finalDx = swipeState.id === m.id ? swipeState.dx : 0;
-                              swipeRef.current.dragging = false;
-                              swipeRef.current.swiped = true;
-
-                              // threshold actions
-                              if (finalDx <= -80) {
-                                // left swipe -> delete
-                                swipeDeleteToTrash(m.id);
-                              } else if (finalDx >= 80) {
-                                // right swipe -> important toggle
-                                swipeToggleImportant(m.id);
-                              } else {
-                                // snap back
-                                setSwipeState({ id: m.id, dx: 0, anim: true });
-                                window.setTimeout(() => setSwipeState({ id: null, dx: 0, anim: false }), 220);
-                              }
-                            }
 
                             if (longPressTimerRef.current) {
                               window.clearTimeout(longPressTimerRef.current);
@@ -2503,11 +2358,6 @@ const singleMoveToSpam = async () => {
                               window.clearTimeout(longPressTimerRef.current);
                               longPressTimerRef.current = null;
                             }
-
-                            if (swipeEnabled && swipeState.id === m.id) {
-                              setSwipeState({ id: m.id, dx: 0, anim: true });
-                              window.setTimeout(() => setSwipeState({ id: null, dx: 0, anim: false }), 220);
-                            }
                           }}
                           type="button"
                         >
@@ -2522,12 +2372,11 @@ const singleMoveToSpam = async () => {
                           <div className={styles.subject}>{m.subject}</div>
                           <div className={styles.preview}>{m.preview}</div>
                         </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+	                      </div>
+	                    );
+	                  })}
 
-                  {!filteredMessages.length && (
+	                  {!filteredMessages.length && (
                     <div style={{ padding: 16, color: "rgba(255,255,255,0.70)" }}>
                       Aucun message dans <b>{fmtFolderLabel(folder)}</b>.
                     </div>
