@@ -147,6 +147,8 @@ export default function MailboxClient() {
   const [mobilePane, setMobilePane] = useState<MobilePane>("messages");
   const [navOpen, setNavOpen] = useState(false);
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
+  const [listActionSheetOpen, setListActionSheetOpen] = useState(false);
+  const [listActionMessageId, setListActionMessageId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedHtml, setSelectedHtml] = useState<string | null>(null);
 
@@ -416,6 +418,7 @@ useEffect(() => {
 }, [folder]);
 
   const selected = messages.find((m) => m.id === selectedId);
+  const listSheetMessage = listActionMessageId ? messages.find((m) => m.id === listActionMessageId) : null;
   const isInCrm = selected ? crmAddedIds.has(selected.id) : false;
 
   // ✅ Helpers
@@ -1442,7 +1445,83 @@ const singleMoveToSpam = async () => {
           </>
         )}
 
-        {/* Mobile action sheet */}
+        
+        {/* Mobile action sheet (liste) */}
+        {isMobile && viewMode === "list" && listSheetMessage && (
+          <>
+            <div
+              className={`${styles.sheetOverlay} ${listActionSheetOpen ? styles.sheetOverlayOpen : ""}`}
+              onClick={() => setListActionSheetOpen(false)}
+              aria-hidden="true"
+            />
+            <div
+              className={`${styles.sheet} ${listActionSheetOpen ? styles.sheetOpen : ""}`}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Actions message"
+            >
+              <div className={styles.sheetHandle} />
+              <div className={styles.sheetTitleRow}>
+                <div className={styles.sheetTitle}>Actions</div>
+                <button className={styles.sheetClose} type="button" onClick={() => setListActionSheetOpen(false)} aria-label="Fermer">
+                  ✕
+                </button>
+              </div>
+
+              <div className={styles.sheetPrimary}>
+                <button
+                  className={styles.sheetPrimaryBtn}
+                  type="button"
+                  onClick={() => {
+                    setListActionSheetOpen(false);
+                    openAction(listSheetMessage.id);
+                  }}
+                >
+                  👁️ Ouvrir le message
+                </button>
+              </div>
+
+              <div className={styles.sheetList}>
+                {isImportantMessage(listSheetMessage) ? (
+                  <button
+                    className={styles.sheetItem}
+                    type="button"
+                    onClick={() => {
+                      setListActionSheetOpen(false);
+                      singleUnImportant();
+                    }}
+                  >
+                    ⭐ Retirer des importants
+                  </button>
+                ) : (
+                  <button
+                    className={styles.sheetItem}
+                    type="button"
+                    onClick={() => {
+                      setListActionSheetOpen(false);
+                      singleImportant();
+                    }}
+                  >
+                    ⭐ Mettre en important
+                  </button>
+                )}
+
+                <button
+                  className={`${styles.sheetItem} ${styles.sheetItemDanger}`}
+                  type="button"
+                  onClick={() => {
+                    setListActionSheetOpen(false);
+                    moveToTrashMany([listSheetMessage.id]);
+                  }}
+                >
+                  🗑️ Supprimer
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+{/* Mobile action sheet */}
         {isMobile && viewMode === "action" && selected && (
           <>
             <div
@@ -1715,19 +1794,11 @@ const singleMoveToSpam = async () => {
                         {selected.dateLabel}
                       </div>
 
-                      <div className={`${styles.actionStack} ${styles.actionFixedWidth}`}>
-  {isMobile && (
-    <div className={styles.mobileActionBar}>
-      <button className={styles.mobilePrimaryCta} type="button" onClick={openReply}>
-        🚀 Répondre & Convertir
-      </button>
-      <button className={styles.mobileSecondaryCta} type="button" onClick={() => setActionSheetOpen(true)}>
-        ☰ Actions
-      </button>
-    </div>
-  )}
-
-  {/* CTA principal */}
+                      <div className={`${styles.actionStack} ${styles.actionFixedWidth}`}> 
+  {/* CTA + Actions rapides (desktop) */}
+  {!isMobile && (
+    <>
+{/* CTA principal */}
   <button
     className={styles.actionHero}
     type="button"
@@ -1879,6 +1950,8 @@ const singleMoveToSpam = async () => {
       </button>
     )}
   </div>
+    </>
+  )}
 
   {/* Actions business (Devis / Facture / CRM) */}
   <div className={styles.actionTilesBusiness}>
@@ -2286,7 +2359,7 @@ const singleMoveToSpam = async () => {
                     return (
                       <div
                         key={m.id}
-                        className={`${styles.swipeRow} ${swipeEnabled ? styles.swipeRowEnabled : ""}`}
+                        className={`${styles.swipeRow} ${swipeEnabled ? styles.swipeRowEnabled : ""} ${dx !== 0 ? styles.swipeRowActive : ""}`}
                       >
                         {/* Swipe backgrounds */}
                         <div className={styles.swipeBgLeft} aria-hidden="true">
@@ -2348,7 +2421,10 @@ const singleMoveToSpam = async () => {
                             if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
                             longPressTimerRef.current = window.setTimeout(() => {
                               longPressTriggeredRef.current = true;
-                              toggleSelect(m.id);
+                              // Ouvre un menu d'actions premium (au lieu d'afficher les actions dans la ligne)
+                              setSelectedId(m.id);
+                              setListActionMessageId(m.id);
+                              setListActionSheetOpen(true);
                             }, 450);
                           }}
                           onPointerMove={(e) => {
@@ -2374,6 +2450,7 @@ const singleMoveToSpam = async () => {
                             if (!s.dragging) {
                               if (absX > 8 && absX > absY * 1.2) {
                                 s.dragging = true;
+                            if (longPressTimerRef.current) { window.clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
                                 // cancel long press if user swipes
                                 if (longPressTimerRef.current) {
                                   window.clearTimeout(longPressTimerRef.current);
