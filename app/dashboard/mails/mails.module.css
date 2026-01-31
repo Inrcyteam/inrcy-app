@@ -412,47 +412,6 @@
   min-width: 0;
 }
 
-/* ✅ Header compact : 2 lignes (Sujet / Infos) */
-.readerHeader {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.readerSubject {
-  font-size: 16px;
-  font-weight: 950;
-  letter-spacing: -0.2px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.readerInfoRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.readerInfoText {
-  font-size: 13px;
-  color: rgba(255,255,255,0.68);
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.readerNav {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
-}
-
 .readerTitle {
   display: flex;
   align-items: center;
@@ -2314,7 +2273,7 @@ width: 100%;
 .sheetTitleRow{
   display:flex;
   align-items:center;
-  justify-content:flex-end;
+  justify-content:space-between;
   gap:10px;
   padding: 0 4px 10px;
 }
