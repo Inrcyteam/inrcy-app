@@ -2428,3 +2428,38 @@ width: 100%;
   background: rgba(56,189,248,.14);
 }
 
+/* ===== Swipe rows (mobile premium) ===== */
+.swipeRow{
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  overflow-x: hidden;
+}
+.swipeRowEnabled{ touch-action: pan-y; }
+.swipeBgLeft, .swipeBgRight{
+  position:absolute;
+  top:0; bottom:0;
+  width: 50%;
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  padding: 0 14px;
+  font-weight: 950;
+  letter-spacing: -.2px;
+}
+.swipeBgLeft{
+  left:0;
+  justify-content:flex-start;
+  background: linear-gradient(90deg, rgba(56,189,248,.22), rgba(56,189,248,.06));
+  border-right: 1px solid rgba(255,255,255,.06);
+}
+.swipeBgRight{
+  right:0;
+  justify-content:flex-end;
+  background: linear-gradient(270deg, rgba(255,79,79,.22), rgba(255,79,79,.06));
+  border-left: 1px solid rgba(255,255,255,.06);
+}
+.swipeBgIcon{ font-size: 18px; }
+.swipeBgText{ opacity: .92; }
+.swipeFg{ will-change: transform; }
+.swipeAnimating{ transition: transform 220ms cubic-bezier(.2,.9,.2,1); }

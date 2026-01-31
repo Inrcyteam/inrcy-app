@@ -152,6 +152,19 @@ export default function MailboxClient() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedHtml, setSelectedHtml] = useState<string | null>(null);
 
+  // ✅ Mobile swipe actions (premium)
+  const [swipeState, setSwipeState] = useState<{ id: string | null; dx: number; anim: boolean }>(
+    { id: null, dx: 0, anim: false }
+  );
+  const swipeRef = useRef<{
+    id: string | null;
+    startX: number;
+    startY: number;
+    dragging: boolean;
+    swiped: boolean;
+    pointerId: number | null;
+  }>({ id: null, startX: 0, startY: 0, dragging: false, swiped: false, pointerId: null });
+
   const splitName = (full: string) => {
     const t = (full || "").trim();
     if (!t) return { first_name: "", last_name: "" };
@@ -739,8 +752,8 @@ const onSelectMessage = (id: string) => {
   }, []);
 
   const titleByFolder: Record<Folder, string> = {
-    inbox: "Messages",
-    important: "Importants",
+    inbox: "Chronologique global • tous canaux",
+    important: "Vos messages priorisés",
     sent: "Envoyés",
     drafts: "Brouillons",
     spam: "Indésirables",
@@ -1203,6 +1216,32 @@ const singleMoveToSpam = async () => {
     if (!m) return false;
     if (m.source === "Gmail") return (m.labelIds || []).includes("IMPORTANT");
     return m.folder === "important";
+  };
+
+  const swipeReset = () => {
+    setSwipeState((prev) => ({ id: prev.id, dx: 0, anim: true }));
+    window.setTimeout(() => setSwipeState({ id: null, dx: 0, anim: false }), 220);
+  };
+
+  const swipeDeleteToTrash = async (id: string) => {
+    setSelectedId(id);
+    await moveToTrashMany([id]);
+    notify("Supprimé → Corbeille");
+    swipeReset();
+  };
+
+  const swipeToggleImportant = async (id: string) => {
+    const m = messages.find((x) => x.id === id);
+    if (!m) return;
+    setSelectedId(id);
+    if (isImportantMessage(m)) {
+      await unImportantMany([id]);
+      notify("Retiré des Importants");
+    } else {
+      await makeImportantMany([id]);
+      notify("Ajouté aux Importants");
+    }
+    swipeReset();
   };
 
   return (
@@ -2315,11 +2354,30 @@ const singleMoveToSpam = async () => {
                     const active = m.id === selectedId;
                     const checked = isSelected(m.id);
 
+                    const swipeEnabled = isMobile && viewMode === "list" && !hasSelection;
+                    const dx = swipeState.id === m.id ? swipeState.dx : 0;
+                    const animClass = swipeState.id === m.id && swipeState.anim ? styles.swipeAnimating : "";
+
                     return (
                       <div
                         key={m.id}
-                        className={`${styles.itemRow} ${active ? styles.itemRowActive : ""} ${checked ? styles.itemRowSelected : ""}`}
+                        className={`${styles.swipeRow} ${swipeEnabled ? styles.swipeRowEnabled : ""} ${dx !== 0 ? styles.swipeRowActive : ""}`}
                       >
+                        {/* Swipe backgrounds */}
+                        <div className={styles.swipeBgLeft} aria-hidden="true">
+                          <div className={styles.swipeBgIcon}>⭐</div>
+                          <div className={styles.swipeBgText}>{isImportantMessage(m) ? "Retirer" : "Important"}</div>
+                        </div>
+                        <div className={styles.swipeBgRight} aria-hidden="true">
+                          <div className={styles.swipeBgIcon}>🗑️</div>
+                          <div className={styles.swipeBgText}>Supprimer</div>
+                        </div>
+
+                        {/* Foreground */}
+                        <div
+                          className={`${styles.itemRow} ${active ? styles.itemRowActive : ""} ${checked ? styles.itemRowSelected : ""} ${styles.swipeFg} ${animClass}`}
+                          style={swipeEnabled ? ({ transform: `translateX(${dx}px)` } as any) : undefined}
+                        >
                         <label
                           className={`${styles.checkWrap} ${checked ? styles.checkWrapChecked : ""}`}
                           onClick={(e) => e.stopPropagation()}
@@ -2331,6 +2389,10 @@ const singleMoveToSpam = async () => {
                         <button
                           className={`${styles.item} ${active ? styles.itemActive : ""}`}
                           onClick={() => {
+                            if (isMobile && swipeRef.current.swiped) {
+                              swipeRef.current.swiped = false;
+                              return;
+                            }
                             if (isMobile && hasSelection) {
                               toggleSelect(m.id);
                               return;
@@ -2338,21 +2400,94 @@ const singleMoveToSpam = async () => {
                             onSelectMessage(m.id);
                           }}
                           onDoubleClick={() => openAction(m.id)}
-                          onPointerDown={() => {
+                          onPointerDown={(e) => {
                             if (!isMobile) return;
 
-                            // long-press -> actions (important / supprimer / ouvrir)
+                            // init swipe reference
+                            if (swipeEnabled && e.pointerType !== "mouse") {
+                              swipeRef.current.id = m.id;
+                              swipeRef.current.startX = e.clientX;
+                              swipeRef.current.startY = e.clientY;
+                              swipeRef.current.dragging = false;
+                              swipeRef.current.pointerId = e.pointerId;
+                              setSwipeState({ id: m.id, dx: 0, anim: false });
+
+                              // capture pointer to keep receiving move events
+                              try {
+                                (e.currentTarget as any).setPointerCapture?.(e.pointerId);
+                              } catch {}
+                            }
+
+                            // long-press -> multi-select
                             longPressTriggeredRef.current = false;
                             if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
                             longPressTimerRef.current = window.setTimeout(() => {
                               longPressTriggeredRef.current = true;
+                              // Ouvre un menu d'actions premium (au lieu d'afficher les actions dans la ligne)
                               setSelectedId(m.id);
                               setListActionMessageId(m.id);
                               setListActionSheetOpen(true);
                             }, 450);
                           }}
+                          onPointerMove={(e) => {
+                            if (!swipeEnabled) return;
+                            if (e.pointerType === "mouse") return;
+
+                            const s = swipeRef.current;
+                            // init on first move if needed
+                            if (s.id !== m.id) {
+                              s.id = m.id;
+                              s.startX = e.clientX;
+                              s.startY = e.clientY;
+                              s.dragging = false;
+                              s.pointerId = e.pointerId;
+                              setSwipeState({ id: m.id, dx: 0, anim: false });
+                            }
+
+                            const dxNow = e.clientX - s.startX;
+                            const dyNow = e.clientY - s.startY;
+                            const absX = Math.abs(dxNow);
+                            const absY = Math.abs(dyNow);
+
+                            if (!s.dragging) {
+                              if (absX > 8 && absX > absY * 1.2) {
+                                s.dragging = true;
+                            if (longPressTimerRef.current) { window.clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+                                // cancel long press if user swipes
+                                if (longPressTimerRef.current) {
+                                  window.clearTimeout(longPressTimerRef.current);
+                                  longPressTimerRef.current = null;
+                                }
+                              } else {
+                                return;
+                              }
+                            }
+
+                            // clamp
+                            const clamped = Math.max(-120, Math.min(120, dxNow));
+                            setSwipeState({ id: m.id, dx: clamped, anim: false });
+                          }}
                           onPointerUp={(e) => {
                             if (!isMobile) return;
+
+                            if (swipeEnabled && swipeRef.current.id === m.id && swipeRef.current.dragging) {
+                              const finalDx = swipeState.id === m.id ? swipeState.dx : 0;
+                              swipeRef.current.dragging = false;
+                              swipeRef.current.swiped = true;
+
+                              // threshold actions
+                              if (finalDx <= -80) {
+                                // left swipe -> delete
+                                swipeDeleteToTrash(m.id);
+                              } else if (finalDx >= 80) {
+                                // right swipe -> important toggle
+                                swipeToggleImportant(m.id);
+                              } else {
+                                // snap back
+                                setSwipeState({ id: m.id, dx: 0, anim: true });
+                                window.setTimeout(() => setSwipeState({ id: null, dx: 0, anim: false }), 220);
+                              }
+                            }
 
                             if (longPressTimerRef.current) {
                               window.clearTimeout(longPressTimerRef.current);
@@ -2368,6 +2503,11 @@ const singleMoveToSpam = async () => {
                               window.clearTimeout(longPressTimerRef.current);
                               longPressTimerRef.current = null;
                             }
+
+                            if (swipeEnabled && swipeState.id === m.id) {
+                              setSwipeState({ id: m.id, dx: 0, anim: true });
+                              window.setTimeout(() => setSwipeState({ id: null, dx: 0, anim: false }), 220);
+                            }
                           }}
                           type="button"
                         >
@@ -2382,8 +2522,9 @@ const singleMoveToSpam = async () => {
                           <div className={styles.subject}>{m.subject}</div>
                           <div className={styles.preview}>{m.preview}</div>
                         </button>
+                        </div>
                       </div>
-                                       );
+                    );
                   })}
 
                   {!filteredMessages.length && (
