@@ -4,8 +4,8 @@ export async function GET(request: Request) {
   const appId = process.env.FACEBOOK_APP_ID;
   const redirectFromEnv = process.env.FACEBOOK_REDIRECT_URI;
 
-  const origin = new URL(request.url).origin;
-  const redirectUri = redirectFromEnv || `${origin}/api/integrations/facebook/callback`;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/facebook/callback`;
 
   if (!appId) {
     return NextResponse.json({ error: "Missing FACEBOOK_APP_ID" }, { status: 500 });
