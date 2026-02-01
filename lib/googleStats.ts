@@ -248,3 +248,46 @@ export async function runGscQuery(accessToken: string, property: string, days: n
 
   return { rows };
 }
+
+
+// Generic helper for any Google-backed integration stored in stats_integrations (GA4, GSC, GMB, ...).
+export async function getGoogleTokenForAnyGoogle(source: StatsSourceKey, product: StatsProductKey) {
+  const supabase = await createSupabaseServer();
+  const { data: authData, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !authData?.user) throw new Error("Not authenticated");
+  const userId = authData.user.id;
+
+  const { data, error } = await supabase
+    .from("stats_integrations")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("provider", "google")
+    .eq("source", source)
+    .eq("product", product)
+    .eq("status", "connected")
+    .maybeSingle();
+
+  if (error) throw new Error("DB read failed");
+  if (!data) return null;
+
+  const row = data as unknown as GoogleTokenRow;
+
+  // For any Google integration, refresh token is required to keep the connection alive.
+  if (!row.refresh_token_enc) return null;
+
+  let accessToken = row.access_token_enc;
+  let expiresAt = row.expires_at;
+
+  if (!accessToken || isExpired(expiresAt)) {
+    const refreshed = await refreshGoogleAccessToken(row.refresh_token_enc);
+    accessToken = refreshed.accessToken;
+    expiresAt = refreshed.expiresAtIso;
+
+    await supabase
+      .from("stats_integrations")
+      .update({ access_token_enc: accessToken, expires_at: expiresAt })
+      .eq("id", row.id);
+  }
+
+  return { accessToken, row };
+}

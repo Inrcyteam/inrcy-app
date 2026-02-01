@@ -7,7 +7,9 @@ import {
   runGa4Channels,
   runGscQuery,
   StatsSourceKey,
+  getGoogleTokenForAnyGoogle,
 } from "@/lib/googleStats";
+import { testGmbConnectivity, gmbFetchDailyMetrics } from "@/lib/googleBusiness";
 
 function safeJsonParse<T>(s: any, fallback: T): T {
   if (!s) return fallback;
@@ -162,6 +164,56 @@ export async function GET(request: Request) {
       .sort((a, b) => b.clicks - a.clicks)
       .slice(0, 8);
 
+    // --- GMB + Facebook connections (for badges + future metrics) ---
+    const sourcesStatus: any = {
+      site_inrcy: { connected: { ga4: false, gsc: false } },
+      site_web: { connected: { ga4: false, gsc: false } },
+      gmb: { connected: false, metrics: null },
+      facebook: { connected: false },
+    };
+
+    // copy site connections from perSource (built above)
+    sourcesStatus.site_inrcy.connected = perSource.site_inrcy?.connected || { ga4: false, gsc: false };
+    sourcesStatus.site_web.connected = perSource.site_web?.connected || { ga4: false, gsc: false };
+
+    // Facebook: presence of a connected row is enough (token validity is handled in its own status endpoint)
+    try {
+      const { data: fbRow } = await supabase
+        .from("stats_integrations")
+        .select("id,status")
+        .eq("user_id", userId)
+        .eq("provider", "facebook")
+        .eq("source", "facebook")
+        .eq("product", "facebook")
+        .eq("status", "connected")
+        .maybeSingle();
+      sourcesStatus.facebook.connected = !!fbRow;
+    } catch {}
+
+    // GMB: get token (auto-refresh) and do a real connectivity test (accounts endpoint).
+    try {
+      const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb");
+      if (tok?.accessToken) {
+        const t = await testGmbConnectivity(tok.accessToken);
+        sourcesStatus.gmb.connected = !!t.connected;
+
+        // Best-effort: if we have a saved default location, try to fetch performance metrics for the selected period.
+        const loc = tok.row?.resource_id;
+        if (t.connected && loc) {
+          const end = new Date();
+          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          try {
+            sourcesStatus.gmb.metrics = await gmbFetchDailyMetrics(tok.accessToken, loc, start, end);
+          } catch (e: any) {
+            // Keep connected=true even if performance API not enabled; expose error for debugging.
+            sourcesStatus.gmb.metrics = { error: e?.message || "performance fetch failed", location: loc };
+          }
+        }
+      }
+    } catch {}
+
+
+
     return NextResponse.json({
       days,
       totals: {
@@ -177,8 +229,8 @@ export async function GET(request: Request) {
       topPages,
       channels,
       topQueries,
-      sources: perSource,
-      note: "Les statistiques sont agrégées sur les sources connectées (site iNrCy, site web). GMB/Facebook arriveront ensuite.",
+      sources: sourcesStatus,
+      note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook.",
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });

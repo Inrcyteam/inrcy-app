@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { gmbListAccounts, gmbListLocations } from "@/lib/googleBusiness";
 
 type TokenResponse = {
   access_token?: string;
@@ -152,6 +153,35 @@ export async function GET(req: Request) {
     } else {
       const { error: insErr } = await supabase.from("stats_integrations").insert(payload);
       if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
+    }
+
+
+    // Try to discover an account + location so the Stats module can fetch GMB metrics.
+    // This is best-effort; we keep the connection even if discovery fails.
+    try {
+      if (payload.access_token_enc) {
+        const accounts = await gmbListAccounts(payload.access_token_enc);
+        const firstAcc = accounts?.[0]?.name; // e.g. "accounts/123"
+        if (firstAcc) {
+          const locations = await gmbListLocations(payload.access_token_enc, firstAcc);
+          const firstLoc = locations?.[0];
+          if (firstLoc?.name) {
+            // Store the selected default location in stats_integrations.resource_id/resource_label for later metrics calls.
+            const locName = firstLoc.name; // e.g. "locations/456"
+            const locLabel = firstLoc.title ?? null;
+
+            await supabase
+              .from("stats_integrations")
+              .update({ resource_id: locName, resource_label: locLabel, meta: { ...(payload.meta || {}), account: firstAcc } })
+              .eq("user_id", userId)
+              .eq("provider", "google")
+              .eq("source", "gmb")
+              .eq("product", "gmb");
+          }
+        }
+      }
+    } catch {
+      // ignore discovery errors
     }
 
     // Build final redirect URL safely and append params without breaking existing querystring
