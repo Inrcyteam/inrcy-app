@@ -25,10 +25,7 @@ const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/facebook/cal
     scope: [
       "public_profile",
       "email",
-      "pages_show_list",
-      "pages_read_engagement",
-      "read_insights",
-    ].join(","),
+      ].join(","),
   });
 
   const url = `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
