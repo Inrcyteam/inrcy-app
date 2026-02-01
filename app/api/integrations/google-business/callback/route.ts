@@ -72,7 +72,9 @@ export async function GET(req: Request) {
 
     // For the token exchange, redirect_uri MUST match exactly what you configured in Google Cloud.
     // Prefer env so you can switch between dev tunnel and production.
-    const redirectUri = redirectFromEnv || `${new URL(req.url).origin}/api/integrations/google-business/callback`;
+    // IMPORTANT: the redirect_uri used here MUST match exactly what was used in the initial OAuth step.
+    // Prefer env; otherwise use the canonical siteUrl (not req.url origin).
+    const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/google-business/callback`;
 
     if (!clientId || !clientSecret) {
       return NextResponse.json({ error: "Missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET" }, { status: 500 });
@@ -155,6 +157,16 @@ export async function GET(req: Request) {
       if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
     }
 
+    // Also keep a boolean in site_configs.settings so the dashboard can show it instantly.
+    try {
+      const { data: scRow } = await supabase.from("site_configs").select("settings").eq("user_id", userId).maybeSingle();
+      const current = (scRow as any)?.settings ?? {};
+      const merged = { ...current, gmb: { ...(current?.gmb ?? {}), connected: true } };
+      await supabase.from("site_configs").update({ settings: merged }).eq("user_id", userId);
+    } catch {
+      // non-fatal
+    }
+
 
     // Try to discover an account + location so the Stats module can fetch GMB metrics.
     // This is best-effort; we keep the connection even if discovery fails.
@@ -181,7 +193,7 @@ export async function GET(req: Request) {
         }
       }
     } catch {
-      // ignore discovery errors
+      // ignore discovery errors (often caused by API not enabled yet)
     }
 
     // Build final redirect URL safely and append params without breaking existing querystring

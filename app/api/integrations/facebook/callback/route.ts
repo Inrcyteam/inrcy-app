@@ -36,7 +36,10 @@ export async function GET(req: Request) {
     const code = urlObj.searchParams.get("code");
     const stateRaw = urlObj.searchParams.get("state");
 
-    if (!code) return NextResponse.json({ error: "Missing ?code" }, { status: 400 });
+    // If Facebook returns an OAuth error, surface it back to the dashboard instead of "Missing ?code".
+    const fbErrorMsg = urlObj.searchParams.get("error_message") || urlObj.searchParams.get("error_description");
+    const fbErrorCode = urlObj.searchParams.get("error_code") || urlObj.searchParams.get("error");
+
     if (!stateRaw) return NextResponse.json({ error: "Missing ?state" }, { status: 400 });
 
     let state: any;
@@ -46,13 +49,26 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Invalid state" }, { status: 400 });
     }
 
+    // Canonical base URL: never guess from req.url (can be vercel preview, localhost, etc.)
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
     const returnTo = state?.returnTo || "/dashboard?panel=facebook";
+
+    // If Facebook returned an error, redirect back with a readable reason.
+    if (!code) {
+      const finalUrl = new URL(returnTo, siteUrl);
+      finalUrl.searchParams.set("linked", "facebook");
+      finalUrl.searchParams.set("ok", "0");
+      if (fbErrorCode) finalUrl.searchParams.set("reason", String(fbErrorCode));
+      if (fbErrorMsg) finalUrl.searchParams.set("message", String(fbErrorMsg).slice(0, 200));
+      return NextResponse.redirect(finalUrl);
+    }
 
     const appId = process.env.FACEBOOK_APP_ID;
     const appSecret = process.env.FACEBOOK_APP_SECRET;
     const redirectFromEnv = process.env.FACEBOOK_REDIRECT_URI;
-    const origin = new URL(req.url).origin;
-    const redirectUri = redirectFromEnv || `${origin}/api/integrations/facebook/callback`;
+
+    // redirect_uri MUST match the one used in the initial OAuth start step.
+    const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/facebook/callback`;
 
     if (!appId || !appSecret) {
       return NextResponse.json({ error: "Missing FACEBOOK_APP_ID/FACEBOOK_APP_SECRET" }, { status: 500 });
@@ -107,22 +123,26 @@ export async function GET(req: Request) {
       me = {};
     }
 
-    // 4) Fetch managed pages and pick the first one
-    // NOTE: This requires pages_show_list.
-    const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
-      fields: "id,name,access_token",
-      access_token: longUserToken,
-    }).toString()}`;
-    const pagesResp = await fetchJson<{ data?: FbPage[] }>(pagesUrl);
-    const pages = pagesResp.data || [];
-    if (pages.length === 0) {
-      return NextResponse.redirect(new URL(`${returnTo}&ok=0&reason=no_pages`, origin));
+    // 4) Fetch managed pages (best-effort)
+    // NOTE: This requires pages_show_list + advanced access in a SaaS.
+    // We still mark the OAuth connection as successful even if pages can't be listed yet.
+    let pages: FbPage[] = [];
+    try {
+      const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
+        fields: "id,name,access_token",
+        access_token: longUserToken,
+      }).toString()}`;
+      const pagesResp = await fetchJson<{ data?: FbPage[] }>(pagesUrl);
+      pages = pagesResp.data || [];
+    } catch {
+      pages = [];
     }
 
-    const page = pages[0];
-    const pageId = page.id;
-    const pageName = page.name || null;
-    const pageToken = page.access_token || null;
+    const picked = pages[0] || null;
+    const pageId = picked?.id ?? null;
+    const pageName = picked?.name ?? null;
+    // If we could not list pages, store the user token so you can complete the flow later.
+    const tokenToStore = picked?.access_token ?? longUserToken;
 
     // 5) Upsert into stats_integrations
     const { data: existing, error: existingErr } = await supabase
@@ -147,14 +167,14 @@ export async function GET(req: Request) {
       email_address: me.email ?? null,
       display_name: me.name ?? null,
       provider_account_id: me.id ?? null,
-      scopes: "pages_show_list,pages_read_engagement,read_insights",
-      access_token_enc: pageToken,
+      scopes: "public_profile",
+      access_token_enc: tokenToStore,
       refresh_token_enc: null,
       expires_at: null,
       resource_id: pageId,
       resource_label: pageName,
       meta: {
-        picked: "first_page",
+        picked: picked ? "first_page" : "none",
         pages_found: pages.length,
       },
     };
@@ -170,7 +190,23 @@ export async function GET(req: Request) {
       if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
     }
 
-    return NextResponse.redirect(new URL(`${returnTo}&linked=facebook&ok=1`, origin));
+    // Also keep a boolean in site_configs.settings so the dashboard can show it instantly.
+    try {
+      const { data: scRow } = await supabase.from("site_configs").select("settings").eq("user_id", userId).maybeSingle();
+      const current = (scRow as any)?.settings ?? {};
+      const merged = { ...current, facebook: { ...(current?.facebook ?? {}), connected: true } };
+      await supabase.from("site_configs").update({ settings: merged }).eq("user_id", userId);
+    } catch {
+      // non-fatal
+    }
+
+    const finalUrl = new URL(returnTo, siteUrl);
+    finalUrl.searchParams.set("linked", "facebook");
+    finalUrl.searchParams.set("ok", "1");
+    if (!picked) {
+      finalUrl.searchParams.set("warning", "no_pages_or_no_permission");
+    }
+    return NextResponse.redirect(finalUrl);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }

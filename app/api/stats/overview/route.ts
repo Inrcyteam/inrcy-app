@@ -9,7 +9,7 @@ import {
   StatsSourceKey,
   getGoogleTokenForAnyGoogle,
 } from "@/lib/googleStats";
-import { testGmbConnectivity, gmbFetchDailyMetrics } from "@/lib/googleBusiness";
+import { gmbFetchDailyMetrics } from "@/lib/googleBusiness";
 
 function safeJsonParse<T>(s: any, fallback: T): T {
   if (!s) return fallback;
@@ -190,22 +190,33 @@ export async function GET(request: Request) {
       sourcesStatus.facebook.connected = !!fbRow;
     } catch {}
 
-    // GMB: get token (auto-refresh) and do a real connectivity test (accounts endpoint).
+    // GMB: the UI needs a stable "connected" flag like GA4/GSC.
+    // We consider it connected if an OAuth row exists in stats_integrations.
+    // (We still *try* to fetch metrics, but a missing API enablement should not flip the badge back to "off".)
     try {
-      const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb");
-      if (tok?.accessToken) {
-        const t = await testGmbConnectivity(tok.accessToken);
-        sourcesStatus.gmb.connected = !!t.connected;
+      const { data: gmbRow } = await supabase
+        .from("stats_integrations")
+        .select("id,status,resource_id")
+        .eq("user_id", userId)
+        .eq("provider", "google")
+        .eq("source", "gmb")
+        .eq("product", "gmb")
+        .eq("status", "connected")
+        .maybeSingle();
 
-        // Best-effort: if we have a saved default location, try to fetch performance metrics for the selected period.
-        const loc = tok.row?.resource_id;
-        if (t.connected && loc) {
+      sourcesStatus.gmb.connected = !!gmbRow;
+
+      if (gmbRow) {
+        const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb");
+        const accessToken = tok?.accessToken;
+        const loc = gmbRow?.resource_id || tok?.row?.resource_id;
+
+        if (accessToken && loc) {
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           try {
-            sourcesStatus.gmb.metrics = await gmbFetchDailyMetrics(tok.accessToken, loc, start, end);
+            sourcesStatus.gmb.metrics = await gmbFetchDailyMetrics(accessToken, loc, start, end);
           } catch (e: any) {
-            // Keep connected=true even if performance API not enabled; expose error for debugging.
             sourcesStatus.gmb.metrics = { error: e?.message || "performance fetch failed", location: loc };
           }
         }

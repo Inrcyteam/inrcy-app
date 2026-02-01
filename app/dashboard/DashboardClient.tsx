@@ -229,6 +229,8 @@ const [siteInrcySettingsError, setSiteInrcySettingsError] = useState<string | nu
   const [siteWebUrlNotice, setSiteWebUrlNotice] = useState<string | null>(null);
   const [houzzUrlNotice, setHouzzUrlNotice] = useState<string | null>(null);
   const [pagesJaunesUrlNotice, setPagesJaunesUrlNotice] = useState<string | null>(null);
+  const [gmbUrlNotice, setGmbUrlNotice] = useState<string | null>(null);
+  const [facebookUrlNotice, setFacebookUrlNotice] = useState<string | null>(null);
 
   // ✅ Connexions Google (viennent de stats_integrations, pas des IDs)
   const [siteInrcyGa4Connected, setSiteInrcyGa4Connected] = useState(false);
@@ -260,11 +262,7 @@ const [gmbConnected, setGmbConnected] = useState<boolean>(false);
 const [facebookUrl, setFacebookUrl] = useState<string>("");
 const [facebookConnected, setFacebookConnected] = useState<boolean>(false);
 
-// (optionnel) champs "clés" (placeholder en attendant l’API)
-const [facebookAppId, setFacebookAppId] = useState<string>("");
-const [facebookAppSecret, setFacebookAppSecret] = useState<string>("");
-const [gmbClientId, setGmbClientId] = useState<string>("");
-const [gmbClientSecret, setGmbClientSecret] = useState<string>("");
+// OAuth credentials must be stored server-side (env vars), not in the UI.
 
 
   useEffect(() => {
@@ -346,14 +344,10 @@ setPagesJaunesUrl(((settingsObj as any)?.pages_jaunes ?? {})?.url ?? "");
 const gmbObj = ((settingsObj as any)?.gmb ?? {}) as any;
 setGmbUrl(gmbObj?.url ?? "");
 setGmbConnected(!!gmbObj?.connected);
-setGmbClientId(gmbObj?.client_id ?? "");
-setGmbClientSecret(gmbObj?.client_secret ?? "");
 
 const fbObj = ((settingsObj as any)?.facebook ?? {}) as any;
 setFacebookUrl(fbObj?.url ?? "");
 setFacebookConnected(!!fbObj?.connected);
-setFacebookAppId(fbObj?.app_id ?? "");
-setFacebookAppSecret(fbObj?.app_secret ?? "");
 
   // ✅ Connexions Google : la source de vérité est stats_integrations
   const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([
@@ -798,41 +792,44 @@ const savePagesJaunesLink = useCallback(async () => {
 
 const saveGmbLink = useCallback(async () => {
   const url = gmbUrl.trim();
-  await updateRootSettingsKey("gmb", { url, connected: gmbConnected, client_id: gmbClientId.trim(), client_secret: gmbClientSecret.trim() });
-}, [gmbUrl, gmbConnected, gmbClientId, gmbClientSecret, updateRootSettingsKey]);
+  // Do not store OAuth credentials client-side.
+  await updateRootSettingsKey("gmb", { url, connected: gmbConnected });
+  setGmbUrlNotice("Enregistré ✓");
+  window.setTimeout(() => setGmbUrlNotice(null), 2200);
+}, [gmbUrl, gmbConnected, updateRootSettingsKey]);
 
 const saveFacebookLink = useCallback(async () => {
   const url = facebookUrl.trim();
-  await updateRootSettingsKey("facebook", { url, connected: facebookConnected, app_id: facebookAppId.trim(), app_secret: facebookAppSecret.trim() });
-}, [facebookUrl, facebookConnected, facebookAppId, facebookAppSecret, updateRootSettingsKey]);
+  // Do not store OAuth credentials client-side.
+  await updateRootSettingsKey("facebook", { url, connected: facebookConnected });
+  setFacebookUrlNotice("Enregistré ✓");
+  window.setTimeout(() => setFacebookUrlNotice(null), 2200);
+}, [facebookUrl, facebookConnected, updateRootSettingsKey]);
 
 const connectGmbAccount = useCallback(async () => {
-  if (gmbConnected) {
-    // Disconnect
-    await fetch("/api/integrations/google-business/disconnect", { method: "POST" });
-    setGmbConnected(false);
-    const url = gmbUrl.trim();
-    await updateRootSettingsKey("gmb", { url, connected: false, client_id: gmbClientId.trim(), client_secret: gmbClientSecret.trim() });
-    return;
-  }
-
   // Start OAuth
   const returnTo = encodeURIComponent("/dashboard?panel=gmb");
   window.location.href = `/api/integrations/google-business/start?returnTo=${returnTo}`;
-}, [gmbConnected, gmbUrl, gmbClientId, gmbClientSecret, updateRootSettingsKey]);
+}, [gmbConnected, gmbUrl, updateRootSettingsKey]);
+
+const disconnectGmbAccount = useCallback(async () => {
+  await fetch("/api/integrations/google-business/disconnect", { method: "POST" });
+  setGmbConnected(false);
+  const url = gmbUrl.trim();
+  await updateRootSettingsKey("gmb", { url, connected: false });
+}, [gmbUrl, updateRootSettingsKey]);
 
 const connectFacebookAccount = useCallback(async () => {
-  if (facebookConnected) {
-    await fetch("/api/integrations/facebook/disconnect", { method: "POST" });
-    setFacebookConnected(false);
-    const url = facebookUrl.trim();
-    await updateRootSettingsKey("facebook", { url, connected: false, app_id: facebookAppId.trim(), app_secret: facebookAppSecret.trim() });
-    return;
-  }
-
   const returnTo = encodeURIComponent("/dashboard?panel=facebook");
   window.location.href = `/api/integrations/facebook/start?returnTo=${returnTo}`;
-}, [facebookConnected, facebookUrl, facebookAppId, facebookAppSecret, updateRootSettingsKey]);
+}, [facebookConnected, facebookUrl, updateRootSettingsKey]);
+
+const disconnectFacebookAccount = useCallback(async () => {
+  await fetch("/api/integrations/facebook/disconnect", { method: "POST" });
+  setFacebookConnected(false);
+  const url = facebookUrl.trim();
+  await updateRootSettingsKey("facebook", { url, connected: false });
+}, [facebookUrl, updateRootSettingsKey]);
 
 const saveSiteWebSettings = useCallback(async () => {
   let parsed: any;
@@ -1231,13 +1228,15 @@ const disconnectSiteWebGsc = useCallback(() => {
         return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
+      // Google Business + Facebook: the “connected” state should reflect OAuth integration,
+      // even if the user hasn't filled the optional public URL yet.
       if (m.key === "gmb") {
-        if (gmbUrl?.trim() && gmbConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
+        if (gmbConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
         return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
       if (m.key === "facebook") {
-        if (facebookUrl?.trim() && facebookConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
+        if (facebookConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
         return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
@@ -2867,24 +2866,35 @@ const disconnectSiteWebGsc = useCallback(() => {
         {panel === "abonnement" && <AbonnementContent mode="drawer" onOpenContact={() => openPanel("contact")} />}
         {panel === "gmb" && (
           <div style={{ display: "grid", gap: 14 }}>
-            <label style={{ display: "grid", gap: 8 }}>
-              <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Lien de la fiche Google (Google Business Profile)</span>
-              <input
-                value={gmbUrl}
-                onChange={(e) => setGmbUrl(e.target.value)}
-                placeholder="https://..."
+            {/* Statut */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <span
                 style={{
-                  width: "100%",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.14)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  border: "1px solid rgba(255,255,255,0.12)",
                   background: "rgba(255,255,255,0.04)",
-                  padding: "10px 12px",
-                  color: "white",
-                  outline: "none",
+                  padding: "8px 10px",
+                  borderRadius: 999,
+                  color: "rgba(255,255,255,0.92)",
+                  fontSize: 13,
                 }}
-              />
-            </label>
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 999,
+                    background: gmbConnected ? "rgba(34,197,94,0.95)" : "rgba(148,163,184,0.9)",
+                  }}
+                />
+                Statut : <strong>{gmbConnected ? "Connecté" : "À connecter"}</strong>
+              </span>
+            </div>
 
+            {/* Lien de la page */}
             <div
               style={{
                 border: "1px solid rgba(255,255,255,0.12)",
@@ -2895,88 +2905,100 @@ const disconnectSiteWebGsc = useCallback(() => {
                 gap: 10,
               }}
             >
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 600 }}>Connexion Google</div>
-                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                  {gmbConnected ? "Compte connecté" : "Connecte ton compte Google (à brancher à l’API plus tard)"}
-                </div>
+              <div className={styles.blockHeaderRow}>
+                <div className={styles.blockTitle}>Lien de la page</div>
+                <ConnectionPill connected={!!gmbUrl?.trim()} />
               </div>
+              <div className={styles.blockSub}>Le bouton <strong>Voir la page</strong> de la bulle utilisera ce lien.</div>
 
-              <div style={{ display: "grid", gap: 10 }}>
-                <label style={{ display: "grid", gap: 8 }}>
-                  <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Client ID (optionnel)</span>
-                  <input
-                    value={gmbClientId}
-                    onChange={(e) => setGmbClientId(e.target.value)}
-                    placeholder="xxxx.apps.googleusercontent.com"
-                    style={{
-                      width: "100%",
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.04)",
-                      padding: "10px 12px",
-                      color: "white",
-                      outline: "none",
-                    }}
-                  />
-                </label>
-
-                <label style={{ display: "grid", gap: 8 }}>
-                  <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Client Secret (optionnel)</span>
-                  <input
-                    value={gmbClientSecret}
-                    onChange={(e) => setGmbClientSecret(e.target.value)}
-                    placeholder="********"
-                    style={{
-                      width: "100%",
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.04)",
-                      padding: "10px 12px",
-                      color: "white",
-                      outline: "none",
-                    }}
-                  />
-                </label>
-              </div>
-
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                <button type="button" className={`${styles.actionBtn} ${styles.actionView}`} onClick={saveGmbLink}>
-                  Enregistrer le lien
-                </button>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  value={gmbUrl}
+                  onChange={(e) => setGmbUrl(e.target.value)}
+                  placeholder="https://..."
+                  style={{
+                    flex: "1 1 280px",
+                    minWidth: 220,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "10px 12px",
+                    color: "white",
+                    outline: "none",
+                  }}
+                />
 
                 <button
                   type="button"
-                  className={`${styles.actionBtn} ${styles.connectBtn}`}
-                  onClick={connectGmbAccount}
+                  className={`${styles.actionBtn} ${styles.iconBtn}`}
+                  onClick={saveGmbLink}
+                  title="Enregistrer le lien"
+                  aria-label="Enregistrer le lien"
                 >
-                  {gmbConnected ? "Google connecté" : "Connecter Google"}
+                  <SaveIcon />
                 </button>
+
+                <a
+                  href={gmbUrl || "#"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`${styles.actionBtn} ${styles.viewBtn}`}
+                  style={{ pointerEvents: gmbUrl ? "auto" : "none", opacity: gmbUrl ? 1 : 0.5 }}
+                >
+                  Voir la page
+                </a>
               </div>
+              {gmbUrlNotice && <div className={styles.successNote}>{gmbUrlNotice}</div>}
+            </div>
+
+            {/* Connexion */}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              {!gmbConnected ? (
+                <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectGmbAccount}>
+                  Connecter Google Business
+                </button>
+              ) : (
+                <>
+                  <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectGmbAccount}>
+                    Déconnecter
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
 
         {panel === "facebook" && (
           <div style={{ display: "grid", gap: 14 }}>
-            <label style={{ display: "grid", gap: 8 }}>
-              <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Lien de la page Facebook</span>
-              <input
-                value={facebookUrl}
-                onChange={(e) => setFacebookUrl(e.target.value)}
-                placeholder="https://facebook.com/..."
+            {/* Statut */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <span
                 style={{
-                  width: "100%",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.14)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  border: "1px solid rgba(255,255,255,0.12)",
                   background: "rgba(255,255,255,0.04)",
-                  padding: "10px 12px",
-                  color: "white",
-                  outline: "none",
+                  padding: "8px 10px",
+                  borderRadius: 999,
+                  color: "rgba(255,255,255,0.92)",
+                  fontSize: 13,
                 }}
-              />
-            </label>
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 999,
+                    background: facebookConnected ? "rgba(34,197,94,0.95)" : "rgba(148,163,184,0.9)",
+                  }}
+                />
+                Statut : <strong>{facebookConnected ? "Connecté" : "À connecter"}</strong>
+              </span>
+            </div>
 
+            {/* Lien de la page */}
             <div
               style={{
                 border: "1px solid rgba(255,255,255,0.12)",
@@ -2987,64 +3009,63 @@ const disconnectSiteWebGsc = useCallback(() => {
                 gap: 10,
               }}
             >
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 600 }}>Connexion Facebook Pro</div>
-                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                  {facebookConnected ? "Compte connecté" : "Connecte ton compte Facebook (à brancher à l’API plus tard)"}
-                </div>
+              <div className={styles.blockHeaderRow}>
+                <div className={styles.blockTitle}>Lien de la page</div>
+                <ConnectionPill connected={!!facebookUrl?.trim()} />
               </div>
+              <div className={styles.blockSub}>Le bouton <strong>Voir la page</strong> de la bulle utilisera ce lien.</div>
 
-              <div style={{ display: "grid", gap: 10 }}>
-                <label style={{ display: "grid", gap: 8 }}>
-                  <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>App ID (optionnel)</span>
-                  <input
-                    value={facebookAppId}
-                    onChange={(e) => setFacebookAppId(e.target.value)}
-                    placeholder="1234567890"
-                    style={{
-                      width: "100%",
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.04)",
-                      padding: "10px 12px",
-                      color: "white",
-                      outline: "none",
-                    }}
-                  />
-                </label>
-
-                <label style={{ display: "grid", gap: 8 }}>
-                  <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>App Secret (optionnel)</span>
-                  <input
-                    value={facebookAppSecret}
-                    onChange={(e) => setFacebookAppSecret(e.target.value)}
-                    placeholder="********"
-                    style={{
-                      width: "100%",
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.04)",
-                      padding: "10px 12px",
-                      color: "white",
-                      outline: "none",
-                    }}
-                  />
-                </label>
-              </div>
-
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                <button type="button" className={`${styles.actionBtn} ${styles.actionView}`} onClick={saveFacebookLink}>
-                  Enregistrer le lien
-                </button>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  value={facebookUrl}
+                  onChange={(e) => setFacebookUrl(e.target.value)}
+                  placeholder="https://facebook.com/..."
+                  style={{
+                    flex: "1 1 280px",
+                    minWidth: 220,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "10px 12px",
+                    color: "white",
+                    outline: "none",
+                  }}
+                />
 
                 <button
                   type="button"
-                  className={`${styles.actionBtn} ${styles.connectBtn}`}
-                  onClick={connectFacebookAccount}
+                  className={`${styles.actionBtn} ${styles.iconBtn}`}
+                  onClick={saveFacebookLink}
+                  title="Enregistrer le lien"
+                  aria-label="Enregistrer le lien"
                 >
-                  {facebookConnected ? "Facebook connecté" : "Connecter Facebook"}
+                  <SaveIcon />
                 </button>
+
+                <a
+                  href={facebookUrl || "#"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`${styles.actionBtn} ${styles.viewBtn}`}
+                  style={{ pointerEvents: facebookUrl ? "auto" : "none", opacity: facebookUrl ? 1 : 0.5 }}
+                >
+                  Voir la page
+                </a>
               </div>
+              {facebookUrlNotice && <div className={styles.successNote}>{facebookUrlNotice}</div>}
+            </div>
+
+            {/* Connexion */}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              {!facebookConnected ? (
+                <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectFacebookAccount}>
+                  Connecter Facebook
+                </button>
+              ) : (
+                <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookAccount}>
+                  Déconnecter
+                </button>
+              )}
             </div>
           </div>
         )}

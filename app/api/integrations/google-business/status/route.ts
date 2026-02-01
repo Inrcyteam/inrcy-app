@@ -9,11 +9,39 @@ export async function GET() {
   if (!authData?.user) return NextResponse.json({ connected: false });
 
   try {
-    const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb");
-    if (!tok?.accessToken) return NextResponse.json({ connected: false });
+    // Source of truth: the integration row itself.
+    // We still try a live API call, but we NEVER mark the integration "disconnected"
+    // just because the Business APIs are not enabled / user has no accounts yet.
+    const { data } = await supabase
+      .from("stats_integrations")
+      .select("id,status,resource_id,resource_label")
+      .eq("user_id", authData.user.id)
+      .eq("provider", "google")
+      .eq("source", "gmb")
+      .eq("product", "gmb")
+      .maybeSingle();
 
-    const t = await testGmbConnectivity(tok.accessToken);
-    return NextResponse.json({ connected: !!t.connected, accountsCount: t.accountsCount });
+    const dbConnected = !!data && (data as any).status === "connected";
+    if (!dbConnected) return NextResponse.json({ connected: false });
+
+    // Best-effort connectivity check
+    let accountsCount: number | null = null;
+    try {
+      const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb");
+      if (tok?.accessToken) {
+        const t = await testGmbConnectivity(tok.accessToken);
+        accountsCount = t.accountsCount;
+      }
+    } catch {
+      // ignore
+    }
+
+    return NextResponse.json({
+      connected: true,
+      accountsCount,
+      resource_id: (data as any)?.resource_id ?? null,
+      resource_label: (data as any)?.resource_label ?? null,
+    });
   } catch {
     return NextResponse.json({ connected: false });
   }

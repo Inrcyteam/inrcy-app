@@ -52,8 +52,8 @@ export default function StatsClient() {
       { label: "Site iNrCy · GSC", ok: !!s?.site_inrcy?.connected?.gsc },
       { label: "Site Web · GA4", ok: !!s?.site_web?.connected?.ga4 },
       { label: "Site Web · GSC", ok: !!s?.site_web?.connected?.gsc },
-      { label: "GMB", ok: false },
-      { label: "Facebook", ok: false },
+      { label: "GMB", ok: !!s?.gmb?.connected },
+      { label: "Facebook", ok: !!s?.facebook?.connected },
     ];
   }, [data]);
 
