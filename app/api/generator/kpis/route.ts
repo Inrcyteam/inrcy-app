@@ -193,6 +193,18 @@ async function getStats(origin: string, days: number, req: Request) {
   return { clicks, pageviews };
 }
 
+async function getOpportunities(origin: string, baseDays: number, req: Request) {
+  const url = `${origin}/api/inrstats/opportunities?baseDays=${encodeURIComponent(baseDays)}`;
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      cookie: req.headers.get("cookie") || "",
+    },
+  });
+  if (!res.ok) throw new Error(`iNrStats opportunities failed (${res.status})`);
+  return res.json();
+}
+
 async function getProfile(debug: AnyRec) {
   const { data, error } = await supabase
     .from("profiles")
@@ -263,22 +275,18 @@ export async function GET(req: Request) {
       avg_basket: 0,
     });
 
-    const [gmailMonth, gmailWeek, gmailToday] = await Promise.all([
-      safe("gmailMonth", () => countGmailInbox(monthDays, debug), 0),
-      safe("gmailWeek", () => countGmailInbox(weekDays, debug), 0),
-      safe("gmailToday", () => countGmailInbox(todayDays, debug), 0),
-    ]);
-
-    const [statsMonth, statsWeek, statsToday] = await Promise.all([
-      safe("statsMonth", () => getStats(origin, monthDays, req), { clicks: 0, pageviews: 0 }),
-      safe("statsWeek", () => getStats(origin, weekDays, req), { clicks: 0, pageviews: 0 }),
-      safe("statsToday", () => getStats(origin, todayDays, req), { clicks: 0, pageviews: 0 }),
-    ]);
+    // The Générateur must reflect iNr'Stats opportunités.
+    // We take the snapshot from /api/inrstats/opportunities and only add the CA estimation here.
+    const opp = await safe(
+      "opportunities",
+      () => getOpportunities(origin, monthDays, req),
+      { baseDays: monthDays, today: 0, week: 0, month: 0, confidence: "low" }
+    );
 
     const leads = {
-      month: gmailMonth + statsMonth.clicks + statsMonth.pageviews,
-      week: gmailWeek + statsWeek.clicks + statsWeek.pageviews,
-      today: gmailToday + statsToday.clicks + statsToday.pageviews,
+      month: Number(opp.month) || 0,
+      week: Number(opp.week) || 0,
+      today: Number(opp.today) || 0,
     };
 
     const estimatedValue = Math.round(
@@ -291,8 +299,7 @@ export async function GET(req: Request) {
       leads,
       estimatedValue,
       details: {
-        gmail: { month: gmailMonth, week: gmailWeek, today: gmailToday },
-        stats: { month: statsMonth, week: statsWeek, today: statsToday },
+        opportunities: opp,
         profile,
       },
       debug,

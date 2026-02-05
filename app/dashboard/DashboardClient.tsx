@@ -280,19 +280,41 @@ const [facebookConnected, setFacebookConnected] = useState<boolean>(false);
     return !!json?.connected;
   }, []);
 
-// ✅ Charge infos Site iNrCy depuis Supabase (profiles + site_configs)
+// ✅ Charge infos Site iNrCy + outils du pro depuis Supabase
+// - ownership + url iNrCy : profiles
+// - config iNrCy : inrcy_site_configs
+// - outils du pro (site_web, gmb, facebook, houzz, pages_jaunes, ...) : pro_tools_configs
+// - fallback de transition : site_configs (ancienne table) si une ligne n'existe pas encore
 const loadSiteInrcy = useCallback(async () => {
   const supabase = createClient();
   const { data: authData } = await supabase.auth.getUser();
   const user = authData?.user;
   if (!user) return;
 
-  const [profileRes, configRes] = await Promise.all([
+  // 1) Profile (source de vérité pour ownership)
+  const profileRes = await supabase
+    .from("profiles")
+    .select("inrcy_site_ownership,inrcy_site_url")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const profile = profileRes.data as any | null;
+  const ownership = (profile?.inrcy_site_ownership ?? "none") as Ownership;
+  setSiteInrcyOwnership(ownership);
+
+  // 2) Lecture configs (nouveaux schémas)
+  const [inrcyRes, proRes, legacyRes] = await Promise.all([
     supabase
-      .from("profiles")
-      .select("inrcy_site_ownership,inrcy_site_url")
+      .from("inrcy_site_configs")
+      .select("contact_email,settings,site_url")
       .eq("user_id", user.id)
       .maybeSingle(),
+    supabase
+      .from("pro_tools_configs")
+      .select("settings")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    // fallback (ancienne table) — on ne dépend plus d'elle, mais elle évite de casser si la migration n'a pas encore été faite
     supabase
       .from("site_configs")
       .select("contact_email,settings,site_url")
@@ -300,31 +322,35 @@ const loadSiteInrcy = useCallback(async () => {
       .maybeSingle(),
   ]);
 
-  const profile = profileRes.data as any | null;
-  const config = configRes.data as any | null;
+  const inrcyCfg = (inrcyRes.data as any | null) ?? null;
+  const proCfg = (proRes.data as any | null) ?? null;
+  const legacyCfg = (legacyRes.data as any | null) ?? null;
 
-  const ownership = (profile?.inrcy_site_ownership ?? "none") as Ownership;
-  setSiteInrcyOwnership(ownership);
-
-  const url = (profile?.inrcy_site_url ?? config?.site_url ?? "") as string;
+  // URL iNrCy : profile > inrcy table > legacy
+  const url = (profile?.inrcy_site_url ?? inrcyCfg?.site_url ?? legacyCfg?.site_url ?? "") as string;
   setSiteInrcyUrl(url);
 
-  const email = (config?.contact_email ?? "") as string;
+  // Contact email iNrCy : inrcy table > legacy
+  const email = (inrcyCfg?.contact_email ?? legacyCfg?.contact_email ?? "") as string;
   setSiteInrcyContactEmail(email);
 
-  const settingsObj = config?.settings ?? {};
+  // Settings iNrCy : inrcy table > legacy
+  const inrcySettingsObj = inrcyCfg?.settings ?? legacyCfg?.settings ?? {};
   try {
-    setSiteInrcySettingsText(JSON.stringify(settingsObj, null, 2));
+    setSiteInrcySettingsText(JSON.stringify(inrcySettingsObj, null, 2));
   } catch {
     setSiteInrcySettingsText("{}");
   }
   setSiteInrcySettingsError(null);
-  setGa4MeasurementId((settingsObj as any)?.ga4?.measurement_id ?? "");
-  setGa4PropertyId(String((settingsObj as any)?.ga4?.property_id ?? ""));
-setGscProperty((settingsObj as any)?.gsc?.property ?? "");
+  setGa4MeasurementId((inrcySettingsObj as any)?.ga4?.measurement_id ?? "");
+  setGa4PropertyId(String((inrcySettingsObj as any)?.ga4?.property_id ?? ""));
+  setGscProperty((inrcySettingsObj as any)?.gsc?.property ?? "");
 
-  // ✅ Site web (stocké dans site_configs.settings.site_web)
-  const siteWebObj = (settingsObj as any)?.site_web ?? {};
+  // Settings pro : pro_tools_configs > legacy.settings
+  const proSettingsObj = proCfg?.settings ?? legacyCfg?.settings ?? {};
+
+  // ✅ Site web (stocké dans pro_tools_configs.settings.site_web)
+  const siteWebObj = (proSettingsObj as any)?.site_web ?? {};
   try {
     setSiteWebSettingsText(JSON.stringify(siteWebObj, null, 2));
   } catch {
@@ -336,18 +362,18 @@ setGscProperty((settingsObj as any)?.gsc?.property ?? "");
   setSiteWebGa4PropertyId(String((siteWebObj as any)?.ga4?.property_id ?? ""));
   setSiteWebGscProperty((siteWebObj as any)?.gsc?.property ?? "");
 
-// ✅ Houzz & Pages Jaunes (stockés dans site_configs.settings.houzz / site_configs.settings.pages_jaunes)
-setHouzzUrl(((settingsObj as any)?.houzz ?? {})?.url ?? "");
-setPagesJaunesUrl(((settingsObj as any)?.pages_jaunes ?? {})?.url ?? "");
+  // ✅ Houzz & Pages Jaunes (pro_tools_configs.settings.houzz / pages_jaunes)
+  setHouzzUrl(((proSettingsObj as any)?.houzz ?? {})?.url ?? "");
+  setPagesJaunesUrl(((proSettingsObj as any)?.pages_jaunes ?? {})?.url ?? "");
 
-// ✅ Google Business & Facebook
-const gmbObj = ((settingsObj as any)?.gmb ?? {}) as any;
-setGmbUrl(gmbObj?.url ?? "");
-setGmbConnected(!!gmbObj?.connected);
+  // ✅ Google Business & Facebook (pro_tools_configs.settings.gmb / facebook)
+  const gmbObj = ((proSettingsObj as any)?.gmb ?? {}) as any;
+  setGmbUrl(gmbObj?.url ?? "");
+  setGmbConnected(!!gmbObj?.connected);
 
-const fbObj = ((settingsObj as any)?.facebook ?? {}) as any;
-setFacebookUrl(fbObj?.url ?? "");
-setFacebookConnected(!!fbObj?.connected);
+  const fbObj = ((proSettingsObj as any)?.facebook ?? {}) as any;
+  setFacebookUrl(fbObj?.url ?? "");
+  setFacebookConnected(!!fbObj?.connected);
 
   // ✅ Connexions Google : la source de vérité est stats_integrations
   const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([
@@ -380,6 +406,12 @@ useEffect(() => {
 
 const canViewSite = siteInrcyOwnership !== "none" && !!siteInrcyUrl;
 const canConfigureSite = siteInrcyOwnership === "sold";
+
+// ✅ UX : on grise les boutons de connexion tant que l'URL n'est pas renseignée
+const hasSiteInrcyUrl = !!siteInrcyUrl?.trim();
+const hasSiteWebUrl = !!siteWebUrl?.trim();
+const canConnectSiteInrcyGoogle = canConfigureSite && hasSiteInrcyUrl;
+const canConnectSiteWebGoogle = hasSiteWebUrl;
 
 const siteInrcyAllGreen = siteInrcyOwnership !== "none" && !!siteInrcyUrl?.trim() && siteInrcyGa4Connected && siteInrcyGscConnected;
 const siteWebAllGreen = !!siteWebUrl?.trim() && siteWebGa4Connected && siteWebGscConnected;
@@ -428,10 +460,7 @@ const saveSiteInrcySettings = useCallback(async () => {
   const user = authData?.user;
   if (!user) return;
 
-  const { error } = await supabase
-    .from("site_configs")
-    .update({ settings: parsed })
-    .eq("user_id", user.id);
+  const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, settings: parsed }, { onConflict: "user_id" });
 
   if (error) {
     setSiteInrcySettingsError(error.message);
@@ -470,10 +499,7 @@ const attachGoogleAnalytics = useCallback(async () => {
   const user = authData?.user;
   if (!user) return;
 
-  const { error } = await supabase
-    .from("site_configs")
-    .update({ settings: parsed })
-    .eq("user_id", user.id);
+  const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, settings: parsed }, { onConflict: "user_id" });
 
   if (error) {
     setSiteInrcySettingsError(error.message);
@@ -510,7 +536,7 @@ const attachGoogleSearchConsole = useCallback(async () => {
   const user = authData?.user;
   if (!user) return;
 
-  const { error } = await supabase.from("site_configs").update({ settings: parsed }).eq("user_id", user.id);
+  const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, settings: parsed }, { onConflict: "user_id" });
 
   if (error) {
     setSiteInrcySettingsError(error.message);
@@ -627,7 +653,7 @@ const saveSiteInrcyUrl = useCallback(async () => {
   if (!user) return;
 
   const { error } = await supabase
-    .from("site_configs")
+    .from("inrcy_site_configs")
     .upsert({ user_id: user.id, site_url: url }, { onConflict: "user_id" });
 
   if (error) {
@@ -642,7 +668,7 @@ const saveSiteInrcyUrl = useCallback(async () => {
 
 // =========================
 // ✅ Site web (indépendant)
-// - données stockées dans site_configs.settings.site_web
+// - données stockées dans pro_tools_configs.settings.site_web
 // =========================
 const updateSiteWebSettings = useCallback(
   async (nextSiteWeb: any) => {
@@ -653,7 +679,7 @@ const updateSiteWebSettings = useCallback(
 
     // Récupère les settings actuels pour ne pas écraser les autres clés
     const { data: row, error: readErr } = await supabase
-      .from("site_configs")
+      .from("pro_tools_configs")
       .select("settings")
       .eq("user_id", user.id)
       .maybeSingle();
@@ -666,7 +692,7 @@ const updateSiteWebSettings = useCallback(
     const current = (row as any)?.settings ?? {};
     const merged = { ...(current ?? {}), site_web: nextSiteWeb ?? {} };
 
-    const { error } = await supabase.from("site_configs").update({ settings: merged }).eq("user_id", user.id);
+    const { error } = await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
     if (error) {
       setSiteWebSettingsError(error.message);
       return;
@@ -725,7 +751,7 @@ const resetSiteInrcyAll = useCallback(async () => {
   const { data: authData } = await supabase.auth.getUser();
   const user = authData?.user;
   if (user) {
-    await supabase.from("site_configs").upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" });
+    await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" });
   }
 
   setSiteInrcyUrl("");
@@ -761,7 +787,7 @@ const updateRootSettingsKey = useCallback(
     if (!user) return;
 
     const { data: row, error: readErr } = await supabase
-      .from("site_configs")
+      .from("pro_tools_configs")
       .select("settings")
       .eq("user_id", user.id)
       .maybeSingle();
@@ -771,7 +797,7 @@ const updateRootSettingsKey = useCallback(
     const current = (row as any)?.settings ?? {};
     const merged = { ...(current ?? {}), [key]: nextObj ?? {} };
 
-    await supabase.from("site_configs").update({ settings: merged }).eq("user_id", user.id);
+    await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
   },
   []
 );
@@ -904,29 +930,36 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
 
 
 const connectSiteWebGa4 = useCallback(() => {
-  const measurement = siteWebGa4MeasurementId.trim();
-  const propertyIdRaw = siteWebGa4PropertyId.trim();
-  if (!measurement) {
-    setSiteWebSettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX) avant de connecter.");
+  const siteUrl = siteWebUrl.trim();
+  if (!siteUrl) {
+    setSiteWebSettingsError("Renseigne le lien du site avant de connecter Google Analytics.");
     return;
   }
-  if (!propertyIdRaw || !/^\d+$/.test(propertyIdRaw)) {
-    setSiteWebSettingsError("Renseigne le Property ID GA4 (numérique) avant de connecter.");
-    return;
-  }
-  window.location.href =
-    "/api/integrations/google-stats/start?source=site_web&product=ga4&force=1";
-}, [siteWebGa4MeasurementId, siteWebGa4PropertyId]);
+  // ✅ UX: si les champs GA4 sont vides, on auto-résout après OAuth à partir du domaine du site.
+  const qp = new URLSearchParams({
+    source: "site_web",
+    product: "ga4",
+    force: "1",
+    siteUrl,
+  });
+  window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
+}, [siteWebUrl]);
 
 const connectSiteWebGsc = useCallback(() => {
-  const property = siteWebGscProperty.trim();
-  if (!property) {
-    setSiteWebSettingsError("Renseigne une propriété Search Console avant de connecter.");
+  const siteUrl = siteWebUrl.trim();
+  if (!siteUrl) {
+    setSiteWebSettingsError("Renseigne le lien du site avant de connecter Search Console.");
     return;
   }
-  window.location.href =
-    "/api/integrations/google-stats/start?source=site_web&product=gsc&force=1";
-}, [siteWebGscProperty]);
+  // ✅ UX: si la propriété GSC est vide, on auto-résout après OAuth à partir du domaine du site.
+  const qp = new URLSearchParams({
+    source: "site_web",
+    product: "gsc",
+    force: "1",
+    siteUrl,
+  });
+  window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
+}, [siteWebUrl]);
 
 
 const disconnectSiteWebGa4 = useCallback(() => {
@@ -2384,24 +2417,45 @@ const disconnectSiteWebGsc = useCallback(() => {
                 >
                   <SaveIcon />
                 </button>
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.connectBtn}`}
-                  onClick={connectSiteInrcyGa4}
-                  disabled={siteInrcyOwnership !== "sold"}
-                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la connexion Google est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : undefined}
-                >
-                  Connecter Google Analytics
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-                  onClick={disconnectSiteInrcyGa4}
-                  disabled={siteInrcyOwnership !== "sold"}
-                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la déconnexion est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : "Déconnecter (GA4)"}
-                >
-                  Déconnecter
-                </button>
+                {siteInrcyGa4Connected ? (
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                    onClick={disconnectSiteInrcyGa4}
+                    disabled={siteInrcyOwnership !== "sold"}
+                    title={
+                      siteInrcyOwnership !== "sold"
+                        ? siteInrcyOwnership === "rented"
+                          ? "En mode rented, la déconnexion est gérée par iNrCy."
+                          : siteInrcyOwnership === "none"
+                            ? "Aucun site iNrCy associé"
+                            : undefined
+                        : "Déconnecter (GA4)"
+                    }
+                  >
+                    Déconnecter
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.connectBtn}`}
+                    onClick={connectSiteInrcyGa4}
+                    disabled={!canConnectSiteInrcyGoogle}
+                    title={
+                      !canConfigureSite
+                        ? siteInrcyOwnership === "rented"
+                          ? "En mode rented, la connexion Google est gérée par iNrCy."
+                          : siteInrcyOwnership === "none"
+                            ? "Aucun site iNrCy associé"
+                            : "Disponible uniquement si le site est vendu"
+                        : !hasSiteInrcyUrl
+                          ? "Renseigne le lien du site iNrCy avant de connecter Google Analytics."
+                          : "Connecter Google Analytics"
+                    }
+                  >
+                    Connecter Google Analytics
+                  </button>
+                )}
               </div>
             </div>
             {siteInrcyGa4Notice && <div className={styles.successNote}>{siteInrcyGa4Notice}</div>}
@@ -2454,24 +2508,45 @@ const disconnectSiteWebGsc = useCallback(() => {
                 >
                   <SaveIcon />
                 </button>
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.connectBtn}`}
-                  onClick={connectSiteInrcyGsc}
-                  disabled={siteInrcyOwnership !== "sold"}
-                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la connexion Google est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : undefined}
-                >
-                  Connecter Google Search Console
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-                  onClick={disconnectSiteInrcyGsc}
-                  disabled={siteInrcyOwnership !== "sold"}
-                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la déconnexion est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : "Déconnecter (GSC)"}
-                >
-                  Déconnecter
-                </button>
+                {siteInrcyGscConnected ? (
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                    onClick={disconnectSiteInrcyGsc}
+                    disabled={siteInrcyOwnership !== "sold"}
+                    title={
+                      siteInrcyOwnership !== "sold"
+                        ? siteInrcyOwnership === "rented"
+                          ? "En mode rented, la déconnexion est gérée par iNrCy."
+                          : siteInrcyOwnership === "none"
+                            ? "Aucun site iNrCy associé"
+                            : undefined
+                        : "Déconnecter (GSC)"
+                    }
+                  >
+                    Déconnecter
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.connectBtn}`}
+                    onClick={connectSiteInrcyGsc}
+                    disabled={!canConnectSiteInrcyGoogle}
+                    title={
+                      !canConfigureSite
+                        ? siteInrcyOwnership === "rented"
+                          ? "En mode rented, la connexion Google est gérée par iNrCy."
+                          : siteInrcyOwnership === "none"
+                            ? "Aucun site iNrCy associé"
+                            : "Disponible uniquement si le site est vendu"
+                        : !hasSiteInrcyUrl
+                          ? "Renseigne le lien du site iNrCy avant de connecter Google Search Console."
+                          : "Connecter Google Search Console"
+                    }
+                  >
+                    Connecter Google Search Console
+                  </button>
+                )}
               </div>
             </div>
             {siteInrcyGscNotice && <div className={styles.successNote}>{siteInrcyGscNotice}</div>}
@@ -2654,21 +2729,26 @@ const disconnectSiteWebGsc = useCallback(() => {
                 >
                   <SaveIcon />
                 </button>
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.connectBtn}`}
-                  onClick={connectSiteWebGa4}
-                >
-                  Connecter Google Analytics
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-                  onClick={disconnectSiteWebGa4}
-                  title="Déconnecter (GA4)"
-                >
-                  Déconnecter
-                </button>
+                {siteWebGa4Connected ? (
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                    onClick={disconnectSiteWebGa4}
+                    title="Déconnecter (GA4)"
+                  >
+                    Déconnecter
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.connectBtn}`}
+                    onClick={connectSiteWebGa4}
+                    disabled={!canConnectSiteWebGoogle}
+                    title={!hasSiteWebUrl ? "Renseigne le lien du site web avant de connecter Google Analytics." : "Connecter Google Analytics"}
+                  >
+                    Connecter Google Analytics
+                  </button>
+                )}
               </div>
             </div>
             {siteWebGa4Notice && <div className={styles.successNote}>{siteWebGa4Notice}</div>}
@@ -2720,21 +2800,26 @@ const disconnectSiteWebGsc = useCallback(() => {
                 >
                   <SaveIcon />
                 </button>
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.connectBtn}`}
-                  onClick={connectSiteWebGsc}
-                >
-                  Connecter Google Search Console
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-                  onClick={disconnectSiteWebGsc}
-                  title="Déconnecter (GSC)"
-                >
-                  Déconnecter
-                </button>
+                {siteWebGscConnected ? (
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                    onClick={disconnectSiteWebGsc}
+                    title="Déconnecter (GSC)"
+                  >
+                    Déconnecter
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.connectBtn}`}
+                    onClick={connectSiteWebGsc}
+                    disabled={!canConnectSiteWebGoogle}
+                    title={!hasSiteWebUrl ? "Renseigne le lien du site web avant de connecter Google Search Console." : "Connecter Google Search Console"}
+                  >
+                    Connecter Google Search Console
+                  </button>
+                )}
               </div>
             </div>
             {siteWebGscNotice && <div className={styles.successNote}>{siteWebGscNotice}</div>}

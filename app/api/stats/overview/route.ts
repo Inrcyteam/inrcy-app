@@ -1,15 +1,8 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "@/lib/supabaseServer";
-import {
-  getGoogleTokenFor,
-  runGa4Report,
-  runGa4TopPages,
-  runGa4Channels,
-  runGscQuery,
-  StatsSourceKey,
-  getGoogleTokenForAnyGoogle,
-} from "@/lib/googleStats";
-import { gmbFetchDailyMetrics } from "@/lib/googleBusiness";
+import type { StatsSourceKey } from "@/lib/googleStats";
+
+// NOTE: We lazy-import internal libs inside the handler to avoid returning an HTML error page
+// when a dependency throws at module-evaluation time (e.g. cookies()/headers() scope issues).
 
 function safeJsonParse<T>(s: any, fallback: T): T {
   if (!s) return fallback;
@@ -38,8 +31,36 @@ function sumMap<K extends string>(items: Array<{ key: K; value: number }>) {
 
 export async function GET(request: Request) {
   try {
+    // Lazy-import server helpers inside the request scope to avoid Next.js request-scope errors.
+    const { createSupabaseServer } = await import("@/lib/supabaseServer");
+    const {
+      getGoogleTokenFor,
+      runGa4Report,
+      runGa4TopPages,
+      runGa4Channels,
+      runGscQuery,
+      getGoogleTokenForAnyGoogle,
+    } = await import("@/lib/googleStats");
+    const { gmbFetchDailyMetrics } = await import("@/lib/googleBusiness");
+
     const { searchParams } = new URL(request.url);
     const days = Math.min(Math.max(Number(searchParams.get("days") || 28), 7), 90);
+
+    // Optional: filter which sources to aggregate.
+    // Comma-separated keys:
+    // - site_inrcy_ga4, site_inrcy_gsc
+    // - site_web_ga4,  site_web_gsc
+    // - gmb, facebook
+    const includeRaw = (searchParams.get("include") || "").trim();
+    const includeSet = new Set(
+      includeRaw
+        ? includeRaw
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : []
+    );
+    const includeAll = includeSet.size === 0;
 
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
@@ -48,29 +69,39 @@ export async function GET(request: Request) {
     }
     const userId = authData.user.id;
 
-    // Load settings for both sources from site_configs.settings
-    const { data: cfg, error: cfgErr } = await supabase
-      .from("site_configs")
-      .select("settings")
-      .eq("user_id", userId)
-      .maybeSingle();
+    
+// Load settings from the new schema:
+// - site_inrcy -> inrcy_site_configs.settings
+// - site_web -> pro_tools_configs.settings.site_web
+// Fallback legacy : site_configs.settings
+const [inrcyCfgRes, proCfgRes, legacyCfgRes] = await Promise.all([
+  supabase.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle(),
+  supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
+  supabase.from("site_configs").select("settings").eq("user_id", userId).maybeSingle(),
+]);
 
-    if (cfgErr) return NextResponse.json({ error: "DB read site_configs failed" }, { status: 500 });
+// NOTE: SiteSettings has only optional fields, so an empty object is a valid fallback.
+// Using `null` breaks TS in production builds (null not assignable to SiteSettings).
+const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as any)?.settings, {}) ??
+  safeJsonParse<SiteSettings>((legacyCfgRes.data as any)?.settings, {});
+const proSettings = safeJsonParse<any>((proCfgRes.data as any)?.settings, null) ??
+  safeJsonParse<any>((legacyCfgRes.data as any)?.settings, {});
 
-    const settings = safeJsonParse<SiteSettings>(cfg?.settings, {});
 
-    const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: string }> = [
-      {
-        key: "site_inrcy",
-        ga4Property: settings?.ga4?.property_id,
-        gscProperty: settings?.gsc?.property,
-      },
-      {
-        key: "site_web",
-        ga4Property: settings?.site_web?.ga4?.property_id,
-        gscProperty: settings?.site_web?.gsc?.property,
-      },
-    ];
+    
+const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: string }> = [
+  {
+    key: "site_inrcy",
+    ga4Property: (inrcySettings as any)?.ga4?.property_id,
+    gscProperty: (inrcySettings as any)?.gsc?.property,
+  },
+  {
+    key: "site_web",
+    ga4Property: (proSettings as any)?.site_web?.ga4?.property_id,
+    gscProperty: (proSettings as any)?.site_web?.gsc?.property,
+  },
+];
+
 
     // Fetch each source
     const perSource: any = {};
@@ -91,6 +122,12 @@ export async function GET(request: Request) {
     for (const s of sources) {
       perSource[s.key] = { ga4: null, gsc: null, connected: { ga4: false, gsc: false } };
 
+      const includeGa4 =
+        includeAll || includeSet.has(`${s.key}_ga4`) || includeSet.has(`${s.key}-ga4`);
+      const includeGsc =
+        includeAll || includeSet.has(`${s.key}_gsc`) || includeSet.has(`${s.key}-gsc`);
+
+
       // GA4
       if (s.ga4Property) {
         const token = await getGoogleTokenFor(s.key, "ga4");
@@ -103,15 +140,15 @@ export async function GET(request: Request) {
 
           perSource[s.key].ga4 = { propertyId: s.ga4Property, overview, pages, channels };
 
-          totalUsers += overview.users;
-          totalSessions += overview.sessions;
-          totalPageviews += overview.pageviews;
+          if (includeGa4) totalUsers += overview.users;
+          if (includeGa4) totalSessions += overview.sessions;
+          if (includeGa4) totalPageviews += overview.pageviews;
 
-          engagementWeighted += overview.engagementRate * overview.sessions;
-          durationWeighted += overview.avgSessionDuration * overview.sessions;
+          if (includeGa4) engagementWeighted += overview.engagementRate * overview.sessions;
+          if (includeGa4) durationWeighted += overview.avgSessionDuration * overview.sessions;
 
-          for (const p of pages) pageAgg.set(p.path, (pageAgg.get(p.path) || 0) + p.views);
-          for (const c of channels) channelAgg.set(c.channel, (channelAgg.get(c.channel) || 0) + c.sessions);
+          if (includeGa4) for (const p of pages) pageAgg.set(p.path, (pageAgg.get(p.path) || 0) + p.views);
+          if (includeGa4) for (const c of channels) channelAgg.set(c.channel, (channelAgg.get(c.channel) || 0) + c.sessions);
         }
       }
 
@@ -125,6 +162,7 @@ export async function GET(request: Request) {
           perSource[s.key].gsc = { property: s.gscProperty, queries: q.rows };
 
           for (const r of q.rows) {
+            if (!includeGsc) continue;
             totalClicks += r.clicks;
             totalImpressions += r.impressions;
 
@@ -207,6 +245,11 @@ export async function GET(request: Request) {
       sourcesStatus.gmb.connected = !!gmbRow;
 
       if (gmbRow) {
+        const includeGmb = includeAll || includeSet.has("gmb");
+        if (!includeGmb) {
+          // Do not fetch metrics when filtered out.
+          sourcesStatus.gmb.metrics = null;
+        } else {
         const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb");
         const accessToken = tok?.accessToken;
         const loc = gmbRow?.resource_id || tok?.row?.resource_id;
@@ -220,6 +263,7 @@ export async function GET(request: Request) {
             sourcesStatus.gmb.metrics = { error: e?.message || "performance fetch failed", location: loc };
           }
         }
+        }
       }
     } catch {}
 
@@ -227,6 +271,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       days,
+      selected: includeAll ? null : Array.from(includeSet),
       totals: {
         users: totalUsers,
         sessions: totalSessions,

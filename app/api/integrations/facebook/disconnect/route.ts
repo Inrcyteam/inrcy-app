@@ -20,10 +20,10 @@ export async function POST() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Keep dashboard UX consistent: also flip the module flag in site_configs.settings.
+  // Keep dashboard UX consistent: also flip the module flag in pro_tools_configs.settings.
   try {
     const { data: cfg } = await supabase
-      .from("site_configs")
+      .from("pro_tools_configs")
       .select("settings")
       .eq("user_id", authData.user.id)
       .maybeSingle();
@@ -37,7 +37,7 @@ export async function POST() {
       },
     };
 
-    await supabase.from("site_configs").update({ settings: next }).eq("user_id", authData.user.id);
+    await supabase.from("pro_tools_configs").upsert({ user_id: authData.user.id, settings: next }, { onConflict: "user_id" });
   } catch {
     // non-blocking
   }

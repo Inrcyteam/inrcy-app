@@ -157,12 +157,12 @@ export async function GET(req: Request) {
       if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
     }
 
-    // Also keep a boolean in site_configs.settings so the dashboard can show it instantly.
+    // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
     try {
-      const { data: scRow } = await supabase.from("site_configs").select("settings").eq("user_id", userId).maybeSingle();
+      const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = (scRow as any)?.settings ?? {};
       const merged = { ...current, gmb: { ...(current?.gmb ?? {}), connected: true } };
-      await supabase.from("site_configs").update({ settings: merged }).eq("user_id", userId);
+      await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
     } catch {
       // non-fatal
     }
