@@ -35,6 +35,12 @@ type MessageItem = {
   microsoftFlagged?: boolean;
   microsoftIsRead?: boolean;
   microsoftReceivedDateTime?: string | null;
+
+  // Messenger metadata (when source === 'Messenger')
+  messengerThreadId?: string;
+  messengerMessageId?: string;
+  messengerSenderId?: string | null;
+  messengerCreatedTime?: string | null;
 };
 
 type CrmContact = {
@@ -70,6 +76,12 @@ function getMessageTs(m: MessageItem): number {
   // Microsoft Graph returns ISO date strings
   if (m.microsoftReceivedDateTime) {
     const t = Date.parse(m.microsoftReceivedDateTime);
+    if (Number.isFinite(t)) return t;
+  }
+
+  // Messenger uses ISO created time
+  if (m.messengerCreatedTime) {
+    const t = Date.parse(m.messengerCreatedTime);
     if (Number.isFinite(t)) return t;
   }
 
@@ -315,6 +327,14 @@ const parseMicrosoftUiId = (uiId: string) => {
   return { accountId, messageId };
 };
 
+// Messenger id format: msg_<threadId>__<messageId>
+const isMessengerUiId = (uiId: string) => uiId.startsWith("msg_") && uiId.includes("__");
+const parseMessengerUiId = (uiId: string) => {
+  const raw = uiId.replace(/^msg_/, "");
+  const [threadId, messageId] = raw.split("__");
+  return { threadId, messageId };
+};
+
 const matchesFolder = (m: MessageItem, f: Folder) => {
   // Gmail: Important is a label, not a separate Gmail folder.
   if (m.source === "Gmail") {
@@ -425,6 +445,61 @@ const fetchMicrosoftFolder = async (f: Folder) => {
   return items;
 };
 
+// ===========================
+// Messenger sync (inbox only)
+// ===========================
+const [messengerConnected, setMessengerConnected] = useState(false);
+
+const fetchMessengerInbox = async () => {
+  const res = await fetch(`/api/inbox/messenger/list?limit=40`);
+  if (!res.ok) {
+    setMessengerConnected(false);
+    return [] as MessageItem[];
+  }
+  setMessengerConnected(true);
+  const data = await res.json().catch(() => ({}));
+
+  const items: MessageItem[] = (data.items || []).map((m: any) => {
+    const created = m.created_time ? new Date(m.created_time) : new Date();
+    return {
+      id: m.id,
+      folder: "inbox",
+      from: m.from || "Messenger",
+      subject: m.subject || "Messenger",
+      preview: m.preview || "",
+      body: m.bodyPreview || m.preview || "",
+      source: "Messenger",
+      dateLabel: created.toLocaleDateString(),
+      unread: false,
+      messengerThreadId: m.threadId,
+      messengerMessageId: m.messageId,
+      messengerSenderId: m.sender_id ?? null,
+      messengerCreatedTime: created.toISOString(),
+    };
+  });
+
+  return items;
+};
+
+const upsertMessengerInbox = (msgItems: MessageItem[]) => {
+  setMessages((prev) => {
+    const kept = prev.filter((x) => !(x.source === "Messenger" && x.folder === "inbox"));
+    return sortByChronoDesc([...msgItems, ...kept]);
+  });
+};
+
+const refreshMessenger = async (hintFolder?: Folder) => {
+  const target = hintFolder ?? folder;
+  // Messenger doesn't have folders in this UI: we show everything in Inbox.
+  if (target !== "inbox") return;
+  try {
+    const items = await fetchMessengerInbox();
+    upsertMessengerInbox(items);
+  } catch {
+    setMessengerConnected(false);
+  }
+};
+
 const upsertMicrosoftMessages = (folderKey: Folder, msItems: MessageItem[]) => {
   setMessages((prev) => {
     const kept = prev.filter((x) => !(x.source === "Microsoft" && x.folder === folderKey));
@@ -477,6 +552,7 @@ const refreshGmail = async (hintFolder?: Folder) => {
 useEffect(() => {
   refreshGmail(folder);
   refreshMicrosoft(folder);
+  refreshMessenger(folder);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [folder]);
 
@@ -1010,7 +1086,48 @@ const onSelectMessage = (id: string) => {
           .then((d) => setSelectedHtml(d?.html ? cleanInjectedEmailHtml(d.html) : null))
           .catch(() => setSelectedHtml(null));
       }
-    } else {
+    }
+
+    // Messenger (thread view as simple HTML)
+    if (msg?.source === "Messenger" && isMessengerUiId(id)) {
+      setSelectedHtml(null);
+      const p = parseMessengerUiId(id);
+      if (p.threadId) {
+        fetch(`/api/inbox/messenger/message?threadId=${encodeURIComponent(p.threadId)}&limit=25`)
+          .then((r) => r.json())
+          .then((d) => {
+            const items = Array.isArray(d?.items) ? d.items : [];
+            const html = `
+              <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; line-height:1.4">
+                <h3 style="margin:0 0 8px 0">Conversation Messenger</h3>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  ${items
+                    .slice()
+                    .reverse()
+                    .map((x: any) => {
+                      const t = x.created_time ? new Date(x.created_time).toLocaleString() : "";
+                      const from = (x.from || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                      const msgText = String(x.message || "")
+                        .replace(/&/g, "&amp;")
+                        .replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;")
+                        .replace(/\n/g, "<br/>");
+                      return `<div style="padding:10px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.04)">
+                        <div style="font-size:12px;opacity:.75;margin-bottom:6px">${from} • ${t}</div>
+                        <div>${msgText}</div>
+                      </div>`;
+                    })
+                    .join("")}
+                </div>
+              </div>
+            `;
+            setSelectedHtml(html);
+          })
+          .catch(() => setSelectedHtml(null));
+      }
+    }
+
+    if (msg?.source !== "Gmail" && msg?.source !== "Microsoft" && msg?.source !== "Messenger") {
       setSelectedHtml(null);
     }
 

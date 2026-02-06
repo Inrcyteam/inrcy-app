@@ -217,6 +217,24 @@ React.useEffect(() => {
     ✅ Boîte mail connectée avec succès.
   </div>
 )}
+
+{toast === "messenger_connected" && (
+  <div style={{ marginTop: 8, fontSize: 13, color: "#34d399" }}>
+    ✅ Messenger connecté avec succès.
+  </div>
+)}
+
+{toast === "messenger_disconnected" && (
+  <div style={{ marginTop: 8, fontSize: 13, color: "#fbbf24" }}>
+    ⚠️ Messenger déconnecté.
+  </div>
+)}
+
+{toast === "messenger_no_page" && (
+  <div style={{ marginTop: 8, fontSize: 13, color: "#f87171" }}>
+    ❌ Impossible de trouver une Page (ou permissions manquantes).
+  </div>
+)}
       </div>
 
       <div className="mailsSettings_cardsGrid">
@@ -303,7 +321,14 @@ React.useEffect(() => {
           }
         >
           {!messengerAccount ? (
-            <Btn label="Connecter Messenger" disabled={loading} onClick={() => alert("Prochaine étape : OAuth Meta")} />
+            <Btn
+              label="Connecter Messenger"
+              disabled={loading}
+              onClick={() => {
+                // OAuth Meta (Facebook Login) -> permissions page + messenger
+                window.location.href = "/api/integrations/messenger/start?returnTo=/dashboard?panel=mails";
+              }}
+            />
           ) : (
             <>
               <Btn
@@ -311,7 +336,28 @@ React.useEffect(() => {
                 disabled={loading}
                 onClick={() => alert(`Statut: ${messengerAccount.status}`)}
               />
-              <Btn label="Déconnecter" disabled={loading} onClick={() => alert("Prochaine étape : Déconnecter")} />
+              <Btn
+                label="Déconnecter"
+                disabled={loading}
+                onClick={async () => {
+                  try {
+                    setLoading(true);
+                    const r = await fetch("/api/integrations/messenger/disconnect", { method: "POST" });
+                    if (!r.ok) {
+                      const j = await r.json().catch(() => ({}));
+                      throw new Error(j?.error || "Erreur déconnexion Messenger");
+                    }
+                    setToast("messenger_disconnected");
+                    const res = await fetch("/api/integrations/status");
+                    const data = await res.json();
+                    setMessengerAccount(data.messengerAccount || null);
+                  } catch (e: any) {
+                    setToast(e?.message || "Erreur déconnexion Messenger");
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+              />
             </>
           )}
         </GlassCard>
