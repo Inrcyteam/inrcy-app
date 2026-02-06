@@ -772,8 +772,14 @@ export default function StatsClient() {
           </div>
         </div>
 
-        <button className={styles.closeBtn} onClick={() => router.push("/dashboard")}>
-          Fermer
+        <button
+          className={styles.closeBtn}
+          onClick={() => router.push("/dashboard")}
+          aria-label="Fermer"
+          title="Fermer"
+          type="button"
+        >
+          ✕
         </button>
       </div>
 
@@ -874,7 +880,7 @@ function Cube({
           <div className={styles.cubeSub}>{model.subtitle}</div>
         </div>
 
-        <div className={styles.cubeMeta}>
+        <div className={styles.cubeBadges}>
           <PeriodSelect value={model.period} onChange={onChangePeriod} />
           <div className={styles.pills}>
             {isSite ? (

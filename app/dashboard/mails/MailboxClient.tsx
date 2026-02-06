@@ -224,6 +224,7 @@ export default function MailboxClient() {
 
   const [mobilePane, setMobilePane] = useState<MobilePane>("messages");
   const [navOpen, setNavOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const [listActionSheetOpen, setListActionSheetOpen] = useState(false);
   const [listActionMessageId, setListActionMessageId] = useState<string | null>(null);
@@ -1747,6 +1748,24 @@ const singleMoveToSpam = async () => {
             ) : (
               <div className={styles.mobileTopbarRight}>
                 <button
+                  className={styles.mobileIconBtn}
+                  title="Réglages"
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  ⚙️
+                </button>
+
+                <button
+                  className={styles.mobileIconBtn}
+                  title="Fermer iNr’Box"
+                  type="button"
+                  onClick={() => router.push("/dashboard")}
+                >
+                  ✕
+                </button>
+
+                <button
                   className={styles.mobileIconBtnPrimary}
                   title="Écrire"
                   type="button"
@@ -1767,17 +1786,55 @@ const singleMoveToSpam = async () => {
                 ) : (
                   <button
                     className={styles.mobileIconBtn}
-                    title="Recherche (bientôt)"
+                    title={mobileSearchOpen ? "Fermer la recherche" : "Recherche"}
                     type="button"
-                    onClick={() => notify("Recherche bientôt disponible")}
+                    onClick={() => setMobileSearchOpen((v) => !v)}
                   >
-                    🔎
+                    {mobileSearchOpen ? "✕" : "🔎"}
                   </button>
                 )}
               </div>
             )}
           </div>
         </div>
+
+        {/* Mobile search: n'apparaît que quand on clique sur la loupe */}
+        {isMobile && viewMode === "list" && mobileSearchOpen && (
+          <div className={styles.mobileSearchSticky}>
+            <div className={styles.mobileSearchPill}>
+              <span className={styles.mobileSearchIcon} aria-hidden="true">🔎</span>
+              <input
+                className={styles.mobileSearchInput}
+                placeholder="Rechercher dans iNr’Box…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                inputMode="search"
+                autoFocus
+              />
+              {query ? (
+                <button
+                  type="button"
+                  className={styles.mobileSearchClear}
+                  onClick={() => setQuery("")}
+                  aria-label="Effacer"
+                  title="Effacer"
+                >
+                  ✕
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.mobileSearchClear}
+                  onClick={() => setMobileSearchOpen(false)}
+                  aria-label="Fermer"
+                  title="Fermer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Mobile navigation drawer */}
         {isMobile && (
@@ -1857,21 +1914,7 @@ const singleMoveToSpam = async () => {
                 </div>
               </div>
 
-              <div className={styles.mobileDrawerFooter}>
-                <button
-                  className={styles.mobileDrawerFooterBtn}
-                  type="button"
-                  onClick={() => {
-                    setSettingsOpen(true);
-                    setNavOpen(false);
-                  }}
-                >
-                  ⚙️ Réglages
-                </button>
-                <Link href="/dashboard" className={styles.mobileDrawerFooterBtn} onClick={() => setNavOpen(false)}>
-                  ✖️ Fermer
-                </Link>
-              </div>
+              {/* Réglages/Fermer sont dans la topbar mobile */}
             </aside>
           </>
         )}
@@ -2471,96 +2514,40 @@ const singleMoveToSpam = async () => {
           {/* Colonne droite: messages (LISTE) */}
           {showMessages && (
             <section className={styles.card}>
-              <div className={styles.folderTabs}>
-                {FOLDERS.map((f) => {
-                  const active = f.key === folder;
-                  return (
-                    <button
-                      key={f.key}
-                      className={`${styles.folderTabBtn} ${active ? styles.folderTabBtnActive : ""}`}
-                      onClick={() => setFolder(f.key)}
-                      type="button"
-                      title={titleByFolder[f.key]}
-                    >
-                      <span className={styles.folderTabLabel}>{f.label}</span>
-                      <span className={styles.badgeCount}>{folderCount(f.key)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Mobile premium search (sticky) */}
-              {isMobile && viewMode === "list" && (
-                <div className={styles.mobileSearchSticky}>
-                  <div className={styles.mobileSearchPill}>
-                    <span className={styles.mobileSearchIcon} aria-hidden="true">🔎</span>
-                    <input
-                      className={styles.mobileSearchInput}
-                      placeholder="Rechercher dans iNr’Box…"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      inputMode="search"
-                    />
-                    {query ? (
+              {/* Desktop: onglets dossiers. Mobile: déjà dans le hamburger */}
+              {!isMobile && (
+                <div className={styles.folderTabs}>
+                  {FOLDERS.map((f) => {
+                    const active = f.key === folder;
+                    return (
                       <button
+                        key={f.key}
+                        className={`${styles.folderTabBtn} ${active ? styles.folderTabBtnActive : ""}`}
+                        onClick={() => setFolder(f.key)}
                         type="button"
-                        className={styles.mobileSearchClear}
-                        onClick={() => setQuery("")}
-                        aria-label="Effacer"
-                        title="Effacer"
+                        title={titleByFolder[f.key]}
                       >
-                        ✕
+                        <span className={styles.folderTabLabel}>{f.label}</span>
+                        <span className={styles.badgeCount}>{folderCount(f.key)}</span>
                       </button>
-                    ) : (
-                      <span className={styles.mobileSearchHint} aria-hidden="true">⌘</span>
-                    )}
-                  </div>
-
-                  <div className={styles.mobileQuickFilters}>
-                    <button
-                      type="button"
-                      className={`${styles.mobileQuickChip} ${unreadOnly ? styles.mobileQuickChipActive : ""}`}
-                      onClick={() => setUnreadOnly((v) => !v)}
-                      title="Afficher seulement les non lus"
-                    >
-                      Non lus
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.mobileQuickChip}
-                      onClick={() => setNavOpen(true)}
-                      title="Choisir une source"
-                    >
-                      {sourceFilter === "ALL" ? "Tous" : sourceFilter}
-                    </button>
-                    {(sourceFilter !== "ALL" || unreadOnly) && (
-                      <button
-                        type="button"
-                        className={styles.mobileQuickChip}
-                        onClick={() => {
-                          setSourceFilter("ALL");
-                          setUnreadOnly(false);
-                        }}
-                        title="Réinitialiser"
-                      >
-                        Reset
-                      </button>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
               )}
 
               {/* Barre: recherche + actions */}
               <div className={styles.toolbarRow}>
-                <div className={styles.searchRow}>
-                  <input
-                    className={styles.searchInput}
-                    placeholder="Rechercher un message…"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                  />
-                  <div className={styles.searchIconRight}>⌕</div>
-                </div>
+                {!isMobile && (
+                  <div className={styles.searchRow}>
+                    <input
+                      className={styles.searchInput}
+                      placeholder="Rechercher un message…"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                    />
+                    <div className={styles.searchIconRight}>⌕</div>
+                  </div>
+                )}
 
                 <div className={styles.toolbarActions}>
                   <button

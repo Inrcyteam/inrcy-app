@@ -277,11 +277,62 @@
   font-size: 12px;
 }
 
-.cubeMeta {
+.cubeBadges {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
+}
+
+/* --- Mobile polish --- */
+@media (max-width: 720px) {
+  .header {
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  /* Logo + sous-titre en colonne (sous le logo) */
+  .brand {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .brandRow {
+    gap: 6px;
+  }
+
+  .tagline {
+    font-size: 12px;
+  }
+
+  /* Cube header: 1) titre 2) sous-texte 3) bulles centrées */
+  .cubeTop {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+  }
+
+  .cubeTitleRow {
+    justify-content: center;
+  }
+
+  .cubeSub {
+    margin-top: 6px;
+  }
+
+  .cubeBadges {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .pills {
+    justify-content: center;
+  }
 }
 
 .period {

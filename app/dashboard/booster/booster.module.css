@@ -71,6 +71,17 @@
   font-weight: 800;
   letter-spacing: 0.16em;
   opacity: 0.92;
+  width: 92%;
+  text-align: center;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px){
+  .triLabel{
+    font-size: 18px;
+    letter-spacing: 0.08em;
+    top: 68%;
+  }
 }
 
 .triCyan{
