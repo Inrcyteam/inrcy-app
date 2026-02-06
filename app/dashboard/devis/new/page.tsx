@@ -862,7 +862,11 @@ const addLine = () =>
               </div>
             </div>
 
-            {profile?.logo_url ? <img src={profile.logo_url} alt="Logo" className={styles.logo} /> : null}
+            {profile?.logo_url ? (
+              <div className={styles.logoBox} aria-label="Logo">
+                <img src={profile.logo_url} alt="Logo" className={styles.logoImg} />
+              </div>
+            ) : null}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 18 }}>

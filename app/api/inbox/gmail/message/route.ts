@@ -149,19 +149,22 @@ async function gmailGetMessage(token: string, id: string) {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
+  const accountIdParam = searchParams.get("accountId");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   const supabase = await createSupabaseServer();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: accounts, error: accErr } = await supabase
+  let q = supabase
     .from("mail_accounts")
-    .select("id,email_address,access_token_enc,refresh_token_enc,expires_at,status")
+    .select("id,email_address,access_token_enc,refresh_token_enc,expires_at,status,created_at")
     .eq("user_id", auth.user.id)
-    .eq("provider", "gmail")
-    .order("created_at", { ascending: true })
-    .limit(1);
+    .eq("provider", "gmail");
+
+  if (accountIdParam) q = q.eq("id", accountIdParam);
+
+  const { data: accounts, error: accErr } = await q.order("created_at", { ascending: true }).limit(1);
 
   if (accErr) return NextResponse.json({ error: accErr.message }, { status: 500 });
 

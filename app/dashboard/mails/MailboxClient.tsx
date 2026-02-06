@@ -9,7 +9,7 @@ import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
 import { createClient } from "@/lib/supabaseClient";
 
 type Folder = "inbox" | "important" | "sent" | "drafts" | "spam" | "trash";
-type Source = "Gmail" | "Outlook" | "OVH" | "Messenger" | "Houzz";
+type Source = "Gmail" | "Microsoft" | "OVH" | "Messenger" | "Houzz";
 
 type MessageItem = {
   id: string;
@@ -28,6 +28,13 @@ type MessageItem = {
   gmailDraftId?: string;
   labelIds?: string[];
   internalDate?: number;
+
+  // Microsoft metadata (when source === 'Microsoft')
+  microsoftAccountId?: string;
+  microsoftId?: string;
+  microsoftFlagged?: boolean;
+  microsoftIsRead?: boolean;
+  microsoftReceivedDateTime?: string | null;
 };
 
 type CrmContact = {
@@ -53,9 +60,68 @@ const FOLDERS: { key: Folder; label: string }[] = [
 ];
 
 
-const SOURCES: Source[] = ["Gmail", "Outlook", "OVH", "Messenger"];
+const SOURCES: Source[] = ["Gmail", "Microsoft", "OVH", "Messenger", "Houzz"];
+
+// --- Helpers ---
+function getMessageTs(m: MessageItem): number {
+  // Gmail gives internalDate (ms since epoch)
+  if (typeof m.internalDate === "number" && Number.isFinite(m.internalDate)) return m.internalDate;
+
+  // Microsoft Graph returns ISO date strings
+  if (m.microsoftReceivedDateTime) {
+    const t = Date.parse(m.microsoftReceivedDateTime);
+    if (Number.isFinite(t)) return t;
+  }
+
+  // Fallbacks
+  const t2 = Date.parse(m.dateLabel);
+  return Number.isFinite(t2) ? t2 : 0;
+}
+
+function sortByChronoDesc(items: MessageItem[]): MessageItem[] {
+  return [...items].sort((a, b) => getMessageTs(b) - getMessageTs(a));
+}
+
+function buildGmailBatches(uIds: string[], batchSize = 50): string[][] {
+  const cleaned = (uIds || []).filter(Boolean);
+  const batches: string[][] = [];
+  for (let i = 0; i < cleaned.length; i += batchSize) {
+    batches.push(cleaned.slice(i, i + batchSize));
+  }
+  return batches;
+}
+
+
+function formatListDate(m: MessageItem): string {
+  const ts = getMessageTs(m);
+  if (!ts) return m.dateLabel || "";
+
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return m.dateLabel || "";
+
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+
+  try {
+    return new Intl.DateTimeFormat(
+      "fr-FR",
+      sameDay
+        ? { hour: "2-digit", minute: "2-digit" }
+        : { day: "2-digit", month: "2-digit" }
+    ).format(d);
+  } catch {
+    // Fallback: keep existing label
+    return m.dateLabel || "";
+  }
+}
 
 function badgeClass(source: Source) {
+  if (source === "Gmail") return `${styles.badge} ${styles.badgeGmail}`;
+  if (source === "Microsoft") return `${styles.badge} ${styles.badgeMicrosoft}`;
+  if (source === "OVH") return `${styles.badge} ${styles.badgeOvh}`;
   if (source === "Messenger") return `${styles.badge} ${styles.badgeMessenger}`;
   if (source === "Houzz") return `${styles.badge} ${styles.badgeHouzz}`;
   return `${styles.badge} ${styles.badgeMail}`;
@@ -214,7 +280,7 @@ export default function MailboxClient() {
   // Mock connections
   const [connectedSources, setConnectedSources] = useState<Record<Source, boolean>>({
     Gmail: false,
-    Outlook: false,
+    Microsoft: false,
     OVH: false,
     Messenger: false,
     Houzz: false,
@@ -240,6 +306,14 @@ const isGmailMessage = (m: MessageItem | undefined | null) =>
   !!m && m.source === "Gmail" && m.id.startsWith("gmail_");
 
 const rawGmailIdFromUiId = (uiId: string) => uiId.replace(/^gmail_/, "");
+
+// Microsoft id format: ms_<accountId>__<messageId>
+const isMicrosoftUiId = (uiId: string) => uiId.startsWith("ms_") && uiId.includes("__");
+const parseMicrosoftUiId = (uiId: string) => {
+  const raw = uiId.replace(/^ms_/, "");
+  const [accountId, messageId] = raw.split("__");
+  return { accountId, messageId };
+};
 
 const matchesFolder = (m: MessageItem, f: Folder) => {
   // Gmail: Important is a label, not a separate Gmail folder.
@@ -306,6 +380,68 @@ const fetchGmailFolder = async (f: Folder) => {
   return items;
 };
 
+// ===========================
+// Microsoft sync (folders)
+// ===========================
+const [microsoftConnected, setMicrosoftConnected] = useState(false);
+
+const toDateLabel = (iso?: string | null) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  return sameDay ? nowLabel() : d.toLocaleDateString();
+};
+
+const fetchMicrosoftFolder = async (f: Folder) => {
+  const res = await fetch(`/api/inbox/microsoft/list?folder=${f}`);
+  if (!res.ok) {
+    setMicrosoftConnected(false);
+    return [];
+  }
+  setMicrosoftConnected(true);
+  const data = await res.json().catch(() => ({}));
+
+  const items: MessageItem[] = (data.items || []).map((m: any) => {
+    const uiId = `ms_${m.accountId}__${m.id}`;
+    return {
+      id: uiId,
+      folder: f,
+      from: m.from || "",
+      subject: m.subject || "(Sans objet)",
+      preview: m.bodyPreview || "",
+      body: m.bodyPreview || "",
+      source: "Microsoft",
+      dateLabel: toDateLabel(m.receivedDateTime),
+      unread: !m.isRead,
+      microsoftAccountId: m.accountId,
+      microsoftId: m.id,
+      microsoftFlagged: !!m.flagged,
+      microsoftIsRead: !!m.isRead,
+      microsoftReceivedDateTime: m.receivedDateTime ?? null,
+    };
+  });
+
+  return items;
+};
+
+const upsertMicrosoftMessages = (folderKey: Folder, msItems: MessageItem[]) => {
+  setMessages((prev) => {
+    const kept = prev.filter((x) => !(x.source === "Microsoft" && x.folder === folderKey));
+    return sortByChronoDesc([...msItems, ...kept]);
+  });
+};
+
+const refreshMicrosoft = async (hintFolder?: Folder) => {
+  try {
+    const target = hintFolder ?? folder;
+    const items = await fetchMicrosoftFolder(target);
+    upsertMicrosoftMessages(target, items);
+  } catch {
+    setMicrosoftConnected(false);
+  }
+};
+
 const upsertGmailMessages = (folderKey: Folder, gmailItems: MessageItem[]) => {
   // Remove existing Gmail items for the target actual folder (important => inbox)
   const actualFolder: Folder = folderKey === "important" ? "inbox" : folderKey;
@@ -313,7 +449,7 @@ const upsertGmailMessages = (folderKey: Folder, gmailItems: MessageItem[]) => {
   setMessages((prev) => {
     const kept = prev.filter((x) => !(x.source === "Gmail" && x.folder === actualFolder));
     // Inject gmail items at the top
-    return [...gmailItems, ...kept];
+    return sortByChronoDesc([...gmailItems, ...kept]);
   });
 };
 
@@ -340,6 +476,7 @@ const refreshGmail = async (hintFolder?: Folder) => {
 // initial load + refresh on folder change
 useEffect(() => {
   refreshGmail(folder);
+  refreshMicrosoft(folder);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [folder]);
 
@@ -472,18 +609,29 @@ useEffect(() => {
 
 
 const markLegitMany = async (ids: string[]) => {
-  const gmailRawIds: string[] = [];
+  const gmailUiIds: string[] = [];
+  const msBatches = new Map<string, string[]>();
   const localIds: string[] = [];
 
   ids.forEach((id) => {
     const m = messages.find((x) => x.id === id);
-    if (m?.source === "Gmail" && id.startsWith("gmail_")) gmailRawIds.push(rawGmailIdFromUiId(id));
-    else localIds.push(id);
+    if (m?.source === "Gmail" && id.startsWith("gmail_")) {
+      gmailUiIds.push(id);
+      return;
+    }
+    if (m?.source === "Microsoft" && isMicrosoftUiId(id)) {
+      const p = parseMicrosoftUiId(id);
+      if (p.accountId && p.messageId) {
+        msBatches.set(p.accountId, [...(msBatches.get(p.accountId) || []), p.messageId]);
+        return;
+      }
+    }
+    localIds.push(id);
   });
 
   if (localIds.length) moveMany(localIds, "inbox");
 
-  if (gmailRawIds.length) {
+  if (gmailUiIds.length) {
     // optimistic move
     setMessages((prev) =>
       prev.map((m) => {
@@ -492,21 +640,52 @@ const markLegitMany = async (ids: string[]) => {
         return { ...m, folder: "inbox" };
       })
     );
-    await gmailModify(gmailRawIds, "unspam");
+    await gmailModify(gmailUiIds, "unspam");
     await refreshGmail("spam");
     await refreshGmail("inbox");
+  }
+
+  if (msBatches.size) {
+    // optimistic move
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (!ids.includes(m.id)) return m;
+        if (m.source !== "Microsoft") return m;
+        return { ...m, folder: "inbox" };
+      })
+    );
+    await microsoftModify(
+      Array.from(msBatches.entries()).map(([accountId, messageIds]) => ({
+        accountId,
+        ids: messageIds,
+        action: "unspam",
+      }))
+    );
+    await refreshMicrosoft("spam");
+    await refreshMicrosoft("inbox");
   }
 };
 
 
 const restoreManyFromTrash = async (ids: string[]) => {
-  const gmailRawIds: string[] = [];
+  const gmailUiIds: string[] = [];
+  const msBatches = new Map<string, string[]>();
   const localIds: string[] = [];
 
   ids.forEach((id) => {
     const m = messages.find((x) => x.id === id);
-    if (m?.source === "Gmail" && id.startsWith("gmail_")) gmailRawIds.push(rawGmailIdFromUiId(id));
-    else localIds.push(id);
+    if (m?.source === "Gmail" && id.startsWith("gmail_")) {
+      gmailUiIds.push(id);
+      return;
+    }
+    if (m?.source === "Microsoft" && isMicrosoftUiId(id)) {
+      const p = parseMicrosoftUiId(id);
+      if (p.accountId && p.messageId) {
+        msBatches.set(p.accountId, [...(msBatches.get(p.accountId) || []), p.messageId]);
+        return;
+      }
+    }
+    localIds.push(id);
   });
 
   // Local restore
@@ -521,7 +700,7 @@ const restoreManyFromTrash = async (ids: string[]) => {
   }
 
   // Gmail restore
-  if (gmailRawIds.length) {
+  if (gmailUiIds.length) {
     // optimistic move
     setMessages((prev) =>
       prev.map((m) => {
@@ -530,9 +709,29 @@ const restoreManyFromTrash = async (ids: string[]) => {
         return { ...m, folder: "inbox" };
       })
     );
-    await gmailModify(gmailRawIds, "untrash");
+    await gmailModify(gmailUiIds, "untrash");
     await refreshGmail("trash");
     await refreshGmail("inbox");
+  }
+
+  if (msBatches.size) {
+    // optimistic restore to inbox (Graph move)
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (!ids.includes(m.id)) return m;
+        if (m.source !== "Microsoft") return m;
+        return { ...m, folder: "inbox" };
+      })
+    );
+    await microsoftModify(
+      Array.from(msBatches.entries()).map(([accountId, messageIds]) => ({
+        accountId,
+        ids: messageIds,
+        action: "untrash",
+      }))
+    );
+    await refreshMicrosoft("trash");
+    await refreshMicrosoft("inbox");
   }
 };
 
@@ -546,10 +745,17 @@ const emptyTrash = async () => {
     .filter((m) => m.source === "Gmail" && m.folder === "trash")
     .map((m) => rawGmailIdFromUiId(m.id));
 
+  const msTrashPresent = messages.some((m) => m.source === "Microsoft" && m.folder === "trash");
+
   try {
     if (gmailTrashRawIds.length && gmailConnected) {
-      const r = await fetch("/api/inbox/gmail/empty-trash", { method: "POST" });
+      const r = await fetch("/api/inbox/gmail/emptyTrash", { method: "POST" });
       if (!r.ok) throw new Error("Impossible de vider la corbeille Gmail");
+    }
+
+    if (msTrashPresent && microsoftConnected) {
+      const r = await fetch("/api/inbox/microsoft/emptyTrash", { method: "POST" });
+      if (!r.ok) throw new Error("Impossible de vider la corbeille Outlook");
     }
 
     // Local remove of all trash items (Gmail + others)
@@ -565,16 +771,22 @@ const emptyTrash = async () => {
     // Refresh gmail trash/inbox after emptying
     refreshGmail("trash");
     refreshGmail("inbox");
+    refreshMicrosoft("trash");
+    refreshMicrosoft("inbox");
   }
 };
 
 
-const gmailModify = async (rawIds: string[], action: string) => {
+const gmailModify = async (uiIds: string[], action: string) => {
+  const batches = buildGmailBatches(uiIds);
+  if (!batches.length) return;
+
   const r = await fetch("/api/inbox/gmail/modify", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids: rawIds, action }),
+    body: JSON.stringify({ action, batches }),
   });
+
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
     const msg =
@@ -586,19 +798,43 @@ const gmailModify = async (rawIds: string[], action: string) => {
   }
 };
 
+const microsoftModify = async (batches: Array<{ accountId: string; ids: string[]; action: string; moveTo?: string }>) => {
+  const r = await fetch("/api/inbox/microsoft/modify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ batches }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg = j?.error || "Action Outlook impossible";
+    throw new Error(msg);
+  }
+};
+
 const makeImportantMany = async (ids: string[]) => {
-  const gmailRawIds: string[] = [];
+  const gmailUiIds: string[] = [];
+  const msBatches = new Map<string, string[]>();
   const localIds: string[] = [];
   ids.forEach((id) => {
     const m = messages.find((x) => x.id === id);
-    if (m?.source === "Gmail" && id.startsWith("gmail_")) gmailRawIds.push(rawGmailIdFromUiId(id));
-    else localIds.push(id);
+    if (m?.source === "Gmail" && id.startsWith("gmail_")) {
+      gmailUiIds.push(id);
+      return;
+    }
+    if (m?.source === "Microsoft" && isMicrosoftUiId(id)) {
+      const p = parseMicrosoftUiId(id);
+      if (p.accountId && p.messageId) {
+        msBatches.set(p.accountId, [...(msBatches.get(p.accountId) || []), p.messageId]);
+        return;
+      }
+    }
+    localIds.push(id);
   });
 
   // Local sources keep local behavior
   if (localIds.length) moveMany(localIds, "important", { rememberPrev: true });
 
-  if (gmailRawIds.length) {
+  if (gmailUiIds.length) {
     // optimistic local label update
     setMessages((prev) =>
       prev.map((m) => {
@@ -609,19 +845,50 @@ const makeImportantMany = async (ids: string[]) => {
         return { ...m, labelIds: Array.from(labels) };
       })
     );
-    await gmailModify(gmailRawIds, "important");
+    await gmailModify(gmailUiIds, "important");
     await refreshGmail("inbox");
+  }
+
+  if (msBatches.size) {
+    // optimistic
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (!ids.includes(m.id)) return m;
+        if (m.source !== "Microsoft") return m;
+        return { ...m, microsoftFlagged: true };
+      })
+    );
+    await microsoftModify(
+      Array.from(msBatches.entries()).map(([accountId, messageIds]) => ({
+        accountId,
+        ids: messageIds,
+        action: "important",
+      }))
+    );
+    await refreshMicrosoft("important");
+    await refreshMicrosoft("inbox");
   }
 };
 
 
 const unImportantMany = async (ids: string[]) => {
-  const gmailRawIds: string[] = [];
+  const gmailUiIds: string[] = [];
+  const msBatches = new Map<string, string[]>();
   const localIds: string[] = [];
   ids.forEach((id) => {
     const m = messages.find((x) => x.id === id);
-    if (m?.source === "Gmail" && id.startsWith("gmail_")) gmailRawIds.push(rawGmailIdFromUiId(id));
-    else localIds.push(id);
+    if (m?.source === "Gmail" && id.startsWith("gmail_")) {
+      gmailUiIds.push(id);
+      return;
+    }
+    if (m?.source === "Microsoft" && isMicrosoftUiId(id)) {
+      const p = parseMicrosoftUiId(id);
+      if (p.accountId && p.messageId) {
+        msBatches.set(p.accountId, [...(msBatches.get(p.accountId) || []), p.messageId]);
+        return;
+      }
+    }
+    localIds.push(id);
   });
 
   // Local: Important -> return prevFolder if possible, else inbox
@@ -635,7 +902,7 @@ const unImportantMany = async (ids: string[]) => {
     );
   }
 
-  if (gmailRawIds.length) {
+  if (gmailUiIds.length) {
     // optimistic local label update
     setMessages((prev) =>
       prev.map((m) => {
@@ -646,8 +913,28 @@ const unImportantMany = async (ids: string[]) => {
         return { ...m, labelIds: Array.from(labels) };
       })
     );
-    await gmailModify(gmailRawIds, "unimportant");
+    await gmailModify(gmailUiIds, "unimportant");
     await refreshGmail("inbox");
+  }
+
+  if (msBatches.size) {
+    // optimistic
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (!ids.includes(m.id)) return m;
+        if (m.source !== "Microsoft") return m;
+        return { ...m, microsoftFlagged: false };
+      })
+    );
+    await microsoftModify(
+      Array.from(msBatches.entries()).map(([accountId, messageIds]) => ({
+        accountId,
+        ids: messageIds,
+        action: "unimportant",
+      }))
+    );
+    await refreshMicrosoft("important");
+    await refreshMicrosoft("inbox");
   }
 };
 
@@ -706,6 +993,23 @@ const onSelectMessage = (id: string) => {
         .then((r) => r.json())
         .then((d) => setSelectedHtml(d?.html ? cleanInjectedEmailHtml(d.html) : null))
         .catch(() => setSelectedHtml(null));
+    }
+
+    // Outlook (Microsoft Graph)
+    if (msg?.source === "Microsoft" && isMicrosoftUiId(id)) {
+      setSelectedHtml(null);
+      const p = parseMicrosoftUiId(id);
+
+      // mark as read (best effort)
+      if (p.accountId && p.messageId) {
+        microsoftModify([{ accountId: p.accountId, ids: [p.messageId], action: "read" }]).catch(() => {});
+        fetch(
+          `/api/inbox/microsoft/message?accountId=${encodeURIComponent(p.accountId)}&id=${encodeURIComponent(p.messageId)}`
+        )
+          .then((r) => r.json())
+          .then((d) => setSelectedHtml(d?.html ? cleanInjectedEmailHtml(d.html) : null))
+          .catch(() => setSelectedHtml(null));
+      }
     } else {
       setSelectedHtml(null);
     }
@@ -1048,18 +1352,29 @@ const onSelectMessage = (id: string) => {
 
 
 const moveToTrashMany = async (ids: string[]) => {
-  const gmailRawIds: string[] = [];
+  const gmailUiIds: string[] = [];
+  const msBatches = new Map<string, string[]>();
   const localIds: string[] = [];
 
   ids.forEach((id) => {
     const m = messages.find((x) => x.id === id);
-    if (m?.source === "Gmail" && id.startsWith("gmail_")) gmailRawIds.push(rawGmailIdFromUiId(id));
-    else localIds.push(id);
+    if (m?.source === "Gmail" && id.startsWith("gmail_")) {
+      gmailUiIds.push(id);
+      return;
+    }
+    if (m?.source === "Microsoft" && isMicrosoftUiId(id)) {
+      const p = parseMicrosoftUiId(id);
+      if (p.accountId && p.messageId) {
+        msBatches.set(p.accountId, [...(msBatches.get(p.accountId) || []), p.messageId]);
+        return;
+      }
+    }
+    localIds.push(id);
   });
 
   if (localIds.length) moveMany(localIds, "trash", { rememberPrev: true });
 
-  if (gmailRawIds.length) {
+  if (gmailUiIds.length) {
     // optimistic move
     setMessages((prev) =>
       prev.map((m) => {
@@ -1068,9 +1383,28 @@ const moveToTrashMany = async (ids: string[]) => {
         return { ...m, folder: "trash" };
       })
     );
-    await gmailModify(gmailRawIds, "trash");
+    await gmailModify(gmailUiIds, "trash");
     await refreshGmail("inbox");
     await refreshGmail("trash");
+  }
+
+  if (msBatches.size) {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (!ids.includes(m.id)) return m;
+        if (m.source !== "Microsoft") return m;
+        return { ...m, folder: "trash" };
+      })
+    );
+    await microsoftModify(
+      Array.from(msBatches.entries()).map(([accountId, messageIds]) => ({
+        accountId,
+        ids: messageIds,
+        action: "trash",
+      }))
+    );
+    await refreshMicrosoft("inbox");
+    await refreshMicrosoft("trash");
   }
 };
 
@@ -1148,6 +1482,25 @@ const singleMoveToSpam = async () => {
       notify(e?.message || "Erreur spam");
       await refreshGmail("inbox");
       await refreshGmail("spam");
+    }
+    removeMessageFromView([selected.id]);
+    clearSelection();
+    return;
+  }
+
+  if (selected.source === "Microsoft" && isMicrosoftUiId(selected.id)) {
+    const p = parseMicrosoftUiId(selected.id);
+    // optimistic
+    setMessages((prev) => prev.map((m) => (m.id === selected.id ? { ...m, folder: "spam" } : m)));
+    try {
+      await microsoftModify([{ accountId: p.accountId, ids: [p.messageId], action: "spam" }]);
+      notify("Déplacé vers Spam");
+      await refreshMicrosoft("inbox");
+      await refreshMicrosoft("spam");
+    } catch (e: any) {
+      notify(e?.message || "Erreur spam");
+      await refreshMicrosoft("inbox");
+      await refreshMicrosoft("spam");
     }
     removeMessageFromView([selected.id]);
     clearSelection();
@@ -1618,61 +1971,8 @@ const singleMoveToSpam = async () => {
           </>
         )}
 
-        {/* GRID */}
-        <div className={`${styles.grid} ${viewMode === "list" ? styles.gridList : styles.gridAction}`}>
-          {/* Colonne gauche */}
-          {showFolders && (
-            <aside className={styles.card}>
-              <div className={styles.cardHeader}>
-                <div className={styles.cardTitle}>Dossiers</div>
-              </div>
-
-              <div className={`${styles.scrollArea} ${styles.scrollAreaAction}`}>
-                <div className={styles.nav}>
-                  {FOLDERS.map((f) => {
-                    const active = f.key === folder;
-                    return (
-                      <button
-                        key={f.key}
-                        className={`${styles.navBtn} ${active ? styles.navBtnActive : ""}`}
-                        onClick={() => setFolder(f.key)}
-                        type="button"
-                        title={titleByFolder[f.key]}
-                      >
-                        <span>{f.label}</span>
-                        {/* ✅ Bulles quantité dans chaque dossier */}
-                        <span className={styles.badgeCount}>{folderCount(f.key)}</span>
-                      </button>
-                    );
-                  })}
-
-                  <div style={{ height: 10 }} />
-
-                  <div
-                    style={{
-                      color: "rgba(255,255,255,0.70)",
-                      fontSize: 13,
-                      fontWeight: 850,
-                    }}
-                  >
-                    Sources
-                  </div>
-
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                    {(["Gmail", "Outlook", "OVH", "Messenger"] as const).map((x) => (
-                      <span key={x} className={badgeClass(x)}>
-                        {x}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div style={{ marginTop: 10, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
-                    {titleByFolder[folder]}
-                  </div>
-                </div>
-              </div>
-            </aside>
-          )}
+	        {/* GRID */}
+	        <div className={`${styles.grid} ${viewMode === "list" ? styles.gridList : styles.gridAction}`}> 
 
           {/* ACTION plein écran (au double-clic) */}
           {showCockpit && (
@@ -2054,6 +2354,24 @@ const singleMoveToSpam = async () => {
           {/* Colonne droite: messages (LISTE) */}
           {showMessages && (
             <section className={styles.card}>
+              <div className={styles.folderTabs}>
+                {FOLDERS.map((f) => {
+                  const active = f.key === folder;
+                  return (
+                    <button
+                      key={f.key}
+                      className={`${styles.folderTabBtn} ${active ? styles.folderTabBtnActive : ""}`}
+                      onClick={() => setFolder(f.key)}
+                      type="button"
+                      title={titleByFolder[f.key]}
+                    >
+                      <span className={styles.folderTabLabel}>{f.label}</span>
+                      <span className={styles.badgeCount}>{folderCount(f.key)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Mobile premium search (sticky) */}
               {isMobile && viewMode === "list" && (
                 <div className={styles.mobileSearchSticky}>
@@ -2115,8 +2433,8 @@ const singleMoveToSpam = async () => {
                 </div>
               )}
 
-              {/* Search + filters */}
-              <div className={`${styles.filtersWrap} ${isMobile ? styles.filtersWrapDesktopOnly : ""}`}>
+              {/* Barre: recherche + actions */}
+              <div className={styles.toolbarRow}>
                 <div className={styles.searchRow}>
                   <input
                     className={styles.searchInput}
@@ -2127,10 +2445,10 @@ const singleMoveToSpam = async () => {
                   <div className={styles.searchIconRight}>⌕</div>
                 </div>
 
-                <div className={styles.filterBar}>
+                <div className={styles.toolbarActions}>
                   <button
                     type="button"
-                    className={styles.filterBtn}
+                    className={styles.toolbarBtn}
                     onClick={() => setFiltersOpen((v) => !v)}
                     title="Ouvrir les filtres"
                   >
@@ -2140,7 +2458,7 @@ const singleMoveToSpam = async () => {
                   {(sourceFilter !== "ALL" || unreadOnly) && (
                     <button
                       type="button"
-                      className={styles.filterBtn}
+                      className={styles.toolbarBtn}
                       onClick={() => {
                         setSourceFilter("ALL");
                         setUnreadOnly(false);
@@ -2150,65 +2468,21 @@ const singleMoveToSpam = async () => {
                       Réinitialiser
                     </button>
                   )}
-                </div>
 
-                {filtersOpen && (
-                  <div className={styles.filterPanel}>
-                    <div className={styles.filterRow}>
-                      <span className={styles.smallLabel}>État</span>
-                      <button
-                        type="button"
-                        className={`${styles.chip} ${unreadOnly ? styles.chipActive : ""}`}
-                        onClick={() => setUnreadOnly((v) => !v)}
-                        title="Afficher seulement les non lus"
-                      >
-                        Non lus
-                      </button>
-                    </div>
+                  <button
+                    className={styles.toolbarBtn}
+                    type="button"
+                    onClick={() => (hasSelection ? clearSelection() : selectAllVisible(visibleIds))}
+                    title={hasSelection ? "Tout désélectionner" : "Tout sélectionner"}
+                  >
+                    {hasSelection ? "✖ Désélectionner" : "✓ Tout sélectionner"}
+                  </button>
 
-                    <div className={styles.filterRow}>
-                      <span className={styles.smallLabel}>Source</span>
+                  <span className={styles.toolbarInfo}>
+                    {hasSelection ? `${selectedIds.size} sélectionné(s)` : `${filteredMessages.length} visible(s)`}
+                  </span>
 
-                      <button
-                        type="button"
-                        className={`${styles.chip} ${sourceFilter === "ALL" ? styles.chipActive : ""}`}
-                        onClick={() => setSourceFilter("ALL")}
-                      >
-                        Tous
-                      </button>
-
-                      {(["Gmail", "Outlook", "OVH", "Messenger", "Houzz"] as const).map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          className={`${styles.chip} ${sourceFilter === s ? styles.chipActive : ""}`}
-                          onClick={() => setSourceFilter(s)}
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* ✅ Barre actions multi-sélection */}
-                <div className={styles.bulkBar}>
-                  <div className={styles.bulkLeft}>
-                    <button
-                      className={styles.bulkBtn}
-                      type="button"
-                      onClick={() => (hasSelection ? clearSelection() : selectAllVisible(visibleIds))}
-                      title={hasSelection ? "Tout désélectionner" : "Tout sélectionner"}
-                    >
-                      {hasSelection ? "✖ Désélectionner" : "✓ Tout sélectionner"}
-                    </button>
-
-                    <span className={styles.bulkInfo}>
-                      {hasSelection ? `${selectedIds.size} sélectionné(s)` : `${filteredMessages.length} visible(s)`}
-                    </span>
-                  </div>
-
-                  <div className={styles.bulkActions}>
+<div className={styles.bulkActionsInline}>
                     {/* Important */}
                     {folder !== "important" ? (
                       <button
@@ -2298,7 +2572,46 @@ const singleMoveToSpam = async () => {
                 </div>
               </div>
 
-              {/* Liste */}
+              {filtersOpen && (
+                <div className={styles.filterPanel}>
+                  <div className={styles.filterRow}>
+                    <span className={styles.smallLabel}>État</span>
+                    <button
+                      type="button"
+                      className={`${styles.chip} ${unreadOnly ? styles.chipActive : ""}`}
+                      onClick={() => setUnreadOnly((v) => !v)}
+                      title="Afficher seulement les non lus"
+                    >
+                      Non lus
+                    </button>
+                  </div>
+
+                  <div className={styles.filterRow}>
+                    <span className={styles.smallLabel}>Source</span>
+
+                    <button
+                      type="button"
+                      className={`${styles.chip} ${sourceFilter === "ALL" ? styles.chipActive : ""}`}
+                      onClick={() => setSourceFilter("ALL")}
+                    >
+                      Tous
+                    </button>
+
+                    {(["Gmail", "Microsoft", "OVH", "Messenger"] as const).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={`${styles.chip} ${sourceFilter === s ? styles.chipActive : ""}`}
+                        onClick={() => setSourceFilter(s)}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+{/* Liste */}
               <div className={`${styles.scrollArea} ${styles.scrollAreaMessages}`}>
                 <div className={`${styles.list} ${hasSelection ? styles.selectionMode : ""}`}>
                   {filteredMessages.map((m) => {
@@ -2310,16 +2623,8 @@ const singleMoveToSpam = async () => {
                         key={m.id}
                         className={`${styles.itemRow} ${active ? styles.itemRowActive : ""} ${checked ? styles.itemRowSelected : ""}`}
                       >
-                        <label
-                          className={`${styles.checkWrap} ${checked ? styles.checkWrapChecked : ""}`}
-                          onClick={(e) => e.stopPropagation()}
-                          title="Sélection multiple"
-                        >
-                          <input type="checkbox" checked={checked} onChange={() => toggleSelect(m.id)} />
-                        </label>
-
                         <button
-                          className={`${styles.item} ${active ? styles.itemActive : ""}`}
+                          className={`${styles.itemButton} ${active ? styles.itemActive : ""}`}
                           onClick={() => {
                             if (isMobile && hasSelection) {
                               toggleSelect(m.id);
@@ -2361,18 +2666,40 @@ const singleMoveToSpam = async () => {
                           }}
                           type="button"
                         >
-                          <div className={styles.itemTop}>
-                            <div className={styles.fromRow}>
-                              {m.unread && <span className={styles.dotUnread} />}
-                              <div className={styles.from}>{m.from}</div>
-                              <span className={badgeClass(m.source)}>{m.source}</span>
+                          <div className={styles.itemGrid}>
+                            {/* COLONNE GAUCHE : titre + extrait */}
+                            <div className={styles.itemLeft}>
+                              <div className={styles.mailTitleRow}>
+                                {m.unread && <span className={styles.dotUnread} />}
+                                <div className={styles.mailTitle}>{m.subject}</div>
+                              </div>
+                              <div className={styles.mailSnippet}>{m.preview}</div>
                             </div>
-                            <div className={styles.date}>{m.dateLabel}</div>
+
+                            {/* COLONNE DROITE : source + date + checkbox */}
+                            <div
+                              className={styles.itemRight}
+                              onClick={(e) => e.stopPropagation()}
+                              onPointerDown={(e) => e.stopPropagation()}
+                            >
+                              <span className={badgeClass(m.source)}>{m.source}</span>
+                              <div className={styles.mailDate}>{formatListDate(m)}</div>
+
+                              <label
+                                className={`${styles.checkWrapRight} ${checked ? styles.checkWrapChecked : ""}`}
+                                onClick={(e) => e.stopPropagation()}
+                                title="Sélection multiple"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleSelect(m.id)}
+                                />
+                              </label>
+                            </div>
                           </div>
-                          <div className={styles.subject}>{m.subject}</div>
-                          <div className={styles.preview}>{m.preview}</div>
                         </button>
-	                      </div>
+                      </div>
 	                    );
 	                  })}
 
@@ -2488,7 +2815,7 @@ const singleMoveToSpam = async () => {
                       onChange={(e) => setComposeSource(e.target.value as Source)}
                     >
                       <option value="Gmail">Gmail</option>
-                      <option value="Outlook">Outlook</option>
+                      <option value="Microsoft">Microsoft</option>
                       <option value="OVH">OVH</option>
                       <option value="Messenger">Messenger</option>
                       <option value="Houzz">Houzz</option>

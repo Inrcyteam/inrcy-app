@@ -6,6 +6,9 @@ function folderToLabelIds(folder: string): string[] {
   switch ((folder || "").toLowerCase()) {
     case "inbox":
       return ["INBOX"];
+    case "important":
+      // "Importants" = étoilés (plus prévisible que le label IMPORTANT de Gmail)
+      return ["STARRED"];
     case "trash":
       return ["TRASH"];
     case "spam":
@@ -103,147 +106,137 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const folder = searchParams.get("folder") || "inbox";
 
-  // MVP: 1ère boîte Gmail
+  // ✅ Multi-boîtes Gmail : on liste toutes les boîtes connectées (max 3) et on agrège les messages.
   const { data: accounts, error: accErr } = await supabase
     .from("mail_accounts")
     .select("id,email_address,access_token_enc,refresh_token_enc,expires_at,status")
     .eq("user_id", auth.user.id)
     .eq("provider", "gmail")
     .order("created_at", { ascending: true })
-    .limit(1);
+    .limit(3);
 
   if (accErr) return NextResponse.json({ error: accErr.message }, { status: 500 });
 
-  const account = accounts?.[0];
-  if (!account) {
+  if (!accounts?.length) {
     return NextResponse.json({ error: "No Gmail account connected" }, { status: 400 });
   }
 
-  // ✅ on récupère les tokens "bruts"
-  const accessTokenEnc: string | null = account.access_token_enc ?? null;
-  const refreshToken: string | null = account.refresh_token_enc ?? null;
+  const aggregated: any[] = [];
+  const perAccountErrors: any[] = [];
 
-  // ✅ on force accessToken à être un string dès maintenant
-  if (!accessTokenEnc) {
-    return NextResponse.json(
-      { error: "Missing access token. Reconnect Gmail." },
-      { status: 400 }
-    );
-  }
+  for (const account of accounts) {
+    const accessTokenEnc: string | null = account.access_token_enc ?? null;
+    const refreshToken: string | null = account.refresh_token_enc ?? null;
 
-  let accessToken: string = accessTokenEnc;
-
-  // 1) refresh proactif si expires_at dépassé
-  if (refreshToken && isExpired(account.expires_at)) {
-    const r = await refreshAccessToken(refreshToken);
-    if (r.ok && r.data?.access_token) {
-      accessToken = String(r.data.access_token);
-
-      const expiresAt =
-        r.data.expires_in != null
-          ? new Date(Date.now() + Number(r.data.expires_in) * 1000).toISOString()
-          : null;
-
-      await supabase
-        .from("mail_accounts")
-        .update({
-          access_token_enc: accessToken,
-          expires_at: expiresAt,
-          status: "connected",
-        })
-        .eq("id", account.id);
-    }
-  }
-
-  // 2) premier call Gmail (avec folder)
-  let { res: listRes, data: listData } = await gmailList(accessToken, folder);
-
-  // 3) si 401/403 -> refresh + retry une fois
-  if ((listRes.status === 401 || listRes.status === 403) && refreshToken) {
-    const r = await refreshAccessToken(refreshToken);
-
-    if (r.ok && r.data?.access_token) {
-      accessToken = String(r.data.access_token);
-
-      const expiresAt =
-        r.data.expires_in != null
-          ? new Date(Date.now() + Number(r.data.expires_in) * 1000).toISOString()
-          : null;
-
-      await supabase
-        .from("mail_accounts")
-        .update({
-          access_token_enc: accessToken,
-          expires_at: expiresAt,
-          status: "connected",
-        })
-        .eq("id", account.id);
-
-      const retry = await gmailList(accessToken, folder);
-      listRes = retry.res;
-      listData = retry.data;
-    }
-  }
-
-  if (!listRes.ok) {
-    // marque l’account en error si auth fail (facultatif mais utile)
-    if (listRes.status === 401 || listRes.status === 403) {
-      await supabase.from("mail_accounts").update({ status: "expired" }).eq("id", account.id);
+    if (!accessTokenEnc) {
+      perAccountErrors.push({ accountId: account.id, email: account.email_address, error: "missing_access_token" });
+      continue;
     }
 
-    return NextResponse.json(
-      {
-        error: "Gmail list failed",
+    let accessToken: string = String(accessTokenEnc);
+
+    // 1) refresh proactif si expires_at dépassé
+    if (refreshToken && isExpired(account.expires_at)) {
+      const r = await refreshAccessToken(refreshToken);
+      if (r.ok && r.data?.access_token) {
+        accessToken = String(r.data.access_token);
+        const expiresAt =
+          r.data.expires_in != null
+            ? new Date(Date.now() + Number(r.data.expires_in) * 1000).toISOString()
+            : null;
+        await supabase
+          .from("mail_accounts")
+          .update({ access_token_enc: accessToken, expires_at: expiresAt, status: "connected" })
+          .eq("id", account.id);
+      }
+    }
+
+    // 2) list
+    let { res: listRes, data: listData } = await gmailList(accessToken, folder);
+
+    // 3) si 401/403 -> refresh + retry une fois
+    if ((listRes.status === 401 || listRes.status === 403) && refreshToken) {
+      const r = await refreshAccessToken(refreshToken);
+      if (r.ok && r.data?.access_token) {
+        accessToken = String(r.data.access_token);
+        const expiresAt =
+          r.data.expires_in != null
+            ? new Date(Date.now() + Number(r.data.expires_in) * 1000).toISOString()
+            : null;
+        await supabase
+          .from("mail_accounts")
+          .update({ access_token_enc: accessToken, expires_at: expiresAt, status: "connected" })
+          .eq("id", account.id);
+        const retry = await gmailList(accessToken, folder);
+        listRes = retry.res;
+        listData = retry.data;
+      }
+    }
+
+    if (!listRes.ok) {
+      if (listRes.status === 401 || listRes.status === 403) {
+        await supabase.from("mail_accounts").update({ status: "expired" }).eq("id", account.id);
+      }
+      perAccountErrors.push({
+        accountId: account.id,
+        email: account.email_address,
         gmailStatus: listRes.status,
         gmailError: listData,
-        hint:
-          listRes.status === 401 || listRes.status === 403
-            ? "Token invalid/expired or missing scopes. Reconnect Gmail."
-            : "Gmail API error",
-      },
-      { status: 502 }
+      });
+      continue;
+    }
+
+    const ids: string[] = (listData.messages || []).map((m: any) => m.id).filter(Boolean);
+
+    const details = await Promise.all(
+      ids.map(async (id) => {
+        const r = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        const j = await r.json().catch(() => ({}));
+        return { ok: r.ok, id, data: j };
+      })
     );
+
+    const items = details
+      .filter((d) => d.ok)
+      .map((d) => {
+        const headers = d.data?.payload?.headers || [];
+        const getH = (name: string) =>
+          headers.find((h: any) => h.name?.toLowerCase() === name.toLowerCase())?.value || "";
+
+        const body = truncate(extractPlainText(d.data?.payload), 1500);
+
+        return {
+          accountId: account.id,
+          accountEmail: account.email_address,
+          id: d.id,
+          threadId: d.data?.threadId || null,
+          labelIds: Array.isArray(d.data?.labelIds) ? d.data.labelIds : [],
+          internalDate: d.data?.internalDate || null,
+          from: getH("From"),
+          subject: getH("Subject"),
+          date: getH("Date"),
+          snippet: d.data?.snippet || "",
+          bodyPreview: body,
+        };
+      });
+
+    aggregated.push(...items);
   }
 
-  const ids: string[] = (listData.messages || []).map((m: any) => m.id).filter(Boolean);
-
-  const details = await Promise.all(
-    ids.map(async (id) => {
-      const r = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      const j = await r.json().catch(() => ({}));
-      return { ok: r.ok, id, data: j };
-    })
-  );
-
-  const items = details
-    .filter((d) => d.ok)
-    .map((d) => {
-      const headers = d.data?.payload?.headers || [];
-      const getH = (name: string) =>
-        headers.find((h: any) => h.name?.toLowerCase() === name.toLowerCase())?.value || "";
-
-      const body = truncate(extractPlainText(d.data?.payload), 1500);
-
-      return {
-        id: d.id,
-        threadId: d.data?.threadId || null,
-        labelIds: Array.isArray(d.data?.labelIds) ? d.data.labelIds : [],
-        internalDate: d.data?.internalDate || null,
-
-        from: getH("From"),
-        subject: getH("Subject"),
-        date: getH("Date"),
-        snippet: d.data?.snippet || "",
-        bodyPreview: body,
-      };
-    });
+  // tri : plus récent d'abord (fallback si internalDate manquant)
+  aggregated.sort((a, b) => {
+    const da = a.internalDate ? Number(a.internalDate) : 0;
+    const db = b.internalDate ? Number(b.internalDate) : 0;
+    return db - da;
+  });
 
   return NextResponse.json({
-    account: { id: account.id, email: account.email_address },
     folder,
-    items,
+    items: aggregated,
+    accounts: accounts.map((a) => ({ id: a.id, email: a.email_address })),
+    errors: perAccountErrors,
   });
 }

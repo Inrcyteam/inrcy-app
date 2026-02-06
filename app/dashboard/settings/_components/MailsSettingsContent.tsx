@@ -104,7 +104,7 @@ function Btn({
 }
 
 function ProviderLabel(p: MailAccount["provider"]) {
-  return p === "gmail" ? "Gmail" : "Outlook";
+  return p === "gmail" ? "Gmail" : "Microsoft";
 }
 
 export default function MailsSettingsContent() {
@@ -238,16 +238,18 @@ React.useEffect(() => {
               {!acc ? (
                 <>
                   <Btn
-                    label="Connecter Gmail (OAuth)"
+                    label="Connecter Gmail"
                     disabled={loading || maxReached}
                    onClick={() => {
   window.location.href = "/api/integrations/google/start";
 }}
                   />
                   <Btn
-                    label="Connecter Outlook (OAuth)"
+                    label="Connecter Microsoft"
                     disabled={loading || maxReached}
-                    onClick={() => alert("Prochaine étape : OAuth Outlook")}
+                    onClick={() => {
+                      window.location.href = "/api/integrations/microsoft/start";
+                    }}
                   />
                 </>
               ) : (
@@ -259,7 +261,11 @@ React.useEffect(() => {
   onClick={async () => {
     try {
       setBusyDisconnect(acc.id);
-      const r = await fetch("/api/integrations/google/disconnect", {
+      const endpoint = acc.provider === "gmail"
+        ? "/api/integrations/google/disconnect"
+        : "/api/integrations/microsoft/disconnect";
+
+      const r = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accountId: acc.id }),
@@ -268,7 +274,7 @@ React.useEffect(() => {
         const j = await r.json().catch(() => ({}));
         throw new Error(j?.error || "Erreur déconnexion");
       }
-      setToast("gmail_disconnected");
+      setToast(acc.provider === "gmail" ? "gmail_disconnected" : "outlook_disconnected");
       // refresh status
       const res = await fetch("/api/integrations/status");
       const data = await res.json();

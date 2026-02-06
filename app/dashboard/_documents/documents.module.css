@@ -29,12 +29,24 @@
     padding-top: 0;
   }
 
-  .logo {
+  /* ✅ logo : toujours contenu dans une zone fixe (évite d'empiéter en PDF) */
+  .logoBox {
     position: static;
-    display: block;
+    display: flex;
     margin-left: auto;
+    width: 55vw;
     height: 92px;
-    max-width: 55vw;
+    align-items: flex-start;
+    justify-content: flex-end;
+    overflow: hidden;
+  }
+
+  .logoImg {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
   }
 
   /* Les tableaux sont trop larges sur mobile => scroll horizontal */
@@ -175,15 +187,27 @@
 .previewHeader {
   position: relative; /* référence pour l’absolu */
   padding-top: 20px;
-  min-height: 150px; /* espace réservé pour le logo */
+  min-height: 120px; /* espace réservé pour le logo */
 }
 
-.logo {
+/* ✅ logo : zone fixe en haut à droite (aucun logo ne peut déborder) */
+.logoBox {
   position: absolute;
-  top: 0px; /* ajuste si besoin */
-  right: 24px; /* ajuste si besoin */
-  height: 180px; /* tu peux monter à 110px */
+  top: 0px;
+  right: 24px;
+  width: 240px;
+  height: 96px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+.logoImg {
+  max-width: 100%;
+  max-height: 100%;
   width: auto;
+  height: auto;
   object-fit: contain;
 }
 

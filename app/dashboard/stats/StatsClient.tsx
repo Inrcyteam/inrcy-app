@@ -407,7 +407,7 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
         key: "fideliser_remercier",
         title: "Remercier",
         detail: "Convertissez vos clients satisfaits en recommandations et avis.",
-        href: "/dashboard/fideliser/remercier",
+        href: "/dashboard/fideliser?action=thanks",
         pill: "Fidéliser",
       });
     }
@@ -416,7 +416,7 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
       key: "booster_promotion",
       title: "Promotion",
       detail: "Mettez en avant une offre / un message clair pour déclencher le contact.",
-      href: "/dashboard/booster/promotion",
+      href: "/dashboard/booster?action=promo",
       pill: "Booster",
     });
   }
@@ -428,7 +428,7 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
         key: "booster_promotion",
         title: "Promotion",
         detail: "Ajoutez/optimisez un déclencheur (devis, urgence, appel à l’action).",
-        href: "/dashboard/booster/promotion",
+        href: "/dashboard/booster?action=promo",
         pill: "Booster",
       });
     }
@@ -438,7 +438,7 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
         key: "fideliser_informer",
         title: "Informer",
         detail: "Créez un lien régulier (conseils, prévention, actu).",
-        href: "/dashboard/fideliser/informer",
+        href: "/dashboard/fideliser?action=inform",
         pill: "Fidéliser",
       });
     }
@@ -446,7 +446,7 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
       key: "booster_publier",
       title: "Publier",
       detail: "Ajoutez une actualité locale pour relancer la visibilité et le trafic.",
-      href: "/dashboard/booster/publier",
+      href: "/dashboard/booster?action=publish",
       pill: "Booster",
     });
   }
@@ -459,7 +459,7 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
         key: "booster_publier",
         title: "Publier",
         detail: "Publiez 1 post Google Business pour activer le canal (même sans métriques détaillées).",
-        href: "/dashboard/booster/publier",
+        href: "/dashboard/booster?action=publish",
         pill: "Booster",
       });
     }
@@ -467,7 +467,7 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
       key: "booster_avis",
       title: "Avis",
       detail: "Les avis sont le levier n°1 pour gagner des appels locaux.",
-      href: "/dashboard/booster/avis",
+      href: "/dashboard/booster?action=reviews",
       pill: "Booster",
     });
   }
@@ -477,7 +477,7 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
     key: "booster_publier",
     title: "Publier",
     detail: "1 publication simple/semaine suffit pour rester visible auprès de votre audience.",
-    href: "/dashboard/booster/publier",
+    href: "/dashboard/booster?action=publish",
     pill: "Booster",
   });
 }

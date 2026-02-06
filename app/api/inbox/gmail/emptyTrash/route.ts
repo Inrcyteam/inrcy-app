@@ -75,127 +75,116 @@ function chunk<T>(arr: T[], size: number) {
   return out;
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   const supabase = await createSupabaseServer();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: accounts, error: accErr } = await supabase
+  // Optional: restrict to some accounts
+  const body = await req.json().catch(() => ({}));
+  const accountIds: string[] = Array.isArray(body.accountIds) ? body.accountIds.filter(Boolean) : [];
+
+  let q = supabase
     .from("mail_accounts")
     .select("id,email_address,access_token_enc,refresh_token_enc,expires_at,status")
     .eq("user_id", auth.user.id)
     .eq("provider", "gmail")
     .order("created_at", { ascending: true })
-    .limit(1);
+    .limit(3);
+
+  if (accountIds.length) q = q.in("id", accountIds);
+
+  const { data: accounts, error: accErr } = await q;
 
   if (accErr) return NextResponse.json({ error: accErr.message }, { status: 500 });
 
-  const account = accounts?.[0];
-  if (!account) {
-    return NextResponse.json({ error: "No Gmail account connected" }, { status: 400 });
-  }
+  if (!accounts?.length) return NextResponse.json({ error: "No Gmail account connected" }, { status: 400 });
 
-  const accessTokenEnc = account.access_token_enc ?? null;
-if (!accessTokenEnc) {
-  return NextResponse.json(
-    { error: "Missing access token. Reconnect Gmail." },
-    { status: 400 }
-  );
-}
-let accessToken: string = accessTokenEnc;
+  const results: any[] = [];
 
-  const refreshToken: string | null = account.refresh_token_enc ?? null;
-
-  if (!accessToken) {
-    return NextResponse.json(
-      { error: "Missing access token. Reconnect Gmail." },
-      { status: 400 }
-    );
-  }
-
-  // refresh proactif
-  if (refreshToken && isExpired(account.expires_at)) {
-    const r = await refreshAccessToken(refreshToken);
-    if (r.ok && r.data?.access_token) {
-      accessToken = r.data.access_token;
-      const expiresAt =
-        r.data.expires_in != null
-          ? new Date(Date.now() + Number(r.data.expires_in) * 1000).toISOString()
-          : null;
-
-      await supabase
-        .from("mail_accounts")
-        .update({ access_token_enc: accessToken, expires_at: expiresAt, status: "connected" })
-        .eq("id", account.id);
+  for (const account of accounts) {
+    const accessTokenEnc: string | null = account.access_token_enc ?? null;
+    if (!accessTokenEnc) {
+      results.push({ accountId: account.id, email: account.email_address, ok: false, error: "Missing access token" });
+      continue;
     }
-  }
 
-  // 1) récupérer tous les ids en TRASH (paginé)
-  let allIds: string[] = [];
-  let pageToken: string | undefined;
+    let accessToken: string = String(accessTokenEnc);
+    const refreshToken: string | null = account.refresh_token_enc ?? null;
 
-  for (let safety = 0; safety < 50; safety++) {
-    const { res, data } = await gmailListTrashIds(accessToken, pageToken);
-    if (!res.ok) {
-      // retry après refresh si 401/403
-      if ((res.status === 401 || res.status === 403) && refreshToken) {
-        const r = await refreshAccessToken(refreshToken);
-        if (r.ok && r.data?.access_token) {
-          accessToken = r.data.access_token;
-          const retry = await gmailListTrashIds(accessToken, pageToken);
-          if (!retry.res.ok) {
-            return NextResponse.json(
-              { error: "Gmail list TRASH failed", gmailStatus: retry.res.status, gmailError: retry.data },
-              { status: 502 }
-            );
+    // refresh proactif
+    if (refreshToken && isExpired(account.expires_at)) {
+      const r = await refreshAccessToken(refreshToken);
+      if (r.ok && r.data?.access_token) {
+        accessToken = String(r.data.access_token);
+        const expiresAt =
+          r.data.expires_in != null
+            ? new Date(Date.now() + Number(r.data.expires_in) * 1000).toISOString()
+            : null;
+        await supabase
+          .from("mail_accounts")
+          .update({ access_token_enc: accessToken, expires_at: expiresAt, status: "connected" })
+          .eq("id", account.id);
+      }
+    }
+
+    // 1) récupérer tous les ids en TRASH (paginé)
+    let allIds: string[] = [];
+    let pageToken: string | undefined;
+
+    for (let safety = 0; safety < 50; safety++) {
+      const { res, data } = await gmailListTrashIds(accessToken, pageToken);
+      if (!res.ok) {
+        // retry après refresh si 401/403
+        if ((res.status === 401 || res.status === 403) && refreshToken) {
+          const r = await refreshAccessToken(refreshToken);
+          if (r.ok && r.data?.access_token) {
+            accessToken = String(r.data.access_token);
+            const retry = await gmailListTrashIds(accessToken, pageToken);
+            if (!retry.res.ok) {
+              results.push({ accountId: account.id, email: account.email_address, ok: false, gmailStatus: retry.res.status, gmailError: retry.data });
+              break;
+            }
+            const ids = (retry.data?.messages || []).map((m: any) => m.id).filter(Boolean);
+            allIds.push(...ids);
+            pageToken = retry.data?.nextPageToken;
+            if (!pageToken) break;
+            continue;
           }
-          const ids = (retry.data?.messages || []).map((m: any) => m.id).filter(Boolean);
-          allIds.push(...ids);
-          pageToken = retry.data?.nextPageToken;
-          if (!pageToken) break;
-          continue;
         }
+        results.push({ accountId: account.id, email: account.email_address, ok: false, gmailStatus: res.status, gmailError: data });
+        break;
       }
 
-      return NextResponse.json(
-        { error: "Gmail list TRASH failed", gmailStatus: res.status, gmailError: data },
-        { status: 502 }
-      );
+      const ids = (data?.messages || []).map((m: any) => m.id).filter(Boolean);
+      allIds.push(...ids);
+      pageToken = data?.nextPageToken;
+      if (!pageToken) break;
     }
 
-    const ids = (data?.messages || []).map((m: any) => m.id).filter(Boolean);
-    allIds.push(...ids);
-    pageToken = data?.nextPageToken;
-    if (!pageToken) break;
-  }
-
-  if (allIds.length === 0) {
-    return NextResponse.json({
-      account: { id: account.id, email: account.email_address },
-      deleted: 0,
-      message: "Trash already empty",
-    });
-  }
-
-  // 2) batchDelete par paquets (max 1000, mais 500 safe)
-  const batches = chunk(allIds, 500);
-
-  let deleted = 0;
-  for (const ids of batches) {
-    const { res, data } = await gmailBatchDelete(accessToken, ids);
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: "Gmail batchDelete failed", gmailStatus: res.status, gmailError: data },
-        { status: 502 }
-      );
+    if (allIds.length === 0) {
+      results.push({ accountId: account.id, email: account.email_address, ok: true, deleted: 0 });
+      continue;
     }
-    deleted += ids.length;
+
+    // 2) batchDelete par paquets (max 1000, mais 500 safe)
+    const batches = chunk(allIds, 500);
+    let deleted = 0;
+    let failed = false;
+    for (const ids of batches) {
+      const { res, data } = await gmailBatchDelete(accessToken, ids);
+      if (!res.ok) {
+        results.push({ accountId: account.id, email: account.email_address, ok: false, gmailStatus: res.status, gmailError: data });
+        failed = true;
+        break;
+      }
+      deleted += ids.length;
+    }
+    if (!failed) results.push({ accountId: account.id, email: account.email_address, ok: true, deleted });
   }
 
-  return NextResponse.json({
-    account: { id: account.id, email: account.email_address },
-    deleted,
-  });
+  const anyFail = results.some((r) => !r.ok);
+  return NextResponse.json({ ok: !anyFail, results }, { status: anyFail ? 502 : 200 });
 }

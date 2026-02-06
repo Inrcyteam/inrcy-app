@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import styles from "../../dashboard/dashboard.module.css";
 import b from "./booster.module.css";
@@ -13,6 +14,16 @@ type ActiveModal = null | "publish" | "reviews" | "promo";
 
 export default function BoosterPage() {
   const [active, setActive] = useState<ActiveModal>(null);
+
+  const searchParams = useSearchParams();
+
+  // Deep-link support: /dashboard/booster?action=publish|reviews|promo
+  useEffect(() => {
+    const a = (searchParams?.get("action") || "").toLowerCase();
+    if (a === "publish" || a === "reviews" || a === "promo") {
+      setActive(a as ActiveModal);
+    }
+  }, [searchParams]);
 
   const [metrics, setMetrics] = useState<any>(null);
 

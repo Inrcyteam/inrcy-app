@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import styles from "../../dashboard/dashboard.module.css";
 import b from "./fideliser.module.css";
@@ -13,6 +14,16 @@ type ActiveModal = null | "inform" | "thanks" | "satisfaction";
 
 export default function FideliserPage() {
   const [active, setActive] = useState<ActiveModal>(null);
+
+  const searchParams = useSearchParams();
+
+  // Deep-link support: /dashboard/fideliser?action=inform|thanks|satisfaction
+  useEffect(() => {
+    const a = (searchParams?.get("action") || "").toLowerCase();
+    if (a === "inform" || a === "thanks" || a === "satisfaction") {
+      setActive(a as ActiveModal);
+    }
+  }, [searchParams]);
 
   const [metrics, setMetrics] = useState<any>(null);
 

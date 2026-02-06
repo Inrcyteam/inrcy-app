@@ -970,8 +970,10 @@ const addLine = () =>
             </div>
           </div>
           {profile?.logo_url ? (
-  <img src={profile.logo_url} alt="Logo" className={styles.logo} />
-) : null}
+            <div className={styles.logoBox} aria-label="Logo">
+              <img src={profile.logo_url} alt="Logo" className={styles.logoImg} />
+            </div>
+          ) : null}
         </div>
 
         <div
