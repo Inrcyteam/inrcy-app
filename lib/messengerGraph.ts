@@ -56,10 +56,6 @@ export function messengerScopes(): string {
   // Some require Advanced Access / App Review in production.
   const fallback = [
     "public_profile",
-    "pages_show_list",
-    "pages_read_engagement",
-    "pages_manage_metadata",
-    "pages_messaging",
   ];
 
   const fromEnv = process.env.MESSENGER_SCOPES?.split(",").map((s) => s.trim()).filter(Boolean);
