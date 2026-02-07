@@ -205,7 +205,7 @@ useEffect(() => {
       <div className={b.triLabel}>INFORMER</div>
     </div>
     <div className={[b.triItem, b.triPurple].join(" ")}>
-      <div className={b.triLabel}>REMERCER</div>
+      <div className={b.triLabel}>REMERCIER</div>
     </div>
     <div className={[b.triItem, b.triPink].join(" ")}>
       <div className={b.triLabel}>SATISFACTION</div>
