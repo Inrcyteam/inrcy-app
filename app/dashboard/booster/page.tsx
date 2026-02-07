@@ -349,6 +349,7 @@ function ActionCard({
       <div className={styles.moduleGlow} />
 
       <div className={b.actionTop}>
+        <div className={b.actionMiniTitle}>{title}</div>
         <div className={b.status} title="Usage">
           <span className={[b.dot, b[dotClass]].join(" ")} aria-hidden />
           <span>{status.label}</span>

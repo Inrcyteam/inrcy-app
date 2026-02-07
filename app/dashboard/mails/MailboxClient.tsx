@@ -218,6 +218,13 @@ export default function MailboxClient() {
   const [folder, setFolder] = useState<Folder>("inbox");
   const [selectedId, setSelectedId] = useState<string>("1");
 
+  // Mobile: afficher la recherche uniquement quand on clique sur la loupe
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+
+  // Compose: dropdown CRM multi-sélection
+  const [crmPickerOpen, setCrmPickerOpen] = useState(false);
+  const [crmPickerQuery, setCrmPickerQuery] = useState("");
+
   // ✅ Multi-sélection (colonne Messages)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
@@ -1893,7 +1900,7 @@ const singleMoveToSpam = async () => {
         className={styles.mobileIconBtn}
         title="Recherche"
         type="button"
-        onClick={() => notify("Recherche bientôt disponible")}
+        onClick={() => setMobileSearchOpen((v) => !v)}
       >
         🔎
       </button>
@@ -1909,11 +1916,14 @@ const singleMoveToSpam = async () => {
 
       <button
         className={styles.mobileIconBtn}
-        title="Réglages"
+        title={viewMode === "action" ? "Actions" : "Réglages"}
         type="button"
-        onClick={() => setSettingsOpen(true)}
+        onClick={() => {
+          if (viewMode === "action") setActionSheetOpen(true);
+          else setSettingsOpen(true);
+        }}
       >
-        ⚙️
+        {viewMode === "action" ? "☰" : "⚙️"}
       </button>
 
       <Link href="/dashboard" className={styles.mobileIconBtn} title="Fermer iNr’Box">
@@ -2003,22 +2013,43 @@ const singleMoveToSpam = async () => {
               </div>
 
               <div className={styles.mobileDrawerFooter}>
-                <button
-                  className={styles.mobileDrawerFooterBtn}
-                  type="button"
-                  onClick={() => {
-                    setSettingsOpen(true);
-                    setNavOpen(false);
-                  }}
-                >
-                  ⚙️ Réglages
-                </button>
                 <Link href="/dashboard" className={styles.mobileDrawerFooterBtn} onClick={() => setNavOpen(false)}>
                   ✖️ Fermer
                 </Link>
               </div>
             </aside>
           </>
+        )}
+
+        {/* Mobile search: apparaît seulement après clic sur la loupe */}
+        {isMobile && viewMode === "list" && mobileSearchOpen && (
+          <div className={styles.mobileSearchOverlay}>
+            <div className={styles.mobileSearchPill}>
+              <span className={styles.mobileSearchIcon} aria-hidden="true">
+                🔎
+              </span>
+              <input
+                className={styles.mobileSearchInput}
+                placeholder="Rechercher dans iNr’Box…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                inputMode="search"
+                autoFocus
+              />
+              <button
+                type="button"
+                className={styles.mobileSearchClear}
+                onClick={() => {
+                  setQuery("");
+                  setMobileSearchOpen(false);
+                }}
+                aria-label="Fermer"
+                title="Fermer"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
         )}
 
         
@@ -2634,8 +2665,8 @@ const singleMoveToSpam = async () => {
                 })}
               </div>
 
-              {/* Mobile premium search (sticky) */}
-              {isMobile && viewMode === "list" && (
+              {/* Mobile: la recherche n'apparaît que lorsqu'on clique sur la loupe */}
+              {isMobile && viewMode === "list" && mobileSearchOpen && (
                 <div className={styles.mobileSearchSticky}>
                   <div className={styles.mobileSearchPill}>
                     <span className={styles.mobileSearchIcon} aria-hidden="true">🔎</span>
@@ -2645,67 +2676,37 @@ const singleMoveToSpam = async () => {
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       inputMode="search"
+                      autoFocus
                     />
-                    {query ? (
-                      <button
-                        type="button"
-                        className={styles.mobileSearchClear}
-                        onClick={() => setQuery("")}
-                        aria-label="Effacer"
-                        title="Effacer"
-                      >
-                        ✕
-                      </button>
-                    ) : (
-                      <span className={styles.mobileSearchHint} aria-hidden="true">⌘</span>
-                    )}
-                  </div>
-
-                  <div className={styles.mobileQuickFilters}>
                     <button
                       type="button"
-                      className={`${styles.mobileQuickChip} ${unreadOnly ? styles.mobileQuickChipActive : ""}`}
-                      onClick={() => setUnreadOnly((v) => !v)}
-                      title="Afficher seulement les non lus"
+                      className={styles.mobileSearchClear}
+                      onClick={() => {
+                        setQuery("");
+                        setMobileSearchOpen(false);
+                      }}
+                      aria-label="Fermer"
+                      title="Fermer"
                     >
-                      Non lus
+                      ✕
                     </button>
-                    <button
-                      type="button"
-                      className={styles.mobileQuickChip}
-                      onClick={() => setNavOpen(true)}
-                      title="Choisir une source"
-                    >
-                      {sourceFilter === "ALL" ? "Tous" : sourceFilter}
-                    </button>
-                    {(sourceFilter !== "ALL" || unreadOnly) && (
-                      <button
-                        type="button"
-                        className={styles.mobileQuickChip}
-                        onClick={() => {
-                          setSourceFilter("ALL");
-                          setUnreadOnly(false);
-                        }}
-                        title="Réinitialiser"
-                      >
-                        Reset
-                      </button>
-                    )}
                   </div>
                 </div>
               )}
 
               {/* Barre: recherche + actions */}
               <div className={styles.toolbarRow}>
-                <div className={styles.searchRow}>
-                  <input
-                    className={styles.searchInput}
-                    placeholder="Rechercher un message…"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                  />
-                  <div className={styles.searchIconRight}>⌕</div>
-                </div>
+                {!isMobile && (
+                  <div className={styles.searchRow}>
+                    <input
+                      className={styles.searchInput}
+                      placeholder="Rechercher un message…"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                    />
+                    <div className={styles.searchIconRight}>⌕</div>
+                  </div>
+                )}
 
                 <div className={styles.toolbarActions}>
                   <button
@@ -2898,14 +2899,13 @@ const singleMoveToSpam = async () => {
                           onPointerDown={() => {
                             if (!isMobile) return;
 
-                            // long-press -> actions (important / supprimer / ouvrir)
+                            // long-press -> multi sélection (sans checkboxes)
                             longPressTriggeredRef.current = false;
                             if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
                             longPressTimerRef.current = window.setTimeout(() => {
                               longPressTriggeredRef.current = true;
                               setSelectedId(m.id);
-                              setListActionMessageId(m.id);
-                              setListActionSheetOpen(true);
+                              toggleSelect(m.id);
                             }, 450);
                           }}
                           onPointerUp={(e) => {
@@ -2947,17 +2947,19 @@ const singleMoveToSpam = async () => {
                               <span className={badgeClass(m.source)}>{m.source}</span>
                               <div className={styles.mailDate}>{formatListDate(m)}</div>
 
-                              <label
-                                className={`${styles.checkWrapRight} ${checked ? styles.checkWrapChecked : ""}`}
-                                onClick={(e) => e.stopPropagation()}
-                                title="Sélection multiple"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleSelect(m.id)}
-                                />
-                              </label>
+                              {!isMobile && (
+                                <label
+                                  className={`${styles.checkWrapRight} ${checked ? styles.checkWrapChecked : ""}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  title="Sélection multiple"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleSelect(m.id)}
+                                  />
+                                </label>
+                              )}
                             </div>
                           </div>
                         </button>
@@ -3014,39 +3016,111 @@ const singleMoveToSpam = async () => {
                 
                   <div className={styles.formRow}>
                     <label className={styles.formLabel}>Importer un contact (CRM)</label>
-                    <select
-                      className={styles.formInput}
-                      multiple
-                      size={Math.min(6, Math.max(3, crmContacts.length + 1))}
-                      value={selectedCrmContactIds}
-                      onChange={(e) => {
-                        const ids = Array.from(e.currentTarget.selectedOptions)
-                          .map((o) => o.value)
-                          .filter(Boolean);
-                        setSelectedCrmContactIds(ids);
-                        const selectedContacts = crmContacts.filter((x) => ids.includes(String(x.id)));
-                        if (selectedContacts.length) applyCrmContactsToCompose(selectedContacts);
-                      }}
-                      disabled={crmLoading}
-                    >
-                      <option value="" disabled>
-                        {crmLoading ? "Chargement..." : "Sélectionner un ou plusieurs contacts"}
-                      </option>
-                      {crmContacts.map((c) => {
-                        const label =
-                          (c.company_name && c.company_name.trim()) ||
-                          [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
-                          (c.last_name || "").trim() ||
-                          "(Sans nom)";
-                        return (
-                          <option key={c.id} value={c.id}>
-                            {label}{c.email ? ` — ${c.email}` : ""}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-                      💡 Astuce : sélectionnez plusieurs contacts (Ctrl/Cmd + clic).
+                    <div className={styles.crmMultiSelect}>
+                      <button
+                        type="button"
+                        className={styles.crmMultiSelectBtn}
+                        onClick={() => setCrmPickerOpen((v) => !v)}
+                        disabled={crmLoading}
+                        aria-expanded={crmPickerOpen}
+                      >
+                        {crmLoading
+                          ? "Chargement…"
+                          : selectedCrmContactIds.length
+                            ? `${selectedCrmContactIds.length} contact(s) sélectionné(s)`
+                            : "Sélectionner un ou plusieurs contacts"}
+                        <span aria-hidden>▾</span>
+                      </button>
+
+                      {crmPickerOpen && !crmLoading && (
+                        <div className={styles.crmMultiSelectMenu}>
+                          <div className={styles.crmMenuTop}>
+                            <input
+                              className={styles.crmMenuSearch}
+                              placeholder="Rechercher…"
+                              value={crmPickerQuery}
+                              onChange={(e) => setCrmPickerQuery(e.target.value)}
+                            />
+                            <div className={styles.crmMenuActions}>
+                              <button
+                                type="button"
+                                className={styles.crmMenuActionBtn}
+                                onClick={() => {
+                                  const ids = crmContacts.map((c) => String(c.id));
+                                  setSelectedCrmContactIds(ids);
+                                  applyCrmContactsToCompose(crmContacts);
+                                }}
+                              >
+                                Tout sélectionner
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.crmMenuActionBtn}
+                                onClick={() => setSelectedCrmContactIds([])}
+                              >
+                                Tout désélectionner
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className={styles.crmMenuList}>
+                            {crmContacts
+                              .filter((c) => {
+                                const label =
+                                  (c.company_name && c.company_name.trim()) ||
+                                  [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
+                                  (c.last_name || "").trim() ||
+                                  "(Sans nom)";
+                                const hay = `${label} ${c.email || ""}`.toLowerCase();
+                                return hay.includes(crmPickerQuery.toLowerCase());
+                              })
+                              .map((c) => {
+                                const label =
+                                  (c.company_name && c.company_name.trim()) ||
+                                  [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
+                                  (c.last_name || "").trim() ||
+                                  "(Sans nom)";
+                                const checked = selectedCrmContactIds.includes(String(c.id));
+                                return (
+                                  <label key={c.id} className={styles.crmMenuItem}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => {
+                                        setSelectedCrmContactIds((prev) => {
+                                          const id = String(c.id);
+                                          const next = prev.includes(id)
+                                            ? prev.filter((x) => x !== id)
+                                            : [...prev, id];
+                                          const selectedContacts = crmContacts.filter((x) => next.includes(String(x.id)));
+                                          if (selectedContacts.length) applyCrmContactsToCompose(selectedContacts);
+                                          return next;
+                                        });
+                                      }}
+                                    />
+                                    <span className={styles.crmMenuItemText}>
+                                      {label}{c.email ? ` — ${c.email}` : ""}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+
+                            {!crmContacts.length && (
+                              <div className={styles.crmEmpty}>Aucun contact CRM.</div>
+                            )}
+                          </div>
+
+                          <div className={styles.crmMenuBottom}>
+                            <button
+                              type="button"
+                              className={styles.btnPrimary}
+                              onClick={() => setCrmPickerOpen(false)}
+                            >
+                              OK
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     {crmError ? (
                       <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
@@ -3122,10 +3196,13 @@ const singleMoveToSpam = async () => {
                       placeholder="Votre message…"
                       rows={8}
                     />
-                  
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
-                      <label className={styles.btnGhost} style={{ width: "fit-content", cursor: "pointer" }}>
-                        📎 Joindre
+
+                    <div className={styles.attachRow}>
+                      <span className={styles.attachIcon} aria-hidden>
+                        📎
+                      </span>
+                      <label className={styles.attachBtn}>
+                        Joindre
                         <input
                           hidden
                           type="file"
@@ -3137,24 +3214,26 @@ const singleMoveToSpam = async () => {
                           }}
                         />
                       </label>
-
-                      {composeFiles.length > 0 && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                          {composeFiles.map((f, i) => (
-                            <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                              <span style={{ fontSize: 12, opacity: 0.9 }}>{f.name}</span>
-                              <button
-                                type="button"
-                                className={styles.btnGhost}
-                                onClick={() => setComposeFiles((p) => p.filter((_, idx) => idx !== i))}
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
+
+                    {composeFiles.length > 0 && (
+                      <div className={styles.attachList}>
+                        {composeFiles.map((f, i) => (
+                          <div key={i} className={styles.attachItem}>
+                            <span className={styles.attachName}>{f.name}</span>
+                            <button
+                              type="button"
+                              className={styles.btnGhost}
+                              onClick={() => setComposeFiles((p) => p.filter((_, idx) => idx !== i))}
+                              aria-label="Retirer"
+                              title="Retirer"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 </div>
                 </div>
               </div>
