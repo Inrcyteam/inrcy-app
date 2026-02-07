@@ -2647,23 +2647,25 @@ const singleMoveToSpam = async () => {
           {/* Colonne droite: messages (LISTE) */}
           {showMessages && (
             <section className={styles.card}>
-              <div className={styles.folderTabs}>
-                {FOLDERS.map((f) => {
-                  const active = f.key === folder;
-                  return (
-                    <button
-                      key={f.key}
-                      className={`${styles.folderTabBtn} ${active ? styles.folderTabBtnActive : ""}`}
-                      onClick={() => setFolder(f.key)}
-                      type="button"
-                      title={titleByFolder[f.key]}
-                    >
-                      <span className={styles.folderTabLabel}>{f.label}</span>
-                      <span className={styles.badgeCount}>{folderCount(f.key)}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              {!isMobile && (
+                <div className={styles.folderTabs}>
+                  {FOLDERS.map((f) => {
+                    const active = f.key === folder;
+                    return (
+                      <button
+                        key={f.key}
+                        className={`${styles.folderTabBtn} ${active ? styles.folderTabBtnActive : ""}`}
+                        onClick={() => setFolder(f.key)}
+                        type="button"
+                        title={titleByFolder[f.key]}
+                      >
+                        <span className={styles.folderTabLabel}>{f.label}</span>
+                        <span className={styles.badgeCount}>{folderCount(f.key)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Mobile: la recherche n'apparaît que lorsqu'on clique sur la loupe */}
               {isMobile && viewMode === "list" && mobileSearchOpen && (

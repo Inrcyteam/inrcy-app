@@ -2718,6 +2718,21 @@ width: 100%;
     gap:8px;
   }
   .toolbarInfo{ font-size:12px; }
+
+  .toolbarBtn{
+    font-size:12px;
+    padding:8px 10px;
+    white-space:nowrap;
+  }
+
+  /* Un peu d'air à droite pour la date en liste */
+  .messageRow{
+    padding-right:10px;
+  }
+  .date{
+    padding-right:6px;
+  }
+
 }
 
 /* --- Compose: CRM multi select --- */

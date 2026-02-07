@@ -103,6 +103,28 @@
   justify-content:space-between;
 }
 
+
+.actionHeader{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.actionHeaderTitle{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:-0.02em;
+  line-height:1.05;
+  padding-top:2px;
+}
+
+@media (min-width: 981px){
+  /* Sur desktop, les triangles suffisent: on cache le titre et on centre le statut */
+  .actionHeader{ justify-content:center; }
+  .actionHeaderTitle{ display:none; }
+}
+
 .actionTop{
   display:flex;
   justify-content:center;
