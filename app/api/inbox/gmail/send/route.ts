@@ -168,6 +168,7 @@ export async function POST(req: Request) {
   let text = "";
   let html = "";
   let threadId = "";
+  let accountId = "";
   let inReplyTo = "";
   let references = "";
   const attachments: Attachment[] = [];
@@ -175,6 +176,7 @@ export async function POST(req: Request) {
   const ct = req.headers.get("content-type") || "";
   if (ct.includes("multipart/form-data")) {
     const fd = await req.formData();
+    accountId = String(fd.get("accountId") || "").trim();
     to = String(fd.get("to") || "").trim();
     subject = String(fd.get("subject") || "").trim() || "(sans objet)";
     text = String(fd.get("text") || "");
@@ -205,13 +207,17 @@ export async function POST(req: Request) {
 
   if (!to) return NextResponse.json({ error: "Missing 'to'" }, { status: 400 });
 
-  const { data: accounts, error: accErr } = await supabase
+  let q = supabase
     .from("mail_accounts")
     .select("id,access_token_enc,refresh_token_enc,expires_at,status,created_at")
     .eq("user_id", auth.user.id)
-    .eq("provider", "gmail")
-    .order("created_at", { ascending: true })
-    .limit(1);
+    .eq("provider", "gmail");
+
+  if (typeof accountId === "string" && accountId.trim()) {
+    q = q.eq("id", accountId.trim());
+  }
+
+  const { data: accounts, error: accErr } = await q.order("created_at", { ascending: true }).limit(1);
 
   if (accErr) return NextResponse.json({ error: accErr.message }, { status: 500 });
 

@@ -51,6 +51,16 @@ type CrmContact = {
   email?: string | null;
 };
 
+type MailAccount = {
+  id: string;
+  provider: "gmail" | "microsoft" | string;
+  email_address?: string | null;
+  display_name?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+};
+
+
 
 type MobilePane = "folders" | "cockpit" | "messages";
 
@@ -224,7 +234,6 @@ export default function MailboxClient() {
 
   const [mobilePane, setMobilePane] = useState<MobilePane>("messages");
   const [navOpen, setNavOpen] = useState(false);
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const [listActionSheetOpen, setListActionSheetOpen] = useState(false);
   const [listActionMessageId, setListActionMessageId] = useState<string | null>(null);
@@ -1188,30 +1197,124 @@ const onSelectMessage = (id: string) => {
   const [crmContacts, setCrmContacts] = useState<CrmContact[]>([]);
   const [crmLoading, setCrmLoading] = useState(false);
   const [crmError, setCrmError] = useState<string | null>(null);
-  const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
+  const [selectedCrmContactIds, setSelectedCrmContactIds] = useState<string[]>([]);
 
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [composeSource, setComposeSource] = useState<Source>("Gmail");
+  const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([]);
+  const [composeAccountId, setComposeAccountId] = useState<string>("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const r = await fetch("/api/integrations/status", { method: "GET" });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) return;
+        const accounts: MailAccount[] = Array.isArray(j?.mailAccounts) ? j.mailAccounts : [];
+        if (!cancelled) setMailAccounts(accounts);
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+
   const [composeFiles, setComposeFiles] = useState<File[]>([]);
 
-  // ✅ Applique un contact CRM au compose (pré-remplit le destinataire et optionnellement une salutation)
-  const applyCrmContactToCompose = (c: CrmContact) => {
-    const email = (c.email || "").trim();
-    if (email) setComposeTo(email);
+  // ✅ Charge les contacts CRM quand on ouvre la fenêtre "Écrire" (desktop + mobile)
+  useEffect(() => {
+    if (!composeOpen) return;
+    if (crmLoading) return;
+    if (crmContacts.length > 0) return;
 
-    // Ajoute une salutation si le body est vide ou juste "Bonjour,".
-    const fullName = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
-    const displayName = fullName || (c.company_name || "").trim();
-    const normalized = (composeBody || "").trim();
-    const looksEmpty = normalized === "" || normalized === "Bonjour," || normalized === "Bonjour";
-    if (looksEmpty) {
+    let cancelled = false;
+    (async () => {
+      try {
+        setCrmLoading(true);
+        setCrmError(null);
+
+        const res = await fetch("/api/crm/contacts", { method: "GET" });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j?.error || `Erreur (${res.status})`);
+        }
+
+        const json = await res.json().catch(() => ({}));
+        const contacts = Array.isArray(json?.contacts) ? (json.contacts as CrmContact[]) : [];
+        if (!cancelled) setCrmContacts(contacts);
+      } catch (e: any) {
+        if (!cancelled) setCrmError(e?.message || "Impossible de charger les contacts CRM");
+      } finally {
+        if (!cancelled) setCrmLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [composeOpen]);
+
+  // ✅ Applique une sélection de contacts CRM au compose (pré-remplit le(s) destinataire(s) et optionnellement une salutation)
+const applyCrmContactsToCompose = (contacts: CrmContact[]) => {
+  const normalize = (v: string) =>
+    v
+      .split(/[,;\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+  const existing = new Set(normalize(composeTo || ""));
+  const emails = contacts
+    .map((c) => (c.email || "").trim())
+    .filter(Boolean);
+
+  // On place d'abord les contacts CRM sélectionnés, puis on conserve ce que l'utilisateur avait déjà tapé
+  const merged = Array.from(new Set([...emails, ...Array.from(existing)]));
+
+  if (merged.length) setComposeTo(merged.join(", "));
+
+  // Salutation : personnalisée uniquement si 1 contact sélectionné
+  const normalizedBody = (composeBody || "").trim();
+  const looksEmpty = normalizedBody === "" || normalizedBody === "Bonjour," || normalizedBody === "Bonjour";
+
+  if (looksEmpty) {
+    if (contacts.length === 1) {
+      const c = contacts[0];
+      const fullName = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
+      const displayName = fullName || (c.company_name || "").trim();
       const greet = displayName ? `Bonjour ${displayName},\n\n` : "Bonjour,\n\n";
       setComposeBody(greet);
+    } else {
+      setComposeBody("Bonjour,\n\n");
     }
-  };
+  }
+};
 
-  // ✅ Pré-remplissage depuis le CRM (ex: /dashboard/mails?compose=1&to=a@x.fr,b@y.fr)
+
+  
+const resetComposeWithConfirm = () => {
+  if (typeof window !== "undefined") {
+    const ok = window.confirm(
+      "Réinitialiser le message ?\n\nCela va effacer les destinataires, l'objet, le message et les pièces jointes."
+    );
+    if (!ok) return;
+  }
+  setSelectedCrmContactIds([]);
+  setComposeTo("");
+  setComposeSubject("");
+  setComposeBody("Bonjour,\n\n");
+  setComposeFiles([]);
+  // remet la première boîte connectée par défaut
+  setComposeAccountId((prev) => prev || (availableSendAccounts[0]?.id ? String(availableSendAccounts[0].id) : ""));
+};
+
+// ✅ Pré-remplissage depuis le CRM (ex: /dashboard/mails?compose=1&to=a@x.fr,b@y.fr)
   useEffect(() => {
     const compose = searchParams.get("compose");
     const to = (searchParams.get("to") || "").trim();
@@ -1222,6 +1325,7 @@ const onSelectMessage = (id: string) => {
       setComposeSubject("");
       setComposeBody("Bonjour,\n\n");
       setComposeOpen(true);
+      setComposeAccountId((prev) => prev || (availableSendAccounts[0]?.id ? String(availableSendAccounts[0].id) : ""));
 
       // ✅ Si un PDF a été uploadé dans Supabase Storage, on le récupère et on l'ajoute en PJ
       // (utile pour facture/devis → iNrbox)
@@ -1266,6 +1370,7 @@ const onSelectMessage = (id: string) => {
     setComposeSubject("");
     setComposeBody("");
     setComposeSource("Gmail");
+    setComposeAccountId((prev) => prev || (availableSendAccounts[0]?.id ? String(availableSendAccounts[0].id) : ""));
     setComposeFiles([]);
     setComposeOpen(true);
   };
@@ -1275,9 +1380,30 @@ const onSelectMessage = (id: string) => {
     setComposeSubject(draft.subject.replace(/^Brouillon —\s*/i, ""));
     setComposeBody(draft.body || "");
     setComposeSource(draft.source);
+    setComposeAccountId((prev) => {
+      if (prev) return prev;
+      const preferred = draft.source === "Microsoft" ? "microsoft" : "gmail";
+      const acc = availableSendAccounts.find((a) => String(a.provider || "").toLowerCase() === preferred);
+      return acc?.id ? String(acc.id) : (availableSendAccounts[0]?.id ? String(availableSendAccounts[0].id) : "");
+    });
     setComposeFiles([]);
     setComposeOpen(true);
   };
+
+  
+  const availableSendAccounts = useMemo(() => {
+    // Only email providers that are supported for sending here.
+    const filtered = mailAccounts.filter((a) => {
+      const p = String(a.provider || "").toLowerCase();
+      return p === "gmail" || p === "microsoft";
+    });
+    return filtered;
+  }, [mailAccounts]);
+
+  const selectedSendAccount = useMemo(() => {
+    return availableSendAccounts.find((a) => String(a.id) === String(composeAccountId)) || null;
+  }, [availableSendAccounts, composeAccountId]);
+
 
   const saveDraftFromCompose = () => {
     const id = `${Date.now()}`;
@@ -1309,13 +1435,29 @@ const onSelectMessage = (id: string) => {
         return;
       }
 
+      if (availableSendAccounts.length > 0 && !composeAccountId) {
+        const first = availableSendAccounts[0];
+        setComposeAccountId(first?.id ? String(first.id) : "");
+        notify("Choisis une boîte d’envoi");
+        return;
+      }
+
+
       const fd = new FormData();
       fd.append("to", composeTo.trim());
       fd.append("subject", composeSubject || "(sans objet)");
       fd.append("text", composeBody || "");
       composeFiles.forEach((f) => fd.append("files", f));
 
-      const r = await fetch("/api/inbox/gmail/send", {
+      const provider = String(selectedSendAccount?.provider || "gmail").toLowerCase();
+const endpoint = provider === "microsoft"
+  ? "/api/inbox/microsoft/send"
+  : "/api/inbox/gmail/send";
+
+if (composeAccountId) fd.append("accountId", composeAccountId);
+
+
+      const r = await fetch(endpoint, {
         method: "POST",
         body: fd,
       });
@@ -1746,95 +1888,41 @@ const singleMoveToSpam = async () => {
                 </Link>
               </>
             ) : (
-              <div className={styles.mobileTopbarRight}>
-                <button
-                  className={styles.mobileIconBtn}
-                  title="Réglages"
-                  type="button"
-                  onClick={() => setSettingsOpen(true)}
-                >
-                  ⚙️
-                </button>
+    <div className={styles.mobileTopbarRight}>
+      <button
+        className={styles.mobileIconBtn}
+        title="Recherche"
+        type="button"
+        onClick={() => notify("Recherche bientôt disponible")}
+      >
+        🔎
+      </button>
 
-                <button
-                  className={styles.mobileIconBtn}
-                  title="Fermer iNr’Box"
-                  type="button"
-                  onClick={() => router.push("/dashboard")}
-                >
-                  ✕
-                </button>
+      <button
+        className={styles.mobileIconBtnPrimary}
+        title="Écrire"
+        type="button"
+        onClick={openComposeBlank}
+      >
+        ✍️
+      </button>
 
-                <button
-                  className={styles.mobileIconBtnPrimary}
-                  title="Écrire"
-                  type="button"
-                  onClick={openComposeBlank}
-                >
-                  ✍️
-                </button>
+      <button
+        className={styles.mobileIconBtn}
+        title="Réglages"
+        type="button"
+        onClick={() => setSettingsOpen(true)}
+      >
+        ⚙️
+      </button>
 
-                {viewMode === "action" ? (
-                  <button
-                    className={styles.mobileActionsPill}
-                    type="button"
-                    onClick={() => setActionSheetOpen(true)}
-                    title="Ouvrir les actions"
-                  >
-                    ☰ Actions
-                  </button>
-                ) : (
-                  <button
-                    className={styles.mobileIconBtn}
-                    title={mobileSearchOpen ? "Fermer la recherche" : "Recherche"}
-                    type="button"
-                    onClick={() => setMobileSearchOpen((v) => !v)}
-                  >
-                    {mobileSearchOpen ? "✕" : "🔎"}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+      <Link href="/dashboard" className={styles.mobileIconBtn} title="Fermer iNr’Box">
+        ✖
+      </Link>
+    </div>
+  )}
+</div>
         </div>
-
-        {/* Mobile search: n'apparaît que quand on clique sur la loupe */}
-        {isMobile && viewMode === "list" && mobileSearchOpen && (
-          <div className={styles.mobileSearchSticky}>
-            <div className={styles.mobileSearchPill}>
-              <span className={styles.mobileSearchIcon} aria-hidden="true">🔎</span>
-              <input
-                className={styles.mobileSearchInput}
-                placeholder="Rechercher dans iNr’Box…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                inputMode="search"
-                autoFocus
-              />
-              {query ? (
-                <button
-                  type="button"
-                  className={styles.mobileSearchClear}
-                  onClick={() => setQuery("")}
-                  aria-label="Effacer"
-                  title="Effacer"
-                >
-                  ✕
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className={styles.mobileSearchClear}
-                  onClick={() => setMobileSearchOpen(false)}
-                  aria-label="Fermer"
-                  title="Fermer"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Mobile navigation drawer */}
         {isMobile && (
@@ -1914,7 +2002,21 @@ const singleMoveToSpam = async () => {
                 </div>
               </div>
 
-              {/* Réglages/Fermer sont dans la topbar mobile */}
+              <div className={styles.mobileDrawerFooter}>
+                <button
+                  className={styles.mobileDrawerFooterBtn}
+                  type="button"
+                  onClick={() => {
+                    setSettingsOpen(true);
+                    setNavOpen(false);
+                  }}
+                >
+                  ⚙️ Réglages
+                </button>
+                <Link href="/dashboard" className={styles.mobileDrawerFooterBtn} onClick={() => setNavOpen(false)}>
+                  ✖️ Fermer
+                </Link>
+              </div>
             </aside>
           </>
         )}
@@ -2514,40 +2616,96 @@ const singleMoveToSpam = async () => {
           {/* Colonne droite: messages (LISTE) */}
           {showMessages && (
             <section className={styles.card}>
-              {/* Desktop: onglets dossiers. Mobile: déjà dans le hamburger */}
-              {!isMobile && (
-                <div className={styles.folderTabs}>
-                  {FOLDERS.map((f) => {
-                    const active = f.key === folder;
-                    return (
+              <div className={styles.folderTabs}>
+                {FOLDERS.map((f) => {
+                  const active = f.key === folder;
+                  return (
+                    <button
+                      key={f.key}
+                      className={`${styles.folderTabBtn} ${active ? styles.folderTabBtnActive : ""}`}
+                      onClick={() => setFolder(f.key)}
+                      type="button"
+                      title={titleByFolder[f.key]}
+                    >
+                      <span className={styles.folderTabLabel}>{f.label}</span>
+                      <span className={styles.badgeCount}>{folderCount(f.key)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Mobile premium search (sticky) */}
+              {isMobile && viewMode === "list" && (
+                <div className={styles.mobileSearchSticky}>
+                  <div className={styles.mobileSearchPill}>
+                    <span className={styles.mobileSearchIcon} aria-hidden="true">🔎</span>
+                    <input
+                      className={styles.mobileSearchInput}
+                      placeholder="Rechercher dans iNr’Box…"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      inputMode="search"
+                    />
+                    {query ? (
                       <button
-                        key={f.key}
-                        className={`${styles.folderTabBtn} ${active ? styles.folderTabBtnActive : ""}`}
-                        onClick={() => setFolder(f.key)}
                         type="button"
-                        title={titleByFolder[f.key]}
+                        className={styles.mobileSearchClear}
+                        onClick={() => setQuery("")}
+                        aria-label="Effacer"
+                        title="Effacer"
                       >
-                        <span className={styles.folderTabLabel}>{f.label}</span>
-                        <span className={styles.badgeCount}>{folderCount(f.key)}</span>
+                        ✕
                       </button>
-                    );
-                  })}
+                    ) : (
+                      <span className={styles.mobileSearchHint} aria-hidden="true">⌘</span>
+                    )}
+                  </div>
+
+                  <div className={styles.mobileQuickFilters}>
+                    <button
+                      type="button"
+                      className={`${styles.mobileQuickChip} ${unreadOnly ? styles.mobileQuickChipActive : ""}`}
+                      onClick={() => setUnreadOnly((v) => !v)}
+                      title="Afficher seulement les non lus"
+                    >
+                      Non lus
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.mobileQuickChip}
+                      onClick={() => setNavOpen(true)}
+                      title="Choisir une source"
+                    >
+                      {sourceFilter === "ALL" ? "Tous" : sourceFilter}
+                    </button>
+                    {(sourceFilter !== "ALL" || unreadOnly) && (
+                      <button
+                        type="button"
+                        className={styles.mobileQuickChip}
+                        onClick={() => {
+                          setSourceFilter("ALL");
+                          setUnreadOnly(false);
+                        }}
+                        title="Réinitialiser"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
               {/* Barre: recherche + actions */}
               <div className={styles.toolbarRow}>
-                {!isMobile && (
-                  <div className={styles.searchRow}>
-                    <input
-                      className={styles.searchInput}
-                      placeholder="Rechercher un message…"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                    />
-                    <div className={styles.searchIconRight}>⌕</div>
-                  </div>
-                )}
+                <div className={styles.searchRow}>
+                  <input
+                    className={styles.searchInput}
+                    placeholder="Rechercher un message…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                  <div className={styles.searchIconRight}>⌕</div>
+                </div>
 
                 <div className={styles.toolbarActions}>
                   <button
@@ -2858,17 +3016,21 @@ const singleMoveToSpam = async () => {
                     <label className={styles.formLabel}>Importer un contact (CRM)</label>
                     <select
                       className={styles.formInput}
-                      value={selectedCrmContactId}
+                      multiple
+                      size={Math.min(6, Math.max(3, crmContacts.length + 1))}
+                      value={selectedCrmContactIds}
                       onChange={(e) => {
-                        const id = e.target.value;
-                        setSelectedCrmContactId(id);
-                        const c = crmContacts.find((x) => String(x.id) === String(id));
-                        if (c) applyCrmContactToCompose(c);
+                        const ids = Array.from(e.currentTarget.selectedOptions)
+                          .map((o) => o.value)
+                          .filter(Boolean);
+                        setSelectedCrmContactIds(ids);
+                        const selectedContacts = crmContacts.filter((x) => ids.includes(String(x.id)));
+                        if (selectedContacts.length) applyCrmContactsToCompose(selectedContacts);
                       }}
                       disabled={crmLoading}
                     >
-                      <option value="">
-                        {crmLoading ? "Chargement..." : "Sélectionner un contact"}
+                      <option value="" disabled>
+                        {crmLoading ? "Chargement..." : "Sélectionner un ou plusieurs contacts"}
                       </option>
                       {crmContacts.map((c) => {
                         const label =
@@ -2883,6 +3045,9 @@ const singleMoveToSpam = async () => {
                         );
                       })}
                     </select>
+                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+                      💡 Astuce : sélectionnez plusieurs contacts (Ctrl/Cmd + clic).
+                    </div>
                     {crmError ? (
                       <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
                         ⚠️ {crmError}
@@ -2890,7 +3055,8 @@ const singleMoveToSpam = async () => {
                     ) : null}
                   </div>
 
-<div className={styles.formGrid}>
+                {/* espace visuel entre l'import CRM et les champs (desktop + mobile) */}
+                <div className={`${styles.formGrid} ${styles.composeFormGrid}`}>
                   <div className={styles.formRow}>
                     <label className={styles.formLabel}>À</label>
                     <input
@@ -2915,14 +3081,35 @@ const singleMoveToSpam = async () => {
                     <label className={styles.formLabel}>Source</label>
                     <select
                       className={styles.selectDark}
-                      value={composeSource}
-                      onChange={(e) => setComposeSource(e.target.value as Source)}
+                      value={composeAccountId || ""}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setComposeAccountId(id);
+                        const acc = availableSendAccounts.find((a) => String(a.id) === String(id));
+                        const p = String(acc?.provider || "").toLowerCase();
+                        setComposeSource(p === "microsoft" ? "Microsoft" : "Gmail");
+                      }}
+                      disabled={availableSendAccounts.length === 0}
                     >
-                      <option value="Gmail">Gmail</option>
-                      <option value="Microsoft">Microsoft</option>
-                      <option value="OVH">OVH</option>
-                      <option value="Messenger">Messenger</option>
-                      <option value="Houzz">Houzz</option>
+                      {availableSendAccounts.length === 0 ? (
+                        <option value="">Aucune boîte connectée</option>
+                      ) : (
+                        <>
+                          {availableSendAccounts.map((a) => {
+                            const p = String(a.provider || "").toLowerCase();
+                            const providerLabel = p === "microsoft" ? "Microsoft" : "Gmail";
+                            const label =
+                              a.email_address ||
+                              a.display_name ||
+                              `${providerLabel} (${String(a.id).slice(0, 6)}…)`;
+                            return (
+                              <option key={a.id} value={a.id}>
+                                {providerLabel} — {label}
+                              </option>
+                            );
+                          })}
+                        </>
+                      )}
                     </select>
                   </div>
 
@@ -2975,6 +3162,9 @@ const singleMoveToSpam = async () => {
               <div className={styles.modalFooter}>
                 <button className={styles.btnGhost} type="button" onClick={saveDraftFromCompose}>
                   📝 Enregistrer brouillon
+                </button>
+                <button className={styles.btnGhost} type="button" onClick={resetComposeWithConfirm}>
+                  ↩ Réinitialiser
                 </button>
                 <button className={styles.btnPrimary} type="button" onClick={sendFromCompose}>
                   ✉️ Envoyer

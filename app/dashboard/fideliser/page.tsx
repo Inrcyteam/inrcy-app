@@ -198,52 +198,101 @@ useEffect(() => {
             </div>
           </header>
 
-          {/* Triangles (non cliquables) */}
-          <section className={b.triRow} aria-hidden>
-            <div className={[b.triItem, b.triCyan].join(" ")}>
-              <div className={b.triLabel}>INFORMER</div>
-            </div>
-            <div className={[b.triItem, b.triPurple].join(" ")}>
-              <div className={b.triLabel}>REMERCER</div>
-            </div>
-            <div className={[b.triItem, b.triPink].join(" ")}>
-              <div className={b.triLabel}>SATISFACTION</div>
-            </div>
-          </section>
+<div className={b.desktopOnly}>
+  {/* Triangles (non cliquables) */}
+  <section className={b.triRow} aria-hidden>
+    <div className={[b.triItem, b.triCyan].join(" ")}>
+      <div className={b.triLabel}>INFORMER</div>
+    </div>
+    <div className={[b.triItem, b.triPurple].join(" ")}>
+      <div className={b.triLabel}>REMERCER</div>
+    </div>
+    <div className={[b.triItem, b.triPink].join(" ")}>
+      <div className={b.triLabel}>SATISFACTION</div>
+    </div>
+  </section>
 
-          <section className={b.grid3}>
-            {data.actions.map((a) => (
-              <ActionCard
-                key={a.key}
-                styles={styles}
-                accent={a.accent}
-                title={a.title}
-                desc={a.desc}
-                cta={a.cta}
-                status={a.status}
-                onClick={() => setActive(a.key)}
-              />
-            ))}
-          </section>
+  <section className={b.grid3}>
+    {data.actions.map((a) => (
+      <ActionCard
+        key={a.key}
+        styles={styles}
+        accent={a.accent}
+        title={a.title}
+        desc={a.desc}
+        cta={a.cta}
+        status={a.status}
+        onClick={() => setActive(a.key)}
+      />
+    ))}
+  </section>
 
-          <section className={b.grid3} style={{ marginTop: 12 }}>
-            {data.metrics.map((m) => (
-              <MetricCard
-                key={m.title}
-                styles={styles}
-                title={m.title}
-                month={m.month}
-                week={m.week}
-                channels={m.channels}
-              />
-            ))}
-          </section>
+  <section className={b.grid3} style={{ marginTop: 12 }}>
+    {data.metrics.map((m) => (
+      <MetricCard
+        key={m.title}
+        styles={styles}
+        title={m.title}
+        month={m.month}
+        week={m.week}
+        channels={m.channels}
+      />
+    ))}
+  </section>
 
-          <section className={b.grid3} style={{ marginTop: 12 }}>
-            {data.tips.map((t) => (
-              <TipCard key={t.title} styles={styles} title={t.title} lines={t.lines} />
-            ))}
-          </section>
+  <section className={b.grid3} style={{ marginTop: 12 }}>
+    {data.tips.map((t) => (
+      <TipCard key={t.title} styles={styles} title={t.title} lines={t.lines} />
+    ))}
+  </section>
+</div>
+
+{/* Mobile: empiler Action -> Stats -> Conseils (accordéons fermés par défaut) */}
+<section className={b.mobileOnly}>
+  {data.actions.map((a, idx) => {
+    const m = data.metrics[idx];
+    const tip = data.tips[idx];
+    return (
+      <div key={a.key} className={b.mobileGroup}>
+        <ActionCard
+          styles={styles}
+          accent={a.accent}
+          title={a.title}
+          desc={a.desc}
+          cta={a.cta}
+          status={a.status}
+          onClick={() => setActive(a.key)}
+        />
+
+        <details className={b.accordion}>
+          <summary className={b.accordionSummary}>
+            <span>📊 Stats</span>
+            <span className={b.chev}>▾</span>
+          </summary>
+          <div className={b.accordionBody}>
+            <MetricCard
+              styles={styles}
+              title={m.title}
+              month={m.month}
+              week={m.week}
+              channels={m.channels}
+            />
+          </div>
+        </details>
+
+        <details className={b.accordion}>
+          <summary className={b.accordionSummary}>
+            <span>💡 Conseils</span>
+            <span className={b.chev}>▾</span>
+          </summary>
+          <div className={b.accordionBody}>
+            <TipCard styles={styles} title={tip.title} lines={tip.lines} />
+          </div>
+        </details>
+      </div>
+    );
+  })}
+</section>
         </div>
       </div>
 
