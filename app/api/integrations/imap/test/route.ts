@@ -38,6 +38,11 @@ export async function POST(req: Request) {
       secure: smtp_secure,
       auth: { user: login, pass: password },
       requireTLS: smtp_starttls,
+
+tls: process.env.NODE_ENV === "development"
+  ? { rejectUnauthorized: false }
+  : undefined,
+
     });
     await transport.verify();
 

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { loadImapAccount } from "@/lib/imapAccount";
 import { listMessages } from "@/lib/imapClient";
 
+export const runtime = "nodejs";
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
