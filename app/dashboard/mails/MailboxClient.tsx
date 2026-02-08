@@ -9,7 +9,7 @@ import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
 import { createClient } from "@/lib/supabaseClient";
 
 type Folder = "inbox" | "important" | "sent" | "drafts" | "spam" | "trash";
-type Source = "Gmail" | "Microsoft" | "OVH" | "Messenger" | "Houzz";
+type Source = "Gmail" | "Microsoft" | "IMAP" | "Houzz";
 
 type MessageItem = {
   id: string;
@@ -36,11 +36,10 @@ type MessageItem = {
   microsoftIsRead?: boolean;
   microsoftReceivedDateTime?: string | null;
 
-  // Messenger metadata (when source === 'Messenger')
-  messengerThreadId?: string;
-  messengerMessageId?: string;
-  messengerSenderId?: string | null;
-  messengerCreatedTime?: string | null;
+  // IMAP metadata (when source === 'IMAP')
+  imapAccountId?: string;
+  imapUid?: number;
+  imapFolder?: string;
 };
 
 type CrmContact = {
@@ -76,7 +75,7 @@ const FOLDERS: { key: Folder; label: string }[] = [
 ];
 
 
-const SOURCES: Source[] = ["Gmail", "Microsoft", "OVH", "Messenger", "Houzz"];
+const SOURCES: Source[] = ["Gmail", "Microsoft", "IMAP", "Houzz"];
 
 // --- Helpers ---
 function getMessageTs(m: MessageItem): number {
@@ -86,12 +85,6 @@ function getMessageTs(m: MessageItem): number {
   // Microsoft Graph returns ISO date strings
   if (m.microsoftReceivedDateTime) {
     const t = Date.parse(m.microsoftReceivedDateTime);
-    if (Number.isFinite(t)) return t;
-  }
-
-  // Messenger uses ISO created time
-  if (m.messengerCreatedTime) {
-    const t = Date.parse(m.messengerCreatedTime);
     if (Number.isFinite(t)) return t;
   }
 
@@ -143,8 +136,7 @@ function formatListDate(m: MessageItem): string {
 function badgeClass(source: Source) {
   if (source === "Gmail") return `${styles.badge} ${styles.badgeGmail}`;
   if (source === "Microsoft") return `${styles.badge} ${styles.badgeMicrosoft}`;
-  if (source === "OVH") return `${styles.badge} ${styles.badgeOvh}`;
-  if (source === "Messenger") return `${styles.badge} ${styles.badgeMessenger}`;
+  if (source === "IMAP") return `${styles.badge} ${styles.badgeImap}`;
   if (source === "Houzz") return `${styles.badge} ${styles.badgeHouzz}`;
   return `${styles.badge} ${styles.badgeMail}`;
 }
@@ -306,21 +298,10 @@ export default function MailboxClient() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Mock connections
-  const [connectedSources, setConnectedSources] = useState<Record<Source, boolean>>({
-    Gmail: false,
-    Microsoft: false,
-    OVH: false,
-    Messenger: false,
-    Houzz: false,
-  });
-
-  const toggleConnected = (s: Source) => {
-    setConnectedSources((prev) => ({ ...prev, [s]: !prev[s] }));
-    notify(`${s} : ${connectedSources[s] ? "déconnecté (mock)" : "connecté (mock)"}`);
-  };
-
   const [messages, setMessages] = useState<MessageItem[]>([]);
+
+  // Connected mail accounts (Gmail/Microsoft + IMAP)
+  const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([]);
 
 
   
@@ -342,14 +323,6 @@ const parseMicrosoftUiId = (uiId: string) => {
   const raw = uiId.replace(/^ms_/, "");
   const [accountId, messageId] = raw.split("__");
   return { accountId, messageId };
-};
-
-// Messenger id format: msg_<threadId>__<messageId>
-const isMessengerUiId = (uiId: string) => uiId.startsWith("msg_") && uiId.includes("__");
-const parseMessengerUiId = (uiId: string) => {
-  const raw = uiId.replace(/^msg_/, "");
-  const [threadId, messageId] = raw.split("__");
-  return { threadId, messageId };
 };
 
 const matchesFolder = (m: MessageItem, f: Folder) => {
@@ -463,57 +436,66 @@ const fetchMicrosoftFolder = async (f: Folder) => {
 };
 
 // ===========================
-// Messenger sync (inbox only)
+// IMAP sync (direct, no DB storage for mail content)
 // ===========================
-const [messengerConnected, setMessengerConnected] = useState(false);
+const [imapConnected, setImapConnected] = useState(false);
 
-const fetchMessengerInbox = async () => {
-  const res = await fetch(`/api/inbox/messenger/list?limit=40`);
-  if (!res.ok) {
-    setMessengerConnected(false);
+const findImapAccountId = () => {
+  const acc = mailAccounts.find((a) => String(a.provider || "").toLowerCase() === "imap");
+  return acc?.id ? String(acc.id) : null;
+};
+
+const fetchImapFolder = async (f: Folder) => {
+  const accountId = findImapAccountId();
+  if (!accountId) {
+    setImapConnected(false);
     return [] as MessageItem[];
   }
-  setMessengerConnected(true);
+
+  const res = await fetch(`/api/inbox/imap/list?accountId=${encodeURIComponent(accountId)}&folder=${encodeURIComponent(f)}`);
+  if (!res.ok) {
+    setImapConnected(false);
+    return [] as MessageItem[];
+  }
+  setImapConnected(true);
   const data = await res.json().catch(() => ({}));
 
   const items: MessageItem[] = (data.items || []).map((m: any) => {
-    const created = m.created_time ? new Date(m.created_time) : new Date();
+    const uid = Number(m.uid);
+    const uiId = `imap_${accountId}__${uid}`;
     return {
-      id: m.id,
-      folder: "inbox",
-      from: m.from || "Messenger",
-      subject: m.subject || "Messenger",
+      id: uiId,
+      folder: f,
+      from: m.from || "",
+      subject: m.subject || "(Sans objet)",
       preview: m.preview || "",
-      body: m.bodyPreview || m.preview || "",
-      source: "Messenger",
-      dateLabel: created.toLocaleDateString(),
-      unread: false,
-      messengerThreadId: m.threadId,
-      messengerMessageId: m.messageId,
-      messengerSenderId: m.sender_id ?? null,
-      messengerCreatedTime: created.toISOString(),
+      body: m.preview || "",
+      source: "IMAP",
+      dateLabel: toDateLabel(m.date),
+      unread: !!m.unread,
+      imapAccountId: accountId,
+      imapUid: uid,
+      imapFolder: m.folder || String(f),
     };
   });
 
   return items;
 };
 
-const upsertMessengerInbox = (msgItems: MessageItem[]) => {
+const upsertImapFolder = (f: Folder, msgItems: MessageItem[]) => {
   setMessages((prev) => {
-    const kept = prev.filter((x) => !(x.source === "Messenger" && x.folder === "inbox"));
+    const kept = prev.filter((x) => !(x.source === "IMAP" && x.folder === f));
     return sortByChronoDesc([...msgItems, ...kept]);
   });
 };
 
-const refreshMessenger = async (hintFolder?: Folder) => {
+const refreshImap = async (hintFolder?: Folder) => {
   const target = hintFolder ?? folder;
-  // Messenger doesn't have folders in this UI: we show everything in Inbox.
-  if (target !== "inbox") return;
   try {
-    const items = await fetchMessengerInbox();
-    upsertMessengerInbox(items);
+    const items = await fetchImapFolder(target);
+    upsertImapFolder(target, items);
   } catch {
-    setMessengerConnected(false);
+    setImapConnected(false);
   }
 };
 
@@ -569,7 +551,7 @@ const refreshGmail = async (hintFolder?: Folder) => {
 useEffect(() => {
   refreshGmail(folder);
   refreshMicrosoft(folder);
-  refreshMessenger(folder);
+  refreshImap(folder);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [folder]);
 
@@ -1105,46 +1087,23 @@ const onSelectMessage = (id: string) => {
       }
     }
 
-    // Messenger (thread view as simple HTML)
-    if (msg?.source === "Messenger" && isMessengerUiId(id)) {
+    // IMAP (live)
+    if (msg?.source === "IMAP" && msg.imapAccountId && typeof msg.imapUid === "number") {
       setSelectedHtml(null);
-      const p = parseMessengerUiId(id);
-      if (p.threadId) {
-        fetch(`/api/inbox/messenger/message?threadId=${encodeURIComponent(p.threadId)}&limit=25`)
-          .then((r) => r.json())
-          .then((d) => {
-            const items = Array.isArray(d?.items) ? d.items : [];
-            const html = `
-              <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; line-height:1.4">
-                <h3 style="margin:0 0 8px 0">Conversation Messenger</h3>
-                <div style="display:flex;flex-direction:column;gap:8px">
-                  ${items
-                    .slice()
-                    .reverse()
-                    .map((x: any) => {
-                      const t = x.created_time ? new Date(x.created_time).toLocaleString() : "";
-                      const from = (x.from || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                      const msgText = String(x.message || "")
-                        .replace(/&/g, "&amp;")
-                        .replace(/</g, "&lt;")
-                        .replace(/>/g, "&gt;")
-                        .replace(/\n/g, "<br/>");
-                      return `<div style="padding:10px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.04)">
-                        <div style="font-size:12px;opacity:.75;margin-bottom:6px">${from} • ${t}</div>
-                        <div>${msgText}</div>
-                      </div>`;
-                    })
-                    .join("")}
-                </div>
-              </div>
-            `;
-            setSelectedHtml(html);
-          })
-          .catch(() => setSelectedHtml(null));
-      }
+      const accId = msg.imapAccountId;
+      const uid = String(msg.imapUid);
+      const f = msg.imapFolder || String(msg.folder);
+      fetch(
+        `/api/inbox/imap/message?accountId=${encodeURIComponent(accId)}&uid=${encodeURIComponent(uid)}&folder=${encodeURIComponent(
+          f
+        )}`
+      )
+        .then((r) => r.json())
+        .then((d) => setSelectedHtml(d?.html ? cleanInjectedEmailHtml(d.html) : null))
+        .catch(() => setSelectedHtml(null));
     }
 
-    if (msg?.source !== "Gmail" && msg?.source !== "Microsoft" && msg?.source !== "Messenger") {
+    if (msg?.source !== "Gmail" && msg?.source !== "Microsoft" && msg?.source !== "IMAP") {
       setSelectedHtml(null);
     }
 
@@ -1209,7 +1168,6 @@ const onSelectMessage = (id: string) => {
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [composeSource, setComposeSource] = useState<Source>("Gmail");
-  const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([]);
   const [composeAccountId, setComposeAccountId] = useState<string>("");
 
   useEffect(() => {
@@ -1402,7 +1360,7 @@ const resetComposeWithConfirm = () => {
     // Only email providers that are supported for sending here.
     const filtered = mailAccounts.filter((a) => {
       const p = String(a.provider || "").toLowerCase();
-      return p === "gmail" || p === "microsoft";
+      return p === "gmail" || p === "microsoft" || p === "imap";
     });
     return filtered;
   }, [mailAccounts]);
@@ -1457,11 +1415,13 @@ const resetComposeWithConfirm = () => {
       composeFiles.forEach((f) => fd.append("files", f));
 
       const provider = String(selectedSendAccount?.provider || "gmail").toLowerCase();
-const endpoint = provider === "microsoft"
-  ? "/api/inbox/microsoft/send"
-  : "/api/inbox/gmail/send";
+      const endpoint = provider === "microsoft"
+        ? "/api/inbox/microsoft/send"
+        : provider === "imap"
+          ? "/api/inbox/imap/send"
+          : "/api/inbox/gmail/send";
 
-if (composeAccountId) fd.append("accountId", composeAccountId);
+      if (composeAccountId) fd.append("accountId", composeAccountId);
 
 
       const r = await fetch(endpoint, {
@@ -1479,7 +1439,7 @@ if (composeAccountId) fd.append("accountId", composeAccountId);
         throw new Error(msg);
       }
 
-      const id = `gmail_sent_${j.id || Date.now()}`;
+      const id = `${provider}_sent_${j.id || Date.now()}`;
       const msg: MessageItem = {
         id,
         folder: "sent",
@@ -1548,6 +1508,54 @@ if (composeAccountId) fd.append("accountId", composeAccountId);
           preview: createMessagePreview(replyBody || ""),
           body: replyBody || "",
           source: "Gmail",
+          dateLabel: nowLabel(),
+          unread: false,
+        };
+
+        setMessages((prev) => [msg, ...prev]);
+        notify("Réponse envoyée ✅");
+        setReplyOpen(false);
+        setReplyFiles([]);
+        setFolder("sent");
+        setSelectedId(id);
+        setSelectedIds(new Set([id]));
+        if (isMobile) setMobilePane("cockpit");
+      } catch (e: any) {
+        notify(e?.message || "Erreur d’envoi");
+      }
+      return;
+    }
+
+    // ✅ IMAP: reply via SMTP (simple reply, no threading headers in v1)
+    if (selected.source === "IMAP") {
+      try {
+        const emailMatch = (selected.from || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+        const to = emailMatch?.[0] || "";
+        if (!to) {
+          notify("Impossible de trouver l’email du destinataire");
+          return;
+        }
+
+        const fd = new FormData();
+        fd.append("to", to);
+        fd.append("subject", `Re: ${selected.subject || "(sans objet)"}`);
+        fd.append("text", replyBody || "");
+        if (selected.imapAccountId) fd.append("accountId", String(selected.imapAccountId));
+        replyFiles.forEach((f) => fd.append("files", f));
+
+        const r = await fetch("/api/inbox/imap/send", { method: "POST", body: fd });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error || "Réponse impossible");
+
+        const id = `imap_sent_${j.id || Date.now()}`;
+        const msg: MessageItem = {
+          id,
+          folder: "sent",
+          from: selected.from,
+          subject: `Re: ${selected.subject}`,
+          preview: createMessagePreview(replyBody || ""),
+          body: replyBody || "",
+          source: "IMAP",
           dateLabel: nowLabel(),
           unread: false,
         };
@@ -2862,7 +2870,7 @@ const singleMoveToSpam = async () => {
                       Tous
                     </button>
 
-                    {(["Gmail", "Microsoft", "OVH", "Messenger"] as const).map((s) => (
+                    {(["Gmail", "Microsoft", "IMAP"] as const).map((s) => (
                       <button
                         key={s}
                         type="button"
@@ -3163,7 +3171,7 @@ const singleMoveToSpam = async () => {
                         setComposeAccountId(id);
                         const acc = availableSendAccounts.find((a) => String(a.id) === String(id));
                         const p = String(acc?.provider || "").toLowerCase();
-                        setComposeSource(p === "microsoft" ? "Microsoft" : "Gmail");
+                        setComposeSource(p === "microsoft" ? "Microsoft" : p === "imap" ? "IMAP" : "Gmail");
                       }}
                       disabled={availableSendAccounts.length === 0}
                     >
@@ -3173,7 +3181,7 @@ const singleMoveToSpam = async () => {
                         <>
                           {availableSendAccounts.map((a) => {
                             const p = String(a.provider || "").toLowerCase();
-                            const providerLabel = p === "microsoft" ? "Microsoft" : "Gmail";
+                            const providerLabel = p === "microsoft" ? "Microsoft" : p === "imap" ? "IMAP" : "Gmail";
                             const label =
                               a.email_address ||
                               a.display_name ||

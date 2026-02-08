@@ -429,6 +429,12 @@
   background: rgba(0,80,215,0.14);
   color: rgba(255,255,255,0.92);
 }
+.badgeImap {
+  /* IMAP (generic) */
+  border-color: rgba(0,80,215,0.45);
+  background: rgba(0,80,215,0.14);
+  color: rgba(255,255,255,0.92);
+}
 
 .badgeMessenger {
   /* Messenger gradient */

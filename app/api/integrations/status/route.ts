@@ -34,6 +34,6 @@ export async function GET() {
   return NextResponse.json({
     mailAccounts: mailAccounts ?? [],
     messengerAccount: messengerAccount ?? null,
-    limits: { maxMailAccounts: 3 },
+    limits: { maxMailAccounts: 4 },
   });
 }
