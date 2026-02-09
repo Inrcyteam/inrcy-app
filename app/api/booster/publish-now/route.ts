@@ -71,7 +71,14 @@ export async function POST(req: Request) {
     }
 
     // 1) Upload images (optional) to Supabase Storage (bucket: booster)
-    const uploadedUrls: string[] = [];
+    // Note: for external platforms (Facebook/Google), the image URL must be fetchable
+    // by their servers. If your Supabase bucket is not public, getPublicUrl() will
+    // produce a URL that returns 403 for unauthenticated requests, so the post will
+    // be created without photos. To keep the UI stable (store publicUrl in DB when
+    // available) while ensuring publish works, we also generate signed URLs and use
+    // them for publishing.
+    const uploadedUrls: string[] = []; // persisted in DB (for UI)
+    const publishableUrls: string[] = []; // used for Facebook/Google publish
     for (const img of images.slice(0, 5)) {
       const parsed = dataUrlToBuffer(img.dataUrl);
       if (!parsed) continue;
@@ -87,8 +94,19 @@ export async function POST(req: Request) {
         });
 
       if (!up.error) {
+        // 1) Public URL (works only if bucket is public)
         const pub = supabaseAdmin.storage.from("booster").getPublicUrl(path);
         if (pub?.data?.publicUrl) uploadedUrls.push(pub.data.publicUrl);
+
+        // 2) Signed URL (works even if bucket is private)
+        // Give enough time for Meta/Google to fetch the asset.
+        const signed = await supabaseAdmin.storage.from("booster").createSignedUrl(path, 60 * 60 * 24);
+        if (signed?.data?.signedUrl) {
+          publishableUrls.push(signed.data.signedUrl);
+        } else if (pub?.data?.publicUrl) {
+          // Fallback
+          publishableUrls.push(pub.data.publicUrl);
+        }
       }
     }
 
@@ -144,6 +162,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     const canonMessage = buildCanonMessage(title, content, cta);
+    const externalImageUrls = (publishableUrls.length ? publishableUrls : uploadedUrls).slice(0, 5);
 
     // Helper: update delivery row
     async function setDelivery(channel: ChannelKey, patch: any) {
@@ -173,19 +192,18 @@ export async function POST(req: Request) {
             continue;
           }
 
-          const resp = await facebookPublishToPage({
-            pageId,
-            pageAccessToken: pageToken,
-            message: canonMessage,
-            imageUrls: uploadedUrls,
-          });
+         const resp = await facebookPublishToPage({
+  pageAccessToken: pageToken,
+  message: canonMessage,
+  imageUrls: externalImageUrls,
+});
 
           await setDelivery(ch, {
             status: "delivered",
             delivered_at: new Date().toISOString(),
-            external_id: resp?.postId || null,
+            external_id: (resp.ok ? resp.postId : null),
           });
-          results[ch] = { ok: true, external_id: resp?.postId || null };
+          results[ch] = { ok: true, external_id: (resp.ok ? resp.postId : null) };
           continue;
         }
 
@@ -210,7 +228,7 @@ export async function POST(req: Request) {
             accountName,
             locationName,
             summary: canonMessage.slice(0, 1498),
-            imageUrls: uploadedUrls,
+            imageUrls: externalImageUrls,
             languageCode: "fr-FR",
           });
 
