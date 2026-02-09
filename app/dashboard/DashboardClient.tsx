@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useCallback, type TouchEvent as ReactTouch
 import Link from "next/link";
 import SettingsDrawer from "./SettingsDrawer";
 import ProfilContent from "./settings/_components/ProfilContent";
+import ActivityContent from "./settings/_components/ActivityContent";
 import AbonnementContent from "./settings/_components/AbonnementContent";
 import ContactContent from "./settings/_components/ContactContent";
 import MailsSettingsContent from "./settings/_components/MailsSettingsContent";
@@ -183,9 +184,23 @@ export default function DashboardClient() {
   const router = useRouter();
 
   const searchParams = useSearchParams();
-  const panel = searchParams.get("panel"); // "contact" | "profil" | "abonnement" | "mails" | "agenda" | null
+  const panel = searchParams.get("panel"); // "contact" | "profil" | "activite" | "abonnement" | "mails" | "agenda" | ... | null
 
-   const openPanel = (name: "contact" | "profil" | "abonnement" | "mails" | "agenda" | "site_inrcy" | "site_web" | "houzz" | "pages_jaunes" | "gmb" | "facebook") => {
+  const openPanel = (
+    name:
+      | "contact"
+      | "profil"
+      | "activite"
+      | "abonnement"
+      | "mails"
+      | "agenda"
+      | "site_inrcy"
+      | "site_web"
+      | "houzz"
+      | "pages_jaunes"
+      | "gmb"
+      | "facebook"
+  ) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", name);
     router.push(`/dashboard?${params.toString()}`);
@@ -1661,6 +1676,18 @@ const disconnectSiteWebGsc = useCallback(() => {
                   role="menuitem"
                   onClick={() => {
                     setUserMenuOpen(false);
+                    openPanel("activite");
+                  }}
+                >
+                  Mon activité
+                </button>
+
+                <button
+                  type="button"
+                  className={styles.userMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
                     openPanel("abonnement");
                   }}
                 >
@@ -1742,6 +1769,18 @@ const disconnectSiteWebGsc = useCallback(() => {
                 }}
               >
                 Mon profil
+              </button>
+
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openPanel("activite");
+                }}
+              >
+                Mon activité
               </button>
 
               <button
@@ -2188,6 +2227,8 @@ const disconnectSiteWebGsc = useCallback(() => {
             ? "Nous contacter"
             : panel === "profil"
             ? "Mon profil"
+            : panel === "activite"
+            ? "Mon activité"
             : panel === "abonnement"
             ? "Mon abonnement"
             : panel === "mails"
@@ -2211,6 +2252,7 @@ const disconnectSiteWebGsc = useCallback(() => {
         isOpen={
           panel === "contact" ||
           panel === "profil" ||
+          panel === "activite" ||
           panel === "abonnement" ||
           panel === "mails" ||
           panel === "agenda" ||
@@ -2947,6 +2989,8 @@ const disconnectSiteWebGsc = useCallback(() => {
 {panel === "profil" && (
           <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} />
         )}
+
+        {panel === "activite" && <ActivityContent mode="drawer" />}
 
         {panel === "abonnement" && <AbonnementContent mode="drawer" onOpenContact={() => openPanel("contact")} />}
         {panel === "gmb" && (
