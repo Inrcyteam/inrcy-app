@@ -28,6 +28,10 @@ export async function GET(request: Request) {
     scope: [
       "public_profile",
       "email",
+"pages_show_list",
+"pages_manage_posts",
+"pages_read_engagement",
+"read_insights",
           ].join(","),
   });
 

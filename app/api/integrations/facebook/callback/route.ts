@@ -167,7 +167,7 @@ export async function GET(req: Request) {
       email_address: me.email ?? null,
       display_name: me.name ?? null,
       provider_account_id: me.id ?? null,
-      scopes: "public_profile,email",
+      scopes: "public_profile,email,pages_show_list,pages_manage_posts,pages_read_engagement,read_insights",
       access_token_enc: tokenToStore,
       refresh_token_enc: null,
       expires_at: null,
