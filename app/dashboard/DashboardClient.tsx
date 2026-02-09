@@ -860,6 +860,19 @@ const disconnectGmbAccount = useCallback(async () => {
   await updateRootSettingsKey("gmb", { url, connected: false });
 }, [gmbUrl, updateRootSettingsKey]);
 
+
+  // Facebook pages (selection)
+  const [fbPages, setFbPages] = useState<Array<{ id: string; name?: string; access_token?: string }>>([]);
+  const [fbPagesLoading, setFbPagesLoading] = useState(false);
+  const [fbSelectedPageId, setFbSelectedPageId] = useState<string>("");
+
+  // Google Business locations (selection)
+  const [gmbAccounts, setGmbAccounts] = useState<Array<{ name: string; accountName?: string; type?: string }>>([]);
+  const [gmbLocations, setGmbLocations] = useState<Array<{ name: string; title?: string }>>([]);
+  const [gmbAccountName, setGmbAccountName] = useState<string>("");
+  const [gmbLocationName, setGmbLocationName] = useState<string>("");
+  const [gmbLoadingList, setGmbLoadingList] = useState(false);
+  const [gmbListError, setGmbListError] = useState<string | null>(null);
 const connectFacebookAccount = useCallback(async () => {
   const returnTo = encodeURIComponent("/dashboard?panel=facebook");
   window.location.href = `/api/integrations/facebook/start?returnTo=${returnTo}`;
@@ -871,6 +884,75 @@ const disconnectFacebookAccount = useCallback(async () => {
   const url = facebookUrl.trim();
   await updateRootSettingsKey("facebook", { url, connected: false });
 }, [facebookUrl, updateRootSettingsKey]);
+const loadFacebookPages = useCallback(async () => {
+  if (!facebookConnected) return;
+  setFbPagesLoading(true);
+  try {
+    const r = await fetch("/api/integrations/facebook/pages", { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j?.error || "Erreur");
+    setFbPages(j.pages || []);
+    // preselect first if none
+    if (!fbSelectedPageId && j.pages?.[0]?.id) setFbSelectedPageId(j.pages[0].id);
+  } catch (e: any) {
+    setGmbListError(e?.message || "Impossible de charger les établissements Google Business.");
+  } finally {
+    setFbPagesLoading(false);
+  }
+}, [facebookConnected, fbSelectedPageId]);
+
+const saveFacebookPage = useCallback(async () => {
+  const picked = fbPages.find((p) => p.id === fbSelectedPageId);
+  if (!picked?.id || !picked?.access_token) return;
+
+  await fetch("/api/integrations/facebook/select-page", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      pageId: picked.id,
+      pageName: picked.name || null,
+      pageAccessToken: picked.access_token,
+    }),
+  });
+
+  // Update local UI (connected stays true)
+}, [fbPages, fbSelectedPageId]);
+
+const loadGmbAccountsAndLocations = useCallback(async (account?: string) => {
+  if (!gmbConnected) return;
+  setGmbLoadingList(true);
+  setGmbListError(null);
+  try {
+    const q = account ? `?account=${encodeURIComponent(account)}` : "";
+    const r = await fetch(`/api/integrations/google-business/locations${q}`, { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j?.error || "Erreur");
+    setGmbAccounts(j.accounts || []);
+    setGmbAccountName(j.accountName || "");
+    setGmbLocations(j.locations || []);
+    if (j.locationsError) setGmbListError(j.locationsError);
+    if (!gmbLocationName && j.locations?.[0]?.name) setGmbLocationName(j.locations[0].name);
+  } catch (e: any) {
+    setGmbListError(e?.message || "Impossible de charger les établissements Google Business.");
+  } finally {
+    setGmbLoadingList(false);
+  }
+}, [gmbConnected, gmbLocationName]);
+
+const saveGmbLocation = useCallback(async () => {
+  if (!gmbAccountName || !gmbLocationName) return;
+  const picked = gmbLocations.find((l) => l.name === gmbLocationName);
+  await fetch("/api/integrations/google-business/select-location", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      accountName: gmbAccountName,
+      locationName: gmbLocationName,
+      locationTitle: picked?.title || null,
+    }),
+  });
+}, [gmbAccountName, gmbLocationName, gmbLocations]);
+
 
 const saveSiteWebSettings = useCallback(async () => {
   let parsed: any;
@@ -3080,6 +3162,166 @@ const disconnectSiteWebGsc = useCallback(() => {
               {gmbUrlNotice && <div className={styles.successNote}>{gmbUrlNotice}</div>}
             </div>
 
+
+            {/* Sélection de la page (requis pour publier) */}
+            {facebookConnected ? (
+              <div
+                style={{
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.03)",
+                  borderRadius: 14,
+                  padding: 12,
+                  display: "grid",
+                  gap: 10,
+                }}
+              >
+                <div className={styles.blockHeaderRow}>
+                  <div className={styles.blockTitle}>Page à publier</div>
+                  <ConnectionPill connected={!!fbSelectedPageId} />
+                </div>
+                <div className={styles.blockSub}>Choisis la page Facebook sur laquelle iNrCy publie.</div>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+                    onClick={() => loadFacebookPages()}
+                    disabled={fbPagesLoading}
+                  >
+                    {fbPagesLoading ? "Chargement..." : "Charger mes pages"}
+                  </button>
+
+                  <select
+                    value={fbSelectedPageId}
+                    onChange={(e) => setFbSelectedPageId(e.target.value)}
+                    style={{
+                      flex: "1 1 260px",
+                      minWidth: 220,
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.04)",
+                      padding: "10px 12px",
+                      color: "white",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="">Sélectionner une page</option>
+                    {fbPages.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name || p.id}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.connectBtn}`}
+                    onClick={saveFacebookPage}
+                    disabled={!fbSelectedPageId}
+                  >
+                    Enregistrer
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+
+            {/* Sélection de l'établissement (requis pour publier) */}
+            {gmbConnected ? (
+              <div
+                style={{
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.03)",
+                  borderRadius: 14,
+                  padding: 12,
+                  display: "grid",
+                  gap: 10,
+                }}
+              >
+                <div className={styles.blockHeaderRow}>
+                  <div className={styles.blockTitle}>Établissement à publier</div>
+                  <ConnectionPill connected={!!gmbLocationName} />
+                </div>
+                <div className={styles.blockSub}>Choisis la fiche Google Business sur laquelle iNrCy publie.</div>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+                    onClick={() => loadGmbAccountsAndLocations(gmbAccountName || undefined)}
+                    disabled={gmbLoadingList}
+                  >
+                    {gmbLoadingList ? "Chargement..." : "Charger mes établissements"}
+                  </button>
+
+                  <select
+                    value={gmbAccountName}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setGmbAccountName(v);
+                      loadGmbAccountsAndLocations(v);
+                    }}
+                    style={{
+                      flex: "1 1 260px",
+                      minWidth: 220,
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.04)",
+                      padding: "10px 12px",
+                      color: "white",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="">Compte Google</option>
+                    {gmbAccounts.map((a) => (
+                      <option key={a.name} value={a.name}>
+                        {a.accountName || a.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={gmbLocationName}
+                    onChange={(e) => setGmbLocationName(e.target.value)}
+                    style={{
+                      flex: "1 1 320px",
+                      minWidth: 220,
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.04)",
+                      padding: "10px 12px",
+                      color: "white",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="">Fiche (location)</option>
+                    {gmbLocations.map((l) => (
+                      <option key={l.name} value={l.name}>
+                        {l.title || l.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.connectBtn}`}
+                    onClick={saveGmbLocation}
+                    disabled={!gmbAccountName || !gmbLocationName}
+                  >
+                    Enregistrer
+                  </button>
+                </div>
+                {gmbListError && (
+                  <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 13, lineHeight: 1.3 }}>
+                    {gmbListError}
+                    <div style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
+                      Astuce : si le message parle d’API non activée, active <strong>Business Profile Business Information API</strong> dans Google Cloud.
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             {/* Connexion */}
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
               {!gmbConnected ? (
@@ -3183,6 +3425,69 @@ const disconnectSiteWebGsc = useCallback(() => {
               </div>
               {facebookUrlNotice && <div className={styles.successNote}>{facebookUrlNotice}</div>}
             </div>
+
+
+            {/* Sélection de la page (requis pour publier) */}
+            {facebookConnected ? (
+              <div
+                style={{
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.03)",
+                  borderRadius: 14,
+                  padding: 12,
+                  display: "grid",
+                  gap: 10,
+                }}
+              >
+                <div className={styles.blockHeaderRow}>
+                  <div className={styles.blockTitle}>Page à publier</div>
+                  <ConnectionPill connected={!!fbSelectedPageId} />
+                </div>
+                <div className={styles.blockSub}>Choisis la page Facebook sur laquelle iNrCy publie.</div>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+                    onClick={() => loadFacebookPages()}
+                    disabled={fbPagesLoading}
+                  >
+                    {fbPagesLoading ? "Chargement..." : "Charger mes pages"}
+                  </button>
+
+                  <select
+                    value={fbSelectedPageId}
+                    onChange={(e) => setFbSelectedPageId(e.target.value)}
+                    style={{
+                      flex: "1 1 260px",
+                      minWidth: 220,
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.04)",
+                      padding: "10px 12px",
+                      color: "white",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="">Sélectionner une page</option>
+                    {fbPages.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name || p.id}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.connectBtn}`}
+                    onClick={saveFacebookPage}
+                    disabled={!fbSelectedPageId}
+                  >
+                    Enregistrer
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             {/* Connexion */}
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>

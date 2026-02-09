@@ -43,11 +43,20 @@ const trackEvent = async (
   payload: Record<string, any>
 ) => {
   try {
-    await fetch("/api/booster/events", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, payload }),
-    });
+    // Publish: on envoie directement vers l'API "publish-now" (création publication + queue + metrics)
+    if (type === "publish") {
+      await fetch("/api/booster/publish-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await fetch("/api/booster/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, payload }),
+      });
+    }
   } finally {
     // Refresh even if the call fails, to keep UI in sync
     await refreshMetrics();
@@ -305,6 +314,7 @@ useEffect(() => {
           title={
             active === "publish" ? "Publier" : active === "reviews" ? "Avis" : "Promotion"
           }
+          moduleLabel="Module Booster"
           onClose={() => setActive(null)}
         >
           {active === "publish" && <PublishModal styles={styles} onClose={() => setActive(null)} trackEvent={trackEvent} />}

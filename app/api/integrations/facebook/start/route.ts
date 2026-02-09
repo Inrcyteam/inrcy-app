@@ -25,7 +25,10 @@ export async function GET(request: Request) {
     // NOTE: Facebook expects comma-separated scopes.
     // Keep this minimal so the OAuth flow always succeeds.
     // Page permissions (pages_show_list, ...) require advanced access / review for a SaaS.
-    scope: ["public_profile"].join(","),
+    scope: [
+      "public_profile",
+      "email",
+          ].join(","),
   });
 
   const url = `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
