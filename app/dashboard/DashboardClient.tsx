@@ -389,6 +389,8 @@ const loadSiteInrcy = useCallback(async () => {
   const fbObj = ((proSettingsObj as any)?.facebook ?? {}) as any;
   setFacebookUrl(fbObj?.url ?? "");
   setFacebookConnected(!!fbObj?.connected);
+  // Also keep the selected page id if present in mirrored settings.
+  setFbSelectedPageId(fbObj?.pageId ?? "");
 
   // ✅ Connexions Google : la source de vérité est stats_integrations
   const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([
@@ -410,6 +412,8 @@ const loadSiteInrcy = useCallback(async () => {
     ]);
     setGmbConnected(!!gmbStatus?.connected);
     setFacebookConnected(!!fbStatus?.connected);
+    if (fbStatus?.resource_id) setFbSelectedPageId(String(fbStatus.resource_id));
+    if (fbStatus?.page_url) setFacebookUrl(String(fbStatus.page_url));
   } catch {
     // fallback : on garde l'état stocké dans settings si l'appel échoue
   }
@@ -438,7 +442,8 @@ const ConnectionPill = ({ connected }: { connected: boolean }) => (
       alignItems: "center",
       gap: 8,
       border: "1px solid rgba(255,255,255,0.12)",
-      background: "rgba(255,255,255,0.04)",
+      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
       padding: "6px 10px",
       borderRadius: 999,
       color: "rgba(255,255,255,0.92)",
@@ -733,7 +738,19 @@ const saveSiteWebUrl = useCallback(async () => {
     return;
   }
 
-  parsed.url = siteWebUrl.trim();
+  const url = siteWebUrl.trim();
+  parsed.url = url;
+
+  // Store a normalized domain to make the public widget lookup fast.
+  // (Used by /api/widgets/actus?domain=...)
+  try {
+    const withProto = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    const host = new URL(withProto).hostname.toLowerCase().replace(/^www\./, "");
+    parsed.domain = host;
+  } catch {
+    // ignore parse errors – url may be partial while typing
+  }
+
   await updateSiteWebSettings(parsed);
   setSiteWebUrlNotice("✅ Lien du site enregistré");
   window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
@@ -839,13 +856,8 @@ const saveGmbLink = useCallback(async () => {
   window.setTimeout(() => setGmbUrlNotice(null), 2200);
 }, [gmbUrl, gmbConnected, updateRootSettingsKey]);
 
-const saveFacebookLink = useCallback(async () => {
-  const url = facebookUrl.trim();
-  // Do not store OAuth credentials client-side.
-  await updateRootSettingsKey("facebook", { url, connected: facebookConnected });
-  setFacebookUrlNotice("Enregistré ✓");
-  window.setTimeout(() => setFacebookUrlNotice(null), 2200);
-}, [facebookUrl, facebookConnected, updateRootSettingsKey]);
+// Facebook page URL is automatic (derived from the selected page / OAuth).
+// No manual edit + no save button.
 
 const connectGmbAccount = useCallback(async () => {
   // Start OAuth
@@ -865,6 +877,7 @@ const disconnectGmbAccount = useCallback(async () => {
   const [fbPages, setFbPages] = useState<Array<{ id: string; name?: string; access_token?: string }>>([]);
   const [fbPagesLoading, setFbPagesLoading] = useState(false);
   const [fbSelectedPageId, setFbSelectedPageId] = useState<string>("");
+  const [fbPagesError, setFbPagesError] = useState<string | null>(null);
 
   // Google Business locations (selection)
   const [gmbAccounts, setGmbAccounts] = useState<Array<{ name: string; accountName?: string; type?: string }>>([]);
@@ -876,26 +889,48 @@ const disconnectGmbAccount = useCallback(async () => {
 const connectFacebookAccount = useCallback(async () => {
   const returnTo = encodeURIComponent("/dashboard?panel=facebook");
   window.location.href = `/api/integrations/facebook/start?returnTo=${returnTo}`;
-}, [facebookConnected, facebookUrl, updateRootSettingsKey]);
+}, []);
 
 const disconnectFacebookAccount = useCallback(async () => {
   await fetch("/api/integrations/facebook/disconnect", { method: "POST" });
   setFacebookConnected(false);
-  const url = facebookUrl.trim();
-  await updateRootSettingsKey("facebook", { url, connected: false });
-}, [facebookUrl, updateRootSettingsKey]);
+  // Keep a lightweight mirror in pro_tools_configs for instant UI updates.
+  await updateRootSettingsKey("facebook", { connected: false, url: "" });
+  setFacebookUrl("");
+  setFbPages([]);
+  setFbSelectedPageId("");
+}, [updateRootSettingsKey]);
 const loadFacebookPages = useCallback(async () => {
   if (!facebookConnected) return;
   setFbPagesLoading(true);
+  setFbPagesError(null);
   try {
     const r = await fetch("/api/integrations/facebook/pages", { cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j?.error || "Erreur");
     setFbPages(j.pages || []);
-    // preselect first if none
+    // Preselect first if none
     if (!fbSelectedPageId && j.pages?.[0]?.id) setFbSelectedPageId(j.pages[0].id);
+
+    // If there is exactly one page, auto-select & save it server-side (no extra "Enregistrer").
+    if ((j.pages || []).length === 1) {
+      const only = j.pages[0];
+      if (only?.id && only?.access_token) {
+        await fetch("/api/integrations/facebook/select-page", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pageId: only.id,
+            pageName: only.name || null,
+            pageAccessToken: only.access_token,
+          }),
+        });
+        setFbSelectedPageId(only.id);
+        setFacebookUrl(`https://www.facebook.com/${only.id}`);
+      }
+    }
   } catch (e: any) {
-    setGmbListError(e?.message || "Impossible de charger les établissements Google Business.");
+    setFbPagesError(e?.message || "Impossible de charger vos pages Facebook.");
   } finally {
     setFbPagesLoading(false);
   }
@@ -905,7 +940,7 @@ const saveFacebookPage = useCallback(async () => {
   const picked = fbPages.find((p) => p.id === fbSelectedPageId);
   if (!picked?.id || !picked?.access_token) return;
 
-  await fetch("/api/integrations/facebook/select-page", {
+  const r = await fetch("/api/integrations/facebook/select-page", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -915,7 +950,15 @@ const saveFacebookPage = useCallback(async () => {
     }),
   });
 
-  // Update local UI (connected stays true)
+  const j = await r.json().catch(() => ({}));
+  if (r.ok) {
+    setFacebookUrl(String(j?.pageUrl || `https://www.facebook.com/${picked.id}`));
+    setFacebookUrlNotice("Enregistré ✓");
+    window.setTimeout(() => setFacebookUrlNotice(null), 2200);
+  } else {
+    setFacebookUrlNotice(j?.error || "Impossible d'enregistrer la page.");
+    window.setTimeout(() => setFacebookUrlNotice(null), 2500);
+  }
 }, [fbPages, fbSelectedPageId]);
 
 const loadGmbAccountsAndLocations = useCallback(async (account?: string) => {
@@ -2365,7 +2408,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                   alignItems: "center",
                   gap: 8,
                   border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.04)",
+                  background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                   padding: "8px 10px",
                   borderRadius: 999,
                   color: "rgba(255,255,255,0.92)",
@@ -2398,7 +2442,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                     display: "inline-flex",
                     alignItems: "center",
                     border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                     padding: "8px 10px",
                     borderRadius: 999,
                     color: "rgba(255,255,255,0.85)",
@@ -2441,7 +2486,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                     minWidth: 220,
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                     padding: "10px 12px",
                     color: siteInrcyOwnership !== "sold" ? "rgba(255,255,255,0.75)" : "white",
                     outline: "none",
@@ -2470,6 +2516,72 @@ const disconnectSiteWebGsc = useCallback(() => {
                 </a>
               </div>
               {siteInrcyUrlNotice && <div className={styles.successNote}>{siteInrcyUrlNotice}</div>}
+            </div>
+
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: 14,
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div className={styles.blockHeaderRow}>
+                <div className={styles.blockTitle}>Widget « Actus »</div>
+                <ConnectionPill connected={siteInrcyOwnership !== "none" && !!siteInrcyUrl?.trim()} />
+              </div>
+              <div className={styles.blockSub}>
+                Colle ce code dans ton site iNrCy (Elementor → widget HTML) pour afficher les <strong>5 dernières actus</strong> publiées depuis Booster.
+              </div>
+
+              {(() => {
+                const url = (siteInrcyUrl || "").trim();
+                let domain = "";
+                try {
+                  const withProto = /^https?:\/\//i.test(url) ? url : url ? `https://${url}` : "";
+                  if (withProto) domain = new URL(withProto).hostname.toLowerCase().replace(/^www\./, "");
+                } catch {
+                  // ignore
+                }
+                const scriptUrl = typeof window !== "undefined" ? `${window.location.origin}/widgets/inrcy-actus.js` : "/widgets/inrcy-actus.js";
+                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-limit=\"5\" data-title=\"Actualités\"></div>\n<script async src=\"${scriptUrl}\"></script>`;
+                return (
+                  <>
+                    <textarea
+                      readOnly
+                      value={snippet}
+                      style={{
+                        width: "100%",
+                        minHeight: 86,
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(15,23,42,0.65)",
+                        colorScheme: "dark",
+                        padding: "10px 12px",
+                        color: "rgba(255,255,255,0.92)",
+                        outline: "none",
+                        fontFamily:
+                          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+                        fontSize: 12,
+                      }}
+                    />
+
+                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        className={styles.actionBtn}
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(snippet);
+                        }}
+                      >
+                        Copier le code
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {siteInrcySettingsError && (
@@ -2502,7 +2614,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                     width: "100%",
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                     padding: "10px 12px",
                     color: "white",
                     outline: "none",
@@ -2522,7 +2635,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                     width: "100%",
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                     padding: "10px 12px",
                     color: "white",
                     outline: "none",
@@ -2613,7 +2727,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                     width: "100%",
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                     padding: "10px 12px",
                     color: "white",
                     outline: "none",
@@ -2703,7 +2818,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                   alignItems: "center",
                   gap: 8,
                   border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.04)",
+                  background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                   padding: "8px 10px",
                   borderRadius: 999,
                   color: "rgba(255,255,255,0.92)",
@@ -2755,7 +2871,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                     minWidth: 220,
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                     padding: "10px 12px",
                     color: "white",
                     outline: "none",
@@ -2783,6 +2900,75 @@ const disconnectSiteWebGsc = useCallback(() => {
                 </a>
               </div>
               {siteWebUrlNotice && <div className={styles.successNote}>{siteWebUrlNotice}</div>}
+            </div>
+
+            {/* ✅ Widget actus (pour afficher les 5 dernières publications Booster sur le site du client) */}
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: 14,
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div className={styles.blockHeaderRow}>
+                <div className={styles.blockTitle}>Widget « Actus »</div>
+                <ConnectionPill connected={!!siteWebUrl?.trim()} />
+              </div>
+              <div className={styles.blockSub}>
+                Colle ce code dans ton site (WordPress, Wix, Webflow, HTML…) pour afficher les <strong>5 dernières actus</strong> publiées depuis Booster.
+              </div>
+
+              {(() => {
+                const url = (siteWebUrl || "").trim();
+                let domain = "";
+                try {
+                  const withProto = /^https?:\/\//i.test(url) ? url : url ? `https://${url}` : "";
+                  if (withProto) domain = new URL(withProto).hostname.toLowerCase().replace(/^www\./, "");
+                } catch {
+                  // ignore
+                }
+                const scriptUrl = typeof window !== "undefined" ? `${window.location.origin}/widgets/inrcy-actus.js` : "/widgets/inrcy-actus.js";
+                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-limit=\"5\" data-title=\"Actualités\"></div>\n<script async src=\"${scriptUrl}\"></script>`;
+                return (
+                  <>
+                    <textarea
+                      readOnly
+                      value={snippet}
+                      style={{
+                        width: "100%",
+                        minHeight: 86,
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(15,23,42,0.65)",
+                        colorScheme: "dark",
+                        padding: "10px 12px",
+                        color: "rgba(255,255,255,0.92)",
+                        outline: "none",
+                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+                        fontSize: 12,
+                      }}
+                    />
+
+                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        className={styles.actionBtn}
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(snippet);
+                        }}
+                      >
+                        Copier le code
+                      </button>
+                    </div>
+                    <div className={styles.blockSub}>
+                      <strong>Où le coller ?</strong> Sur WordPress : un bloc <em>HTML personnalisé</em> (Elementor → widget HTML). Sur Wix : <em>Embed Code</em>. Sur Webflow : <em>Embed</em>.
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {siteWebSettingsError && (
@@ -2815,7 +3001,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                     width: "100%",
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                     padding: "10px 12px",
                     color: "white",
                     outline: "none",
@@ -2835,7 +3022,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                     width: "100%",
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                     padding: "10px 12px",
                     color: "white",
                     outline: "none",
@@ -2906,7 +3094,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                     width: "100%",
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                     padding: "10px 12px",
                     color: "white",
                     outline: "none",
@@ -2976,7 +3165,8 @@ const disconnectSiteWebGsc = useCallback(() => {
           width: "100%",
           borderRadius: 12,
           border: "1px solid rgba(255,255,255,0.14)",
-          background: "rgba(255,255,255,0.04)",
+          background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
           padding: "10px 12px",
           color: "white",
           outline: "none",
@@ -3028,7 +3218,8 @@ const disconnectSiteWebGsc = useCallback(() => {
           width: "100%",
           borderRadius: 12,
           border: "1px solid rgba(255,255,255,0.14)",
-          background: "rgba(255,255,255,0.04)",
+          background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
           padding: "10px 12px",
           color: "white",
           outline: "none",
@@ -3085,7 +3276,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                   alignItems: "center",
                   gap: 8,
                   border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.04)",
+                  background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                   padding: "8px 10px",
                   borderRadius: 999,
                   color: "rgba(255,255,255,0.92)",
@@ -3132,7 +3324,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                     minWidth: 220,
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                     padding: "10px 12px",
                     color: "white",
                     outline: "none",
@@ -3194,12 +3387,14 @@ const disconnectSiteWebGsc = useCallback(() => {
                   <select
                     value={fbSelectedPageId}
                     onChange={(e) => setFbSelectedPageId(e.target.value)}
+                    className={styles.selectReadable}
                     style={{
                       flex: "1 1 260px",
                       minWidth: 220,
                       borderRadius: 12,
                       border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.04)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                       padding: "10px 12px",
                       color: "white",
                       outline: "none",
@@ -3213,15 +3408,18 @@ const disconnectSiteWebGsc = useCallback(() => {
                     ))}
                   </select>
 
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.connectBtn}`}
-                    onClick={saveFacebookPage}
-                    disabled={!fbSelectedPageId}
-                  >
-                    Enregistrer
-                  </button>
+                  {fbPages.length > 1 && (
+                    <button
+                      type="button"
+                      className={`${styles.actionBtn} ${styles.connectBtn}`}
+                      onClick={saveFacebookPage}
+                      disabled={!fbSelectedPageId}
+                    >
+                      Enregistrer
+                    </button>
+                  )}
                 </div>
+                {fbPagesError && <div className={styles.errorNote}>{fbPagesError}</div>}
               </div>
             ) : null}
 
@@ -3266,7 +3464,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                       minWidth: 220,
                       borderRadius: 12,
                       border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.04)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                       padding: "10px 12px",
                       color: "white",
                       outline: "none",
@@ -3288,7 +3487,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                       minWidth: 220,
                       borderRadius: 12,
                       border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.04)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                       padding: "10px 12px",
                       color: "white",
                       outline: "none",
@@ -3349,7 +3549,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                   alignItems: "center",
                   gap: 8,
                   border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.04)",
+                  background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                   padding: "8px 10px",
                   borderRadius: 999,
                   color: "rgba(255,255,255,0.92)",
@@ -3389,29 +3590,21 @@ const disconnectSiteWebGsc = useCallback(() => {
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <input
                   value={facebookUrl}
-                  onChange={(e) => setFacebookUrl(e.target.value)}
-                  placeholder="https://facebook.com/..."
+                  readOnly
+                  placeholder={facebookConnected ? "Lien récupéré automatiquement" : "Connectez Facebook pour récupérer le lien"}
                   style={{
                     flex: "1 1 280px",
                     minWidth: 220,
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                     padding: "10px 12px",
                     color: "white",
                     outline: "none",
+                    opacity: facebookUrl ? 1 : 0.8,
                   }}
                 />
-
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.iconBtn}`}
-                  onClick={saveFacebookLink}
-                  title="Enregistrer le lien"
-                  aria-label="Enregistrer le lien"
-                >
-                  <SaveIcon />
-                </button>
 
                 <a
                   href={facebookUrl || "#"}
@@ -3463,7 +3656,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                       minWidth: 220,
                       borderRadius: 12,
                       border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.04)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
                       padding: "10px 12px",
                       color: "white",
                       outline: "none",
@@ -3477,15 +3671,18 @@ const disconnectSiteWebGsc = useCallback(() => {
                     ))}
                   </select>
 
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.connectBtn}`}
-                    onClick={saveFacebookPage}
-                    disabled={!fbSelectedPageId}
-                  >
-                    Enregistrer
-                  </button>
+                  {fbPages.length > 1 ? (
+                    <button
+                      type="button"
+                      className={`${styles.actionBtn} ${styles.connectBtn}`}
+                      onClick={saveFacebookPage}
+                      disabled={!fbSelectedPageId}
+                    >
+                      Enregistrer
+                    </button>
+                  ) : null}
                 </div>
+                {fbPagesError && <div className={styles.errNote}>{fbPagesError}</div>}
               </div>
             ) : null}
 

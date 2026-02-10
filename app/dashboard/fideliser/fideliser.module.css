@@ -289,6 +289,53 @@
 }
 
 
+
+/* Keep Booster/Fidéliser on a single viewport on desktop (avoid useless vertical scroll) */
+.page{
+  /* overrides dashboard .page padding */
+  padding-bottom: 18px !important;
+}
+
+.container{
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+@media (min-width: 981px){
+  .page{
+    height: 100vh;
+    overflow: hidden;
+    padding-top: 16px !important;
+    padding-bottom: 16px !important;
+  }
+  .container{
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .desktopOnly{
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  /* Make each grid row stretch its cards without forcing extra height */
+  .grid3{ align-content: stretch; }
+  .actionCard{ min-height: 0; height: 100%; padding: 14px; }
+  .metricCard{ height: 100%; padding: 12px; }
+  .tipCard{ height: 100%; padding: 12px; }
+
+  /* Slightly tighter typography for short desktop viewports */
+  @media (max-height: 860px){
+    .actionTitle{ font-size: 22px; }
+    .actionDesc{ font-size: 13px; margin-top: 4px; }
+    .metricBubble{ width: 54px; height: 54px; font-size: 20px; }
+    .pill{ padding: 6px 9px; font-size: 12.5px; }
+    .tipLineCompact{ padding: 7px 10px; font-size: 12.5px; }
+  }
+}
+
 /* Responsive reflow (mobile accordéons) */
 .desktopOnly { display: block; }
 .mobileOnly { display: none; }

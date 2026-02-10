@@ -3303,8 +3303,33 @@ transform: scale(1.50);
   font-weight: 800;
 }
 
+.errNote{
+  margin-top: 8px;
+  color: rgba(248, 113, 113, 0.95);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .viewBtn{
   opacity: 0.95;
+}
+
+/* Ensure <select>/<option> are readable on desktop (Chrome uses white option background). */
+.selectReadable{
+  /* Force readable native select + dropdown on Windows/Chrome */
+  color: #fff;
+  background-color: rgba(15, 23, 42, 0.95);
+  color-scheme: dark;
+}
+
+.selectReadable option{
+  background-color: #0f172a;
+  color: #fff;
+}
+
+.selectReadable option{
+  color: #111;
+  background: #fff;
 }
 
 /* === Drawer blocks (title + status aligned) === */
@@ -3476,3 +3501,4 @@ transform: scale(1.50);
     grid-template-columns: 1fr;
   }
 }
+

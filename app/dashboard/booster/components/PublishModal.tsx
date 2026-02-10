@@ -177,13 +177,14 @@ export default function PublishModal({
     setImagePreviews((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const fileToDataUrl = (file: File) =>
-    new Promise<string>((resolve, reject) => {
+  const fileToDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = reject;
+      reader.onerror = () => reject(reader.error ?? new Error("FileReader error"));
       reader.readAsDataURL(file);
     });
+  };
 
   const onPublish = async () => {
     if (saving) return;
@@ -217,6 +218,12 @@ export default function PublishModal({
           dataUrl: await fileToDataUrl(f),
         }))
       );
+
+      // Sécurité: si l'utilisateur a sélectionné des fichiers, on exige une conversion dataUrl valide
+      if (images.length && (!imagePayloads.length || imagePayloads.some((p) => !p.dataUrl?.startsWith("data:")))) {
+        setImgError("Impossible de convertir une ou plusieurs images (format non supporté).");
+        return;
+      }
 
       const post: GeneratedPost = {
         title: finalTitle,

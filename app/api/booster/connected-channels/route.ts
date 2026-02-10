@@ -14,13 +14,30 @@ export async function GET() {
 
     const userId = userData.user.id;
 
-    // Internal channels always available.
+    // Internal channels availability depends on whether the user actually configured them.
+    // - iNrCy site: only if the user has an iNrCy site (ownership != none) AND a URL exists
+    // - Site web: only if the user saved a URL in pro_tools_configs.settings.site_web.url
     const base: Record<ChannelKey, boolean> = {
-      inrcy_site: true,
-      site_web: true,
+      inrcy_site: false,
+      site_web: false,
       gmb: false,
       facebook: false,
     };
+
+    // Read minimal configs to determine whether internal channels are "connected".
+    const [profileRes, inrcyCfgRes, proCfgRes] = await Promise.all([
+      supabase.from("profiles").select("inrcy_site_ownership,inrcy_site_url").eq("user_id", userId).maybeSingle(),
+      supabase.from("inrcy_site_configs").select("site_url").eq("user_id", userId).maybeSingle(),
+      supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
+    ]);
+
+    const ownership = String((profileRes.data as any)?.inrcy_site_ownership ?? "none");
+    const inrcyUrl = String((profileRes.data as any)?.inrcy_site_url ?? (inrcyCfgRes.data as any)?.site_url ?? "").trim();
+    base.inrcy_site = ownership !== "none" && !!inrcyUrl;
+
+    const proSettings = ((proCfgRes.data as any)?.settings ?? {}) as any;
+    const siteWebUrl = String(proSettings?.site_web?.url ?? "").trim();
+    base.site_web = !!siteWebUrl;
 
     // External channels depend on integrations + configuration (resource_id set)
     const { data: rows } = await supabase

@@ -141,6 +141,7 @@ export async function GET(req: Request) {
     const picked = pages[0] || null;
     const pageId = picked?.id ?? null;
     const pageName = picked?.name ?? null;
+    const pageUrl = pageId ? `https://www.facebook.com/${pageId}` : null;
     // If we could not list pages, store the user token so you can complete the flow later.
     const tokenToStore = picked?.access_token ?? longUserToken;
 
@@ -176,6 +177,9 @@ export async function GET(req: Request) {
       meta: {
         picked: picked ? "first_page" : "none",
         pages_found: pages.length,
+        // Keep the long-lived USER token for /me/accounts even if access_token_enc becomes a PAGE token later.
+        user_access_token: longUserToken,
+        page_url: pageUrl,
       },
     };
 
@@ -194,7 +198,16 @@ export async function GET(req: Request) {
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = (scRow as any)?.settings ?? {};
-      const merged = { ...current, facebook: { ...(current?.facebook ?? {}), connected: true } };
+      const merged = {
+        ...current,
+        facebook: {
+          ...(current?.facebook ?? {}),
+          connected: true,
+          pageId,
+          pageName,
+          url: pageUrl,
+        },
+      };
       await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
     } catch {
       // non-fatal

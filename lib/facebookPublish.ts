@@ -1,6 +1,24 @@
 const FACEBOOK_GRAPH_VERSION = "v19.0";
 
-type PublishResult = { ok: true; postId: string } | { ok: false; error: string };
+type PublishOk = {
+  ok: true;
+  postId: string;
+  // Diagnostics (useful for UI + debugging)
+  uploadedImages: number;
+  failedImages: number;
+  photoErrors?: Array<{ url: string; error: string }>;
+};
+
+type PublishKo = {
+  ok: false;
+  error: string;
+  // Diagnostics (useful for UI + debugging)
+  uploadedImages?: number;
+  failedImages?: number;
+  photoErrors?: Array<{ url: string; error: string }>;
+};
+
+type PublishResult = PublishOk | PublishKo;
 
 /**
  * Upload one image to Facebook as an unpublished photo and return its media_fbid.
@@ -8,10 +26,11 @@ type PublishResult = { ok: true; postId: string } | { ok: false; error: string }
  * publicly reachable from Meta's servers (e.g. blob: URLs, private storage, expiring URLs, etc.).
  */
 async function uploadUnpublishedPhoto(params: {
+  pageId: string;
   pageAccessToken: string;
   imageUrl: string;
 }): Promise<{ ok: true; mediaFbid: string } | { ok: false; error: string }> {
-  const { pageAccessToken, imageUrl } = params;
+  const { pageId, pageAccessToken, imageUrl } = params;
 
   try {
     let blob: Blob;
@@ -41,8 +60,9 @@ async function uploadUnpublishedPhoto(params: {
     // Facebook expects the binary in the field name `source`
     form.append("source", blob, "image");
 
+    // IMPORTANT: post explicitly to the Page, not /me
     const uploadRes = await fetch(
-      `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/me/photos`,
+      `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(pageId)}/photos`,
       { method: "POST", body: form }
     );
 
@@ -61,21 +81,23 @@ async function uploadUnpublishedPhoto(params: {
 }
 
 export async function facebookPublishToPage(params: {
+  pageId: string;
   pageAccessToken: string;
   message: string;
   imageUrls?: string[];
 }): Promise<PublishResult> {
-  const { pageAccessToken, message, imageUrls = [] } = params;
+  const { pageId, pageAccessToken, message, imageUrls = [] } = params;
 
   try {
     const attachedMedia: any[] = [];
+    const photoErrors: Array<{ url: string; error: string }> = [];
 
     for (const url of imageUrls) {
-      const up = await uploadUnpublishedPhoto({ pageAccessToken, imageUrl: url });
+      const up = await uploadUnpublishedPhoto({ pageId, pageAccessToken, imageUrl: url });
       if (!up.ok) {
-        // If one image fails, we continue with the rest instead of failing the whole post.
-        // You can change this behavior depending on your UX needs.
+        // Continue with remaining images, but keep diagnostics
         console.warn("[facebookPublish] image upload failed:", up.error);
+        photoErrors.push({ url, error: up.error });
         continue;
       }
       attachedMedia.push({ media_fbid: up.mediaFbid });
@@ -90,18 +112,34 @@ export async function facebookPublishToPage(params: {
       feedForm.append(`attached_media[${i}]`, JSON.stringify(m));
     });
 
+    // IMPORTANT: post explicitly to the Page, not /me
     const feedRes = await fetch(
-      `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/me/feed`,
+      `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(pageId)}/feed`,
       { method: "POST", body: feedForm }
     );
 
     const feedJson: any = await feedRes.json().catch(() => ({}));
     if (!feedRes.ok) {
-      return { ok: false, error: feedJson?.error?.message || "Facebook feed post failed" };
+      return {
+        ok: false,
+        error: feedJson?.error?.message || "Facebook feed post failed",
+        uploadedImages: attachedMedia.length,
+        failedImages: photoErrors.length,
+        photoErrors: photoErrors.length ? photoErrors : undefined,
+      };
     }
 
-    return { ok: true, postId: feedJson.id };
+    return {
+      ok: true,
+      postId: feedJson.id,
+      uploadedImages: attachedMedia.length,
+      failedImages: photoErrors.length,
+      photoErrors: photoErrors.length ? photoErrors : undefined,
+    };
   } catch (e: any) {
-    return { ok: false, error: e?.message || "Unknown Facebook publish error" };
+    return {
+      ok: false,
+      error: e?.message || "Unknown Facebook publish error",
+    };
   }
 }

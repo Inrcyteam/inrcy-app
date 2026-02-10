@@ -8,6 +8,16 @@ import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook";
 
+function slugify(input: string): string {
+  return String(input || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "")
+    .slice(0, 80);
+}
+
 type ImagePayload = {
   name: string;
   type: string;
@@ -70,44 +80,60 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Le contenu est vide." }, { status: 400 });
     }
 
-    // 1) Upload images (optional) to Supabase Storage (bucket: booster)
-    // Note: for external platforms (Facebook/Google), the image URL must be fetchable
-    // by their servers. If your Supabase bucket is not public, getPublicUrl() will
-    // produce a URL that returns 403 for unauthenticated requests, so the post will
-    // be created without photos. To keep the UI stable (store publicUrl in DB when
-    // available) while ensuring publish works, we also generate signed URLs and use
-    // them for publishing.
-    const uploadedUrls: string[] = []; // persisted in DB (for UI)
-    const publishableUrls: string[] = []; // used for Facebook/Google publish
+    // 1) Upload images to Supabase Storage (bucket: booster) + collect diagnostics
+    const uploadedUrls: string[] = []; // stored for UI
+    const publishableUrls: string[] = []; // used for external platforms
+    const uploadErrors: Array<{
+      name: string;
+      reason: string;
+      stage: "parse" | "upload" | "publicUrl" | "signedUrl";
+    }> = [];
+
     for (const img of images.slice(0, 5)) {
       const parsed = dataUrlToBuffer(img.dataUrl);
-      if (!parsed) continue;
+      if (!parsed) {
+        uploadErrors.push({ name: img?.name || "image", reason: "Invalid dataUrl (expected data:*;base64,...)", stage: "parse" });
+        continue;
+      }
 
       const ext = (img.name || "image").split(".").pop() || "jpg";
       const path = `${userId}/${randomUUID()}.${ext}`;
 
-      const up = await supabaseAdmin.storage
-        .from("booster")
-        .upload(path, parsed.buffer, {
-          contentType: parsed.mime || img.type || "application/octet-stream",
-          upsert: false,
-        });
+      const up = await supabaseAdmin.storage.from("booster").upload(path, parsed.buffer, {
+        contentType: parsed.mime || img.type || "application/octet-stream",
+        upsert: false,
+      });
 
-      if (!up.error) {
-        // 1) Public URL (works only if bucket is public)
-        const pub = supabaseAdmin.storage.from("booster").getPublicUrl(path);
-        if (pub?.data?.publicUrl) uploadedUrls.push(pub.data.publicUrl);
-
-        // 2) Signed URL (works even if bucket is private)
-        // Give enough time for Meta/Google to fetch the asset.
-        const signed = await supabaseAdmin.storage.from("booster").createSignedUrl(path, 60 * 60 * 24);
-        if (signed?.data?.signedUrl) {
-          publishableUrls.push(signed.data.signedUrl);
-        } else if (pub?.data?.publicUrl) {
-          // Fallback
-          publishableUrls.push(pub.data.publicUrl);
-        }
+      if (up.error) {
+        console.error("[Booster] Storage upload error:", up.error.message, { path, name: img.name });
+        uploadErrors.push({ name: img?.name || "image", reason: up.error.message, stage: "upload" });
+        continue;
       }
+
+      const pub = supabaseAdmin.storage.from("booster").getPublicUrl(path);
+      if (pub?.data?.publicUrl) {
+        uploadedUrls.push(pub.data.publicUrl);
+      } else {
+        uploadErrors.push({ name: img?.name || "image", reason: "getPublicUrl returned empty", stage: "publicUrl" });
+      }
+
+      const signed = await supabaseAdmin.storage.from("booster").createSignedUrl(path, 60 * 60 * 24);
+      if (signed?.data?.signedUrl) {
+        publishableUrls.push(signed.data.signedUrl);
+      } else if (pub?.data?.publicUrl) {
+        publishableUrls.push(pub.data.publicUrl);
+        uploadErrors.push({ name: img?.name || "image", reason: "createSignedUrl failed, fell back to publicUrl", stage: "signedUrl" });
+      } else {
+        uploadErrors.push({ name: img?.name || "image", reason: "createSignedUrl failed and no publicUrl available", stage: "signedUrl" });
+      }
+    }
+
+    // Optional hard fail if user selected images but none uploaded
+    if (images.length > 0 && uploadedUrls.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Images sélectionnées mais upload Supabase impossible.", uploadErrors },
+        { status: 400 }
+      );
     }
 
     // 2) Persist publication
@@ -125,10 +151,10 @@ export async function POST(req: Request) {
     });
 
     if (pubErr) {
-      return NextResponse.json({ error: pubErr.message }, { status: 500 });
+      return NextResponse.json({ error: pubErr.message, uploadErrors }, { status: 500 });
     }
 
-    // 3) Create deliveries (one row per channel)
+    // 3) Create deliveries
     const deliveries = selected.map((ch) => ({
       id: randomUUID(),
       publication_id: publicationId,
@@ -139,10 +165,9 @@ export async function POST(req: Request) {
 
     await supabaseAdmin.from("publication_deliveries").insert(deliveries);
 
-    // 4) Try to publish NOW for channels that are truly connected + configured.
+    // 4) Publish now
     const results: Record<string, any> = {};
 
-    // Load integration rows once
     const { data: fbRow } = await supabaseAdmin
       .from("stats_integrations")
       .select("status,resource_id,access_token_enc")
@@ -161,10 +186,20 @@ export async function POST(req: Request) {
       .eq("product", "gmb")
       .maybeSingle();
 
+    // Internal channel configuration (URLs)
+    const [profileRes, inrcyCfgRes, proCfgRes] = await Promise.all([
+      supabaseAdmin.from("profiles").select("inrcy_site_ownership,inrcy_site_url").eq("user_id", userId).maybeSingle(),
+      supabaseAdmin.from("inrcy_site_configs").select("site_url").eq("user_id", userId).maybeSingle(),
+      supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
+    ]);
+    const ownership = String((profileRes.data as any)?.inrcy_site_ownership ?? "none");
+    const inrcySiteUrl = String((profileRes.data as any)?.inrcy_site_url ?? (inrcyCfgRes.data as any)?.site_url ?? "").trim();
+    const proSettings = ((proCfgRes.data as any)?.settings ?? {}) as any;
+    const siteWebUrl = String(proSettings?.site_web?.url ?? "").trim();
+
     const canonMessage = buildCanonMessage(title, content, cta);
     const externalImageUrls = (publishableUrls.length ? publishableUrls : uploadedUrls).slice(0, 5);
 
-    // Helper: update delivery row
     async function setDelivery(channel: ChannelKey, patch: any) {
       await supabaseAdmin
         .from("publication_deliveries")
@@ -177,9 +212,51 @@ export async function POST(req: Request) {
     for (const ch of selected) {
       try {
         if (ch === "inrcy_site" || ch === "site_web") {
-          // Internal: publication is already persisted -> consider it delivered.
-          await setDelivery(ch, { status: "delivered", delivered_at: new Date().toISOString() });
-          results[ch] = { ok: true };
+          // We treat "publication" as an "article/actu" for the site.
+          // This creates a record that your iNrCy site renderer (or your pro's website connector)
+          // can consume to display the article.
+          const targetUrl = ch === "inrcy_site" ? inrcySiteUrl : siteWebUrl;
+          if (ch === "inrcy_site" && (ownership === "none" || !targetUrl)) {
+            await setDelivery(ch, { status: "failed", last_error: "Site iNrCy non connecté (ownership/url manquants)" });
+            results[ch] = { ok: false, error: "not_configured" };
+            continue;
+          }
+          if (ch === "site_web" && !targetUrl) {
+            await setDelivery(ch, { status: "failed", last_error: "Site web non connecté (url manquante)" });
+            results[ch] = { ok: false, error: "not_configured" };
+            continue;
+          }
+
+          const articleId = randomUUID();
+          const slug = slugify(title) || "actu";
+          const externalUrl = targetUrl
+            ? `${targetUrl.replace(/\/+$/g, "")}/actu/${slug}-${articleId}`
+            : null;
+
+          // IMPORTANT: keep this insert compatible with your current `public.site_articles` table.
+          // Your table currently contains at least: id, created_at, user_id, source, title, content.
+          // (If you later add more columns, you can extend this insert.)
+          const { error: artErr } = await supabaseAdmin.from("site_articles").insert({
+            id: articleId,
+            user_id: userId,
+            source: ch,
+            title,
+            content,
+          });
+
+          if (artErr) {
+            await setDelivery(ch, { status: "failed", last_error: `Impossible de créer l'article (${artErr.message})` });
+            results[ch] = { ok: false, error: artErr.message };
+            continue;
+          }
+
+          await setDelivery(ch, {
+            status: "delivered",
+            delivered_at: new Date().toISOString(),
+            external_id: articleId,
+            external_url: externalUrl,
+          });
+          results[ch] = { ok: true, external_id: articleId, external_url: externalUrl };
           continue;
         }
 
@@ -192,18 +269,26 @@ export async function POST(req: Request) {
             continue;
           }
 
-         const resp = await facebookPublishToPage({
-  pageAccessToken: pageToken,
-  message: canonMessage,
-  imageUrls: externalImageUrls,
-});
+          const resp = await facebookPublishToPage({
+            pageId,
+            pageAccessToken: pageToken,
+            message: canonMessage,
+            imageUrls: externalImageUrls,
+          });
+
+          if (!resp.ok) {
+            await setDelivery(ch, { status: "failed", last_error: resp.error });
+            results[ch] = { ok: false, error: resp.error, diagnostics: resp };
+            continue;
+          }
 
           await setDelivery(ch, {
             status: "delivered",
             delivered_at: new Date().toISOString(),
-            external_id: (resp.ok ? resp.postId : null),
+            external_id: resp.postId,
           });
-          results[ch] = { ok: true, external_id: (resp.ok ? resp.postId : null) };
+
+          results[ch] = { ok: true, external_id: resp.postId, diagnostics: resp };
           continue;
         }
 
@@ -233,16 +318,11 @@ export async function POST(req: Request) {
           });
 
           const externalId = String((gmbResp as any)?.name || "");
-          await setDelivery(ch, {
-            status: "delivered",
-            delivered_at: new Date().toISOString(),
-            external_id: externalId || null,
-          });
+          await setDelivery(ch, { status: "delivered", delivered_at: new Date().toISOString(), external_id: externalId || null });
           results[ch] = { ok: true, external_id: externalId || null };
           continue;
         }
 
-        // Fallback
         results[ch] = { ok: false, error: "unsupported_channel" };
       } catch (e: any) {
         await setDelivery(ch, { status: "failed", last_error: e?.message || "Erreur" });
@@ -250,7 +330,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 5) Log booster event (metrics)
+    // 5) Log booster event
     await supabaseAdmin.from("booster_events").insert({
       id: randomUUID(),
       user_id: userId,
@@ -260,12 +340,21 @@ export async function POST(req: Request) {
         channels: selected,
         post: { title, content, cta, hashtags },
         images: uploadedUrls,
+        publishableUrls,
+        uploadErrors,
         publication_id: publicationId,
         results,
       },
     });
 
-    return NextResponse.json({ ok: true, publication_id: publicationId, images: uploadedUrls, results });
+    return NextResponse.json({
+      ok: true,
+      publication_id: publicationId,
+      images: uploadedUrls,
+      publishableUrls,
+      uploadErrors,
+      results,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
   }

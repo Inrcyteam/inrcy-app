@@ -179,7 +179,7 @@ useEffect(() => {
 
 
   return (
-    <main className={styles.page}>
+    <main className={`${styles.page} ${b.page}`}>
       {/* BLUR du Booster quand une modale est ouverte */}
       <div
         style={{
@@ -190,7 +190,7 @@ useEffect(() => {
         }}
         aria-hidden={active ? true : undefined}
       >
-        <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+        <div className={b.container}>
           <header className={b.headerRow}>
             <div className={b.titleLine}>
               <span aria-hidden style={{ fontSize: 28 }}>
@@ -239,7 +239,7 @@ useEffect(() => {
     ))}
   </section>
 
-  <section className={b.grid3} style={{ marginTop: 12 }}>
+  <section className={b.grid3} style={{ marginTop: 8 }}>
     {data.metrics.map((m) => (
       <MetricCard
         key={m.title}
@@ -252,7 +252,7 @@ useEffect(() => {
     ))}
   </section>
 
-  <section className={b.grid3} style={{ marginTop: 12 }}>
+  <section className={b.grid3} style={{ marginTop: 8 }}>
     {data.tips.map((t) => (
       <TipCard key={t.title} styles={styles} title={t.title} lines={t.lines} />
     ))}

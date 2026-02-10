@@ -10,7 +10,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("stats_integrations")
-    .select("id,status,resource_id,resource_label")
+    .select("id,status,resource_id,resource_label,meta")
     .eq("user_id", authData.user.id)
     .eq("provider", "facebook")
     .eq("source", "facebook")
@@ -25,5 +25,7 @@ export async function GET() {
     connected: !!data && data.status === "connected",
     resource_id: (data as any)?.resource_id ?? null,
     resource_label: (data as any)?.resource_label ?? null,
+    page_url: (data as any)?.meta?.page_url ?? null,
+    pages_found: (data as any)?.meta?.pages_found ?? null,
   });
 }

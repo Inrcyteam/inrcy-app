@@ -19,6 +19,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing pageId/pageAccessToken" }, { status: 400 });
     }
 
+    // Read existing meta so we don't lose meta.user_access_token, page_url, etc.
+    const { data: existing, error: readErr } = await supabase
+      .from("stats_integrations")
+      .select("meta")
+      .eq("user_id", userId)
+      .eq("provider", "facebook")
+      .eq("source", "facebook")
+      .eq("product", "facebook")
+      .maybeSingle();
+
+    if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
+
+    const prevMeta = ((existing as any)?.meta ?? {}) as any;
+    const pageUrl = `https://www.facebook.com/${pageId}`;
+    const nextMeta = { ...prevMeta, selected: true, page_url: pageUrl };
+
     // Update integration with the selected page + PAGE token (required for posting).
     const { error: upErr } = await supabase
       .from("stats_integrations")
@@ -27,7 +43,7 @@ export async function POST(req: Request) {
         resource_label: pageName,
         access_token_enc: pageAccessToken,
         status: "connected",
-        meta: { selected: true },
+        meta: nextMeta,
       })
       .eq("user_id", userId)
       .eq("provider", "facebook")
@@ -42,14 +58,20 @@ export async function POST(req: Request) {
       const current = (scRow as any)?.settings ?? {};
       const merged = {
         ...current,
-        facebook: { ...(current?.facebook ?? {}), connected: true, pageId, pageName },
+        facebook: {
+          ...(current?.facebook ?? {}),
+          connected: true,
+          pageId,
+          pageName,
+          url: pageUrl,
+        },
       };
       await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
     } catch {
       // non-fatal
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, pageUrl });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
   }

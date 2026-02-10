@@ -20,7 +20,7 @@ export async function GET() {
 
     const { data: integ, error: integErr } = await supabase
       .from("stats_integrations")
-      .select("access_token_enc,status")
+      .select("access_token_enc,status,meta")
       .eq("user_id", userId)
       .eq("provider", "facebook")
       .eq("source", "facebook")
@@ -32,11 +32,14 @@ export async function GET() {
       return NextResponse.json({ error: "Facebook non connecté" }, { status: 400 });
     }
 
-    // access_token_enc may be a user token or already a page token.
-    // We try /me/accounts: works only with user token that has pages_show_list.
+    // access_token_enc may be a PAGE token after selection.
+    // For /me/accounts we need the USER token (stored in meta.user_access_token).
+    const userToken = String((integ as any)?.meta?.user_access_token || integ.access_token_enc || "").trim();
+    if (!userToken) return NextResponse.json({ error: "Facebook token manquant" }, { status: 400 });
+
     const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
       fields: "id,name,access_token",
-      access_token: String(integ.access_token_enc),
+      access_token: userToken,
     }).toString()}`;
 
     const resp = await fetchJson<{ data?: FbPage[] }>(pagesUrl);
