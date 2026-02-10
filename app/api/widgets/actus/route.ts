@@ -32,7 +32,9 @@ function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
-    throw new Error("Missing SUPABASE env: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+    throw new Error(
+      "Missing SUPABASE env: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY"
+    );
   }
   return createClient(url, key, { auth: { persistSession: false } });
 }
@@ -45,8 +47,11 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const domain = normalizeDomain(searchParams.get("domain"));
-    const source = (searchParams.get("source") || "site_web").trim();
-    const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "5", 10) || 5, 1), 20);
+    const source = (searchParams.get("source") || "site_web").trim(); // "inrcy_site" | "site_web"
+    const limit = Math.min(
+      Math.max(parseInt(searchParams.get("limit") || "5", 10) || 5, 1),
+      20
+    );
 
     if (!domain) {
       return NextResponse.json(
@@ -57,32 +62,39 @@ export async function GET(req: Request) {
 
     const supabase = getSupabaseAdmin();
 
-    // 1) Find user_id for this domain depending on source
+    // 1) Resolve user_id from domain (based on stored URLs)
     let userId: string | null = null;
 
-    if (source === "site_inrcy") {
+    if (source === "inrcy_site") {
+      // inrcy_site_configs has site_url
       const { data, error } = await supabase
         .from("inrcy_site_configs")
-        .select("user_id, domain, site_domain")
-        .or(`domain.eq.${domain},site_domain.eq.${domain}`)
+        .select("user_id, site_url")
+        .ilike("site_url", `%${domain}%`)
         .limit(1)
         .maybeSingle();
+
       if (error) throw error;
       userId = (data as any)?.user_id ?? null;
     } else {
-      // site_web by default
+      // site_web: pro_tools_configs has settings JSON with settings.site_web.url
       const { data, error } = await supabase
         .from("pro_tools_configs")
-        .select("user_id, domain, site_domain")
-        .or(`domain.eq.${domain},site_domain.eq.${domain}`)
-        .limit(1)
-        .maybeSingle();
+        .select("user_id, settings")
+        .limit(200); // small enough in practice; optimize later if needed
+
       if (error) throw error;
-      userId = (data as any)?.user_id ?? null;
+
+      const rows = (data || []) as any[];
+      const match = rows.find((r) => {
+        const url = String(r?.settings?.site_web?.url || "");
+        return normalizeDomain(url) === domain;
+      });
+
+      userId = match?.user_id ?? null;
     }
 
     if (!userId) {
-      // Do not 404; widgets should fail gracefully.
       return NextResponse.json(
         { ok: true, domain, user_id: null, articles: [] },
         { status: 200, headers: corsHeaders() }
