@@ -10,13 +10,11 @@
       host = host.replace(/^www\./, "");
       return host;
     } catch (e) {
-      // last chance: strip protocol manually
-      var s = raw
+      return raw
+        .toLowerCase()
         .replace(/^https?:\/\//i, "")
         .replace(/^www\./i, "")
-        .split("/")[0]
-        .toLowerCase();
-      return s;
+        .split("/")[0];
     }
   }
 
@@ -74,7 +72,6 @@
   function asArray(v) {
     if (!v) return [];
     if (Array.isArray(v)) return v;
-    // If Supabase returns a Postgres text[] as a string like "{a,b}" (rare here), try to parse minimally
     if (typeof v === "string" && v[0] === "{" && v[v.length - 1] === "}") {
       var inner = v.slice(1, -1).trim();
       if (!inner) return [];
@@ -88,18 +85,23 @@
   function render(container, title, articles) {
     var html = "";
 
-    // Local CSS (no dependencies)
     html +=
       "<style>" +
       ".inrcy-actus-wrap{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}" +
-      ".inrcy-actus-title{font-weight:800;font-size:20px;margin:0 0 12px 0}" +
+      ".inrcy-actus-title{font-weight:900;font-size:22px;letter-spacing:-0.2px;margin:0 0 14px 0}" +
       ".inrcy-actus-grid{display:grid;gap:12px}" +
-      ".inrcy-actus-card{background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.06)}" +
-      ".inrcy-actus-media{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#f3f3f3}" +
-      ".inrcy-actus-body{padding:14px 14px 16px 14px}" +
-      ".inrcy-actus-h{font-weight:800;font-size:16px;margin:0 0 6px 0}" +
-      ".inrcy-actus-meta{font-size:12px;color:#666;margin:0 0 10px 0}" +
-      ".inrcy-actus-content{font-size:14px;line-height:1.55;color:#222}" +
+      ".inrcy-actus-card{position:relative;background:rgba(255,255,255,.92);border:1px solid rgba(0,0,0,.08);border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.08)}" +
+      ".inrcy-actus-row{display:flex;gap:14px;padding:14px}" +
+      ".inrcy-actus-thumb{flex:0 0 110px;width:110px;height:110px;border-radius:14px;overflow:hidden;background:#f2f2f2;border:1px solid rgba(0,0,0,.06)}" +
+      ".inrcy-actus-thumb img{width:100%;height:100%;object-fit:cover;display:block}" +
+      ".inrcy-actus-body{min-width:0;flex:1}" +
+      ".inrcy-actus-h{font-weight:900;font-size:16px;line-height:1.15;margin:0 0 6px 0;letter-spacing:-0.1px}" +
+      ".inrcy-actus-meta{font-size:12px;color:rgba(0,0,0,.55);margin:0 0 8px 0}" +
+      ".inrcy-actus-content{font-size:14px;line-height:1.55;color:rgba(0,0,0,.84)}" +
+      "@media (max-width:600px){" +
+      ".inrcy-actus-row{flex-direction:column}" +
+      ".inrcy-actus-thumb{width:100%;height:180px;flex:0 0 auto}" +
+      "}" +
       "</style>";
 
     html += '<div class="inrcy-actus-wrap">';
@@ -107,7 +109,7 @@
     if (title) html += '<div class="inrcy-actus-title">' + escapeHtml(title) + "</div>";
 
     if (!articles || !articles.length) {
-      html += '<div style="color:#555;font-size:14px;">Aucune actu pour le moment.</div></div>';
+      html += '<div style="color:rgba(0,0,0,.7);font-size:14px;">Aucune actu pour le moment.</div></div>';
       container.innerHTML = html;
       return;
     }
@@ -122,21 +124,23 @@
       var dateTxt = a.created_at ? formatDate(a.created_at) : "";
 
       html += '<article class="inrcy-actus-card">';
+      html += '<div class="inrcy-actus-row">';
       if (img) {
-        html += '<img class="inrcy-actus-media" src="' + escapeHtml(img) + '" alt="">';
+        html += '<div class="inrcy-actus-thumb"><img src="' + escapeHtml(img) + '" alt=""></div>';
+      } else {
+        html += '<div class="inrcy-actus-thumb" aria-hidden="true"></div>';
       }
       html += '<div class="inrcy-actus-body">';
       html += '<h3 class="inrcy-actus-h">' + escapeHtml(t) + "</h3>";
       if (dateTxt) html += '<div class="inrcy-actus-meta">' + escapeHtml(dateTxt) + "</div>";
       html += '<div class="inrcy-actus-content">' + nl2brSafe(c) + "</div>";
-      html += "</div></article>";
+      html += "</div></div></article>";
     }
     html += "</div></div>";
 
     container.innerHTML = html;
   }
 
-  // --- main
   var containers = document.querySelectorAll("[data-inrcy-actus]");
   if (!containers || !containers.length) return;
 
@@ -150,18 +154,11 @@
         var limit = parseInt(container.getAttribute("data-limit") || "5", 10);
         var title = container.getAttribute("data-title") || "";
 
-        // Optional override
         var endpoint = (container.getAttribute("data-endpoint") || "").trim();
-        if (endpoint && endpoint.indexOf("http") !== 0) endpoint = ""; // safety
+        if (endpoint && endpoint.indexOf("http") !== 0) endpoint = "";
 
-        if (!domain) {
-          showError(container, "Widget iNrCy : domaine manquant (data-domain). ");
-          return;
-        }
-        if (!source) {
-          showError(container, "Widget iNrCy : source manquante (data-source). ");
-          return;
-        }
+        if (!domain) return showError(container, "Widget iNrCy : domaine manquant (data-domain).");
+        if (!source) return showError(container, "Widget iNrCy : source manquante (data-source).");
         if (!isFinite(limit) || limit <= 0) limit = 5;
 
         var url =
@@ -179,18 +176,11 @@
             return r.json();
           })
           .then(function (data) {
-            if (!data || data.ok !== true) {
-              throw new Error(data && data.error ? data.error : "Réponse invalide");
-            }
+            if (!data || data.ok !== true) throw new Error((data && data.error) || "Réponse invalide");
             render(container, title, data.articles || []);
           })
           .catch(function (err) {
-            showError(
-              container,
-              "Widget iNrCy : impossible de charger les actus (" +
-                escapeHtml(String(err && err.message ? err.message : err)) +
-                ")."
-            );
+            showError(container, "Widget iNrCy : impossible de charger les actus (" + escapeHtml(String(err && err.message ? err.message : err)) + ").");
           });
       } catch (e) {
         showError(container, "Widget iNrCy : erreur d'initialisation.");

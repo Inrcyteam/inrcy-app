@@ -2545,8 +2545,10 @@ const disconnectSiteWebGsc = useCallback(() => {
                 } catch {
                   // ignore
                 }
-                const scriptUrl = typeof window !== "undefined" ? `${window.location.origin}/widgets/inrcy-actus.js` : "/widgets/inrcy-actus.js";
-                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-limit=\"5\" data-title=\"Actualités\"></div>\n<script async src=\"${scriptUrl}\"></script>`;
+                const widgetV = process.env.NEXT_PUBLIC_WIDGET_VERSION || "1";
+                const scriptUrl = typeof window !== "undefined" ? `${window.location.origin}/widgets/inrcy-actus.js?v=${widgetV}` : `/widgets/inrcy-actus.js?v=${widgetV}`;
+                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-source=\"inrcy_site\" data-limit=\"5\" data-title=\"Actualités\"></div>
+<script async src=\"${scriptUrl}\"></script>`;
                 return (
                   <>
                     <textarea
@@ -2930,8 +2932,10 @@ const disconnectSiteWebGsc = useCallback(() => {
                 } catch {
                   // ignore
                 }
-                const scriptUrl = typeof window !== "undefined" ? `${window.location.origin}/widgets/inrcy-actus.js` : "/widgets/inrcy-actus.js";
-                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-limit=\"5\" data-title=\"Actualités\"></div>\n<script async src=\"${scriptUrl}\"></script>`;
+                const widgetV = process.env.NEXT_PUBLIC_WIDGET_VERSION || "1";
+                const scriptUrl = typeof window !== "undefined" ? `${window.location.origin}/widgets/inrcy-actus.js?v=${widgetV}` : `/widgets/inrcy-actus.js?v=${widgetV}`;
+                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-source=\"inrcy_site\" data-limit=\"5\" data-title=\"Actualités\"></div>
+<script async src=\"${scriptUrl}\"></script>`;
                 return (
                   <>
                     <textarea
