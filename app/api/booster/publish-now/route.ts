@@ -242,6 +242,11 @@ export async function POST(req: Request) {
             source: ch,
             title,
             content,
+            cta,
+            hashtags,
+            images: uploadedUrls,          // ✅ les URLs publiques des images
+            external_url: externalUrl,     // ✅ si tu veux (optionnel)
+            site_url: targetUrl || null,   // ✅ si tu veux (optionnel)
           });
 
           if (artErr) {
