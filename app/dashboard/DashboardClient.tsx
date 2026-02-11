@@ -2213,7 +2213,7 @@ const disconnectSiteWebGsc = useCallback(() => {
   type="button"
   onClick={() => router.push("/dashboard/mails")}
 >
-  Ouvrir iNr'Box
+  Ouvrir iNr'Send
 </button>
       </div>
     </div>
@@ -2357,7 +2357,7 @@ const disconnectSiteWebGsc = useCallback(() => {
             : panel === "abonnement"
             ? "Mon abonnement"
             : panel === "mails"
-            ? "Réglages iNr’Box"
+            ? "Réglages iNr’Send"
             : panel === "agenda"
             ? "Réglages Agenda"
             : panel === "site_inrcy"

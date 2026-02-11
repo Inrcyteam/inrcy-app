@@ -29,8 +29,6 @@ export async function GET(req: Request) {
       "profile",
       "email",
       "offline_access",
-      "Mail.Read",
-      "Mail.ReadWrite",
       "Mail.Send",
       "User.Read",
     ].join(" ")

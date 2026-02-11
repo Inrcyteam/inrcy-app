@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createSupabaseServer } from "@/lib/supabaseServer";
 import nodemailer from "nodemailer";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore - nodemailer exposes this internal helper and it's stable in practice
@@ -11,11 +12,18 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    const supabase = await createSupabaseServer();
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const formData = await req.formData();
     const accountId = String(formData.get("accountId") || "");
+    const sendItemId = String(formData.get("sendItemId") || "").trim();
+    const sendType = String(formData.get("type") || "mail").trim() || "mail";
     const to = String(formData.get("to") || "").trim();
     const subject = String(formData.get("subject") || "(sans objet)");
     const text = String(formData.get("text") || "");
+const html = String(formData.get("html") || "").trim();
 
     if (!accountId || !to) {
       return NextResponse.json({ error: "Missing accountId or to" }, { status: 400 });
@@ -103,6 +111,29 @@ export async function POST(req: Request) {
       await appendRawMessage(acc.imap, "sent", raw);
     } catch {
       // ignore
+    }
+
+    // --- iNr'Send history (Supabase) ---
+    const historyPayload = {
+      user_id: auth.user.id,
+      mail_account_id: accountId || null,
+      type: (sendType as any) || "mail",
+      status: "sent",
+      to_emails: to,
+      subject: subject || null,
+      body_text: text || null,
+      body_html: html || null,
+      provider: "imap",
+      provider_message_id: info?.messageId || null,
+      provider_thread_id: null,
+      sent_at: new Date().toISOString(),
+      error: null,
+    };
+
+    if (sendItemId) {
+      await supabase.from("send_items").update(historyPayload).eq("id", sendItemId);
+    } else {
+      await supabase.from("send_items").insert(historyPayload);
     }
 
     return NextResponse.json({ success: true, id: info.messageId });

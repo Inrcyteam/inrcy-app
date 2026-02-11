@@ -169,6 +169,8 @@ export async function POST(req: Request) {
   let html = "";
   let threadId = "";
   let accountId = "";
+  let sendItemId = "";
+  let sendType = "mail";
   let inReplyTo = "";
   let references = "";
   const attachments: Attachment[] = [];
@@ -177,6 +179,8 @@ export async function POST(req: Request) {
   if (ct.includes("multipart/form-data")) {
     const fd = await req.formData();
     accountId = String(fd.get("accountId") || "").trim();
+    sendItemId = String(fd.get("sendItemId") || "").trim();
+    sendType = String(fd.get("type") || "mail").trim() || "mail";
     to = String(fd.get("to") || "").trim();
     subject = String(fd.get("subject") || "").trim() || "(sans objet)";
     text = String(fd.get("text") || "");
@@ -196,6 +200,8 @@ export async function POST(req: Request) {
     }
   } else {
     const body = await req.json().catch(() => ({}));
+    sendItemId = String(body.sendItemId || "").trim();
+    sendType = String(body.type || "mail").trim() || "mail";
     to = String(body.to || "").trim();
     subject = String(body.subject || "").trim() || "(sans objet)";
     text = String(body.text || "");
@@ -295,6 +301,30 @@ export async function POST(req: Request) {
       { status: 502 }
     );
   }
+
+  // --- iNr'Send history (Supabase) ---
+  const historyPayload = {
+    user_id: auth.user.id,
+    mail_account_id: accountId || null,
+    type: (sendType as any) || "mail",
+    status: "sent",
+    to_emails: to,
+    subject: subject || null,
+    body_text: text || null,
+    body_html: html || null,
+    provider: "gmail",
+    provider_message_id: sendData?.id || null,
+    provider_thread_id: sendData?.threadId || null,
+    sent_at: new Date().toISOString(),
+    error: null,
+  };
+
+  if (sendItemId) {
+    await supabase.from("send_items").update(historyPayload).eq("id", sendItemId);
+  } else {
+    await supabase.from("send_items").insert(historyPayload);
+  }
+
 
   return NextResponse.json({
     ok: true,

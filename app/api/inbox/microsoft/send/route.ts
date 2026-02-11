@@ -58,6 +58,8 @@ export async function POST(req: Request) {
 
     const formData = await req.formData();
     const accountId = String(formData.get("accountId") || "");
+    const sendItemId = String(formData.get("sendItemId") || "").trim();
+    const sendType = String(formData.get("type") || "mail").trim() || "mail";
     const to = String(formData.get("to") || "").trim();
     const subject = String(formData.get("subject") || "(sans objet)");
     const text = String(formData.get("text") || "");
@@ -124,6 +126,29 @@ export async function POST(req: Request) {
     if (!graphRes.ok) {
       const details = await graphRes.text().catch(() => "");
       return NextResponse.json({ error: "Microsoft send failed", details }, { status: 500 });
+    }
+
+    // --- iNr'Send history (Supabase) ---
+    const historyPayload = {
+      user_id: auth.user.id,
+      mail_account_id: accountId || null,
+      type: (sendType as any) || "mail",
+      status: "sent",
+      to_emails: to,
+      subject: subject || null,
+      body_text: text || null,
+      body_html: null,
+      provider: "microsoft",
+      provider_message_id: null,
+      provider_thread_id: null,
+      sent_at: new Date().toISOString(),
+      error: null,
+    };
+
+    if (sendItemId) {
+      await supabase.from("send_items").update(historyPayload).eq("id", sendItemId);
+    } else {
+      await supabase.from("send_items").insert(historyPayload);
     }
 
     return NextResponse.json({ success: true });

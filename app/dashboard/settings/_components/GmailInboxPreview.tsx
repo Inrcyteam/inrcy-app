@@ -54,7 +54,7 @@ export default function GmailInboxPreview() {
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 900, color: "rgba(255,255,255,0.92)" }}>iNr’Box — Gmail</div>
+          <div style={{ fontSize: 15, fontWeight: 900, color: "rgba(255,255,255,0.92)" }}>iNr’Send — Gmail</div>
           <div style={{ marginTop: 4, fontSize: 13, color: "rgba(255,255,255,0.70)" }}>
             {email ? `Connecté : ${email}` : "Aucune boîte Gmail connectée"}
           </div>

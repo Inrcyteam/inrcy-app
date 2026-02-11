@@ -232,10 +232,10 @@ React.useEffect(() => {
         }}
       >
         <div style={{ fontSize: 16, fontWeight: 950, letterSpacing: "-0.2px", color: "rgba(255,255,255,0.95)" }}>
-          Réglages iNr’Box
+          Réglages iNr’Send
         </div>
         <div style={{ marginTop: 6, fontSize: 13, color: "rgba(255,255,255,0.72)" }}>
-          Connecte jusqu’à <b>4 boîtes mail</b> : <b>3</b> en OAuth (Gmail / Outlook) + <b>1</b> en IMAP.
+          Connecte jusqu’à <b>4 boîtes d’envoi</b> : <b>3</b> en OAuth (Gmail / Outlook) + <b>1</b> en IMAP.
         </div>
 
         <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.65)" }}>

@@ -1,3341 +1,1099 @@
 "use client";
 
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import styles from "./mails.module.css";
 import { useRouter, useSearchParams } from "next/navigation";
+import styles from "./mails.module.css";
 import SettingsDrawer from "../SettingsDrawer";
 import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
 import { createClient } from "@/lib/supabaseClient";
 
-type Folder = "inbox" | "important" | "sent" | "drafts" | "spam" | "trash";
-type Source = "Gmail" | "Microsoft" | "IMAP" | "Houzz";
-
-type MessageItem = {
-  id: string;
-  folder: Folder;
-  prevFolder?: Folder; // utile pour restaurer depuis Corbeille
-  from: string;
-  subject: string;
-  preview: string;
-  body: string;
-  source: Source;
-  dateLabel: string;
-  unread?: boolean;
-  // Gmail metadata (when source === 'Gmail')
-  gmailId?: string;
-  gmailThreadId?: string;
-  gmailDraftId?: string;
-  labelIds?: string[];
-  internalDate?: number;
-
-  // Microsoft metadata (when source === 'Microsoft')
-  microsoftAccountId?: string;
-  microsoftId?: string;
-  microsoftFlagged?: boolean;
-  microsoftIsRead?: boolean;
-  microsoftReceivedDateTime?: string | null;
-
-  // IMAP metadata (when source === 'IMAP')
-  imapAccountId?: string;
-  imapUid?: number;
-  imapFolder?: string;
-};
-
-type CrmContact = {
-  id: string;
-  last_name?: string | null;
-  first_name?: string | null;
-  company_name?: string | null;
-  email?: string | null;
-};
+type Folder = "mails" | "newsletters" | "factures" | "devis" | "drafts" | "deleted";
+type SendType = "mail" | "newsletter" | "facture" | "devis";
+type Status = "draft" | "sent" | "deleted" | "error";
 
 type MailAccount = {
   id: string;
-  provider: "gmail" | "microsoft" | string;
-  email_address?: string | null;
-  display_name?: string | null;
-  status?: string | null;
-  created_at?: string | null;
+  provider: "gmail" | "microsoft" | "imap";
+  email_address: string;
+  display_name: string | null;
+  status: string;
 };
 
+type SendItem = {
+  id: string;
+  mail_account_id: string | null;
+  type: SendType;
+  status: Status;
+  to_emails: string;
+  subject: string | null;
+  body_text: string | null;
+  body_html: string | null;
+  provider: string | null;
+  provider_message_id: string | null;
+  error: string | null;
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
-
-type MobilePane = "folders" | "cockpit" | "messages";
-
-type ViewMode = "list" | "action";
-
-const FOLDERS: { key: Folder; label: string }[] = [
-  { key: "inbox", label: "Réception" },
-  { key: "important", label: "Importants" }, // ✅ NOUVEAU
-  { key: "sent", label: "Envoyés" },
-  { key: "drafts", label: "Brouillons" },
-  { key: "spam", label: "Spam" },
-  { key: "trash", label: "Corbeille" },
-];
-
-
-const SOURCES: Source[] = ["Gmail", "Microsoft", "IMAP", "Houzz"];
-
-// --- Helpers ---
-function getMessageTs(m: MessageItem): number {
-  // Gmail gives internalDate (ms since epoch)
-  if (typeof m.internalDate === "number" && Number.isFinite(m.internalDate)) return m.internalDate;
-
-  // Microsoft Graph returns ISO date strings
-  if (m.microsoftReceivedDateTime) {
-    const t = Date.parse(m.microsoftReceivedDateTime);
-    if (Number.isFinite(t)) return t;
-  }
-
-  // Fallbacks
-  const t2 = Date.parse(m.dateLabel);
-  return Number.isFinite(t2) ? t2 : 0;
-}
-
-function sortByChronoDesc(items: MessageItem[]): MessageItem[] {
-  return [...items].sort((a, b) => getMessageTs(b) - getMessageTs(a));
-}
-
-function buildGmailBatches(uIds: string[], batchSize = 50): string[][] {
-  const cleaned = (uIds || []).filter(Boolean);
-  const batches: string[][] = [];
-  for (let i = 0; i < cleaned.length; i += batchSize) {
-    batches.push(cleaned.slice(i, i + batchSize));
-  }
-  return batches;
-}
-
-
-function formatListDate(m: MessageItem): string {
-  const ts = getMessageTs(m);
-  if (!ts) return m.dateLabel || "";
-
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return m.dateLabel || "";
-
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-
-  try {
-    return new Intl.DateTimeFormat(
-      "fr-FR",
-      sameDay
-        ? { hour: "2-digit", minute: "2-digit" }
-        : { day: "2-digit", month: "2-digit" }
-    ).format(d);
-  } catch {
-    // Fallback: keep existing label
-    return m.dateLabel || "";
+function folderLabel(f: Folder) {
+  switch (f) {
+    case "mails":
+      return "Mails";
+    case "newsletters":
+      return "Newsletters";
+    case "factures":
+      return "Factures";
+    case "devis":
+      return "Devis";
+    case "drafts":
+      return "Brouillons";
+    case "deleted":
+      return "Supprimés";
   }
 }
 
-function badgeClass(source: Source) {
-  if (source === "Gmail") return `${styles.badge} ${styles.badgeGmail}`;
-  if (source === "Microsoft") return `${styles.badge} ${styles.badgeMicrosoft}`;
-  if (source === "IMAP") return `${styles.badge} ${styles.badgeImap}`;
-  if (source === "Houzz") return `${styles.badge} ${styles.badgeHouzz}`;
-  return `${styles.badge} ${styles.badgeMail}`;
+function folderCountQuery(folder: Folder, item: SendItem) {
+  // client-side count (we also fetch server-side counts but keep this as a fallback)
+  if (folder === "drafts") return item.status === "draft";
+  if (folder === "deleted") return item.status === "deleted";
+  if (folder === "mails") return item.status === "sent" && item.type === "mail";
+  if (folder === "newsletters") return item.status === "sent" && item.type === "newsletter";
+  if (folder === "factures") return item.status === "sent" && item.type === "facture";
+  if (folder === "devis") return item.status === "sent" && item.type === "devis";
+  return false;
 }
 
-function useIsMobile(breakpointPx = 980) {
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    // Mobile UI = small viewport + touch device (coarse pointer / no hover).
-    // This prevents "small desktop windows" from being treated like mobile.
-    const mqCoarse = window.matchMedia(`(max-width: ${breakpointPx}px) and (pointer: coarse)`);
-    const mqNoHover = window.matchMedia(`(max-width: ${breakpointPx}px) and (hover: none)`);
-
-    const compute = () => setIsMobile(mqCoarse.matches || mqNoHover.matches);
-
-    compute();
-    mqCoarse.addEventListener?.("change", compute);
-    mqNoHover.addEventListener?.("change", compute);
-
-    return () => {
-      mqCoarse.removeEventListener?.("change", compute);
-      mqNoHover.removeEventListener?.("change", compute);
-    };
-  }, [breakpointPx]);
-
-  return isMobile;
-}
-
-function fmtFolderLabel(f: Folder) {
-  if (f === "inbox") return "Réception";
-  if (f === "important") return "Importants";
-  if (f === "sent") return "Envoyés";
-  if (f === "drafts") return "Brouillons";
-  if (f === "spam") return "Spam";
-  return "Corbeille";
-}
-
-function nowLabel() {
-  return "Aujourd’hui";
-}
-
-
-function cleanInjectedEmailHtml(html: string) {
-  // ✅ Nettoie les "blocs vides" en tête (cas fréquents sur newsletters Gmail)
-  // - <br>, <div><br></div>, <p>&nbsp;</p>, etc.
-  let out = html || "";
-
-  // Supprime les <br> en tête
-  out = out.replace(/^\s*(?:<br\s*\/?>\s*)+/gi, "");
-
-  // Supprime une suite de DIV/P vides en tête
-  const emptyBlock =
-    "(?:<(?:div|p|span)[^>]*>\\s*(?:&nbsp;|\\s|<br\\s*\\/?>)*\\s*<\\/(?:div|p|span)>\\s*)+";
-  out = out.replace(new RegExp("^\\s*" + emptyBlock, "gi"), "");
-
-  // Parfois Gmail ajoute des commentaires/espaces (sans flag 's' pour compat ES2017)
-  out = out.replace(/^\s*(?:<!--[\s\S]*?-->\s*)+/gi, "");
-
-  return out.trimStart();
+function pill(provider?: string | null) {
+  const p = (provider || "").toLowerCase();
+  if (p === "gmail") return { label: "Gmail", cls: styles.badgeGmail };
+  if (p === "microsoft") return { label: "Microsoft", cls: styles.badgeMicrosoft };
+  if (p === "imap") return { label: "IMAP", cls: styles.badgeImap };
+  return { label: provider || "Mail", cls: styles.badgeDefault };
 }
 
 export default function MailboxClient() {
-  const isMobile = useIsMobile(980);
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
 
-  // Bucket Supabase Storage où on dépose les PDF (devis/factures) à joindre dans iNrbox
-  const ATTACH_BUCKET = "inrbox_attachments";
-
-  const [folder, setFolder] = useState<Folder>("inbox");
-  const [selectedId, setSelectedId] = useState<string>("1");
-
-  // Mobile: afficher la recherche uniquement quand on clique sur la loupe
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-
-  // Compose: dropdown CRM multi-sélection
-  const [crmPickerOpen, setCrmPickerOpen] = useState(false);
-  const [crmPickerQuery, setCrmPickerQuery] = useState("");
-
-  // ✅ Multi-sélection (colonne Messages)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-
-  const [query, setQuery] = useState("");
-  const [sourceFilter, setSourceFilter] = useState<Source | "ALL">("ALL");
-  const [unreadOnly, setUnreadOnly] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
-
-  const [crmAddedIds, setCrmAddedIds] = useState<Set<string>>(() => new Set());
-  const [replyOpen, setReplyOpen] = useState(false);
-  // Pré-remplissage reply (évite une string multi-ligne invalide en TS)
-  const [replyBody, setReplyBody] = useState("Bonjour,\n\n");
-  const [replyFiles, setReplyFiles] = useState<File[]>([]);
-
-  const [mobilePane, setMobilePane] = useState<MobilePane>("messages");
-  const [navOpen, setNavOpen] = useState(false);
-  const [actionSheetOpen, setActionSheetOpen] = useState(false);
-  const [listActionSheetOpen, setListActionSheetOpen] = useState(false);
-  const [listActionMessageId, setListActionMessageId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [selectedHtml, setSelectedHtml] = useState<string | null>(null);
-
-  const splitName = (full: string) => {
-    const t = (full || "").trim();
-    if (!t) return { first_name: "", last_name: "" };
-    const parts = t.split(/\s+/).filter(Boolean);
-    if (parts.length === 1) return { first_name: "", last_name: parts[0] };
-    return { first_name: parts.slice(0, -1).join(" "), last_name: parts.slice(-1).join(" ") };
-  };
-
-  async function addToCrm(m: MessageItem) {
-    const { name, email } = getContactPrefill(m);
-    if (!email) {
-      notify("Impossible : aucun email détecté.");
-      return;
-    }
-    const { first_name, last_name } = splitName(name);
-
-    try {
-      const r = await fetch("/api/crm/contacts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          first_name,
-          last_name,
-          email,
-          phone: "",
-          address: "",
-          category: "particulier",
-          contact_type: "prospect",
-        }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.error || "Impossible d'ajouter au CRM.");
-      setCrmAddedIds((prev) => new Set(prev).add(m.id));
-      notify("Ajouté au CRM");
-    } catch (e: any) {
-      notify(e?.message || "Erreur");
-    }
-  }
-
-  const getContactPrefill = (m: { from: string }) => {
-    // Si un jour tu as "Jean <jean@mail.com>", on récupère l'email.
-    const emailMatch = m.from.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-    const email = emailMatch?.[0] ?? "";
-    // Nom = tout ce qui est avant l'email si possible
-    const name = email ? m.from.replace(email, "").replace(/[<>]/g, "").trim() : m.from.trim();
-    return { name, email };
-  };
-
-  // ✅ Toast
-  const [toast, setToast] = useState<{ text: string } | null>(null);
-  const notify = (text: string) => {
-    setToast({ text });
-    window.setTimeout(() => setToast(null), 2200);
-  };
-
-  // ✅ Modals
-  const [composeOpen, setComposeOpen] = useState(false);
+  const [mobileFoldersOpen, setMobileFoldersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [folder, setFolder] = useState<Folder>("mails");
+  const [items, setItems] = useState<SendItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Connected mail accounts (Gmail/Microsoft + IMAP)
   const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
 
+  // Compose
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [composeType, setComposeType] = useState<SendType>("mail");
+  const [to, setTo] = useState("");
+  const [subject, setSubject] = useState("");
+  const [text, setText] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [sendBusy, setSendBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
-  
-// ===========================
-// Gmail sync (folders + realtime)
-// ===========================
-const [gmailConnected, setGmailConnected] = useState(false);
-const gmailSseRef = useRef<EventSource | null>(null);
-const gmailPollRef = useRef<number | null>(null);
-
-const isGmailMessage = (m: MessageItem | undefined | null) =>
-  !!m && m.source === "Gmail" && m.id.startsWith("gmail_");
-
-const rawGmailIdFromUiId = (uiId: string) => uiId.replace(/^gmail_/, "");
-
-// Microsoft id format: ms_<accountId>__<messageId>
-const isMicrosoftUiId = (uiId: string) => uiId.startsWith("ms_") && uiId.includes("__");
-const parseMicrosoftUiId = (uiId: string) => {
-  const raw = uiId.replace(/^ms_/, "");
-  const [accountId, messageId] = raw.split("__");
-  return { accountId, messageId };
-};
-
-const matchesFolder = (m: MessageItem, f: Folder) => {
-  // Gmail: Important is a label, not a separate Gmail folder.
-  if (m.source === "Gmail") {
-    if (f === "important") return m.folder === "inbox" && (m.labelIds || []).includes("IMPORTANT");
-    return m.folder === f;
-  }
-  // Other sources: local folders
-  return m.folder === f;
-};
-
-const folderCount = (f: Folder) => messages.filter((m) => matchesFolder(m, f)).length;
-
-// Drawer badge counts (respect source filter for a coherent UX)
-const counts = useMemo(() => {
-  const pool = messages.filter((m) => (sourceFilter === "ALL" ? true : m.source === sourceFilter));
-  const countFor = (f: Folder) => pool.filter((m) => matchesFolder(m, f)).length;
-
-  return {
-    inbox: countFor("inbox"),
-    important: countFor("important"),
-    sent: countFor("sent"),
-    drafts: countFor("drafts"),
-    spam: countFor("spam"),
-    trash: countFor("trash"),
-  } as Record<Folder, number>;
-}, [messages, sourceFilter]);
-
-const fetchGmailFolder = async (f: Folder) => {
-  // Important is derived from Inbox + IMPORTANT label
-  const actualFolder: Folder = f === "important" ? "inbox" : f;
-  const res = await fetch(`/api/inbox/gmail/list?folder=${actualFolder}`);
-  if (!res.ok) {
-    setGmailConnected(false);
-    return [];
-  }
-  setGmailConnected(true);
-  const data = await res.json();
-
-  const items: MessageItem[] = (data.items || []).map((m: any) => {
-    const labelIds: string[] = Array.isArray(m.labelIds) ? m.labelIds : [];
-    const unread = labelIds.includes("UNREAD");
-
-    const internalDate = m.internalDate ? Number(m.internalDate) : undefined;
-
-    return {
-      id: `gmail_${m.id}`,
-      folder: actualFolder,
-      from: m.from || "",
-      subject: m.subject || "(Sans objet)",
-      preview: m.snippet || "",
-      body: m.bodyPreview || m.snippet || "",
-      source: "Gmail",
-      dateLabel: m.dateLabel || (m.date ? "Aujourd’hui" : "—"),
-      unread,
-      gmailId: m.id,
-      gmailThreadId: m.threadId,
-      gmailDraftId: m.draftId,
-      labelIds,
-      internalDate,
-    };
-  });
-
-  return items;
-};
-
-// ===========================
-// Microsoft sync (folders)
-// ===========================
-const [microsoftConnected, setMicrosoftConnected] = useState(false);
-
-const toDateLabel = (iso?: string | null) => {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  return sameDay ? nowLabel() : d.toLocaleDateString();
-};
-
-const fetchMicrosoftFolder = async (f: Folder) => {
-  const res = await fetch(`/api/inbox/microsoft/list?folder=${f}`);
-  if (!res.ok) {
-    setMicrosoftConnected(false);
-    return [];
-  }
-  setMicrosoftConnected(true);
-  const data = await res.json().catch(() => ({}));
-
-  const items: MessageItem[] = (data.items || []).map((m: any) => {
-    const uiId = `ms_${m.accountId}__${m.id}`;
-    return {
-      id: uiId,
-      folder: f,
-      from: m.from || "",
-      subject: m.subject || "(Sans objet)",
-      preview: m.bodyPreview || "",
-      body: m.bodyPreview || "",
-      source: "Microsoft",
-      dateLabel: toDateLabel(m.receivedDateTime),
-      unread: !m.isRead,
-      microsoftAccountId: m.accountId,
-      microsoftId: m.id,
-      microsoftFlagged: !!m.flagged,
-      microsoftIsRead: !!m.isRead,
-      microsoftReceivedDateTime: m.receivedDateTime ?? null,
-    };
-  });
-
-  return items;
-};
-
-// ===========================
-// IMAP sync (direct, no DB storage for mail content)
-// ===========================
-const [imapConnected, setImapConnected] = useState(false);
-
-const findImapAccountId = () => {
-  const acc = mailAccounts.find((a) => String(a.provider || "").toLowerCase() === "imap");
-  return acc?.id ? String(acc.id) : null;
-};
-
-const fetchImapFolder = async (f: Folder) => {
-  const accountId = findImapAccountId();
-  if (!accountId) {
-    setImapConnected(false);
-    return [] as MessageItem[];
-  }
-
-  const res = await fetch(`/api/inbox/imap/list?accountId=${encodeURIComponent(accountId)}&folder=${encodeURIComponent(f)}`);
-  if (!res.ok) {
-    setImapConnected(false);
-    return [] as MessageItem[];
-  }
-  setImapConnected(true);
-  const data = await res.json().catch(() => ({}));
-
-  const items: MessageItem[] = (data.items || []).map((m: any) => {
-    const uid = Number(m.uid);
-    const uiId = `imap_${accountId}__${uid}`;
-    return {
-      id: uiId,
-      folder: f,
-      from: m.from || "",
-      subject: m.subject || "(Sans objet)",
-      preview: m.preview || "",
-      body: m.preview || "",
-      source: "IMAP",
-      dateLabel: toDateLabel(m.date),
-      unread: !!m.unread,
-      imapAccountId: accountId,
-      imapUid: uid,
-      imapFolder: m.folder || String(f),
-    };
-  });
-
-  return items;
-};
-
-const upsertImapFolder = (f: Folder, msgItems: MessageItem[]) => {
-  setMessages((prev) => {
-    const kept = prev.filter((x) => !(x.source === "IMAP" && x.folder === f));
-    return sortByChronoDesc([...msgItems, ...kept]);
-  });
-};
-
-const refreshImap = async (hintFolder?: Folder) => {
-  const target = hintFolder ?? folder;
-  try {
-    const items = await fetchImapFolder(target);
-    upsertImapFolder(target, items);
-  } catch {
-    setImapConnected(false);
-  }
-};
-
-const upsertMicrosoftMessages = (folderKey: Folder, msItems: MessageItem[]) => {
-  setMessages((prev) => {
-    const kept = prev.filter((x) => !(x.source === "Microsoft" && x.folder === folderKey));
-    return sortByChronoDesc([...msItems, ...kept]);
-  });
-};
-
-const refreshMicrosoft = async (hintFolder?: Folder) => {
-  try {
-    const target = hintFolder ?? folder;
-    const items = await fetchMicrosoftFolder(target);
-    upsertMicrosoftMessages(target, items);
-  } catch {
-    setMicrosoftConnected(false);
-  }
-};
-
-const upsertGmailMessages = (folderKey: Folder, gmailItems: MessageItem[]) => {
-  // Remove existing Gmail items for the target actual folder (important => inbox)
-  const actualFolder: Folder = folderKey === "important" ? "inbox" : folderKey;
-
-  setMessages((prev) => {
-    const kept = prev.filter((x) => !(x.source === "Gmail" && x.folder === actualFolder));
-    // Inject gmail items at the top
-    return sortByChronoDesc([...gmailItems, ...kept]);
-  });
-};
-
-const refreshGmail = async (hintFolder?: Folder) => {
-  try {
-    // Always refresh inbox when viewing important to keep label-based view accurate
-    const mustInbox = hintFolder === "important" || folder === "important" || hintFolder === "inbox" || folder === "inbox";
-    if (mustInbox) {
-      const inboxItems = await fetchGmailFolder("inbox");
-      upsertGmailMessages("inbox", inboxItems);
-    }
-
-    const target = hintFolder ?? folder;
-    if (target !== "inbox" && target !== "important") {
-      const items = await fetchGmailFolder(target);
-      upsertGmailMessages(target, items);
-    }
-  } catch {
-    // keep UI stable
-    setGmailConnected(false);
-  }
-};
-
-// initial load + refresh on folder change
-useEffect(() => {
-  refreshGmail(folder);
-  refreshMicrosoft(folder);
-  refreshImap(folder);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [folder]);
-
-// realtime: SSE + polling fallback
-useEffect(() => {
-  // Close previous
-  gmailSseRef.current?.close();
-  if (gmailPollRef.current) {
-    window.clearInterval(gmailPollRef.current);
-    gmailPollRef.current = null;
-  }
-
-  // Only if Gmail is connected (we'll find out quickly)
-  // We still try once: if unauthorized, it will flip gmailConnected to false.
-  let stopped = false;
-
-  const start = async () => {
-    await refreshGmail(folder);
-    if (stopped) return;
-
-    // Try SSE
-    try {
-      const es = new EventSource(`/api/inbox/gmail/stream?folder=${folder === "important" ? "inbox" : folder}`);
-      gmailSseRef.current = es;
-
-      es.onmessage = () => {
-        // Refresh inbox for important view too
-        refreshGmail(folder);
-      };
-
-      es.onerror = () => {
-        // fallback to polling
-        try {
-          es.close();
-        } catch {}
-        gmailSseRef.current = null;
-        if (!gmailPollRef.current) {
-          gmailPollRef.current = window.setInterval(() => refreshGmail(folder), 5000) as any;
-        }
-      };
-    } catch {
-      // fallback to polling
-      if (!gmailPollRef.current) {
-        gmailPollRef.current = window.setInterval(() => refreshGmail(folder), 5000) as any;
-      }
-    }
+  // CRM selection (compose)
+  type CrmContact = {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    category: "particulier" | "professionnel" | "collectivite_publique" | null;
+    contact_type: "client" | "prospect" | "fournisseur" | "partenaire" | "autre" | null;
+    important: boolean;
   };
 
-
-
-  start();
-
-  return () => {
-    stopped = true;
-    gmailSseRef.current?.close();
-    gmailSseRef.current = null;
-    if (gmailPollRef.current) {
-      window.clearInterval(gmailPollRef.current);
-      gmailPollRef.current = null;
-    }
-  };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [folder]);
-
-  const selected = messages.find((m) => m.id === selectedId);
-  const listSheetMessage = listActionMessageId ? messages.find((m) => m.id === listActionMessageId) : null;
-  const isInCrm = selected ? crmAddedIds.has(selected.id) : false;
-
-  // ✅ Helpers
-
-  const longPressTimerRef = useRef<number | null>(null);
-  const longPressTriggeredRef = useRef(false);
-
-  const clearSelection = () => setSelectedIds(new Set());
-
-  const isSelected = (id: string) => selectedIds.has(id);
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const selectAllVisible = (ids: string[]) => setSelectedIds(new Set(ids));
-
-  const computeNextSelectionAfterRemove = (removingIds: string[]) => {
-    const remaining = messages
-      .filter((m) => !removingIds.includes(m.id))
-      .filter((m) => matchesFolder(m, folder))
-      .filter((m) => (unreadOnly ? !!m.unread : true))
-      .filter((m) => (sourceFilter === "ALL" ? true : m.source === sourceFilter))
-      .filter((m) => {
-        const q = query.trim().toLowerCase();
-        if (!q) return true;
-        const hay = `${m.from} ${m.subject} ${m.preview} ${m.body}`.toLowerCase();
-        return hay.includes(q);
-      });
-
-    return remaining[0]?.id ?? "";
-  };
-
-  const moveMessage = (id: string, target: Folder, opts?: { rememberPrev?: boolean }) => {
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== id) return m;
-        const rememberPrev = opts?.rememberPrev ?? false;
-        const prevFolder = rememberPrev ? m.folder : m.prevFolder;
-        return { ...m, folder: target, prevFolder };
-      })
-    );
-  };
-
-  const moveMany = (ids: string[], target: Folder, opts?: { rememberPrev?: boolean }) => {
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!ids.includes(m.id)) return m;
-        const rememberPrev = opts?.rememberPrev ?? false;
-        const prevFolder = rememberPrev ? m.folder : m.prevFolder;
-        return { ...m, folder: target, prevFolder };
-      })
-    );
-  };
-
-  const hardDeleteMany = (ids: string[]) => {
-    setMessages((prev) => prev.filter((m) => !ids.includes(m.id)));
-  };
-
-
-const markLegitMany = async (ids: string[]) => {
-  const gmailUiIds: string[] = [];
-  const msBatches = new Map<string, string[]>();
-  const localIds: string[] = [];
-
-  ids.forEach((id) => {
-    const m = messages.find((x) => x.id === id);
-    if (m?.source === "Gmail" && id.startsWith("gmail_")) {
-      gmailUiIds.push(id);
-      return;
-    }
-    if (m?.source === "Microsoft" && isMicrosoftUiId(id)) {
-      const p = parseMicrosoftUiId(id);
-      if (p.accountId && p.messageId) {
-        msBatches.set(p.accountId, [...(msBatches.get(p.accountId) || []), p.messageId]);
-        return;
-      }
-    }
-    localIds.push(id);
-  });
-
-  if (localIds.length) moveMany(localIds, "inbox");
-
-  if (gmailUiIds.length) {
-    // optimistic move
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!ids.includes(m.id)) return m;
-        if (m.source !== "Gmail") return m;
-        return { ...m, folder: "inbox" };
-      })
-    );
-    await gmailModify(gmailUiIds, "unspam");
-    await refreshGmail("spam");
-    await refreshGmail("inbox");
-  }
-
-  if (msBatches.size) {
-    // optimistic move
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!ids.includes(m.id)) return m;
-        if (m.source !== "Microsoft") return m;
-        return { ...m, folder: "inbox" };
-      })
-    );
-    await microsoftModify(
-      Array.from(msBatches.entries()).map(([accountId, messageIds]) => ({
-        accountId,
-        ids: messageIds,
-        action: "unspam",
-      }))
-    );
-    await refreshMicrosoft("spam");
-    await refreshMicrosoft("inbox");
-  }
-};
-
-
-const restoreManyFromTrash = async (ids: string[]) => {
-  const gmailUiIds: string[] = [];
-  const msBatches = new Map<string, string[]>();
-  const localIds: string[] = [];
-
-  ids.forEach((id) => {
-    const m = messages.find((x) => x.id === id);
-    if (m?.source === "Gmail" && id.startsWith("gmail_")) {
-      gmailUiIds.push(id);
-      return;
-    }
-    if (m?.source === "Microsoft" && isMicrosoftUiId(id)) {
-      const p = parseMicrosoftUiId(id);
-      if (p.accountId && p.messageId) {
-        msBatches.set(p.accountId, [...(msBatches.get(p.accountId) || []), p.messageId]);
-        return;
-      }
-    }
-    localIds.push(id);
-  });
-
-  // Local restore
-  if (localIds.length) {
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!localIds.includes(m.id)) return m;
-        const target: Folder = m.prevFolder && m.prevFolder !== "trash" ? m.prevFolder : "inbox";
-        return { ...m, folder: target, prevFolder: undefined };
-      })
-    );
-  }
-
-  // Gmail restore
-  if (gmailUiIds.length) {
-    // optimistic move
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!ids.includes(m.id)) return m;
-        if (m.source !== "Gmail") return m;
-        return { ...m, folder: "inbox" };
-      })
-    );
-    await gmailModify(gmailUiIds, "untrash");
-    await refreshGmail("trash");
-    await refreshGmail("inbox");
-  }
-
-  if (msBatches.size) {
-    // optimistic restore to inbox (Graph move)
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!ids.includes(m.id)) return m;
-        if (m.source !== "Microsoft") return m;
-        return { ...m, folder: "inbox" };
-      })
-    );
-    await microsoftModify(
-      Array.from(msBatches.entries()).map(([accountId, messageIds]) => ({
-        accountId,
-        ids: messageIds,
-        action: "untrash",
-      }))
-    );
-    await refreshMicrosoft("trash");
-    await refreshMicrosoft("inbox");
-  }
-};
-
-
-const emptyTrash = async () => {
-  const trashIds = messages.filter((m) => matchesFolder(m, "trash")).map((m) => m.id);
-  if (!trashIds.length) return notify("Corbeille déjà vide");
-
-  // Gmail: empty trash for Gmail items
-  const gmailTrashRawIds = messages
-    .filter((m) => m.source === "Gmail" && m.folder === "trash")
-    .map((m) => rawGmailIdFromUiId(m.id));
-
-  const msTrashPresent = messages.some((m) => m.source === "Microsoft" && m.folder === "trash");
-
-  try {
-    if (gmailTrashRawIds.length && gmailConnected) {
-      const r = await fetch("/api/inbox/gmail/emptyTrash", { method: "POST" });
-      if (!r.ok) throw new Error("Impossible de vider la corbeille Gmail");
-    }
-
-    if (msTrashPresent && microsoftConnected) {
-      const r = await fetch("/api/inbox/microsoft/emptyTrash", { method: "POST" });
-      if (!r.ok) throw new Error("Impossible de vider la corbeille Outlook");
-    }
-
-    // Local remove of all trash items (Gmail + others)
-    hardDeleteMany(trashIds);
-    notify("Corbeille vidée");
-    clearSelection();
-    if (folder === "trash") {
-      setSelectedId(computeNextSelectionAfterRemove(trashIds));
-    }
-  } catch (e: any) {
-    notify(e?.message || "Erreur : vidage corbeille");
-  } finally {
-    // Refresh gmail trash/inbox after emptying
-    refreshGmail("trash");
-    refreshGmail("inbox");
-    refreshMicrosoft("trash");
-    refreshMicrosoft("inbox");
-  }
-};
-
-
-const gmailModify = async (uiIds: string[], action: string) => {
-  const batches = buildGmailBatches(uiIds);
-  if (!batches.length) return;
-
-  const r = await fetch("/api/inbox/gmail/modify", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, batches }),
-  });
-
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const msg =
-      j?.gmailError?.error?.message ||
-      j?.details?.error?.message ||
-      j?.error ||
-      "Action Gmail impossible";
-    throw new Error(msg);
-  }
-};
-
-const microsoftModify = async (batches: Array<{ accountId: string; ids: string[]; action: string; moveTo?: string }>) => {
-  const r = await fetch("/api/inbox/microsoft/modify", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ batches }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const msg = j?.error || "Action Outlook impossible";
-    throw new Error(msg);
-  }
-};
-
-const makeImportantMany = async (ids: string[]) => {
-  const gmailUiIds: string[] = [];
-  const msBatches = new Map<string, string[]>();
-  const localIds: string[] = [];
-  ids.forEach((id) => {
-    const m = messages.find((x) => x.id === id);
-    if (m?.source === "Gmail" && id.startsWith("gmail_")) {
-      gmailUiIds.push(id);
-      return;
-    }
-    if (m?.source === "Microsoft" && isMicrosoftUiId(id)) {
-      const p = parseMicrosoftUiId(id);
-      if (p.accountId && p.messageId) {
-        msBatches.set(p.accountId, [...(msBatches.get(p.accountId) || []), p.messageId]);
-        return;
-      }
-    }
-    localIds.push(id);
-  });
-
-  // Local sources keep local behavior
-  if (localIds.length) moveMany(localIds, "important", { rememberPrev: true });
-
-  if (gmailUiIds.length) {
-    // optimistic local label update
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!ids.includes(m.id)) return m;
-        if (m.source !== "Gmail") return m;
-        const labels = new Set(m.labelIds || []);
-        labels.add("IMPORTANT");
-        return { ...m, labelIds: Array.from(labels) };
-      })
-    );
-    await gmailModify(gmailUiIds, "important");
-    await refreshGmail("inbox");
-  }
-
-  if (msBatches.size) {
-    // optimistic
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!ids.includes(m.id)) return m;
-        if (m.source !== "Microsoft") return m;
-        return { ...m, microsoftFlagged: true };
-      })
-    );
-    await microsoftModify(
-      Array.from(msBatches.entries()).map(([accountId, messageIds]) => ({
-        accountId,
-        ids: messageIds,
-        action: "important",
-      }))
-    );
-    await refreshMicrosoft("important");
-    await refreshMicrosoft("inbox");
-  }
-};
-
-
-const unImportantMany = async (ids: string[]) => {
-  const gmailUiIds: string[] = [];
-  const msBatches = new Map<string, string[]>();
-  const localIds: string[] = [];
-  ids.forEach((id) => {
-    const m = messages.find((x) => x.id === id);
-    if (m?.source === "Gmail" && id.startsWith("gmail_")) {
-      gmailUiIds.push(id);
-      return;
-    }
-    if (m?.source === "Microsoft" && isMicrosoftUiId(id)) {
-      const p = parseMicrosoftUiId(id);
-      if (p.accountId && p.messageId) {
-        msBatches.set(p.accountId, [...(msBatches.get(p.accountId) || []), p.messageId]);
-        return;
-      }
-    }
-    localIds.push(id);
-  });
-
-  // Local: Important -> return prevFolder if possible, else inbox
-  if (localIds.length) {
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!localIds.includes(m.id)) return m;
-        const back: Folder = m.prevFolder && m.prevFolder !== "important" ? m.prevFolder : "inbox";
-        return { ...m, folder: back, prevFolder: undefined };
-      })
-    );
-  }
-
-  if (gmailUiIds.length) {
-    // optimistic local label update
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!ids.includes(m.id)) return m;
-        if (m.source !== "Gmail") return m;
-        const labels = new Set(m.labelIds || []);
-        labels.delete("IMPORTANT");
-        return { ...m, labelIds: Array.from(labels) };
-      })
-    );
-    await gmailModify(gmailUiIds, "unimportant");
-    await refreshGmail("inbox");
-  }
-
-  if (msBatches.size) {
-    // optimistic
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!ids.includes(m.id)) return m;
-        if (m.source !== "Microsoft") return m;
-        return { ...m, microsoftFlagged: false };
-      })
-    );
-    await microsoftModify(
-      Array.from(msBatches.entries()).map(([accountId, messageIds]) => ({
-        accountId,
-        ids: messageIds,
-        action: "unimportant",
-      }))
-    );
-    await refreshMicrosoft("important");
-    await refreshMicrosoft("inbox");
-  }
-};
-
-  const removeMessageFromView = (ids: string[]) => {
-    if (ids.includes(selectedId)) {
-      setSelectedId(computeNextSelectionAfterRemove(ids));
-    }
-  };
-
-  // ✅ Liste filtrée (par dossier)
-  const filteredMessages = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return messages.filter((m) => {
-      if (!matchesFolder(m, folder)) return false;
-      if (unreadOnly && !m.unread) return false;
-      if (sourceFilter !== "ALL" && m.source !== sourceFilter) return false;
-
-      if (!q) return true;
-      const hay = `${m.from} ${m.subject} ${m.preview} ${m.body}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [messages, folder, query, sourceFilter, unreadOnly]);
-
-  // Si le mail sélectionné n'est plus visible, on prend le 1er
-  useEffect(() => {
-    if (!filteredMessages.length) return;
-    const stillThere = filteredMessages.some((m) => m.id === selectedId);
-    if (!stillThere) setSelectedId(filteredMessages[0].id);
-  }, [filteredMessages, selectedId]);
-
-  // Quand on change de dossier, on vide la multi-sélection
-  useEffect(() => {
-    clearSelection();
-  }, [folder]);
-
-
-const onSelectMessage = (id: string) => {
-  setSelectedId(id);
-  setSelectedIds(new Set([id]));
-
-  setMessages((prev) => {
-    const msg = prev.find((x) => x.id === id);
-
-    // mark read locally
-    const next = prev.map((x) => (x.id === id ? { ...x, unread: false } : x));
-
-    // fetch html gmail + mark read on Gmail
-    if (msg?.source === "Gmail" && id.startsWith("gmail_")) {
-      setSelectedHtml(null);
-
-      // mark as read on Gmail (best effort)
-      const rawId = rawGmailIdFromUiId(id);
-      gmailModify([rawId], "read").catch(() => {});
-
-      fetch(`/api/inbox/gmail/message?id=${encodeURIComponent(rawId)}`)
-        .then((r) => r.json())
-        .then((d) => setSelectedHtml(d?.html ? cleanInjectedEmailHtml(d.html) : null))
-        .catch(() => setSelectedHtml(null));
-    }
-
-    // Outlook (Microsoft Graph)
-    if (msg?.source === "Microsoft" && isMicrosoftUiId(id)) {
-      setSelectedHtml(null);
-      const p = parseMicrosoftUiId(id);
-
-      // mark as read (best effort)
-      if (p.accountId && p.messageId) {
-        microsoftModify([{ accountId: p.accountId, ids: [p.messageId], action: "read" }]).catch(() => {});
-        fetch(
-          `/api/inbox/microsoft/message?accountId=${encodeURIComponent(p.accountId)}&id=${encodeURIComponent(p.messageId)}`
-        )
-          .then((r) => r.json())
-          .then((d) => setSelectedHtml(d?.html ? cleanInjectedEmailHtml(d.html) : null))
-          .catch(() => setSelectedHtml(null));
-      }
-    }
-
-    // IMAP (live)
-    if (msg?.source === "IMAP" && msg.imapAccountId && typeof msg.imapUid === "number") {
-      setSelectedHtml(null);
-      const accId = msg.imapAccountId;
-      const uid = String(msg.imapUid);
-      const f = msg.imapFolder || String(msg.folder);
-      fetch(
-        `/api/inbox/imap/message?accountId=${encodeURIComponent(accId)}&uid=${encodeURIComponent(uid)}&folder=${encodeURIComponent(
-          f
-        )}`
-      )
-        .then((r) => r.json())
-        .then((d) => setSelectedHtml(d?.html ? cleanInjectedEmailHtml(d.html) : null))
-        .catch(() => setSelectedHtml(null));
-    }
-
-    if (msg?.source !== "Gmail" && msg?.source !== "Microsoft" && msg?.source !== "IMAP") {
-      setSelectedHtml(null);
-    }
-
-    return next;
-  });
-};
-
-  const openAction = (id: string) => {
-    onSelectMessage(id);
-    setViewMode("action");
-    if (isMobile) setMobilePane("cockpit");
-  };
-
-  const closeAction = () => {
-    setViewMode("list");
-    if (isMobile) setMobilePane("messages");
-  };
-
-  // ESC modals
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setReplyOpen(false);
-        setComposeOpen(false);
-        setSettingsOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  const titleByFolder: Record<Folder, string> = {
-    inbox: "Messages",
-    important: "Importants",
-    sent: "Envoyés",
-    drafts: "Brouillons",
-    spam: "Indésirables",
-    trash: "Corbeille",
-  };
-
-  const showFolders = viewMode === "list" && !isMobile;
-  const showCockpit = viewMode === "action";
-  const showMessages = viewMode === "list";
-
-  // Mobile: close overlays when leaving mobile layout
-  useEffect(() => {
-    if (!isMobile) {
-      setNavOpen(false);
-      setActionSheetOpen(false);
-    }
-  }, [isMobile]);
-
-  // ✅ Compose state (local)
-  const [composeTo, setComposeTo] = useState("");
-
-  // --- CRM: import d'un contact dans le compose mail
   const [crmContacts, setCrmContacts] = useState<CrmContact[]>([]);
   const [crmLoading, setCrmLoading] = useState(false);
+  const [crmFilter, setCrmFilter] = useState("");
   const [crmError, setCrmError] = useState<string | null>(null);
-  const [selectedCrmContactIds, setSelectedCrmContactIds] = useState<string[]>([]);
+  const [crmPickerOpen, setCrmPickerOpen] = useState(false);
+  const [crmCategory, setCrmCategory] = useState<"all" | CrmContact["category"]>("all");
+  const [crmContactType, setCrmContactType] = useState<"all" | CrmContact["contact_type"]>("all");
+  const [crmImportantOnly, setCrmImportantOnly] = useState(false);
 
-  const [composeSubject, setComposeSubject] = useState("");
-  const [composeBody, setComposeBody] = useState("");
-  const [composeSource, setComposeSource] = useState<Source>("Gmail");
-  const [composeAccountId, setComposeAccountId] = useState<string>("");
+  // Used to trigger the hidden file input with a nice button
+  const fileInputId = "inrsend-attachments";
 
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const r = await fetch("/api/integrations/status", { method: "GET" });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) return;
-        const accounts: MailAccount[] = Array.isArray(j?.mailAccounts) ? j.mailAccounts : [];
-        if (!cancelled) setMailAccounts(accounts);
-      } catch {
-        // ignore
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-
-  const [composeFiles, setComposeFiles] = useState<File[]>([]);
-
-  // ✅ Charge les contacts CRM quand on ouvre la fenêtre "Écrire" (desktop + mobile)
-  useEffect(() => {
-    if (!composeOpen) return;
-    if (crmLoading) return;
-    if (crmContacts.length > 0) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        setCrmLoading(true);
-        setCrmError(null);
-
-        const res = await fetch("/api/crm/contacts", { method: "GET" });
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          throw new Error(j?.error || `Erreur (${res.status})`);
-        }
-
-        const json = await res.json().catch(() => ({}));
-        const contacts = Array.isArray(json?.contacts) ? (json.contacts as CrmContact[]) : [];
-        if (!cancelled) setCrmContacts(contacts);
-      } catch (e: any) {
-        if (!cancelled) setCrmError(e?.message || "Impossible de charger les contacts CRM");
-      } finally {
-        if (!cancelled) setCrmLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [composeOpen]);
-
-  // ✅ Applique une sélection de contacts CRM au compose (pré-remplit le(s) destinataire(s) et optionnellement une salutation)
-const applyCrmContactsToCompose = (contacts: CrmContact[]) => {
-  const normalize = (v: string) =>
-    v
-      .split(/[,;\n]+/)
+  function normalizeEmails(v: string) {
+    return v
+      .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
+  }
 
-  const existing = new Set(normalize(composeTo || ""));
-  const emails = contacts
-    .map((c) => (c.email || "").trim())
-    .filter(Boolean);
+  function toggleEmailInTo(email: string) {
+    const list = normalizeEmails(to);
+    const lower = email.toLowerCase();
+    const exists = list.some((x) => x.toLowerCase() === lower);
+    const next = exists ? list.filter((x) => x.toLowerCase() !== lower) : [...list, email];
+    setTo(next.join(", "));
+  }
 
-  // On place d'abord les contacts CRM sélectionnés, puis on conserve ce que l'utilisateur avait déjà tapé
-  const merged = Array.from(new Set([...emails, ...Array.from(existing)]));
+  // Recherche dans l'historique iNr'Send
+  const [historyQuery, setHistoryQuery] = useState("");
 
-  if (merged.length) setComposeTo(merged.join(", "));
+  const filteredContacts = useMemo(() => {
+    const q = crmFilter.trim().toLowerCase();
+    return crmContacts.filter((c) => {
+      if (crmImportantOnly && !c.important) return false;
+      if (crmCategory !== "all" && c.category !== crmCategory) return false;
+      if (crmContactType !== "all" && c.contact_type !== crmContactType) return false;
+      if (!q) return true;
+      const hay = `${c.full_name || ""} ${c.email || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [crmContacts, crmFilter, crmImportantOnly, crmCategory, crmContactType]);
 
-  // Salutation : personnalisée uniquement si 1 contact sélectionné
-  const normalizedBody = (composeBody || "").trim();
-  const looksEmpty = normalizedBody === "" || normalizedBody === "Bonjour," || normalizedBody === "Bonjour";
+  const selectedToSet = useMemo(() => {
+    return new Set(normalizeEmails(to).map((e) => e.toLowerCase()));
+  }, [to]);
 
-  if (looksEmpty) {
-    if (contacts.length === 1) {
-      const c = contacts[0];
-      const fullName = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
-      const displayName = fullName || (c.company_name || "").trim();
-      const greet = displayName ? `Bonjour ${displayName},\n\n` : "Bonjour,\n\n";
-      setComposeBody(greet);
-    } else {
-      setComposeBody("Bonjour,\n\n");
+  const selectedCrmCount = useMemo(() => {
+    let n = 0;
+    for (const c of crmContacts) {
+      if (c.email && selectedToSet.has(String(c.email).toLowerCase())) n += 1;
+    }
+    return n;
+  }, [crmContacts, selectedToSet]);
+
+  const counts = useMemo(() => {
+    const c: Record<Folder, number> = { mails: 0, newsletters: 0, factures: 0, devis: 0, drafts: 0, deleted: 0 };
+    for (const it of items) {
+      (Object.keys(c) as Folder[]).forEach((f) => {
+        if (folderCountQuery(f, it)) c[f] += 1;
+      });
+    }
+    return c;
+  }, [items]);
+
+  function resetCompose() {
+    setDraftId(null);
+    setComposeType("mail");
+    setTo("");
+    setSubject("");
+    setText("");
+    setFiles([]);
+    setCrmPickerOpen(false);
+  }
+
+  async function loadAccounts() {
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth?.user) return;
+
+    const { data, error } = await supabase
+      .from("mail_accounts")
+      .select("id, provider, email_address, display_name, status")
+      .eq("user_id", auth.user.id)
+      .order("created_at", { ascending: true });
+
+    if (!error && data) {
+      setMailAccounts(data as any);
+      // Default selection
+      const connected = (data as any[]).filter((a) => a.status === "connected");
+      const defaultId = connected[0]?.id || (data as any[])[0]?.id || "";
+      setSelectedAccountId((prev) => prev || defaultId);
     }
   }
-};
 
-
-  
-const resetComposeWithConfirm = () => {
-  if (typeof window !== "undefined") {
-    const ok = window.confirm(
-      "Réinitialiser le message ?\n\nCela va effacer les destinataires, l'objet, le message et les pièces jointes."
-    );
-    if (!ok) return;
-  }
-  setSelectedCrmContactIds([]);
-  setComposeTo("");
-  setComposeSubject("");
-  setComposeBody("Bonjour,\n\n");
-  setComposeFiles([]);
-  // remet la première boîte connectée par défaut
-  setComposeAccountId((prev) => prev || (availableSendAccounts[0]?.id ? String(availableSendAccounts[0].id) : ""));
-};
-
-// ✅ Pré-remplissage depuis le CRM (ex: /dashboard/mails?compose=1&to=a@x.fr,b@y.fr)
-  useEffect(() => {
-    const compose = searchParams.get("compose");
-    const to = (searchParams.get("to") || "").trim();
-    const attachKey = (searchParams.get("attachKey") || "").trim();
-    const attachName = (searchParams.get("attachName") || "").trim();
-    if ((compose === "1" || compose === "true") && to) {
-      setComposeTo(to);
-      setComposeSubject("");
-      setComposeBody("Bonjour,\n\n");
-      setComposeOpen(true);
-      setComposeAccountId((prev) => prev || (availableSendAccounts[0]?.id ? String(availableSendAccounts[0].id) : ""));
-
-      // ✅ Si un PDF a été uploadé dans Supabase Storage, on le récupère et on l'ajoute en PJ
-      // (utile pour facture/devis → iNrbox)
-      if (attachKey) {
-        (async () => {
-          try {
-            const { data, error } = await supabase
-              .storage
-              .from(ATTACH_BUCKET)
-              .download(attachKey);
-            if (error) throw error;
-
-            const blob = data as Blob;
-            const name = attachName || attachKey.split("/").pop() || "document.pdf";
-            const file = new File([blob], name, { type: blob.type || "application/pdf" });
-            setComposeFiles((prev) => [file, ...prev]);
-          } catch (e) {
-            console.error("Impossible de charger la pièce jointe", e);
-          }
-        })();
-      }
-
-      // Nettoie l'URL (évite de ré-ouvrir la fenêtre au refresh/back)
-      const cleaned = new URL(window.location.href);
-      cleaned.searchParams.delete("compose");
-      cleaned.searchParams.delete("to");
-      cleaned.searchParams.delete("from");
-      cleaned.searchParams.delete("attachKey");
-      cleaned.searchParams.delete("attachName");
-      router.replace(cleaned.pathname + (cleaned.search ? cleaned.search : ""));
-    }
-  }, [searchParams, supabase]);
-
-  const createMessagePreview = (body: string) => {
-    const firstLine = body.replace(/\n+/g, " ").trim();
-    if (!firstLine) return "—";
-    return firstLine.length > 46 ? `${firstLine.slice(0, 46)}…` : firstLine;
-  };
-
-  const openComposeBlank = () => {
-    setComposeTo("");
-    setComposeSubject("");
-    setComposeBody("");
-    setComposeSource("Gmail");
-    setComposeAccountId((prev) => prev || (availableSendAccounts[0]?.id ? String(availableSendAccounts[0].id) : ""));
-    setComposeFiles([]);
-    setComposeOpen(true);
-  };
-
-  const openComposeFromDraft = (draft: MessageItem) => {
-    setComposeTo(draft.from === "(Sans destinataire)" ? "" : draft.from);
-    setComposeSubject(draft.subject.replace(/^Brouillon —\s*/i, ""));
-    setComposeBody(draft.body || "");
-    setComposeSource(draft.source);
-    setComposeAccountId((prev) => {
-      if (prev) return prev;
-      const preferred = draft.source === "Microsoft" ? "microsoft" : "gmail";
-      const acc = availableSendAccounts.find((a) => String(a.provider || "").toLowerCase() === preferred);
-      return acc?.id ? String(acc.id) : (availableSendAccounts[0]?.id ? String(availableSendAccounts[0].id) : "");
-    });
-    setComposeFiles([]);
-    setComposeOpen(true);
-  };
-
-  
-  const availableSendAccounts = useMemo(() => {
-    // Only email providers that are supported for sending here.
-    const filtered = mailAccounts.filter((a) => {
-      const p = String(a.provider || "").toLowerCase();
-      return p === "gmail" || p === "microsoft" || p === "imap";
-    });
-    return filtered;
-  }, [mailAccounts]);
-
-  const selectedSendAccount = useMemo(() => {
-    return availableSendAccounts.find((a) => String(a.id) === String(composeAccountId)) || null;
-  }, [availableSendAccounts, composeAccountId]);
-
-
-  const saveDraftFromCompose = () => {
-    const id = `${Date.now()}`;
-    const draft: MessageItem = {
-      id,
-      folder: "drafts",
-      from: composeTo || "(Sans destinataire)",
-      subject: composeSubject ? `Brouillon — ${composeSubject}` : "Brouillon — (sans objet)",
-      preview: createMessagePreview(composeBody),
-      body: composeBody || "",
-      source: composeSource,
-      dateLabel: "Brouillon",
-      unread: false,
-    };
-
-    setMessages((prev) => [draft, ...prev]);
-    notify("Brouillon enregistré");
-    setComposeOpen(false);
-    setFolder("drafts");
-    setSelectedId(id);
-    setSelectedIds(new Set([id]));
-    if (isMobile) setMobilePane("cockpit");
-  };
-
-  const sendFromCompose = async () => {
+  async function loadHistory() {
+    setLoading(true);
     try {
-      if (!composeTo?.trim()) {
-        notify("Ajoute un destinataire");
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth?.user) return;
+
+      // We fetch a "reasonable" amount for MVP; can be paginated later.
+      const { data, error } = await supabase
+        .from("send_items")
+        .select(
+          "id, mail_account_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, error, sent_at, created_at, updated_at"
+        )
+        .eq("user_id", auth.user.id)
+        .order("created_at", { ascending: false })
+        .limit(500);
+
+      if (error) {
+        console.error(error);
         return;
       }
+      const list = (data || []) as SendItem[];
+      setItems(list);
 
-      if (availableSendAccounts.length > 0 && !composeAccountId) {
-        const first = availableSendAccounts[0];
-        setComposeAccountId(first?.id ? String(first.id) : "");
-        notify("Choisis une boîte d’envoi");
-        return;
+      // Keep selection stable
+      if (list.length > 0) {
+        setSelectedId((prev) => prev || list[0].id);
+      } else {
+        setSelectedId(null);
       }
+    } finally {
+      setLoading(false);
+    }
+  }
 
+  const visibleItems = useMemo(() => {
+    const q = historyQuery.trim().toLowerCase();
+    return items.filter((it) => {
+      if (!folderCountQuery(folder, it)) return false;
+      if (!q) return true;
+      const hay = `${it.subject || ""} ${it.to_emails || ""} ${it.provider || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [items, folder, historyQuery]);
 
-      const fd = new FormData();
-      fd.append("to", composeTo.trim());
-      fd.append("subject", composeSubject || "(sans objet)");
-      fd.append("text", composeBody || "");
-      composeFiles.forEach((f) => fd.append("files", f));
+  const selected = useMemo(() => {
+    return visibleItems.find((x) => x.id === selectedId) || null;
+  }, [visibleItems, selectedId]);
 
-      const provider = String(selectedSendAccount?.provider || "gmail").toLowerCase();
-      const endpoint = provider === "microsoft"
-        ? "/api/inbox/microsoft/send"
-        : provider === "imap"
-          ? "/api/inbox/imap/send"
-          : "/api/inbox/gmail/send";
+  const selectedAccount = useMemo(() => {
+    return mailAccounts.find((a) => a.id === selectedAccountId) || null;
+  }, [mailAccounts, selectedAccountId]);
 
-      if (composeAccountId) fd.append("accountId", composeAccountId);
+  // initial
+  useEffect(() => {
+    (async () => {
+      await loadAccounts();
+      await loadHistory();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // open folder from URL
+  useEffect(() => {
+    const q = (searchParams?.get("folder") || "").toLowerCase();
+    const allowed: Record<string, Folder> = {
+      mails: "mails",
+      newsletters: "newsletters",
+      factures: "factures",
+      devis: "devis",
+      brouillons: "drafts",
+      drafts: "drafts",
+      supprimes: "deleted",
+      deleted: "deleted",
+    };
+    if (q && allowed[q]) setFolder(allowed[q]);
+  }, [searchParams]);
 
-      const r = await fetch(endpoint, {
-        method: "POST",
-        body: fd,
+  async function loadCrmContacts() {
+    if (crmLoading) return;
+    setCrmError(null);
+    setCrmLoading(true);
+
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), 12000);
+    try {
+      // We go through the API route so the same auth method is used as the CRM screens.
+      const res = await fetch("/api/crm/contacts", {
+        method: "GET",
+        credentials: "include",
+        signal: ac.signal,
+        headers: { "Content-Type": "application/json" },
       });
 
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        const msg =
-          j?.gmailError?.error?.message ||
-          j?.details?.error?.message ||
-          j?.error ||
-          "Envoi impossible";
-        throw new Error(msg);
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `HTTP ${res.status}`);
       }
 
-      const id = `${provider}_sent_${j.id || Date.now()}`;
-      const msg: MessageItem = {
-        id,
-        folder: "sent",
-        from: composeTo || "(Sans destinataire)",
-        subject: composeSubject || "(sans objet)",
-        preview: createMessagePreview(composeBody),
-        body: composeBody || "",
-        source: composeSource,
-        dateLabel: nowLabel(),
-        unread: false,
-      };
-
-      setMessages((prev) => [msg, ...prev]);
-      notify("Message envoyé ✅");
-      setComposeOpen(false);
-      setComposeFiles([]);
-      setFolder("sent");
-      setSelectedId(id);
-      setSelectedIds(new Set([id]));
-      if (isMobile) setMobilePane("cockpit");
+      const json = (await res.json().catch(() => ({}))) as any;
+      const rows = Array.isArray(json?.contacts) ? json.contacts : [];
+      const mapped = rows.map((c: any) => {
+        const left = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
+        const company = (c.company_name || "").trim();
+        const full = company && left ? `${company} — ${left}` : company || left || null;
+        return {
+          id: String(c.id),
+          full_name: full,
+          email: c.email || null,
+          category: (c.category as any) ?? null,
+          contact_type: (c.contact_type as any) ?? null,
+          important: Boolean(c.important),
+        };
+      });
+      setCrmContacts(mapped);
     } catch (e: any) {
-      notify(e?.message || "Erreur d’envoi");
+      console.error("CRM load error", e);
+      const msg = e?.name === "AbortError" ? "Le chargement a expiré. Clique sur “Réessayer”." : "Impossible de charger les contacts.";
+      setCrmError(msg);
+    } finally {
+      clearTimeout(timeout);
+      setCrmLoading(false);
     }
-  };
+  }
 
-  const openReply = () => {
-    setReplyBody("Bonjour,\n\n");
-    setReplyFiles([]);
-    setReplyOpen(true);
-  };
+  // load CRM when compose opens (lazy)
+  useEffect(() => {
+    if (!composeOpen) return;
+    if (crmContacts.length > 0) return;
+    void loadCrmContacts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composeOpen]);
 
-  // ✅ Reply handlers
-  const replySendLocal = async () => {
-    if (!selected) return;
+  function updateFolder(next: Folder) {
+    setFolder(next);
+    router.replace(`/dashboard/mails?folder=${encodeURIComponent(next)}`);
+    // reset selection to first item in that folder
+    setSelectedId(null);
+  }
 
-    // ✅ Si le mail vient de Gmail, on répond dans le thread Gmail
-    if (selected.id.startsWith("gmail_") && selected.source === "Gmail") {
-      try {
-        const gmailId = selected.id.replace(/^gmail_/, "");
+  async function saveDraft() {
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth?.user) return;
 
-        const fd = new FormData();
-        fd.append("text", replyBody || "");
-        replyFiles.forEach((f) => fd.append("files", f));
+    const payload = {
+      user_id: auth.user.id,
+      mail_account_id: selectedAccountId || null,
+      type: composeType,
+      status: "draft" as const,
+      to_emails: to.trim(),
+      subject: subject.trim() || null,
+      body_text: text || null,
+      body_html: null,
+      provider: selectedAccount?.provider || null,
+    };
 
-        const r = await fetch(`/api/inbox/gmail/reply?id=${encodeURIComponent(gmailId)}`, {
-          method: "POST",
-          body: fd,
-        });
-
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          const msg =
-            j?.gmailError?.error?.message ||
-            j?.details?.error?.message ||
-            j?.error ||
-            "Réponse impossible";
-          throw new Error(msg);
-        }
-
-        const id = `gmail_sent_${j.id || Date.now()}`;
-        const msg: MessageItem = {
-          id,
-          folder: "sent",
-          from: selected.from,
-          subject: `Re: ${selected.subject}`,
-          preview: createMessagePreview(replyBody || ""),
-          body: replyBody || "",
-          source: "Gmail",
-          dateLabel: nowLabel(),
-          unread: false,
-        };
-
-        setMessages((prev) => [msg, ...prev]);
-        notify("Réponse envoyée ✅");
-        setReplyOpen(false);
-        setReplyFiles([]);
-        setFolder("sent");
-        setSelectedId(id);
-        setSelectedIds(new Set([id]));
-        if (isMobile) setMobilePane("cockpit");
-      } catch (e: any) {
-        notify(e?.message || "Erreur d’envoi");
+    if (draftId) {
+      const { error } = await supabase.from("send_items").update(payload).eq("id", draftId);
+      if (!error) {
+        setToast("Brouillon sauvegardé");
+        await loadHistory();
       }
       return;
     }
 
-    // ✅ IMAP: reply via SMTP (simple reply, no threading headers in v1)
-    if (selected.source === "IMAP") {
-      try {
-        const emailMatch = (selected.from || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-        const to = emailMatch?.[0] || "";
-        if (!to) {
-          notify("Impossible de trouver l’email du destinataire");
-          return;
-        }
+    const { data, error } = await supabase.from("send_items").insert(payload).select("id").single();
+    if (!error && data?.id) {
+      setDraftId(data.id);
+      setToast("Brouillon sauvegardé");
+      await loadHistory();
+    }
+  }
 
-        const fd = new FormData();
-        fd.append("to", to);
-        fd.append("subject", `Re: ${selected.subject || "(sans objet)"}`);
-        fd.append("text", replyBody || "");
-        if (selected.imapAccountId) fd.append("accountId", String(selected.imapAccountId));
-        replyFiles.forEach((f) => fd.append("files", f));
+  function providerSendEndpoint(provider: string) {
+    if (provider === "gmail") return "/api/inbox/gmail/send";
+    if (provider === "microsoft") return "/api/inbox/microsoft/send";
+    return "/api/inbox/imap/send";
+  }
 
-        const r = await fetch("/api/inbox/imap/send", { method: "POST", body: fd });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(j?.error || "Réponse impossible");
-
-        const id = `imap_sent_${j.id || Date.now()}`;
-        const msg: MessageItem = {
-          id,
-          folder: "sent",
-          from: selected.from,
-          subject: `Re: ${selected.subject}`,
-          preview: createMessagePreview(replyBody || ""),
-          body: replyBody || "",
-          source: "IMAP",
-          dateLabel: nowLabel(),
-          unread: false,
-        };
-
-        setMessages((prev) => [msg, ...prev]);
-        notify("Réponse envoyée ✅");
-        setReplyOpen(false);
-        setReplyFiles([]);
-        setFolder("sent");
-        setSelectedId(id);
-        setSelectedIds(new Set([id]));
-        if (isMobile) setMobilePane("cockpit");
-      } catch (e: any) {
-        notify(e?.message || "Erreur d’envoi");
-      }
+  async function doSend() {
+    if (!selectedAccount) {
+      setToast("Connecte une boîte d’envoi dans Réglages.");
       return;
     }
-
-    // Fallback : autres sources => local
-    const id = `${Date.now()}`;
-    const msg: MessageItem = {
-      id,
-      folder: "sent",
-      from: selected.from,
-      subject: `Re: ${selected.subject}`,
-      preview: createMessagePreview(replyBody || ""),
-      body: replyBody || "Réponse envoyée (local)\n\n(Étape OAuth plus tard)",
-      source: selected.source === "Houzz" ? "Houzz" : selected.source,
-      dateLabel: nowLabel(),
-      unread: false,
-    };
-    setMessages((prev) => [msg, ...prev]);
-    notify("Réponse envoyée (local)");
-    setReplyOpen(false);
-    setReplyFiles([]);
-    setFolder("sent");
-    setSelectedId(id);
-    setSelectedIds(new Set([id]));
-    if (isMobile) setMobilePane("cockpit");
-  };
-
-  const replySaveDraftLocal = () => {
-    if (!selected) return;
-    const id = `${Date.now()}`;
-    const draft: MessageItem = {
-      id,
-      folder: "drafts",
-      from: selected.from,
-      subject: `Brouillon — Re: ${selected.subject}`,
-      preview: createMessagePreview(replyBody || ""),
-      body: replyBody || "",
-      source: selected.source,
-      dateLabel: "Brouillon",
-      unread: false,
-    };
-    setMessages((prev) => [draft, ...prev]);
-    notify("Brouillon créé");
-    setReplyOpen(false);
-    setFolder("drafts");
-    setSelectedId(id);
-    setSelectedIds(new Set([id]));
-    if (isMobile) setMobilePane("cockpit");
-  };
-
-  // ✅ Actions selon dossier (multi sélection)
-  const visibleIds = filteredMessages.map((m) => m.id);
-  const hasSelection = selectedIds.size > 0;
-  const selectionIds = Array.from(selectedIds);
-
-
-const moveToTrashMany = async (ids: string[]) => {
-  const gmailUiIds: string[] = [];
-  const msBatches = new Map<string, string[]>();
-  const localIds: string[] = [];
-
-  ids.forEach((id) => {
-    const m = messages.find((x) => x.id === id);
-    if (m?.source === "Gmail" && id.startsWith("gmail_")) {
-      gmailUiIds.push(id);
+    const recipients = to.trim();
+    if (!recipients) {
+      setToast("Ajoute au moins un destinataire.");
       return;
     }
-    if (m?.source === "Microsoft" && isMicrosoftUiId(id)) {
-      const p = parseMicrosoftUiId(id);
-      if (p.accountId && p.messageId) {
-        msBatches.set(p.accountId, [...(msBatches.get(p.accountId) || []), p.messageId]);
+    setSendBusy(true);
+    try {
+      const fd = new FormData();
+      fd.set("accountId", selectedAccount.id);
+      fd.set("to", recipients);
+      fd.set("subject", subject.trim() || "(sans objet)");
+      fd.set("text", text || "");
+      // iNr'Send = envoi simple (texte). On garde le champ côté API pour compatibilité,
+      // mais on n'expose pas d'éditeur HTML dans l'UI.
+      fd.set("html", "");
+      fd.set("type", composeType);
+      if (draftId) fd.set("sendItemId", draftId);
+
+      for (const f of files) fd.append("files", f);
+
+      const res = await fetch(providerSendEndpoint(selectedAccount.provider), { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast(data?.error || "Erreur d’envoi");
         return;
       }
+
+      setToast("Envoyé ✅");
+      setComposeOpen(false);
+      resetCompose();
+      await loadHistory();
+      updateFolder(composeType === "newsletter" ? "newsletters" : composeType === "facture" ? "factures" : composeType === "devis" ? "devis" : "mails");
+    } finally {
+      setSendBusy(false);
     }
-    localIds.push(id);
-  });
-
-  if (localIds.length) moveMany(localIds, "trash", { rememberPrev: true });
-
-  if (gmailUiIds.length) {
-    // optimistic move
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!ids.includes(m.id)) return m;
-        if (m.source !== "Gmail") return m;
-        return { ...m, folder: "trash" };
-      })
-    );
-    await gmailModify(gmailUiIds, "trash");
-    await refreshGmail("inbox");
-    await refreshGmail("trash");
   }
 
-  if (msBatches.size) {
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (!ids.includes(m.id)) return m;
-        if (m.source !== "Microsoft") return m;
-        return { ...m, folder: "trash" };
-      })
-    );
-    await microsoftModify(
-      Array.from(msBatches.entries()).map(([accountId, messageIds]) => ({
-        accountId,
-        ids: messageIds,
-        action: "trash",
-      }))
-    );
-    await refreshMicrosoft("inbox");
-    await refreshMicrosoft("trash");
+  async function moveToDeleted(id: string) {
+    const { error } = await supabase.from("send_items").update({ status: "deleted" }).eq("id", id);
+    if (!error) await loadHistory();
   }
-};
 
-const bulkDeleteToTrash = async () => {
-  if (!selectionIds.length) return;
-  await moveToTrashMany(selectionIds);
-  notify(`Supprimé (${selectionIds.length}) → Corbeille`);
-  removeMessageFromView(selectionIds);
-  clearSelection();
-};
+  async function restoreFromDeleted(id: string) {
+    // Restore as sent by default (keeps type)
+    const { data, error } = await supabase.from("send_items").select("status, type").eq("id", id).single();
+    if (error) return;
+    const nextStatus: Status = data.status === "deleted" ? "sent" : data.status;
+    const { error: e2 } = await supabase.from("send_items").update({ status: nextStatus }).eq("id", id);
+    if (!e2) await loadHistory();
+  }
 
-  const bulkRestoreFromTrash = async () => {
-    if (!selectionIds.length) return;
-    await restoreManyFromTrash(selectionIds);
-    notify(`Restauré (${selectionIds.length})`);
-    removeMessageFromView(selectionIds);
-    clearSelection();
-  };
-
-  const bulkLegitFromSpam = async () => {
-    if (!selectionIds.length) return;
-    await markLegitMany(selectionIds);
-    notify(`Courrier légitime (${selectionIds.length}) → Réception`);
-    removeMessageFromView(selectionIds);
-    clearSelection();
-  };
-
-  const bulkImportant = async () => {
-    if (!selectionIds.length) return;
-    await makeImportantMany(selectionIds);
-    notify(`Ajouté aux Importants (${selectionIds.length})`);
-    removeMessageFromView(selectionIds);
-    clearSelection();
-  };
-
-  const bulkUnImportant = async () => {
-    if (!selectionIds.length) return;
-    await unImportantMany(selectionIds);
-    notify(`Retiré des Importants (${selectionIds.length})`);
-    removeMessageFromView(selectionIds);
-    clearSelection();
-  };
-
-  const bulkDeleteForever = () => {
-    if (!selectionIds.length) return;
-    hardDeleteMany(selectionIds);
-    notify(`Supprimé définitivement (${selectionIds.length})`);
-    removeMessageFromView(selectionIds);
-    clearSelection();
-  };
-
-  // ✅ Cockpit actions (message sélectionné)
-  const singleMoveToTrash = async () => {
-    if (!selected) return;
-    await moveToTrashMany([selected.id]);
-    notify("Déplacé vers Corbeille");
-    removeMessageFromView([selected.id]);
-    clearSelection();
-  };
-
-
-const singleMoveToSpam = async () => {
-  if (!selected) return;
-
-  if (isGmailMessage(selected)) {
-    const rawId = rawGmailIdFromUiId(selected.id);
-    // optimistic
-    setMessages((prev) => prev.map((m) => (m.id === selected.id ? { ...m, folder: "spam" } : m)));
-    try {
-      await gmailModify([rawId], "spam");
-      notify("Déplacé vers Spam");
-      await refreshGmail("inbox");
-      await refreshGmail("spam");
-    } catch (e: any) {
-      notify(e?.message || "Erreur spam");
-      await refreshGmail("inbox");
-      await refreshGmail("spam");
+  async function openItem(it: SendItem) {
+    setSelectedId(it.id);
+    if (it.status === "draft") {
+      setComposeOpen(true);
+      setDraftId(it.id);
+      setComposeType(it.type);
+      setTo(it.to_emails || "");
+      setSubject(it.subject || "");
+      setText(it.body_text || "");
+      setFiles([]);
     }
-    removeMessageFromView([selected.id]);
-    clearSelection();
-    return;
   }
-
-  if (selected.source === "Microsoft" && isMicrosoftUiId(selected.id)) {
-    const p = parseMicrosoftUiId(selected.id);
-    // optimistic
-    setMessages((prev) => prev.map((m) => (m.id === selected.id ? { ...m, folder: "spam" } : m)));
-    try {
-      await microsoftModify([{ accountId: p.accountId, ids: [p.messageId], action: "spam" }]);
-      notify("Déplacé vers Spam");
-      await refreshMicrosoft("inbox");
-      await refreshMicrosoft("spam");
-    } catch (e: any) {
-      notify(e?.message || "Erreur spam");
-      await refreshMicrosoft("inbox");
-      await refreshMicrosoft("spam");
-    }
-    removeMessageFromView([selected.id]);
-    clearSelection();
-    return;
-  }
-
-  moveMessage(selected.id, "spam", { rememberPrev: true });
-  notify("Déplacé vers Spam");
-  removeMessageFromView([selected.id]);
-  clearSelection();
-};
-
-  const singleLegit = async () => {
-    if (!selected) return;
-    await markLegitMany([selected.id]);
-    notify("Courrier légitime → Réception");
-    removeMessageFromView([selected.id]);
-    clearSelection();
-  };
-
-  const singleRestore = async () => {
-    if (!selected) return;
-    await restoreManyFromTrash([selected.id]);
-    notify("Restauré depuis Corbeille");
-    removeMessageFromView([selected.id]);
-    clearSelection();
-  };
-
-  const singleImportant = async () => {
-    if (!selected) return;
-    await makeImportantMany([selected.id]);
-    notify("Ajouté aux Importants");
-    removeMessageFromView([selected.id]);
-    clearSelection();
-  };
-
-  const singleUnImportant = async () => {
-    if (!selected) return;
-    await unImportantMany([selected.id]);
-    notify("Retiré des Importants");
-    removeMessageFromView([selected.id]);
-    clearSelection();
-  };
-
-  const singleResumeDraft = () => {
-    if (!selected) return;
-    openComposeFromDraft(selected);
-    notify("Reprendre le brouillon");
-  };
-
-  // ✅ Swipe helpers (operate on a specific message id)
-  const isImportantMessage = (m?: MessageItem | null) => {
-    if (!m) return false;
-    if (m.source === "Gmail") return (m.labelIds || []).includes("IMPORTANT");
-    return m.folder === "important";
-  };
 
   return (
     <div className={styles.page}>
       <div className={styles.wrap}>
-        {/* Header */}
+        {/* Header (on garde le layout iNr'Box) */}
         <div className={styles.topbar}>
-          {!isMobile ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <img
-                src="/inrbox-logo.png"
-                alt="iNr’Box"
-                style={{ width: 154, height: 64, display: "block" }}
-              />
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <img
+              src="/inrsend-logo.png"
+              alt="iNr’Send"
+              style={{ width: 154, height: 64, display: "block" }}
+            />
+            <div className={styles.titleRow}>
+              <div className={styles.sub}>Toutes vos communications, depuis une seule et même machine.</div>
             </div>
-          ) : (
-            <div className={styles.mobileTopbarLeft}>
-              {viewMode === "action" ? (
-                <button
-                  className={styles.mobileNavBtn}
-                  type="button"
-                  onClick={closeAction}
-                  aria-label="Retour"
-                  title="Retour"
-                >
-                  ←
-                </button>
-              ) : (
-                <button
-                  className={styles.mobileNavBtn}
-                  type="button"
-                  onClick={() => setNavOpen(true)}
-                  aria-label="Menu"
-                  title="Menu"
-                >
-                  ☰
-                </button>
-              )}
-
-              <div className={styles.mobileTopbarTitle}>
-                {viewMode === "action" ? "Action" : titleByFolder[folder]}
-              </div>
-            </div>
-          )}
+          </div>
 
           <div className={styles.actions}>
-            {viewMode === "action" && !isMobile && (
-              <button className={styles.btnGhost} type="button" onClick={closeAction} title="Retour à la liste">
-                ← Retour
-              </button>
-            )}
+            <button
+              className={`${styles.btnGhost} ${styles.hamburgerBtn}`}
+              onClick={() => setMobileFoldersOpen(true)}
+              type="button"
+              aria-label="Ouvrir les dossiers"
+              title="Dossiers"
+            >
+              ☰ Dossiers
+            </button>
 
-            {!isMobile ? (
-              <>
-                <button
-                  className={styles.btnGhost}
-                  title="Réglages iNr’Box"
-                  type="button"
-                  onClick={() => setSettingsOpen(true)}
-                >
-                  ⚙️ Réglages
-                </button>
+            <button
+              className={styles.btnGhost}
+              onClick={() => setSettingsOpen(true)}
+              type="button"
+              title="Réglages"
+            >
+              ⚙️ Réglages
+            </button>
 
-                <button className={styles.btnPrimary} onClick={openComposeBlank} type="button">
-                  ✍️ Écrire
-                </button>
+            <SettingsDrawer
+              title="Réglages iNr’Send"
+              isOpen={settingsOpen}
+              onClose={() => setSettingsOpen(false)}
+            >
+              <MailsSettingsContent />
+            </SettingsDrawer>
 
-                <Link href="/dashboard" className={styles.btnGhost} title="Fermer iNr’Box">
-                  Fermer
-                </Link>
-              </>
-            ) : (
-    <div className={styles.mobileTopbarRight}>
-      <button
-        className={styles.mobileIconBtn}
-        title="Recherche"
-        type="button"
-        onClick={() => setMobileSearchOpen((v) => !v)}
-      >
-        🔎
-      </button>
+            <button
+              className={styles.btnPrimary}
+              onClick={() => {
+                resetCompose();
+                setComposeOpen(true);
+              }}
+              type="button"
+            >
+              ✍️ Écrire
+            </button>
 
-      <button
-        className={styles.mobileIconBtnPrimary}
-        title="Écrire"
-        type="button"
-        onClick={openComposeBlank}
-      >
-        ✍️
-      </button>
-
-      <button
-        className={styles.mobileIconBtn}
-        title={viewMode === "action" ? "Actions" : "Réglages"}
-        type="button"
-        onClick={() => {
-          if (viewMode === "action") setActionSheetOpen(true);
-          else setSettingsOpen(true);
-        }}
-      >
-        {viewMode === "action" ? "☰" : "⚙️"}
-      </button>
-
-      <Link href="/dashboard" className={styles.mobileIconBtn} title="Fermer iNr’Box">
-        ✖
-      </Link>
-    </div>
-  )}
-</div>
+            <Link className={styles.btnGhost} href="/dashboard" title="Fermer iNr’Send">
+              Fermer
+            </Link>
+          </div>
         </div>
 
-        {/* Mobile navigation drawer */}
-        {isMobile && (
-          <>
-            <div
-              className={`${styles.mobileOverlay} ${navOpen ? styles.mobileOverlayOpen : ""}`}
-              onClick={() => setNavOpen(false)}
-              aria-hidden="true"
-            />
-            <aside
-              className={`${styles.mobileDrawer} ${navOpen ? styles.mobileDrawerOpen : ""}`}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Menu iNr’Box"
-            >
-              <div className={styles.mobileDrawerHeader}>
-                <div className={styles.mobileDrawerBrand}>iNr’Box</div>
-                <button
-                  className={styles.mobileDrawerClose}
-                  type="button"
-                  onClick={() => setNavOpen(false)}
-                  aria-label="Fermer"
-                  title="Fermer"
-                >
+        {/* Mobile: menu dossiers (hamburger) */}
+        {mobileFoldersOpen ? (
+          <div className={styles.mobileMenuOverlay} onClick={() => setMobileFoldersOpen(false)}>
+            <div className={styles.mobileMenu} onClick={(e) => e.stopPropagation()}>
+              <div className={styles.mobileMenuHeader}>
+                <div className={styles.mobileMenuTitle}>Dossiers</div>
+                <button className={styles.btnGhost} onClick={() => setMobileFoldersOpen(false)} type="button">
                   ✕
                 </button>
               </div>
-
-              <div className={styles.mobileDrawerSection}>
-                <div className={styles.mobileDrawerSectionTitle}>Dossiers</div>
-                <div className={styles.mobileDrawerList}>
-                  {FOLDERS.map((f) => {
-                    const active = f.key === folder;
-                    return (
-                      <button
-                        key={f.key}
-                        type="button"
-                        className={`${styles.mobileDrawerItem} ${active ? styles.mobileDrawerItemActive : ""}`}
-                        onClick={() => {
-                          setFolder(f.key);
-                          setNavOpen(false);
-                          setViewMode("list");
-                        }}
-                      >
-                        <span className={styles.mobileDrawerItemLabel}>{f.label}</span>
-                        {counts[f.key] > 0 && (
-                          <span className={styles.mobileDrawerBadge} aria-label={`${counts[f.key]} messages`}>
-                            {counts[f.key]}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className={styles.mobileMenuBody}>
+                {(["mails", "newsletters", "factures", "devis", "drafts", "deleted"] as Folder[]).map((f) => {
+                  const active = f === folder;
+                  return (
+                    <button
+                      key={f}
+                      className={`${styles.mobileFolderBtn} ${active ? styles.mobileFolderBtnActive : ""}`}
+                      onClick={() => {
+                        updateFolder(f);
+                        setMobileFoldersOpen(false);
+                      }}
+                      type="button"
+                    >
+                      <span>{folderLabel(f)}</span>
+                      <span className={styles.badgeCount}>{counts[f] || 0}</span>
+                    </button>
+                  );
+                })}
               </div>
-
-              <div className={styles.mobileDrawerSection}>
-                <div className={styles.mobileDrawerSectionTitle}>Comptes</div>
-                <div className={styles.mobileDrawerChips}>
-                  {(["ALL", ...SOURCES] as const).map((s) => {
-                    const active = sourceFilter === s;
-                    const label = s === "ALL" ? "Tous" : s;
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        className={`${styles.mobileChip} ${active ? styles.mobileChipActive : ""}`}
-                        onClick={() => {
-                          setSourceFilter(s);
-                          setNavOpen(false);
-                        }}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className={styles.mobileDrawerFooter}>
-                <Link href="/dashboard" className={styles.mobileDrawerFooterBtn} onClick={() => setNavOpen(false)}>
-                  ✖️ Fermer
-                </Link>
-              </div>
-            </aside>
-          </>
-        )}
-
-        {/* Mobile search: apparaît seulement après clic sur la loupe */}
-        {isMobile && viewMode === "list" && mobileSearchOpen && (
-          <div className={styles.mobileSearchOverlay}>
-            <div className={styles.mobileSearchPill}>
-              <span className={styles.mobileSearchIcon} aria-hidden="true">
-                🔎
-              </span>
-              <input
-                className={styles.mobileSearchInput}
-                placeholder="Rechercher dans iNr’Box…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                inputMode="search"
-                autoFocus
-              />
-              <button
-                type="button"
-                className={styles.mobileSearchClear}
-                onClick={() => {
-                  setQuery("");
-                  setMobileSearchOpen(false);
-                }}
-                aria-label="Fermer"
-                title="Fermer"
-              >
-                ✕
-              </button>
             </div>
           </div>
-        )}
+        ) : null}
 
-        
-        {/* Mobile action sheet (liste) */}
-        {isMobile && viewMode === "list" && listSheetMessage && (
-          <>
-            <div
-              className={`${styles.sheetOverlay} ${listActionSheetOpen ? styles.sheetOverlayOpen : ""}`}
-              onClick={() => setListActionSheetOpen(false)}
-              aria-hidden="true"
-            />
-            <div
-              className={`${styles.sheet} ${listActionSheetOpen ? styles.sheetOpen : ""}`}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Actions message"
-            >
-              <div className={styles.sheetHandle} />
-              <div className={styles.sheetTitleRow}>
-                <button className={styles.sheetClose} type="button" onClick={() => setListActionSheetOpen(false)} aria-label="Fermer">
-                  ✕
-                </button>
-              </div>
-
-              <div className={styles.sheetPrimary}>
-                <button
-                  className={styles.sheetPrimaryBtn}
-                  type="button"
-                  onClick={() => {
-                    setListActionSheetOpen(false);
-                    openAction(listSheetMessage.id);
-                  }}
-                >
-                  👁️ Ouvrir le message
-                </button>
-              </div>
-
-              <div className={styles.sheetList}>
-                {isImportantMessage(listSheetMessage) ? (
+        <div className={styles.grid}>
+          {/* List */}
+          <div className={styles.card}>
+            {/* Tabs (en haut comme iNr'Box) */}
+            <div className={styles.folderTabs}>
+              {(["mails", "newsletters", "factures", "devis", "drafts", "deleted"] as Folder[]).map((f) => {
+                const active = f === folder;
+                return (
                   <button
-                    className={styles.sheetItem}
+                    key={f}
+                    className={`${styles.folderTabBtn} ${active ? styles.folderTabBtnActive : ""}`}
+                    onClick={() => updateFolder(f)}
                     type="button"
-                    onClick={() => {
-                      setListActionSheetOpen(false);
-                      singleUnImportant();
-                    }}
+                    title={folderLabel(f)}
                   >
-                    ⭐ Retirer des importants
+                    <span className={styles.folderTabLabel}>{folderLabel(f)}</span>
+                    <span className={styles.badgeCount}>{counts[f] || 0}</span>
                   </button>
-                ) : (
-                  <button
-                    className={styles.sheetItem}
-                    type="button"
-                    onClick={() => {
-                      setListActionSheetOpen(false);
-                      singleImportant();
-                    }}
-                  >
-                    ⭐ Mettre en important
-                  </button>
-                )}
-
-                <button
-                  className={`${styles.sheetItem} ${styles.sheetItemDanger}`}
-                  type="button"
-                  onClick={() => {
-                    setListActionSheetOpen(false);
-                    moveToTrashMany([listSheetMessage.id]);
-                  }}
-                >
-                  🗑️ Supprimer
-                </button>
-              </div>
+                );
+              })}
             </div>
-          </>
-        )}
 
-{/* Mobile action sheet */}
-        {isMobile && viewMode === "action" && selected && (
-          <>
-            <div
-              className={`${styles.sheetOverlay} ${actionSheetOpen ? styles.sheetOverlayOpen : ""}`}
-              onClick={() => setActionSheetOpen(false)}
-              aria-hidden="true"
-            />
-            <div
-              className={`${styles.sheet} ${actionSheetOpen ? styles.sheetOpen : ""}`}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Actions"
-            >
-              <div className={styles.sheetHandle} />
-              <div className={styles.sheetTitleRow}>
-                <button className={styles.sheetClose} type="button" onClick={() => setActionSheetOpen(false)} aria-label="Fermer">
-                  ✕
-                </button>
+            {/* Toolbar (recherche + sélection boîte + refresh) */}
+            <div className={styles.toolbarRow}>
+              <div className={styles.searchRow}>
+                <input
+                  className={styles.searchInput}
+                  placeholder="Rechercher un envoi…"
+                  value={historyQuery}
+                  onChange={(e) => setHistoryQuery(e.target.value)}
+                />
+                <div className={styles.searchIconRight}>⌕</div>
               </div>
 
-              <div className={styles.sheetPrimary}>
-                <button className={styles.sheetPrimaryBtn} type="button" onClick={() => { setActionSheetOpen(false); openReply(); }}>
-                  🚀 Répondre & Convertir
-                </button>
-              </div>
-
-              <div className={styles.sheetList}>
-                {/* Important toggle */}
-                {(selected.source === "Gmail" ? (selected.labelIds || []).includes("IMPORTANT") : selected.folder === "important") ? (
-                  <button className={styles.sheetItem} type="button" onClick={() => { setActionSheetOpen(false); singleUnImportant(); }}>
-                    ⭐ Retirer des importants
-                  </button>
-                ) : (
-                  <button className={styles.sheetItem} type="button" onClick={() => { setActionSheetOpen(false); singleImportant(); }}>
-                    ⭐ Mettre en important
-                  </button>
-                )}
-
-                {/* Draft */}
-                {selected.folder === "drafts" ? (
-                  <button className={styles.sheetItem} type="button" onClick={() => { setActionSheetOpen(false); singleResumeDraft(); }}>
-                    ▶️ Reprendre le brouillon
-                  </button>
-                ) : (
-                  <button
-                    className={styles.sheetItem}
-                    type="button"
-                    onClick={() => {
-                      setActionSheetOpen(false);
-                      const id = `${Date.now()}`;
-                      const draft: MessageItem = {
-                        id,
-                        folder: "drafts",
-                        from: selected.from,
-                        subject: `Brouillon — ${selected.subject}`,
-                        preview: selected.preview,
-                        body: selected.body,
-                        source: selected.source,
-                        dateLabel: "Brouillon",
-                        unread: false,
-                      };
-                      setMessages((prev) => [draft, ...prev]);
-                      notify("Brouillon créé");
-                      setFolder("drafts");
-                      setSelectedId(id);
-                      setSelectedIds(new Set([id]));
+              <div className={styles.toolbarActions}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.78)" }}>Boîte d’envoi :</div>
+                  <select
+                    value={selectedAccountId}
+                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                    style={{
+                      background: "rgba(0,0,0,0.22)",
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      color: "rgba(255,255,255,0.9)",
+                      borderRadius: 12,
+                      padding: "8px 10px",
+                      minWidth: 260,
                     }}
                   >
-                    📝 Créer un brouillon
-                  </button>
-                )}
-
-                {/* Spam / Legit */}
-                {selected.folder === "spam" ? (
-                  <button className={styles.sheetItem} type="button" onClick={() => { setActionSheetOpen(false); singleLegit(); }}>
-                    ✅ Marquer légitime
-                  </button>
-                ) : (
-                  <button className={styles.sheetItem} type="button" onClick={() => { setActionSheetOpen(false); singleMoveToSpam(); }}>
-                    🚫 Mettre en spam
-                  </button>
-                )}
-
-                {/* Trash / Restore */}
-                {selected.folder === "trash" ? (
-                  <button className={styles.sheetItem} type="button" onClick={() => { setActionSheetOpen(false); singleRestore(); }}>
-                    ♻️ Restaurer
-                  </button>
-                ) : (
-                  <button className={`${styles.sheetItem} ${styles.sheetItemDanger}`} type="button" onClick={() => { setActionSheetOpen(false); singleMoveToTrash(); }}>
-                    🗑️ Supprimer
-                  </button>
-                )}
-
-                {/* Business */}
-                <button
-                  className={styles.sheetItem}
-                  type="button"
-                  onClick={() => {
-                    setActionSheetOpen(false);
-                    const params = new URLSearchParams();
-                    params.set("from", selected.from);
-                    params.set("subject", selected.subject);
-                    router.push(`/dashboard/facture?${params.toString()}`);
-                  }}
-                >
-                  🧾 Facture
-                </button>
-                <button
-                  className={styles.sheetItem}
-                  type="button"
-                  onClick={() => {
-                    setActionSheetOpen(false);
-                    const params = new URLSearchParams();
-                    params.set("from", selected.from);
-                    params.set("subject", selected.subject);
-                    router.push(`/dashboard/devis?${params.toString()}`);
-                  }}
-                >
-                  📄 Devis
-                </button>
-                <button
-                  className={styles.sheetItem}
-                  type="button"
-                  onClick={() => {
-                    setActionSheetOpen(false);
-                    notify("Ajout CRM (bientôt)");
-                  }}
-                >
-                  👤 Ajouter CRM
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-
-	        {/* GRID */}
-	        <div className={`${styles.grid} ${viewMode === "list" ? styles.gridList : styles.gridAction}`}> 
-
-          {/* ACTION plein écran (au double-clic) */}
-          {showCockpit && (
-            <section className={styles.card}>
-              <div className={`${styles.scrollArea} ${styles.scrollAreaAction}`}>
-                <div style={{ minHeight: "100%" }}>
-                  {!selected ? (
-                    <div
-                      style={{
-                        height: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        textAlign: "center",
-                        color: "rgba(255,255,255,0.70)",
-                        padding: 20,
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 8 }}>
-                          🚀 Prêt à agir
-                        </div>
-                        <div style={{ fontSize: 14, maxWidth: 360 }}>
-                          Sélectionne un message à droite pour le lire, répondre, et le transformer.
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className={styles.reader}>
-                      {/* ✅ Header compact (2 lignes max) */}
-                      <div className={styles.readerHeader}>
-                        <div className={styles.readerSubject}>{selected.subject}</div>
-
-                        <div className={styles.readerInfoRow}>
-                          <span className={badgeClass(selected.source)}>{selected.source}</span>
-
-                          <span className={styles.readerInfoText} title={`${selected.from} • ${selected.dateLabel}`}>
-                            <b style={{ color: "rgba(255,255,255,0.90)" }}>{selected.from}</b> • {selected.dateLabel}
-                          </span>
-
-                          {/* Navigation dans la liste visible */}
-                          <div className={styles.readerNav}>
-                            <button
-                              type="button"
-                              className={styles.iconBtn}
-                              title="Message précédent"
-                              onClick={() => {
-                                const idx = filteredMessages.findIndex((x) => x.id === selected.id);
-                                if (idx > 0) onSelectMessage(filteredMessages[idx - 1].id);
-                              }}
-                              disabled={filteredMessages.findIndex((x) => x.id === selected.id) <= 0}
-                            >
-                              ←
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.iconBtn}
-                              title="Message suivant"
-                              onClick={() => {
-                                const idx = filteredMessages.findIndex((x) => x.id === selected.id);
-                                if (idx >= 0 && idx < filteredMessages.length - 1)
-                                  onSelectMessage(filteredMessages[idx + 1].id);
-                              }}
-                              disabled={
-                                (() => {
-                                  const idx = filteredMessages.findIndex((x) => x.id === selected.id);
-                                  return idx < 0 || idx >= filteredMessages.length - 1;
-                                })()
-                              }
-                            >
-                              →
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className={`${styles.actionStack} ${styles.actionFixedWidth}`}> 
-  {/* CTA + Actions rapides (desktop) */}
-  {!isMobile && (
-    <>
-{/* CTA principal */}
-  <button
-    className={styles.actionHero}
-    type="button"
-    onClick={openReply}
-    title="Répondre au message"
-  >
-    <span className={styles.actionHeroIcon} aria-hidden="true">🚀</span>
-    <span className={styles.actionHeroText}>Répondre & Convertir</span>
-  </button>
-
-  {/* Actions rapides (grandes, ordonnées) */}
-  <div className={styles.actionTiles}>
-    {/* <span className={styles.bulkIcon}>⭐</span><span className={styles.bulkText}>Important</span> / retirer important */}
-    {(selected.source === "Gmail" ? (selected.labelIds || []).includes("IMPORTANT") : selected.folder === "important") ? (
-      <button
-        className={styles.actionTile}
-        type="button"
-        title="Retirer des Importants"
-        onClick={singleUnImportant}
-      >
-        <span className={styles.actionTileIcon} aria-hidden="true">
-          ⭐
-        </span>
-        <span className={styles.actionTileLabel}>Retirer</span>
-      </button>
-    ) : (
-      <button
-        className={styles.actionTile}
-        type="button"
-        title="Mettre en Important"
-        onClick={singleImportant}
-      >
-        <span className={styles.actionTileIcon} aria-hidden="true">
-          ⭐
-        </span>
-        <span className={styles.actionTileLabel}>Important</span>
-      </button>
-    )}
-
-    {/* Brouillons : Reprendre / Créer */}
-    {selected.folder === "drafts" ? (
-      <button
-        className={styles.actionTile}
-        type="button"
-        title="Reprendre le brouillon"
-        onClick={singleResumeDraft}
-      >
-        <span className={styles.actionTileIcon} aria-hidden="true">
-          ▶️
-        </span>
-        <span className={styles.actionTileLabel}>Reprendre</span>
-      </button>
-    ) : (
-      <button
-        className={styles.actionTile}
-        type="button"
-        title="Créer un brouillon à partir de ce message"
-        onClick={() => {
-          const id = `${Date.now()}`;
-          const draft: MessageItem = {
-            id,
-            folder: "drafts",
-            from: selected.from,
-            subject: `Brouillon — ${selected.subject}`,
-            preview: selected.preview,
-            body: selected.body,
-            source: selected.source,
-            dateLabel: "Brouillon",
-            unread: false,
-          };
-          setMessages((prev) => [draft, ...prev]);
-          notify("Brouillon créé");
-          setFolder("drafts");
-          setSelectedId(id);
-          setSelectedIds(new Set([id]));
-          if (isMobile) setMobilePane("cockpit");
-        }}
-      >
-        <span className={styles.actionTileIcon} aria-hidden="true">
-          📝
-        </span>
-        <span className={styles.actionTileLabel}>Brouillon</span>
-      </button>
-    )}
-
-    {/* Spam / Légitime / Houzz */}
-    {selected.folder === "spam" ? (
-      <button
-        className={styles.actionTile}
-        type="button"
-        title="Courrier légitime"
-        onClick={singleLegit}
-      >
-        <span className={styles.actionTileIcon} aria-hidden="true">
-          ✅
-        </span>
-        <span className={styles.actionTileLabel}>Légitime</span>
-      </button>
-    ) : selected.source === "Houzz" ? (
-      <button
-        className={styles.actionTile}
-        type="button"
-        title="Répondre dans Houzz"
-        onClick={() => notify("Houzz : étape OAuth plus tard")}
-      >
-        <span className={styles.actionTileIcon} aria-hidden="true">
-          ↗️
-        </span>
-        <span className={styles.actionTileLabel}>Houzz</span>
-      </button>
-    ) : (
-      <button
-        className={styles.actionTile}
-        type="button"
-        title="Marquer comme spam"
-        onClick={singleMoveToSpam}
-      >
-        <span className={styles.actionTileIcon} aria-hidden="true">
-          🚫
-        </span>
-        <span className={styles.actionTileLabel}>Spam</span>
-      </button>
-    )}
-
-    {/* Corbeille : Restaurer / Supprimer */}
-    {selected.folder === "trash" ? (
-      <button
-        className={styles.actionTile}
-        type="button"
-        title="Restaurer depuis Corbeille"
-        onClick={singleRestore}
-      >
-        <span className={styles.actionTileIcon} aria-hidden="true">
-          ♻️
-        </span>
-        <span className={styles.actionTileLabel}>Restaurer</span>
-      </button>
-    ) : (
-      <button
-        className={`${styles.actionTile} ${styles.actionTileDanger}`}
-        type="button"
-        title="Supprimer"
-        onClick={singleMoveToTrash}
-      >
-        <span className={styles.actionTileIcon} aria-hidden="true">
-          🗑️
-        </span>
-        <span className={styles.actionTileLabel}>Supprimer</span>
-      </button>
-    )}
-  </div>
-    </>
-  )}
-
-  {/* Actions business (Devis / Facture / CRM) - desktop only */}
-  {!isMobile && (
-  <div className={styles.actionTilesBusiness}>
-    {/* 🧾 Facture */}
-    <button
-      className={`${styles.actionTile} ${styles.actionTileOverlay}`}
-      type="button"
-      title="Envoyer une facture"
-      onClick={() => {
-        if (!selected) return;
-        const { name, email } = getContactPrefill(selected);
-        const params = new URLSearchParams({
-          name,
-          email,
-          source: selected.source,
-          from: "inrbox",
-        });
-        router.push(`/dashboard/facture?${params.toString()}`);
-      }}
-    >
-      <span className={styles.actionTileIcon} aria-hidden="true">
-        🧾
-      </span>
-      <span className={styles.actionTileLabel}>Facture</span>
-      <span
-        className={`${styles.iconOverlayBadge} ${styles.badgeFacture} ${styles.actionTileBadge}`}
-        aria-hidden="true"
-      >
-        €
-      </span>
-    </button>
-
-    {/* 📄 Devis */}
-    <button
-      className={`${styles.actionTile} ${styles.actionTileOverlay}`}
-      type="button"
-      title="Envoyer un devis"
-      onClick={() => {
-        if (!selected) return;
-        const { name, email } = getContactPrefill(selected);
-        const params = new URLSearchParams({
-          name,
-          email,
-          source: selected.source,
-          from: "inrbox",
-        });
-        router.push(`/dashboard/devis?${params.toString()}`);
-      }}
-    >
-      <span className={styles.actionTileIcon} aria-hidden="true">
-        📄
-      </span>
-      <span className={styles.actionTileLabel}>Devis</span>
-      <span className={`${styles.iconOverlayBadge} ${styles.badgeDevis} ${styles.actionTileBadge}`} aria-hidden="true">
-        ✍️
-      </span>
-    </button>
-
-    {/* 👤 CRM */}
-    {!isInCrm ? (
-      <button
-        className={`${styles.actionTile} ${styles.actionTileAccent}`}
-        type="button"
-        title="Ajouter au CRM"
-        onClick={() => {
-          if (!selected) return;
-          addToCrm(selected);
-        }}
-      >
-        <svg className={styles.actionTileSvg} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path
-            d="M12 12c2.2 0 4-1.8 4-4S14.2 4 12 4 8 5.8 8 8s1.8 4 4 4Z"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-          <path
-            d="M4.5 20c1.2-3.4 4.1-5.5 7.5-5.5s6.3 2.1 7.5 5.5"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-          <path
-            d="M18.5 9v4M16.5 11h4"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-        <span className={styles.actionTileLabel}>Ajouter CRM</span>
-      </button>
-    ) : (
-      <button
-        className={`${styles.actionTile} ${styles.actionTileSuccess}`}
-        type="button"
-        title="Déjà dans le CRM"
-        onClick={() => notify("Déjà dans le CRM")}
-      >
-        <svg className={styles.actionTileSvg} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path
-            d="M12 12c2.2 0 4-1.8 4-4S14.2 4 12 4 8 5.8 8 8s1.8 4 4 4Z"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-          <path
-            d="M4.5 20c1.2-3.4 4.1-5.5 7.5-5.5s6.3 2.1 7.5 5.5"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-          <path
-            d="M16.5 11.5l1.8 1.8 3.2-3.2"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <span className={styles.actionTileLabel}>Déjà CRM</span>
-      </button>
-    )}
-  </div>
-  )}
-
-  {/* Actions dossier “Corbeille” en plus */}
-  {folder === "trash" && (
-    <div style={{ width: "100%", display: "flex", gap: 10, flexWrap: "wrap" }}>
-      <button className={styles.btnGhost} type="button" onClick={emptyTrash} title="Vider la corbeille">
-        <span className={styles.bulkIcon}>🧹</span><span className={styles.bulkText}>Vider corbeille</span>
-      </button>
-    </div>
-  )}
-</div><div className={styles.readerBody}>
-                        {selectedHtml ? (
-                          <div className={styles.gmailHtml} dangerouslySetInnerHTML={{ __html: selectedHtml }} />
-                        ) : (
-                          <div className={styles.plainText}>{selected.body}</div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* Colonne droite: messages (LISTE) */}
-          {showMessages && (
-            <section className={styles.card}>
-              {!isMobile && (
-                <div className={styles.folderTabs}>
-                  {FOLDERS.map((f) => {
-                    const active = f.key === folder;
-                    return (
-                      <button
-                        key={f.key}
-                        className={`${styles.folderTabBtn} ${active ? styles.folderTabBtnActive : ""}`}
-                        onClick={() => setFolder(f.key)}
-                        type="button"
-                        title={titleByFolder[f.key]}
-                      >
-                        <span className={styles.folderTabLabel}>{f.label}</span>
-                        <span className={styles.badgeCount}>{folderCount(f.key)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Mobile: la recherche n'apparaît que lorsqu'on clique sur la loupe */}
-              {isMobile && viewMode === "list" && mobileSearchOpen && (
-                <div className={styles.mobileSearchSticky}>
-                  <div className={styles.mobileSearchPill}>
-                    <span className={styles.mobileSearchIcon} aria-hidden="true">🔎</span>
-                    <input
-                      className={styles.mobileSearchInput}
-                      placeholder="Rechercher dans iNr’Box…"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      inputMode="search"
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      className={styles.mobileSearchClear}
-                      onClick={() => {
-                        setQuery("");
-                        setMobileSearchOpen(false);
-                      }}
-                      aria-label="Fermer"
-                      title="Fermer"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Barre: recherche + actions */}
-              <div className={styles.toolbarRow}>
-                {!isMobile && (
-                  <div className={styles.searchRow}>
-                    <input
-                      className={styles.searchInput}
-                      placeholder="Rechercher un message…"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                    />
-                    <div className={styles.searchIconRight}>⌕</div>
-                  </div>
-                )}
-
-                <div className={styles.toolbarActions}>
-                  <button
-                    type="button"
-                    className={styles.toolbarBtn}
-                    onClick={() => setFiltersOpen((v) => !v)}
-                    title="Ouvrir les filtres"
-                  >
-                    Filtrer
-                  </button>
-
-                  {(sourceFilter !== "ALL" || unreadOnly) && (
-                    <button
-                      type="button"
-                      className={styles.toolbarBtn}
-                      onClick={() => {
-                        setSourceFilter("ALL");
-                        setUnreadOnly(false);
-                      }}
-                      title="Réinitialiser les filtres"
-                    >
-                      Réinitialiser
-                    </button>
-                  )}
-
-                  <button
-                    className={styles.toolbarBtn}
-                    type="button"
-                    onClick={() => (hasSelection ? clearSelection() : selectAllVisible(visibleIds))}
-                    title={hasSelection ? "Tout désélectionner" : "Tout sélectionner"}
-                  >
-                    {hasSelection ? "✖ Désélectionner" : "✓ Tout sélectionner"}
-                  </button>
-
-                  <span className={styles.toolbarInfo}>
-                    {hasSelection ? `${selectedIds.size} sélectionné(s)` : `${filteredMessages.length} visible(s)`}
-                  </span>
-
-<div className={styles.bulkActionsInline}>
-                    {/* Important */}
-                    {folder !== "important" ? (
-                      <button
-                        className={styles.bulkBtn}
-                        type="button"
-                        disabled={!hasSelection}
-                        onClick={bulkImportant}
-                        title="Mettre en Importants"
-                      >
-                        <span className={styles.bulkIcon}>⭐</span><span className={styles.bulkText}>Important</span>
-                      </button>
-                    ) : (
-                      <button
-                        className={styles.bulkBtn}
-                        type="button"
-                        disabled={!hasSelection}
-                        onClick={bulkUnImportant}
-                        title="Retirer des Importants"
-                      >
-                        <span className={styles.bulkIcon}>⭐</span><span className={styles.bulkText}>Retirer</span>
-                      </button>
-                    )}
-
-                    {/* Corbeille / Spam contextuels */}
-                    {folder === "trash" ? (
-                      <>
-                        <button
-                          className={styles.bulkBtn}
-                          type="button"
-                          disabled={!hasSelection}
-                          onClick={bulkRestoreFromTrash}
-                          title="Restaurer depuis corbeille"
-                        >
-                          <span className={styles.bulkIcon}>♻️</span><span className={styles.bulkText}>Restaurer</span>
-                        </button>
-                        <button
-                          className={styles.bulkBtnDanger}
-                          type="button"
-                          disabled={!hasSelection}
-                          onClick={bulkDeleteForever}
-                          title="Supprimer définitivement"
-                        >
-                          <span className={styles.bulkIcon}>🧨</span><span className={styles.bulkText}>Supprimer</span>
-                        </button>
-                        <button
-                          className={styles.bulkBtnDanger}
-                          type="button"
-                          onClick={emptyTrash}
-                          title="Vider corbeille"
-                        >
-                          <span className={styles.bulkIcon}>🧹</span><span className={styles.bulkText}>Vider</span>
-                        </button>
-                      </>
-                    ) : folder === "spam" ? (
-                      <>
-                        <button
-                          className={styles.bulkBtn}
-                          type="button"
-                          disabled={!hasSelection}
-                          onClick={bulkLegitFromSpam}
-                          title="Courrier légitime"
-                        >
-                          <span className={styles.bulkIcon}>✅</span><span className={styles.bulkText}>Légitime</span>
-                        </button>
-                        <button
-                          className={styles.bulkBtnDanger}
-                          type="button"
-                          disabled={!hasSelection}
-                          onClick={bulkDeleteToTrash}
-                          title="Supprimer (vers corbeille)"
-                        >
-                          <span className={styles.bulkIcon}>🗑️</span><span className={styles.bulkText}>Supprimer</span>
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        className={styles.bulkBtnDanger}
-                        type="button"
-                        disabled={!hasSelection}
-                        onClick={bulkDeleteToTrash}
-                        title="Supprimer (vers corbeille)"
-                      >
-                        <span className={styles.bulkIcon}>🗑️</span><span className={styles.bulkText}>Supprimer</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {filtersOpen && (
-                <div className={styles.filterPanel}>
-                  <div className={styles.filterRow}>
-                    <span className={styles.smallLabel}>État</span>
-                    <button
-                      type="button"
-                      className={`${styles.chip} ${unreadOnly ? styles.chipActive : ""}`}
-                      onClick={() => setUnreadOnly((v) => !v)}
-                      title="Afficher seulement les non lus"
-                    >
-                      Non lus
-                    </button>
-                  </div>
-
-                  <div className={styles.filterRow}>
-                    <span className={styles.smallLabel}>Source</span>
-
-                    <button
-                      type="button"
-                      className={`${styles.chip} ${sourceFilter === "ALL" ? styles.chipActive : ""}`}
-                      onClick={() => setSourceFilter("ALL")}
-                    >
-                      Tous
-                    </button>
-
-                    {(["Gmail", "Microsoft", "IMAP"] as const).map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        className={`${styles.chip} ${sourceFilter === s ? styles.chipActive : ""}`}
-                        onClick={() => setSourceFilter(s)}
-                      >
-                        {s}
-                      </button>
+                    {mailAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {(a.display_name ? `${a.display_name} — ` : "") + a.email_address + ` (${a.provider})`}
+                      </option>
                     ))}
-                  </div>
-                </div>
-              )}
+                  </select>
 
-{/* Liste */}
-              <div className={`${styles.scrollArea} ${styles.scrollAreaMessages}`}>
-                <div className={`${styles.list} ${hasSelection ? styles.selectionMode : ""}`}>
-                  {filteredMessages.map((m) => {
-                    const active = m.id === selectedId;
-                    const checked = isSelected(m.id);
-
-                    return (
-                      <div
-                        key={m.id}
-                        className={`${styles.itemRow} ${active ? styles.itemRowActive : ""} ${checked ? styles.itemRowSelected : ""}`}
-                      >
-                        <button
-                          className={`${styles.itemButton} ${active ? styles.itemActive : ""}`}
-                          onClick={() => {
-                            if (isMobile && hasSelection) {
-                              toggleSelect(m.id);
-                              return;
-                            }
-                            onSelectMessage(m.id);
-                          }}
-                          onDoubleClick={() => openAction(m.id)}
-                          onPointerDown={() => {
-                            if (!isMobile) return;
-
-                            // long-press -> multi sélection (sans checkboxes)
-                            longPressTriggeredRef.current = false;
-                            if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
-                            longPressTimerRef.current = window.setTimeout(() => {
-                              longPressTriggeredRef.current = true;
-                              setSelectedId(m.id);
-                              toggleSelect(m.id);
-                            }, 450);
-                          }}
-                          onPointerUp={(e) => {
-                            if (!isMobile) return;
-
-                            if (longPressTimerRef.current) {
-                              window.clearTimeout(longPressTimerRef.current);
-                              longPressTimerRef.current = null;
-                            }
-                            if (longPressTriggeredRef.current) {
-                              e.preventDefault();
-                              e.stopPropagation();
-                            }
-                          }}
-                          onPointerCancel={() => {
-                            if (longPressTimerRef.current) {
-                              window.clearTimeout(longPressTimerRef.current);
-                              longPressTimerRef.current = null;
-                            }
-                          }}
-                          type="button"
-                        >
-                          <div className={styles.itemGrid}>
-                            {/* COLONNE GAUCHE : titre + extrait */}
-                            <div className={styles.itemLeft}>
-                              <div className={styles.mailTitleRow}>
-                                {m.unread && <span className={styles.dotUnread} />}
-                                <div className={styles.mailTitle}>{m.subject}</div>
-                              </div>
-                              <div className={styles.mailSnippet}>{m.preview}</div>
-                            </div>
-
-                            {/* COLONNE DROITE : source + date + checkbox */}
-                            <div
-                              className={styles.itemRight}
-                              onClick={(e) => e.stopPropagation()}
-                              onPointerDown={(e) => e.stopPropagation()}
-                            >
-                              <span className={badgeClass(m.source)}>{m.source}</span>
-                              <div className={styles.mailDate}>{formatListDate(m)}</div>
-
-                              {!isMobile && (
-                                <label
-                                  className={`${styles.checkWrapRight} ${checked ? styles.checkWrapChecked : ""}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  title="Sélection multiple"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => toggleSelect(m.id)}
-                                  />
-                                </label>
-                              )}
-                            </div>
-                          </div>
-                        </button>
-                      </div>
-	                    );
-	                  })}
-
-	                  {!filteredMessages.length && (
-                    <div style={{ padding: 16, color: "rgba(255,255,255,0.70)" }}>
-                      Aucun message dans <b>{fmtFolderLabel(folder)}</b>.
-                    </div>
+                  {selectedAccount ? (
+                    <span className={`${styles.badge} ${pill(selectedAccount.provider).cls}`}>{pill(selectedAccount.provider).label}</span>
+                  ) : (
+                    <span style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>Aucune boîte connectée</span>
                   )}
                 </div>
-              </div>
 
-              {/* Charger plus (fixé en bas) */}
-              <div className={styles.loadMoreWrap}>
-                <button className={styles.btnGhost} type="button" onClick={() => notify("Charger plus (mock)")}>
-                  Charger plus
+                <button className={styles.toolbarBtn} onClick={loadHistory} type="button">
+                  ↻ Actualiser
                 </button>
               </div>
-            </section>
-          )}
+            </div>
+
+            <div className={styles.scrollArea}>
+              {loading ? (
+                <div style={{ padding: 14, color: "rgba(255,255,255,0.75)" }}>Chargement…</div>
+              ) : visibleItems.length === 0 ? (
+                <div style={{ padding: 14, color: "rgba(255,255,255,0.65)" }}>Aucun élément.</div>
+              ) : (
+                <div className={styles.list}>
+                  {visibleItems.map((it) => {
+                    const active = it.id === selectedId;
+                    const p = pill(it.provider);
+                    return (
+                      <button
+                        key={it.id}
+                        className={active ? styles.itemActive : styles.item}
+                        onClick={() => openItem(it)}
+                        type="button"
+                      >
+                        <div className={styles.itemTop}>
+                          <div className={styles.fromRow}>
+                            <div className={styles.from}>{(it.subject || "(sans objet)").slice(0, 70)}</div>
+                            <span className={`${styles.badge} ${p.cls}`}>{p.label}</span>
+                          </div>
+                          <div className={styles.date}>{new Date(it.created_at).toLocaleString()}</div>
+                        </div>
+                        <div className={styles.subject}>{it.to_emails}</div>
+                        <div className={styles.preview}>{(it.body_text || it.body_html || "").toString().replace(/<[^>]+>/g, "").slice(0, 110)}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Details */}
+          <div className={styles.card}>
+            <div className={styles.cardHeader}>
+              <div className={styles.cardTitle}>Détails</div>
+              {selected ? rememberActions(selected, folder, moveToDeleted, restoreFromDeleted) : null}
+            </div>
+
+            <div className={styles.scrollArea} style={{ padding: 14 }}>
+              {!selected ? (
+                <div style={{ color: "rgba(255,255,255,0.65)" }}>Sélectionne un élément.</div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.95)" }}>{selected.subject || "(sans objet)"}</div>
+                    <span className={`${styles.badge} ${pill(selected.provider).cls}`}>{pill(selected.provider).label}</span>
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                      {selected.status === "draft" ? "Brouillon" : selected.sent_at ? `Envoyé • ${new Date(selected.sent_at).toLocaleString()}` : "Créé"}
+                    </span>
+                  </div>
+
+                  <div style={{ marginTop: 10, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>
+                    <b>À :</b> {selected.to_emails}
+                  </div>
+
+                  {selected.error ? (
+                    <div style={{ marginTop: 10, color: "rgba(255,80,80,0.9)", fontSize: 13 }}>
+                      <b>Erreur :</b> {selected.error}
+                    </div>
+                  ) : null}
+
+                  <div style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: 14 }}>
+                    {selected.body_html ? (
+                      <div
+                        style={{ color: "rgba(255,255,255,0.86)", fontSize: 14, lineHeight: 1.55 }}
+                        dangerouslySetInnerHTML={{ __html: selected.body_html }}
+                      />
+                    ) : (
+                      <pre style={{ whiteSpace: "pre-wrap", color: "rgba(255,255,255,0.86)", fontSize: 14, lineHeight: 1.55 }}>
+                        {selected.body_text || ""}
+                      </pre>
+                    )}
+                  </div>
+
+                  {selected.status === "draft" ? (
+                    <div style={{ marginTop: 14, color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
+                      Astuce : clique sur ce brouillon dans la liste pour l’ouvrir en édition.
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* SETTINGS drawer */}
-<SettingsDrawer
-  {...({ open: settingsOpen, isOpen: settingsOpen } as any)}
-  onClose={() => setSettingsOpen(false)}
-  title="Réglages iNr’Box"
->
-  <MailsSettingsContent />
-</SettingsDrawer>
-
-        {/* Toast */}
-        {toast && (
-          <div className={styles.toast} role="status" aria-live="polite">
-            {toast.text}
-          </div>
-        )}
-
-        {/* Compose Modal */}
-        {composeOpen && (
-          <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-            <div className={styles.modalCard}>
+        {/* Compose modal */}
+        {composeOpen ? (
+          <div className={styles.modalOverlay} onClick={() => setComposeOpen(false)}>
+            <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
               <div className={styles.modalHeader}>
-                <div className={styles.modalTitle}>Écrire un message</div>
-                <button className={styles.iconBtn} type="button" onClick={() => setComposeOpen(false)} title="Fermer">
-                  ✖
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: "rgba(255,255,255,0.95)" }}>
+                    {draftId ? "Éditer le brouillon" : "Nouveau message"}
+                  </div>
+                  <select
+                    value={composeType}
+                    onChange={(e) => setComposeType(e.target.value as SendType)}
+                    style={{
+                      background: "rgba(0,0,0,0.22)",
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      color: "rgba(255,255,255,0.9)",
+                      borderRadius: 12,
+                      padding: "6px 8px",
+                    }}
+                  >
+                    <option value="mail">Mail</option>
+                    <option value="newsletter">Newsletter</option>
+                    <option value="facture">Facture</option>
+                    <option value="devis">Devis</option>
+                  </select>
+                </div>
+
+                <button className={styles.btnGhost} onClick={() => setComposeOpen(false)} type="button">
+                  ✕
                 </button>
               </div>
 
               <div className={styles.modalBody}>
-                
-                  <div className={styles.formRow}>
-                    <label className={styles.formLabel}>Importer un contact (CRM)</label>
-                    <div className={styles.crmMultiSelect}>
-                      <button
-                        type="button"
-                        className={styles.crmMultiSelectBtn}
-                        onClick={() => setCrmPickerOpen((v) => !v)}
-                        disabled={crmLoading}
-                        aria-expanded={crmPickerOpen}
-                      >
-                        {crmLoading
-                          ? "Chargement…"
-                          : selectedCrmContactIds.length
-                            ? `${selectedCrmContactIds.length} contact(s) sélectionné(s)`
-                            : "Sélectionner un ou plusieurs contacts"}
-                        <span aria-hidden>▾</span>
-                      </button>
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)" }}>Boîte d’envoi :</div>
+                    <select
+                      value={selectedAccountId}
+                      onChange={(e) => setSelectedAccountId(e.target.value)}
+                      style={{
+                        background: "rgba(0,0,0,0.22)",
+                        border: "1px solid rgba(255,255,255,0.18)",
+                        color: "rgba(255,255,255,0.9)",
+                        borderRadius: 12,
+                        padding: "8px 10px",
+                        minWidth: 280,
+                      }}
+                    >
+                      {mailAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {(a.display_name ? `${a.display_name} — ` : "") + a.email_address + ` (${a.provider})`}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedAccount ? (
+                      <span className={`${styles.badge} ${pill(selectedAccount.provider).cls}`}>{pill(selectedAccount.provider).label}</span>
+                    ) : null}
+                  </div>
 
-                      {crmPickerOpen && !crmLoading && (
-                        <div className={styles.crmMultiSelectMenu}>
-                          <div className={styles.crmMenuTop}>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>À</span>
+                    <input
+                      value={to}
+                      onChange={(e) => setTo(e.target.value)}
+                      placeholder="email@exemple.com, autre@exemple.com"
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  {/* CRM picker (dropdown + checkboxes) */}
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <button
+                      type="button"
+                      className={styles.btnGhost}
+                      onClick={() => setCrmPickerOpen((v) => !v)}
+                      style={{
+                        justifyContent: "space-between",
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        borderColor: "rgba(255,255,255,0.14)",
+                        background: "rgba(0,0,0,0.18)",
+                      }}
+                    >
+                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.78)", fontWeight: 700 }}>Contacts CRM</span>
+                        <span className={styles.badge} style={{ opacity: 0.9 }}>
+                          {selectedCrmCount} sélectionné{selectedCrmCount > 1 ? "s" : ""}
+                        </span>
+                      </span>
+                      <span style={{ opacity: 0.85 }}>{crmPickerOpen ? "▴" : "▾"}</span>
+                    </button>
+
+                    {crmPickerOpen ? (
+                      <div
+                        style={{
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          borderRadius: 14,
+                          padding: 10,
+                          background: "rgba(0,0,0,0.16)",
+                        }}
+                      >
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                             <input
-                              className={styles.crmMenuSearch}
+                              value={crmFilter}
+                              onChange={(e) => setCrmFilter(e.target.value)}
                               placeholder="Rechercher…"
-                              value={crmPickerQuery}
-                              onChange={(e) => setCrmPickerQuery(e.target.value)}
+                              style={{ ...inputStyle, padding: "8px 10px", maxWidth: 240 }}
                             />
-                            <div className={styles.crmMenuActions}>
-                              <button
-                                type="button"
-                                className={styles.crmMenuActionBtn}
-                                onClick={() => {
-                                  const ids = crmContacts.map((c) => String(c.id));
-                                  setSelectedCrmContactIds(ids);
-                                  applyCrmContactsToCompose(crmContacts);
-                                }}
-                              >
-                                Tout sélectionner
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.crmMenuActionBtn}
-                                onClick={() => setSelectedCrmContactIds([])}
-                              >
-                                Tout désélectionner
-                              </button>
-                            </div>
+                            <select
+                              value={crmCategory ?? "all"}
+                              onChange={(e) => setCrmCategory(e.target.value as any)}
+                              style={{
+                                background: "rgba(0,0,0,0.22)",
+                                border: "1px solid rgba(255,255,255,0.18)",
+                                color: "rgba(255,255,255,0.9)",
+                                borderRadius: 12,
+                                padding: "8px 10px",
+                              }}
+                              title="Filtrer par catégorie"
+                            >
+                              <option value="all">Toutes catégories</option>
+                              <option value="particulier">Particuliers</option>
+                              <option value="professionnel">Professionnels</option>
+                              <option value="collectivite_publique">Collectivités</option>
+                            </select>
+                            <select
+                              value={crmContactType ?? "all"}
+                              onChange={(e) => setCrmContactType(e.target.value as any)}
+                              style={{
+                                background: "rgba(0,0,0,0.22)",
+                                border: "1px solid rgba(255,255,255,0.18)",
+                                color: "rgba(255,255,255,0.9)",
+                                borderRadius: 12,
+                                padding: "8px 10px",
+                              }}
+                              title="Filtrer par type"
+                            >
+                              <option value="all">Tous types</option>
+                              <option value="client">Clients</option>
+                              <option value="prospect">Prospects</option>
+                              <option value="fournisseur">Fournisseurs</option>
+                              <option value="partenaire">Partenaires</option>
+                              <option value="autre">Autres</option>
+                            </select>
+                            <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, color: "rgba(255,255,255,0.78)" }}>
+                              <input type="checkbox" checked={crmImportantOnly} onChange={(e) => setCrmImportantOnly(e.target.checked)} />
+                              Important
+                            </label>
                           </div>
 
-                          <div className={styles.crmMenuList}>
-                            {crmContacts
-                              .filter((c) => {
-                                const label =
-                                  (c.company_name && c.company_name.trim()) ||
-                                  [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
-                                  (c.last_name || "").trim() ||
-                                  "(Sans nom)";
-                                const hay = `${label} ${c.email || ""}`.toLowerCase();
-                                return hay.includes(crmPickerQuery.toLowerCase());
-                              })
-                              .map((c) => {
-                                const label =
-                                  (c.company_name && c.company_name.trim()) ||
-                                  [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
-                                  (c.last_name || "").trim() ||
-                                  "(Sans nom)";
-                                const checked = selectedCrmContactIds.includes(String(c.id));
+                          <button
+                            type="button"
+                            className={styles.btnGhost}
+                            onClick={() => void loadCrmContacts()}
+                            disabled={crmLoading}
+                            title="Recharger les contacts"
+                            style={{ padding: "8px 10px" }}
+                          >
+                            ↻
+                          </button>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            className={styles.btnGhost}
+                            onClick={() => {
+                              const current = normalizeEmails(to);
+                              const setLower = new Set(current.map((e) => e.toLowerCase()));
+                              const add = filteredContacts
+                                .map((c) => c.email)
+                                .filter(Boolean)
+                                .map((e) => String(e));
+                              const next = [...current];
+                              for (const e of add) {
+                                if (!setLower.has(e.toLowerCase())) {
+                                  next.push(e);
+                                  setLower.add(e.toLowerCase());
+                                }
+                              }
+                              setTo(next.join(", "));
+                            }}
+                            disabled={crmLoading || filteredContacts.length === 0}
+                          >
+                            Tout sélectionner
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.btnGhost}
+                            onClick={() => {
+                              const removeSet = new Set(
+                                filteredContacts
+                                  .map((c) => c.email)
+                                  .filter(Boolean)
+                                  .map((e) => String(e).toLowerCase())
+                              );
+                              const current = normalizeEmails(to);
+                              const next = current.filter((e) => !removeSet.has(e.toLowerCase()));
+                              setTo(next.join(", "));
+                            }}
+                            disabled={crmLoading || filteredContacts.length === 0}
+                          >
+                            Tout désélectionner
+                          </button>
+                          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
+                            {filteredContacts.length} contact{filteredContacts.length > 1 ? "s" : ""} (filtrés)
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: 10,
+                            border: "1px solid rgba(255,255,255,0.10)",
+                            borderRadius: 12,
+                            padding: 8,
+                            maxHeight: 190,
+                            overflow: "auto",
+                          }}
+                        >
+                          {crmLoading ? (
+                            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)" }}>Chargement des contacts…</div>
+                          ) : crmError ? (
+                            <div style={{ display: "grid", gap: 8 }}>
+                              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)" }}>{crmError}</div>
+                              <button
+                                className={styles.btnPrimary}
+                                type="button"
+                                onClick={() => void loadCrmContacts()}
+                                style={{ width: "fit-content" }}
+                              >
+                                Réessayer
+                              </button>
+                            </div>
+                          ) : filteredContacts.length === 0 ? (
+                            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)" }}>Aucun contact.</div>
+                          ) : (
+                            <div style={{ display: "grid", gap: 6 }}>
+                              {filteredContacts.slice(0, 200).map((c) => {
+                                const email = c.email ? String(c.email) : "";
+                                const checked = email ? selectedToSet.has(email.toLowerCase()) : false;
                                 return (
-                                  <label key={c.id} className={styles.crmMenuItem}>
+                                  <label
+                                    key={c.id}
+                                    style={{
+                                      display: "flex",
+                                      gap: 10,
+                                      alignItems: "center",
+                                      padding: "8px 10px",
+                                      borderRadius: 12,
+                                      border: "1px solid rgba(255,255,255,0.10)",
+                                      background: checked ? "rgba(56,189,248,0.10)" : "rgba(0,0,0,0.10)",
+                                      cursor: email ? "pointer" : "not-allowed",
+                                      opacity: email ? 1 : 0.6,
+                                    }}
+                                  >
                                     <input
                                       type="checkbox"
+                                      disabled={!email}
                                       checked={checked}
                                       onChange={() => {
-                                        setSelectedCrmContactIds((prev) => {
-                                          const id = String(c.id);
-                                          const next = prev.includes(id)
-                                            ? prev.filter((x) => x !== id)
-                                            : [...prev, id];
-                                          const selectedContacts = crmContacts.filter((x) => next.includes(String(x.id)));
-                                          if (selectedContacts.length) applyCrmContactsToCompose(selectedContacts);
-                                          return next;
-                                        });
+                                        if (!email) return;
+                                        toggleEmailInTo(email);
                                       }}
                                     />
-                                    <span className={styles.crmMenuItemText}>
-                                      {label}{c.email ? ` — ${c.email}` : ""}
-                                    </span>
+                                    <div style={{ display: "grid", lineHeight: 1.15 }}>
+                                      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.92)", fontWeight: 700 }}>
+                                        {c.full_name || "(Sans nom)"}
+                                        {c.important ? <span style={{ marginLeft: 8, opacity: 0.75 }}>★</span> : null}
+                                      </div>
+                                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.70)" }}>{email}</div>
+                                    </div>
                                   </label>
                                 );
                               })}
-
-                            {!crmContacts.length && (
-                              <div className={styles.crmEmpty}>Aucun contact CRM.</div>
-                            )}
-                          </div>
-
-                          <div className={styles.crmMenuBottom}>
-                            <button
-                              type="button"
-                              className={styles.btnPrimary}
-                              onClick={() => setCrmPickerOpen(false)}
-                            >
-                              OK
-                            </button>
-                          </div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    {crmError ? (
-                      <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
-                        ⚠️ {crmError}
                       </div>
                     ) : null}
                   </div>
 
-                {/* espace visuel entre l'import CRM et les champs (desktop + mobile) */}
-                <div className={`${styles.formGrid} ${styles.composeFormGrid}`}>
-                  <div className={styles.formRow}>
-                    <label className={styles.formLabel}>À</label>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Objet</span>
+                    <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Objet" style={inputStyle} />
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Message (texte)</span>
+                    <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} style={textareaStyle} />
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Pièces jointes</span>
                     <input
-                      className={styles.formInput}
-                      value={composeTo}
-                      onChange={(e) => setComposeTo(e.target.value)}
-                      placeholder="destinataire@mail.com"
-                    />
-                  </div>
-
-                  <div className={styles.formRow}>
-                    <label className={styles.formLabel}>Objet</label>
-                    <input
-                      className={styles.formInput}
-                      value={composeSubject}
-                      onChange={(e) => setComposeSubject(e.target.value)}
-                      placeholder="Objet"
-                    />
-                  </div>
-
-                  <div className={styles.formRow}>
-                    <label className={styles.formLabel}>Source</label>
-                    <select
-                      className={styles.selectDark}
-                      value={composeAccountId || ""}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        setComposeAccountId(id);
-                        const acc = availableSendAccounts.find((a) => String(a.id) === String(id));
-                        const p = String(acc?.provider || "").toLowerCase();
-                        setComposeSource(p === "microsoft" ? "Microsoft" : p === "imap" ? "IMAP" : "Gmail");
-                      }}
-                      disabled={availableSendAccounts.length === 0}
-                    >
-                      {availableSendAccounts.length === 0 ? (
-                        <option value="">Aucune boîte connectée</option>
-                      ) : (
-                        <>
-                          {availableSendAccounts.map((a) => {
-                            const p = String(a.provider || "").toLowerCase();
-                            const providerLabel = p === "microsoft" ? "Microsoft" : p === "imap" ? "IMAP" : "Gmail";
-                            const label =
-                              a.email_address ||
-                              a.display_name ||
-                              `${providerLabel} (${String(a.id).slice(0, 6)}…)`;
-                            return (
-                              <option key={a.id} value={a.id}>
-                                {providerLabel} — {label}
-                              </option>
-                            );
-                          })}
-                        </>
-                      )}
-                    </select>
-                  </div>
-
-                  <div className={styles.formRow} style={{ gridColumn: "1 / -1" }}>
-                    <label className={styles.formLabel}>Message</label>
-                    <textarea
-                      className={styles.formTextarea}
-                      value={composeBody}
-                      onChange={(e) => setComposeBody(e.target.value)}
-                      placeholder="Votre message…"
-                      rows={8}
-                    />
-
-                    <div className={styles.attachRow}>
-                      <span className={styles.attachIcon} aria-hidden>
-                        📎
-                      </span>
-                      <label className={styles.attachBtn}>
-                        Joindre
-                        <input
-                          hidden
-                          type="file"
-                          multiple
-                          onChange={(e) => {
-                            const files = Array.from(e.target.files || []);
-                            setComposeFiles((prev) => [...prev, ...files]);
-                            e.currentTarget.value = "";
-                          }}
-                        />
-                      </label>
-                    </div>
-
-                    {composeFiles.length > 0 && (
-                      <div className={styles.attachList}>
-                        {composeFiles.map((f, i) => (
-                          <div key={i} className={styles.attachItem}>
-                            <span className={styles.attachName}>{f.name}</span>
-                            <button
-                              type="button"
-                              className={styles.btnGhost}
-                              onClick={() => setComposeFiles((p) => p.filter((_, idx) => idx !== i))}
-                              aria-label="Retirer"
-                              title="Retirer"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-</div>
-                </div>
-              </div>
-
-              <div className={styles.modalFooter}>
-                <button className={styles.btnGhost} type="button" onClick={saveDraftFromCompose}>
-                  📝 Enregistrer brouillon
-                </button>
-                <button className={styles.btnGhost} type="button" onClick={resetComposeWithConfirm}>
-                  ↩ Réinitialiser
-                </button>
-                <button className={styles.btnPrimary} type="button" onClick={sendFromCompose}>
-                  ✉️ Envoyer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Reply Modal */}
-        {replyOpen && selected && (
-          <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-            <div className={styles.modalCard}>
-              <div className={styles.modalHeader}>
-                <div className={styles.modalTitle}>Répondre</div>
-                <button className={styles.iconBtn} type="button" onClick={() => setReplyOpen(false)} title="Fermer">
-                  ✖
-                </button>
-              </div>
-
-              <div className={styles.modalBody}>
-                <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 13 }}>
-                  À : <b style={{ color: "rgba(255,255,255,0.92)" }}>{selected.from}</b>
-                </div>
-                <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 13, marginTop: 6 }}>
-                  Objet : <b style={{ color: "rgba(255,255,255,0.92)" }}>{`Re: ${selected.subject}`}</b>
-                </div>
-
-                <textarea
-                  className={styles.formTextarea}
-                  style={{ marginTop: 12 }}
-                  value={replyBody}
-                  onChange={(e) => setReplyBody(e.target.value)}
-                  rows={8}
-                />
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
-                  <label className={styles.btnGhost} style={{ width: "fit-content", cursor: "pointer" }}>
-                    📎 Joindre
-                    <input
-                      hidden
+                      id={fileInputId}
                       type="file"
                       multiple
                       onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        setReplyFiles((prev) => [...prev, ...files]);
-                        e.currentTarget.value = "";
+                        const next = Array.from(e.target.files || []);
+                        setFiles(next);
                       }}
+                      className={styles.hiddenFileInput}
                     />
-                  </label>
 
-                  {replyFiles.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {replyFiles.map((f, i) => (
-                        <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          <span style={{ fontSize: 12, opacity: 0.9 }}>{f.name}</span>
-                          <button
-                            type="button"
-                            className={styles.btnGhost}
-                            onClick={() => setReplyFiles((p) => p.filter((_, idx) => idx !== i))}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <label htmlFor={fileInputId} className={styles.btnAttach}>
+                        📎 Joindre
+                      </label>
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                        {files.length > 0 ? `${files.length} fichier(s)` : "Aucun fichier"}
+                      </span>
                     </div>
-                  )}
+
+                    {files.length > 0 ? (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {files.map((f, idx) => (
+                          <span key={idx} className={styles.fileChip} title={f.name}>
+                            {f.name}
+                            <button
+                              type="button"
+                              className={styles.fileChipRemove}
+                              onClick={() => setFiles((prev) => prev.filter((_, i) => i !== idx))}
+                              aria-label={`Retirer ${f.name}`}
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </label>
                 </div>
               </div>
 
               <div className={styles.modalFooter}>
-                <button className={styles.btnGhost} type="button" onClick={replySaveDraftLocal}>
-                  📝 Brouillon
+                <button className={styles.btnGhost} onClick={saveDraft} type="button" disabled={sendBusy}>
+                  💾 Sauvegarder brouillon
                 </button>
-                <button className={styles.btnPrimary} type="button" onClick={replySendLocal}>
-                  ✉️ Envoyer
+                <button className={styles.btnPrimary} onClick={doSend} type="button" disabled={sendBusy}>
+                  {sendBusy ? "Envoi…" : "Envoyer"}
                 </button>
               </div>
+
+              {toast ? (
+                <div style={{ padding: "10px 14px", color: "rgba(255,255,255,0.75)", fontSize: 12 }}>
+                  {toast}{" "}
+                  <button className={styles.btnGhost} onClick={() => setToast(null)} type="button">
+                    OK
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
 }
+
+function rememberActions(
+  selected: SendItem,
+  folder: Folder,
+  moveToDeleted: (id: string) => Promise<void>,
+  restoreFromDeleted: (id: string) => Promise<void>
+) {
+  if (!selected) return null;
+  if (folder === "deleted") {
+    return (
+      <button className={styles.btnPrimary} onClick={() => restoreFromDeleted(selected.id)} type="button">
+        Restaurer
+      </button>
+    );
+  }
+  return (
+    <button className={styles.btnGhost} onClick={() => moveToDeleted(selected.id)} type="button">
+      Supprimer
+    </button>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  background: "rgba(0,0,0,0.22)",
+  border: "1px solid rgba(255,255,255,0.18)",
+  color: "rgba(255,255,255,0.92)",
+  borderRadius: 12,
+  padding: "10px 12px",
+  outline: "none",
+};
+
+const textareaStyle: React.CSSProperties = {
+  ...inputStyle,
+  resize: "vertical",
+  fontFamily: "inherit",
+};
