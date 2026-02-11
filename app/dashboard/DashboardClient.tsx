@@ -2934,7 +2934,7 @@ const disconnectSiteWebGsc = useCallback(() => {
                 }
                 const widgetV = process.env.NEXT_PUBLIC_WIDGET_VERSION || "1";
                 const scriptUrl = typeof window !== "undefined" ? `${window.location.origin}/widgets/inrcy-actus.js?v=${widgetV}` : `/widgets/inrcy-actus.js?v=${widgetV}`;
-                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-source=\"inrcy_site\" data-limit=\"5\" data-title=\"Actualités\"></div>
+                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-source=\"site_web\" data-limit=\"5\" data-title=\"Actualités\"></div>
 <script async src=\"${scriptUrl}\"></script>`;
                 return (
                   <>

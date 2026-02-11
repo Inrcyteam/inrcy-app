@@ -95,9 +95,9 @@
       ".inrcy-actus-thumb{flex:0 0 110px;width:110px;height:110px;border-radius:14px;overflow:hidden;background:#f2f2f2;border:1px solid rgba(0,0,0,.06)}" +
       ".inrcy-actus-thumb img{width:100%;height:100%;object-fit:cover;display:block}" +
       ".inrcy-actus-body{min-width:0;flex:1}" +
-      ".inrcy-actus-h{font-weight:900;font-size:16px;line-height:1.15;margin:0 0 6px 0;letter-spacing:-0.1px}" +
+      ".inrcy-actus-h{font-weight:900;font-size:18px;line-height:1.2;margin:0 0 8px 0;letter-spacing:-0.2px}" +
       ".inrcy-actus-meta{font-size:12px;color:rgba(0,0,0,.55);margin:0 0 8px 0}" +
-      ".inrcy-actus-content{font-size:14px;line-height:1.55;color:rgba(0,0,0,.84)}" +
+      ".inrcy-actus-content{font-size:15.5px;line-height:1.65;color:rgba(0,0,0,.9)}" +
       "@media (max-width:600px){" +
       ".inrcy-actus-row{flex-direction:column}" +
       ".inrcy-actus-thumb{width:100%;height:180px;flex:0 0 auto}" +
