@@ -2206,7 +2206,7 @@ const disconnectSiteWebGsc = useCallback(() => {
 </svg>
 </button>
 
-      <div className={styles.loopSub}>Tout part d'ici</div>
+      <div className={styles.loopSub}>Tous vos messages partent d'ici</div>
       <div className={styles.loopActions}>
         <button
   className={`${styles.actionBtn} ${styles.connectBtn}`}
