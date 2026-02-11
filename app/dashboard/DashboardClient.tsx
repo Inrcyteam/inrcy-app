@@ -2190,7 +2190,7 @@ const disconnectSiteWebGsc = useCallback(() => {
 <span className={`${styles.loopBadge} ${styles.badgePurple}`}></span>
 
      <div className={styles.loopTopRow}>
-  <div className={styles.loopTitle}>MAILS</div>
+  <div className={styles.loopTitle}>COMS</div>
 </div>
 
 <button
@@ -2206,7 +2206,7 @@ const disconnectSiteWebGsc = useCallback(() => {
 </svg>
 </button>
 
-      <div className={styles.loopSub}>Toutes vos demandes arrivent ici</div>
+      <div className={styles.loopSub}>Toutes vos communications partent d'ici</div>
       <div className={styles.loopActions}>
         <button
   className={`${styles.actionBtn} ${styles.connectBtn}`}
