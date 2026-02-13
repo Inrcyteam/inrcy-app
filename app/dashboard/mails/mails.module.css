@@ -69,6 +69,21 @@
   border-color: rgba(255,255,255,0.20);
 }
 
+/* Icône corbeille (bloc Détails) */
+.trashBtn{
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 16px;
+  line-height: 1;
+  border-color: rgba(244,114,182,0.30);
+  background: rgba(244,114,182,0.08);
+}
+
+.trashBtn:hover{
+  background: rgba(244,114,182,0.12);
+  border-color: rgba(244,114,182,0.40);
+}
+
 .btnPrimary {
   display: inline-flex;
   align-items: center;
@@ -211,6 +226,8 @@
 
   display: grid;
   grid-template-columns: 1fr;
+  /* On donne plus de hauteur à la liste et on limite le bloc Détails */
+  grid-template-rows: minmax(0, 1fr) minmax(180px, 280px);
   gap: 14px;
 }
 
@@ -236,6 +253,15 @@
 
   .actions {
     width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .actions > a,
+  .actions > button {
+    justify-content: center;
+    width: 100%;
   }
 
   .mobilePanes {
@@ -246,6 +272,7 @@
     width: 100%;
     margin: 0;
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(150px, 240px);
     gap: 12px;
   }
 
@@ -295,6 +322,18 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Détails : plus compact pour laisser de la place à la liste */
+.detailsCard {
+  min-height: 140px;
+  max-height: 220px;
+}
+
+/* Liste (bloc du haut) : doit remplir la rangée de la grille, sans limite de hauteur */
+.listCard {
+  min-height: 0;
+  max-height: none;
 }
 
 .cardHeader {
@@ -2703,22 +2742,28 @@ width: 100%;
 
 .folderTabs{
   display:flex;
-  gap:10px;
-  flex-wrap:wrap;
+  gap:6px;
+  flex-wrap:nowrap;
+  overflow-x:hidden;
+  overflow-y:hidden;
   padding:12px 12px 0 12px;
 }
+
+.folderTabs::-webkit-scrollbar{ height:8px; }
+.folderTabs::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.14); border-radius:999px; }
+.folderTabs::-webkit-scrollbar-track{ background:transparent; }
 
 .folderTabBtn{
   display:flex;
   align-items:center;
-  gap:10px;
-  padding:10px 12px;
+  gap:8px;
+  padding:8px 10px;
   border-radius:14px;
   border:1px solid rgba(255,255,255,0.10);
   background:rgba(255,255,255,0.04);
   color:rgba(255,255,255,0.92);
   font-weight:850;
-  font-size:14px;
+  font-size:12.5px;
   cursor:pointer;
 }
 

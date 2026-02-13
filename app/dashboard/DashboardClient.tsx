@@ -177,7 +177,7 @@ const quickActions: Array<{ key: string; title: string; sub: string; disabled?: 
   { key: "facturer", title: "Facturer", sub: "Factures & paiements", disabled: false, accent: "orange" },
   { key: "devis", title: "Faire devis", sub: "Devis en 30 sec", disabled: false, accent: "pink" },
   { key: "booster", title: "Booster", sub: "Visibilité & communication", disabled: false, accent: "purple" },
-  { key: "fideliser", title: "Fidéliser", sub: "Informer & suivi client", disabled: false, accent: "cyan" },
+  { key: "fideliser", title: "Fidéliser", sub: "Informations & suivi client", disabled: false, accent: "cyan" },
 ];
 
 export default function DashboardClient() {

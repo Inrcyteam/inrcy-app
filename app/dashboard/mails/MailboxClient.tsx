@@ -8,8 +8,20 @@ import SettingsDrawer from "../SettingsDrawer";
 import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
 import { createClient } from "@/lib/supabaseClient";
 
-type Folder = "mails" | "newsletters" | "factures" | "devis" | "drafts" | "deleted";
-type SendType = "mail" | "newsletter" | "facture" | "devis";
+// iNrSend : centre d'historique des envois + envoi simple de mails.
+type Folder =
+  | "mails"
+  | "factures"
+  | "devis"
+  | "actualites"
+  | "avis"
+  | "promotion"
+  | "informer"
+  | "remercier"
+  | "satisfaction";
+
+// Typage historique d'envoi (ancienne table send_items)
+type SendType = "mail" | "facture" | "devis";
 type Status = "draft" | "sent" | "deleted" | "error";
 
 type MailAccount = {
@@ -37,32 +49,52 @@ type SendItem = {
   updated_at: string;
 };
 
+type OutboxItem = {
+  id: string;
+  source: "send_items" | "booster_events" | "fideliser_events";
+  folder: Folder;
+  provider: string | null; // Gmail / Microsoft / IMAP / Booster / Fidéliser / Admin
+  status: "sent" | "draft" | "error";
+  created_at: string;
+  sent_at?: string | null;
+  error?: string | null;
+
+  // Affichage liste
+  title: string;
+  target: string;
+  preview: string;
+
+  // Détails
+  detailHtml?: string | null;
+  detailText?: string | null;
+  raw?: any;
+};
+
 function folderLabel(f: Folder) {
   switch (f) {
     case "mails":
       return "Mails";
-    case "newsletters":
-      return "Newsletters";
     case "factures":
       return "Factures";
     case "devis":
       return "Devis";
-    case "drafts":
-      return "Brouillons";
-    case "deleted":
-      return "Supprimés";
+    case "actualites":
+      return "Actualités";
+    case "avis":
+      return "Avis";
+    case "promotion":
+      return "Promotion";
+    case "informer":
+      return "Informations";
+    case "remercier":
+      return "Remerciements";
+    case "satisfaction":
+      return "Enquêtes";
   }
 }
 
-function folderCountQuery(folder: Folder, item: SendItem) {
-  // client-side count (we also fetch server-side counts but keep this as a fallback)
-  if (folder === "drafts") return item.status === "draft";
-  if (folder === "deleted") return item.status === "deleted";
-  if (folder === "mails") return item.status === "sent" && item.type === "mail";
-  if (folder === "newsletters") return item.status === "sent" && item.type === "newsletter";
-  if (folder === "factures") return item.status === "sent" && item.type === "facture";
-  if (folder === "devis") return item.status === "sent" && item.type === "devis";
-  return false;
+function folderCountQuery(folder: Folder, item: OutboxItem) {
+  return item.folder === folder;
 }
 
 function pill(provider?: string | null) {
@@ -82,12 +114,13 @@ export default function MailboxClient() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [folder, setFolder] = useState<Folder>("mails");
-  const [items, setItems] = useState<SendItem[]>([]);
+  const [items, setItems] = useState<OutboxItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [filterAccountId, setFilterAccountId] = useState<string>("");
 
   // Compose
   const [composeOpen, setComposeOpen] = useState(false);
@@ -121,6 +154,16 @@ export default function MailboxClient() {
 
   // Used to trigger the hidden file input with a nice button
   const fileInputId = "inrsend-attachments";
+
+  function itemMailAccountId(it: OutboxItem): string {
+    try {
+      if (it.source === "send_items") return String((it.raw as any)?.mail_account_id || "");
+      const payload = (it.raw as any)?.payload || (it.raw as any)?.raw?.payload || (it.raw as any)?.meta || {};
+      return String((payload as any)?.mail_account_id || (payload as any)?.mailAccountId || (payload as any)?.accountId || "");
+    } catch {
+      return "";
+    }
+  }
 
   function normalizeEmails(v: string) {
     return v
@@ -165,7 +208,17 @@ export default function MailboxClient() {
   }, [crmContacts, selectedToSet]);
 
   const counts = useMemo(() => {
-    const c: Record<Folder, number> = { mails: 0, newsletters: 0, factures: 0, devis: 0, drafts: 0, deleted: 0 };
+    const c: Record<Folder, number> = {
+      mails: 0,
+      factures: 0,
+      devis: 0,
+      actualites: 0,
+      avis: 0,
+      promotion: 0,
+      informer: 0,
+      remercier: 0,
+      satisfaction: 0,
+    };
     for (const it of items) {
       (Object.keys(c) as Folder[]).forEach((f) => {
         if (folderCountQuery(f, it)) c[f] += 1;
@@ -209,29 +262,141 @@ export default function MailboxClient() {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth?.user) return;
 
-      // We fetch a "reasonable" amount for MVP; can be paginated later.
-      const { data, error } = await supabase
-        .from("send_items")
-        .select(
-          "id, mail_account_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, error, sent_at, created_at, updated_at"
-        )
-        .eq("user_id", auth.user.id)
-        .order("created_at", { ascending: false })
-        .limit(500);
+      const strip = (v: any) =>
+        String(v || "")
+          .toString()
+          .replace(/<[^>]+>/g, "")
+          .trim();
 
-      if (error) {
-        console.error(error);
-        return;
-      }
-      const list = (data || []) as SendItem[];
-      setItems(list);
+      const safeS = (v: any, fallback = "") => {
+        const s = strip(v);
+        return s || fallback;
+      };
 
-      // Keep selection stable
-      if (list.length > 0) {
-        setSelectedId((prev) => prev || list[0].id);
-      } else {
-        setSelectedId(null);
+      // On charge 3 sources :
+      // 1) send_items (mails / factures / devis)
+      // 2) booster_events (actualités / avis / promotion)
+      // 3) fideliser_events (informer / remercier / satisfaction)
+      const [sendRes, boosterRes, fideliserRes] = await Promise.all([
+        supabase
+          .from("send_items")
+          .select(
+            "id, mail_account_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, error, sent_at, created_at, updated_at"
+          )
+          .eq("user_id", auth.user.id)
+          .order("created_at", { ascending: false })
+          .limit(500),
+        supabase
+          .from("booster_events")
+          .select("id, type, payload, created_at")
+          .eq("user_id", auth.user.id)
+          .order("created_at", { ascending: false })
+          .limit(500),
+        supabase
+          .from("fideliser_events")
+          .select("id, type, payload, created_at")
+          .eq("user_id", auth.user.id)
+          .order("created_at", { ascending: false })
+          .limit(500),
+      ]);
+
+      if (sendRes.error) console.error(sendRes.error);
+      if (boosterRes.error) console.error(boosterRes.error);
+      if (fideliserRes.error) console.error(fideliserRes.error);
+
+      const sendItems = ((sendRes.data || []) as SendItem[])
+        // On ne liste pas les supprimés ici (iNrSend = historique utile)
+        .filter((x) => x.status !== "deleted")
+        .map<OutboxItem>((x) => {
+          const folder: Folder = x.type === "facture" ? "factures" : x.type === "devis" ? "devis" : "mails";
+          const title = safeS(x.subject, folder === "factures" ? "Facture" : folder === "devis" ? "Devis" : "(sans objet)");
+          const preview = safeS(x.body_text || x.body_html, "").slice(0, 140);
+          return {
+            id: x.id,
+            source: "send_items",
+            folder,
+            provider: x.provider || "Mail",
+            status: x.status === "draft" ? "draft" : x.error ? "error" : "sent",
+            created_at: x.created_at,
+            sent_at: x.sent_at,
+            error: x.error,
+            title,
+            target: safeS(x.to_emails, ""),
+            preview,
+            detailHtml: x.body_html,
+            detailText: x.body_text,
+            raw: x,
+          };
+        });
+
+      const boosterItems = (boosterRes.data || []).map<OutboxItem>((e: any) => {
+        const t = String(e.type || "");
+        const folder: Folder = t === "publish" ? "actualites" : t === "review_mail" ? "avis" : "promotion";
+        const payload = (e.payload || {}) as any;
+        const title =
+          safeS(payload.title) ||
+          safeS(payload.subject) ||
+          (folder === "actualites" ? "Publication" : folder === "avis" ? "Demande d’avis" : "Promotion");
+        const target =
+          safeS(payload.channel) ||
+          safeS(payload.platform) ||
+          safeS(payload.to) ||
+          safeS(payload.recipients) ||
+          (folder === "actualites" ? "Google / Réseaux" : "Contacts");
+        const preview = safeS(payload.preview || payload.text || payload.message || payload.content, "").slice(0, 140);
+        return {
+          id: e.id,
+          source: "booster_events",
+          folder,
+          provider: "Booster",
+          status: "sent",
+          created_at: e.created_at,
+          title,
+          target,
+          preview,
+          detailText: JSON.stringify(payload, null, 2),
+          raw: e,
+        };
+      });
+
+      const fideliserItems = (fideliserRes.data || []).map<OutboxItem>((e: any) => {
+        const t = String(e.type || "");
+        const folder: Folder = t === "newsletter_mail" ? "informer" : t === "thanks_mail" ? "remercier" : "satisfaction";
+        const payload = (e.payload || {}) as any;
+        const title =
+          safeS(payload.title) ||
+          safeS(payload.subject) ||
+          (folder === "informer" ? "Information" : folder === "remercier" ? "Remerciement" : "Enquête");
+        const target = safeS(payload.to) || safeS(payload.recipients) || "Contacts";
+        const preview = safeS(payload.preview || payload.text || payload.message || payload.content, "").slice(0, 140);
+        return {
+          id: e.id,
+          source: "fideliser_events",
+          folder,
+          provider: "Fidéliser",
+          status: "sent",
+          created_at: e.created_at,
+          title,
+          target,
+          preview,
+          detailText: JSON.stringify(payload, null, 2),
+          raw: e,
+        };
+      });
+
+      let combined = [...sendItems, ...boosterItems, ...fideliserItems].sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      // Filtre "Boîte d'envoi" (quand disponible dans l'item)
+      if (filterAccountId) {
+        combined = combined.filter((it) => itemMailAccountId(it) === filterAccountId);
       }
+
+      setItems(combined);
+
+      if (combined.length > 0) setSelectedId((prev) => prev || combined[0].id);
+      else setSelectedId(null);
     } finally {
       setLoading(false);
     }
@@ -242,7 +407,7 @@ export default function MailboxClient() {
     return items.filter((it) => {
       if (!folderCountQuery(folder, it)) return false;
       if (!q) return true;
-      const hay = `${it.subject || ""} ${it.to_emails || ""} ${it.provider || ""}`.toLowerCase();
+      const hay = `${it.title || ""} ${it.target || ""} ${it.preview || ""} ${it.provider || ""}`.toLowerCase();
       return hay.includes(q);
     });
   }, [items, folder, historyQuery]);
@@ -255,6 +420,31 @@ export default function MailboxClient() {
     return mailAccounts.find((a) => a.id === selectedAccountId) || null;
   }, [mailAccounts, selectedAccountId]);
 
+  const toolCfg = useMemo(() => {
+    switch (folder) {
+      case "mails":
+        return { label: "✉️ Envoyer un mail", href: null as string | null };
+      case "factures":
+        return { label: "📄 Ouvrir Factures", href: "/dashboard/factures" };
+      case "devis":
+        return { label: "🧾 Ouvrir Devis", href: "/dashboard/devis" };
+      case "actualites":
+        return { label: "📣 Ouvrir Actualités", href: "/dashboard/booster?action=publish" };
+      case "avis":
+        return { label: "⭐ Ouvrir Avis", href: "/dashboard/booster?action=reviews" };
+      case "promotion":
+        return { label: "🏷️ Ouvrir Promotion", href: "/dashboard/booster?action=promo" };
+      case "informer":
+        return { label: "📰 Ouvrir Informations", href: "/dashboard/fideliser?action=inform" };
+      case "remercier":
+        return { label: "🙏 Ouvrir Remerciements", href: "/dashboard/fideliser?action=thanks" };
+      case "satisfaction":
+        return { label: "😊 Ouvrir Enquêtes", href: "/dashboard/fideliser?action=satisfaction" };
+      default:
+        return { label: "Ouvrir l’outil", href: null as string | null };
+    }
+  }, [folder]);
+
   // initial
   useEffect(() => {
     (async () => {
@@ -264,18 +454,26 @@ export default function MailboxClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Recharger l'historique quand le filtre "boîte d'envoi" change
+  useEffect(() => {
+    void loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterAccountId]);
+
   // open folder from URL
   useEffect(() => {
     const q = (searchParams?.get("folder") || "").toLowerCase();
     const allowed: Record<string, Folder> = {
       mails: "mails",
-      newsletters: "newsletters",
       factures: "factures",
       devis: "devis",
-      brouillons: "drafts",
-      drafts: "drafts",
-      supprimes: "deleted",
-      deleted: "deleted",
+      actualites: "actualites",
+      actus: "actualites",
+      avis: "avis",
+      promotion: "promotion",
+      informer: "informer",
+      remercier: "remercier",
+      satisfaction: "satisfaction",
     };
     if (q && allowed[q]) setFolder(allowed[q]);
   }, [searchParams]);
@@ -417,7 +615,13 @@ export default function MailboxClient() {
       setComposeOpen(false);
       resetCompose();
       await loadHistory();
-      updateFolder(composeType === "newsletter" ? "newsletters" : composeType === "facture" ? "factures" : composeType === "devis" ? "devis" : "mails");
+      updateFolder(
+  composeType === "facture"
+    ? "factures"
+    : composeType === "devis"
+      ? "devis"
+      : "mails"
+);
     } finally {
       setSendBusy(false);
     }
@@ -437,15 +641,17 @@ export default function MailboxClient() {
     if (!e2) await loadHistory();
   }
 
-  async function openItem(it: SendItem) {
+  async function openItem(it: OutboxItem) {
     setSelectedId(it.id);
-    if (it.status === "draft") {
+    if (it.source === "send_items" && it.status === "draft") {
       setComposeOpen(true);
       setDraftId(it.id);
-      setComposeType(it.type);
-      setTo(it.to_emails || "");
-      setSubject(it.subject || "");
-      setText(it.body_text || "");
+      // raw = SendItem
+      const raw = (it.raw || {}) as any;
+      setComposeType(raw.type as SendType);
+      setTo(raw.to_emails || "");
+      setSubject(raw.subject || "");
+      setText(raw.body_text || "");
       setFiles([]);
     }
   }
@@ -494,17 +700,6 @@ export default function MailboxClient() {
               <MailsSettingsContent />
             </SettingsDrawer>
 
-            <button
-              className={styles.btnPrimary}
-              onClick={() => {
-                resetCompose();
-                setComposeOpen(true);
-              }}
-              type="button"
-            >
-              ✍️ Écrire
-            </button>
-
             <Link className={styles.btnGhost} href="/dashboard" title="Fermer iNr’Send">
               Fermer
             </Link>
@@ -522,7 +717,17 @@ export default function MailboxClient() {
                 </button>
               </div>
               <div className={styles.mobileMenuBody}>
-                {(["mails", "newsletters", "factures", "devis", "drafts", "deleted"] as Folder[]).map((f) => {
+                {([
+                  "mails",
+                  "factures",
+                  "devis",
+                  "actualites",
+                  "avis",
+                  "promotion",
+                  "informer",
+                  "remercier",
+                  "satisfaction",
+                ] as Folder[]).map((f) => {
                   const active = f === folder;
                   return (
                     <button
@@ -546,10 +751,22 @@ export default function MailboxClient() {
 
         <div className={styles.grid}>
           {/* List */}
-          <div className={styles.card}>
+          {/* IMPORTANT: la liste doit occuper toute la hauteur disponible (pas de max-height),
+              même s'il n'y a aucun élément. */}
+          <div className={`${styles.card} ${styles.listCard}`}>
             {/* Tabs (en haut comme iNr'Box) */}
             <div className={styles.folderTabs}>
-              {(["mails", "newsletters", "factures", "devis", "drafts", "deleted"] as Folder[]).map((f) => {
+              {([
+                "mails",
+                "factures",
+                "devis",
+                "actualites",
+                "avis",
+                "promotion",
+                "informer",
+                "remercier",
+                "satisfaction",
+              ] as Folder[]).map((f) => {
                 const active = f === folder;
                 return (
                   <button
@@ -578,12 +795,29 @@ export default function MailboxClient() {
                 <div className={styles.searchIconRight}>⌕</div>
               </div>
 
+              {toolCfg.href ? (
+                <Link className={styles.toolbarBtn} href={toolCfg.href} title={toolCfg.label}>
+                  {toolCfg.label}
+                </Link>
+              ) : (
+                <button
+                  className={styles.toolbarBtn}
+                  onClick={() => {
+                    resetCompose();
+                    setComposeOpen(true);
+                  }}
+                  type="button"
+                >
+                  {toolCfg.label}
+                </button>
+              )}
+
               <div className={styles.toolbarActions}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.78)" }}>Boîte d’envoi :</div>
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.78)" }}>Filtrer :</div>
                   <select
-                    value={selectedAccountId}
-                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                    value={filterAccountId}
+                    onChange={(e) => setFilterAccountId(e.target.value)}
                     style={{
                       background: "rgba(0,0,0,0.22)",
                       border: "1px solid rgba(255,255,255,0.18)",
@@ -592,19 +826,15 @@ export default function MailboxClient() {
                       padding: "8px 10px",
                       minWidth: 260,
                     }}
+                    title="Filtrer par boîte d’envoi"
                   >
+                    <option value="">Toutes les boîtes</option>
                     {mailAccounts.map((a) => (
                       <option key={a.id} value={a.id}>
                         {(a.display_name ? `${a.display_name} — ` : "") + a.email_address + ` (${a.provider})`}
                       </option>
                     ))}
                   </select>
-
-                  {selectedAccount ? (
-                    <span className={`${styles.badge} ${pill(selectedAccount.provider).cls}`}>{pill(selectedAccount.provider).label}</span>
-                  ) : (
-                    <span style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>Aucune boîte connectée</span>
-                  )}
                 </div>
 
                 <button className={styles.toolbarBtn} onClick={loadHistory} type="button">
@@ -632,13 +862,13 @@ export default function MailboxClient() {
                       >
                         <div className={styles.itemTop}>
                           <div className={styles.fromRow}>
-                            <div className={styles.from}>{(it.subject || "(sans objet)").slice(0, 70)}</div>
+                            <div className={styles.from}>{(it.title || "(sans objet)").slice(0, 70)}</div>
                             <span className={`${styles.badge} ${p.cls}`}>{p.label}</span>
                           </div>
                           <div className={styles.date}>{new Date(it.created_at).toLocaleString()}</div>
                         </div>
-                        <div className={styles.subject}>{it.to_emails}</div>
-                        <div className={styles.preview}>{(it.body_text || it.body_html || "").toString().replace(/<[^>]+>/g, "").slice(0, 110)}</div>
+                        <div className={styles.subject}>{it.target}</div>
+                        <div className={styles.preview}>{it.preview}</div>
                       </button>
                     );
                   })}
@@ -648,10 +878,10 @@ export default function MailboxClient() {
           </div>
 
           {/* Details */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <div className={styles.cardTitle}>Détails</div>
-              {selected ? rememberActions(selected, folder, moveToDeleted, restoreFromDeleted) : null}
+          <div className={`${styles.card} ${styles.detailsCard}`}>
+            <div className={styles.cardHeader} style={{ justifyContent: "space-between" }}>
+              <div className={styles.cardTitle} style={{ marginLeft: 38 }}>Détails</div>
+              {selected ? rememberActions(selected, moveToDeleted, restoreFromDeleted) : <span style={{ width: 38 }} />}
             </div>
 
             <div className={styles.scrollArea} style={{ padding: 14 }}>
@@ -660,15 +890,19 @@ export default function MailboxClient() {
               ) : (
                 <>
                   <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.95)" }}>{selected.subject || "(sans objet)"}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.95)" }}>{selected.title || "(sans objet)"}</div>
                     <span className={`${styles.badge} ${pill(selected.provider).cls}`}>{pill(selected.provider).label}</span>
                     <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                      {selected.status === "draft" ? "Brouillon" : selected.sent_at ? `Envoyé • ${new Date(selected.sent_at).toLocaleString()}` : "Créé"}
+                      {selected.status === "draft"
+                        ? "Brouillon"
+                        : selected.sent_at
+                        ? `Envoyé • ${new Date(selected.sent_at).toLocaleString()}`
+                        : `Historique • ${new Date(selected.created_at).toLocaleString()}`}
                     </span>
                   </div>
 
                   <div style={{ marginTop: 10, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>
-                    <b>À :</b> {selected.to_emails}
+                    <b>À :</b> {selected.target}
                   </div>
 
                   {selected.error ? (
@@ -677,15 +911,23 @@ export default function MailboxClient() {
                     </div>
                   ) : null}
 
-                  <div style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: 14 }}>
-                    {selected.body_html ? (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      borderTop: "1px solid rgba(255,255,255,0.12)",
+                      paddingTop: 12,
+                      maxHeight: 120,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {selected.detailHtml ? (
                       <div
                         style={{ color: "rgba(255,255,255,0.86)", fontSize: 14, lineHeight: 1.55 }}
-                        dangerouslySetInnerHTML={{ __html: selected.body_html }}
+                        dangerouslySetInnerHTML={{ __html: selected.detailHtml }}
                       />
                     ) : (
                       <pre style={{ whiteSpace: "pre-wrap", color: "rgba(255,255,255,0.86)", fontSize: 14, lineHeight: 1.55 }}>
-                        {selected.body_text || ""}
+                        {selected.detailText || ""}
                       </pre>
                     )}
                   </div>
@@ -710,22 +952,7 @@ export default function MailboxClient() {
                   <div style={{ fontWeight: 800, fontSize: 16, color: "rgba(255,255,255,0.95)" }}>
                     {draftId ? "Éditer le brouillon" : "Nouveau message"}
                   </div>
-                  <select
-                    value={composeType}
-                    onChange={(e) => setComposeType(e.target.value as SendType)}
-                    style={{
-                      background: "rgba(0,0,0,0.22)",
-                      border: "1px solid rgba(255,255,255,0.18)",
-                      color: "rgba(255,255,255,0.9)",
-                      borderRadius: 12,
-                      padding: "6px 8px",
-                    }}
-                  >
-                    <option value="mail">Mail</option>
-                    <option value="newsletter">Newsletter</option>
-                    <option value="facture">Facture</option>
-                    <option value="devis">Devis</option>
-                  </select>
+                  <span className={styles.badge} style={{ opacity: 0.9 }}>Mail</span>
                 </div>
 
                 <button className={styles.btnGhost} onClick={() => setComposeOpen(false)} type="button">
@@ -1063,22 +1290,33 @@ export default function MailboxClient() {
 }
 
 function rememberActions(
-  selected: SendItem,
-  folder: Folder,
+  selected: OutboxItem,
   moveToDeleted: (id: string) => Promise<void>,
   restoreFromDeleted: (id: string) => Promise<void>
 ) {
   if (!selected) return null;
-  if (folder === "deleted") {
+  // Suppression/restauration uniquement sur l'historique "send_items".
+  if (selected.source !== "send_items") return null;
+  if (selected.status === "error") return null;
+
+  // Si un jour on ré-affiche les supprimés, on aura déjà le bouton.
+  if ((selected as any).raw?.status === "deleted") {
     return (
       <button className={styles.btnPrimary} onClick={() => restoreFromDeleted(selected.id)} type="button">
         Restaurer
       </button>
     );
   }
+
   return (
-    <button className={styles.btnGhost} onClick={() => moveToDeleted(selected.id)} type="button">
-      Supprimer
+    <button
+      className={`${styles.btnGhost} ${styles.trashBtn}`}
+      onClick={() => moveToDeleted(selected.id)}
+      type="button"
+      aria-label="Supprimer"
+      title="Supprimer"
+    >
+      🗑️
     </button>
   );
 }

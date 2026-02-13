@@ -78,7 +78,7 @@ useEffect(() => {
       actions: [
         {
           key: "inform" as const,
-          title: "Informer",
+          title: "Informations",
           desc: "Newsletter, actus, nouveautés. Choisissez vos contacts CRM et envoyez.",
           accent: "cyan" as const,
           cta: "Envoyer",
@@ -86,7 +86,7 @@ useEffect(() => {
         },
         {
           key: "thanks" as const,
-          title: "Remercier",
+          title: "Remerciements",
           desc: "Un mail simple après intervention. Sélectionnez des contacts CRM. Lancez.",
           accent: "purple" as const,
           cta: "Envoyer",
@@ -94,7 +94,7 @@ useEffect(() => {
         },
         {
           key: "satisfaction" as const,
-          title: "Satisfaction",
+          title: "Enquêtes",
           desc: "Enquête de satisfaction ou demande d’avis. Envoyez aux bons clients.",
           accent: "pink" as const,
           cta: "Envoyer",
@@ -114,7 +114,7 @@ useEffect(() => {
           ],
         },
         {
-          title: "Mails Remerciement",
+          title: "Remerciements",
           month: thanksMonth,
           week: n(thanks.week),
           channels: [
@@ -125,7 +125,7 @@ useEffect(() => {
           ],
         },
         {
-          title: "Satisfaction",
+          title: "Enquêtes",
           month: satisfactionMonth,
           week: n(satisfaction.week),
           channels: [
@@ -138,7 +138,7 @@ useEffect(() => {
       ],
       tips: [
         {
-          title: "Informer",
+          title: "Informations",
           lines: [
             { left: "1 newsletter / mois", right: "Top rappel" },
             { left: "Sujet clair", right: "Plus d’ouvertures" },
@@ -146,7 +146,7 @@ useEffect(() => {
           ],
         },
         {
-          title: "Remercier",
+          title: "Remerciements",
           lines: [
             { left: "Envoyer à J+1", right: "Meilleur timing" },
             { left: "Message court", right: "Taux de lecture" },
@@ -154,7 +154,7 @@ useEffect(() => {
           ],
         },
         {
-          title: "Satisfaction",
+          title: "Enquêtes",
           lines: [
             { left: "Enquête 3 questions", right: "Plus de réponses" },
             { left: "Demande d’avis ciblée", right: "Plus d’avis" },
@@ -202,13 +202,13 @@ useEffect(() => {
   {/* Triangles (non cliquables) */}
   <section className={b.triRow} aria-hidden>
     <div className={[b.triItem, b.triCyan].join(" ")}>
-      <div className={b.triLabel}>INFORMER</div>
+      <div className={b.triLabel}>INFORMATIONS</div>
     </div>
     <div className={[b.triItem, b.triPurple].join(" ")}>
-      <div className={b.triLabel}>REMERCIER</div>
+      <div className={b.triLabel}>REMERCIEMENTS</div>
     </div>
     <div className={[b.triItem, b.triPink].join(" ")}>
-      <div className={b.triLabel}>SATISFACTION</div>
+      <div className={b.triLabel}>ENQUÊTES</div>
     </div>
   </section>
 
@@ -300,7 +300,7 @@ useEffect(() => {
       {active && (
         <BaseModal
           title={
-            active === "inform" ? "Informer" : active === "thanks" ? "Remercier" : "Satisfaction"
+            active === "inform" ? "Informations" : active === "thanks" ? "Remerciements" : "Enquêtes"
           }
           onClose={() => setActive(null)}
         >

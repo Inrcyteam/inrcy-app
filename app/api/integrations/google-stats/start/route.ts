@@ -5,7 +5,12 @@ const ALLOWED_PRODUCTS = ["ga4", "gsc"] as const;
 
 function extractDomainFromUrl(rawUrl: string): { normalizedUrl: string; domain: string } | null {
   try {
-    const u = new URL(rawUrl);
+    // Accept:
+    // - https://example.com
+    // - http://example.com
+    // - example.com (users often omit protocol)
+    const input = /^(https?:\/\/)/i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    const u = new URL(input);
     if (u.protocol !== "http:" && u.protocol !== "https:") return null;
     const host = (u.hostname || "").toLowerCase().replace(/^www\./, "");
     if (!host) return null;
@@ -31,7 +36,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const source = searchParams.get("source") || "";
   const product = searchParams.get("product") || "";
-  const mode = searchParams.get("mode") || "";
+  const force = searchParams.get("force") || "";
+  const mode = searchParams.get("mode") || (force === "1" ? "activate" : "");
   const returnTo = searchParams.get("returnTo") || `/dashboard?panel=${encodeURIComponent(source)}`;
 
   // Optional: if the UI passes a siteUrl (user just typed it), embed domain in OAuth state
@@ -51,7 +57,7 @@ export async function GET(request: Request) {
   let siteUrl: string | null = null;
 
   
-  if (siteUrlFromQuery && mode !== "activate") {
+  if (siteUrlFromQuery) {
     const parsed = extractDomainFromUrl(String(siteUrlFromQuery).trim());
     if (parsed) {
       domain = parsed.domain;
@@ -87,9 +93,13 @@ const legacySettings = (legacyCfgRes.data as any | null)?.settings ?? {};
 const legacySiteUrl = (legacyCfgRes.data as any | null)?.site_url ?? "";
 
 const rawUrl =
-  source === "site_web"
-    ? (proSettings?.site_web?.url ?? legacySettings?.site_web?.url ?? "")
-    : (inrcySiteUrl || legacySiteUrl || "");
+  (siteUrlFromQuery && String(siteUrlFromQuery).trim())
+    ? String(siteUrlFromQuery).trim()
+    : (
+        source === "site_web"
+          ? (proSettings?.site_web?.url ?? legacySettings?.site_web?.url ?? "")
+          : (inrcySiteUrl || legacySiteUrl || "")
+      );
 
     const parsed = extractDomainFromUrl(String(rawUrl || "").trim());
     if (!parsed) {

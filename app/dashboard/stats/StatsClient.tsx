@@ -405,7 +405,7 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
     if (qualityScore >= 70) {
       return attachEffort({
         key: "fideliser_remercier",
-        title: "Remercier",
+        title: "Remerciements",
         detail: "Convertissez vos clients satisfaits en recommandations et avis.",
         href: "/dashboard/fideliser?action=thanks",
         pill: "Fidéliser",
@@ -436,7 +436,7 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
     if (qualityScore >= 75 && opp30 > 4) {
       return attachEffort({
         key: "fideliser_informer",
-        title: "Informer",
+        title: "Informations",
         detail: "Créez un lien régulier (conseils, prévention, actu).",
         href: "/dashboard/fideliser?action=inform",
         pill: "Fidéliser",
