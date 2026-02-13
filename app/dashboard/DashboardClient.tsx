@@ -425,6 +425,8 @@ useEffect(() => {
 
 const canViewSite = siteInrcyOwnership !== "none" && !!siteInrcyUrl;
 const canConfigureSite = siteInrcyOwnership === "sold";
+// En mode rented : le pro ne configure pas, mais peut déclencher l'activation du suivi (auto)
+const canActivateInrcyTracking = siteInrcyOwnership === "rented" && !!siteInrcyUrl?.trim();
 
 // ✅ UX : on grise les boutons de connexion tant que l'URL n'est pas renseignée
 const hasSiteInrcyUrl = !!siteInrcyUrl?.trim();
@@ -578,34 +580,122 @@ const connectSiteInrcyGa4 = useCallback(() => {
     setSiteInrcySettingsError("Connexion Google Analytics indisponible : mode rented ou aucun site iNrCy.");
     return;
   }
-  const measurement = ga4MeasurementId.trim();
-  const propertyIdRaw = ga4PropertyId.trim();
-  if (!measurement) {
-    setSiteInrcySettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX) avant de connecter.");
+  const siteUrl = (siteInrcyUrl || "").trim();
+  if (!siteUrl) {
+    setSiteInrcySettingsError("Renseigne le lien du site iNrCy avant de connecter Google Analytics.");
     return;
   }
-  if (!propertyIdRaw || !/^\d+$/.test(propertyIdRaw)) {
-    setSiteInrcySettingsError("Renseigne le Property ID GA4 (numérique) avant de connecter.");
-    return;
-  }
+  const qp = new URLSearchParams({
+    source: "site_inrcy",
+    product: "ga4",
+    force: "1",
+    siteUrl,
+  });
   // L'OAuth stats est séparé de l'OAuth Gmail (mails).
-  window.location.href =
-    "/api/integrations/google-stats/start?source=site_inrcy&product=ga4&force=1";
-}, [siteInrcyOwnership, ga4MeasurementId, ga4PropertyId]);
+  window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
+}, [siteInrcyOwnership, siteInrcyUrl]);
 
 const connectSiteInrcyGsc = useCallback(() => {
   if (siteInrcyOwnership !== "sold") {
     setSiteInrcySettingsError("Connexion Search Console indisponible : mode rented ou aucun site iNrCy.");
     return;
   }
-  const property = gscProperty.trim();
-  if (!property) {
-    setSiteInrcySettingsError("Renseigne une propriété Search Console avant de connecter.");
+  const siteUrl = (siteInrcyUrl || "").trim();
+  if (!siteUrl) {
+    setSiteInrcySettingsError("Renseigne le lien du site iNrCy avant de connecter Search Console.");
     return;
   }
-  window.location.href =
-    "/api/integrations/google-stats/start?source=site_inrcy&product=gsc&force=1";
-}, [siteInrcyOwnership, gscProperty]);
+  const qp = new URLSearchParams({
+    source: "site_inrcy",
+    product: "gsc",
+    force: "1",
+    siteUrl,
+  });
+  window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
+}, [siteInrcyOwnership, siteInrcyUrl]);
+
+// ✅ Mode rented : déclenche une activation "serveur" (sans saisie d'IDs)
+// - Si un token Google existe déjà côté Supabase, l'API résout GA4 + GSC via le domaine et remplit les settings.
+// - Sinon, on bascule sur le flow OAuth "activate".
+const activateSiteInrcyTracking = useCallback(async () => {
+  if (siteInrcyOwnership !== "rented") {
+    setSiteInrcySettingsError("Activation indisponible : cette action est réservée au mode rented.");
+    return;
+  }
+  const siteUrl = (siteInrcyUrl || "").trim();
+  if (!siteUrl) {
+    setSiteInrcySettingsError("Renseigne le lien du site iNrCy avant d'activer le suivi.");
+    return;
+  }
+
+  setSiteInrcySettingsError(null);
+
+  const res = await fetch("/api/integrations/google-stats/activate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ source: "site_inrcy", siteUrl }),
+  }).catch(() => null);
+
+  if (!res) {
+    setSiteInrcySettingsError("Impossible de joindre le serveur.");
+    return;
+  }
+
+  const data = await res.json().catch(() => ({} as any));
+
+  // En mode rented, l'activation doit être 100% silencieuse côté client.
+  // Si le token admin iNrCy n'est pas configuré, on affiche une erreur explicite.
+  if (!res.ok) {
+    setSiteInrcySettingsError((data as any)?.error || `Erreur d'activation (${res.status}).`);
+    return;
+  }
+
+  // Rafraîchit les statuts
+  setSiteInrcyGa4Connected(true);
+  setSiteInrcyGscConnected(true);
+  setSiteInrcyGa4Notice("✅ Suivi activé (GA4)");
+  setSiteInrcyGscNotice("✅ Suivi activé (Search Console)");
+  window.setTimeout(() => {
+    setSiteInrcyGa4Notice(null);
+    setSiteInrcyGscNotice(null);
+  }, 2500);
+}, [siteInrcyOwnership, siteInrcyUrl]);
+
+// ✅ Mode rented : désactive le suivi (GA4+GSC) et nettoie les settings.
+const deactivateSiteInrcyTracking = useCallback(async () => {
+  if (siteInrcyOwnership !== "rented") {
+    setSiteInrcySettingsError("Désactivation indisponible : cette action est réservée au mode rented.");
+    return;
+  }
+
+  setSiteInrcySettingsError(null);
+
+  const res = await fetch("/api/integrations/google-stats/deactivate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ source: "site_inrcy" }),
+  }).catch(() => null);
+
+  if (!res) {
+    setSiteInrcySettingsError("Impossible de joindre le serveur.");
+    return;
+  }
+
+  const data = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    setSiteInrcySettingsError((data as any)?.error || `Erreur de désactivation (${res.status}).`);
+    return;
+  }
+
+  setSiteInrcyGa4Connected(false);
+  setSiteInrcyGscConnected(false);
+  setSiteInrcyGa4Notice("Suivi désactivé (GA4). ");
+  setSiteInrcyGscNotice("Suivi désactivé (Search Console). ");
+  window.setTimeout(() => {
+    setSiteInrcyGa4Notice(null);
+    setSiteInrcyGscNotice(null);
+  }, 2500);
+}, [siteInrcyOwnership]);
 
 
 const disconnectGoogleStats = useCallback(
@@ -1526,6 +1616,11 @@ const disconnectSiteWebGsc = useCallback(() => {
               type="button"
               onClick={() => {
                 if (m.key === "site_inrcy") {
+                  if (siteInrcyOwnership === "rented") {
+                    if (siteInrcyAllGreen) void deactivateSiteInrcyTracking();
+                    else void activateSiteInrcyTracking();
+                    return;
+                  }
                   if (!canConfigureSite) return;
                   openPanel("site_inrcy");
                   return;
@@ -1551,14 +1646,34 @@ const disconnectSiteWebGsc = useCallback(() => {
                   return;
                 }
               }}
-              disabled={m.key === "site_inrcy" ? !canConfigureSite : false}
+              disabled={
+                m.key === "site_inrcy"
+                  ? siteInrcyOwnership === "rented"
+                    ? siteInrcyAllGreen
+                      ? false
+                      : !canActivateInrcyTracking
+                    : !canConfigureSite
+                  : false
+              }
               title={
-                m.key === "site_inrcy" && !canConfigureSite
-                  ? "Configuration disponible uniquement si le site est vendu"
+                m.key === "site_inrcy"
+                  ? siteInrcyOwnership === "rented"
+                    ? siteInrcyAllGreen
+                      ? "Déconnecter le suivi (GA4 + Search Console)"
+                      : !canActivateInrcyTracking
+                        ? "Renseigne le lien du site pour activer le suivi"
+                        : "Activer le suivi (GA4 + Search Console)"
+                    : !canConfigureSite
+                      ? "Configuration disponible uniquement si le site est vendu"
+                      : undefined
                   : undefined
               }
             >
-              Configurer
+              {m.key === "site_inrcy" && siteInrcyOwnership === "rented"
+                ? siteInrcyAllGreen
+                  ? "Déconnecter le suivi"
+                  : "Activer le suivi"
+                : "Configurer"}
             </button>
           </div>
         </div>
