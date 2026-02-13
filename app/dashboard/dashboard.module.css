@@ -3502,3 +3502,44 @@ transform: scale(1.50);
   }
 }
 
+/* ----------------------------
+   Spinners / refresh controls
+----------------------------- */
+
+.miniSpinner{
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,.22);
+  border-top-color: rgba(255,255,255,.85);
+  display: inline-block;
+  animation: inrcySpin 0.9s linear infinite;
+}
+
+@keyframes inrcySpin{ to{ transform: rotate(360deg); } }
+
+.generatorRefreshBtn{
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.generatorRefreshBtn:hover{ background: rgba(255,255,255,.09); }
+.generatorRefreshBtn:disabled{ opacity: .6; cursor: default; }
+
+.refreshIcon{
+  width: 18px;
+  height: 18px;
+  opacity: .85;
+}
+
+.refreshIconSpinning{
+  animation: inrcySpin 0.9s linear infinite;
+}
+

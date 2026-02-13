@@ -618,6 +618,21 @@ const connectSiteInrcyGsc = useCallback(() => {
 // ✅ Mode rented : déclenche une activation "serveur" (sans saisie d'IDs)
 // - Si un token Google existe déjà côté Supabase, l'API résout GA4 + GSC via le domaine et remplit les settings.
 // - Sinon, on bascule sur le flow OAuth "activate".
+const refreshKpis = useCallback(async () => {
+    setKpisLoading(true);
+    try {
+      const res = await fetch("/api/generator/kpis", { cache: "no-store" });
+      if (!res.ok) throw new Error(`KPIs fetch failed: ${res.status}`);
+      const json = await res.json();
+      setKpis(json);
+    } catch (err) {
+      console.error(err);
+      setKpis(null);
+    } finally {
+      setKpisLoading(false);
+    }
+  }, []);
+
 const activateSiteInrcyTracking = useCallback(async () => {
   if (siteInrcyOwnership !== "rented") {
     setSiteInrcySettingsError("Activation indisponible : cette action est réservée au mode rented.");
@@ -665,7 +680,10 @@ const activateSiteInrcyTracking = useCallback(async () => {
     setSiteInrcyGa4Notice(null);
     setSiteInrcyGscNotice(null);
   }, 2500);
-}, [siteInrcyOwnership, siteInrcyUrl]);
+
+  // Rafraîchit le générateur sans recharger la page
+  void refreshKpis();
+}, [siteInrcyOwnership, siteInrcyUrl, refreshKpis]);
 
 // ✅ Mode rented : désactive le suivi (GA4+GSC) et nettoie les settings.
 const deactivateSiteInrcyTracking = useCallback(async () => {
@@ -691,6 +709,7 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
 
   const data = await res.json().catch(() => ({} as any));
   if (!res.ok) {
+    setSiteInrcyTrackingBusy(false);
     setSiteInrcySettingsError((data as any)?.error || `Erreur de désactivation (${res.status}).`);
     return;
   }
@@ -703,7 +722,12 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
     setSiteInrcyGa4Notice(null);
     setSiteInrcyGscNotice(null);
   }, 2500);
-}, [siteInrcyOwnership]);
+
+  setSiteInrcyTrackingBusy(false);
+
+  // Rafraîchit le générateur sans recharger la page
+  void refreshKpis();
+}, [siteInrcyOwnership, refreshKpis]);
 
 
 const disconnectGoogleStats = useCallback(
@@ -1327,30 +1351,17 @@ const disconnectSiteWebGsc = useCallback(() => {
 
 
   // ✅ KPIs Générateur (1 seul endpoint)
+  const [kpisLoading, setKpisLoading] = useState(false);
   const [kpis, setKpis] = useState<null | {
     leads: { today: number; week: number; month: number };
     estimatedValue: number;
   }>(null);
 
+  
+
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const res = await fetch("/api/generator/kpis", { cache: "no-store" });
-        if (!res.ok) throw new Error(`KPIs fetch failed: ${res.status}`);
-        const json = await res.json();
-        if (!cancelled) setKpis(json);
-      } catch (err) {
-        console.error(err);
-        if (!cancelled) setKpis(null);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void refreshKpis();
+  }, [refreshKpis]);
 
   const leadsToday = kpis?.leads?.today ?? 0;
   const leadsWeek = kpis?.leads?.week ?? 0;
@@ -2108,6 +2119,41 @@ const disconnectSiteWebGsc = useCallback(() => {
             </div>
 
             <div className={styles.generatorHeaderRight}>
+              <button
+                type="button"
+                className={styles.generatorRefreshBtn}
+                onClick={() => void refreshKpis()}
+                disabled={kpisLoading}
+                aria-label="Actualiser le générateur"
+                title="Actualiser"
+              >
+                {kpisLoading ? (
+                  <span className={styles.miniSpinner} aria-hidden />
+                ) : (
+                  <svg
+                    className={styles.refreshIcon}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden
+                  >
+                    <path
+                      d="M20 12a8 8 0 1 1-2.343-5.657"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M20 4v6h-6"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
+              </button>
+
               <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
                 <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
                 {leadsMonth > 0 ? "Actif" : "En attente"}

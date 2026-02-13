@@ -40,7 +40,8 @@ type ActionKey =
   | "fideliser_informer"
   | "fideliser_satisfaction"
   | "fideliser_remercier"
-  | "connect";
+  | "connect"
+  | "loading";
 
 
 type ActionEffort = {
@@ -403,7 +404,7 @@ if (cubeKey === "site_web") {
     }
   }
 
-  const effortMap: Record<ActionKey, CubeModel["action"]["effort"] | undefined> = {
+  const effortMap: Partial<Record<ActionKey, CubeModel["action"]["effort"] | undefined>> = {
     booster_publier: { level: "faible", label: "Effort faible • 5 min" },
     booster_avis: { level: "moyen", label: "Effort moyen • 10 min" },
     booster_promotion: { level: "moyen", label: "Effort moyen • 15 min" },
@@ -411,6 +412,7 @@ if (cubeKey === "site_web") {
     fideliser_satisfaction: { level: "faible", label: "Effort faible • 3 min" },
     fideliser_remercier: { level: "faible", label: "Effort faible • 2 min" },
     connect: undefined,
+    loading: undefined,
   };
 
   const attachEffort = (a: CubeModel["action"]): CubeModel["action"] => {
@@ -706,6 +708,7 @@ export default function StatsClient() {
     const build = (key: CubeKey, title: string, subtitle: string): CubeModel => {
       const period = periodByCube[key];
       const state = dataByCube[key];
+      const hasRealOverview = !!state.ov;
       const ov = state.ov ||
         ({
           days: period,
@@ -740,7 +743,18 @@ const provenance = buildProvenance(key, ov);
 
       const q = computeQuality(key, ov);
       const insights = buildInsights(key, ov, q.score);
-      const action = recommendAction(key, ov, q.score);
+      let action = recommendAction(key, ov, q.score);
+
+      // Pendant le chargement initial (aucun overview réel), on affiche un CTA neutre.
+      if (state.loading && !hasRealOverview) {
+        action = {
+          key: "loading",
+          title: "Connexion…",
+          detail: "Récupération de vos connexions",
+          href: "",
+          pill: "Connexion",
+        };
+      }
 
       const opportunityLabel =
         opp30 >= 14 ? "Fort potentiel" : opp30 >= 7 ? "Potentiel réel" : opp30 >= 3 ? "Potentiel modéré" : "À activer";
@@ -891,6 +905,10 @@ function Cube({
   const isSite = model.key === "site_inrcy" || model.key === "site_web";
   const isRentedInrcy = model.key === "site_inrcy" && model.inrcyOwnership === "rented";
 
+  const action = (model as any).action ?? ({ key: "connect", title: "Connexion", detail: "", href: "#", pill: "Connexion" } as const);
+  const pill = (action as any)?.pill ?? "Connexion";
+  const pillKey = String(pill).toLowerCase();
+
   const connectionOk = isSite
     ? isRentedInrcy
       ? !!model.connections.ga4 && !!model.connections.gsc
@@ -967,28 +985,33 @@ function Cube({
         <div className={styles.action}>
           <div className={styles.actionLeft}>
             <div className={styles.actionTopRow}>
-              <span className={`${styles.actionPill} ${styles[`action_${model.action.pill.toLowerCase()}`]}`}>{model.action.pill}</span>
+              <span className={`${styles.actionPill} ${styles[`action_${pillKey}`]}`}>{pill}</span>
 
               <div className={styles.actionTopText}>
-                {model.action.pill === "Connexion" ? (
-                  <span className={styles.actionTitle}>{model.action.title}</span>
+                {pill === "Connexion" ? (
+                  <span className={styles.actionTitle}>{action.title}</span>
                 ) : (
                   <>
                     <span className={styles.actionArrow}>→</span>
-                    <span className={styles.actionTitle}>{model.action.title}</span>
+                    <span className={styles.actionTitle}>{action.title}</span>
                   </>
                 )}
               </div>
 
-              {model.action.effort ? (
-                <span className={`${styles.effort} ${styles[`effort_${model.action.effort.level}`]}`}>{model.action.effort.label}</span>
+              {action.effort ? (
+                <span className={`${styles.effort} ${styles[`effort_${action.effort.level}`]}`}>{action.effort.label}</span>
               ) : null}
             </div>
 
-            <div className={styles.actionDetail}>{model.action.detail}</div>
+            <div className={styles.actionDetail}>{action.detail}</div>
           </div>
 
-          <button className={styles.actionBtn} onClick={() => onNavigate(model.action.href)}>
+          <button
+            className={styles.actionBtn}
+            onClick={() => (action.href ? onNavigate(action.href) : undefined)}
+            disabled={model.loading || !action.href}
+            aria-disabled={model.loading || !action.href}
+          >
             Lancer
           </button>
         </div>
