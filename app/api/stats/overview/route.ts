@@ -69,6 +69,16 @@ export async function GET(request: Request) {
     }
     const userId = authData.user.id;
 
+
+// Ownership du site iNrCy : utile pour l'UI (rented => connexion globale "Suivi")
+const { data: profileRow } = await supabase
+  .from("profiles")
+  .select("inrcy_site_ownership")
+  .eq("user_id", userId)
+  .maybeSingle();
+
+const inrcySiteOwnership = String((profileRow as any)?.inrcy_site_ownership || "none");
+
     
 // Load settings from the new schema:
 // - site_inrcy -> inrcy_site_configs.settings
@@ -87,13 +97,41 @@ const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as any)?.set
 const proSettings = safeJsonParse<any>((proCfgRes.data as any)?.settings, null) ??
   safeJsonParse<any>((legacyCfgRes.data as any)?.settings, {});
 
+// Flag: en mode rented, on peut couper uniquement la couche iNrCy (sans débrancher GA4/GSC)
+const inrcyTrackingEnabled = Boolean((inrcySettings as any)?.inrcy_tracking_enabled ?? true);
+
+// ---- Cache (anti-quota Google) ----
+// IMPORTANT: le cache doit dépendre de l'état ON/OFF du suivi iNrCy.
+// Sinon, après une désactivation, on pourrait resservir des stats calculées
+// quand iNrCy était encore activé.
+// On inclut donc un flag dans la clé de cache.
+const rangeKey = `days=${days}|include=${includeRaw || "all"}|inrcy=${inrcyTrackingEnabled ? 1 : 0}`;
+try {
+  const nowIso = new Date().toISOString();
+  const { data: cacheHit } = await supabase
+    .from("stats_cache")
+    .select("payload, expires_at")
+    .eq("user_id", userId)
+    .eq("source", "overview")
+    .eq("range_key", rangeKey)
+    .gt("expires_at", nowIso)
+    .order("expires_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if ((cacheHit as any)?.payload) {
+    return NextResponse.json((cacheHit as any).payload);
+  }
+} catch {
+  // Table stats_cache non présente ou non accessible : on ignore.
+}
+
 
     
 const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: string }> = [
   {
     key: "site_inrcy",
-    ga4Property: (inrcySettings as any)?.ga4?.property_id,
-    gscProperty: (inrcySettings as any)?.gsc?.property,
+    ga4Property: inrcyTrackingEnabled ? (inrcySettings as any)?.ga4?.property_id : undefined,
+    gscProperty: inrcyTrackingEnabled ? (inrcySettings as any)?.gsc?.property : undefined,
   },
   {
     key: "site_web",
@@ -269,9 +307,10 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
 
 
-    return NextResponse.json({
+    const payload = {
       days,
       selected: includeAll ? null : Array.from(includeSet),
+      inrcySiteOwnership,
       totals: {
         users: totalUsers,
         sessions: totalSessions,
@@ -287,7 +326,21 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       topQueries,
       sources: sourcesStatus,
       note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook.",
-    });
+    };
+
+    // cache write (best-effort)
+    try {
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      await supabase.from("stats_cache").insert({
+        user_id: userId,
+        source: "overview",
+        range_key: rangeKey,
+        payload,
+        expires_at: expiresAt,
+      });
+    } catch {}
+
+    return NextResponse.json(payload);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }

@@ -4,7 +4,8 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 // POST /api/integrations/google-stats/deactivate
 // Mode rented (Site iNrCy) : "Déconnecter le suivi"
 // - Marque l'intégration comme déconnectée pour l'utilisateur
-// - Retire les bindings GA4/GSC de inrcy_site_configs.settings
+// - Coupe le suivi iNrCy (sans débrancher GA4/GSC).
+//   Les bindings restent en DB pour pouvoir réactiver instantanément.
 
 type SiteSettings = {
   ga4?: { property_id?: string; measurement_id?: string; verified_at?: string };
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
       .eq("source", "site_inrcy")
       .in("product", ["ga4", "gsc"]);
 
-    // 2) Retirer GA4/GSC des settings
+    // 2) Couper uniquement la couche iNrCy (on garde les bindings GA4/GSC)
     const { data: cfg } = await supabase
       .from("inrcy_site_configs")
       .select("settings")
@@ -61,12 +62,19 @@ export async function POST(req: Request) {
 
     const current = safeJsonParse<SiteSettings>((cfg as any)?.settings, {});
     const next: SiteSettings = { ...(current ?? {}) };
-    delete next.ga4;
-    delete next.gsc;
+    // On ne supprime pas next.ga4 / next.gsc.
+    // On indique simplement que le suivi iNrCy est désactivé.
+    (next as any).inrcy_tracking_enabled = false;
 
     await supabase
       .from("inrcy_site_configs")
       .upsert({ user_id: authData.user.id, settings: next }, { onConflict: "user_id" });
+
+    // 3) Invalider le cache stats (anti-quota) pour que l'UI reflète immédiatement l'OFF.
+    // Best-effort: si la table n'existe pas ou si RLS bloque, on ignore.
+    try {
+      await supabase.from("stats_cache").delete().eq("user_id", authData.user.id).eq("source", "overview");
+    } catch {}
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {

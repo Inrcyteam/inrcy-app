@@ -6,6 +6,7 @@ import styles from "./stats.module.css";
 import Image from "next/image";
 
 type Overview = {
+  inrcySiteOwnership?: "none" | "sold" | "rented";
   days: number;
   totals: {
     users: number;
@@ -48,6 +49,7 @@ type ActionEffort = {
 };
 
 type CubeModel = {
+  inrcyOwnership?: "none" | "sold" | "rented";
   key: CubeKey;
   title: string;
   subtitle: string;
@@ -314,8 +316,26 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
   const returnTo = encodeURIComponent("/dashboard/stats");
 
   // Connection states
-  if (cubeKey === "site_inrcy") {
-    const c = ov?.sources?.site_inrcy?.connected;
+  
+if (cubeKey === "site_inrcy") {
+  const ownership = ov?.inrcySiteOwnership;
+  const c = ov?.sources?.site_inrcy?.connected;
+
+  // En mode RENTED, la connexion est "globale" (Suivi) et passe par le compte admin iNrCy.
+  if (ownership === "rented") {
+    const ok = !!c?.ga4 && !!c?.gsc;
+    if (!ok) {
+      return {
+        key: "connect",
+        title: "Activer le suivi",
+        detail: "Active le suivi du site iNrCy (GA4 + Search Console) via iNrCy.",
+        href: "/dashboard",
+        pill: "Connexion",
+      };
+    }
+    // Déjà activé: on propose une action business plutôt qu'une connexion
+  } else {
+    // Sold / autres: connexion classique GA4 puis GSC par le compte du pro
     if (!c?.ga4) {
       return {
         key: "connect",
@@ -335,8 +355,9 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
       };
     }
   }
+}
 
-  if (cubeKey === "site_web") {
+if (cubeKey === "site_web") {
     const c = ov?.sources?.site_web?.connected;
     if (!c?.ga4) {
       return {
@@ -700,16 +721,21 @@ export default function StatsClient() {
           },
         } as Overview);
 
-      const connections =
-        key === "site_inrcy"
-          ? { ga4: !!ov.sources?.site_inrcy?.connected?.ga4, gsc: !!ov.sources?.site_inrcy?.connected?.gsc }
-          : key === "site_web"
-            ? { ga4: !!ov.sources?.site_web?.connected?.ga4, gsc: !!ov.sources?.site_web?.connected?.gsc }
-            : key === "gmb"
-              ? { main: !!ov.sources?.gmb?.connected }
-              : { main: !!ov.sources?.facebook?.connected };
+      
+const inrcyOwnership = (ov as any)?.inrcySiteOwnership;
 
-      const provenance = buildProvenance(key, ov);
+const connections =
+  key === "site_inrcy"
+    ? inrcyOwnership === "rented"
+      ? { main: !!ov.sources?.site_inrcy?.connected?.ga4 && !!ov.sources?.site_inrcy?.connected?.gsc, ga4: !!ov.sources?.site_inrcy?.connected?.ga4, gsc: !!ov.sources?.site_inrcy?.connected?.gsc }
+      : { ga4: !!ov.sources?.site_inrcy?.connected?.ga4, gsc: !!ov.sources?.site_inrcy?.connected?.gsc }
+    : key === "site_web"
+      ? { ga4: !!ov.sources?.site_web?.connected?.ga4, gsc: !!ov.sources?.site_web?.connected?.gsc }
+      : key === "gmb"
+        ? { main: !!ov.sources?.gmb?.connected }
+        : { main: !!ov.sources?.facebook?.connected };
+
+const provenance = buildProvenance(key, ov);
       const opp30 = computeOpportunity30(key, ov);
 
       const q = computeQuality(key, ov);
@@ -721,6 +747,7 @@ export default function StatsClient() {
 
       return {
         key,
+        inrcyOwnership: key === "site_inrcy" ? (inrcyOwnership as any) : undefined,
         title,
         subtitle,
         period,
@@ -862,9 +889,12 @@ function Cube({
   onNavigate: (href: string) => void;
 }) {
   const isSite = model.key === "site_inrcy" || model.key === "site_web";
+  const isRentedInrcy = model.key === "site_inrcy" && model.inrcyOwnership === "rented";
 
   const connectionOk = isSite
-    ? !!model.connections.ga4 || !!model.connections.gsc
+    ? isRentedInrcy
+      ? !!model.connections.ga4 && !!model.connections.gsc
+      : !!model.connections.ga4 || !!model.connections.gsc
     : !!model.connections.main;
 
   return (
@@ -884,12 +914,16 @@ function Cube({
           <PeriodSelect value={model.period} onChange={onChangePeriod} />
           <div className={styles.pills}>
             {isSite ? (
-              <>
-                <StatusPill ok={!!model.connections.ga4} label="GA4" />
-                <StatusPill ok={!!model.connections.gsc} label="GSC" />
-              </>
+              isRentedInrcy ? (
+                <StatusPill ok={connectionOk} label="Connecté" />
+              ) : (
+                <>
+                  <StatusPill ok={!!model.connections.ga4} label="GA4" />
+                  <StatusPill ok={!!model.connections.gsc} label="GSC" />
+                </>
+              )
             ) : (
-              <StatusPill ok={!!model.connections.main} label={model.key === "gmb" ? "Connecté" : "Connecté"} />
+              <StatusPill ok={!!model.connections.main} label="Connecté" />
             )}
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export type StatsSourceKey = "site_inrcy" | "site_web" | "gmb" | "facebook";
 export type StatsProductKey = "ga4" | "gsc" | "gmb" | "facebook";
@@ -53,6 +54,25 @@ export function isExpired(expiresAtIso: string | null) {
   return Date.now() > t - 2 * 60 * 1000;
 }
 
+async function getAdminRefreshToken(): Promise<string | null> {
+  const adminEmail = (process.env.INRCY_ADMIN_GOOGLE_EMAIL || "contact@admin-inrcy.com").trim().toLowerCase();
+  const adminUserId = (process.env.INRCY_ADMIN_USER_ID || "").trim();
+
+  const base = supabaseAdmin
+    .from("stats_integrations")
+    .select("refresh_token_enc, updated_at")
+    .eq("provider", "google")
+    .eq("status", "connected")
+    .not("refresh_token_enc", "is", null);
+
+  const q = adminUserId ? base.eq("user_id", adminUserId) : base.ilike("email_address", adminEmail);
+  const { data, error } = await q.order("updated_at", { ascending: false }).limit(1);
+  if (error) return null;
+  const token = String((data as any[])?.[0]?.refresh_token_enc || "").trim();
+  return token ? token : null;
+}
+
+
 export async function getGoogleTokenFor(source: StatsSourceKey, product: "ga4" | "gsc") {
   const supabase = await createSupabaseServer();
   const { data: authData, error: authErr } = await supabase.auth.getUser();
@@ -73,20 +93,26 @@ export async function getGoogleTokenFor(source: StatsSourceKey, product: "ga4" |
   if (!data) return null;
 
   const row = data as unknown as GoogleTokenRow;
+  const usesAdmin = Boolean((row as any)?.meta?.uses_admin);
 
-  if (!row.refresh_token_enc) {
-    // Without refresh_token, we cannot keep the connection alive reliably
-    return null;
+  let refreshToken = row.refresh_token_enc;
+
+  // Mode RENTED: pas de refresh_token sur la ligne client -> on utilise le refresh_token du compte admin iNrCy
+  if (!refreshToken) {
+    if (!usesAdmin) return null;
+    refreshToken = await getAdminRefreshToken();
+    if (!refreshToken) return null;
   }
 
   let accessToken = row.access_token_enc;
   let expiresAt = row.expires_at;
 
   if (!accessToken || isExpired(expiresAt)) {
-    const refreshed = await refreshGoogleAccessToken(row.refresh_token_enc);
+    const refreshed = await refreshGoogleAccessToken(refreshToken);
     accessToken = refreshed.accessToken;
     expiresAt = refreshed.expiresAtIso;
 
+    // On cache l'access_token sur la ligne client (même si uses_admin=true)
     await supabase
       .from("stats_integrations")
       .update({ access_token_enc: accessToken, expires_at: expiresAt })

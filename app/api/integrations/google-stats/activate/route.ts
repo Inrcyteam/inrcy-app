@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 // POST /api/integrations/google-stats/activate
 // Utilisé principalement en mode "rented" pour Site iNrCy :
@@ -136,7 +137,9 @@ function pickGa4Match(domain: string, candidates: Array<{ propertyId: string; me
 
 async function resolveGa4FromDomain(accessToken: string, domain: string) {
   const properties = await fetchAllGa4Properties(accessToken);
-  const matches: Array<{ propertyId: string; measurementId?: string }> = [];
+  // Dédoublonnage: une propriété peut avoir plusieurs WEB streams.
+  // On ne veut pas qu'un même propertyId compte plusieurs fois (sinon faux "ambiguous").
+  const byProperty = new Map<string, { propertyId: string; measurementId?: string }>();
 
   for (const p of properties) {
     const pid = extractPropertyId(p.name);
@@ -149,13 +152,17 @@ async function resolveGa4FromDomain(accessToken: string, domain: string) {
       if (!defaultUri) continue;
       const d = normalizeDomainFromUrl(String(defaultUri));
       if (!d) continue;
-      if (d.replace(/^www\./, "") === domain.replace(/^www\./, "")) {
-        matches.push({ propertyId: pid, measurementId });
+      const host = d.replace(/^www\./, "");
+      const wanted = domain.replace(/^www\./, "");
+      if (host === wanted) {
+        if (!byProperty.has(pid)) byProperty.set(pid, { propertyId: pid, measurementId });
+        const cur = byProperty.get(pid)!;
+        if (!cur.measurementId && measurementId) cur.measurementId = measurementId;
       }
     }
   }
 
-  return pickGa4Match(domain, matches);
+  return pickGa4Match(domain, Array.from(byProperty.values()));
 }
 
 async function resolveGscFromDomain(accessToken: string, domain: string, siteUrlHint?: string | null) {
@@ -240,14 +247,19 @@ export async function POST(req: Request) {
 
     // On cherche un refresh_token admin (n'importe quelle source/product) stocké dans stats_integrations.
     // ⚠️ On privilégie user_id si fourni, sinon on se rabat sur email_address.
-    let adminRefreshToken = "";
-    {
-      const baseQuery = supabase.from("stats_integrations").select("refresh_token_enc").eq("provider", "google");
-      const q = adminUserId ? baseQuery.eq("user_id", adminUserId) : baseQuery.ilike("email_address", adminEmail);
-      const { data: rows } = await q.order("updated_at", { ascending: false }).limit(10);
-      adminRefreshToken = String((rows as any[])?.find((r) => String((r as any)?.refresh_token_enc || "").trim())?.refresh_token_enc || "").trim();
-    }
-
+    
+let adminRefreshToken = "";
+{
+  const baseQuery = supabaseAdmin.from("stats_integrations").select("refresh_token_enc").eq("provider", "google");
+  const q = adminUserId ? baseQuery.eq("user_id", adminUserId) : baseQuery.ilike("email_address", adminEmail);
+  const { data: rows } = await q
+    .not("refresh_token_enc", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(10);
+  adminRefreshToken = String(
+    (rows as any[])?.find((r) => String((r as any)?.refresh_token_enc || "").trim())?.refresh_token_enc || ""
+  ).trim();
+}
     if (!adminRefreshToken) {
       return NextResponse.json(
         {
@@ -344,11 +356,18 @@ export async function POST(req: Request) {
       verified_at: nowIso,
     };
     next.gsc = { ...(next.gsc ?? {}), property: gscResolved, verified_at: nowIso };
+    // En mode RENTED, on garde GA4/GSC branchés, mais on peut couper/réactiver la couche iNrCy.
+    (next as any).inrcy_tracking_enabled = true;
 
     const { error: upErr } = await supabase
       .from("inrcy_site_configs")
       .upsert({ user_id: authData.user.id, site_url: parsed.normalizedUrl, settings: next }, { onConflict: "user_id" });
     if (upErr) return NextResponse.json({ error: "DB update failed" }, { status: 500 });
+
+    // Invalider le cache stats pour rafraîchir immédiatement les KPI après activation.
+    try {
+      await supabase.from("stats_cache").delete().eq("user_id", authData.user.id).eq("source", "overview");
+    } catch {}
 
     return NextResponse.json({ ok: true, ga4: ga4Resolved, gsc: { property: gscResolved } });
   } catch (e: any) {

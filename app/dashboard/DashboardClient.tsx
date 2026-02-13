@@ -236,6 +236,7 @@ const [siteInrcyUrl, setSiteInrcyUrl] = useState<string>("");
 const [siteInrcyContactEmail, setSiteInrcyContactEmail] = useState<string>("");
 const [siteInrcySettingsText, setSiteInrcySettingsText] = useState<string>("{}");
 const [siteInrcySettingsError, setSiteInrcySettingsError] = useState<string | null>(null);
+const [siteInrcyTrackingBusy, setSiteInrcyTrackingBusy] = useState(false);
   const [siteInrcyGa4Notice, setSiteInrcyGa4Notice] = useState<string | null>(null);
   const [siteInrcyGscNotice, setSiteInrcyGscNotice] = useState<string | null>(null);
   const [siteInrcyUrlNotice, setSiteInrcyUrlNotice] = useState<string | null>(null);
@@ -629,6 +630,7 @@ const activateSiteInrcyTracking = useCallback(async () => {
   }
 
   setSiteInrcySettingsError(null);
+  setSiteInrcyTrackingBusy(true);
 
   const res = await fetch("/api/integrations/google-stats/activate", {
     method: "POST",
@@ -637,6 +639,7 @@ const activateSiteInrcyTracking = useCallback(async () => {
   }).catch(() => null);
 
   if (!res) {
+    setSiteInrcyTrackingBusy(false);
     setSiteInrcySettingsError("Impossible de joindre le serveur.");
     return;
   }
@@ -646,9 +649,12 @@ const activateSiteInrcyTracking = useCallback(async () => {
   // En mode rented, l'activation doit être 100% silencieuse côté client.
   // Si le token admin iNrCy n'est pas configuré, on affiche une erreur explicite.
   if (!res.ok) {
+    setSiteInrcyTrackingBusy(false);
     setSiteInrcySettingsError((data as any)?.error || `Erreur d'activation (${res.status}).`);
     return;
   }
+
+  setSiteInrcyTrackingBusy(false);
 
   // Rafraîchit les statuts
   setSiteInrcyGa4Connected(true);
@@ -669,6 +675,7 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
   }
 
   setSiteInrcySettingsError(null);
+  setSiteInrcyTrackingBusy(true);
 
   const res = await fetch("/api/integrations/google-stats/deactivate", {
     method: "POST",
@@ -677,6 +684,7 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
   }).catch(() => null);
 
   if (!res) {
+    setSiteInrcyTrackingBusy(false);
     setSiteInrcySettingsError("Impossible de joindre le serveur.");
     return;
   }
@@ -1650,8 +1658,8 @@ const disconnectSiteWebGsc = useCallback(() => {
                 m.key === "site_inrcy"
                   ? siteInrcyOwnership === "rented"
                     ? siteInrcyAllGreen
-                      ? false
-                      : !canActivateInrcyTracking
+                      ? siteInrcyTrackingBusy
+                      : !canActivateInrcyTracking || siteInrcyTrackingBusy
                     : !canConfigureSite
                   : false
               }
@@ -1670,9 +1678,16 @@ const disconnectSiteWebGsc = useCallback(() => {
               }
             >
               {m.key === "site_inrcy" && siteInrcyOwnership === "rented"
-                ? siteInrcyAllGreen
-                  ? "Déconnecter le suivi"
-                  : "Activer le suivi"
+                ? siteInrcyTrackingBusy
+                  ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <span className={styles.miniSpinner} aria-hidden />
+                        {siteInrcyAllGreen ? "Déconnexion..." : "Connexion..."}
+                      </span>
+                    )
+                  : siteInrcyAllGreen
+                    ? "Déconnecter le suivi"
+                    : "Activer le suivi"
                 : "Configurer"}
             </button>
           </div>
