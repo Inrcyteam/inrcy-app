@@ -15,6 +15,10 @@ export async function POST(req: Request) {
     const locationName = String(body.locationName || "").trim(); // "locations/456"
     const locationTitle = String(body.locationTitle || "").trim() || null;
 
+    // Best-effort public link for the selected location.
+    // We use a Google Maps search link (reliable, no extra API calls, works even without Place IDs).
+    const gmbUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationTitle || locationName)}`;
+
     if (!accountName || !locationName) {
       return NextResponse.json({ error: "Missing accountName/locationName" }, { status: 400 });
     }
@@ -40,14 +44,14 @@ export async function POST(req: Request) {
       const current = (scRow as any)?.settings ?? {};
       const merged = {
         ...current,
-        gmb: { ...(current?.gmb ?? {}), connected: true, accountName, locationName, locationTitle },
+        gmb: { ...(current?.gmb ?? {}), connected: true, accountName, locationName, locationTitle, url: gmbUrl },
       };
       await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
     } catch {
       // non-fatal
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, url: gmbUrl });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
   }

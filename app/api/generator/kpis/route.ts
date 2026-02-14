@@ -193,8 +193,12 @@ async function getStats(origin: string, days: number, req: Request) {
   return { clicks, pageviews };
 }
 
-async function getOpportunities(origin: string, baseDays: number, req: Request) {
-  const url = `${origin}/api/inrstats/opportunities?baseDays=${encodeURIComponent(baseDays)}`;
+async function getOpportunities(origin: string, req: Request) {
+  // Générateur windows are fixed:
+  // - today: 48h (2 days)
+  // - week : 7 days
+  // - month: 28 days
+  const url = `${origin}/api/inrstats/opportunities?mode=generator`;
   const res = await fetch(url, {
     cache: "no-store",
     headers: {
@@ -256,10 +260,11 @@ export async function GET(req: Request) {
 
     const { searchParams, origin } = new URL(req.url);
 
+    // Kept only for debug / future tuning. The real windows are enforced server-side.
     const monthDays = Math.max(1, Number(searchParams.get("monthDays") || 28));
     const weekDays = Math.max(1, Number(searchParams.get("weekDays") || 7));
-    const todayDays = Math.max(1, Number(searchParams.get("todayDays") || 1));
-    debug.windows = { monthDays, weekDays, todayDays };
+    const todayDays = Math.max(1, Number(searchParams.get("todayDays") || 2));
+    debug.windows = { monthDays, weekDays, todayDays, mode: "generator" };
 
     const safe = async <T>(key: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
       try {
@@ -279,7 +284,7 @@ export async function GET(req: Request) {
     // We take the snapshot from /api/inrstats/opportunities and only add the CA estimation here.
     const opp = await safe(
       "opportunities",
-      () => getOpportunities(origin, monthDays, req),
+      () => getOpportunities(origin, req),
       { baseDays: monthDays, today: 0, week: 0, month: 0, confidence: "low" }
     );
 

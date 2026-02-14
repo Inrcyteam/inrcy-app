@@ -87,7 +87,8 @@ function computeOpportunities(overview: OverviewResponse): { perDay: number; con
   }, 0);
 
   // Boosts for connected acquisition channels (GMB / Facebook) – even if we don't fetch their metrics yet.
-  const sourcesStatus = overview?.sourcesStatus || {};
+  // /api/stats/overview exposes connection state under `sources`.
+  const sourcesStatus = overview?.sources || {};
   const gmbBoost = sourcesStatus?.gmb?.connected ? 1.08 : 1.0;
   const fbBoost = sourcesStatus?.facebook?.connected ? 1.04 : 1.0;
 
@@ -155,9 +156,16 @@ export async function GET(request: Request) {
     // We still compute an opportunity *index/day* (computeOpportunities), but each window
     // uses its own underlying dataset so we don't just multiply the same number.
 
-    const monthDays = Math.max(1, Math.min(90, Number(url.searchParams.get("days") || "30") || 30));
-    const todayDays = 3;
-    const weekDays = 7;
+    // Allow explicit overrides (useful for Générateur windows)
+    const qMode = (url.searchParams.get("mode") || "").toLowerCase();
+    const qToday = Number(url.searchParams.get("todayDays") || "0") || 0;
+    const qWeek = Number(url.searchParams.get("weekDays") || "0") || 0;
+    const qMonth = Number(url.searchParams.get("monthDays") || url.searchParams.get("days") || "0") || 0;
+
+    // Defaults
+    const todayDays = qToday > 0 ? qToday : qMode === "generator" ? 2 : 3;
+    const weekDays = qWeek > 0 ? qWeek : 7;
+    const monthDays = qMonth > 0 ? qMonth : qMode === "generator" ? 28 : 30;
 
     const origin = url.origin;
     const cookie = request.headers.get("cookie") || "";

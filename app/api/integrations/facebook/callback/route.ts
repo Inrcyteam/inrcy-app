@@ -20,6 +20,18 @@ type FbPage = {
   access_token?: string;
 };
 
+async function invalidateUserStatsCache(supabase: any, userId: string) {
+  try {
+    await supabase.from("stats_cache").delete().eq("user_id", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
+  } catch {}
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   const data = (await res.json()) as any;
@@ -212,6 +224,9 @@ export async function GET(req: Request) {
     } catch {
       // non-fatal
     }
+
+    // Invalidate stats cache so iNrStats + Generator reflect the new connection immediately.
+    await invalidateUserStatsCache(supabase, userId);
 
     const finalUrl = new URL(returnTo, siteUrl);
     finalUrl.searchParams.set("linked", "facebook");

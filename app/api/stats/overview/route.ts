@@ -101,11 +101,62 @@ const proSettings = safeJsonParse<any>((proCfgRes.data as any)?.settings, null) 
 const inrcyTrackingEnabled = Boolean((inrcySettings as any)?.inrcy_tracking_enabled ?? true);
 
 // ---- Cache (anti-quota Google) ----
-// IMPORTANT: le cache doit dépendre de l'état ON/OFF du suivi iNrCy.
-// Sinon, après une désactivation, on pourrait resservir des stats calculées
-// quand iNrCy était encore activé.
-// On inclut donc un flag dans la clé de cache.
-const rangeKey = `days=${days}|include=${includeRaw || "all"}|inrcy=${inrcyTrackingEnabled ? 1 : 0}`;
+// ⚠️ Correctif critique : la clé de cache DOIT dépendre de l'état des connexions.
+// Sinon, après une déconnexion, on peut resservir un ancien payload (ex: GMB +90) jusqu'à expiration.
+//
+// On fabrique donc un "snapshot" léger des statuts, en lisant :
+// - stats_integrations (nouveau)
+// - integrations_statistiques (legacy) si présent
+async function buildConnectionsKey() {
+  const keyParts: string[] = [];
+
+  // 1) nouveau système
+  try {
+    const { data } = await supabase
+      .from("stats_integrations")
+      .select("provider,source,product,status,updated_at")
+      .eq("user_id", userId);
+
+    for (const r of (data as any[]) || []) {
+      const k = `${r.provider}:${r.source}:${r.product}`;
+      const st = String(r.status || "").toLowerCase();
+      const ts = String(r.updated_at || "");
+      keyParts.push(`${k}=${st}@${ts}`);
+    }
+  } catch {
+    // ignore
+  }
+
+  // 2) legacy (celui que tu vois dans Supabase : public.integrations_statistiques)
+  try {
+    const { data } = await supabase
+      .from("integrations_statistiques")
+      .select("fournisseur,source,produit,statut,identifiant")
+      .eq("id_utilisateur", userId);
+
+    for (const r of (data as any[]) || []) {
+      const prov = String(r.fournisseur || "").toLowerCase();
+      const src = String(r.source || "").toLowerCase();
+      const prod = String(r.produit || "").toLowerCase();
+      const st = String(r.statut || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "");
+      const id = String(r.identifiant || "");
+      keyParts.push(`legacy:${prov}:${src}:${prod}=${st}@${id}`);
+    }
+  } catch {
+    // ignore if table doesn't exist
+  }
+
+  keyParts.sort();
+  return keyParts.join("|") || "none";
+}
+
+const connectionsKey = await buildConnectionsKey();
+const rangeKey = `days=${days}|include=${includeRaw || "all"}|inrcy=${inrcyTrackingEnabled ? 1 : 0}|conn=${connectionsKey}`;
+
+// Lecture cache (best-effort)
 try {
   const nowIso = new Date().toISOString();
   const { data: cacheHit } = await supabase
@@ -125,8 +176,25 @@ try {
   // Table stats_cache non présente ou non accessible : on ignore.
 }
 
+// Cache legacy (best-effort)
+try {
+  const { data: legacyHit } = await supabase
+    .from("cache_statistiques")
+    .select("charge_utile, cree_a")
+    .eq("id_utilisateur", userId)
+    .eq("source", "apercu")
+    .eq("plage_cle", rangeKey)
+    .order("cree_a", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-    
+  if ((legacyHit as any)?.charge_utile) {
+    return NextResponse.json((legacyHit as any).charge_utile);
+  }
+} catch {
+  // ignore
+}
+
 const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: string }> = [
   {
     key: "site_inrcy",
@@ -167,7 +235,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
 
       // GA4
-      if (s.ga4Property) {
+      if (includeGa4 && s.ga4Property) {
         const token = await getGoogleTokenFor(s.key, "ga4");
         if (token?.accessToken) {
           perSource[s.key].connected.ga4 = true;
@@ -191,7 +259,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       }
 
       // GSC
-      if (s.gscProperty) {
+      if (includeGsc && s.gscProperty) {
         const token = await getGoogleTokenFor(s.key, "gsc");
         if (token?.accessToken) {
           perSource[s.key].connected.gsc = true;
@@ -264,6 +332,25 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         .eq("status", "connected")
         .maybeSingle();
       sourcesStatus.facebook.connected = !!fbRow;
+
+      // Legacy override
+      try {
+        const { data: l } = await supabase
+          .from("integrations_statistiques")
+          .select("statut")
+          .eq("id_utilisateur", userId)
+          .eq("fournisseur", "Facebook")
+          .eq("source", "facebook")
+          .eq("produit", "facebook")
+          .order("identifiant", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const st = String((l as any)?.statut || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/\p{Diacritic}/gu, "");
+        if (st.includes("deconnect") || st.includes("disconnected")) sourcesStatus.facebook.connected = false;
+      } catch {}
     } catch {}
 
     // GMB: the UI needs a stable "connected" flag like GA4/GSC.
@@ -282,6 +369,25 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
       sourcesStatus.gmb.connected = !!gmbRow;
 
+      // Legacy override
+      try {
+        const { data: l } = await supabase
+          .from("integrations_statistiques")
+          .select("statut")
+          .eq("id_utilisateur", userId)
+          .eq("fournisseur", "Google")
+          .eq("source", "gmb")
+          .eq("produit", "gmb")
+          .order("identifiant", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const st = String((l as any)?.statut || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/\p{Diacritic}/gu, "");
+        if (st.includes("deconnect") || st.includes("disconnected")) sourcesStatus.gmb.connected = false;
+      } catch {}
+
       if (gmbRow) {
         const includeGmb = includeAll || includeSet.has("gmb");
         if (!includeGmb) {
@@ -290,7 +396,13 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         } else {
         const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb");
         const accessToken = tok?.accessToken;
-        const loc = gmbRow?.resource_id || tok?.row?.resource_id;
+
+        // IMPORTANT:
+        // GMB metrics are tied to a *location* (establishment page), not the Google account.
+        // So we only fetch metrics once a location has been explicitly selected and saved.
+        // Never fallback to a token-row resource_id here, otherwise we can show stale metrics
+        // even when the user hasn't selected a location in the UI.
+        const loc = gmbRow?.resource_id;
 
         if (accessToken && loc) {
           const end = new Date();
@@ -300,6 +412,9 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           } catch (e: any) {
             sourcesStatus.gmb.metrics = { error: e?.message || "performance fetch failed", location: loc };
           }
+        } else {
+          // Connected account but not configured (no location selected yet).
+          sourcesStatus.gmb.metrics = null;
         }
         }
       }
@@ -329,16 +444,26 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     };
 
     // cache write (best-effort)
-    try {
-      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-      await supabase.from("stats_cache").insert({
-        user_id: userId,
-        source: "overview",
-        range_key: rangeKey,
-        payload,
-        expires_at: expiresAt,
-      });
-    } catch {}
+try {
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  await supabase.from("stats_cache").insert({
+    user_id: userId,
+    source: "overview",
+    range_key: rangeKey,
+    payload,
+    expires_at: expiresAt,
+  });
+} catch {}
+
+// cache legacy write (best-effort)
+try {
+  await supabase.from("cache_statistiques").insert({
+    id_utilisateur: userId,
+    source: "apercu",
+    plage_cle: rangeKey,
+    charge_utile: payload,
+  });
+} catch {}
 
     return NextResponse.json(payload);
   } catch (e: any) {

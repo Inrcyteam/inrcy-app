@@ -18,6 +18,18 @@ export async function POST() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Invalidate cached stats so UI reflects disconnection immediately.
+  try {
+    await supabase.from("stats_cache").delete().eq("user_id", authData.user.id).eq("source", "overview");
+  } catch {}
+  // Legacy cache table (older system)
+  try {
+    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", authData.user.id);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("user_id", authData.user.id);
+  } catch {}
+
   // Keep dashboard UX consistent: also flip the module flag in pro_tools_configs.settings.
   try {
     const { data: cfg } = await supabase

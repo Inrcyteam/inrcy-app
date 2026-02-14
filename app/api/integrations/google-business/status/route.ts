@@ -14,7 +14,7 @@ export async function GET() {
     // just because the Business APIs are not enabled / user has no accounts yet.
     const { data } = await supabase
       .from("stats_integrations")
-      .select("id,status,resource_id,resource_label")
+      .select("id,status,resource_id,resource_label,email_address,display_name")
       .eq("user_id", authData.user.id)
       .eq("provider", "google")
       .eq("source", "gmb")
@@ -39,6 +39,8 @@ export async function GET() {
     return NextResponse.json({
       connected: true,
       accountsCount,
+      email: (data as any)?.email_address ?? null,
+      displayName: (data as any)?.display_name ?? null,
       resource_id: (data as any)?.resource_id ?? null,
       resource_label: (data as any)?.resource_label ?? null,
     });

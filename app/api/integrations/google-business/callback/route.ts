@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
-import { gmbListAccounts, gmbListLocations } from "@/lib/googleBusiness";
+import { gmbListAccounts } from "@/lib/googleBusiness";
 
 type TokenResponse = {
   access_token?: string;
@@ -17,6 +17,22 @@ type GoogleUserInfo = {
   name?: string;
   picture?: string;
 };
+
+async function invalidateUserStatsCache(supabase: any, userId: string) {
+  // Best-effort cache invalidation (new + legacy). Never fail the OAuth flow on cache.
+  try {
+    await supabase.from("stats_cache").delete().eq("user_id", userId);
+  } catch {}
+
+  // Legacy cache table in your DB is `cache_statistiques`.
+  // Depending on migrations it may have `id_de_l_utilisateur` or `user_id`.
+  try {
+    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
+  } catch {}
+}
 
 function safeReturnTo(stateReturnTo: unknown, siteUrl: string) {
   // Default panel
@@ -161,40 +177,46 @@ export async function GET(req: Request) {
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = (scRow as any)?.settings ?? {};
-      const merged = { ...current, gmb: { ...(current?.gmb ?? {}), connected: true } };
+      const merged = {
+        ...current,
+        gmb: {
+          ...(current?.gmb ?? {}),
+          connected: true,
+          accountEmail: userInfo.email,
+          accountDisplayName: userInfo.name ?? null,
+        },
+      };
       await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
     } catch {
       // non-fatal
     }
 
 
-    // Try to discover an account + location so the Stats module can fetch GMB metrics.
-    // This is best-effort; we keep the connection even if discovery fails.
+    // IMPORTANT:
+    // We DO NOT auto-select a location here.
+    // GMB stats are tied to a specific establishment (location). Until the user explicitly
+    // chooses a location in the UI, we must not fetch or display metrics.
+    // We can however store a default *account* hint to help list locations faster.
     try {
       if (payload.access_token_enc) {
         const accounts = await gmbListAccounts(payload.access_token_enc);
         const firstAcc = accounts?.[0]?.name; // e.g. "accounts/123"
         if (firstAcc) {
-          const locations = await gmbListLocations(payload.access_token_enc, firstAcc);
-          const firstLoc = locations?.[0];
-          if (firstLoc?.name) {
-            // Store the selected default location in stats_integrations.resource_id/resource_label for later metrics calls.
-            const locName = firstLoc.name; // e.g. "locations/456"
-            const locLabel = firstLoc.title ?? null;
-
-            await supabase
-              .from("stats_integrations")
-              .update({ resource_id: locName, resource_label: locLabel, meta: { ...(payload.meta || {}), account: firstAcc } })
-              .eq("user_id", userId)
-              .eq("provider", "google")
-              .eq("source", "gmb")
-              .eq("product", "gmb");
-          }
+          await supabase
+            .from("stats_integrations")
+            .update({ meta: { ...(payload.meta || {}), account: firstAcc }, resource_id: null, resource_label: null })
+            .eq("user_id", userId)
+            .eq("provider", "google")
+            .eq("source", "gmb")
+            .eq("product", "gmb");
         }
       }
     } catch {
-      // ignore discovery errors (often caused by API not enabled yet)
+      // ignore discovery errors
     }
+
+    // Invalidate stats cache so iNrStats + Generator reflect the new connection immediately.
+    await invalidateUserStatsCache(supabase, userId);
 
     // Build final redirect URL safely and append params without breaking existing querystring
     const finalUrl = new URL(returnToPath, siteUrl);

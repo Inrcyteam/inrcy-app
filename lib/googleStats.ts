@@ -72,12 +72,49 @@ async function getAdminRefreshToken(): Promise<string | null> {
   return token ? token : null;
 }
 
+function normStatus(s: any) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
+}
+
+async function legacyOverrideDisconnected(
+  supabase: any,
+  userId: string,
+  provider: string,
+  source: string,
+  product: string
+) {
+  // Table legacy vue dans Supabase : public.integrations_statistiques (fournisseur/source/produit/statut)
+  try {
+    const { data } = await supabase
+      .from("integrations_statistiques")
+      .select("statut")
+      .eq("id_utilisateur", userId)
+      .eq("fournisseur", provider)
+      .eq("source", source)
+      .eq("produit", product)
+      .order("identifiant", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const st = normStatus((data as any)?.statut);
+    if (st.includes("deconnect") || st.includes("disconnected")) return true;
+  } catch {
+    // ignore if table/columns do not exist
+  }
+  return false;
+}
 
 export async function getGoogleTokenFor(source: StatsSourceKey, product: "ga4" | "gsc") {
   const supabase = await createSupabaseServer();
   const { data: authData, error: authErr } = await supabase.auth.getUser();
   if (authErr || !authData?.user) throw new Error("Not authenticated");
   const userId = authData.user.id;
+
+  // Legacy override: si une ligne existe dans integrations_statistiques en "déconnecté",
+  // on force OFF même si stats_integrations contient encore un vieux token.
+  if (await legacyOverrideDisconnected(supabase, userId, "google", source, product)) {
+    return null;
+  }
 
   const { data, error } = await supabase
     .from("stats_integrations")
@@ -282,6 +319,10 @@ export async function getGoogleTokenForAnyGoogle(source: StatsSourceKey, product
   const { data: authData, error: authErr } = await supabase.auth.getUser();
   if (authErr || !authData?.user) throw new Error("Not authenticated");
   const userId = authData.user.id;
+
+  if (await legacyOverrideDisconnected(supabase, userId, "google", source, product)) {
+    return null;
+  }
 
   const { data, error } = await supabase
     .from("stats_integrations")

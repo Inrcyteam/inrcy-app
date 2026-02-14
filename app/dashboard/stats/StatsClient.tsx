@@ -195,6 +195,10 @@ function computeOpportunityPerDayWeb(ov: Overview) {
 
 function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
   if (cubeKey === "gmb") {
+    // If the user is not connected, opportunity must be 0 (no ghost +90).
+    const connected = !!ov?.sources?.gmb?.connected;
+    if (!connected) return 0;
+
     const m = ov?.sources?.gmb?.metrics;
     // Best-effort: sum interactions over the window and convert to a "potential".
     // If metrics API is not enabled we still provide a conservative number.
@@ -211,7 +215,9 @@ function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
     } catch {}
 
     const hasError = !!m?.error;
-    const base = hasError ? 1.5 : 3.0;
+    // Conservative baseline for a connected GBP when metrics are missing/unavailable.
+    // (Old baseline 3.0/day => +90 was too aggressive.)
+    const base = hasError || !m ? 0.8 : 1.2;
     // Use impressions if present (we can sometimes read them from the timeSeries).
     const impressionsGuess = safeNum(m?.totals?.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) + safeNum(m?.totals?.BUSINESS_IMPRESSIONS_MOBILE_MAPS);
     const interactionsGuess = safeNum(m?.totals?.WEBSITE_CLICKS) + safeNum(m?.totals?.CALL_CLICKS) + safeNum(m?.totals?.DIRECTION_REQUESTS);
@@ -219,8 +225,12 @@ function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
     return Math.max(0, Math.round(perDay * 30));
   }
   if (cubeKey === "facebook") {
-    // No insights yet: keep neutral. Once Meta metrics are integrated, this will become real.
-    return ov?.sources?.facebook?.connected ? 2 : 0;
+    // No insights yet: keep conservative but consistent with 30-day projection.
+    // Must be 0 when disconnected.
+    const connected = !!ov?.sources?.facebook?.connected;
+    if (!connected) return 0;
+    // Until Meta insights are wired, use a small default (can be improved later).
+    return 10;
   }
   // web sites
   const perDay = computeOpportunityPerDayWeb(ov);
