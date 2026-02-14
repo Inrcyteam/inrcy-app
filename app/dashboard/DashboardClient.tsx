@@ -275,6 +275,11 @@ const [pagesJaunesUrl, setPagesJaunesUrl] = useState<string>("");
 // ✅ Google Business & Facebook (liens + connexion)
 const [gmbUrl, setGmbUrl] = useState<string>("");
 const [gmbConnected, setGmbConnected] = useState<boolean>(false);
+// Google Business has 2 levels:
+// 1) accountConnected: OAuth OK (we can list locations)
+// 2) configured/connected: a specific location is selected (we can fetch stats)
+const [gmbAccountConnected, setGmbAccountConnected] = useState<boolean>(false);
+const [gmbConfigured, setGmbConfigured] = useState<boolean>(false);
 const [gmbAccountEmail, setGmbAccountEmail] = useState<string>("");
 const [facebookUrl, setFacebookUrl] = useState<string>("");
 const [facebookConnected, setFacebookConnected] = useState<boolean>(false);
@@ -386,7 +391,11 @@ const loadSiteInrcy = useCallback(async () => {
   // ✅ Google Business & Facebook (pro_tools_configs.settings.gmb / facebook)
   const gmbObj = ((proSettingsObj as any)?.gmb ?? {}) as any;
   setGmbUrl(gmbObj?.url ?? "");
-  setGmbConnected(!!gmbObj?.connected);
+  const _gmbAccountConnected = !!gmbObj?.connected;
+  const _gmbConfigured = !!gmbObj?.resource_id;
+  setGmbAccountConnected(_gmbAccountConnected);
+  setGmbConfigured(_gmbConfigured);
+  setGmbConnected(_gmbAccountConnected && _gmbConfigured);
   setGmbAccountEmail(gmbObj?.accountEmail ?? "");
 
   const fbObj = ((proSettingsObj as any)?.facebook ?? {}) as any;
@@ -413,7 +422,9 @@ const loadSiteInrcy = useCallback(async () => {
       fetch("/api/integrations/google-business/status").then((r) => r.json()).catch(() => ({ connected: false })),
       fetch("/api/integrations/facebook/status").then((r) => r.json()).catch(() => ({ connected: false })),
     ]);
-    setGmbConnected(!!gmbStatus?.connected);
+    setGmbConnected(!!gmbStatus?.connected); // true only when a location is selected
+    setGmbAccountConnected(!!gmbStatus?.accountConnected);
+    setGmbConfigured(!!gmbStatus?.configured);
     if (gmbStatus?.email) setGmbAccountEmail(String(gmbStatus.email));
     setFacebookConnected(!!fbStatus?.connected);
     if (fbStatus?.resource_id) setFbSelectedPageId(String(fbStatus.resource_id));
@@ -985,9 +996,11 @@ const connectGmbAccount = useCallback(async () => {
 const disconnectGmbAccount = useCallback(async () => {
   await fetch("/api/integrations/google-business/disconnect", { method: "POST" });
   setGmbConnected(false);
+  setGmbAccountConnected(false);
+  setGmbConfigured(false);
   setGmbAccountEmail("");
   setGmbUrl("");
-  await updateRootSettingsKey("gmb", { url: "", connected: false, accountEmail: "" });
+  await updateRootSettingsKey("gmb", { url: "", connected: false, accountEmail: "", resource_id: "" });
 }, [updateRootSettingsKey]);
 
 
@@ -3474,7 +3487,7 @@ const disconnectSiteWebGsc = useCallback(() => {
                     background: gmbConnected ? "rgba(34,197,94,0.95)" : "rgba(148,163,184,0.9)",
                   }}
                 />
-                Statut : <strong>{gmbConnected ? "Connecté" : "À connecter"}</strong>
+                Statut : <strong>{gmbConnected ? "Connecté" : gmbAccountConnected ? "Compte connecté" : "À connecter"}</strong>
               </span>
             </div>
 
@@ -3491,13 +3504,13 @@ const disconnectSiteWebGsc = useCallback(() => {
             >
               <div className={styles.blockHeaderRow}>
                 <div className={styles.blockTitle}>Compte connecté</div>
-                <ConnectionPill connected={gmbConnected} />
+                  <ConnectionPill connected={gmbAccountConnected} />
               </div>
               <div className={styles.blockSub}>Ce compte Google sert à accéder à vos établissements Google Business.</div>
 
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <input
-                  value={gmbAccountEmail || (gmbConnected ? "Compte connecté" : "")}
+                  value={gmbAccountEmail || (gmbAccountConnected ? "Compte connecté" : "")}
                   readOnly
                   placeholder="(aucun compte connecté)"
                   style={{
@@ -3510,7 +3523,7 @@ const disconnectSiteWebGsc = useCallback(() => {
                     padding: "10px 12px",
                     color: "white",
                     outline: "none",
-                    opacity: gmbConnected ? 1 : 0.7,
+                    opacity: gmbAccountConnected ? 1 : 0.7,
                   }}
                 />
               </div>
@@ -3518,7 +3531,7 @@ const disconnectSiteWebGsc = useCallback(() => {
 
 
             {/* Sélection de l'établissement (requis pour publier) */}
-            {gmbConnected ? (
+            {gmbAccountConnected ? (
               <div
                 style={{
                   border: "1px solid rgba(255,255,255,0.12)",
