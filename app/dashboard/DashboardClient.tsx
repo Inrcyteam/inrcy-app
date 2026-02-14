@@ -994,13 +994,22 @@ const connectGmbAccount = useCallback(async () => {
 }, []);
 
 const disconnectGmbAccount = useCallback(async () => {
-  await fetch("/api/integrations/google-business/disconnect", { method: "POST" });
+  // Disconnect Google account (removes OAuth tokens)
+  await fetch("/api/integrations/google-business/disconnect-account", { method: "POST" });
   setGmbConnected(false);
   setGmbAccountConnected(false);
   setGmbConfigured(false);
   setGmbAccountEmail("");
   setGmbUrl("");
   await updateRootSettingsKey("gmb", { url: "", connected: false, accountEmail: "", resource_id: "" });
+}, [updateRootSettingsKey]);
+
+const disconnectGmbBusiness = useCallback(async () => {
+  // Disconnect Google Business ONLY (keeps Google account connected)
+  await fetch("/api/integrations/google-business/disconnect-location", { method: "POST" });
+  setGmbConfigured(false);
+  setGmbUrl("");
+  await updateRootSettingsKey("gmb", { url: "", resource_id: "" });
 }, [updateRootSettingsKey]);
 
 
@@ -1093,7 +1102,8 @@ const saveFacebookPage = useCallback(async () => {
 }, [fbPages, fbSelectedPageId]);
 
 const loadGmbAccountsAndLocations = useCallback(async () => {
-  if (!gmbConnected) return;
+  // Only possible once the Google account is OAuth-connected
+  if (!gmbAccountConnected) return;
   setGmbLoadingList(true);
   setGmbListError(null);
   try {
@@ -1110,7 +1120,7 @@ const loadGmbAccountsAndLocations = useCallback(async () => {
   } finally {
     setGmbLoadingList(false);
   }
-}, [gmbConnected, gmbLocationName]);
+}, [gmbAccountConnected, gmbLocationName]);
 
 const saveGmbLocation = useCallback(async () => {
   if (!gmbAccountName || !gmbLocationName) return;
@@ -3487,7 +3497,7 @@ const disconnectSiteWebGsc = useCallback(() => {
                     background: gmbConnected ? "rgba(34,197,94,0.95)" : "rgba(148,163,184,0.9)",
                   }}
                 />
-                Statut : <strong>{gmbConnected ? "Connecté" : gmbAccountConnected ? "Compte connecté" : "À connecter"}</strong>
+                Statut : <strong>{!gmbAccountConnected ? "À connecter" : gmbConfigured ? "Google Business connecté" : "Compte connecté"}</strong>
               </span>
             </div>
 
@@ -3526,6 +3536,16 @@ const disconnectSiteWebGsc = useCallback(() => {
                     opacity: gmbAccountConnected ? 1 : 0.7,
                   }}
                 />
+
+                {!gmbAccountConnected ? (
+                  <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectGmbAccount}>
+                    Connecter Google
+                  </button>
+                ) : (
+                  <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectGmbAccount}>
+                    Déconnecter Google
+                  </button>
+                )}
               </div>
             </div>
 
@@ -3598,7 +3618,7 @@ const disconnectSiteWebGsc = useCallback(() => {
                     onClick={saveGmbLocation}
                     disabled={!gmbAccountName || !gmbLocationName}
                   >
-                    Enregistrer
+                    Connecter Google Business
                   </button>
                 </div>
                 {gmbListError && (
@@ -3613,7 +3633,7 @@ const disconnectSiteWebGsc = useCallback(() => {
             ) : null}
 
             {/* Lien de la page (auto) */}
-            {gmbConnected ? (
+            {gmbAccountConnected ? (
               <div
                 style={{
                   border: "1px solid rgba(255,255,255,0.12)",
@@ -3626,7 +3646,7 @@ const disconnectSiteWebGsc = useCallback(() => {
               >
                 <div className={styles.blockHeaderRow}>
                   <div className={styles.blockTitle}>Lien de la page</div>
-                  <ConnectionPill connected={!!gmbUrl?.trim()} />
+                  <ConnectionPill connected={!!gmbUrl?.trim() && gmbConfigured} />
                 </div>
                 <div className={styles.blockSub}>
                   Se remplit automatiquement une fois l’<strong>établissement</strong> choisi.
@@ -3666,20 +3686,14 @@ const disconnectSiteWebGsc = useCallback(() => {
               </div>
             ) : null}
 
-            {/* Connexion */}
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-              {!gmbConnected ? (
-                <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectGmbAccount}>
-                  Connecter Google Business
+            {/* Bloc 3 — Déconnexion Google Business (ne déconnecte pas le compte Google) */}
+            {gmbAccountConnected && gmbConfigured ? (
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectGmbBusiness}>
+                  Déconnecter Google Business
                 </button>
-              ) : (
-                <>
-                  <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectGmbAccount}>
-                    Déconnecter
-                  </button>
-                </>
-              )}
-            </div>
+              </div>
+            ) : null}
           </div>
         )}
 
