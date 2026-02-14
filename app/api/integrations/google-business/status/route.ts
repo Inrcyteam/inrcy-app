@@ -6,12 +6,11 @@ import { testGmbConnectivity } from "@/lib/googleBusiness";
 export async function GET() {
   const supabase = await createSupabaseServer();
   const { data: authData } = await supabase.auth.getUser();
-  if (!authData?.user) return NextResponse.json({ connected: false });
+  if (!authData?.user)
+    return NextResponse.json({ connected: false, accountConnected: false, configured: false });
 
   try {
     // Source of truth: the integration row itself.
-    // We still try a live API call, but we NEVER mark the integration "disconnected"
-    // just because the Business APIs are not enabled / user has no accounts yet.
     const { data } = await supabase
       .from("stats_integrations")
       .select("id,status,resource_id,resource_label,email_address,display_name")
@@ -21,10 +20,19 @@ export async function GET() {
       .eq("product", "gmb")
       .maybeSingle();
 
-    const dbConnected = !!data && (data as any).status === "connected";
-    if (!dbConnected) return NextResponse.json({ connected: false });
+    // We separate:
+    // - accountConnected: OAuth token exists (the Google account is connected)
+    // - configured: a specific Business Profile location has been selected
+    // For the dashboard bubble, "connected" must mean "ready to fetch stats".
+    const accountConnected = !!data && (data as any).status === "connected";
+    const configured = accountConnected && !!(data as any)?.resource_id;
+    const connected = configured;
 
-    // Best-effort connectivity check
+    if (!accountConnected) {
+      return NextResponse.json({ connected: false, accountConnected: false, configured: false });
+    }
+
+    // Best-effort connectivity check (do not fail the UI if quota/API disabled)
     let accountsCount: number | null = null;
     try {
       const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb");
@@ -37,7 +45,9 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      connected: true,
+      connected,
+      accountConnected,
+      configured,
       accountsCount,
       email: (data as any)?.email_address ?? null,
       displayName: (data as any)?.display_name ?? null,
@@ -45,6 +55,6 @@ export async function GET() {
       resource_label: (data as any)?.resource_label ?? null,
     });
   } catch {
-    return NextResponse.json({ connected: false });
+    return NextResponse.json({ connected: false, accountConnected: false, configured: false });
   }
 }

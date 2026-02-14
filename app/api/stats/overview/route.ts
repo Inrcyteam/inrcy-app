@@ -114,14 +114,15 @@ async function buildConnectionsKey() {
   try {
     const { data } = await supabase
       .from("stats_integrations")
-      .select("provider,source,product,status,updated_at")
+      .select("provider,source,product,status,resource_id,updated_at")
       .eq("user_id", userId);
 
     for (const r of (data as any[]) || []) {
       const k = `${r.provider}:${r.source}:${r.product}`;
       const st = String(r.status || "").toLowerCase();
+      const rid = String(r.resource_id || "");
       const ts = String(r.updated_at || "");
-      keyParts.push(`${k}=${st}@${ts}`);
+      keyParts.push(`${k}=${st}|rid=${rid}@${ts}`);
     }
   } catch {
     // ignore
@@ -367,7 +368,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         .eq("status", "connected")
         .maybeSingle();
 
-      sourcesStatus.gmb.connected = !!gmbRow;
+      sourcesStatus.gmb.connected = !!gmbRow?.resource_id;
 
       // Legacy override
       try {
