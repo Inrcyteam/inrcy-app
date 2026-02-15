@@ -153,6 +153,7 @@
         var source = (container.getAttribute("data-source") || "").trim();
         var limit = parseInt(container.getAttribute("data-limit") || "5", 10);
         var title = container.getAttribute("data-title") || "";
+        var token = (container.getAttribute("data-token") || "").trim();
 
         var endpoint = (container.getAttribute("data-endpoint") || "").trim();
         if (endpoint && endpoint.indexOf("http") !== 0) endpoint = "";
@@ -169,6 +170,9 @@
           encodeURIComponent(source) +
           "&limit=" +
           encodeURIComponent(String(limit));
+        if (token) {
+          url += "&token=" + encodeURIComponent(token);
+        }
 
         fetch(url, { method: "GET", mode: "cors" })
           .then(function (r) {

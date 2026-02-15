@@ -229,6 +229,32 @@ export default function DashboardClient() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
+  const extractDomain = useCallback((input: string) => {
+    const url = (input || "").trim();
+    if (!url) return "";
+    try {
+      const withProto = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+      return new URL(withProto).hostname.toLowerCase().replace(/^www\./, "");
+    } catch {
+      return url
+        .toLowerCase()
+        .replace(/^https?:\/\//i, "")
+        .replace(/^www\./i, "")
+        .split("/")[0];
+    }
+  }, []);
+
+  const fetchWidgetToken = useCallback(async (domain: string, source: "inrcy_site" | "site_web") => {
+    if (!domain) return "";
+    const res = await fetch(
+      `/api/widgets/issue-token?domain=${encodeURIComponent(domain)}&source=${encodeURIComponent(source)}`,
+      { method: "GET", credentials: "include" }
+    );
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.ok) return "";
+    return String(json.token || "");
+  }, []);
+
   const [userEmail, setUserEmail] = useState<string | null>(null);
 // ✅ Site iNrCy (ownership + url + config)
 const [siteInrcyOwnership, setSiteInrcyOwnership] = useState<Ownership>("none");
@@ -247,6 +273,10 @@ const [siteInrcyTrackingBusy, setSiteInrcyTrackingBusy] = useState(false);
   const [pagesJaunesUrlNotice, setPagesJaunesUrlNotice] = useState<string | null>(null);
   const [gmbUrlNotice, setGmbUrlNotice] = useState<string | null>(null);
   const [facebookUrlNotice, setFacebookUrlNotice] = useState<string | null>(null);
+
+  // ✅ Tokens widget actus (signés + liés au domaine, anti-copie)
+  const [widgetTokenInrcySite, setWidgetTokenInrcySite] = useState<string>("");
+  const [widgetTokenSiteWeb, setWidgetTokenSiteWeb] = useState<string>("");
 
   // ✅ Connexions Google (viennent de stats_integrations, pas des IDs)
   const [siteInrcyGa4Connected, setSiteInrcyGa4Connected] = useState(false);
@@ -267,6 +297,29 @@ const [siteWebSettingsError, setSiteWebSettingsError] = useState<string | null>(
 const [siteWebGa4MeasurementId, setSiteWebGa4MeasurementId] = useState<string>("");
 const [siteWebGa4PropertyId, setSiteWebGa4PropertyId] = useState<string>("");
 const [siteWebGscProperty, setSiteWebGscProperty] = useState<string>("");
+
+  // ✅ Génère automatiquement des tokens signés (liés au domaine) pour le widget actus
+  useEffect(() => {
+    const d = extractDomain(siteInrcyUrl);
+    if (!d) {
+      setWidgetTokenInrcySite("");
+      return;
+    }
+    fetchWidgetToken(d, "inrcy_site")
+      .then((t) => setWidgetTokenInrcySite(t))
+      .catch(() => setWidgetTokenInrcySite(""));
+  }, [siteInrcyUrl, extractDomain, fetchWidgetToken]);
+
+  useEffect(() => {
+    const d = extractDomain(siteWebUrl);
+    if (!d) {
+      setWidgetTokenSiteWeb("");
+      return;
+    }
+    fetchWidgetToken(d, "site_web")
+      .then((t) => setWidgetTokenSiteWeb(t))
+      .catch(() => setWidgetTokenSiteWeb(""));
+  }, [siteWebUrl, extractDomain, fetchWidgetToken]);
 
 // ✅ Houzz & Pages Jaunes (liens uniquement)
 const [houzzUrl, setHouzzUrl] = useState<string>("");
@@ -2785,7 +2838,7 @@ const disconnectSiteWebGsc = useCallback(() => {
                 }
                 const widgetV = process.env.NEXT_PUBLIC_WIDGET_VERSION || "1";
                 const scriptUrl = typeof window !== "undefined" ? `${window.location.origin}/widgets/inrcy-actus.js?v=${widgetV}` : `/widgets/inrcy-actus.js?v=${widgetV}`;
-                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-source=\"inrcy_site\" data-limit=\"5\" data-title=\"Actualités\"></div>
+                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-source=\"inrcy_site\" data-limit=\"5\" data-title=\"Actualités\" data-token=\"${widgetTokenInrcySite}\"></div>
 <script async src=\"${scriptUrl}\"></script>`;
                 return (
                   <>
@@ -3172,7 +3225,7 @@ const disconnectSiteWebGsc = useCallback(() => {
                 }
                 const widgetV = process.env.NEXT_PUBLIC_WIDGET_VERSION || "1";
                 const scriptUrl = typeof window !== "undefined" ? `${window.location.origin}/widgets/inrcy-actus.js?v=${widgetV}` : `/widgets/inrcy-actus.js?v=${widgetV}`;
-                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-source=\"site_web\" data-limit=\"5\" data-title=\"Actualités\"></div>
+                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-source=\"site_web\" data-limit=\"5\" data-title=\"Actualités\" data-token=\"${widgetTokenSiteWeb}\"></div>
 <script async src=\"${scriptUrl}\"></script>`;
                 return (
                   <>

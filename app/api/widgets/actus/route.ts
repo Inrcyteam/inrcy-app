@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 
@@ -9,16 +10,93 @@ const RL_MAX = 120; // per key / window
 const rl = new Map<string, { count: number; resetAt: number }>();
 
 function corsHeaders(req?: Request) {
-  const origin = req?.headers.get("origin") || "*";
+  const origin = req?.headers.get("origin") || "";
   return {
-    // Safer than '*': we echo back the caller origin.
-    // (Still public, but prevents some browser-side credential/cookie weirdness.)
-    "Access-Control-Allow-Origin": origin,
+    // We set this dynamically *after* verifying the widget token and origin.
+    "Access-Control-Allow-Origin": origin || "null",
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-InrCy-Widget-Token",
     "Cache-Control": "no-store",
     Vary: "Origin",
   };
+}
+
+type WidgetTokenPayload = {
+  v: 1;
+  domain: string;
+  source: string;
+  iat: number;
+  exp: number;
+};
+
+function b64urlEncode(buf: Buffer) {
+  return buf
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function b64urlDecodeToBuffer(s: string) {
+  const pad = s.length % 4;
+  const base64 = (s + (pad ? "=".repeat(4 - pad) : ""))
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  return Buffer.from(base64, "base64");
+}
+
+function verifyWidgetToken(token: string, secret: string): WidgetTokenPayload {
+  const parts = token.split(".");
+  if (parts.length !== 2) throw new Error("Invalid token format");
+  const [body, sig] = parts;
+
+  const expected = b64urlEncode(crypto.createHmac("sha256", secret).update(body).digest());
+  // Constant-time compare
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    throw new Error("Invalid token signature");
+  }
+
+  const payload = JSON.parse(b64urlDecodeToBuffer(body).toString("utf8")) as WidgetTokenPayload;
+  if (!payload || payload.v !== 1) throw new Error("Invalid token payload");
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.exp && now > payload.exp) throw new Error("Token expired");
+  return payload;
+}
+
+function originHost(req: Request): string {
+  const origin = req.headers.get("origin") || "";
+  if (origin) {
+    try {
+      return new URL(origin).hostname.toLowerCase().replace(/^www\./, "");
+    } catch {
+      // ignore
+    }
+  }
+  const ref = req.headers.get("referer") || "";
+  if (ref) {
+    try {
+      return new URL(ref).hostname.toLowerCase().replace(/^www\./, "");
+    } catch {
+      // ignore
+    }
+  }
+  return "";
+}
+
+function allowedCorsOrigin(req: Request, expectedDomain: string): string | null {
+  const origin = req.headers.get("origin") || "";
+  if (!origin) return null;
+  try {
+    const u = new URL(origin);
+    const host = (u.hostname || "").toLowerCase().replace(/^www\./, "");
+    const dom = expectedDomain.toLowerCase().replace(/^www\./, "");
+    if (host !== dom) return null;
+    return origin;
+  } catch {
+    return null;
+  }
 }
 
 function getClientIp(req: Request) {
@@ -68,8 +146,8 @@ function getSupabaseAdmin() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: corsHeaders() });
+export async function OPTIONS(req: Request) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(req) });
 }
 
 export async function GET(req: Request) {
@@ -89,19 +167,56 @@ export async function GET(req: Request) {
       );
     }
 
-    // ✅ Security: protect the public widget endpoint behind a shared token.
-    // - Backward compatible: if INRCY_WIDGETS_TOKEN is NOT set, the endpoint stays public.
-    // - If set, callers must send ?token=... or header X-InrCy-Widget-Token.
-    const expectedToken = process.env.INRCY_WIDGETS_TOKEN;
+    // ✅ Production-grade widget security (copy/paste-proof):
+    // - Dashboard issues a SIGNED token bound to a specific domain + source.
+    // - Endpoint verifies signature AND that browser Origin matches that domain.
+    // - Copy/paste of the widget snippet to another domain stops working.
+    const signingSecret = process.env.INRCY_WIDGETS_SIGNING_SECRET;
+    if (!signingSecret) {
+      throw new Error(
+        "Missing INRCY_WIDGETS_SIGNING_SECRET (required for widgets security)"
+      );
+    }
+
     const providedToken =
       searchParams.get("token") || req.headers.get("x-inrcy-widget-token") || "";
-
-    if (expectedToken && providedToken !== expectedToken) {
+    if (!providedToken) {
       return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
+        { ok: false, error: "Missing token" },
         { status: 401, headers: corsHeaders(req) }
       );
     }
+
+    const tok = verifyWidgetToken(providedToken, signingSecret);
+    const tokDomain = normalizeDomain(tok.domain);
+    const tokSource = String(tok.source || "").trim();
+    if (!tokDomain || tokDomain !== domain) {
+      return NextResponse.json(
+        { ok: false, error: "Token/domain mismatch" },
+        { status: 403, headers: corsHeaders(req) }
+      );
+    }
+    if (!tokSource || tokSource !== source) {
+      return NextResponse.json(
+        { ok: false, error: "Token/source mismatch" },
+        { status: 403, headers: corsHeaders(req) }
+      );
+    }
+
+    // Origin hard-binding: request must come from the same domain as the token.
+    const host = originHost(req);
+    if (!host || host !== tokDomain) {
+      return NextResponse.json(
+        { ok: false, error: "Origin not allowed" },
+        { status: 403, headers: corsHeaders(req) }
+      );
+    }
+
+    const allowOrigin = allowedCorsOrigin(req, tokDomain);
+    const headersOk = {
+      ...corsHeaders(req),
+      "Access-Control-Allow-Origin": allowOrigin || "null",
+    };
 
     // ✅ Best-effort rate limiting (reduces scraping/abuse).
     const ip = getClientIp(req);
@@ -144,7 +259,7 @@ export async function GET(req: Request) {
     if (!userId) {
       return NextResponse.json(
         { ok: true, domain, user_id: null, articles: [] },
-        { status: 200, headers: corsHeaders(req) }
+        { status: 200, headers: headersOk }
       );
     }
 
@@ -161,7 +276,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json(
       { ok: true, domain, user_id: userId, articles: articles || [] },
-      { status: 200, headers: corsHeaders(req) }
+      { status: 200, headers: headersOk }
     );
   } catch (e: any) {
     return NextResponse.json(
