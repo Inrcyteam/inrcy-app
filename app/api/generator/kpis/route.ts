@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServer } from "@/lib/supabaseServer";
 
 /**
  * /api/generator/kpis
@@ -16,12 +16,6 @@ import { createClient } from "@supabase/supabase-js";
  */
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY ||
-  process.env.SUPABASE_ANON_KEY;
-
-const supabase = createClient(SUPABASE_URL || "", SUPABASE_KEY || "");
 
 type AnyRec = Record<string, any>;
 
@@ -104,10 +98,15 @@ function extractGmailTokens(account: AnyRec) {
   return { accessToken, refreshToken, expiresAt, accessTokenEnc, refreshTokenEnc };
 }
 
-async function getLatestGmailAccount(debug: AnyRec) {
+async function getLatestGmailAccount(
+  supabase: Awaited<ReturnType<typeof createSupabaseServer>>,
+  userId: string,
+  debug: AnyRec
+) {
   const { data, error } = await supabase
     .from("mail_accounts")
     .select("*")
+    .eq("user_id", userId)
     .eq("provider", "gmail")
     .order("updated_at", { ascending: false })
     .limit(1);
@@ -121,8 +120,13 @@ async function getLatestGmailAccount(debug: AnyRec) {
   return account;
 }
 
-async function countGmailInbox(days: number, debug: AnyRec) {
-  const account = await getLatestGmailAccount(debug);
+async function countGmailInbox(
+  supabase: Awaited<ReturnType<typeof createSupabaseServer>>,
+  userId: string,
+  days: number,
+  debug: AnyRec
+) {
+  const account = await getLatestGmailAccount(supabase, userId, debug);
   if (!account) return 0;
 
   const { accessToken: rawAccess, refreshToken, expiresAt, accessTokenEnc, refreshTokenEnc } =
@@ -209,17 +213,21 @@ async function getOpportunities(origin: string, req: Request) {
   return res.json();
 }
 
-async function getProfile(debug: AnyRec) {
+async function getProfile(
+  supabase: Awaited<ReturnType<typeof createSupabaseServer>>,
+  userId: string,
+  debug: AnyRec
+) {
   const { data, error } = await supabase
     .from("profiles")
     .select("*")
-    .order("updated_at", { ascending: false })
-    .limit(1);
+    .eq("user_id", userId)
+    .maybeSingle();
 
   if (error) throw new Error(`Supabase profiles error: ${error.message}`);
 
-  const row = (data && data[0]) || null;
-  debug.profiles_found = Array.isArray(data) ? data.length : 0;
+  const row = (data as any) || null;
+  debug.profiles_found = row ? 1 : 0;
   debug.profile_fields = row ? Object.keys(row) : [];
 
   const lead_conversion_rate = num(
@@ -240,21 +248,35 @@ export async function GET(req: Request) {
     errors: {},
     env: {
       has_SUPABASE_URL: !!SUPABASE_URL,
-      has_SUPABASE_KEY: !!SUPABASE_KEY,
       has_GOOGLE_CLIENT_ID: !!process.env.GOOGLE_CLIENT_ID,
       has_GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
     },
   };
 
   try {
-    if (!SUPABASE_URL || !SUPABASE_KEY) {
+    if (!SUPABASE_URL) {
       return NextResponse.json(
         {
           error:
-            "Missing Supabase env vars. Need NEXT_PUBLIC_SUPABASE_URL and one of: SUPABASE_SERVICE_ROLE_KEY / SUPABASE_SERVICE_KEY / SUPABASE_ANON_KEY",
+            "Missing Supabase env vars. Need NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY",
           debug,
         },
         { status: 500 }
+      );
+    }
+
+    // ✅ Auth guard: this endpoint returns PRIVATE KPIs, so it MUST be called by a logged-in user.
+    const supabase = await createSupabaseServer();
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabase.auth.getUser();
+
+    if (authErr) debug.errors.auth = authErr.message;
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized", debug: process.env.NODE_ENV === "development" ? debug : undefined },
+        { status: 401 }
       );
     }
 
@@ -275,7 +297,7 @@ export async function GET(req: Request) {
       }
     };
 
-    const profile = await safe("profile", () => getProfile(debug), {
+    const profile = await safe("profile", () => getProfile(supabase, user.id, debug), {
       lead_conversion_rate: 0,
       avg_basket: 0,
     });
@@ -300,6 +322,10 @@ export async function GET(req: Request) {
 
     debug.ok = true;
 
+    // ✅ Debug is useful in dev, but should not leak in prod.
+    const includeDebug =
+      process.env.NODE_ENV === "development" || req.headers.get("x-inrcy-debug") === "1";
+
     return NextResponse.json({
       leads,
       estimatedValue,
@@ -307,10 +333,15 @@ export async function GET(req: Request) {
         opportunities: opp,
         profile,
       },
-      debug,
+      ...(includeDebug ? { debug } : {}),
     });
   } catch (e: any) {
     debug.errors.unhandled = e?.message ?? String(e);
-    return NextResponse.json({ error: debug.errors.unhandled, debug }, { status: 500 });
+    const includeDebug =
+      process.env.NODE_ENV === "development" || req.headers.get("x-inrcy-debug") === "1";
+    return NextResponse.json(
+      { error: debug.errors.unhandled, ...(includeDebug ? { debug } : {}) },
+      { status: 500 }
+    );
   }
 }

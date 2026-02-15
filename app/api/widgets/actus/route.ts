@@ -3,13 +3,42 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-function corsHeaders() {
+// In-memory rate limit (best-effort). Works per server instance.
+const RL_WINDOW_MS = 5 * 60 * 1000; // 5 min
+const RL_MAX = 120; // per key / window
+const rl = new Map<string, { count: number; resetAt: number }>();
+
+function corsHeaders(req?: Request) {
+  const origin = req?.headers.get("origin") || "*";
   return {
-    "Access-Control-Allow-Origin": "*",
+    // Safer than '*': we echo back the caller origin.
+    // (Still public, but prevents some browser-side credential/cookie weirdness.)
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-InrCy-Widget-Token",
     "Cache-Control": "no-store",
+    Vary: "Origin",
   };
+}
+
+function getClientIp(req: Request) {
+  const xfwd = req.headers.get("x-forwarded-for");
+  if (xfwd) return xfwd.split(",")[0]?.trim() || "unknown";
+  return req.headers.get("x-real-ip") || "unknown";
+}
+
+function rateLimitOrThrow(key: string) {
+  const now = Date.now();
+  const cur = rl.get(key);
+  if (!cur || cur.resetAt <= now) {
+    rl.set(key, { count: 1, resetAt: now + RL_WINDOW_MS });
+    return;
+  }
+  cur.count += 1;
+  if (cur.count > RL_MAX) {
+    const secs = Math.ceil((cur.resetAt - now) / 1000);
+    throw new Error(`Rate limited. Retry in ${secs}s`);
+  }
 }
 
 function normalizeDomain(input: string | null): string {
@@ -56,9 +85,27 @@ export async function GET(req: Request) {
     if (!domain) {
       return NextResponse.json(
         { ok: false, error: "Missing domain" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(req) }
       );
     }
+
+    // ✅ Security: protect the public widget endpoint behind a shared token.
+    // - Backward compatible: if INRCY_WIDGETS_TOKEN is NOT set, the endpoint stays public.
+    // - If set, callers must send ?token=... or header X-InrCy-Widget-Token.
+    const expectedToken = process.env.INRCY_WIDGETS_TOKEN;
+    const providedToken =
+      searchParams.get("token") || req.headers.get("x-inrcy-widget-token") || "";
+
+    if (expectedToken && providedToken !== expectedToken) {
+      return NextResponse.json(
+        { ok: false, error: "Unauthorized" },
+        { status: 401, headers: corsHeaders(req) }
+      );
+    }
+
+    // ✅ Best-effort rate limiting (reduces scraping/abuse).
+    const ip = getClientIp(req);
+    rateLimitOrThrow(`${ip}:${domain}:${source}`);
 
     const supabase = getSupabaseAdmin();
 
@@ -97,7 +144,7 @@ export async function GET(req: Request) {
     if (!userId) {
       return NextResponse.json(
         { ok: true, domain, user_id: null, articles: [] },
-        { status: 200, headers: corsHeaders() }
+        { status: 200, headers: corsHeaders(req) }
       );
     }
 
@@ -114,12 +161,12 @@ export async function GET(req: Request) {
 
     return NextResponse.json(
       { ok: true, domain, user_id: userId, articles: articles || [] },
-      { status: 200, headers: corsHeaders() }
+      { status: 200, headers: corsHeaders(req) }
     );
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Server error" },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(req) }
     );
   }
 }
