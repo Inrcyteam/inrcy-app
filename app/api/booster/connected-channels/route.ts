@@ -1,20 +1,14 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "@/lib/supabaseServer";
+import { requireUser } from "@/lib/requireUser";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook";
 
 export async function GET() {
   try {
-    const supabase = await createSupabaseServer();
-
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError || !userData?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = userData.user.id;
-
-    // Internal channels availability depends on whether the user actually configured them.
+    const { supabase, user, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
+    const userId = user.id;
+// Internal channels availability depends on whether the user actually configured them.
     // - iNrCy site: only if the user has an iNrCy site (ownership != none) AND a URL exists
     // - Site web: only if the user saved a URL in pro_tools_configs.settings.site_web.url
     const base: Record<ChannelKey, boolean> = {

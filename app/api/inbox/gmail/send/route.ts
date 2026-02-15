@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "@/lib/supabaseServer";
-
+import { requireUser } from "@/lib/requireUser";
 function toBase64Url(str: string) {
   return Buffer.from(str, "utf8")
     .toString("base64")
@@ -158,11 +157,10 @@ async function gmailSend(token: string, raw: string, threadId?: string) {
 }
 
 export async function POST(req: Request) {
-  const supabase = await createSupabaseServer();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  // Support JSON ou multipart/form-data
+  const { supabase, user, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
+  const userId = user.id;
+// Support JSON ou multipart/form-data
   let to = "";
   let subject = "(sans objet)";
   let text = "";
@@ -216,7 +214,7 @@ export async function POST(req: Request) {
   let q = supabase
     .from("mail_accounts")
     .select("id,access_token_enc,refresh_token_enc,expires_at,status,created_at")
-    .eq("user_id", auth.user.id)
+    .eq("user_id", userId)
     .eq("provider", "gmail");
 
   if (typeof accountId === "string" && accountId.trim()) {
@@ -304,7 +302,7 @@ export async function POST(req: Request) {
 
   // --- iNr'Send history (Supabase) ---
   const historyPayload = {
-    user_id: auth.user.id,
+    user_id: userId,
     mail_account_id: accountId || null,
     type: (sendType as any) || "mail",
     status: "sent",

@@ -1,3 +1,4 @@
+import "server-only";
 type OpenAIResponseJSON = Record<string, unknown>;
 
 /**

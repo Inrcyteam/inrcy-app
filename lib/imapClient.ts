@@ -1,3 +1,4 @@
+import "server-only";
 import { ImapFlow } from "imapflow";
 
 export type ImapConfig = {

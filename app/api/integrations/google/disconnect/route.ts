@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "@/lib/supabaseServer";
-
+import { requireUser } from "@/lib/requireUser";
 /**
  * Déconnecte un compte Gmail (supprime la ligne mail_accounts).
  * Le front passe { accountId }.
  */
 export async function POST(req: Request) {
-  const supabase = await createSupabaseServer();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const body = await req.json().catch(() => ({}));
+  const { supabase, user, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
+  const userId = user.id;
+const body = await req.json().catch(() => ({}));
   const accountId = String(body.accountId || "").trim();
 
   if (!accountId) return NextResponse.json({ error: "Missing accountId" }, { status: 400 });
@@ -19,7 +17,7 @@ export async function POST(req: Request) {
     .from("mail_accounts")
     .delete()
     .eq("id", accountId)
-    .eq("user_id", auth.user.id)
+    .eq("user_id", userId)
     .eq("provider", "gmail");
 
   if (error) {

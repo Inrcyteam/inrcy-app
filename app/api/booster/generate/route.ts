@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "@/lib/supabaseServer";
+import { requireUser } from "@/lib/requireUser";
 import { openaiGenerateJSON } from "@/lib/openaiClient";
 import {
   boosterSystemPrompt,
@@ -23,14 +23,10 @@ const allowedChannels: BoosterChannels[] = ["inrcy_site", "site_web", "gmb", "fa
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createSupabaseServer();
-
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError || !userData?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = (await req.json().catch(() => ({}))) as Payload;
+    const { supabase, user, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
+    const userId = user.id;
+const body = (await req.json().catch(() => ({}))) as Payload;
     const idea = (body?.idea || "").trim();
     if (!idea) {
       return NextResponse.json({ error: "Missing idea" }, { status: 400 });
@@ -43,7 +39,7 @@ export async function POST(req: Request) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("*")
-      .eq("user_id", userData.user.id)
+      .eq("user_id", userId)
       .maybeSingle();
 
     // Load business profile (Mon activité)
@@ -52,7 +48,7 @@ export async function POST(req: Request) {
       const { data } = await supabase
         .from("business_profiles")
         .select("*")
-        .eq("user_id", userData.user.id)
+        .eq("user_id", userId)
         .maybeSingle();
       business = data ?? null;
     } catch {

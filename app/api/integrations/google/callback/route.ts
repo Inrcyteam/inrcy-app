@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "@/lib/supabaseServer";
-
+import { requireUser } from "@/lib/requireUser";
 type TokenResponse = {
   access_token?: string;
   refresh_token?: string;
@@ -39,14 +38,10 @@ const redirectUri = `${origin}/api/integrations/google/callback`;
   );
 }
 
-    const supabase = await createSupabaseServer();
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
-
-    if (authErr || !authData?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // 1) Exchange code -> tokens
+    const { supabase, user, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
+  const userId = user.id;
+// 1) Exchange code -> tokens
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -81,8 +76,6 @@ const redirectUri = `${origin}/api/integrations/google/callback`;
         { status: 500 }
       );
     }
-
-    const userId = authData.user.id;
 
     // 3) Read existing row (to preserve refresh_token if not returned)
     const { data: existing, error: existingErr } = await supabase

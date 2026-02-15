@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "@/lib/supabaseServer";
-
+import { requireUser } from "@/lib/requireUser";
 function isExpired(expires_at?: string | null, skewSeconds = 60) {
   if (!expires_at) return false;
   const t = Date.parse(expires_at);
@@ -52,11 +51,10 @@ function textToHtml(text: string) {
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createSupabaseServer();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const formData = await req.formData();
+    const { supabase, user, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
+  const userId = user.id;
+const formData = await req.formData();
     const accountId = String(formData.get("accountId") || "");
     const sendItemId = String(formData.get("sendItemId") || "").trim();
     const sendType = String(formData.get("type") || "mail").trim() || "mail";
@@ -72,7 +70,7 @@ export async function POST(req: Request) {
       .from("mail_accounts")
       .select("id,user_id,provider,email_address,access_token_enc,refresh_token_enc,expires_at,status,scopes")
       .eq("id", accountId)
-      .eq("user_id", auth.user.id)
+      .eq("user_id", userId)
       .eq("provider", "microsoft")
       .eq("status", "connected")
       .single();
@@ -130,7 +128,7 @@ export async function POST(req: Request) {
 
     // --- iNr'Send history (Supabase) ---
     const historyPayload = {
-      user_id: auth.user.id,
+      user_id: userId,
       mail_account_id: accountId || null,
       type: (sendType as any) || "mail",
       status: "sent",

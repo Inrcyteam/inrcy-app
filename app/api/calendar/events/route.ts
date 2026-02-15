@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "@/lib/supabaseServer";
-
+import { requireUser } from "@/lib/requireUser";
 function isExpired(expires_at?: string | null, skewSeconds = 60) {
   if (!expires_at) return false;
   const t = Date.parse(expires_at);
@@ -60,11 +59,10 @@ async function getCalendarToken(supabase: any, userId: string) {
 }
 
 export async function GET(req: Request) {
-  const supabase = await createSupabaseServer();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { searchParams } = new URL(req.url);
+  const { supabase, user, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
+  const userId = user.id;
+const { searchParams } = new URL(req.url);
 
   // ✅ Support d'un range explicite (utile pour l'affichage calendrier)
   // - Si timeMin/timeMax sont fournis, on s'aligne dessus.
@@ -106,7 +104,7 @@ export async function GET(req: Request) {
     timeMax = new Date(Date.now() + days * 24 * 3600 * 1000).toISOString();
   }
 
-  const { accessToken } = await getCalendarToken(supabase, auth.user.id);
+  const { accessToken } = await getCalendarToken(supabase, userId);
 
   const url =
     "https://www.googleapis.com/calendar/v3/calendars/primary/events?" +

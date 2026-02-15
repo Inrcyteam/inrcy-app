@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "@/lib/supabaseServer";
-
+import { requireUser } from "@/lib/requireUser";
 export async function GET() {
-  const supabase = await createSupabaseServer();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { data, error } = await supabase
+  const { supabase, user, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
+  const userId = user.id;
+const { data, error } = await supabase
     .from("calendar_accounts")
     .select("id,provider,email_address,display_name,status,created_at")
-    .eq("user_id", auth.user.id)
+    .eq("user_id", userId)
     .eq("provider", "google")
     .order("created_at", { ascending: true })
     .limit(1);

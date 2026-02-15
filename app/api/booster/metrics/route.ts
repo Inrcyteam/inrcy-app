@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "@/lib/supabaseServer";
+import { requireUser } from "@/lib/requireUser";
 
 type EventRow = {
   type: "publish" | "review_mail" | "promo_mail";
@@ -17,20 +17,16 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const days = Math.max(1, Math.min(90, Number(url.searchParams.get("days") ?? 30)));
 
-  const supabase = await createSupabaseServer();
-
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const sinceMonth = daysAgoISO(days);
+  const { supabase, user, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
+    const userId = user.id;
+const sinceMonth = daysAgoISO(days);
   const sinceWeek = daysAgoISO(7);
 
   const { data: rows, error } = await supabase
     .from("booster_events")
     .select("type, created_at, payload")
-    .eq("user_id", userData.user.id)
+    .eq("user_id", userId)
     .gte("created_at", sinceMonth)
     .order("created_at", { ascending: false });
 

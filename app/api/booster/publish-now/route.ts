@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/requireUser";
 import { randomUUID } from "crypto";
 
-import { createSupabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { facebookPublishToPage } from "@/lib/facebookPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
@@ -49,14 +49,10 @@ function buildCanonMessage(title: string, content: string, cta: string) {
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createSupabaseServer();
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError || !userData?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const userId = userData.user.id;
-
-    const body = await req.json().catch(() => null);
+    const { supabase, user, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
+    const userId = user.id;
+const body = await req.json().catch(() => null);
     if (!body) return NextResponse.json({ error: "Bad payload" }, { status: 400 });
 
     const channels = (Array.isArray(body.channels) ? body.channels : []) as ChannelKey[];
