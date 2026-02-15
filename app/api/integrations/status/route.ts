@@ -21,19 +21,8 @@ export async function GET() {
     return NextResponse.json({ error: mailError.message }, { status: 500 });
   }
 
-  const { data: messengerAccount, error: msgError } = await supabase
-    .from("messenger_accounts")
-    .select("id, page_id, page_name, status, created_at")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (msgError) {
-    return NextResponse.json({ error: msgError.message }, { status: 500 });
-  }
-
   return NextResponse.json({
     mailAccounts: mailAccounts ?? [],
-    messengerAccount: messengerAccount ?? null,
     limits: { maxMailAccounts: 4 },
   });
 }
