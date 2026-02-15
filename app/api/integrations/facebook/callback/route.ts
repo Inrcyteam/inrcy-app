@@ -135,9 +135,9 @@ export async function GET(req: Request) {
       me = {};
     }
 
-    // 4) Fetch managed pages (best-effort)
-    // NOTE: This requires pages_show_list + advanced access in a SaaS.
-    // We still mark the OAuth connection as successful even if pages can't be listed yet.
+    // 4) Fetch managed pages (best-effort) JUST to know if pages can be listed.
+    // IMPORTANT: On ne sélectionne PAS automatiquement une page ici.
+    // Le callback OAuth ne connecte que le COMPTE Facebook.
     let pages: FbPage[] = [];
     try {
       const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
@@ -150,12 +150,10 @@ export async function GET(req: Request) {
       pages = [];
     }
 
-    const picked = pages[0] || null;
-    const pageId = picked?.id ?? null;
-    const pageName = picked?.name ?? null;
-    const pageUrl = pageId ? `https://www.facebook.com/${pageId}` : null;
-    // If we could not list pages, store the user token so you can complete the flow later.
-    const tokenToStore = picked?.access_token ?? longUserToken;
+    const pageId = null;
+    const pageName = null;
+    const pageUrl = null;
+    const tokenToStore = longUserToken; // token utilisateur uniquement (sélection page plus tard)
 
     // 5) Upsert into stats_integrations
     const { data: existing, error: existingErr } = await supabase
@@ -176,7 +174,7 @@ export async function GET(req: Request) {
       provider: "facebook",
       source: "facebook",
       product: "facebook",
-      status: "connected",
+      status: "account_connected",
       email_address: me.email ?? null,
       display_name: me.name ?? null,
       provider_account_id: me.id ?? null,
@@ -184,14 +182,13 @@ export async function GET(req: Request) {
       access_token_enc: tokenToStore,
       refresh_token_enc: null,
       expires_at: null,
-      resource_id: pageId,
-      resource_label: pageName,
+      resource_id: null,
+      resource_label: null,
       meta: {
-        picked: picked ? "first_page" : "none",
+        picked: "none",
         pages_found: pages.length,
-        // Keep the long-lived USER token for /me/accounts even if access_token_enc becomes a PAGE token later.
         user_access_token: longUserToken,
-        page_url: pageUrl,
+        page_url: null,
       },
     };
 
@@ -214,10 +211,12 @@ export async function GET(req: Request) {
         ...current,
         facebook: {
           ...(current?.facebook ?? {}),
-          connected: true,
-          pageId,
-          pageName,
-          url: pageUrl,
+          accountConnected: true,
+          userEmail: me.email ?? null,
+          pageConnected: false,
+          pageId: null,
+          pageName: null,
+          url: null,
         },
       };
       await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
@@ -231,9 +230,7 @@ export async function GET(req: Request) {
     const finalUrl = new URL(returnTo, siteUrl);
     finalUrl.searchParams.set("linked", "facebook");
     finalUrl.searchParams.set("ok", "1");
-    if (!picked) {
-      finalUrl.searchParams.set("warning", "no_pages_or_no_permission");
-    }
+    if (!pages.length) finalUrl.searchParams.set("warning", "no_pages_or_no_permission");
     return NextResponse.redirect(finalUrl);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });

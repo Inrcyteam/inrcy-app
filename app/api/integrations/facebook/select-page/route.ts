@@ -60,7 +60,8 @@ export async function POST(req: Request) {
         ...current,
         facebook: {
           ...(current?.facebook ?? {}),
-          connected: true,
+          accountConnected: true,
+          pageConnected: true,
           pageId,
           pageName,
           url: pageUrl,

@@ -28,7 +28,7 @@ export async function GET() {
       .maybeSingle();
 
     if (integErr) return NextResponse.json({ error: "DB error" }, { status: 500 });
-    if (!integ || integ.status !== "connected" || !integ.access_token_enc) {
+    if (!integ || (integ.status !== "connected" && integ.status !== "account_connected") || !integ.access_token_enc) {
       return NextResponse.json({ error: "Facebook non connecté" }, { status: 400 });
     }
 

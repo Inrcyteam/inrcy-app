@@ -282,7 +282,12 @@ const [gmbAccountConnected, setGmbAccountConnected] = useState<boolean>(false);
 const [gmbConfigured, setGmbConfigured] = useState<boolean>(false);
 const [gmbAccountEmail, setGmbAccountEmail] = useState<string>("");
 const [facebookUrl, setFacebookUrl] = useState<string>("");
-const [facebookConnected, setFacebookConnected] = useState<boolean>(false);
+	// Facebook has 2 levels:
+	// 1) accountConnected: OAuth OK (we can list pages)
+	// 2) pageConnected: a specific Page is selected (we can fetch stats)
+	const [facebookAccountConnected, setFacebookAccountConnected] = useState<boolean>(false);
+	const [facebookPageConnected, setFacebookPageConnected] = useState<boolean>(false);
+	const [facebookAccountEmail, setFacebookAccountEmail] = useState<string>("");
 
 // OAuth credentials must be stored server-side (env vars), not in the UI.
 
@@ -400,9 +405,12 @@ const loadSiteInrcy = useCallback(async () => {
 
   const fbObj = ((proSettingsObj as any)?.facebook ?? {}) as any;
   setFacebookUrl(fbObj?.url ?? "");
-  setFacebookConnected(!!fbObj?.connected);
+	  setFacebookAccountConnected(!!fbObj?.accountConnected);
+	  setFacebookPageConnected(!!fbObj?.pageConnected);
+	  setFacebookAccountEmail(fbObj?.userEmail ?? "");
   // Also keep the selected page id if present in mirrored settings.
   setFbSelectedPageId(fbObj?.pageId ?? "");
+	  setFbSelectedPageName(fbObj?.pageName ?? "");
 
   // ✅ Connexions Google : la source de vérité est stats_integrations
   const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([
@@ -426,8 +434,11 @@ const loadSiteInrcy = useCallback(async () => {
     setGmbAccountConnected(!!gmbStatus?.accountConnected);
     setGmbConfigured(!!gmbStatus?.configured);
     if (gmbStatus?.email) setGmbAccountEmail(String(gmbStatus.email));
-    setFacebookConnected(!!fbStatus?.connected);
+	    setFacebookAccountConnected(!!fbStatus?.accountConnected);
+	    setFacebookPageConnected(!!fbStatus?.pageConnected);
+	    if (fbStatus?.user_email) setFacebookAccountEmail(String(fbStatus.user_email));
     if (fbStatus?.resource_id) setFbSelectedPageId(String(fbStatus.resource_id));
+	    if (fbStatus?.resource_label) setFbSelectedPageName(String(fbStatus.resource_label));
     if (fbStatus?.page_url) setFacebookUrl(String(fbStatus.page_url));
   } catch {
     // fallback : on garde l'état stocké dans settings si l'appel échoue
@@ -1017,6 +1028,7 @@ const disconnectGmbBusiness = useCallback(async () => {
   const [fbPages, setFbPages] = useState<Array<{ id: string; name?: string; access_token?: string }>>([]);
   const [fbPagesLoading, setFbPagesLoading] = useState(false);
   const [fbSelectedPageId, setFbSelectedPageId] = useState<string>("");
+  const [fbSelectedPageName, setFbSelectedPageName] = useState<string>("");
   const [fbPagesError, setFbPagesError] = useState<string | null>(null);
 
   // Google Business locations (selection)
@@ -1032,16 +1044,41 @@ const connectFacebookAccount = useCallback(async () => {
 }, []);
 
 const disconnectFacebookAccount = useCallback(async () => {
-  await fetch("/api/integrations/facebook/disconnect", { method: "POST" });
-  setFacebookConnected(false);
-  // Keep a lightweight mirror in pro_tools_configs for instant UI updates.
-  await updateRootSettingsKey("facebook", { connected: false, url: "" });
-  setFacebookUrl("");
-  setFbPages([]);
-  setFbSelectedPageId("");
+	  await fetch("/api/integrations/facebook/disconnect-account", { method: "POST" });
+	  setFacebookAccountConnected(false);
+	  setFacebookPageConnected(false);
+	  setFacebookAccountEmail("");
+	  // Keep a lightweight mirror in pro_tools_configs for instant UI updates.
+	  await updateRootSettingsKey("facebook", {
+	    accountConnected: false,
+	    pageConnected: false,
+	    userEmail: "",
+	    url: "",
+	    pageId: "",
+	    pageName: "",
+	  });
+	  setFacebookUrl("");
+	  setFbPages([]);
+	  setFbSelectedPageId("");
+	  setFbSelectedPageName("");
+}, [updateRootSettingsKey]);
+
+const disconnectFacebookPage = useCallback(async () => {
+	  await fetch("/api/integrations/facebook/disconnect-page", { method: "POST" });
+	  setFacebookPageConnected(false);
+	  await updateRootSettingsKey("facebook", {
+	    accountConnected: true,
+	    pageConnected: false,
+	    url: "",
+	    pageId: "",
+	    pageName: "",
+	  });
+	  setFacebookUrl("");
+	  setFbSelectedPageId("");
+	  setFbSelectedPageName("");
 }, [updateRootSettingsKey]);
 const loadFacebookPages = useCallback(async () => {
-  if (!facebookConnected) return;
+	  if (!facebookAccountConnected) return;
   setFbPagesLoading(true);
   setFbPagesError(null);
   try {
@@ -1074,7 +1111,7 @@ const loadFacebookPages = useCallback(async () => {
   } finally {
     setFbPagesLoading(false);
   }
-}, [facebookConnected, fbSelectedPageId]);
+	}, [facebookAccountConnected, fbSelectedPageId]);
 
 const saveFacebookPage = useCallback(async () => {
   const picked = fbPages.find((p) => p.id === fbSelectedPageId);
@@ -1093,6 +1130,8 @@ const saveFacebookPage = useCallback(async () => {
   const j = await r.json().catch(() => ({}));
   if (r.ok) {
     setFacebookUrl(String(j?.pageUrl || `https://www.facebook.com/${picked.id}`));
+	    setFacebookPageConnected(true);
+	    setFbSelectedPageName(picked.name || "");
     setFacebookUrlNotice("Enregistré ✓");
     window.setTimeout(() => setFacebookUrlNotice(null), 2200);
   } else {
@@ -1534,15 +1573,14 @@ const disconnectSiteWebGsc = useCallback(() => {
         return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
-      // Google Business + Facebook: the “connected” state should reflect OAuth integration,
-      // even if the user hasn't filled the optional public URL yet.
+	      // Google Business + Facebook: “Connecté” = établissement/page sélectionné(e)
       if (m.key === "gmb") {
         if (gmbConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
         return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
       if (m.key === "facebook") {
-        if (facebookConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
+	        if (facebookPageConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
         return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
@@ -3715,71 +3753,76 @@ const disconnectSiteWebGsc = useCallback(() => {
                   fontSize: 13,
                 }}
               >
-                <span
+	                <span
                   aria-hidden
                   style={{
                     width: 8,
                     height: 8,
                     borderRadius: 999,
-                    background: facebookConnected ? "rgba(34,197,94,0.95)" : "rgba(148,163,184,0.9)",
+	                    background: facebookPageConnected
+	                      ? "rgba(34,197,94,0.95)"
+	                      : facebookAccountConnected
+	                        ? "rgba(59,130,246,0.95)"
+	                        : "rgba(148,163,184,0.9)",
                   }}
                 />
-                Statut : <strong>{facebookConnected ? "Connecté" : "À connecter"}</strong>
+	                Statut :{" "}
+	                <strong>
+	                  {facebookPageConnected ? "Connecté" : facebookAccountConnected ? "Compte connecté" : "À connecter"}
+	                </strong>
               </span>
             </div>
 
-            {/* Lien de la page */}
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div className={styles.blockHeaderRow}>
-                <div className={styles.blockTitle}>Lien de la page</div>
-                <ConnectionPill connected={!!facebookUrl?.trim()} />
-              </div>
-              <div className={styles.blockSub}>Le bouton <strong>Voir la page</strong> de la bulle utilisera ce lien.</div>
+	            {/* Bloc 1 — Compte Facebook (OAuth) */}
+	            <div
+	              style={{
+	                border: "1px solid rgba(255,255,255,0.12)",
+	                background: "rgba(255,255,255,0.03)",
+	                borderRadius: 14,
+	                padding: 12,
+	                display: "grid",
+	                gap: 10,
+	              }}
+	            >
+	              <div className={styles.blockHeaderRow}>
+	                <div className={styles.blockTitle}>Compte connecté</div>
+	                <ConnectionPill connected={facebookAccountConnected} />
+	              </div>
+	              <div className={styles.blockSub}>Ce compte Facebook sert à accéder à vos pages.</div>
+	
+	              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+	                <input
+	                  value={facebookAccountEmail}
+	                  readOnly
+	                  placeholder={facebookAccountConnected ? "Compte connecté" : "Aucun compte connecté"}
+	                  style={{
+	                    flex: "1 1 280px",
+	                    minWidth: 220,
+	                    borderRadius: 12,
+	                    border: "1px solid rgba(255,255,255,0.14)",
+	                    background: "rgba(15,23,42,0.65)",
+	                    colorScheme: "dark",
+	                    padding: "10px 12px",
+	                    color: "white",
+	                    outline: "none",
+	                    opacity: facebookAccountConnected ? 1 : 0.8,
+	                  }}
+	                />
 
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <input
-                  value={facebookUrl}
-                  readOnly
-                  placeholder={facebookConnected ? "Lien récupéré automatiquement" : "Connectez Facebook pour récupérer le lien"}
-                  style={{
-                    flex: "1 1 280px",
-                    minWidth: 220,
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                    padding: "10px 12px",
-                    color: "white",
-                    outline: "none",
-                    opacity: facebookUrl ? 1 : 0.8,
-                  }}
-                />
+	                {!facebookAccountConnected ? (
+	                  <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectFacebookAccount}>
+	                    Connecter Facebook
+	                  </button>
+	                ) : (
+	                  <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookAccount}>
+	                    Déconnecter Facebook
+	                  </button>
+	                )}
+	              </div>
+	            </div>
 
-                <a
-                  href={facebookUrl || "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`${styles.actionBtn} ${styles.viewBtn}`}
-                  style={{ pointerEvents: facebookUrl ? "auto" : "none", opacity: facebookUrl ? 1 : 0.5 }}
-                >
-                  Voir la page
-                </a>
-              </div>
-              {facebookUrlNotice && <div className={styles.successNote}>{facebookUrlNotice}</div>}
-            </div>
-
-
-            {/* Sélection de la page (requis pour publier) */}
-            {facebookConnected ? (
+	            {/* Bloc 2 — Choix de la page */}
+	            {facebookAccountConnected ? (
               <div
                 style={{
                   border: "1px solid rgba(255,255,255,0.12)",
@@ -3791,10 +3834,10 @@ const disconnectSiteWebGsc = useCallback(() => {
                 }}
               >
                 <div className={styles.blockHeaderRow}>
-                  <div className={styles.blockTitle}>Page à publier</div>
-                  <ConnectionPill connected={!!fbSelectedPageId} />
+	                  <div className={styles.blockTitle}>Page à connecter</div>
+	                  <ConnectionPill connected={facebookPageConnected} />
                 </div>
-                <div className={styles.blockSub}>Choisis la page Facebook sur laquelle iNrCy publie.</div>
+	                <div className={styles.blockSub}>Choisis la page Facebook à analyser (et éventuellement publier).</div>
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                   <button
@@ -3829,33 +3872,77 @@ const disconnectSiteWebGsc = useCallback(() => {
                     ))}
                   </select>
 
-                  {fbPages.length > 1 ? (
-                    <button
-                      type="button"
-                      className={`${styles.actionBtn} ${styles.connectBtn}`}
-                      onClick={saveFacebookPage}
-                      disabled={!fbSelectedPageId}
-                    >
-                      Enregistrer
-                    </button>
-                  ) : null}
+	                  <button
+	                    type="button"
+	                    className={`${styles.actionBtn} ${styles.connectBtn}`}
+	                    onClick={saveFacebookPage}
+	                    disabled={!fbSelectedPageId}
+	                  >
+	                    Connecter la page
+	                  </button>
                 </div>
                 {fbPagesError && <div className={styles.errNote}>{fbPagesError}</div>}
               </div>
             ) : null}
 
-            {/* Connexion */}
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-              {!facebookConnected ? (
-                <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectFacebookAccount}>
-                  Connecter Facebook
-                </button>
-              ) : (
-                <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookAccount}>
-                  Déconnecter
-                </button>
-              )}
-            </div>
+	            {/* Bloc 3 — Lien de la page + Déconnexion page */}
+	            {facebookAccountConnected ? (
+	              <div
+	                style={{
+	                  border: "1px solid rgba(255,255,255,0.12)",
+	                  background: "rgba(255,255,255,0.03)",
+	                  borderRadius: 14,
+	                  padding: 12,
+	                  display: "grid",
+	                  gap: 10,
+	                }}
+	              >
+	                <div className={styles.blockHeaderRow}>
+	                  <div className={styles.blockTitle}>Lien de la page</div>
+	                  <ConnectionPill connected={facebookPageConnected && !!facebookUrl?.trim()} />
+	                </div>
+	                <div className={styles.blockSub}>Se remplit automatiquement une fois la page choisie.</div>
+	
+	                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+	                  <input
+	                    value={facebookUrl}
+	                    readOnly
+	                    placeholder={facebookPageConnected ? "Lien récupéré automatiquement" : "Sélectionne une page pour générer le lien"}
+	                    style={{
+	                      flex: "1 1 280px",
+	                      minWidth: 220,
+	                      borderRadius: 12,
+	                      border: "1px solid rgba(255,255,255,0.14)",
+	                      background: "rgba(15,23,42,0.65)",
+	                      colorScheme: "dark",
+	                      padding: "10px 12px",
+	                      color: "white",
+	                      outline: "none",
+	                      opacity: facebookUrl ? 1 : 0.8,
+	                    }}
+	                  />
+
+	                  <a
+	                    href={facebookUrl || "#"}
+	                    target="_blank"
+	                    rel="noreferrer"
+	                    className={`${styles.actionBtn} ${styles.viewBtn}`}
+	                    style={{ pointerEvents: facebookUrl ? "auto" : "none", opacity: facebookUrl ? 1 : 0.5 }}
+	                  >
+	                    Voir la page
+	                  </a>
+	                </div>
+	                {facebookUrlNotice && <div className={styles.successNote}>{facebookUrlNotice}</div>}
+
+	                {facebookPageConnected ? (
+	                  <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+	                    <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookPage}>
+	                      Déconnecter la page
+	                    </button>
+	                  </div>
+	                ) : null}
+	              </div>
+	            ) : null}
           </div>
         )}
 
