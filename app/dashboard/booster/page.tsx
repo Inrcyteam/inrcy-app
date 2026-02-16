@@ -91,14 +91,14 @@ useEffect(() => {
         {
           key: "publish" as const,
           title: "Publier",
-          desc: "Actualités, contenus, chantiers. Diffusez sur 1 ou plusieurs canaux.",
+          desc: "Publications, contenus, chantiers. Diffusez sur 1 ou plusieurs canaux.",
           accent: "cyan" as const,
           cta: "Publier",
           status: statusFromMonth(publishMonth),
         },
         {
           key: "reviews" as const,
-          title: "Avis",
+          title: "Récolter",
           desc: "Créez un mail clair. Sélectionnez des contacts CRM. Lancez.",
           accent: "purple" as const,
           cta: "Demander",
@@ -106,7 +106,7 @@ useEffect(() => {
         },
         {
           key: "promo" as const,
-          title: "Promotion",
+          title: "Offrir",
           desc: "Mettez en avant une offre. Choisissez un modèle. Envoyez aux bons contacts.",
           accent: "pink" as const,
           cta: "Envoyer",
@@ -126,14 +126,14 @@ useEffect(() => {
           ],
         },
         {
-          title: "Mails Avis",
+          title: "Mails Récolter",
           month: reviewMonth,
           week: n(review.week),
           channels: [
             { name: "Envoyés", value: n(review.sent) },
             { name: "Ouverts", value: n(review.opened) },
             { name: "Cliqués", value: n(review.clicked) },
-            { name: "Avis reçus", value: n(review.reviews) },
+            { name: "Avis récoltés", value: n(review.reviews) },
           ],
         },
         {
@@ -158,7 +158,7 @@ useEffect(() => {
           ],
         },
         {
-          title: "Avis",
+          title: "Récolter",
           lines: [
             { left: "Envoyer à J+1", right: "Meilleur taux" },
             { left: "10 contacts ciblés", right: "Plus d’avis" },
@@ -166,7 +166,7 @@ useEffect(() => {
           ],
         },
         {
-          title: "Promotion",
+          title: "Offrir",
           lines: [
             { left: "Offre courte (7 jours)", right: "Décision rapide" },
             { left: "1 CTA clair", right: "Plus de clics" },
@@ -217,10 +217,10 @@ useEffect(() => {
       <div className={b.triLabel}>PUBLIER</div>
     </div>
     <div className={[b.triItem, b.triPurple].join(" ")}>
-      <div className={b.triLabel}>AVIS</div>
+      <div className={b.triLabel}>RÉCOLTER</div>
     </div>
     <div className={[b.triItem, b.triPink].join(" ")}>
-      <div className={b.triLabel}>PROMOTION</div>
+      <div className={b.triLabel}>OFFRIR</div>
     </div>
   </section>
 
@@ -312,14 +312,20 @@ useEffect(() => {
       {active && (
         <BaseModal
           title={
-            active === "publish" ? "Publier" : active === "reviews" ? "Avis" : "Promotion"
+            active === "publish" ? "Publier" : active === "reviews" ? "Récolter" : "Offrir"
           }
           moduleLabel="Module Booster"
           onClose={() => setActive(null)}
         >
-          {active === "publish" && <PublishModal styles={styles} onClose={() => setActive(null)} trackEvent={trackEvent} />}
-          {active === "reviews" && <ReviewModal styles={styles} onClose={() => setActive(null)} trackEvent={trackEvent} />}
-          {active === "promo" && <PromoModal styles={styles} onClose={() => setActive(null)} trackEvent={trackEvent} />}
+          {active === "publish" && (
+            <PublishModal
+              styles={styles}
+              onClose={() => setActive(null)}
+              trackEvent={trackEvent}
+            />
+          )}
+          {active === "reviews" && <ReviewModal styles={styles} onClose={() => setActive(null)} />}
+          {active === "promo" && <PromoModal styles={styles} onClose={() => setActive(null)} />}
         </BaseModal>
       )}
     </main>

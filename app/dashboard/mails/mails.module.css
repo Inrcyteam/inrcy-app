@@ -226,8 +226,8 @@
 
   display: grid;
   grid-template-columns: 1fr;
-  /* On donne plus de hauteur à la liste et on limite le bloc Détails */
-  grid-template-rows: minmax(0, 1fr) minmax(180px, 280px);
+  /* Détails en modal : la grille n'affiche plus qu'un seul bloc (liste) */
+  grid-template-rows: minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -272,7 +272,7 @@
     width: 100%;
     margin: 0;
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) minmax(150px, 240px);
+    grid-template-rows: minmax(0, 1fr);
     gap: 12px;
   }
 
@@ -441,13 +441,91 @@
 }
 
 .item:hover { background: rgba(255,255,255,0.05); }
+.item:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.55);
+  outline-offset: 2px;
+}
 .itemActive { background: rgba(255,255,255,0.07); }
 
 .itemTop {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr) minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
+}
+
+/* Libellé au centre (boîte d'envoi / canaux) */
+.itemMid {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.92);
+  pointer-events: none;
+  text-align: center;
+}
+
+/* Titre (ex: titre de publication / objet) */
+.itemSubTitle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.78);
+  pointer-events: none;
+}
+
+
+
+.itemRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+
+.rowActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quickActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.iconBtnSmall {
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.9);
+  border-radius: 12px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
+  line-height: 1;
+}
+
+.iconBtnSmall:hover {
+  transform: translateY(-1px);
+  background: rgba(255,255,255,0.09);
+  border-color: rgba(255,255,255,0.22);
+}
+
+.iconBtnSmallGhost { }
+
+.iconBtnSmallDanger {
+  border-color: rgba(244,114,182,0.30);
+  background: rgba(244,114,182,0.08);
+}
+
+.iconBtnSmallDanger:hover {
+  background: rgba(244,114,182,0.12);
+  border-color: rgba(244,114,182,0.40);
 }
 
 .fromRow {
@@ -474,6 +552,21 @@
   overflow-x: hidden;
   text-overflow: ellipsis;
   max-width: 220px;
+}
+
+@media (max-width: 640px) {
+  .itemTop {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    align-items: start;
+  }
+  .itemMid {
+    text-align: left;
+    pointer-events: none;
+  }
+  .itemRight {
+    justify-content: space-between;
+  }
 }
 
 .date {
@@ -1653,6 +1746,13 @@ width: 100%;
   flex-direction: column;
 }
 
+/* Variante "Détails" : plus large et plus haute (fenêtre pleine page) */
+.detailsModalCard {
+  width: min(1320px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  height: calc(100vh - 24px);
+}
+
 .modalHeader {
   display: flex;
   align-items: center;
@@ -1670,8 +1770,267 @@ width: 100%;
 
 .modalBody {
   padding: 12px 14px 14px;
-  overflow: auto;
+  overflow: hidden;
   min-height: 0; /* scroll interne */
+  flex: 1;
+}
+
+/* =========================
+   DETAILS LAYOUT
+   ========================= */
+
+.detailsLayout {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+}
+
+.detailsMeta {
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  border-radius: 16px;
+  padding: 14px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.detailsTitle {
+  font-size: 22px;
+  font-weight: 950;
+  letter-spacing: -0.3px;
+  color: rgba(255,255,255,0.95);
+}
+
+.detailsSub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.65);
+}
+
+.metaGrid {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.metaRow {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.metaKey {
+  font-size: 12px;
+  color: rgba(255,255,255,0.62);
+}
+
+.metaVal {
+  font-size: 13px;
+  color: rgba(255,255,255,0.88);
+  word-break: break-word;
+}
+
+.detailsError {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,80,80,0.35);
+  background: rgba(255,80,80,0.10);
+  color: rgba(255,200,200,0.95);
+  font-size: 13px;
+}
+
+.attachmentsBox {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.10);
+}
+
+.attachmentsTitle {
+  font-weight: 900;
+  font-size: 12px;
+  color: rgba(255,255,255,0.72);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.attachmentsList {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.attachmentItem {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.attachmentName {
+  font-size: 13px;
+  color: rgba(255,255,255,0.90);
+  font-weight: 850;
+}
+
+.attachmentMeta {
+  font-size: 12px;
+  color: rgba(255,255,255,0.62);
+}
+
+.attachmentLink {
+  font-size: 12px;
+  color: rgba(56,189,248,0.95);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(56,189,248,0.35);
+}
+
+.attachmentLink:hover {
+  border-bottom-color: rgba(56,189,248,0.70);
+}
+
+.detailsMessage {
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.03);
+  border-radius: 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.messageHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+}
+
+.messageHeaderTitle {
+  font-weight: 950;
+  letter-spacing: -0.2px;
+  color: rgba(255,255,255,0.92);
+}
+
+.btnDangerSmall {
+  border: 1px solid rgba(244,114,182,0.30);
+  background: rgba(244,114,182,0.10);
+  color: rgba(255,255,255,0.92);
+  border-radius: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-weight: 850;
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
+}
+
+.btnDangerSmall:hover {
+  transform: translateY(-1px);
+  background: rgba(244,114,182,0.14);
+  border-color: rgba(244,114,182,0.40);
+}
+
+.messageBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
+.messageHtml {
+  color: rgba(255,255,255,0.90);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.messageText {
+  margin: 0;
+  white-space: pre-wrap;
+  color: rgba(255,255,255,0.90);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ===== Publication details (Booster) ===== */
+.publicationParts {
+  margin-bottom: 12px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+}
+
+.publicationLabel {
+  font-size: 12px;
+  color: rgba(255,255,255,0.70);
+  margin-bottom: 6px;
+  font-weight: 800;
+}
+
+.publicationValue {
+  font-size: 14px;
+  font-weight: 900;
+  color: rgba(255,255,255,0.95);
+}
+
+.publicationPre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(255,255,255,0.90);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.publicationCtaBox {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(56,189,248,0.30);
+  background: rgba(56,189,248,0.10);
+  color: rgba(255,255,255,0.95);
+  font-weight: 900;
+}
+
+.publicationTagRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.publicationTag {
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.18);
+  color: rgba(255,255,255,0.86);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+@media (max-width: 980px) {
+  .detailsModalCard {
+    width: calc(100vw - 16px);
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+
+  .detailsLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .detailsMeta {
+    max-height: 38dvh;
+  }
 }
 
 .modalFooter {

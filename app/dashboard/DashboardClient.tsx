@@ -169,7 +169,7 @@ const adminModules: Array<{
 }> = [
   { key: "mails", name: "Mails", description: "Relances, notifications, nurturing.", status: "available", accent: "purple" },
   { key: "stats", name: "Stats", description: "ROI, performance et suivi des canaux.", status: "available", accent: "cyan" },
-  { key: "agenda", name: "Agenda", description: "Rdv, réunion et échéances", status: "available", accent: "purple" },
+  { key: "agenda", name: "Interventions", description: "Planning d'interventions + agenda classique", status: "available", accent: "purple" },
   { key: "crm", name: "CRM", description: "Fichier clients et propects", status: "available", accent: "cyan" },
 ];
 
@@ -1351,6 +1351,8 @@ const disconnectSiteWebGsc = useCallback(() => {
 
   // ✅ AJOUT : profil incomplet -> mini pastille + tooltip
   const [profileIncomplete, setProfileIncomplete] = useState(false);
+  const [activityIncomplete, setActivityIncomplete] = useState(false);
+
 
   const REQUIRED_PROFILE_FIELDS = [
     "first_name",
@@ -1394,9 +1396,61 @@ const disconnectSiteWebGsc = useCallback(() => {
     setProfileIncomplete(incomplete);
   }, []);
 
+
+const REQUIRED_ACTIVITY_FIELDS = [
+  "sector",
+  "services",
+  "intervention_zones",
+  "opening_days",
+  "opening_hours",
+  "strengths",
+] as const;
+
+const checkActivity = useCallback(async () => {
+  const supabase = createClient();
+
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (!user) return;
+
+  const { data: business } = await supabase
+    .from("business_profiles")
+    .select("sector,services,intervention_zones,opening_days,opening_hours,strengths")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!business) {
+    setActivityIncomplete(true);
+    return;
+  }
+
+  const incomplete = REQUIRED_ACTIVITY_FIELDS.some((field) => {
+    const v = (business as any)[field];
+    if (Array.isArray(v)) return v.filter(Boolean).length === 0;
+    return !v || String(v).trim() === "";
+  });
+
+  setActivityIncomplete(incomplete);
+}, []);
+
   useEffect(() => {
     checkProfile();
-  }, [checkProfile]);
+    checkActivity();
+  }, [checkProfile, checkActivity]);
+
+
+
+// ✅ Onboarding bloquant (soft) : on pousse l’utilisateur à compléter Profil + Activité au démarrage
+useEffect(() => {
+  // priorité au profil, puis à l’activité
+  if (profileIncomplete) {
+    openPanel("profil");
+    return;
+  }
+  if (activityIncomplete) {
+    openPanel("activite");
+  }
+}, [profileIncomplete, activityIncomplete]);
 
   useEffect(() => {
     const isTouch =
@@ -2008,7 +2062,7 @@ const disconnectSiteWebGsc = useCallback(() => {
             </button>
 
             {/* ✅ AJOUT : mini pastille + tooltip */}
-            {profileIncomplete && (
+            {(profileIncomplete || activityIncomplete) && (
               <div className={styles.profileIndicatorWrap} style={{ marginLeft: 6 }}>
                 <button
                   type="button"
@@ -2032,6 +2086,36 @@ const disconnectSiteWebGsc = useCallback(() => {
                     onClick={() => openPanel("profil")}
                   >
                     Compléter mon profil
+                  </button>
+                </div>
+              </div>
+
+            )}
+
+            {activityIncomplete && (
+              <div className={styles.profileIndicatorWrap} style={{ marginLeft: 6 }}>
+                <button
+                  type="button"
+                  className={styles.profileWarnBtn}
+                  aria-label="Activité incomplète"
+                  onClick={() => openPanel("activite")}
+                >
+                  <span className={styles.profileWarnDot} aria-hidden />
+                </button>
+
+                <div className={styles.profileTooltip} role="tooltip">
+                  <div>
+                    ⚠️ <strong>Activité incomplète</strong>
+                    <br />
+                    Complétez « Mon activité » pour générer des contenus pertinents.
+                  </div>
+
+                  <button
+                    type="button"
+                    className={styles.profileTooltipBtn}
+                    onClick={() => openPanel("activite")}
+                  >
+                    Compléter mon activité
                   </button>
                 </div>
               </div>
@@ -2104,7 +2188,7 @@ const disconnectSiteWebGsc = useCallback(() => {
 >
   <span className={styles.hamburgerIcon} aria-hidden />
 
-  {profileIncomplete && (
+  {(profileIncomplete || activityIncomplete) && (
     <span
       className={styles.hamburgerWarnDot}
       aria-hidden
@@ -2128,6 +2212,21 @@ const disconnectSiteWebGsc = useCallback(() => {
     ⚠️ Profil incomplet — compléter
   </button>
 )}
+
+{activityIncomplete && (
+  <button
+    className={styles.mobileMenuItem}
+    type="button"
+    role="menuitem"
+    onClick={() => {
+      setMenuOpen(false);
+      openPanel("activite");
+    }}
+  >
+    ⚠️ Activité incomplète — compléter
+  </button>
+)}
+
               <button
                 className={styles.mobileMenuItem}
                 type="button"

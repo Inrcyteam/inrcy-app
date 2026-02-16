@@ -559,11 +559,14 @@ const addLine = () =>
       return;
     }
 
-    router.push(
-      `/dashboard/mails?compose=1&to=${encodeURIComponent(to)}&attachKey=${encodeURIComponent(
-        key
-      )}&attachName=${encodeURIComponent(safeName)}`
-    );
+    const params = new URLSearchParams();
+    params.set("compose", "1");
+    params.set("to", to);
+    params.set("attachKey", key);
+    params.set("attachName", safeName);
+    if (clientName?.trim()) params.set("clientName", clientName.trim());
+    params.set("type", "devis");
+    router.push(`/dashboard/mails?${params.toString()}`);
   };
 
   const crmButtonText = useMemo(() => {

@@ -438,7 +438,7 @@ if (cubeKey === "site_web") {
     if (qualityScore >= 70) {
       return attachEffort({
         key: "fideliser_remercier",
-        title: "Remerciements",
+        title: "Suivre",
         detail: "Convertissez vos clients satisfaits en recommandations et avis.",
         href: "/dashboard/fideliser?action=thanks",
         pill: "Fidéliser",
@@ -447,7 +447,7 @@ if (cubeKey === "site_web") {
     // If quality is lower, we boost basics.
     return attachEffort({
       key: "booster_promotion",
-      title: "Promotion",
+      title: "Offrir",
       detail: "Mettez en avant une offre / un message clair pour déclencher le contact.",
       href: "/dashboard/booster?action=promo",
       pill: "Booster",
@@ -459,7 +459,7 @@ if (cubeKey === "site_web") {
     if (qualityScore < 60) {
       return attachEffort({
         key: "booster_promotion",
-        title: "Promotion",
+        title: "Offrir",
         detail: "Ajoutez/optimisez un déclencheur (devis, urgence, appel à l’action).",
         href: "/dashboard/booster?action=promo",
         pill: "Booster",
@@ -469,7 +469,7 @@ if (cubeKey === "site_web") {
     if (qualityScore >= 75 && opp30 > 4) {
       return attachEffort({
         key: "fideliser_informer",
-        title: "Informations",
+        title: "Informer",
         detail: "Créez un lien régulier (conseils, prévention, actu).",
         href: "/dashboard/fideliser?action=inform",
         pill: "Fidéliser",
@@ -498,7 +498,7 @@ if (cubeKey === "site_web") {
     }
     return attachEffort({
       key: "booster_avis",
-      title: "Avis",
+      title: "Récolter",
       detail: "Les avis sont le levier n°1 pour gagner des appels locaux.",
       href: "/dashboard/booster?action=reviews",
       pill: "Booster",

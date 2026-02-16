@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./crm.module.css";
+import { getTemplates } from "@/lib/messageTemplates";
 
 type Category = "" | "particulier" | "professionnel" | "collectivite_publique";
 type ContactType = "" | "client" | "prospect" | "fournisseur" | "partenaire" | "autre";
@@ -218,6 +219,8 @@ export default function CRMClient() {
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [query, setQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const actionsRef = useRef<HTMLDivElement | null>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -270,6 +273,18 @@ export default function CRMClient() {
       }
     } catch {}
   }, []);
+
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const el = actionsRef.current;
+      if (!el) return;
+      if (el.contains(e.target as any)) return;
+      setActionsOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [actionsOpen]);
 
 
   const filtered = useMemo(() => {
@@ -354,6 +369,29 @@ export default function CRMClient() {
     return Array.from(selectedContactIds).map((id) => map.get(id)).filter(Boolean) as CrmContact[];
   }, [selectedContactIds, contacts]);
 
+  const editingContact = useMemo(() => {
+    if (!editingId) return null as CrmContact | null;
+    return contacts.find((c) => c.id === editingId) ?? null;
+  }, [editingId, contacts]);
+
+  const primaryContact = useMemo(() => {
+    // Priority: clicked contact (editing panel), else single selected contact
+    if (editingContact) return editingContact;
+    if (selectedContacts.length === 1) return selectedContacts[0];
+    return null;
+  }, [editingContact, selectedContacts]);
+
+  const templateKeys = useMemo(() => {
+    const pick = (kind: any) => getTemplates(kind)?.[0]?.key || "";
+    return {
+      recolter: pick("avis"),
+      offrir: pick("offres"),
+      informer: pick("informations"),
+      suivre: pick("suivis"),
+      enqueter: pick("enquetes"),
+    };
+  }, []);
+
   const selectedEmails = useMemo(() => {
     const emails = selectedContacts
       .map((c) => (c.email || "").trim())
@@ -361,6 +399,14 @@ export default function CRMClient() {
     // unique
     return Array.from(new Set(emails));
   }, [selectedContacts]);
+
+  const actionEmails = useMemo(() => {
+    if (selectedEmails.length > 0) return selectedEmails;
+    const em = (primaryContact?.email || "").trim();
+    return em ? [em] : [];
+  }, [selectedEmails, primaryContact]);
+  const primaryHasEmail = useMemo(() => Boolean((primaryContact?.email || "").trim()), [primaryContact]);
+
 
   const toggleSelect = (id: string) => {
     setSelectedContactIds((prev) => {
@@ -494,16 +540,20 @@ const exportCsv = () => {
   }
 };
 
-const sendMailToSelected = () => {
-    if (selectedEmails.length === 0) return;
-    const params = new URLSearchParams({ compose: "1", to: selectedEmails.join(",") , from: "crm" });
+  const sendMailToAction = () => {
+    if (actionEmails.length === 0) return;
+    const params = new URLSearchParams({ compose: "1", to: actionEmails.join(","), from: "crm" });
+    if (primaryContact?.id) params.set("contactId", primaryContact.id);
+    if (primaryContact) params.set("contactName", buildDisplayName(primaryContact));
     router.push(`/dashboard/mails?${params.toString()}`);
   };
 
   const sendMailToContact = (c: CrmContact) => {
     const to = (c.email || "").trim();
     if (!to) return;
+    const contactName = buildDisplayName(c);
     const params = new URLSearchParams({ compose: "1", to, from: "crm" });
+    if (contactName) params.set("name", contactName);
     router.push(`/dashboard/mails?${params.toString()}`);
   };
 
@@ -531,6 +581,51 @@ const sendMailToSelected = () => {
   const goNewFacture = (c: CrmContact) => {
     const params = buildDocPrefillParams(c);
     router.push(`/dashboard/factures/new?${params.toString()}`);
+  };
+
+  const goPlanifierIntervention = (c: CrmContact) => {
+    const q = new URLSearchParams();
+    q.set("action", "new");
+    q.set("contactId", c.id);
+    q.set("contactName", buildDisplayName(c));
+    if ((c.email || "").trim()) q.set("contactEmail", (c.email || "").trim());
+    if ((c.phone || "").trim()) q.set("contactPhone", (c.phone || "").trim());
+    if ((c.address || "").trim()) q.set("contactAddress", (c.address || "").trim());
+    if ((c.city || "").trim()) q.set("contactCity", (c.city || "").trim());
+    if ((c.postal_code || "").trim()) q.set("contactPostalCode", (c.postal_code || "").trim());
+    router.push(`/dashboard/agenda?${q.toString()}`);
+  };
+
+  const goMailTemplate = (
+    c: CrmContact,
+    opts: {
+      folder: string;
+      templateKey: string;
+      trackKind: "booster" | "fideliser";
+      trackType: string;
+    }
+  ) => {
+    const to = (c.email || "").trim();
+    const q = new URLSearchParams();
+    q.set("compose", "1");
+    if (to) q.set("to", to);
+    q.set("from", "crm");
+    q.set("contactId", c.id);
+    q.set("contactName", buildDisplayName(c));
+    q.set("folder", opts.folder);
+    if (opts.templateKey) q.set("template_key", opts.templateKey);
+
+    // Track only after a real send (handled by iNr'Send).
+    q.set("track_kind", opts.trackKind);
+    q.set("track_type", opts.trackType);
+    q.set(
+      "track_payload",
+      JSON.stringify({
+        template_key: opts.templateKey || null,
+        contact_id: c.id,
+      })
+    );
+    router.push(`/dashboard/mails?${q.toString()}`);
   };
 
   function startNew() {
@@ -997,38 +1092,182 @@ const sendMailToSelected = () => {
                 🗑️
               </button>
 
-              <button
-                className={`${styles.actionIconBtn} ${styles.toolbarIcon}`}
-                type="button"
-                title="Envoyer un mail"
-                aria-label="Envoyer un mail"
-                onClick={sendMailToSelected}
-                disabled={selectedEmails.length === 0 || saving}
-              >
-                ✉️
-              </button>
+              <div className={styles.actionsWrap} ref={actionsRef}>
+                <button
+                  className={styles.actionsBtn}
+                  type="button"
+                  onClick={() => setActionsOpen((v) => !v)}
+                  disabled={(actionEmails.length === 0 && !primaryContact) || saving}
+                  aria-expanded={actionsOpen ? "true" : "false"}
+                  title={
+                    primaryContact
+                      ? "Actions sur ce contact"
+                      : selectedContactIds.size > 0
+                      ? "Actions sur la sélection"
+                      : "Sélectionnez un contact"
+                  }
+                >
+                  Actions <span className={styles.caret}>▾</span>
+                </button>
 
-              <button
-                className={`${styles.actionIconBtn} ${styles.toolbarIcon}`}
-                type="button"
-                title="Créer un devis"
-                aria-label="Créer un devis"
-                onClick={() => selectedContacts[0] && goNewDevis(selectedContacts[0])}
-                disabled={selectedContacts.length !== 1 || saving}
-              >
-                📄
-              </button>
+                {actionsOpen ? (
+                  <div className={styles.actionsMenu} role="menu">
+                    <button
+                      className={styles.actionsItem}
+                      type="button"
+                      onClick={() => {
+                        setActionsOpen(false);
+                        sendMailToAction();
+                      }}
+                      disabled={actionEmails.length === 0 || saving}
+                    >
+                      ✉️ Envoyer un mail
+                    </button>
 
-              <button
-                className={`${styles.actionIconBtn} ${styles.toolbarIcon}`}
-                type="button"
-                title="Créer une facture"
-                aria-label="Créer une facture"
-                onClick={() => selectedContacts[0] && goNewFacture(selectedContacts[0])}
-                disabled={selectedContacts.length !== 1 || saving}
-              >
-                🧾
-              </button>
+                    <div className={styles.actionsSep} />
+
+                    <button
+                      className={styles.actionsItem}
+                      type="button"
+                      onClick={() => {
+                        if (!primaryContact) return;
+                        setActionsOpen(false);
+                        goNewDevis(primaryContact);
+                      }}
+                      disabled={!primaryContact || saving}
+                    >
+                      📄 Devis
+                    </button>
+
+                    <button
+                      className={styles.actionsItem}
+                      type="button"
+                      onClick={() => {
+                        if (!primaryContact) return;
+                        setActionsOpen(false);
+                        goNewFacture(primaryContact);
+                      }}
+                      disabled={!primaryContact || saving}
+                    >
+                      🧾 Factures
+                    </button>
+
+                    <div className={styles.actionsSep} />
+
+                    <button
+                      className={styles.actionsItem}
+                      type="button"
+                      onClick={() => {
+                        if (!primaryContact) return;
+                        setActionsOpen(false);
+                        goMailTemplate(primaryContact, {
+                          folder: "recoltes",
+                          templateKey: templateKeys.recolter,
+                          trackKind: "booster",
+                          trackType: "review_mail",
+                        });
+                      }}
+                      disabled={!primaryContact || !primaryHasEmail || saving}
+                      title={!primaryHasEmail ? "Le contact n'a pas d'email" : undefined}
+                    >
+                      ⭐ Récolter (Booster)
+                    </button>
+
+                    <button
+                      className={styles.actionsItem}
+                      type="button"
+                      onClick={() => {
+                        if (!primaryContact) return;
+                        setActionsOpen(false);
+                        goMailTemplate(primaryContact, {
+                          folder: "offres",
+                          templateKey: templateKeys.offrir,
+                          trackKind: "booster",
+                          trackType: "promo_mail",
+                        });
+                      }}
+                      disabled={!primaryContact || !primaryHasEmail || saving}
+                      title={!primaryHasEmail ? "Le contact n'a pas d'email" : undefined}
+                    >
+                      🎁 Offrir (Booster)
+                    </button>
+
+                    <div className={styles.actionsSep} />
+
+                    <button
+                      className={styles.actionsItem}
+                      type="button"
+                      onClick={() => {
+                        if (!primaryContact) return;
+                        setActionsOpen(false);
+                        goMailTemplate(primaryContact, {
+                          folder: "informations",
+                          templateKey: templateKeys.informer,
+                          trackKind: "fideliser",
+                          trackType: "newsletter_mail",
+                        });
+                      }}
+                      disabled={!primaryContact || !primaryHasEmail || saving}
+                      title={!primaryHasEmail ? "Le contact n'a pas d'email" : undefined}
+                    >
+                      📰 Informer (Fidéliser)
+                    </button>
+
+                    <button
+                      className={styles.actionsItem}
+                      type="button"
+                      onClick={() => {
+                        if (!primaryContact) return;
+                        setActionsOpen(false);
+                        goMailTemplate(primaryContact, {
+                          folder: "suivis",
+                          templateKey: templateKeys.suivre,
+                          trackKind: "fideliser",
+                          trackType: "thanks_mail",
+                        });
+                      }}
+                      disabled={!primaryContact || !primaryHasEmail || saving}
+                      title={!primaryHasEmail ? "Le contact n'a pas d'email" : undefined}
+                    >
+                      ✅ Suivre (Fidéliser)
+                    </button>
+
+                    <button
+                      className={styles.actionsItem}
+                      type="button"
+                      onClick={() => {
+                        if (!primaryContact) return;
+                        setActionsOpen(false);
+                        goMailTemplate(primaryContact, {
+                          folder: "enquetes",
+                          templateKey: templateKeys.enqueter,
+                          trackKind: "fideliser",
+                          trackType: "satisfaction_mail",
+                        });
+                      }}
+                      disabled={!primaryContact || !primaryHasEmail || saving}
+                      title={!primaryHasEmail ? "Le contact n'a pas d'email" : undefined}
+                    >
+                      🔎 Enquêter (Fidéliser)
+                    </button>
+
+                    <div className={styles.actionsSep} />
+
+                    <button
+                      className={styles.actionsItem}
+                      type="button"
+                      onClick={() => {
+                        if (!primaryContact) return;
+                        setActionsOpen(false);
+                        goPlanifierIntervention(primaryContact);
+                      }}
+                      disabled={!primaryContact || saving}
+                    >
+                      📅 Planifier une intervention
+                    </button>
+                  </div>
+                ) : null}
+              </div>
 </div>
           </div>
         </div>

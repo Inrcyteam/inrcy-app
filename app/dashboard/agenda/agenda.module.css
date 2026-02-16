@@ -369,3 +369,54 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* --- RDV modal form helpers --- */
+.field{display:grid;gap:8px}
+.label{font-size:12px;font-weight:800;color:rgba(255,255,255,0.85)}
+.input{width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.04);padding:10px 12px;color:white;outline:none}
+.textarea{width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.04);padding:10px 12px;color:white;outline:none;min-height:110px;resize:vertical}
+.btnDanger{border:1px solid rgba(248,113,113,0.55);background:rgba(248,113,113,0.12);color:white;border-radius:14px;padding:10px 12px;font-weight:900;cursor:pointer}
+
+/* --- Modal --- */
+.modalOverlay{
+  position:fixed;inset:0;z-index:50;
+  background:rgba(0,0,0,0.55);
+  display:flex;align-items:center;justify-content:center;
+  padding:18px;
+}
+
+.modal{
+  width:min(920px, 100%);
+  max-height:85vh;
+  overflow:auto;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,0.16);
+  background:rgba(15,20,45,0.92);
+  backdrop-filter: blur(14px);
+  box-shadow:0 28px 70px rgba(0,0,0,0.55);
+}
+
+.modalHeader{
+  padding:12px 14px;
+  border-bottom:1px solid rgba(255,255,255,0.12);
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+
+.modalBody{padding:14px}
+
+.modalFooter{
+  padding:12px 14px;
+  border-top:1px solid rgba(255,255,255,0.12);
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+}
+
+.modalError{
+  border-radius:14px;
+  border:1px solid rgba(248,113,113,0.45);
+  background:rgba(248,113,113,0.10);
+  padding:10px 12px;
+  font-size:13px;
+  color:rgba(255,255,255,0.92);
+  margin-bottom:10px;
+}

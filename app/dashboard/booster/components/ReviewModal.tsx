@@ -1,217 +1,162 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import stylesDash from "../../dashboard/dashboard.module.css";
+import { getTemplates, type TemplateDef } from "@/lib/messageTemplates";
 
-export default function ReviewModal({ styles, onClose, trackEvent }: { styles: typeof stylesDash; onClose: () => void; trackEvent: (type: "review_mail", payload: Record<string, any>) => Promise<void> }) {
-  const [saving, setSaving] = useState(false);
+export default function ReviewModal({
+  styles,
+  onClose,
+}: {
+  styles: typeof stylesDash;
+  onClose: () => void;
+}) {
+  const router = useRouter();
 
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [q, setQ] = useState("");
-  const [isOpen, setIsOpen] = useState(false);
-
-useEffect(() => {
-  fetch("/api/crm/contacts")
-    .then((r) => r.json())
-    .then((d) => setContacts(d.contacts ?? []))
-    .catch(() => setContacts([]));
-}, []);
-
-  const recipients = selectedIds.length;
-
-  const filtered = useMemo(() => {
-  const qq = q.trim().toLowerCase();
-  if (!qq) return contacts;
-  return contacts.filter((c) => {
-    const name = `${c.company_name ?? ""} ${c.first_name ?? ""} ${c.last_name ?? ""} ${c.email ?? ""}`.toLowerCase();
-    return name.includes(qq);
-  });
-  }, [contacts, q]);
-
-  const selectAll = () => {
-    const ids = filtered.map((c) => String(c.id)).filter(Boolean);
-    setSelectedIds((prev) => Array.from(new Set([...prev, ...ids])));
-  };
-
-  const clearAll = () => setSelectedIds([]);
-  const onSend = async () => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      await trackEvent("review_mail", { recipients });
-      onClose();
-    } finally {
-      setSaving(false);
+  const templates = useMemo(() => getTemplates("avis"), []);
+  const categories = useMemo(() => {
+    const map = new Map<string, TemplateDef>();
+    for (const t of templates) {
+      if (!map.has(t.category)) map.set(t.category, t);
     }
+    return Array.from(map.values());
+  }, [templates]);
+
+  const [selectedKey, setSelectedKey] = useState<string>(() => templates[0]?.key ?? "");
+  const selected = useMemo(
+    () => templates.find((t) => t.key === selectedKey) ?? templates[0],
+    [templates, selectedKey]
+  );
+
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+
+  useEffect(() => {
+    if (!selected) return;
+    const subj = selected.subject;
+    const txt = selected.body;
+    setSubject(subj);
+    setBody(txt);
+
+    (async () => {
+      try {
+        const r = await fetch("/api/templates/render", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subject_override: subj, body_override: txt }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (j?.subject) setSubject(String(j.subject));
+        if (j?.body_text) setBody(String(j.body_text));
+      } catch {}
+    })();
+  }, [selected?.key]);
+
+  const onNext = async () => {
+    const q = new URLSearchParams();
+    q.set("folder", "recoltes");
+    if (selected?.key) q.set("template_key", selected.key);
+    q.set("prefill_subject", subject);
+    q.set("prefill_text", body);
+    q.set("compose", "1");
+
+    // Track only after a real send (handled by iNr'Send).
+    q.set("track_kind", "booster");
+    q.set("track_type", "review_mail");
+    q.set(
+      "track_payload",
+      JSON.stringify({
+        template_key: selected?.key ?? null,
+        template_category: selected?.category ?? null,
+      })
+    );
+
+    router.push(`/dashboard/mails?${q.toString()}`);
+    onClose();
   };
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <div className={styles.blockCard}>
-        <div className={styles.blockTitle} style={{ marginBottom: 8 }}>
-          Contacts (CRM iNrCy)
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div className={styles.blockCard} style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <div className={styles.blockTitle} style={{ marginBottom: 10, fontSize: 20 }}>
+          Modèle d’email — Récolter
         </div>
+
         <div className={styles.subtitle} style={{ marginBottom: 10 }}>
-          Choisissez les destinataires.
+          Choisissez un email préconçu, modifiez si besoin, puis cliquez sur Suivant.
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsOpen((v) => !v)}
-          style={dropdownBtn}
-          aria-expanded={isOpen}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ fontWeight: 700 }}>Sélectionner des contacts</div>
-            <div className={styles.subtitle} style={{ opacity: 0.85 }}>
-              ({recipients} sélectionné{recipients > 1 ? "s" : ""})
-            </div>
-          </div>
-          <div style={{ opacity: 0.75 }}>{isOpen ? "▲" : "▼"}</div>
-        </button>
-
-        {isOpen && (
-          <div style={dropdownPanel}>
-            <div style={dropdownTop}>
-              <button type="button" className={styles.secondaryBtn} onClick={selectAll}>
-                Tout sélectionner
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+          {categories.map((t) => {
+            const isActive = selected?.category === t.category;
+            return (
+              <button
+                key={t.category}
+                type="button"
+                onClick={() => setSelectedKey(t.key)}
+                className={styles.pill}
+                style={{
+                  opacity: isActive ? 1 : 0.8,
+                  border: isActive
+                    ? "1px solid rgba(255,255,255,0.25)"
+                    : "1px solid rgba(255,255,255,0.12)",
+                }}
+                title={t.title}
+              >
+                {t.title}
               </button>
-              <button type="button" className={styles.secondaryBtn} onClick={clearAll}>
-                Tout désélectionner
-              </button>
-              <input
-                type="text"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Rechercher..."
-                style={searchInput}
-              />
-            </div>
+            );
+          })}
+        </div>
 
-            <div style={contactBox}>
-              {filtered.length === 0 ? (
-                <div className={styles.subtitle} style={{ opacity: 0.8 }}>
-                  Aucun contact.
-                </div>
-              ) : (
-                filtered.slice(0, 200).map((c) => {
-                  const id = String(c.id);
-                  const label = c.company_name
-                    ? `${c.company_name} — ${(c.first_name ?? "")} ${(c.last_name ?? "")}`.trim()
-                    : `${(c.first_name ?? "")} ${(c.last_name ?? "")}`.trim();
-
-                  return (
-                    <label key={id} style={contactRow}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(id)}
-                        onChange={(e) => {
-                          setSelectedIds((prev) =>
-                            e.target.checked ? Array.from(new Set([...prev, id])) : prev.filter((x) => x !== id)
-                          );
-                        }}
-                      />
-                      <div style={{ display: "grid" }}>
-                        <div style={{ fontWeight: 600 }}>{label || "Contact"}</div>
-                        <div style={{ opacity: 0.8, fontSize: 12 }}>{c.email || c.phone || ""}</div>
-                      </div>
-                    </label>
-                  );
-                })
-              )}
-            </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0 }}>
+          <div style={sectionStyle}>
+            <div style={sectionHeaderStyle}>Objet</div>
+            <input
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Objet"
+              className={styles.input}
+              style={{ width: "100%" }}
+            />
           </div>
-        )}
-      </div>
 
-      <div className={styles.blockCard}>
-        <div className={styles.blockTitle} style={{ marginBottom: 8 }}>
-          Message
-        </div>
-        <div className={styles.subtitle} style={{ marginBottom: 10 }}>
-          Sélectionnez un texte préconçu.
-        </div>
+          <div style={{ ...sectionStyle, flex: 1, minHeight: 0 }}>
+            <div style={sectionHeaderStyle}>Message (texte)</div>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Votre message…"
+              className={styles.textarea}
+              style={{ width: "100%", flex: 1, minHeight: 340, resize: "vertical" }}
+            />
+          </div>
 
-        <div style={fakeSelect}>Choisir un message préconçu</div>
-
-        <div style={{ marginTop: 12, display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-          <button type="button" className={styles.secondaryBtn}>
-            Aperçu
-          </button>
-          <button type="button" className={styles.primaryBtn} onClick={onSend} disabled={saving}>
-            {saving ? "Envoi..." : "Envoyer"}
-          </button>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button type="button" onClick={onClose} className={styles.secondaryBtn}>
+              Annuler
+            </button>
+            <button type="button" onClick={onNext} className={styles.primaryBtn}>
+              Suivant
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-const fakeSelect: React.CSSProperties = {
-  width: "100%",
-  borderRadius: 14,
-  border: "1px dashed rgba(255,255,255,0.22)",
-  background: "rgba(255,255,255,0.03)",
-  padding: "12px 12px",
-  opacity: 0.9,
-};
-
-const dropdownBtn: React.CSSProperties = {
-  width: "100%",
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(255,255,255,0.04)",
-  color: "inherit",
-  padding: "12px 12px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  cursor: "pointer",
-};
-
-const dropdownPanel: React.CSSProperties = {
-  marginTop: 10,
-  width: "100%",
-  borderRadius: 14,
+const sectionStyle: CSSProperties = {
   border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.03)",
-  padding: "10px 10px",
+  background:
+    "linear-gradient(180deg, rgba(56,189,248,0.06) 0%, rgba(167,139,250,0.04) 60%, rgba(255,255,255,0.03) 100%)",
+  borderRadius: 18,
+  padding: 12,
 };
 
-const dropdownTop: React.CSSProperties = {
-  display: "flex",
-  gap: 10,
-  alignItems: "center",
-  flexWrap: "wrap",
-  marginBottom: 10,
-};
-
-const searchInput: React.CSSProperties = {
-  flex: 1,
-  minWidth: 180,
-  borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(255,255,255,0.04)",
-  color: "inherit",
-  padding: "10px 12px",
-  outline: "none",
-};
-
-const contactBox: React.CSSProperties = {
-  width: "100%",
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.03)",
-  padding: "10px 10px",
-  maxHeight: 220,
-  overflow: "auto",
-};
-
-const contactRow: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "18px 1fr",
-  gap: 10,
-  alignItems: "center",
-  padding: "10px 8px",
-  borderRadius: 12,
+const sectionHeaderStyle: CSSProperties = {
+  fontSize: 13,
+  fontWeight: 800,
+  letterSpacing: "0.02em",
+  color: "rgba(255,255,255,0.78)",
+  marginBottom: 8,
 };

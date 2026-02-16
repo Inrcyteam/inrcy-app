@@ -1414,3 +1414,142 @@
   flex-wrap: wrap;
 }
 
+
+
+/* Actions dropdown (CRM hub) */
+.actionsWrap{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.actionsBtn{
+  height: 48px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  backdrop-filter: blur(10px);
+  color: rgba(255,255,255,.92);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+}
+
+.actionsBtn:hover{
+  transform: translateY(-1px) scale(1.01);
+  border-color: rgba(255,255,255,.22);
+  background: rgba(0,0,0,.26);
+}
+
+.actionsBtn:disabled{
+  opacity: .35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.caret{
+  opacity: .8;
+  font-weight: 700;
+}
+
+.actionsMenu{
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: 280px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 28px rgba(0,0,0,.35);
+  overflow: hidden;
+  z-index: 50;
+}
+
+.actionsItem{
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: rgba(255,255,255,.92);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.actionsItem:hover{
+  background: rgba(255,255,255,.08);
+}
+
+.actionsItem:disabled{
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+.actionsSep{
+  height: 1px;
+  background: rgba(255,255,255,.10);
+  margin: 6px 0;
+}
+
+/* =========================
+   iNrCy CRM — FINAL FIX (Feb 2026)
+   Objectif:
+   - 1 seule page (pas de scroll navigateur)
+   - Scroll uniquement dans le tableau si besoin
+   - Dropdown "Actions" toujours visible + scroll interne si trop long
+   ========================= */
+
+/* 0) Page sans scroll (le dashboard reste plein écran) */
+.shell{
+  height: 100vh !important;     /* force plein écran */
+  min-height: 0 !important;
+  overflow: hidden !important;  /* empêche la scroll-bar navigateur */
+  padding-bottom: 18px !important; /* réduit la hauteur globale */
+}
+
+/* 1) La card du bas doit laisser déborder le menu */
+.cardBottom{
+  overflow: visible !important;
+}
+
+/* 2) Les barres contenant le dropdown doivent autoriser le débordement */
+.tableToolbar,
+.bulkActions{
+  overflow: visible !important;
+}
+
+/* 3) Tableau: hauteur adaptative + scroll interne (pas de scroll page) */
+.tableWrap{
+  min-height: 390px !important;
+  max-height: calc(100vh - 560px) !important; /* ajuste la place en fonction du haut (KPI + form + toolbar) */
+  overflow-y: auto !important;
+  overflow-x: hidden !important; /* pas de scroll horizontal */
+}
+
+/* 4) Dropdown Actions: scroll interne si trop d'items */
+.actionsMenu{
+  max-height: 40vh !important;   /* s’adapte à l’écran */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: thin;         /* Firefox */
+}
+
+/* Scrollbar discrète (Chrome/Edge/Safari) */
+.actionsMenu::-webkit-scrollbar{
+  width: 6px;
+}
+.actionsMenu::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,0.20);
+  border-radius: 10px;
+}
+.actionsMenu::-webkit-scrollbar-track{
+  background: rgba(255,255,255,0.06);
+}

@@ -2,8 +2,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./agenda.module.css";
+
+type CrmContact = {
+  id: string;
+  last_name: string;
+  first_name: string;
+  company_name?: string;
+  email: string;
+  phone: string;
+  address: string;
+  city?: string;
+  postal_code?: string;
+};
 
 type EventItem = {
   id: string;
@@ -12,6 +24,8 @@ type EventItem = {
   end: string | null;
   location: string | null;
   htmlLink: string | null;
+  description?: string | null;
+  inrcy?: any | null;
 };
 
 type DayEvent = EventItem & {
@@ -93,6 +107,7 @@ function accentFor(id: string) {
 
 export default function AgendaClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [connected, setConnected] = useState<boolean | null>(null);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -104,6 +119,283 @@ export default function AgendaClient() {
     return new Date(t.getFullYear(), t.getMonth(), t.getDate(), 0, 0, 0, 0);
   });
   const [query, setQuery] = useState("");
+
+  // Mode d'usage : artisans (interventions) / professions libérales (agenda)
+  const [viewKind, setViewKind] = useState<"intervention" | "agenda">("intervention");
+
+// --- CRM contacts (pour relier un RDV à un contact)
+const [contacts, setContacts] = useState<CrmContact[]>([]);
+const [contactsLoading, setContactsLoading] = useState(false);
+
+// --- Modale (Intervention / Agenda)
+const [rdvOpen, setRdvOpen] = useState(false);
+const [rdvMode, setRdvMode] = useState<"create" | "edit">("create");
+const [rdvEventId, setRdvEventId] = useState<string>("");
+const [rdvSummary, setRdvSummary] = useState("");
+const [rdvDate, setRdvDate] = useState<string>(""); // YYYY-MM-DD
+const [rdvStart, setRdvStart] = useState<string>("09:00");
+const [rdvEnd, setRdvEnd] = useState<string>("10:00");
+const [rdvLocation, setRdvLocation] = useState<string>("");
+const [rdvNotes, setRdvNotes] = useState<string>("");
+const [rdvKind, setRdvKind] = useState<"intervention" | "agenda">("intervention");
+const [intType, setIntType] = useState<string>("");
+const [intStatus, setIntStatus] = useState<string>("confirmé");
+const [intAddress, setIntAddress] = useState<string>("");
+const [intReference, setIntReference] = useState<string>("");
+const [rdvContactId, setRdvContactId] = useState<string>("");
+const [rdvNewContactName, setRdvNewContactName] = useState<string>("");
+const [rdvNewContactEmail, setRdvNewContactEmail] = useState<string>("");
+const [rdvNewContactPhone, setRdvNewContactPhone] = useState<string>("");
+const [rdvNewContactAddress, setRdvNewContactAddress] = useState<string>("");
+const [rdvSaving, setRdvSaving] = useState(false);
+const [rdvError, setRdvError] = useState<string | null>(null);
+
+function setLocalMode(kind: "intervention" | "agenda") {
+  setViewKind(kind);
+  try {
+    localStorage.setItem("inrcy_calendar_view_kind", kind);
+  } catch {}
+}
+
+async function loadContacts() {
+  setContactsLoading(true);
+  const r = await fetch("/api/crm/contacts").catch(() => null);
+  const j = r ? await r.json().catch(() => ({})) : {};
+  setContacts(Array.isArray((j as any)?.contacts) ? (j as any).contacts : []);
+  setContactsLoading(false);
+}
+
+function toDateOnly(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+useEffect(() => {
+  // Deep-link from CRM: /dashboard/agenda?action=new&contactId=...&contactName=...
+  const action = (searchParams?.get("action") || "").toLowerCase();
+  if (action !== "new") return;
+
+  const contactId = searchParams?.get("contactId") || "";
+  const contactName = searchParams?.get("contactName") || "";
+  const contactEmail = searchParams?.get("contactEmail") || "";
+  const contactPhone = searchParams?.get("contactPhone") || "";
+  const contactAddress = [
+    searchParams?.get("contactAddress") || "",
+    searchParams?.get("contactPostalCode") || "",
+    searchParams?.get("contactCity") || "",
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  // Ensure we are in Intervention mode for the CRM workflow
+  setLocalMode("intervention");
+  // Load contacts (lazy) so the dropdown can resolve contactId if it exists
+  loadContacts();
+
+  // Open create modal on selected date and prefill
+  openCreateRdv(selectedDate);
+  if (contactId) setRdvContactId(contactId);
+  if (contactName) setRdvNewContactName(contactName);
+  if (contactEmail) setRdvNewContactEmail(contactEmail);
+  if (contactPhone) setRdvNewContactPhone(contactPhone);
+  if (contactAddress) setRdvNewContactAddress(contactAddress);
+
+  // Clean URL to avoid reopening on refresh/navigation
+  try {
+    const q = new URLSearchParams(searchParams?.toString() || "");
+    q.delete("action");
+    router.replace(`/dashboard/agenda?${q.toString()}`);
+  } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [searchParams]);
+
+function openCreateRdv(date: Date) {
+  setRdvMode("create");
+  setRdvEventId("");
+  setRdvKind(viewKind);
+  setRdvSummary(viewKind === "intervention" ? "Intervention" : "Rendez-vous");
+  setRdvDate(toDateOnly(date));
+  setRdvStart("09:00");
+  setRdvEnd("10:00");
+  setRdvLocation("");
+  setRdvNotes("");
+  setIntType(viewKind === "intervention" ? "" : "");
+  setIntStatus("confirmé");
+  setIntAddress("");
+  setIntReference("");
+  setRdvContactId("");
+  setRdvNewContactName("");
+  setRdvNewContactEmail("");
+  setRdvNewContactPhone("");
+  setRdvNewContactAddress("");
+  setRdvError(null);
+  setRdvOpen(true);
+}
+
+function openEditRdv(ev: DayEvent) {
+  setRdvMode("edit");
+  setRdvEventId(ev.id);
+  const k = (ev as any)?.inrcy?.kind === "agenda" ? "agenda" : "intervention";
+  setRdvKind(k);
+  setRdvSummary(ev.summary || (k === "intervention" ? "Intervention" : "Rendez-vous"));
+
+  // date + heures
+  const start = ev.startDate ?? (ev.start ? new Date(ev.start) : null);
+  const end = ev.endDate ?? (ev.end ? new Date(ev.end) : null);
+  const baseDate = start ?? selectedDate;
+  setRdvDate(toDateOnly(baseDate));
+
+  const startH = start ? `${pad2(start.getHours())}:${pad2(start.getMinutes())}` : "09:00";
+  const endH = end ? `${pad2(end.getHours())}:${pad2(end.getMinutes())}` : "10:00";
+  setRdvStart(startH);
+  setRdvEnd(endH);
+
+  setRdvLocation(ev.location ?? "");
+  setRdvNotes("");
+
+  const meta = (ev as any)?.inrcy?.intervention ?? null;
+  setIntType(String(meta?.type ?? ""));
+  setIntStatus(String(meta?.status ?? "confirmé"));
+  setIntAddress(String(meta?.address ?? ""));
+  setIntReference(String(meta?.reference ?? ""));
+
+  setRdvContactId("");
+  setRdvError(null);
+  setRdvOpen(true);
+}
+
+async function ensureContact(): Promise<null | { display_name: string; email: string; phone: string; address: string }> {
+  // 1) Contact sélectionné
+  if (rdvContactId) {
+    const c = contacts.find((x) => x.id === rdvContactId);
+    if (!c) return null;
+    const name = `${(c.first_name ?? "").trim()} ${(c.last_name ?? "").trim()}`.trim() || (c.company_name ?? "").trim() || "Contact";
+    const address = [c.address, c.postal_code, c.city].filter(Boolean).join(" ").trim();
+    return { display_name: name, email: c.email ?? "", phone: c.phone ?? "", address };
+  }
+
+  // 2) Nouveau contact rapide
+  const name = rdvNewContactName.trim();
+  const email = rdvNewContactEmail.trim();
+  const phone = rdvNewContactPhone.trim();
+  const address = rdvNewContactAddress.trim();
+  if (!name && !email && !phone && !address) return null;
+
+  const r = await fetch("/api/crm/contacts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      display_name: name || "Nouveau contact",
+      email,
+      phone,
+      address,
+      city: "",
+      postal_code: "",
+      category: "particulier",
+      contact_type: "prospect",
+      notes: "",
+      important: false,
+    }),
+  }).catch(() => null);
+
+  const j = r ? await r.json().catch(() => ({})) : {};
+  if (!r || !r.ok) {
+    throw new Error((j as any)?.error ?? "Impossible d’ajouter le contact au CRM");
+  }
+
+  // recharge la liste pour qu’il apparaisse partout
+  await loadContacts();
+
+  return { display_name: name || "Nouveau contact", email, phone, address };
+}
+
+function buildIso(dateOnly: string, hhmm: string) {
+  // construit un ISO local -> Date -> ISO
+  const [y, m, d] = dateOnly.split("-").map((x) => Number(x));
+  const [hh, mm] = hhmm.split(":").map((x) => Number(x));
+  const dt = new Date(y, (m ?? 1) - 1, d ?? 1, hh ?? 0, mm ?? 0, 0, 0);
+  return dt.toISOString();
+}
+
+async function submitRdv() {
+  setRdvSaving(true);
+  setRdvError(null);
+  try {
+    if (!rdvSummary.trim()) throw new Error("Titre requis");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rdvDate)) throw new Error("Date invalide");
+    if (!/^\d{2}:\d{2}$/.test(rdvStart) || !/^\d{2}:\d{2}$/.test(rdvEnd)) throw new Error("Heure invalide");
+
+    const startIso = buildIso(rdvDate, rdvStart);
+    const endIso = buildIso(rdvDate, rdvEnd);
+    if (Date.parse(endIso) <= Date.parse(startIso)) throw new Error("L’heure de fin doit être après l’heure de début");
+
+    const contact = await ensureContact();
+
+    const payload: any = {
+      summary: rdvSummary.trim(),
+      location: rdvLocation.trim(),
+      description: rdvNotes.trim(),
+      start: startIso,
+      end: endIso,
+      contact,
+      inrcy: {
+        kind: rdvKind,
+        intervention:
+          rdvKind === "intervention"
+            ? {
+                type: intType.trim() || undefined,
+                status: intStatus.trim() || undefined,
+                address: intAddress.trim() || undefined,
+                reference: intReference.trim() || undefined,
+              }
+            : undefined,
+      },
+    };
+
+    if (rdvMode === "create") {
+      const r = await fetch("/api/calendar/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j?.error ?? "Impossible de créer le rendez-vous");
+    } else {
+      const r = await fetch(`/api/calendar/events?id=${encodeURIComponent(rdvEventId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j?.error ?? "Impossible de modifier le rendez-vous");
+    }
+
+    setRdvOpen(false);
+    await loadEventsForMonth(cursorMonth);
+  } catch (e: any) {
+    setRdvError(e?.message ?? "Erreur");
+  } finally {
+    setRdvSaving(false);
+  }
+}
+
+async function deleteRdv() {
+  if (!rdvEventId) return;
+  setRdvSaving(true);
+  setRdvError(null);
+  try {
+    const r = await fetch(`/api/calendar/events?id=${encodeURIComponent(rdvEventId)}`, { method: "DELETE" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j?.error ?? "Impossible de supprimer");
+    setRdvOpen(false);
+    await loadEventsForMonth(cursorMonth);
+  } catch (e: any) {
+    setRdvError(e?.message ?? "Erreur");
+  } finally {
+    setRdvSaving(false);
+  }
+}
+
 
   async function loadStatus() {
     const r = await fetch("/api/calendar/status");
@@ -145,10 +437,17 @@ export default function AgendaClient() {
 
   useEffect(() => {
     loadStatus();
+    try {
+      const saved = localStorage.getItem("inrcy_calendar_view_kind") as any;
+      if (saved === "agenda" || saved === "intervention") setViewKind(saved);
+    } catch {}
   }, []);
 
   useEffect(() => {
-    if (connected) loadEventsForMonth(cursorMonth);
+    if (connected) {
+      loadEventsForMonth(cursorMonth);
+      loadContacts();
+    }
   }, [connected, cursorMonth]);
 
   const openAgendaSettings = () => {
@@ -263,13 +562,22 @@ export default function AgendaClient() {
       <div className={styles.wrap}>
         <div className={styles.topbar}>
           <div className={styles.titleRow}>
-            <div className={styles.h1}>Agenda iNrCy</div>
+            <div className={styles.h1}>{viewKind === "intervention" ? "Interventions iNrCy" : "Agenda iNrCy"}</div>
             <div className={styles.sub}>
-              Synchronisé avec ton Google Agenda — même événements, mêmes dates, même timing.
+              {viewKind === "intervention"
+                ? "Planning d’interventions (artisan) — avec option agenda classique. Synchronisé avec Google Calendar."
+                : "Agenda classique — synchronisé avec Google Calendar."}
             </div>
           </div>
 
           <div className={styles.actions}>
+            <button
+              className={styles.btnGhost}
+              onClick={() => setLocalMode(viewKind === "intervention" ? "agenda" : "intervention")}
+              title="Basculer entre planning d’interventions et agenda classique"
+            >
+              {viewKind === "intervention" ? "🗓️ Mode agenda" : "🧰 Mode interventions"}
+            </button>
             <button className={styles.btnGhost} onClick={openAgendaSettings}>
               ⚙️ Réglages
             </button>
@@ -414,15 +722,20 @@ export default function AgendaClient() {
                     {selectedEvents.length} événement{selectedEvents.length > 1 ? "s" : ""}
                   </div>
                 </div>
-                <button className={styles.btnGhost} onClick={openAgendaSettings}>
-                  ⚙️
-                </button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button className={styles.btnPrimary} onClick={() => openCreateRdv(selectedDate)}>
+                    {viewKind === "intervention" ? "＋ Intervention" : "＋ RDV"}
+                  </button>
+                  <button className={styles.btnGhost} onClick={openAgendaSettings}>
+                    ⚙️
+                  </button>
+                </div>
               </div>
 
               <div className={styles.sidebarBody}>
                 <div className={styles.sideTitle}>Détails du jour</div>
                 <div className={styles.meta}>
-                  Astuce : le contenu affiché vient directement de Google Calendar (calendrier principal).
+                  Astuce : iNrCy peut stocker des infos “Intervention” (statut, type, contact). Si vous passez en mode Agenda, vous gardez un calendrier classique.
                 </div>
 
                 <input
@@ -452,13 +765,75 @@ export default function AgendaClient() {
                       ? `${formatTime(ev.startDate)}${ev.endDate ? ` → ${formatTime(ev.endDate)}` : ""}`
                       : "";
 
+                    const kind = (ev as any)?.inrcy?.kind === "agenda" ? "agenda" : "intervention";
+                    const status = String((ev as any)?.inrcy?.intervention?.status ?? "").trim();
+                    const type = String((ev as any)?.inrcy?.intervention?.type ?? "").trim();
+                    const contact = (ev as any)?.inrcy?.contact ?? null;
+
                     return (
-                      <div key={ev.id} className={`${styles.eventRow} ${accentClass}`}>
-                        <div className={styles.eventTitle}>{ev.summary}</div>
+                      <div key={ev.id} className={`${styles.eventRow} ${accentClass}`} role="button" tabIndex={0} onClick={() => openEditRdv(ev)}>
+                        <div className={styles.eventTitle}>
+                          {kind === "intervention" ? "🧰 " : "🗓️ "}
+                          {ev.summary}
+                        </div>
                         <div className={styles.eventSub}>
                           {when}
                           {ev.location ? ` — ${ev.location}` : ""}
                         </div>
+                        {kind === "intervention" && (status || type) ? (
+                          <div className={styles.eventSub} style={{ marginTop: 4 }}>
+                            {type ? `${type}` : "Intervention"}
+                            {status ? ` • ${status}` : ""}
+                          </div>
+                        ) : null}
+
+                        {kind === "intervention" && contact?.display_name ? (
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                            <button
+                              className={styles.btnGhost}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const qs = new URLSearchParams({
+                                  clientName: String(contact.display_name ?? ""),
+                                  clientEmail: String(contact.email ?? ""),
+                                  clientAddress: String(contact.address ?? ""),
+                                });
+                                router.push(`/dashboard/devis/new?${qs.toString()}`);
+                              }}
+                              title="Créer un devis à partir de cette intervention"
+                            >
+                              🧾 Devis
+                            </button>
+                            <button
+                              className={styles.btnGhost}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const qs = new URLSearchParams({
+                                  clientName: String(contact.display_name ?? ""),
+                                  clientEmail: String(contact.email ?? ""),
+                                  clientAddress: String(contact.address ?? ""),
+                                });
+                                router.push(`/dashboard/factures/new?${qs.toString()}`);
+                              }}
+                              title="Créer une facture à partir de cette intervention"
+                            >
+                              🧾 Facture
+                            </button>
+                            <button
+                              className={styles.btnGhost}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                router.push("/dashboard/crm");
+                              }}
+                              title="Ouvrir le CRM"
+                            >
+                              👤 CRM
+                            </button>
+                          </div>
+                        ) : null}
                         {ev.htmlLink ? (
                           <a className={styles.eventLink} href={ev.htmlLink} target="_blank" rel="noreferrer">
                             Ouvrir dans Google
@@ -473,6 +848,157 @@ export default function AgendaClient() {
           </div>
         )}
       </div>
+
+      {/* MODALE création/édition */}
+      {rdvOpen && (
+        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
+          <div className={styles.modal}>
+            <div className={styles.modalHeader}>
+              <div style={{ fontWeight: 950 }}>
+                {rdvMode === "create"
+                  ? rdvKind === "intervention"
+                    ? "Nouvelle intervention"
+                    : "Nouveau rendez-vous"
+                  : rdvKind === "intervention"
+                  ? "Modifier l’intervention"
+                  : "Modifier le rendez-vous"}
+              </div>
+              <button className={styles.btnGhost} onClick={() => setRdvOpen(false)} aria-label="Fermer">
+                ✕
+              </button>
+            </div>
+
+            <div className={styles.modalBody}>
+              {rdvError && <div className={styles.modalError}>{rdvError}</div>}
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div className={styles.field}>
+                  <div className={styles.label}>Mode</div>
+                  <select className={styles.input} value={rdvKind} onChange={(e) => setRdvKind(e.target.value as any)}>
+                    <option value="intervention">Intervention (artisan)</option>
+                    <option value="agenda">Agenda (classique)</option>
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <div className={styles.label}>Référence (optionnel)</div>
+                  <input className={styles.input} value={intReference} onChange={(e) => setIntReference(e.target.value)} placeholder="Ex: CH-2026-021" />
+                </div>
+              </div>
+
+              <div className={styles.field} style={{ marginTop: 10 }}>
+                <div className={styles.label}>Titre</div>
+                <input className={styles.input} value={rdvSummary} onChange={(e) => setRdvSummary(e.target.value)} placeholder={rdvKind === "intervention" ? "Ex: Dépannage chaudière" : "Ex: Consultation"} />
+              </div>
+
+              {rdvKind === "intervention" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+                  <div className={styles.field}>
+                    <div className={styles.label}>Type d’intervention</div>
+                    <input className={styles.input} value={intType} onChange={(e) => setIntType(e.target.value)} placeholder="Ex: Dépannage / Chantier / Entretien" />
+                  </div>
+                  <div className={styles.field}>
+                    <div className={styles.label}>Statut</div>
+                    <select className={styles.input} value={intStatus} onChange={(e) => setIntStatus(e.target.value)}>
+                      <option value="devis">Devis</option>
+                      <option value="confirmé">Confirmé</option>
+                      <option value="en cours">En cours</option>
+                      <option value="terminé">Terminé</option>
+                      <option value="annulé">Annulé</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
+                <div className={styles.field}>
+                  <div className={styles.label}>Date</div>
+                  <input className={styles.input} value={rdvDate} onChange={(e) => setRdvDate(e.target.value)} placeholder="YYYY-MM-DD" />
+                </div>
+                <div className={styles.field}>
+                  <div className={styles.label}>Début</div>
+                  <input className={styles.input} value={rdvStart} onChange={(e) => setRdvStart(e.target.value)} placeholder="09:00" />
+                </div>
+                <div className={styles.field}>
+                  <div className={styles.label}>Fin</div>
+                  <input className={styles.input} value={rdvEnd} onChange={(e) => setRdvEnd(e.target.value)} placeholder="10:00" />
+                </div>
+              </div>
+
+              <div className={styles.field} style={{ marginTop: 10 }}>
+                <div className={styles.label}>{rdvKind === "intervention" ? "Adresse / lieu" : "Lieu"}</div>
+                <input
+                  className={styles.input}
+                  value={rdvLocation}
+                  onChange={(e) => setRdvLocation(e.target.value)}
+                  placeholder={rdvKind === "intervention" ? "Ex: 12 rue ... , Ville" : "Ex: Cabinet / Visio"}
+                />
+              </div>
+
+              {rdvKind === "intervention" && (
+                <div className={styles.field} style={{ marginTop: 10 }}>
+                  <div className={styles.label}>Adresse chantier (structuré — optionnel)</div>
+                  <input className={styles.input} value={intAddress} onChange={(e) => setIntAddress(e.target.value)} placeholder="Ex: 12 rue … 62600 Berck" />
+                </div>
+              )}
+
+              <div className={styles.field} style={{ marginTop: 10 }}>
+                <div className={styles.label}>Notes</div>
+                <textarea className={styles.textarea} value={rdvNotes} onChange={(e) => setRdvNotes(e.target.value)} placeholder="Détails, consignes, matériel, infos importantes…" />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+                <div className={styles.field}>
+                  <div className={styles.label}>Contact CRM</div>
+                  <select className={styles.input} value={rdvContactId} onChange={(e) => setRdvContactId(e.target.value)}>
+                    <option value="">— Aucun —</option>
+                    {contacts.map((c) => {
+                      const label =
+                        (c.company_name && c.company_name.trim()) ||
+                        [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
+                        c.email ||
+                        "Contact";
+                      return (
+                        <option key={c.id} value={c.id}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  {contactsLoading && <div className={styles.eventSub} style={{ marginTop: 6 }}>Chargement contacts…</div>}
+                </div>
+                <div className={styles.field}>
+                  <div className={styles.label}>Ou ajouter un contact rapide</div>
+                  <input className={styles.input} value={rdvNewContactName} onChange={(e) => setRdvNewContactName(e.target.value)} placeholder="Nom" />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+                    <input className={styles.input} value={rdvNewContactPhone} onChange={(e) => setRdvNewContactPhone(e.target.value)} placeholder="Téléphone" />
+                    <input className={styles.input} value={rdvNewContactEmail} onChange={(e) => setRdvNewContactEmail(e.target.value)} placeholder="Email" />
+                  </div>
+                  <input className={styles.input} style={{ marginTop: 10 }} value={rdvNewContactAddress} onChange={(e) => setRdvNewContactAddress(e.target.value)} placeholder="Adresse" />
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.modalFooter}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {rdvMode === "edit" && (
+                  <button className={styles.btnDanger} onClick={deleteRdv} disabled={rdvSaving}>
+                    Supprimer
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <button className={styles.btnGhost} onClick={() => setRdvOpen(false)} disabled={rdvSaving}>
+                  Annuler
+                </button>
+                <button className={styles.btnPrimary} onClick={submitRdv} disabled={rdvSaving}>
+                  {rdvSaving ? "Enregistrement…" : "Enregistrer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

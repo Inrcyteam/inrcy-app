@@ -78,7 +78,7 @@ useEffect(() => {
       actions: [
         {
           key: "inform" as const,
-          title: "Informations",
+          title: "Informer",
           desc: "Newsletter, actus, nouveautés. Choisissez vos contacts CRM et envoyez.",
           accent: "cyan" as const,
           cta: "Envoyer",
@@ -86,7 +86,7 @@ useEffect(() => {
         },
         {
           key: "thanks" as const,
-          title: "Remerciements",
+          title: "Suivre",
           desc: "Un mail simple après intervention. Sélectionnez des contacts CRM. Lancez.",
           accent: "purple" as const,
           cta: "Envoyer",
@@ -94,7 +94,7 @@ useEffect(() => {
         },
         {
           key: "satisfaction" as const,
-          title: "Enquêtes",
+          title: "Enquêter",
           desc: "Enquête de satisfaction ou demande d’avis. Envoyez aux bons clients.",
           accent: "pink" as const,
           cta: "Envoyer",
@@ -114,7 +114,7 @@ useEffect(() => {
           ],
         },
         {
-          title: "Remerciements",
+          title: "Suivre",
           month: thanksMonth,
           week: n(thanks.week),
           channels: [
@@ -125,20 +125,20 @@ useEffect(() => {
           ],
         },
         {
-          title: "Enquêtes",
+          title: "Enquêter",
           month: satisfactionMonth,
           week: n(satisfaction.week),
           channels: [
             { name: "Envoyés", value: n(satisfaction.sent) },
             { name: "Ouverts", value: n(satisfaction.opened) },
-            { name: "Avis reçus", value: n(satisfaction.reviews) },
+            { name: "Réponses reçues", value: n(satisfaction.reviews) },
             { name: "Scores", value: n(satisfaction.scores) },
           ],
         },
       ],
       tips: [
         {
-          title: "Informations",
+          title: "Informer",
           lines: [
             { left: "1 newsletter / mois", right: "Top rappel" },
             { left: "Sujet clair", right: "Plus d’ouvertures" },
@@ -146,7 +146,7 @@ useEffect(() => {
           ],
         },
         {
-          title: "Remerciements",
+          title: "Suivre",
           lines: [
             { left: "Envoyer à J+1", right: "Meilleur timing" },
             { left: "Message court", right: "Taux de lecture" },
@@ -154,7 +154,7 @@ useEffect(() => {
           ],
         },
         {
-          title: "Enquêtes",
+          title: "Enquêter",
           lines: [
             { left: "Enquête 3 questions", right: "Plus de réponses" },
             { left: "Demande d’avis ciblée", right: "Plus d’avis" },
@@ -202,13 +202,13 @@ useEffect(() => {
   {/* Triangles (non cliquables) */}
   <section className={b.triRow} aria-hidden>
     <div className={[b.triItem, b.triCyan].join(" ")}>
-      <div className={b.triLabel}>INFORMATIONS</div>
+      <div className={b.triLabel}>INFORMER</div>
     </div>
     <div className={[b.triItem, b.triPurple].join(" ")}>
-      <div className={b.triLabel}>REMERCIEMENTS</div>
+      <div className={b.triLabel}>SUIVRE</div>
     </div>
     <div className={[b.triItem, b.triPink].join(" ")}>
-      <div className={b.triLabel}>ENQUÊTES</div>
+      <div className={b.triLabel}>ENQUÊTER</div>
     </div>
   </section>
 
@@ -300,13 +300,14 @@ useEffect(() => {
       {active && (
         <BaseModal
           title={
-            active === "inform" ? "Informations" : active === "thanks" ? "Remerciements" : "Enquêtes"
+            active === "inform" ? "Informer" : active === "thanks" ? "Suivre" : "Enquêter"
           }
+          moduleLabel="Module Fidéliser"
           onClose={() => setActive(null)}
         >
-          {active === "inform" && <InformModal styles={styles} onClose={() => setActive(null)} trackEvent={trackEvent} />}
-          {active === "thanks" && <ThanksModal styles={styles} onClose={() => setActive(null)} trackEvent={trackEvent} />}
-          {active === "satisfaction" && <SatisfactionModal styles={styles} onClose={() => setActive(null)} trackEvent={trackEvent} />}
+          {active === "inform" && <InformModal styles={styles} onClose={() => setActive(null)} />}
+          {active === "thanks" && <ThanksModal styles={styles} onClose={() => setActive(null)} />}
+          {active === "satisfaction" && <SatisfactionModal styles={styles} onClose={() => setActive(null)} />}
         </BaseModal>
       )}
     </main>

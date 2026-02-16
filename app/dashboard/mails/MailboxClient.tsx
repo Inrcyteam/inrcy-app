@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./mails.module.css";
@@ -8,17 +8,68 @@ import SettingsDrawer from "../SettingsDrawer";
 import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
 import { createClient } from "@/lib/supabaseClient";
 
+
+function safeDecode(v: string): string {
+  try {
+    return decodeURIComponent(v);
+  } catch {
+    return v;
+  }
+}
+
+function buildDefaultMailText(opts: { kind: SendType; name?: string; docRef?: string }): string {
+  const name = (opts.name || "").trim();
+  const hello = name ? `Bonjour ${name},` : "Bonjour,";
+
+  const ref = (opts.docRef || "").trim();
+  const refPart = ref ? ` ${ref}` : "";
+
+  if (opts.kind === "facture") {
+    return [
+      hello,
+      "",
+      `Veuillez trouver ci-joint votre facture${refPart}.`,
+      "",
+      "Je reste à votre disposition si besoin.",
+      "",
+      "Cordialement,",
+    ].join("\n");
+  }
+
+  if (opts.kind === "devis") {
+    return [
+      hello,
+      "",
+      `Veuillez trouver ci-joint votre devis${refPart}.`,
+      "",
+      "Je reste disponible pour toute question ou modification.",
+      "",
+      "Cordialement,",
+    ].join("\n");
+  }
+
+  // mail (CRM / generic)
+  return [
+    hello,
+    "",
+    "Je me permets de vous contacter.",
+    "",
+    "Cordialement,",
+  ].join("\n");
+}
+
 // iNrSend : centre d'historique des envois + envoi simple de mails.
 type Folder =
   | "mails"
   | "factures"
   | "devis"
-  | "actualites"
-  | "avis"
-  | "promotion"
-  | "informer"
-  | "remercier"
-  | "satisfaction";
+  | "publications"
+  | "recoltes"
+  | "offres"
+  | "informations"
+  | "suivis"
+  | "enquetes";
+
 
 // Typage historique d'envoi (ancienne table send_items)
 type SendType = "mail" | "facture" | "devis";
@@ -43,6 +94,8 @@ type SendItem = {
   body_html: string | null;
   provider: string | null;
   provider_message_id: string | null;
+  // present in DB (used by Gmail), but not always selected previously
+  provider_thread_id?: string | null;
   error: string | null;
   sent_at: string | null;
   created_at: string;
@@ -54,21 +107,216 @@ type OutboxItem = {
   source: "send_items" | "booster_events" | "fideliser_events";
   folder: Folder;
   provider: string | null; // Gmail / Microsoft / IMAP / Booster / Fidéliser / Admin
-  status: "sent" | "draft" | "error";
+  status: Status;
   created_at: string;
   sent_at?: string | null;
   error?: string | null;
 
   // Affichage liste
   title: string;
+  subTitle?: string;
   target: string;
   preview: string;
 
   // Détails
   detailHtml?: string | null;
   detailText?: string | null;
+  // Optional richer details (when available)
+  subject?: string | null;
+  to?: string | null;
+  from?: string | null;
+  channels?: string[];
+  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null }[];
   raw?: any;
 };
+
+type PublicationParts = {
+  title?: string | null;
+  content?: string | null;
+  cta?: string | null;
+  hashtags?: string[];
+  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null }[];
+};
+
+function splitList(v?: string | null): string[] {
+  if (!v) return [];
+  return String(v)
+    .split(/[;,\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function firstNonEmpty(...vals: any[]) {
+  for (const v of vals) {
+    const s = typeof v === "string" ? v.trim() : "";
+    if (s) return s;
+  }
+  return "";
+}
+
+function extractChannelsFromPayload(payload: any): string[] {
+  if (!payload || typeof payload !== "object") return [];
+
+  const candidates: any[] = [];
+  // common patterns
+  if (Array.isArray(payload.channels)) candidates.push(...payload.channels);
+  if (Array.isArray(payload.platforms)) candidates.push(...payload.platforms);
+  if (Array.isArray(payload.targets)) candidates.push(...payload.targets);
+  if (Array.isArray(payload.destinations)) candidates.push(...payload.destinations);
+
+  const single = firstNonEmpty(payload.channel, payload.platform, payload.target, payload.destination);
+  if (single) candidates.push(single);
+
+  return candidates
+    .flat()
+    .map((x) => (typeof x === "string" ? x : x?.name || x?.label || ""))
+    .map((s: string) => String(s).trim())
+    .filter(Boolean);
+}
+
+function extractMessageFromPayload(payload: any): { html?: string | null; text?: string | null } {
+  if (!payload || typeof payload !== "object") return { text: null };
+
+  const pickStr = (obj: any, ...keys: string[]) => {
+    for (const k of keys) {
+      const v = obj?.[k];
+      if (typeof v === "string" && v.trim()) return v;
+    }
+    return null;
+  };
+
+  const coerceText = (v: any): string | null => {
+    if (typeof v === "string") {
+      const t = v.trim();
+      return t ? t : null;
+    }
+    if (Array.isArray(v)) {
+      const parts = v
+        .map((x) => (typeof x === "string" ? x.trim() : ""))
+        .filter(Boolean);
+      return parts.length ? parts.join("\n") : null;
+    }
+    if (v && typeof v === "object") {
+      return (
+        pickStr(v, "text", "message", "content", "caption", "description", "body_text", "bodyText") ||
+        pickStr(v, "prompt")
+      );
+    }
+    return null;
+  };
+
+  // 1) HTML (flat or nested)
+  const html =
+    pickStr(payload, "html", "body_html", "bodyHtml", "content_html", "contentHtml", "message_html", "messageHtml") ||
+    pickStr(payload?.post, "html", "body_html", "bodyHtml", "content_html", "contentHtml") ||
+    pickStr(payload?.mail, "html", "body_html", "bodyHtml", "content_html", "contentHtml") ||
+    null;
+
+  // 2) Text (flat or nested)
+  let text =
+    pickStr(
+      payload,
+      "text",
+      "body_text",
+      "bodyText",
+      "message",
+      "content",
+      "caption",
+      "description",
+      "prompt"
+    ) ||
+    coerceText(payload?.post?.content) ||
+    coerceText(payload?.post?.text) ||
+    coerceText(payload?.post?.message) ||
+    coerceText(payload?.mail?.text) ||
+    coerceText(payload?.mail?.body_text) ||
+    coerceText(payload?.mail?.bodyText) ||
+    coerceText(payload?.message) ||
+    null;
+
+  // Booster "publish-now" payload: payload.post is an object { title, content, cta, hashtags }
+  if (!text && payload?.post && typeof payload.post === "object") {
+    const title = pickStr(payload.post, "title") || pickStr(payload, "title");
+    const content =
+      coerceText(payload.post.content) || coerceText(payload.post.text) || coerceText(payload.post.caption) || null;
+    const cta = pickStr(payload.post, "cta") || pickStr(payload, "cta");
+    const parts = [title, content, cta].filter(Boolean);
+    if (parts.length) text = parts.join("\n");
+  }
+
+  // If there are hashtags, append them at the end (nice for publications)
+  const tags = (payload as any).hashtags ?? (payload as any)?.post?.hashtags;
+  if (Array.isArray(tags) && tags.length) {
+    const hashLine = tags
+      .map((t) => String(t || "").trim())
+      .filter(Boolean)
+      .join(" ");
+    if (hashLine) text = `${text ? text.trim() + "\n\n" : ""}${hashLine}`;
+  }
+
+  return { html, text };
+}
+
+function extractAttachmentsFromPayload(payload: any): { name: string; type?: string | null; size?: number | null; url?: string | null }[] {
+  if (!payload || typeof payload !== "object") return [];
+  const candidates =
+    payload.attachments ||
+    payload.files ||
+    payload.images ||
+    payload.media ||
+    payload?.post?.attachments ||
+    payload?.post?.files ||
+    payload?.post?.images ||
+    payload?.post?.media ||
+    [];
+
+  if (!Array.isArray(candidates)) return [];
+
+  return candidates
+    .map((a: any) => {
+      if (!a) return null;
+      if (typeof a === "string") return { name: a };
+      const name = a.name || a.filename || a.fileName || a.originalname || a.path || a.url || a.href;
+      if (!name) return null;
+      return {
+        name: String(name),
+        type: a.type || a.mime || a.mimeType || null,
+        size: typeof a.size === "number" ? a.size : typeof a.bytes === "number" ? a.bytes : null,
+        url: a.url || a.href || a.publicUrl || a.public_url || null,
+      };
+    })
+    .filter(Boolean) as any;
+}
+
+function extractPublicationParts(payload: any): PublicationParts {
+  if (!payload || typeof payload !== "object") return {};
+  const post = payload.post && typeof payload.post === "object" ? payload.post : payload;
+
+  const title =
+    (typeof post.title === "string" && post.title.trim() ? post.title.trim() : null) ||
+    (typeof payload.title === "string" && payload.title.trim() ? payload.title.trim() : null) ||
+    null;
+
+  const content =
+    (typeof post.content === "string" && post.content.trim() ? post.content.trim() : null) ||
+    (typeof post.text === "string" && post.text.trim() ? post.text.trim() : null) ||
+    (typeof post.message === "string" && post.message.trim() ? post.message.trim() : null) ||
+    null;
+
+  const cta =
+    (typeof post.cta === "string" && post.cta.trim() ? post.cta.trim() : null) ||
+    (typeof payload.cta === "string" && payload.cta.trim() ? payload.cta.trim() : null) ||
+    null;
+
+  const hashtagsRaw = (post as any).hashtags ?? (payload as any).hashtags;
+  const hashtags = Array.isArray(hashtagsRaw)
+    ? hashtagsRaw.map((x: any) => String(x || "").trim()).filter(Boolean)
+    : [];
+
+  const attachments = extractAttachmentsFromPayload(payload);
+
+  return { title, content, cta, hashtags, attachments };
+}
 
 function folderLabel(f: Folder) {
   switch (f) {
@@ -78,23 +326,35 @@ function folderLabel(f: Folder) {
       return "Factures";
     case "devis":
       return "Devis";
-    case "actualites":
-      return "Actualités";
-    case "avis":
-      return "Avis";
-    case "promotion":
-      return "Promotion";
-    case "informer":
+    // Booster (actions: Publier / Récolter / Offrir)
+    case "publications":
+      return "Publications";
+    case "recoltes":
+      return "Récoltes";
+    case "offres":
+      return "Offres";
+    // Fidéliser (actions: Informer / Suivre / Enquêter)
+    case "informations":
       return "Informations";
-    case "remercier":
-      return "Remerciements";
-    case "satisfaction":
+    case "suivis":
+      return "Suivis";
+    case "enquetes":
       return "Enquêtes";
   }
 }
 
-function folderCountQuery(folder: Folder, item: OutboxItem) {
-  return item.folder === folder;
+type BoxView = "sent" | "drafts" | "trash";
+
+function isVisibleInFolder(folder: Folder, item: OutboxItem, view: BoxView) {
+  if (item.folder !== folder) return false;
+
+  // Brouillons : uniquement pour l'historique send_items.
+  if (view === "drafts") return item.source === "send_items" && item.status === "draft";
+  // Corbeille : tous les éléments "deleted" (send_items + soft-delete local Booster/Fidéliser)
+  if (view === "trash") return item.status === "deleted";
+
+  // Vue principale: uniquement les éléments réellement "envoyés" (ou en erreur), jamais les drafts/supprimés.
+  return item.status !== "draft" && item.status !== "deleted";
 }
 
 function pill(provider?: string | null) {
@@ -114,9 +374,14 @@ export default function MailboxClient() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [folder, setFolder] = useState<Folder>("mails");
+  const [boxView, setBoxView] = useState<BoxView>("sent");
   const [items, setItems] = useState<OutboxItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
 
   const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
@@ -132,6 +397,19 @@ export default function MailboxClient() {
   const [files, setFiles] = useState<File[]>([]);
   const [sendBusy, setSendBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Attachments uploaded by Factures / Devis screens are stored here.
+  const ATTACH_BUCKET = "inrbox_attachments";
+  const lastAttachKeyRef = useRef<string>("");
+
+  // Optional tracking intent passed by Booster / Fidéliser templates.
+  // iNr'Send must only count items that are actually SENT.
+  type PendingTrack = {
+    kind: "booster" | "fideliser";
+    type: string;
+    payload: Record<string, any>;
+  };
+  const [pendingTrack, setPendingTrack] = useState<PendingTrack | null>(null);
 
   // CRM selection (compose)
   type CrmContact = {
@@ -154,6 +432,66 @@ export default function MailboxClient() {
 
   // Used to trigger the hidden file input with a nice button
   const fileInputId = "inrsend-attachments";
+
+
+  // --- Corbeille locale (Booster / Fidéliser) ---
+  // On n'a pas de statut "deleted" côté DB pour booster_events / fideliser_events,
+  // donc on fait un soft-delete côté client (localStorage), par utilisateur.
+  function trashKey(userId: string) {
+    return `inrsend_trash_ids_${userId}`;
+  }
+
+  function readLocalTrash(userId: string): Set<string> {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const raw = window.localStorage.getItem(trashKey(userId));
+      const arr = raw ? (JSON.parse(raw) as string[]) : [];
+      return new Set(Array.isArray(arr) ? arr.filter(Boolean) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function writeLocalTrash(userId: string, ids: Set<string>) {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(trashKey(userId), JSON.stringify(Array.from(ids)));
+    } catch {}
+  }
+
+  async function softDeleteNonSendItem(id: string) {
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth?.user?.id;
+    if (!userId) return;
+    const s = readLocalTrash(userId);
+    s.add(id);
+    writeLocalTrash(userId, s);
+    setItems((prev) => prev.map((x) => (x.id === id ? { ...x, status: "deleted" } : x)));
+  }
+
+  async function restoreNonSendItem(id: string) {
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth?.user?.id;
+    if (!userId) return;
+    const s = readLocalTrash(userId);
+    s.delete(id);
+    writeLocalTrash(userId, s);
+    setItems((prev) => prev.map((x) => (x.id === id ? { ...x, status: "sent" } : x)));
+  }
+
+  async function markLocalTrashOnLoaded(list: OutboxItem[]): Promise<OutboxItem[]> {
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth?.user?.id;
+    if (!userId) return list;
+    const trash = readLocalTrash(userId);
+    if (!trash.size) return list;
+    return list.map((it) => (trash.has(it.id) && it.source !== "send_items" ? { ...it, status: "deleted" } : it));
+  }
+
+  async function moveToTrash(it: OutboxItem) {
+    if (it.source === "send_items") return moveToDeleted(it.id);
+    return softDeleteNonSendItem(it.id);
+  }
 
   function itemMailAccountId(it: OutboxItem): string {
     try {
@@ -212,17 +550,18 @@ export default function MailboxClient() {
       mails: 0,
       factures: 0,
       devis: 0,
-      actualites: 0,
-      avis: 0,
-      promotion: 0,
-      informer: 0,
-      remercier: 0,
-      satisfaction: 0,
+      publications: 0,
+      recoltes: 0,
+      offres: 0,
+      informations: 0,
+      suivis: 0,
+      enquetes: 0,
     };
     for (const it of items) {
-      (Object.keys(c) as Folder[]).forEach((f) => {
-        if (folderCountQuery(f, it)) c[f] += 1;
-      });
+      // Les compteurs en haut représentent les ENVOIS.
+      // Donc: jamais les brouillons, jamais la corbeille.
+      if (it.status === "draft" || it.status === "deleted") continue;
+      c[it.folder] += 1;
     }
     return c;
   }, [items]);
@@ -273,29 +612,36 @@ export default function MailboxClient() {
         return s || fallback;
       };
 
+
+      // Conservation max 30 jours (historique visible)
+      const cutoffIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
       // On charge 3 sources :
       // 1) send_items (mails / factures / devis)
-      // 2) booster_events (actualités / avis / promotion)
-      // 3) fideliser_events (informer / remercier / satisfaction)
+      // 2) booster_events (publications / récoltes / offres)
+      // 3) fideliser_events (informations / suivis / enquêtes)
       const [sendRes, boosterRes, fideliserRes] = await Promise.all([
         supabase
           .from("send_items")
           .select(
-            "id, mail_account_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, error, sent_at, created_at, updated_at"
+            "id, mail_account_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, provider_thread_id, error, sent_at, created_at, updated_at"
           )
           .eq("user_id", auth.user.id)
+          .gte("created_at", cutoffIso)
           .order("created_at", { ascending: false })
           .limit(500),
         supabase
           .from("booster_events")
           .select("id, type, payload, created_at")
           .eq("user_id", auth.user.id)
+          .gte("created_at", cutoffIso)
           .order("created_at", { ascending: false })
           .limit(500),
         supabase
           .from("fideliser_events")
           .select("id, type, payload, created_at")
           .eq("user_id", auth.user.id)
+          .gte("created_at", cutoffIso)
           .order("created_at", { ascending: false })
           .limit(500),
       ]);
@@ -305,18 +651,18 @@ export default function MailboxClient() {
       if (fideliserRes.error) console.error(fideliserRes.error);
 
       const sendItems = ((sendRes.data || []) as SendItem[])
-        // On ne liste pas les supprimés ici (iNrSend = historique utile)
-        .filter((x) => x.status !== "deleted")
         .map<OutboxItem>((x) => {
           const folder: Folder = x.type === "facture" ? "factures" : x.type === "devis" ? "devis" : "mails";
           const title = safeS(x.subject, folder === "factures" ? "Facture" : folder === "devis" ? "Devis" : "(sans objet)");
           const preview = safeS(x.body_text || x.body_html, "").slice(0, 140);
+          // status = draft | sent | deleted ; error est dérivé du champ error
+          const status: Status = x.status === "sent" && x.error ? "error" : (x.status as Status);
           return {
             id: x.id,
             source: "send_items",
             folder,
             provider: x.provider || "Mail",
-            status: x.status === "draft" ? "draft" : x.error ? "error" : "sent",
+            status,
             created_at: x.created_at,
             sent_at: x.sent_at,
             error: x.error,
@@ -325,25 +671,40 @@ export default function MailboxClient() {
             preview,
             detailHtml: x.body_html,
             detailText: x.body_text,
+            subject: x.subject,
+            to: x.to_emails,
             raw: x,
           };
         });
 
       const boosterItems = (boosterRes.data || []).map<OutboxItem>((e: any) => {
         const t = String(e.type || "");
-        const folder: Folder = t === "publish" ? "actualites" : t === "review_mail" ? "avis" : "promotion";
+        const folder: Folder = t === "publish" ? "publications" : t === "review_mail" ? "recoltes" : "offres";
         const payload = (e.payload || {}) as any;
         const title =
-          safeS(payload.title) ||
-          safeS(payload.subject) ||
-          (folder === "actualites" ? "Publication" : folder === "avis" ? "Demande d’avis" : "Promotion");
+  folder === "publications" ? "Publication" :
+  folder === "recoltes" ? "Récolte" :
+  folder === "offres" ? "Offre" :
+  folder === "informations" ? "Information" :
+  folder === "suivis" ? "Suivi" :
+  folder === "enquetes" ? "Enquête" :
+  "Message";
+
+const subTitle = firstNonEmpty(
+  payload?.post?.title,
+  payload?.title,
+  payload?.subject,
+  payload?.post?.subject
+);
+
         const target =
           safeS(payload.channel) ||
           safeS(payload.platform) ||
           safeS(payload.to) ||
           safeS(payload.recipients) ||
-          (folder === "actualites" ? "Google / Réseaux" : "Contacts");
+          (folder === "publications" ? "Google / Réseaux" : "Contacts");
         const preview = safeS(payload.preview || payload.text || payload.message || payload.content, "").slice(0, 140);
+        const extracted = extractMessageFromPayload(payload);
         return {
           id: e.id,
           source: "booster_events",
@@ -352,23 +713,32 @@ export default function MailboxClient() {
           status: "sent",
           created_at: e.created_at,
           title,
+          subTitle: subTitle || undefined,
           target,
           preview,
-          detailText: JSON.stringify(payload, null, 2),
+          detailHtml: extracted.html,
+          detailText: extracted.text,
+          channels: extractChannelsFromPayload(payload),
+          attachments: extractAttachmentsFromPayload(payload),
           raw: e,
         };
       });
 
       const fideliserItems = (fideliserRes.data || []).map<OutboxItem>((e: any) => {
         const t = String(e.type || "");
-        const folder: Folder = t === "newsletter_mail" ? "informer" : t === "thanks_mail" ? "remercier" : "satisfaction";
+        const folder: Folder = t === "newsletter_mail" ? "informations" : t === "thanks_mail" ? "suivis" : "enquetes";
         const payload = (e.payload || {}) as any;
-        const title =
-          safeS(payload.title) ||
-          safeS(payload.subject) ||
-          (folder === "informer" ? "Information" : folder === "remercier" ? "Remerciement" : "Enquête");
+        const title = folder === "informations" ? "Informations" : folder === "suivis" ? "Suivis" : "Enquêtes";
+        // Sous-titre affiché dans la liste (ex: titre / objet)
+        const subTitle = firstNonEmpty(
+          payload?.post?.title,
+          payload?.title,
+          payload?.subject,
+          payload?.post?.subject
+        );
         const target = safeS(payload.to) || safeS(payload.recipients) || "Contacts";
         const preview = safeS(payload.preview || payload.text || payload.message || payload.content, "").slice(0, 140);
+        const extracted = extractMessageFromPayload(payload);
         return {
           id: e.id,
           source: "fideliser_events",
@@ -377,9 +747,13 @@ export default function MailboxClient() {
           status: "sent",
           created_at: e.created_at,
           title,
+          subTitle: subTitle || undefined,
           target,
           preview,
-          detailText: JSON.stringify(payload, null, 2),
+          detailHtml: extracted.html,
+          detailText: extracted.text,
+          channels: extractChannelsFromPayload(payload),
+          attachments: extractAttachmentsFromPayload(payload),
           raw: e,
         };
       });
@@ -393,6 +767,8 @@ export default function MailboxClient() {
         combined = combined.filter((it) => itemMailAccountId(it) === filterAccountId);
       }
 
+      combined = await markLocalTrashOnLoaded(combined);
+
       setItems(combined);
 
       if (combined.length > 0) setSelectedId((prev) => prev || combined[0].id);
@@ -405,45 +781,66 @@ export default function MailboxClient() {
   const visibleItems = useMemo(() => {
     const q = historyQuery.trim().toLowerCase();
     return items.filter((it) => {
-      if (!folderCountQuery(folder, it)) return false;
+      if (!isVisibleInFolder(folder, it, boxView)) return false;
       if (!q) return true;
-      const hay = `${it.title || ""} ${it.target || ""} ${it.preview || ""} ${it.provider || ""}`.toLowerCase();
+      const hay = `${it.title || ""} ${it.subTitle || ""} ${it.target || ""} ${it.preview || ""} ${it.provider || ""}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [items, folder, historyQuery]);
+  }, [items, folder, historyQuery, boxView]);
 
   const selected = useMemo(() => {
     return visibleItems.find((x) => x.id === selectedId) || null;
   }, [visibleItems, selectedId]);
 
+  const detailsItem = useMemo(() => {
+    if (!detailsId) return null;
+    return items.find((x) => x.id === detailsId) || null;
+  }, [items, detailsId]);
+
+  const detailsAccountLabel = useMemo(() => {
+    if (!detailsItem) return "";
+    const id = itemMailAccountId(detailsItem);
+    if (!id) return "";
+    const acc = mailAccounts.find((a) => a.id === id);
+    if (!acc) return "";
+    return (acc.display_name ? `${acc.display_name} — ` : "") + acc.email_address;
+  }, [detailsItem, mailAccounts]);
+
   const selectedAccount = useMemo(() => {
     return mailAccounts.find((a) => a.id === selectedAccountId) || null;
   }, [mailAccounts, selectedAccountId]);
 
+  
   const toolCfg = useMemo(() => {
     switch (folder) {
       case "mails":
-        return { label: "✉️ Envoyer un mail", href: null as string | null };
+        return { label: "✉️ Envoyer", href: null as string | null };
       case "factures":
-        return { label: "📄 Ouvrir Factures", href: "/dashboard/factures" };
+        return { label: "📄 Factures", href: "/dashboard/factures" };
       case "devis":
-        return { label: "🧾 Ouvrir Devis", href: "/dashboard/devis" };
-      case "actualites":
-        return { label: "📣 Ouvrir Actualités", href: "/dashboard/booster?action=publish" };
-      case "avis":
-        return { label: "⭐ Ouvrir Avis", href: "/dashboard/booster?action=reviews" };
-      case "promotion":
-        return { label: "🏷️ Ouvrir Promotion", href: "/dashboard/booster?action=promo" };
-      case "informer":
-        return { label: "📰 Ouvrir Informations", href: "/dashboard/fideliser?action=inform" };
-      case "remercier":
-        return { label: "🙏 Ouvrir Remerciements", href: "/dashboard/fideliser?action=thanks" };
-      case "satisfaction":
-        return { label: "😊 Ouvrir Enquêtes", href: "/dashboard/fideliser?action=satisfaction" };
+        return { label: "🧾 Devis", href: "/dashboard/devis" };
+
+      // Booster
+      case "publications":
+        return { label: "📣 Publier", href: "/dashboard/booster?action=publier" };
+      case "recoltes":
+        return { label: "⭐ Récolter", href: "/dashboard/booster?action=recolter" };
+      case "offres":
+        return { label: "🏷️ Offrir", href: "/dashboard/booster?action=offrir" };
+
+      // Fidéliser
+      case "informations":
+        return { label: "📰 Informer", href: "/dashboard/fideliser?action=informer" };
+      case "suivis":
+        return { label: "🤝 Suivre", href: "/dashboard/fideliser?action=suivre" };
+      case "enquetes":
+        return { label: "😊 Enquêter", href: "/dashboard/fideliser?action=enqueter" };
+
       default:
         return { label: "Ouvrir l’outil", href: null as string | null };
     }
   }, [folder]);
+
 
   // initial
   useEffect(() => {
@@ -467,15 +864,177 @@ export default function MailboxClient() {
       mails: "mails",
       factures: "factures",
       devis: "devis",
-      actualites: "actualites",
-      actus: "actualites",
-      avis: "avis",
-      promotion: "promotion",
-      informer: "informer",
-      remercier: "remercier",
-      satisfaction: "satisfaction",
+      publications: "publications",
+      recoltes: "recoltes",
+      offres: "offres",
+      informations: "informations",
+      suivis: "suivis",
+      enquetes: "enquetes",
     };
     if (q && allowed[q]) setFolder(allowed[q]);
+  }, [searchParams]);
+
+  // Open compose + prefill basic fields from URL params.
+  // Used by:
+  // - CRM: /dashboard/mails?compose=1&to=...&from=crm
+  // - Factures / Devis: /dashboard/mails?compose=1&to=...&attachKey=...&attachName=...
+  useEffect(() => {
+    const openRaw = (searchParams?.get("compose") || "").toLowerCase();
+    const shouldOpen = openRaw !== "0" && openRaw !== "false" && openRaw !== "";
+    if (!shouldOpen) return;
+
+    const toParam = safeDecode(searchParams?.get("to") || "").trim();
+    const subjParam = safeDecode(searchParams?.get("subject") || "");
+    const textParam = safeDecode(searchParams?.get("text") || "");
+    const nameParam = safeDecode(
+      searchParams?.get("name") || searchParams?.get("clientName") || searchParams?.get("contactName") || ""
+    ).trim();
+    const attachKey = safeDecode(searchParams?.get("attachKey") || "").trim();
+    const attachName = safeDecode(searchParams?.get("attachName") || "").trim();
+
+    // Determine composer type (optional).
+    // If not provided explicitly, we infer it from the attachment path.
+    const typeParam = (searchParams?.get("type") || searchParams?.get("sendType") || "").toLowerCase();
+    let nextType: SendType = "mail";
+    if (typeParam === "facture") nextType = "facture";
+    else if (typeParam === "devis") nextType = "devis";
+    else if (attachKey.includes("/factures/") || attachKey.includes("/facture/")) nextType = "facture";
+    else if (attachKey.includes("/devis/")) nextType = "devis";
+    setComposeType(nextType);
+
+    if (toParam) setTo(toParam);
+    if (subjParam) setSubject(subjParam);
+    if (textParam) setText(textParam);
+
+    // If the caller didn't provide a subject/body, we inject a friendly default template.
+    // This keeps the connected tools consistent (CRM/Devis/Factures all go through iNr'SEND compose).
+    const docRef = (attachName || attachKey.split("/").pop() || "").replace(/\.pdf$/i, "");
+    if (!subjParam?.trim()) {
+      if (nextType === "facture") setSubject((prev) => (prev?.trim() ? prev : `Envoi de votre facture ${docRef || ""}`.trim()));
+      else if (nextType === "devis") setSubject((prev) => (prev?.trim() ? prev : `Envoi de votre devis ${docRef || ""}`.trim()));
+      else if (nameParam) setSubject((prev) => (prev?.trim() ? prev : `Message pour ${nameParam}`));
+    }
+    if (!textParam?.trim()) {
+      setText((prev) => (prev?.trim() ? prev : buildDefaultMailText({ kind: nextType, name: nameParam, docRef })));
+    }
+
+    // Open the modal.
+    setComposeOpen(true);
+
+    // If we have an attachment key, download it and prefill as File.
+    // Guard against re-downloading the same key on re-renders.
+    const run = async () => {
+      if (!attachKey) return;
+      if (lastAttachKeyRef.current === attachKey) return;
+      lastAttachKeyRef.current = attachKey;
+
+      try {
+        const { data, error } = await supabase.storage.from(ATTACH_BUCKET).download(attachKey);
+        if (error || !data) throw error || new Error("download_failed");
+
+        const inferredName = attachName || attachKey.split("/").pop() || "document.pdf";
+        const blob = data instanceof Blob ? data : new Blob([data as any]);
+        const file = new File([blob], inferredName, { type: blob.type || "application/pdf" });
+        setFiles((prev) => {
+          // Avoid duplicates
+          const already = prev.some((f) => f.name === file.name && f.size === file.size);
+          return already ? prev : [file, ...prev];
+        });
+
+        // Helpful default subject if the caller didn't prefill it.
+        setSubject((prev) => {
+          if (prev?.trim()) return prev;
+          if (nextType === "facture") return `Facture ${inferredName.replace(/\.pdf$/i, "")}`;
+          if (nextType === "devis") return `Devis ${inferredName.replace(/\.pdf$/i, "")}`;
+          return prev;
+        });
+      } catch (e) {
+        console.error("Attachment prefill failed", e);
+        // Non-blocking: user can still send a mail without the attachment.
+        setToast("Impossible de charger la pièce jointe automatiquement.");
+      }
+    };
+
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+    // Prefill compose modal from template modules (Booster / Fidéliser).
+  // Usage:
+  // - /dashboard/mails?folder=offres&template_key=...&prefill_subject=...&prefill_text=...&compose=1
+  // If template_key is provided, we render placeholders server-side from the user's profile/activity + connected tools.
+  useEffect(() => {
+    const preSubjectRaw = searchParams?.get("prefill_subject") || "";
+    const preTextRaw = searchParams?.get("prefill_text") || "";
+    const templateKey = searchParams?.get("template_key") || "";
+    const open = (searchParams?.get("compose") || "").toLowerCase();
+
+    // Optional tracking intent (sent from Booster/Fidéliser modules)
+    const trackKind = (searchParams?.get("track_kind") || "").toLowerCase();
+    const trackType = searchParams?.get("track_type") || "";
+    const trackPayloadRaw = searchParams?.get("track_payload") || "";
+
+    if ((trackKind === "booster" || trackKind === "fideliser") && trackType) {
+      let payload: Record<string, any> = {};
+      try {
+        payload = trackPayloadRaw ? (JSON.parse(safeDecode(trackPayloadRaw)) as any) : {};
+      } catch {
+        payload = {};
+      }
+      setPendingTrack({ kind: trackKind as any, type: trackType, payload });
+
+      // Remove tracking params from the URL to avoid double-counting if the user later sends another email.
+      try {
+        const q = new URLSearchParams(searchParams?.toString() || "");
+        q.delete("track_kind");
+        q.delete("track_type");
+        q.delete("track_payload");
+        router.replace(`/dashboard/mails?${q.toString()}`);
+      } catch {
+        // ignore
+      }
+    }
+
+    // Only prefill when something is provided
+    if (!preSubjectRaw && !preTextRaw && !templateKey) return;
+
+    const preSubject = safeDecode(preSubjectRaw);
+    const preText = safeDecode(preTextRaw);
+
+    const run = async () => {
+      // If we have a template key, ask the server to render placeholders + compute links.
+      if (templateKey) {
+        try {
+          const r = await fetch("/api/templates/render", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              template_key: templateKey,
+              subject_override: preSubject,
+              body_override: preText,
+            }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (j?.subject) setSubject(String(j.subject));
+          else if (preSubject) setSubject(preSubject);
+
+          if (j?.body_text) setText(String(j.body_text));
+          else if (preText) setText(preText);
+        } catch {
+          if (preSubject) setSubject(preSubject);
+          if (preText) setText(preText);
+        }
+      } else {
+        if (preSubject) setSubject(preSubject);
+        if (preText) setText(preText);
+      }
+
+      setComposeType("mail");
+      // Open compose by default (compose=1), but also open when not specified (better UX)
+      if (open !== "0" && open !== "false") setComposeOpen(true);
+    };
+
+    run();
   }, [searchParams]);
 
   async function loadCrmContacts() {
@@ -535,6 +1094,8 @@ export default function MailboxClient() {
 
   function updateFolder(next: Folder) {
     setFolder(next);
+    // quand on change de dossier, on revient à la vue principale
+    setBoxView("sent");
     router.replace(`/dashboard/mails?folder=${encodeURIComponent(next)}`);
     // reset selection to first item in that folder
     setSelectedId(null);
@@ -611,6 +1172,30 @@ export default function MailboxClient() {
         return;
       }
 
+      // Log Booster/Fidéliser event ONLY after a successful send.
+      if (pendingTrack) {
+        try {
+          await fetch(`/api/${pendingTrack.kind}/events`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: pendingTrack.type,
+              payload: {
+                ...(pendingTrack.payload || {}),
+                // Useful context for debugging/analytics
+                mail_account_id: selectedAccount.id,
+                to: recipients,
+                subject: subject.trim() || "(sans objet)",
+              },
+            }),
+          });
+        } catch {
+          // Tracking must never block sending
+        } finally {
+          setPendingTrack(null);
+        }
+      }
+
       setToast("Envoyé ✅");
       setComposeOpen(false);
       resetCompose();
@@ -639,6 +1224,24 @@ export default function MailboxClient() {
     const nextStatus: Status = data.status === "deleted" ? "sent" : data.status;
     const { error: e2 } = await supabase.from("send_items").update({ status: nextStatus }).eq("id", id);
     if (!e2) await loadHistory();
+  }
+
+  async function deleteForever(id: string) {
+    const ok = window.confirm("Supprimer définitivement ce message ? Cette action est irréversible.");
+    if (!ok) return;
+    const { error } = await supabase.from("send_items").delete().eq("id", id);
+    if (!error) {
+      setSelectedId(null);
+      setDetailsOpen(false);
+      setDetailsId(null);
+      await loadHistory();
+    }
+  }
+
+  function openDetails(it: OutboxItem) {
+    setSelectedId(it.id);
+    setDetailsId(it.id);
+    setDetailsOpen(true);
   }
 
   async function openItem(it: OutboxItem) {
@@ -721,12 +1324,12 @@ export default function MailboxClient() {
                   "mails",
                   "factures",
                   "devis",
-                  "actualites",
-                  "avis",
-                  "promotion",
-                  "informer",
-                  "remercier",
-                  "satisfaction",
+                  "publications",
+                  "recoltes",
+                  "offres",
+                  "informations",
+                  "suivis",
+                  "enquetes",
                 ] as Folder[]).map((f) => {
                   const active = f === folder;
                   return (
@@ -760,12 +1363,12 @@ export default function MailboxClient() {
                 "mails",
                 "factures",
                 "devis",
-                "actualites",
-                "avis",
-                "promotion",
-                "informer",
-                "remercier",
-                "satisfaction",
+                "publications",
+                "recoltes",
+                "offres",
+                "informations",
+                "suivis",
+                "enquetes",
               ] as Folder[]).map((f) => {
                 const active = f === folder;
                 return (
@@ -795,50 +1398,76 @@ export default function MailboxClient() {
                 <div className={styles.searchIconRight}>⌕</div>
               </div>
 
-              {toolCfg.href ? (
-                <Link className={styles.toolbarBtn} href={toolCfg.href} title={toolCfg.label}>
-                  {toolCfg.label}
-                </Link>
-              ) : (
-                <button
-                  className={styles.toolbarBtn}
-                  onClick={() => {
-                    resetCompose();
-                    setComposeOpen(true);
+              {/* 🔁 Inversion demandée : Filtrer prend la place du bouton d'action */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div className={styles.toolbarInfo}>Filtrer</div>
+                <select
+                  value={filterAccountId}
+                  onChange={(e) => setFilterAccountId(e.target.value)}
+                  style={{
+                    background: "rgba(0,0,0,0.22)",
+                    border: "1px solid rgba(255,255,255,0.18)",
+                    color: "rgba(255,255,255,0.9)",
+                    borderRadius: 12,
+                    padding: "8px 10px",
+                    minWidth: 220,
                   }}
-                  type="button"
+                  title="Filtrer par boîte d’envoi"
                 >
-                  {toolCfg.label}
-                </button>
-              )}
+                  <option value="">Toutes les boîtes</option>
+                  {mailAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {(a.display_name ? `${a.display_name} — ` : "") + a.email_address + ` (${a.provider})`}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <div className={styles.toolbarActions}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.78)" }}>Filtrer :</div>
-                  <select
-                    value={filterAccountId}
-                    onChange={(e) => setFilterAccountId(e.target.value)}
-                    style={{
-                      background: "rgba(0,0,0,0.22)",
-                      border: "1px solid rgba(255,255,255,0.18)",
-                      color: "rgba(255,255,255,0.9)",
-                      borderRadius: 12,
-                      padding: "8px 10px",
-                      minWidth: 260,
+                {/* 🔁 Inversion demandée : bouton d'action passe à droite, à la place de Filtrer */}
+                {toolCfg.href ? (
+                  <Link className={styles.toolbarBtn} href={toolCfg.href} title={toolCfg.label}>
+                    {toolCfg.label}
+                  </Link>
+                ) : (
+                  <button
+                    className={styles.toolbarBtn}
+                    onClick={() => {
+                      resetCompose();
+                      setComposeOpen(true);
                     }}
-                    title="Filtrer par boîte d’envoi"
+                    type="button"
                   >
-                    <option value="">Toutes les boîtes</option>
-                    {mailAccounts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {(a.display_name ? `${a.display_name} — ` : "") + a.email_address + ` (${a.provider})`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    {toolCfg.label}
+                  </button>
+                )}
 
-                <button className={styles.toolbarBtn} onClick={loadHistory} type="button">
-                  ↻ Actualiser
+                <button
+                  className={`${styles.toolbarBtn} ${boxView === "drafts" ? styles.toolbarBtnActive : ""}`}
+                  onClick={() => setBoxView((v) => (v === "drafts" ? "sent" : "drafts"))}
+                  type="button"
+                  title="Brouillons"
+                >
+                  Brouillons
+                </button>
+
+                <button
+                  className={`${styles.toolbarBtn} ${boxView === "trash" ? styles.toolbarBtnActive : ""}`}
+                  onClick={() => setBoxView((v) => (v === "trash" ? "sent" : "trash"))}
+                  type="button"
+                  title="Corbeille"
+                >
+                  Corbeille
+                </button>
+
+                <button
+                  className={`${styles.toolbarBtn} ${styles.iconBtn}`}
+                  onClick={loadHistory}
+                  type="button"
+                  title="Actualiser"
+                  aria-label="Actualiser"
+                >
+                  ↻
                 </button>
               </div>
             </div>
@@ -853,23 +1482,104 @@ export default function MailboxClient() {
                   {visibleItems.map((it) => {
                     const active = it.id === selectedId;
                     const p = pill(it.provider);
+
+                    const accountLabel = (() => {
+                      const acc = mailAccounts.find((a) => a.id === itemMailAccountId(it));
+                      if (!acc) return "";
+                      return (acc.display_name ? `${acc.display_name} — ` : "") + acc.email_address;
+                    })();
+
+                    const midLabel =
+                      it.source === "send_items"
+                        ? accountLabel
+                        : (it.channels && it.channels.length ? it.channels.join(" / ") : it.target);
+
+                    // NOTE: this is a clickable row that contains action buttons.
+                    // Using a <button> wrapper would create invalid HTML (nested buttons)
+                    // and can trigger hydration errors in Next.js.
                     return (
-                      <button
+                      <div
                         key={it.id}
-                        className={active ? styles.itemActive : styles.item}
+                        className={`${styles.item} ${active ? styles.itemActive : ""}`}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => openItem(it)}
-                        type="button"
+                        onDoubleClick={() => openDetails(it)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openItem(it);
+                          }
+                        }}
                       >
                         <div className={styles.itemTop}>
                           <div className={styles.fromRow}>
                             <div className={styles.from}>{(it.title || "(sans objet)").slice(0, 70)}</div>
                             <span className={`${styles.badge} ${p.cls}`}>{p.label}</span>
                           </div>
-                          <div className={styles.date}>{new Date(it.created_at).toLocaleString()}</div>
+
+                          {/* Au centre
+
+                          {it.subTitle ? (
+                            <div className={styles.itemSubTitle} title={it.subTitle}>
+                              {it.subTitle}
+                            </div>
+                          ) : null}
+
+                          {/* Au centre : boîte d'envoi (mails/factures/devis) ou canaux (publications, etc.) */}
+                          <div className={styles.itemMid} title={midLabel || it.target}>
+                            {midLabel || ""}
+                          </div>
+
+                          <div className={styles.itemRight}>
+                            <div className={styles.date}>{new Date(it.created_at).toLocaleString()}</div>
+
+
+                            <div className={styles.rowActions}>
+                              <button
+                                type="button"
+                                className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost}`}
+                                title="Ouvrir"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  openDetails(it);
+                                }}
+                              >
+                                ↗
+                              </button>
+
+                              {it.status === "deleted" ? (
+                                <button
+                                  type="button"
+                                  className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost}`}
+                                  title="Restaurer"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    it.source === "send_items" ? restoreFromDeleted(it.id) : restoreNonSendItem(it.id);
+                                  }}
+                                >
+                                  ↩
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className={`${styles.iconBtnSmall} ${styles.iconBtnSmallDanger}`}
+                                  title="Supprimer"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    moveToTrash(it);
+                                  }}
+                                >
+                                  🗑
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div className={styles.subject}>{it.target}</div>
-                        <div className={styles.preview}>{it.preview}</div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -877,71 +1587,250 @@ export default function MailboxClient() {
             </div>
           </div>
 
-          {/* Details */}
-          <div className={`${styles.card} ${styles.detailsCard}`}>
-            <div className={styles.cardHeader} style={{ justifyContent: "space-between" }}>
-              <div className={styles.cardTitle} style={{ marginLeft: 38 }}>Détails</div>
-              {selected ? rememberActions(selected, moveToDeleted, restoreFromDeleted) : <span style={{ width: 38 }} />}
-            </div>
+        </div>
 
-            <div className={styles.scrollArea} style={{ padding: 14 }}>
-              {!selected ? (
-                <div style={{ color: "rgba(255,255,255,0.65)" }}>Sélectionne un élément.</div>
-              ) : (
-                <>
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.95)" }}>{selected.title || "(sans objet)"}</div>
-                    <span className={`${styles.badge} ${pill(selected.provider).cls}`}>{pill(selected.provider).label}</span>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                      {selected.status === "draft"
-                        ? "Brouillon"
-                        : selected.sent_at
-                        ? `Envoyé • ${new Date(selected.sent_at).toLocaleString()}`
-                        : `Historique • ${new Date(selected.created_at).toLocaleString()}`}
-                    </span>
-                  </div>
-
-                  <div style={{ marginTop: 10, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>
-                    <b>À :</b> {selected.target}
-                  </div>
-
-                  {selected.error ? (
-                    <div style={{ marginTop: 10, color: "rgba(255,80,80,0.9)", fontSize: 13 }}>
-                      <b>Erreur :</b> {selected.error}
-                    </div>
+        {/* Details modal (double-clic sur un message) */}
+        {detailsOpen ? (
+          <div className={styles.modalOverlay} onClick={() => setDetailsOpen(false)}>
+            <div className={`${styles.modalCard} ${styles.detailsModalCard}`} onClick={(e) => e.stopPropagation()}>
+              <div className={styles.modalHeader}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <div className={styles.modalTitle}>Détails</div>
+                  {detailsItem ? (
+                    <>
+                      <span className={`${styles.badge} ${pill(detailsItem.provider).cls}`}>{pill(detailsItem.provider).label}</span>
+                      {detailsItem.source === "send_items" && detailsAccountLabel ? (
+                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>• {detailsAccountLabel}</span>
+                      ) : null}
+                    </>
                   ) : null}
+                </div>
 
-                  <div
-                    style={{
-                      marginTop: 12,
-                      borderTop: "1px solid rgba(255,255,255,0.12)",
-                      paddingTop: 12,
-                      maxHeight: 120,
-                      overflowY: "auto",
-                    }}
-                  >
-                    {selected.detailHtml ? (
-                      <div
-                        style={{ color: "rgba(255,255,255,0.86)", fontSize: 14, lineHeight: 1.55 }}
-                        dangerouslySetInnerHTML={{ __html: selected.detailHtml }}
-                      />
-                    ) : (
-                      <pre style={{ whiteSpace: "pre-wrap", color: "rgba(255,255,255,0.86)", fontSize: 14, lineHeight: 1.55 }}>
-                        {selected.detailText || ""}
-                      </pre>
-                    )}
-                  </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {detailsItem ? rememberActions(detailsItem, moveToDeleted, restoreFromDeleted, deleteForever) : null}
+                  <button className={styles.btnGhost} onClick={() => setDetailsOpen(false)} type="button">
+                    ✕
+                  </button>
+                </div>
+              </div>
 
-                  {selected.status === "draft" ? (
-                    <div style={{ marginTop: 14, color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
-                      Astuce : clique sur ce brouillon dans la liste pour l’ouvrir en édition.
+              <div className={styles.modalBody}>
+                {!detailsItem ? (
+                  <div style={{ color: "rgba(255,255,255,0.65)" }}>Sélectionne un élément.</div>
+                ) : (
+                  <>
+                    <div className={styles.detailsLayout}>
+                      {/* Meta */}
+                      <div className={styles.detailsMeta}>
+                        <div className={styles.detailsTitle}>{detailsItem.title || "(sans objet)"}</div>
+                        <div className={styles.detailsSub}>
+                          {detailsItem.status === "draft"
+                            ? "Brouillon"
+                            : detailsItem.status === "deleted"
+                            ? "Corbeille"
+                            : detailsItem.sent_at
+                            ? `Envoyé • ${new Date(detailsItem.sent_at).toLocaleString()}`
+                            : `Historique • ${new Date(detailsItem.created_at).toLocaleString()}`}
+                        </div>
+
+                        {detailsItem.source === "send_items" ? (
+                          <div className={styles.metaGrid}>
+                            <div className={styles.metaRow}>
+                              <div className={styles.metaKey}>Boîte d’envoi</div>
+                              <div className={styles.metaVal}>{detailsAccountLabel || "—"}</div>
+                            </div>
+                            <div className={styles.metaRow}>
+                              <div className={styles.metaKey}>Destinataires</div>
+                              <div className={styles.metaVal}>
+                                {splitList(detailsItem.to || detailsItem.target).join(", ") || "—"}
+                              </div>
+                            </div>
+                            <div className={styles.metaRow}>
+                              <div className={styles.metaKey}>Objet</div>
+                              <div className={styles.metaVal}>{detailsItem.subject || detailsItem.title || "—"}</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={styles.metaGrid}>
+                            <div className={styles.metaRow}>
+                              <div className={styles.metaKey}>Canaux</div>
+                              <div className={styles.metaVal}>
+                                {(detailsItem.channels && detailsItem.channels.length
+                                  ? detailsItem.channels
+                                  : [detailsItem.target]
+                                )
+                                  .filter(Boolean)
+                                  .join(" / ") || "—"}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {detailsItem.error ? (
+                          <div className={styles.detailsError}>
+                            <b>Erreur :</b> {detailsItem.error}
+                          </div>
+                        ) : null}
+
+                        {/* PJ (best-effort) */}
+                        {detailsItem.attachments && detailsItem.attachments.length ? (
+                          <div className={styles.attachmentsBox}>
+                            <div className={styles.attachmentsTitle}>Pièces jointes</div>
+                            <div className={styles.attachmentsList}>
+                              {detailsItem.attachments.map((a, idx) => (
+                                <div key={idx} className={styles.attachmentItem}>
+                                  <span className={styles.attachmentName}>{a.name}</span>
+                                  {a.type ? <span className={styles.attachmentMeta}>{a.type}</span> : null}
+                                  {typeof a.size === "number" ? (
+                                    <span className={styles.attachmentMeta}>{Math.round(a.size / 1024)} Ko</span>
+                                  ) : null}
+                                  {a.url ? (
+                                    <a className={styles.attachmentLink} href={a.url} target="_blank" rel="noreferrer">
+                                      Ouvrir
+                                    </a>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {/* Message */}
+                      <div className={styles.detailsMessage}>
+                        <div className={styles.messageHeaderRow}>
+                          <div className={styles.messageHeaderTitle}>Message</div>
+                          {/* Bouton supprimer à droite du message (rappel) */}
+                          {detailsItem.status !== "deleted" ? (
+                            <button
+                              type="button"
+                              className={styles.btnDangerSmall}
+                              onClick={() => moveToTrash(detailsItem)}
+                              title="Supprimer"
+                            >
+                              🗑 Supprimer
+                            </button>
+                          ) : null}
+                        </div>
+
+                        {/* Détails enrichis pour Publication (Booster) */}
+                        {detailsItem.source !== "send_items" ? (() => {
+                          const payload = (detailsItem as any)?.raw?.payload || null;
+                          const parts = extractPublicationParts(payload);
+                          const hasAny = !!(parts.title || parts.content || parts.cta || (parts.hashtags && parts.hashtags.length) || (parts.attachments && parts.attachments.length));
+                          if (!hasAny) return null;
+                          return (
+                            <div className={styles.publicationParts}>
+                              {parts.title ? (
+                                <div className={styles.publicationTitle}>
+                                  <div className={styles.publicationLabel}>Titre</div>
+                                  <div className={styles.publicationValue}>{parts.title}</div>
+                                </div>
+                              ) : null}
+
+                              {parts.content ? (
+                                <div className={styles.publicationContent}>
+                                  <div className={styles.publicationLabel}>Contenu</div>
+                                  <pre className={styles.publicationPre}>{parts.content}</pre>
+                                </div>
+                              ) : null}
+
+                              {parts.cta ? (
+                                <div className={styles.publicationCta}>
+                                  <div className={styles.publicationLabel}>CTA</div>
+                                  <div className={styles.publicationCtaBox}>{parts.cta}</div>
+                                </div>
+                              ) : null}
+
+                              {parts.hashtags && parts.hashtags.length ? (
+                                <div className={styles.publicationTags}>
+                                  <div className={styles.publicationLabel}>Hashtags</div>
+                                  <div className={styles.publicationTagRow}>
+                                    {parts.hashtags.map((t, idx) => (
+                                      <span key={idx} className={styles.publicationTag}>#{t.replace(/^#/, "")}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {parts.attachments && parts.attachments.length ? (
+                                <div className={styles.publicationAttachments}>
+                                  <div className={styles.publicationLabel}>Pièces jointes</div>
+                                  <div className={styles.attachmentsList}>
+                                    {parts.attachments.map((a, idx) => (
+                                      <div key={idx} className={styles.attachmentItem}>
+                                        <span className={styles.attachmentName}>{a.name}</span>
+                                        {a.type ? <span className={styles.attachmentMeta}>{a.type}</span> : null}
+                                        {typeof a.size === "number" ? (
+                                          <span className={styles.attachmentMeta}>{Math.round(a.size / 1024)} Ko</span>
+                                        ) : null}
+                                        {a.url ? (
+                                          <a className={styles.attachmentLink} href={a.url} target="_blank" rel="noreferrer">
+                                            Ouvrir
+                                          </a>
+                                        ) : null}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })() : null}
+                        {(() => {
+                          if (!detailsItem) return null;
+
+                          if (detailsItem.source === "send_items") {
+                            return (
+                              <div className={styles.messageBody}>
+                                {detailsItem.detailHtml ? (
+                                  <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
+                                ) : (
+                                  <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
+                                )}
+                              </div>
+                            );
+                          }
+
+                          const payload = (detailsItem as any)?.raw?.payload || null;
+                          const parts = extractPublicationParts(payload);
+                          const hasStructured = !!(parts.title || parts.content || parts.cta || (parts.hashtags && parts.hashtags.length) || (parts.attachments && parts.attachments.length));
+
+                          const fallbackTitle = firstNonEmpty(payload?.post?.title, payload?.subject, payload?.title);
+                          const fallbackContent = firstNonEmpty(payload?.post?.content, payload?.post?.text, payload?.content, payload?.text, payload?.message);
+                          const fallbackCta = firstNonEmpty(payload?.post?.cta, payload?.cta);
+                          const fallbackHashtags = Array.isArray(payload?.post?.hashtags || payload?.hashtags)
+                            ? (payload?.post?.hashtags || payload?.hashtags).map((x: any) => String(x || "").trim()).filter(Boolean)
+                            : [];
+                          const fallbackAttachments = extractAttachmentsFromPayload(payload);
+                          const hasFallbackStructured = !!(fallbackTitle || fallbackContent || fallbackCta || fallbackHashtags.length || fallbackAttachments.length);
+
+                          if (hasStructured || hasFallbackStructured) return null;
+
+                          return (
+                            <div className={styles.messageBody}>
+                              {detailsItem.detailHtml ? (
+                                <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
+                              ) : (
+                                <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
-                  ) : null}
-                </>
-              )}
+
+                    {detailsItem.source === "send_items" && (detailsItem as any).raw?.status === "draft" ? (
+                      <div style={{ marginTop: 14, color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
+                        Astuce : clique sur ce brouillon dans la liste pour l’ouvrir en édition.
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
 
         {/* Compose modal */}
         {composeOpen ? (
@@ -1292,19 +2181,31 @@ export default function MailboxClient() {
 function rememberActions(
   selected: OutboxItem,
   moveToDeleted: (id: string) => Promise<void>,
-  restoreFromDeleted: (id: string) => Promise<void>
+  restoreFromDeleted: (id: string) => Promise<void>,
+  deleteForever?: (id: string) => Promise<void>
 ) {
   if (!selected) return null;
   // Suppression/restauration uniquement sur l'historique "send_items".
   if (selected.source !== "send_items") return null;
   if (selected.status === "error") return null;
 
-  // Si un jour on ré-affiche les supprimés, on aura déjà le bouton.
-  if ((selected as any).raw?.status === "deleted") {
+  if (selected.status === "deleted" || (selected as any).raw?.status === "deleted") {
     return (
-      <button className={styles.btnPrimary} onClick={() => restoreFromDeleted(selected.id)} type="button">
-        Restaurer
-      </button>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <button className={styles.btnPrimary} onClick={() => restoreFromDeleted(selected.id)} type="button">
+          Restaurer
+        </button>
+        {deleteForever ? (
+          <button
+            className={`${styles.btnGhost} ${styles.trashBtn}`}
+            onClick={() => deleteForever(selected.id)}
+            type="button"
+            title="Supprimer définitivement"
+          >
+            Supprimer
+          </button>
+        ) : null}
+      </div>
     );
   }
 

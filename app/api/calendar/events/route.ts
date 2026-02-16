@@ -132,7 +132,256 @@ const { searchParams } = new URL(req.url);
     end: e.end?.dateTime ?? e.end?.date ?? null,
     location: e.location ?? null,
     htmlLink: e.htmlLink ?? null,
+    description: e.description ?? null,
+    inrcy: parseInrcyBlock(e.description ?? null),
   }));
 
   return NextResponse.json({ ok: true, timeMin, timeMax, events });
+}
+
+
+
+type CreateEventBody = {
+  summary?: string;
+  description?: string;
+  location?: string;
+  start?: string; // ISO datetime
+  end?: string;   // ISO datetime
+  allDay?: boolean;
+  date?: string;  // YYYY-MM-DD if allDay
+  // iNrCy: meta métier (permet de transformer l'agenda en planning d'interventions)
+  inrcy?: {
+    kind?: "intervention" | "agenda";
+    intervention?: {
+      type?: string; // ex: "Dépannage", "Chantier", "Consultation"...
+      status?: string; // ex: "devis", "confirmé", "en cours", "terminé"...
+      address?: string;
+      city?: string;
+      postal_code?: string;
+      reference?: string; // ref interne (optionnel)
+    };
+  };
+  contact?: {
+    id?: string;
+    display_name?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+  };
+};
+
+function assertIsoDateTime(v: any) {
+  if (typeof v !== "string") return false;
+  const t = Date.parse(v);
+  return !Number.isNaN(t);
+}
+
+function assertDateOnly(v: any) {
+  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+}
+
+function buildDescription(base: string, contact: any) {
+  const parts: string[] = [];
+  if (base && String(base).trim()) parts.push(String(base).trim());
+  if (contact) {
+    const lines: string[] = [];
+    const name = String(contact.display_name || "").trim();
+    const email = String(contact.email || "").trim();
+    const phone = String(contact.phone || "").trim();
+    const address = String(contact.address || "").trim();
+    if (name) lines.push(`Contact : ${name}`);
+    if (phone) lines.push(`Téléphone : ${phone}`);
+    if (email) lines.push(`Email : ${email}`);
+    if (address) lines.push(`Adresse : ${address}`);
+    if (lines.length) parts.push("\n---\n" + lines.join("\n"));
+  }
+  return parts.join("\n\n");
+}
+
+function buildInrcyBlock(inrcy: any, contact: any) {
+  const payload = {
+    v: 1,
+    kind: inrcy?.kind ?? undefined,
+    intervention: inrcy?.intervention ?? undefined,
+    contact: contact
+      ? {
+          id: contact?.id ?? undefined,
+          display_name: contact?.display_name ?? undefined,
+          email: contact?.email ?? undefined,
+          phone: contact?.phone ?? undefined,
+          address: contact?.address ?? undefined,
+        }
+      : undefined,
+    ts: new Date().toISOString(),
+  };
+
+  const hasAny = Boolean(payload.kind || payload.intervention || payload.contact);
+  if (!hasAny) return "";
+
+  return `\n\n[inrcy]\n${JSON.stringify(payload)}\n[/inrcy]\n`;
+}
+
+function parseInrcyBlock(description: string | null | undefined) {
+  if (!description) return null;
+  const m = /\[inrcy\]\s*([\s\S]*?)\s*\[\/inrcy\]/i.exec(description);
+  if (!m) return null;
+  const raw = (m[1] ?? "").trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export async function POST(req: Request) {
+  const { supabase, user, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
+  const userId = user.id;
+
+  const body = (await req.json().catch(() => ({}))) as CreateEventBody;
+
+  const summary = String(body?.summary ?? "").trim() || "Rendez-vous";
+  const location = String(body?.location ?? "").trim();
+  const descriptionBase = buildDescription(String(body?.description ?? ""), body?.contact);
+  const inrcyBlock = buildInrcyBlock(body?.inrcy, body?.contact);
+  const description = (descriptionBase || "") + (inrcyBlock || "");
+
+  let eventPayload: any = {
+    summary,
+    location: location || undefined,
+    description: description || undefined,
+  };
+
+  const allDay = Boolean(body?.allDay);
+  if (allDay) {
+    const date = body?.date;
+    if (!assertDateOnly(date)) {
+      return NextResponse.json({ ok: false, error: "date (YYYY-MM-DD) requis pour un événement journée" }, { status: 400 });
+    }
+    eventPayload.start = { date };
+    const d = new Date(date + "T00:00:00");
+        d.setDate(d.getDate() + 1);
+        const endDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        eventPayload.end = { date: endDate };
+  } else {
+    if (!assertIsoDateTime(body?.start) || !assertIsoDateTime(body?.end)) {
+      return NextResponse.json({ ok: false, error: "start/end ISO requis" }, { status: 400 });
+    }
+    const start = new Date(body!.start!).toISOString();
+    const end = new Date(body!.end!).toISOString();
+    if (Date.parse(end) <= Date.parse(start)) {
+      return NextResponse.json({ ok: false, error: "end doit être après start" }, { status: 400 });
+    }
+    eventPayload.start = { dateTime: start };
+    eventPayload.end = { dateTime: end };
+  }
+
+  const { accessToken } = await getCalendarToken(supabase, userId);
+
+  const r = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(eventPayload),
+  });
+
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    return NextResponse.json({ ok: false, error: j?.error?.message ?? "Erreur Google Calendar" }, { status: 400 });
+  }
+
+  return NextResponse.json({ ok: true, event: j });
+}
+
+export async function PATCH(req: Request) {
+  const { supabase, user, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
+  const userId = user.id;
+
+  const { searchParams } = new URL(req.url);
+  const eventId = String(searchParams.get("id") ?? "").trim();
+  if (!eventId) return NextResponse.json({ ok: false, error: "id requis" }, { status: 400 });
+
+  const body = (await req.json().catch(() => ({}))) as CreateEventBody;
+
+  const patch: any = {};
+  if (body.summary != null) patch.summary = String(body.summary).trim() || "Rendez-vous";
+  if (body.location != null) patch.location = String(body.location).trim() || undefined;
+  if (body.description != null || body.contact != null || body.inrcy != null) {
+    const base = buildDescription(String(body.description ?? ""), body.contact);
+    const inrcyBlock = buildInrcyBlock(body?.inrcy, body?.contact);
+    patch.description = (base || "") + (inrcyBlock || "");
+  }
+
+  const allDay = Boolean(body?.allDay);
+  if (allDay) {
+    if (body.date != null) {
+      if (!assertDateOnly(body.date)) {
+        return NextResponse.json({ ok: false, error: "date invalide" }, { status: 400 });
+      }
+      patch.start = { date: body.date };
+      const d = new Date(body.date + "T00:00:00");
+          d.setDate(d.getDate() + 1);
+          const endDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          patch.end = { date: endDate };
+    }
+  } else {
+    if (body.start != null || body.end != null) {
+      if (!assertIsoDateTime(body?.start) || !assertIsoDateTime(body?.end)) {
+        return NextResponse.json({ ok: false, error: "start/end ISO requis" }, { status: 400 });
+      }
+      const start = new Date(body!.start!).toISOString();
+      const end = new Date(body!.end!).toISOString();
+      if (Date.parse(end) <= Date.parse(start)) {
+        return NextResponse.json({ ok: false, error: "end doit être après start" }, { status: 400 });
+      }
+      patch.start = { dateTime: start };
+      patch.end = { dateTime: end };
+    }
+  }
+
+  const { accessToken } = await getCalendarToken(supabase, userId);
+
+  const r = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(patch),
+  });
+
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    return NextResponse.json({ ok: false, error: j?.error?.message ?? "Erreur Google Calendar" }, { status: 400 });
+  }
+
+  return NextResponse.json({ ok: true, event: j });
+}
+
+export async function DELETE(req: Request) {
+  const { supabase, user, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
+  const userId = user.id;
+
+  const { searchParams } = new URL(req.url);
+  const eventId = String(searchParams.get("id") ?? "").trim();
+  if (!eventId) return NextResponse.json({ ok: false, error: "id requis" }, { status: 400 });
+
+  const { accessToken } = await getCalendarToken(supabase, userId);
+
+  const r = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    return NextResponse.json({ ok: false, error: j?.error?.message ?? "Erreur Google Calendar" }, { status: 400 });
+  }
+
+  return NextResponse.json({ ok: true });
 }

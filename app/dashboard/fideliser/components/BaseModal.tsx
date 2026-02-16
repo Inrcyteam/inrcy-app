@@ -5,10 +5,12 @@ import styles from "../../../dashboard/dashboard.module.css";
 
 export default function BaseModal({
   title,
+  moduleLabel,
   onClose,
   children,
 }: {
   title: string;
+  moduleLabel?: string;
   onClose: () => void;
   children: React.ReactNode;
 }) {
@@ -35,7 +37,7 @@ export default function BaseModal({
         display: "flex",
         alignItems: "stretch",
         justifyContent: "stretch",
-        padding: 18,
+        padding: 12,
       }}
     >
       <div
@@ -55,34 +57,83 @@ export default function BaseModal({
           className={styles.blockHeaderRow}
           style={{
             alignItems: "center",
-            gap: 10,
-            padding: 16,
+            padding: 12,
             borderBottom: "1px solid rgba(255,255,255,0.08)",
             position: "sticky",
             top: 0,
-            background: "rgba(10,12,24,0.55)",
+            background: "rgba(10,12,24,0.60)",
             backdropFilter: "blur(10px)",
             WebkitBackdropFilter: "blur(10px)",
             zIndex: 2,
           }}
         >
-          <div style={{ minWidth: 0 }}>
-            <div className={styles.blockTitle}>{title}</div>
-            <div className={styles.subtitle}>Module Fidéliser</div>
-          </div>
+          <div
+            style={{
+              width: "100%",
+              display: "grid",
+              gridTemplateColumns: "auto 1fr auto",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            {/* Left badge */}
+            <div style={{ minWidth: 0 }}>
+              {moduleLabel ? <span style={pillStyle}>{moduleLabel}</span> : null}
+            </div>
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
-            <button type="button" className={styles.ghostBtn} onClick={onClose}>
-              Fermer
-            </button>
+            {/* Center title */}
+            <div style={{ textAlign: "center" }}>
+              <span style={pillStyle}>{title}</span>
+            </div>
+
+            {/* Right close */}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className={styles.ghostBtn}
+                onClick={onClose}
+                style={closeBtnStyle}
+              >
+                Fermer
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Content scroll */}
-        <div style={{ padding: 16, overflow: "auto", flex: 1 }}>
-          <div style={{ maxWidth: 1180, margin: "0 auto" }}>{children}</div>
+        <div style={{ padding: 12, overflow: "auto", flex: 1 }}>
+          <div
+            style={{
+              maxWidth: 1400,
+              margin: "0 auto",
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {children}
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
+const pillStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "7px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 600,
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: "rgba(255,255,255,0.06)",
+  color: "inherit",
+  whiteSpace: "nowrap",
+};
+
+const closeBtnStyle: React.CSSProperties = {
+  borderRadius: 999,
+  padding: "7px 12px",
+};

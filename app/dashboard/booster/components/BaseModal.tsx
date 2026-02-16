@@ -37,7 +37,7 @@ export default function BaseModal({
         display: "flex",
         alignItems: "stretch",
         justifyContent: "stretch",
-        padding: 18,
+        padding: 12,
       }}
     >
       <div
@@ -98,8 +98,18 @@ export default function BaseModal({
         </div>
 
         {/* Content scroll */}
-        <div style={{ padding: 16, overflow: "auto", flex: 1 }}>
-          <div style={{ maxWidth: 1180, margin: "0 auto" }}>{children}</div>
+        <div style={{ padding: 12, overflow: "auto", flex: 1 }}>
+          <div
+            style={{
+              maxWidth: 1400,
+              margin: "0 auto",
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {children}
+          </div>
         </div>
       </div>
     </div>
