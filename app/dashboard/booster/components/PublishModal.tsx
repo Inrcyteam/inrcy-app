@@ -47,6 +47,8 @@ export default function PublishModal({
     site_web: false,
     gmb: false,
     facebook: false,
+    instagram: false,
+    linkedin: false,
   });
 
   // Canaux réellement connectés (piloté par les bulles "Canaux" du dashboard)
@@ -55,6 +57,8 @@ export default function PublishModal({
     site_web: true,
     gmb: false,
     facebook: false,
+    instagram: false,
+    linkedin: false,
   });
 
   useEffect(() => {
@@ -475,9 +479,23 @@ export default function PublishModal({
               Facebook
             </label>
           ) : null}
+
+          {connected.instagram ? (
+            <label style={checkRow}>
+              <input type="checkbox" checked={channels.instagram} onChange={() => toggle("instagram")} />
+              Instagram
+            </label>
+          ) : null}
+
+          {connected.linkedin ? (
+            <label style={checkRow}>
+              <input type="checkbox" checked={channels.linkedin} onChange={() => toggle("linkedin")} />
+              LinkedIn
+            </label>
+          ) : null}
         </div>
 
-        {!connected.inrcy_site && !connected.site_web && !connected.gmb && !connected.facebook ? (
+        {!connected.inrcy_site && !connected.site_web && !connected.gmb && !connected.facebook && !connected.instagram && !connected.linkedin ? (
           <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85 }}>
             Aucun canal connecté. Va dans le dashboard → Canaux → Configurer.
           </div>

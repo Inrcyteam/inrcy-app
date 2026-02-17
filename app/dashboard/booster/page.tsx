@@ -123,6 +123,8 @@ useEffect(() => {
             { name: "Site web", value: pc("site_web") },
             { name: "Google Business", value: pc("gmb") },
             { name: "Facebook", value: pc("facebook") },
+            { name: "Instagram", value: pc("instagram") },
+            { name: "LinkedIn", value: pc("linkedin") },
           ],
         },
         {

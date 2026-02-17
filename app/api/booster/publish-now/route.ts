@@ -4,9 +4,11 @@ import { randomUUID } from "crypto";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { facebookPublishToPage } from "@/lib/facebookPublish";
+import { instagramPublishPhoto } from "@/lib/instagramPublish";
+import { linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 
-type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook";
+type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
 function slugify(input: string): string {
   return String(input || "")
@@ -182,6 +184,24 @@ const body = await req.json().catch(() => null);
       .eq("product", "gmb")
       .maybeSingle();
 
+    const { data: igRow } = await supabaseAdmin
+      .from("stats_integrations")
+      .select("status,resource_id,access_token_enc,resource_label,meta")
+      .eq("user_id", userId)
+      .eq("provider", "instagram")
+      .eq("source", "instagram")
+      .eq("product", "instagram")
+      .maybeSingle();
+
+    const { data: liRow } = await supabaseAdmin
+      .from("stats_integrations")
+      .select("status,resource_id,access_token_enc,meta")
+      .eq("user_id", userId)
+      .eq("provider", "linkedin")
+      .eq("source", "linkedin")
+      .eq("product", "linkedin")
+      .maybeSingle();
+
     // Internal channel configuration (URLs)
     const [profileRes, inrcyCfgRes, proCfgRes] = await Promise.all([
       supabaseAdmin.from("profiles").select("inrcy_site_ownership,inrcy_site_url").eq("user_id", userId).maybeSingle(),
@@ -290,6 +310,78 @@ const body = await req.json().catch(() => null);
           });
 
           results[ch] = { ok: true, external_id: resp.postId, diagnostics: resp };
+          continue;
+        }
+
+        if (ch === "instagram") {
+          const igUserId = String((igRow as any)?.resource_id || "");
+          const igToken = String((igRow as any)?.access_token_enc || "");
+          if ((igRow as any)?.status !== "connected" || !igUserId || !igToken) {
+            await setDelivery(ch, { status: "failed", last_error: "Instagram non configuré (compte/token manquant)" });
+            results[ch] = { ok: false, error: "not_configured" };
+            continue;
+          }
+
+          const img = externalImageUrls[0];
+          if (!img) {
+            await setDelivery(ch, { status: "failed", last_error: "Instagram nécessite au moins 1 image" });
+            results[ch] = { ok: false, error: "missing_image" };
+            continue;
+          }
+
+          const resp = await instagramPublishPhoto({
+            igUserId,
+            accessToken: igToken,
+            caption: canonMessage,
+            imageUrl: img,
+          });
+
+          if (!resp.ok) {
+            await setDelivery(ch, { status: "failed", last_error: resp.error });
+            results[ch] = { ok: false, error: resp.error, diagnostics: resp };
+            continue;
+          }
+
+          await setDelivery(ch, {
+            status: "delivered",
+            delivered_at: new Date().toISOString(),
+            external_id: resp.mediaId,
+          });
+
+          results[ch] = { ok: true, external_id: resp.mediaId, diagnostics: resp };
+          continue;
+        }
+
+        if (ch === "linkedin") {
+          const accessToken = String((liRow as any)?.access_token_enc || "");
+          const authorUrn = String((liRow as any)?.resource_id || "");
+          if ((liRow as any)?.status !== "connected" || !accessToken || !authorUrn) {
+            await setDelivery(ch, { status: "failed", last_error: "LinkedIn non configuré (token/auteur manquant)" });
+            results[ch] = { ok: false, error: "not_configured" };
+            continue;
+          }
+
+          const orgUrn = String((liRow as any)?.meta?.org_urn || "");
+          const useAuthor = orgUrn || authorUrn;
+          const resp = await linkedinPublishText({
+            accessToken,
+            authorUrn: useAuthor,
+            text: canonMessage,
+          });
+
+          if (!resp.ok) {
+            await setDelivery(ch, { status: "failed", last_error: resp.error });
+            results[ch] = { ok: false, error: resp.error, diagnostics: resp };
+            continue;
+          }
+
+          await setDelivery(ch, {
+            status: "delivered",
+            delivered_at: new Date().toISOString(),
+            external_id: resp.postUrn || null,
+          });
+
+          results[ch] = { ok: true, external_id: resp.postUrn || null, diagnostics: resp };
           continue;
         }
 

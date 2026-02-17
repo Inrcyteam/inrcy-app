@@ -90,8 +90,8 @@ const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
   site_web: { src: "/icons/site-web.jpg", alt: "Site web" },
   facebook: { src: "/icons/facebook.png", alt: "Facebook" },
   gmb: { src: "/icons/google.jpg", alt: "Google Business" },
-  houzz: { src: "/icons/houzz.png", alt: "Houzz" },
-  pages_jaunes: { src: "/icons/pagesjaunes.png", alt: "Pages Jaunes" },
+  instagram: { src: "/icons/instagram.jpg", alt: "Instagram" },
+  linkedin: { src: "/icons/linkedin.png", alt: "LinkedIn" },
 };
 
 // ✅ Tes 6 blocs avec tes actions (Voir + Connecter…)
@@ -143,21 +143,28 @@ const fluxModules: Module[] = [
     ],
   },
   {
-    key: "houzz",
-    name: "Houzz",
-    description: "Livre des projets premium 🔥",
-    status: "available",
-    accent: "pink",
-    actions: [{ key: "view", label: "Voir la page", variant: "view", href: "#" }],
-  },
-  {
-    key: "pages_jaunes",
-    name: "Pages Jaunes",
-    description: "Capte la recherche locale 📍",
-    status: "available",
-    accent: "orange",
-    actions: [{ key: "view", label: "Voir la page", variant: "view", href: "#" }],
-  },
+  key: "instagram",
+  name: "Instagram",
+  description: "Développe votre marque 📸",
+  status: "available",
+  accent: "pink",
+  actions: [
+    { key: "view", label: "Voir le compte", variant: "view", href: "#" },
+    { key: "connect", label: "Connecter Instagram", variant: "connect", onClick: () => {} },
+  ],
+},
+{
+  key: "linkedin",
+  name: "LinkedIn",
+  description: "Crédibilise votre expertise 💼",
+  status: "available",
+  accent: "cyan",
+  actions: [
+    { key: "view", label: "Voir le compte", variant: "view", href: "#" },
+    { key: "connect", label: "Connecter LinkedIn", variant: "connect", onClick: () => {} },
+  ],
+},
+
 ];
 
 const adminModules: Array<{
@@ -196,8 +203,8 @@ export default function DashboardClient() {
       | "agenda"
       | "site_inrcy"
       | "site_web"
-      | "houzz"
-      | "pages_jaunes"
+      | "instagram"
+      | "linkedin"
       | "gmb"
       | "facebook"
   ) => {
@@ -269,8 +276,8 @@ const [siteInrcyTrackingBusy, setSiteInrcyTrackingBusy] = useState(false);
   const [siteWebGa4Notice, setSiteWebGa4Notice] = useState<string | null>(null);
   const [siteWebGscNotice, setSiteWebGscNotice] = useState<string | null>(null);
   const [siteWebUrlNotice, setSiteWebUrlNotice] = useState<string | null>(null);
-  const [houzzUrlNotice, setHouzzUrlNotice] = useState<string | null>(null);
-  const [pagesJaunesUrlNotice, setPagesJaunesUrlNotice] = useState<string | null>(null);
+  const [instagramUrlNotice, setInstagramUrlNotice] = useState<string | null>(null);
+  const [linkedinUrlNotice, setLinkedinUrlNotice] = useState<string | null>(null);
   const [gmbUrlNotice, setGmbUrlNotice] = useState<string | null>(null);
   const [facebookUrlNotice, setFacebookUrlNotice] = useState<string | null>(null);
 
@@ -321,9 +328,16 @@ const [siteWebGscProperty, setSiteWebGscProperty] = useState<string>("");
       .catch(() => setWidgetTokenSiteWeb(""));
   }, [siteWebUrl, extractDomain, fetchWidgetToken]);
 
-// ✅ Houzz & Pages Jaunes (liens uniquement)
-const [houzzUrl, setHouzzUrl] = useState<string>("");
-const [pagesJaunesUrl, setPagesJaunesUrl] = useState<string>("");
+// ✅ Instagram & LinkedIn (connexion)
+const [instagramUrl, setInstagramUrl] = useState<string>("");
+const [instagramAccountConnected, setInstagramAccountConnected] = useState<boolean>(false);
+const [instagramConnected, setInstagramConnected] = useState<boolean>(false);
+const [instagramUsername, setInstagramUsername] = useState<string>("");
+
+const [linkedinUrl, setLinkedinUrl] = useState<string>("");
+const [linkedinAccountConnected, setLinkedinAccountConnected] = useState<boolean>(false);
+const [linkedinConnected, setLinkedinConnected] = useState<boolean>(false);
+const [linkedinDisplayName, setLinkedinDisplayName] = useState<string>("");
 
 // ✅ Google Business & Facebook (liens + connexion)
 const [gmbUrl, setGmbUrl] = useState<string>("");
@@ -442,9 +456,18 @@ const loadSiteInrcy = useCallback(async () => {
   setSiteWebGa4PropertyId(String((siteWebObj as any)?.ga4?.property_id ?? ""));
   setSiteWebGscProperty((siteWebObj as any)?.gsc?.property ?? "");
 
-  // ✅ Houzz & Pages Jaunes (pro_tools_configs.settings.houzz / pages_jaunes)
-  setHouzzUrl(((proSettingsObj as any)?.houzz ?? {})?.url ?? "");
-  setPagesJaunesUrl(((proSettingsObj as any)?.pages_jaunes ?? {})?.url ?? "");
+  // ✅ Instagram & LinkedIn (pro_tools_configs.settings.instagram / linkedin)
+  const igObj = (((proSettingsObj as any)?.instagram ?? {}) as any);
+  setInstagramUrl(igObj?.url ?? "");
+  setInstagramAccountConnected(!!igObj?.accountConnected);
+  setInstagramConnected(!!igObj?.connected);
+  setInstagramUsername(String(igObj?.username ?? ""));
+
+  const liObj = (((proSettingsObj as any)?.linkedin ?? {}) as any);
+  setLinkedinUrl(liObj?.url ?? "");
+  setLinkedinAccountConnected(!!liObj?.accountConnected);
+  setLinkedinConnected(!!liObj?.connected);
+  setLinkedinDisplayName(String(liObj?.displayName ?? ""));
 
   // ✅ Google Business & Facebook (pro_tools_configs.settings.gmb / facebook)
   const gmbObj = ((proSettingsObj as any)?.gmb ?? {}) as any;
@@ -479,20 +502,33 @@ const loadSiteInrcy = useCallback(async () => {
 
   // ✅ Connexions Google Business & Facebook : source de vérité = stats_integrations
   try {
-    const [gmbStatus, fbStatus] = await Promise.all([
+    const [gmbStatus, fbStatus, igStatus, liStatus] = await Promise.all([
       fetch("/api/integrations/google-business/status").then((r) => r.json()).catch(() => ({ connected: false })),
       fetch("/api/integrations/facebook/status").then((r) => r.json()).catch(() => ({ connected: false })),
+      fetch("/api/integrations/instagram/status").then((r) => r.json()).catch(() => ({ connected: false })),
+      fetch("/api/integrations/linkedin/status").then((r) => r.json()).catch(() => ({ connected: false })),
     ]);
     setGmbConnected(!!gmbStatus?.connected); // true only when a location is selected
     setGmbAccountConnected(!!gmbStatus?.accountConnected);
     setGmbConfigured(!!gmbStatus?.configured);
     if (gmbStatus?.email) setGmbAccountEmail(String(gmbStatus.email));
-	    setFacebookAccountConnected(!!fbStatus?.accountConnected);
-	    setFacebookPageConnected(!!fbStatus?.pageConnected);
-	    if (fbStatus?.user_email) setFacebookAccountEmail(String(fbStatus.user_email));
+
+    setFacebookAccountConnected(!!fbStatus?.accountConnected);
+    setFacebookPageConnected(!!fbStatus?.pageConnected);
+    if (fbStatus?.user_email) setFacebookAccountEmail(String(fbStatus.user_email));
     if (fbStatus?.resource_id) setFbSelectedPageId(String(fbStatus.resource_id));
-	    if (fbStatus?.resource_label) setFbSelectedPageName(String(fbStatus.resource_label));
+    if (fbStatus?.resource_label) setFbSelectedPageName(String(fbStatus.resource_label));
     if (fbStatus?.page_url) setFacebookUrl(String(fbStatus.page_url));
+
+    setInstagramAccountConnected(!!igStatus?.accountConnected);
+    setInstagramConnected(!!igStatus?.connected);
+    if (igStatus?.username) setInstagramUsername(String(igStatus.username));
+    if (igStatus?.profile_url) setInstagramUrl(String(igStatus.profile_url));
+
+    setLinkedinAccountConnected(!!liStatus?.accountConnected);
+    setLinkedinConnected(!!liStatus?.connected);
+    if (liStatus?.display_name) setLinkedinDisplayName(String(liStatus.display_name));
+    if (liStatus?.profile_url) setLinkedinUrl(String(liStatus.profile_url));
   } catch {
     // fallback : on garde l'état stocké dans settings si l'appel échoue
   }
@@ -1012,7 +1048,7 @@ const resetSiteWebAll = useCallback(async () => {
 
 // ✅ Houzz / Pages Jaunes (liens uniquement, stockés dans site_configs.settings)
 const updateRootSettingsKey = useCallback(
-  async (key: "houzz" | "pages_jaunes" | "gmb" | "facebook", nextObj: any) => {
+  async (key: "gmb" | "facebook" | "instagram" | "linkedin", nextObj: any) => {
     const supabase = createClient();
     const { data: authData } = await supabase.auth.getUser();
     const user = authData?.user;
@@ -1034,19 +1070,6 @@ const updateRootSettingsKey = useCallback(
   []
 );
 
-const saveHouzzLink = useCallback(async () => {
-  const url = houzzUrl.trim();
-  await updateRootSettingsKey("houzz", { url });
-  setHouzzUrlNotice("Enregistré ✓");
-  window.setTimeout(() => setHouzzUrlNotice(null), 2200);
-}, [houzzUrl, updateRootSettingsKey]);
-
-const savePagesJaunesLink = useCallback(async () => {
-  const url = pagesJaunesUrl.trim();
-  await updateRootSettingsKey("pages_jaunes", { url });
-  setPagesJaunesUrlNotice("Enregistré ✓");
-  window.setTimeout(() => setPagesJaunesUrlNotice(null), 2200);
-}, [pagesJaunesUrl, updateRootSettingsKey]);
 
 // Google Business page URL is automatic (derived from the selected establishment).
 // No manual edit + no save button.
@@ -1083,6 +1106,18 @@ const disconnectGmbBusiness = useCallback(async () => {
   const [fbSelectedPageId, setFbSelectedPageId] = useState<string>("");
   const [fbSelectedPageName, setFbSelectedPageName] = useState<string>("");
   const [fbPagesError, setFbPagesError] = useState<string | null>(null);
+
+// Instagram accounts (selection via Facebook pages that have an IG Business account)
+const [igAccounts, setIgAccounts] = useState<Array<{ page_id: string; page_name?: string; ig_id: string; username?: string; page_access_token?: string }>>([]);
+const [igAccountsLoading, setIgAccountsLoading] = useState(false);
+const [igSelectedPageId, setIgSelectedPageId] = useState<string>("");
+const [igAccountsError, setIgAccountsError] = useState<string | null>(null);
+
+// LinkedIn organizations (optional selection)
+const [liOrgs, setLiOrgs] = useState<Array<{ id: string; name?: string }>>([]);
+const [liOrgsLoading, setLiOrgsLoading] = useState(false);
+const [liSelectedOrgId, setLiSelectedOrgId] = useState<string>("");
+const [liOrgsError, setLiOrgsError] = useState<string | null>(null);
 
   // Google Business locations (selection)
   const [gmbAccounts, setGmbAccounts] = useState<Array<{ name: string; accountName?: string; type?: string }>>([]);
@@ -1191,7 +1226,162 @@ const saveFacebookPage = useCallback(async () => {
     setFacebookUrlNotice(j?.error || "Impossible d'enregistrer la page.");
     window.setTimeout(() => setFacebookUrlNotice(null), 2500);
   }
+
 }, [fbPages, fbSelectedPageId]);
+
+// ===== Instagram (Meta) =====
+const connectInstagramAccount = useCallback(async () => {
+  const returnTo = encodeURIComponent("/dashboard?panel=instagram");
+  window.location.href = `/api/integrations/instagram/start?returnTo=${returnTo}`;
+}, []);
+
+const disconnectInstagramAccount = useCallback(async () => {
+  await fetch("/api/integrations/instagram/disconnect-account", { method: "POST" });
+  setInstagramAccountConnected(false);
+  setInstagramConnected(false);
+  setInstagramUsername("");
+  setInstagramUrl("");
+  setIgAccounts([]);
+  setIgSelectedPageId("");
+  await updateRootSettingsKey("instagram", {
+    accountConnected: false,
+    connected: false,
+    username: "",
+    url: "",
+    pageId: "",
+    igId: "",
+  });
+}, [updateRootSettingsKey]);
+
+const disconnectInstagramProfile = useCallback(async () => {
+  await fetch("/api/integrations/instagram/disconnect-profile", { method: "POST" });
+  setInstagramConnected(false);
+  setInstagramUsername("");
+  setInstagramUrl("");
+  setIgSelectedPageId("");
+  await updateRootSettingsKey("instagram", {
+    accountConnected: true,
+    connected: false,
+    username: "",
+    url: "",
+    pageId: "",
+    igId: "",
+  });
+}, [updateRootSettingsKey]);
+
+const loadInstagramAccounts = useCallback(async () => {
+  if (!instagramAccountConnected) return;
+  setIgAccountsLoading(true);
+  setIgAccountsError(null);
+  try {
+    const r = await fetch("/api/integrations/instagram/accounts", { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j?.error || "Erreur");
+    setIgAccounts(j.accounts || []);
+    if (!igSelectedPageId && (j.accounts?.[0]?.page_id)) setIgSelectedPageId(j.accounts[0].page_id);
+
+    // Auto-connect if exactly 1 eligible account
+    if ((j.accounts || []).length === 1) {
+      const only = j.accounts[0];
+      await fetch("/api/integrations/instagram/select-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pageId: only.page_id }),
+      });
+      setInstagramConnected(true);
+      setInstagramUsername(String(only.username || ""));
+      setInstagramUrl(only.username ? `https://www.instagram.com/${only.username}/` : "");
+      setInstagramUrlNotice("Enregistré ✓");
+      window.setTimeout(() => setInstagramUrlNotice(null), 2200);
+    }
+  } catch (e: any) {
+    setIgAccountsError(e?.message || "Impossible de charger vos comptes Instagram.");
+  } finally {
+    setIgAccountsLoading(false);
+  }
+}, [instagramAccountConnected, igSelectedPageId]);
+
+const saveInstagramProfile = useCallback(async () => {
+  const picked = igAccounts.find((a) => a.page_id === igSelectedPageId);
+  if (!picked?.page_id) return;
+
+  const r = await fetch("/api/integrations/instagram/select-profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pageId: picked.page_id }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok) {
+    setInstagramConnected(true);
+    if (j?.username) setInstagramUsername(String(j.username));
+    if (j?.profileUrl) setInstagramUrl(String(j.profileUrl));
+    setInstagramUrlNotice("Enregistré ✓");
+    window.setTimeout(() => setInstagramUrlNotice(null), 2200);
+  } else {
+    setInstagramUrlNotice(j?.error || "Impossible d'enregistrer Instagram.");
+    window.setTimeout(() => setInstagramUrlNotice(null), 2500);
+  }
+}, [igAccounts, igSelectedPageId]);
+
+// ===== LinkedIn =====
+const connectLinkedinAccount = useCallback(async () => {
+  const returnTo = encodeURIComponent("/dashboard?panel=linkedin");
+  window.location.href = `/api/integrations/linkedin/start?returnTo=${returnTo}`;
+}, []);
+
+const disconnectLinkedinAccount = useCallback(async () => {
+  await fetch("/api/integrations/linkedin/disconnect-account", { method: "POST" });
+  setLinkedinAccountConnected(false);
+  setLinkedinConnected(false);
+  setLinkedinDisplayName("");
+  setLinkedinUrl("");
+  setLiOrgs([]);
+  setLiSelectedOrgId("");
+  await updateRootSettingsKey("linkedin", {
+    accountConnected: false,
+    connected: false,
+    displayName: "",
+    url: "",
+    orgId: "",
+  });
+}, [updateRootSettingsKey]);
+
+const loadLinkedinOrganizations = useCallback(async () => {
+  if (!linkedinAccountConnected) return;
+  setLiOrgsLoading(true);
+  setLiOrgsError(null);
+  try {
+    const r = await fetch("/api/integrations/linkedin/organizations", { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j?.error || "Erreur");
+    setLiOrgs(j.organizations || []);
+    if (!liSelectedOrgId && j.organizations?.[0]?.id) setLiSelectedOrgId(j.organizations[0].id);
+  } catch (e: any) {
+    setLiOrgsError(e?.message || "Impossible de charger vos pages LinkedIn.");
+  } finally {
+    setLiOrgsLoading(false);
+  }
+}, [linkedinAccountConnected, liSelectedOrgId]);
+
+const saveLinkedinOrganization = useCallback(async () => {
+  if (!liSelectedOrgId) return;
+  const picked = liOrgs.find((o) => o.id === liSelectedOrgId);
+  const r = await fetch("/api/integrations/linkedin/select-organization", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orgId: liSelectedOrgId, orgName: picked?.name || null }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok) {
+    setLinkedinConnected(true);
+    if (j?.profileUrl) setLinkedinUrl(String(j.profileUrl));
+    setLinkedinUrlNotice("Enregistré ✓");
+    window.setTimeout(() => setLinkedinUrlNotice(null), 2200);
+  } else {
+    setLinkedinUrlNotice(j?.error || "Impossible d'enregistrer LinkedIn.");
+    window.setTimeout(() => setLinkedinUrlNotice(null), 2500);
+  }
+}, [liSelectedOrgId, liOrgs]);
 
 const loadGmbAccountsAndLocations = useCallback(async () => {
   // Only possible once the Google account is OAuth-connected
@@ -1635,18 +1825,18 @@ useEffect(() => {
               ? (siteWebUrl.startsWith("http") ? siteWebUrl : `https://${siteWebUrl}`)
               : "#",
           }
-                : (m.key === "houzz" && viewActionRaw)
+                : (m.key === "instagram" && viewActionRaw)
         ? {
             ...viewActionRaw,
-            href: houzzUrl
-              ? (houzzUrl.startsWith("http") ? houzzUrl : `https://${houzzUrl}`)
+            href: instagramUrl
+              ? (instagramUrl.startsWith("http") ? instagramUrl : `https://${instagramUrl}`)
               : "#",
           }
-        : (m.key === "pages_jaunes" && viewActionRaw)
+        : (m.key === "linkedin" && viewActionRaw)
         ? {
             ...viewActionRaw,
-            href: pagesJaunesUrl
-              ? (pagesJaunesUrl.startsWith("http") ? pagesJaunesUrl : `https://${pagesJaunesUrl}`)
+            href: linkedinUrl
+              ? (linkedinUrl.startsWith("http") ? linkedinUrl : `https://${linkedinUrl}`)
               : "#",
           }
         : viewActionRaw;
@@ -1670,13 +1860,13 @@ useEffect(() => {
         return { status: "connected" as ModuleStatus, text: "Connecté · 3 / 3" };
       }
 
-      if (m.key === "houzz") {
-        if (houzzUrl?.trim()) return { status: "connected" as ModuleStatus, text: "Connecté" };
+      if (m.key === "instagram") {
+        if (instagramConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
         return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
-      if (m.key === "pages_jaunes") {
-        if (pagesJaunesUrl?.trim()) return { status: "connected" as ModuleStatus, text: "Connecté" };
+      if (m.key === "linkedin") {
+        if (linkedinConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
         return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
@@ -1747,27 +1937,27 @@ useEffect(() => {
               >
                 Voir le site
               </a>
-            ) : m.key === "houzz" ? (
+            ) : m.key === "instagram" ? (
               <a
-                href={houzzUrl ? (houzzUrl.startsWith("http") ? houzzUrl : `https://${houzzUrl}`) : "#"}
+                href={instagramUrl ? (instagramUrl.startsWith("http") ? instagramUrl : `https://${instagramUrl}`) : "#"}
                 className={`${styles.actionBtn} ${styles.actionView}`}
-                target={houzzUrl ? "_blank" : undefined}
+                target={instagramUrl ? "_blank" : undefined}
                 rel="noreferrer"
-                aria-disabled={!houzzUrl}
-                style={{ opacity: !houzzUrl ? 0.5 : 1, pointerEvents: !houzzUrl ? "none" : "auto" }}
+                aria-disabled={!instagramUrl}
+                style={{ opacity: !instagramUrl ? 0.5 : 1, pointerEvents: !instagramUrl ? "none" : "auto" }}
               >
-                Voir la page
+                Voir le compte
               </a>
-            ) : m.key === "pages_jaunes" ? (
+            ) : m.key === "linkedin" ? (
               <a
-                href={pagesJaunesUrl ? (pagesJaunesUrl.startsWith("http") ? pagesJaunesUrl : `https://${pagesJaunesUrl}`) : "#"}
+                href={linkedinUrl ? (linkedinUrl.startsWith("http") ? linkedinUrl : `https://${linkedinUrl}`) : "#"}
                 className={`${styles.actionBtn} ${styles.actionView}`}
-                target={pagesJaunesUrl ? "_blank" : undefined}
+                target={linkedinUrl ? "_blank" : undefined}
                 rel="noreferrer"
-                aria-disabled={!pagesJaunesUrl}
-                style={{ opacity: !pagesJaunesUrl ? 0.5 : 1, pointerEvents: !pagesJaunesUrl ? "none" : "auto" }}
+                aria-disabled={!linkedinUrl}
+                style={{ opacity: !linkedinUrl ? 0.5 : 1, pointerEvents: !linkedinUrl ? "none" : "auto" }}
               >
-                Voir la page
+                Voir le compte
               </a>
             ) : m.key === "gmb" ? (
               <a
@@ -1817,12 +2007,12 @@ useEffect(() => {
                   openPanel("site_web");
                   return;
                 }
-                if (m.key === "houzz") {
-                  openPanel("houzz");
+                if (m.key === "instagram") {
+                  openPanel("instagram");
                   return;
                 }
-                if (m.key === "pages_jaunes") {
-                  openPanel("pages_jaunes");
+                if (m.key === "linkedin") {
+                  openPanel("linkedin");
                   return;
                 }
                 if (m.key === "gmb") {
@@ -2754,10 +2944,10 @@ useEffect(() => {
             ? "Configuration — Site iNrCy"
             : panel === "site_web"
             ? "Configuration — Site web"
-            : panel === "houzz"
-            ? "Configuration — Houzz"
-            : panel === "pages_jaunes"
-            ? "Configuration — Pages Jaunes"
+            : panel === "instagram"
+            ? "Configuration — Instagram"
+            : panel === "linkedin"
+            ? "Configuration — LinkedIn"
             : panel === "gmb"
             ? "Configuration — Google Business"
             : panel === "facebook"
@@ -2775,9 +2965,9 @@ useEffect(() => {
         ||
           panel === "site_web"
         ||
-          panel === "houzz"
+          panel === "instagram"
         ||
-          panel === "pages_jaunes"
+          panel === "linkedin"
         ||
           panel === "gmb"
         ||
@@ -3547,120 +3737,415 @@ useEffect(() => {
 
               {/* ✅ AJOUT : callbacks pour mise à jour immédiate de la pastille */}
         
-{panel === "houzz" && (
+{panel === "instagram" && (
   <div style={{ display: "grid", gap: 14 }}>
-    <label style={{ display: "grid", gap: 8 }}>
-      <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Lien Houzz (accessible)</span>
-      <input
-        value={houzzUrl}
-        onChange={(e) => setHouzzUrl(e.target.value)}
-        placeholder="https://www.houzz.fr/pro/..."
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+      <span
         style={{
-          width: "100%",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.14)",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          border: "1px solid rgba(255,255,255,0.12)",
           background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-          padding: "10px 12px",
-          color: "white",
-          outline: "none",
+          colorScheme: "dark",
+          padding: "8px 10px",
+          borderRadius: 999,
+          color: "rgba(255,255,255,0.92)",
+          fontSize: 13,
         }}
-      />
-      <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-        Le bouton <strong>Voir la page</strong> ouvrira ce lien dans un nouvel onglet.
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 999,
+            background: instagramConnected
+              ? "rgba(34,197,94,0.95)"
+              : instagramAccountConnected
+                ? "rgba(59,130,246,0.95)"
+                : "rgba(148,163,184,0.9)",
+          }}
+        />
+        Statut : <strong>{instagramConnected ? "Connecté" : instagramAccountConnected ? "Compte connecté" : "À connecter"}</strong>
+      </span>
+    </div>
+
+    {/* Compte (OAuth Meta) */}
+    <div
+      style={{
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.03)",
+        borderRadius: 14,
+        padding: 12,
+        display: "grid",
+        gap: 10,
+      }}
+    >
+      <div className={styles.blockHeaderRow}>
+        <div className={styles.blockTitle}>Compte connecté</div>
+        <ConnectionPill connected={instagramAccountConnected} />
       </div>
-    </label>
-
-    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
-  <button
-    type="button"
-    className={`${styles.actionBtn} ${styles.iconBtn}`}
-    onClick={saveHouzzLink}
-    aria-label="Enregistrer"
-    title="Enregistrer"
-  >
-    <SaveIcon />
-  </button>
-
-  <button
-    type="button"
-    className={`${styles.actionBtn} ${styles.connectBtn}`}
-    onClick={() => {
-      const u = houzzUrl.trim();
-      if (u) window.open(u.startsWith("http") ? u : `https://${u}`, "_blank", "noopener,noreferrer");
-    }}
-    disabled={!houzzUrl.trim()}
-    title={!houzzUrl.trim() ? "Ajoute un lien pour pouvoir l\'ouvrir" : undefined}
-  >
-    Voir la page
-  </button>
-</div>
-
-    {houzzUrlNotice && <div className={styles.successNote}>{houzzUrlNotice}</div>}
-  </div>
-)}
-
-{panel === "pages_jaunes" && (
-  <div style={{ display: "grid", gap: 14 }}>
-    <label style={{ display: "grid", gap: 8 }}>
-      <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Lien Pages Jaunes (accessible)</span>
-      <input
-        value={pagesJaunesUrl}
-        onChange={(e) => setPagesJaunesUrl(e.target.value)}
-        placeholder="https://www.pagesjaunes.fr/pros/..."
-        style={{
-          width: "100%",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.14)",
-          background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-          padding: "10px 12px",
-          color: "white",
-          outline: "none",
-        }}
-      />
-      <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-        Le bouton <strong>Voir la page</strong> ouvrira ce lien dans un nouvel onglet.
+      <div className={styles.blockSub}>
+        Instagram nécessite un compte <strong>Business / Creator</strong> relié à une Page Facebook.
       </div>
-    </label>
 
-    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
-  <button
-    type="button"
-    className={`${styles.actionBtn} ${styles.iconBtn}`}
-    onClick={savePagesJaunesLink}
-    aria-label="Enregistrer"
-    title="Enregistrer"
-  >
-    <SaveIcon />
-  </button>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          value={instagramUsername}
+          readOnly
+          placeholder={instagramAccountConnected ? "Compte connecté" : "Aucun compte connecté"}
+          style={{
+            flex: "1 1 280px",
+            minWidth: 220,
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: "rgba(15,23,42,0.65)",
+            colorScheme: "dark",
+            padding: "10px 12px",
+            color: "white",
+            outline: "none",
+            opacity: instagramAccountConnected ? 1 : 0.8,
+          }}
+        />
 
-  <button
-    type="button"
-    className={`${styles.actionBtn} ${styles.connectBtn}`}
-    onClick={() => {
-      const u = pagesJaunesUrl.trim();
-      if (u) window.open(u.startsWith("http") ? u : `https://${u}`, "_blank", "noopener,noreferrer");
-    }}
-    disabled={!pagesJaunesUrl.trim()}
-    title={!pagesJaunesUrl.trim() ? "Ajoute un lien pour pouvoir l\'ouvrir" : undefined}
-  >
-    Voir la page
-  </button>
-</div>
-
-    {pagesJaunesUrlNotice && <div className={styles.successNote}>{pagesJaunesUrlNotice}</div>}
-  </div>
-)}
-
-{panel === "profil" && (
-          <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} />
+        {!instagramAccountConnected ? (
+          <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectInstagramAccount}>
+            Connecter Instagram
+          </button>
+        ) : (
+          <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectInstagramAccount}>
+            Déconnecter Instagram
+          </button>
         )}
+      </div>
+    </div>
 
-        {panel === "activite" && <ActivityContent mode="drawer" />}
+    {/* Choix du compte Instagram (via Pages Meta) */}
+    {instagramAccountConnected ? (
+      <div
+        style={{
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: 14,
+          padding: 12,
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        <div className={styles.blockHeaderRow}>
+          <div className={styles.blockTitle}>Compte Instagram à connecter</div>
+          <ConnectionPill connected={instagramConnected} />
+        </div>
+        <div className={styles.blockSub}>On liste les Pages Facebook qui possèdent un Instagram Business/Creator.</div>
 
-        {panel === "abonnement" && <AbonnementContent mode="drawer" onOpenContact={() => openPanel("contact")} />}
-        {panel === "gmb" && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            type="button"
+            className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+            onClick={() => loadInstagramAccounts()}
+            disabled={igAccountsLoading}
+          >
+            {igAccountsLoading ? "Chargement..." : "Charger mes comptes"}
+          </button>
+
+          <select
+            value={igSelectedPageId}
+            onChange={(e) => setIgSelectedPageId(e.target.value)}
+            style={{
+              flex: "1 1 260px",
+              minWidth: 220,
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(15,23,42,0.65)",
+              colorScheme: "dark",
+              padding: "10px 12px",
+              color: "white",
+              outline: "none",
+            }}
+          >
+            <option value="">Sélectionner un compte</option>
+            {igAccounts.map((a) => (
+              <option key={a.page_id} value={a.page_id}>
+                @{a.username || "instagram"} — {a.page_name || a.page_id}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            className={`${styles.actionBtn} ${styles.connectBtn}`}
+            onClick={saveInstagramProfile}
+            disabled={!igSelectedPageId}
+          >
+            Connecter
+          </button>
+        </div>
+        {igAccountsError && <div className={styles.errNote}>{igAccountsError}</div>}
+      </div>
+    ) : null}
+
+    {/* Lien + déconnexion */}
+    {instagramAccountConnected ? (
+      <div
+        style={{
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: 14,
+          padding: 12,
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        <div className={styles.blockHeaderRow}>
+          <div className={styles.blockTitle}>Lien du compte</div>
+          <ConnectionPill connected={instagramConnected && !!instagramUrl?.trim()} />
+        </div>
+        <div className={styles.blockSub}>Se remplit automatiquement après sélection.</div>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            value={instagramUrl}
+            readOnly
+            placeholder={instagramConnected ? "Lien récupéré automatiquement" : "Sélectionne un compte pour générer le lien"}
+            style={{
+              flex: "1 1 280px",
+              minWidth: 220,
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(15,23,42,0.65)",
+              colorScheme: "dark",
+              padding: "10px 12px",
+              color: "white",
+              outline: "none",
+              opacity: instagramUrl ? 1 : 0.8,
+            }}
+          />
+
+          <a
+            href={instagramUrl || "#"}
+            target="_blank"
+            rel="noreferrer"
+            className={`${styles.actionBtn} ${styles.viewBtn}`}
+            style={{ pointerEvents: instagramUrl ? "auto" : "none", opacity: instagramUrl ? 1 : 0.5 }}
+          >
+            Voir le compte
+          </a>
+        </div>
+
+        {instagramUrlNotice && <div className={styles.successNote}>{instagramUrlNotice}</div>}
+
+        {instagramConnected ? (
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectInstagramProfile}>
+              Déconnecter le compte
+            </button>
+          </div>
+        ) : null}
+      </div>
+    ) : null}
+  </div>
+)}
+
+{panel === "linkedin" && (
+  <div style={{ display: "grid", gap: 14 }}>
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(15,23,42,0.65)",
+          colorScheme: "dark",
+          padding: "8px 10px",
+          borderRadius: 999,
+          color: "rgba(255,255,255,0.92)",
+          fontSize: 13,
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 999,
+            background: linkedinConnected
+              ? "rgba(34,197,94,0.95)"
+              : linkedinAccountConnected
+                ? "rgba(59,130,246,0.95)"
+                : "rgba(148,163,184,0.9)",
+          }}
+        />
+        Statut : <strong>{linkedinConnected ? "Connecté" : linkedinAccountConnected ? "Compte connecté" : "À connecter"}</strong>
+      </span>
+    </div>
+
+    {/* Compte LinkedIn */}
+    <div
+      style={{
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.03)",
+        borderRadius: 14,
+        padding: 12,
+        display: "grid",
+        gap: 10,
+      }}
+    >
+      <div className={styles.blockHeaderRow}>
+        <div className={styles.blockTitle}>Compte connecté</div>
+        <ConnectionPill connected={linkedinAccountConnected} />
+      </div>
+      <div className={styles.blockSub}>Connexion OAuth LinkedIn (profil et publication).</div>
+
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          value={linkedinDisplayName}
+          readOnly
+          placeholder={linkedinAccountConnected ? "Compte connecté" : "Aucun compte connecté"}
+          style={{
+            flex: "1 1 280px",
+            minWidth: 220,
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: "rgba(15,23,42,0.65)",
+            colorScheme: "dark",
+            padding: "10px 12px",
+            color: "white",
+            outline: "none",
+            opacity: linkedinAccountConnected ? 1 : 0.8,
+          }}
+        />
+
+        {!linkedinAccountConnected ? (
+          <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectLinkedinAccount}>
+            Connecter LinkedIn
+          </button>
+        ) : (
+          <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectLinkedinAccount}>
+            Déconnecter LinkedIn
+          </button>
+        )}
+      </div>
+    </div>
+
+    {/* Optionnel : choix d'une organisation */}
+    {linkedinAccountConnected ? (
+      <div
+        style={{
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: 14,
+          padding: 12,
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        <div className={styles.blockHeaderRow}>
+          <div className={styles.blockTitle}>Page LinkedIn (optionnel)</div>
+          <ConnectionPill connected={!!liSelectedOrgId} />
+        </div>
+        <div className={styles.blockSub}>Si tu veux publier en tant qu'entreprise (sinon, publication sur le profil).</div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            type="button"
+            className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+            onClick={() => loadLinkedinOrganizations()}
+            disabled={liOrgsLoading}
+          >
+            {liOrgsLoading ? "Chargement..." : "Charger mes pages"}
+          </button>
+
+          <select
+            value={liSelectedOrgId}
+            onChange={(e) => setLiSelectedOrgId(e.target.value)}
+            style={{
+              flex: "1 1 260px",
+              minWidth: 220,
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(15,23,42,0.65)",
+              colorScheme: "dark",
+              padding: "10px 12px",
+              color: "white",
+              outline: "none",
+            }}
+          >
+            <option value="">Publier sur mon profil</option>
+            {liOrgs.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name || o.id}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            className={`${styles.actionBtn} ${styles.connectBtn}`}
+            onClick={saveLinkedinOrganization}
+            disabled={!liSelectedOrgId}
+          >
+            Sélectionner
+          </button>
+        </div>
+        {liOrgsError && <div className={styles.errNote}>{liOrgsError}</div>}
+      </div>
+    ) : null}
+
+    {/* Lien */}
+    <div
+      style={{
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.03)",
+        borderRadius: 14,
+        padding: 12,
+        display: "grid",
+        gap: 10,
+      }}
+    >
+      <div className={styles.blockHeaderRow}>
+        <div className={styles.blockTitle}>Lien du profil</div>
+        <ConnectionPill connected={!!linkedinUrl?.trim()} />
+      </div>
+      <div className={styles.blockSub}>Se remplit si LinkedIn fournit un lien public. Sinon laisse vide.</div>
+
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          value={linkedinUrl}
+          readOnly
+          placeholder="Lien LinkedIn (optionnel)"
+          style={{
+            flex: "1 1 280px",
+            minWidth: 220,
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: "rgba(15,23,42,0.65)",
+            colorScheme: "dark",
+            padding: "10px 12px",
+            color: "white",
+            outline: "none",
+            opacity: linkedinUrl ? 1 : 0.8,
+          }}
+        />
+
+        <a
+          href={linkedinUrl || "#"}
+          target="_blank"
+          rel="noreferrer"
+          className={`${styles.actionBtn} ${styles.viewBtn}`}
+          style={{ pointerEvents: linkedinUrl ? "auto" : "none", opacity: linkedinUrl ? 1 : 0.5 }}
+        >
+          Voir
+        </a>
+      </div>
+
+      {linkedinUrlNotice && <div className={styles.successNote}>{linkedinUrlNotice}</div>}
+    </div>
+  </div>
+)}
+
+{panel === "gmb" && (
           <div style={{ display: "grid", gap: 14 }}>
             {/* Statut */}
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>

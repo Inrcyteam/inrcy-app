@@ -1,4 +1,10 @@
-export type BoosterChannels = "inrcy_site" | "site_web" | "gmb" | "facebook";
+export type BoosterChannels =
+  | "inrcy_site"
+  | "site_web"
+  | "gmb"
+  | "facebook"
+  | "instagram"
+  | "linkedin";
 
 export function boosterSystemPrompt() {
   return `Tu es un assistant marketing local pour des artisans et PME en France.

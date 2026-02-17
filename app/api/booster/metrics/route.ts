@@ -37,7 +37,7 @@ const sinceMonth = daysAgoISO(days);
   const init = () => ({
     month: 0,
     week: 0,
-    channels: { inrcy_site: 0, site_web: 0, gmb: 0, facebook: 0 } as Record<string, number>,
+    channels: { inrcy_site: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0 } as Record<string, number>,
     sent: 0,
   });
 

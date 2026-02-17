@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 
-type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook";
+type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
 export async function GET() {
   try {
@@ -16,6 +16,8 @@ export async function GET() {
       site_web: false,
       gmb: false,
       facebook: false,
+      instagram: false,
+      linkedin: false,
     };
 
     // Read minimal configs to determine whether internal channels are "connected".
@@ -38,11 +40,13 @@ export async function GET() {
       .from("stats_integrations")
       .select("provider,status,resource_id")
       .eq("user_id", userId)
-      .in("provider", ["google", "facebook"]);
+      .in("provider", ["google", "facebook", "instagram", "linkedin"]);
 
     for (const r of rows ?? []) {
       if (r.provider === "google" && r.status === "connected" && r.resource_id) base.gmb = true;
       if (r.provider === "facebook" && r.status === "connected" && r.resource_id) base.facebook = true;
+      if (r.provider === "instagram" && r.status === "connected" && r.resource_id) base.instagram = true;
+      if (r.provider === "linkedin" && r.status === "connected") base.linkedin = true;
     }
 
     return NextResponse.json({ channels: base });

@@ -1,0 +1,31 @@
+import { NextResponse } from "next/server";
+import { createSupabaseServer } from "@/lib/supabaseServer";
+
+export async function GET() {
+  const supabase = await createSupabaseServer();
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
+
+  if (authErr || !user) return NextResponse.json({ connected: false }, { status: 200 });
+
+  const { data: row } = await supabase
+    .from("stats_integrations")
+    .select("status,resource_id,resource_label,meta")
+    .eq("user_id", user.id)
+    .eq("provider", "linkedin")
+    .eq("source", "linkedin")
+    .eq("product", "linkedin")
+    .maybeSingle();
+
+  const accountConnected = (row as any)?.status === "connected";
+  const connected = (row as any)?.status === "connected";
+
+  return NextResponse.json({
+    accountConnected,
+    connected,
+    display_name: (row as any)?.resource_label || null,
+    profile_url: null,
+  });
+}

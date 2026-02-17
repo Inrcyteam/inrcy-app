@@ -19,7 +19,7 @@ type BoosterGenResponse = {
   hashtags: string[];
 };
 
-const allowedChannels: BoosterChannels[] = ["inrcy_site", "site_web", "gmb", "facebook"];
+const allowedChannels: BoosterChannels[] = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"];
 
 export async function POST(req: Request) {
   try {

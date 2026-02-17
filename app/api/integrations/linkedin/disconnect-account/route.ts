@@ -1,0 +1,32 @@
+import { NextResponse } from "next/server";
+import { createSupabaseServer } from "@/lib/supabaseServer";
+
+export async function POST() {
+  const supabase = await createSupabaseServer();
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
+
+  if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  await supabase.from("stats_integrations").delete().eq("user_id", user.id).eq("provider", "linkedin");
+
+  try {
+    const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
+    const current = (scRow as any)?.settings ?? {};
+    const merged = {
+      ...current,
+      linkedin: {
+        accountConnected: false,
+        connected: false,
+        displayName: null,
+        url: null,
+        orgId: null,
+      },
+    };
+    await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
+  } catch {}
+
+  return NextResponse.json({ ok: true });
+}
