@@ -1340,6 +1340,35 @@ const disconnectLinkedinAccount = useCallback(async () => {
 }, [updateRootSettingsKey]);
 
 
+const saveLinkedinProfileUrl = useCallback(async () => {
+  const raw = (linkedinUrl ?? "").trim();
+
+  // Autorise la valeur vide (pour effacer le lien)
+  if (raw.length > 0) {
+    const ok =
+      raw.startsWith("https://www.linkedin.com/in/") ||
+      raw.startsWith("https://linkedin.com/in/") ||
+      raw.startsWith("https://www.linkedin.com/pub/") ||
+      raw.startsWith("https://linkedin.com/pub/");
+    if (!ok) {
+      setLinkedinUrlNotice("Lien LinkedIn invalide. Exemple : https://www.linkedin.com/in/ton-profil");
+      window.setTimeout(() => setLinkedinUrlNotice(null), 2800);
+      return;
+    }
+  }
+
+  await updateRootSettingsKey("linkedin", {
+    accountConnected: linkedinAccountConnected,
+    connected: linkedinConnected,
+    displayName: linkedinDisplayName,
+    url: raw,
+  });
+
+  setLinkedinUrlNotice("Lien enregistré ✅");
+  window.setTimeout(() => setLinkedinUrlNotice(null), 1800);
+}, [linkedinUrl, linkedinAccountConnected, linkedinConnected, linkedinDisplayName, updateRootSettingsKey]);
+
+
 const loadGmbAccountsAndLocations = useCallback(async () => {
   // Only possible once the Google account is OAuth-connected
   if (!gmbAccountConnected) return;
@@ -4007,7 +4036,10 @@ useEffect(() => {
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <input
           value={linkedinUrl}
-          readOnly
+          onChange={(e) => {
+            setLinkedinUrlNotice(null);
+            setLinkedinUrl(e.target.value);
+          }}
           placeholder="Lien LinkedIn (optionnel)"
           style={{
             flex: "1 1 280px",
@@ -4022,6 +4054,16 @@ useEffect(() => {
             opacity: linkedinUrl ? 1 : 0.8,
           }}
         />
+
+        
+
+<button
+  type="button"
+  className={`${styles.actionBtn} ${styles.connectBtn}`}
+  onClick={saveLinkedinProfileUrl}
+>
+  Enregistrer
+</button>
 
         <a
           href={linkedinUrl || "#"}
