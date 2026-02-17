@@ -1113,11 +1113,7 @@ const [igAccountsLoading, setIgAccountsLoading] = useState(false);
 const [igSelectedPageId, setIgSelectedPageId] = useState<string>("");
 const [igAccountsError, setIgAccountsError] = useState<string | null>(null);
 
-// LinkedIn organizations (optional selection)
-const [liOrgs, setLiOrgs] = useState<Array<{ id: string; name?: string }>>([]);
-const [liOrgsLoading, setLiOrgsLoading] = useState(false);
-const [liSelectedOrgId, setLiSelectedOrgId] = useState<string>("");
-const [liOrgsError, setLiOrgsError] = useState<string | null>(null);
+
 
   // Google Business locations (selection)
   const [gmbAccounts, setGmbAccounts] = useState<Array<{ name: string; accountName?: string; type?: string }>>([]);
@@ -1335,53 +1331,14 @@ const disconnectLinkedinAccount = useCallback(async () => {
   setLinkedinConnected(false);
   setLinkedinDisplayName("");
   setLinkedinUrl("");
-  setLiOrgs([]);
-  setLiSelectedOrgId("");
   await updateRootSettingsKey("linkedin", {
     accountConnected: false,
     connected: false,
     displayName: "",
     url: "",
-    orgId: "",
   });
 }, [updateRootSettingsKey]);
 
-const loadLinkedinOrganizations = useCallback(async () => {
-  if (!linkedinAccountConnected) return;
-  setLiOrgsLoading(true);
-  setLiOrgsError(null);
-  try {
-    const r = await fetch("/api/integrations/linkedin/organizations", { cache: "no-store" });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j?.error || "Erreur");
-    setLiOrgs(j.organizations || []);
-    if (!liSelectedOrgId && j.organizations?.[0]?.id) setLiSelectedOrgId(j.organizations[0].id);
-  } catch (e: any) {
-    setLiOrgsError(e?.message || "Impossible de charger vos pages LinkedIn.");
-  } finally {
-    setLiOrgsLoading(false);
-  }
-}, [linkedinAccountConnected, liSelectedOrgId]);
-
-const saveLinkedinOrganization = useCallback(async () => {
-  if (!liSelectedOrgId) return;
-  const picked = liOrgs.find((o) => o.id === liSelectedOrgId);
-  const r = await fetch("/api/integrations/linkedin/select-organization", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ orgId: liSelectedOrgId, orgName: picked?.name || null }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (r.ok) {
-    setLinkedinConnected(true);
-    if (j?.profileUrl) setLinkedinUrl(String(j.profileUrl));
-    setLinkedinUrlNotice("Enregistré ✓");
-    window.setTimeout(() => setLinkedinUrlNotice(null), 2200);
-  } else {
-    setLinkedinUrlNotice(j?.error || "Impossible d'enregistrer LinkedIn.");
-    window.setTimeout(() => setLinkedinUrlNotice(null), 2500);
-  }
-}, [liSelectedOrgId, liOrgs]);
 
 const loadGmbAccountsAndLocations = useCallback(async () => {
   // Only possible once the Google account is OAuth-connected
@@ -3996,7 +3953,7 @@ useEffect(() => {
         <div className={styles.blockTitle}>Compte connecté</div>
         <ConnectionPill connected={linkedinAccountConnected} />
       </div>
-      <div className={styles.blockSub}>Connexion OAuth LinkedIn (profil et publication).</div>
+      <div className={styles.blockSub}>Connexion OAuth LinkedIn.</div>
 
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <input
@@ -4029,70 +3986,7 @@ useEffect(() => {
       </div>
     </div>
 
-    {/* Optionnel : choix d'une organisation */}
-    {linkedinAccountConnected ? (
-      <div
-        style={{
-          border: "1px solid rgba(255,255,255,0.12)",
-          background: "rgba(255,255,255,0.03)",
-          borderRadius: 14,
-          padding: 12,
-          display: "grid",
-          gap: 10,
-        }}
-      >
-        <div className={styles.blockHeaderRow}>
-          <div className={styles.blockTitle}>Page LinkedIn (optionnel)</div>
-          <ConnectionPill connected={!!liSelectedOrgId} />
-        </div>
-        <div className={styles.blockSub}>Si tu veux publier en tant qu'entreprise (sinon, publication sur le profil).</div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <button
-            type="button"
-            className={`${styles.actionBtn} ${styles.secondaryBtn}`}
-            onClick={() => loadLinkedinOrganizations()}
-            disabled={liOrgsLoading}
-          >
-            {liOrgsLoading ? "Chargement..." : "Charger mes pages"}
-          </button>
-
-          <select
-            value={liSelectedOrgId}
-            onChange={(e) => setLiSelectedOrgId(e.target.value)}
-            style={{
-              flex: "1 1 260px",
-              minWidth: 220,
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(15,23,42,0.65)",
-              colorScheme: "dark",
-              padding: "10px 12px",
-              color: "white",
-              outline: "none",
-            }}
-          >
-            <option value="">Publier sur mon profil</option>
-            {liOrgs.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name || o.id}
-              </option>
-            ))}
-          </select>
-
-          <button
-            type="button"
-            className={`${styles.actionBtn} ${styles.connectBtn}`}
-            onClick={saveLinkedinOrganization}
-            disabled={!liSelectedOrgId}
-          >
-            Sélectionner
-          </button>
-        </div>
-        {liOrgsError && <div className={styles.errNote}>{liOrgsError}</div>}
-      </div>
-    ) : null}
-
+    
     {/* Lien */}
     <div
       style={{

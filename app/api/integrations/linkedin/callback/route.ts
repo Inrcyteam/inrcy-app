@@ -88,6 +88,8 @@ export async function GET(req: Request) {
     const sub = String(userinfo?.sub || "");
     const name = String(userinfo?.name || userinfo?.localizedFirstName || "");
     const email = String(userinfo?.email || "");
+    // OpenID Connect can optionally provide a public profile URL via the standard "profile" claim.
+    const profileUrl = (userinfo as any)?.profile || (userinfo as any)?.profile_url || null;
 
     const authorUrn = sub ? `urn:li:person:${sub}` : "";
 
@@ -110,13 +112,13 @@ export async function GET(req: Request) {
       email_address: email || null,
       display_name: name || null,
       provider_account_id: sub || null,
-      scopes: "openid profile email w_member_social r_organization_social w_organization_social",
+      scopes: "openid profile email w_member_social",
       access_token_enc: accessToken,
       refresh_token_enc: null,
       expires_at: null,
       resource_id: authorUrn || null,
       resource_label: name || null,
-      meta: { org_urn: null },
+      meta: { profile_url: profileUrl, org_urn: null },
     };
 
     if ((existing as any)?.id) {
@@ -136,8 +138,7 @@ export async function GET(req: Request) {
           accountConnected: true,
           connected: true,
           displayName: name || null,
-          url: null,
-          orgId: null,
+          url: profileUrl,
         },
       };
       await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });

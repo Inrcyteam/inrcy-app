@@ -26,6 +26,6 @@ export async function GET() {
     accountConnected,
     connected,
     display_name: (row as any)?.resource_label || null,
-    profile_url: null,
+    profile_url: (row as any)?.meta?.profile_url || null,
   });
 }

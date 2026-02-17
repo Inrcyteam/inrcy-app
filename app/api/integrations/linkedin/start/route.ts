@@ -18,6 +18,8 @@ export async function GET(request: Request) {
     client_id: clientId,
     redirect_uri: redirectUri,
     state,
+    // Only request scopes that are provisioned on the app.
+    // Organization/page scopes require additional LinkedIn approval.
     scope: ["openid", "profile", "email", "w_member_social"].join(" "),
   });
 
