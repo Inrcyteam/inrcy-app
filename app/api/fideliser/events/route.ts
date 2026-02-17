@@ -16,8 +16,9 @@ const body = await req.json().catch(() => ({}));
       return NextResponse.json({ error: "Invalid type" }, { status: 400 });
     }
 
-    const { error } = await supabase.from("fideliser_events").insert({
+    const { error } = await supabase.from("app_events").insert({
       user_id: userId,
+      module: "fideliser",
       type,
       payload,
     });

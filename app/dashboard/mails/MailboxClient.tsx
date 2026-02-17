@@ -104,7 +104,8 @@ type SendItem = {
 
 type OutboxItem = {
   id: string;
-  source: "send_items" | "booster_events" | "fideliser_events";
+  source: "send_items" | "app_events";
+  module?: "booster" | "fideliser";
   folder: Folder;
   provider: string | null; // Gmail / Microsoft / IMAP / Booster / Fidéliser / Admin
   status: Status;
@@ -435,7 +436,7 @@ export default function MailboxClient() {
 
 
   // --- Corbeille locale (Booster / Fidéliser) ---
-  // On n'a pas de statut "deleted" côté DB pour booster_events / fideliser_events,
+  // On n'a pas de statut "deleted" côté DB pour app_events,
   // donc on fait un soft-delete côté client (localStorage), par utilisateur.
   function trashKey(userId: string) {
     return `inrsend_trash_ids_${userId}`;
@@ -616,11 +617,10 @@ export default function MailboxClient() {
       // Conservation max 30 jours (historique visible)
       const cutoffIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      // On charge 3 sources :
+      // On charge 2 sources :
       // 1) send_items (mails / factures / devis)
-      // 2) booster_events (publications / récoltes / offres)
-      // 3) fideliser_events (informations / suivis / enquêtes)
-      const [sendRes, boosterRes, fideliserRes] = await Promise.all([
+      // 2) app_events (Booster + Fidéliser)
+      const [sendRes, eventsRes] = await Promise.all([
         supabase
           .from("send_items")
           .select(
@@ -631,24 +631,17 @@ export default function MailboxClient() {
           .order("created_at", { ascending: false })
           .limit(500),
         supabase
-          .from("booster_events")
-          .select("id, type, payload, created_at")
+          .from("app_events")
+          .select("id, module, type, payload, created_at")
           .eq("user_id", auth.user.id)
-          .gte("created_at", cutoffIso)
-          .order("created_at", { ascending: false })
-          .limit(500),
-        supabase
-          .from("fideliser_events")
-          .select("id, type, payload, created_at")
-          .eq("user_id", auth.user.id)
+          .in("module", ["booster", "fideliser"])
           .gte("created_at", cutoffIso)
           .order("created_at", { ascending: false })
           .limit(500),
       ]);
 
       if (sendRes.error) console.error(sendRes.error);
-      if (boosterRes.error) console.error(boosterRes.error);
-      if (fideliserRes.error) console.error(fideliserRes.error);
+      if (eventsRes.error) console.error(eventsRes.error);
 
       const sendItems = ((sendRes.data || []) as SendItem[])
         .map<OutboxItem>((x) => {
@@ -677,7 +670,11 @@ export default function MailboxClient() {
           };
         });
 
-      const boosterItems = (boosterRes.data || []).map<OutboxItem>((e: any) => {
+      const eventRows = (eventsRes.data || []) as any[];
+
+      const boosterItems = eventRows
+        .filter((e) => String(e.module) === "booster")
+        .map<OutboxItem>((e: any) => {
         const t = String(e.type || "");
         const folder: Folder = t === "publish" ? "publications" : t === "review_mail" ? "recoltes" : "offres";
         const payload = (e.payload || {}) as any;
@@ -707,7 +704,8 @@ const subTitle = firstNonEmpty(
         const extracted = extractMessageFromPayload(payload);
         return {
           id: e.id,
-          source: "booster_events",
+          source: "app_events",
+          module: "booster",
           folder,
           provider: "Booster",
           status: "sent",
@@ -724,7 +722,9 @@ const subTitle = firstNonEmpty(
         };
       });
 
-      const fideliserItems = (fideliserRes.data || []).map<OutboxItem>((e: any) => {
+      const fideliserItems = eventRows
+        .filter((e) => String(e.module) === "fideliser")
+        .map<OutboxItem>((e: any) => {
         const t = String(e.type || "");
         const folder: Folder = t === "newsletter_mail" ? "informations" : t === "thanks_mail" ? "suivis" : "enquetes";
         const payload = (e.payload || {}) as any;
@@ -741,7 +741,8 @@ const subTitle = firstNonEmpty(
         const extracted = extractMessageFromPayload(payload);
         return {
           id: e.id,
-          source: "fideliser_events",
+          source: "app_events",
+          module: "fideliser",
           folder,
           provider: "Fidéliser",
           status: "sent",

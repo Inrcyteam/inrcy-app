@@ -424,9 +424,10 @@ const body = await req.json().catch(() => null);
     }
 
     // 5) Log booster event
-    await supabaseAdmin.from("booster_events").insert({
+    await supabaseAdmin.from("app_events").insert({
       id: randomUUID(),
       user_id: userId,
+      module: "booster",
       type: "publish",
       payload: {
         idea,

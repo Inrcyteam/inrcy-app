@@ -24,9 +24,10 @@ const sinceMonth = daysAgoISO(days);
   const sinceWeek = daysAgoISO(7);
 
   const { data: rows, error } = await supabase
-    .from("fideliser_events")
+    .from("app_events")
     .select("type, created_at, payload")
     .eq("user_id", userId)
+    .eq("module", "fideliser")
     .gte("created_at", sinceMonth)
     .order("created_at", { ascending: false });
 
