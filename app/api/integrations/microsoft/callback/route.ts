@@ -99,42 +99,50 @@ export async function GET(req: Request) {
 
     // Preserve refresh token if not returned (rare but possible)
     const { data: existing, error: existingErr } = await supabase
-      .from("mail_accounts")
-      .select("refresh_token_enc")
+      .from("integrations")
+      .select("id, refresh_token")
       .eq("user_id", userId)
       .eq("provider", "microsoft")
-      .eq("email_address", email)
+      .eq("category", "mail")
+      .eq("account_email", email)
       .maybeSingle();
 
     if (existingErr) {
       return NextResponse.json({ error: "DB read existing failed", existingErr }, { status: 500 });
     }
 
-    const refreshTokenToStore = tokenData.refresh_token ?? existing?.refresh_token_enc ?? null;
+    const refreshTokenToStore = tokenData.refresh_token ?? (existing as any)?.refresh_token ?? null;
 
     const payload = {
       user_id: userId,
       provider: "microsoft",
-      email_address: email,
-      display_name: me.displayName ?? null,
+      category: "mail",
+      product: "microsoft",
+      account_email: email,
       provider_account_id: me.id ?? null,
       status: "connected",
-      scopes: tokenData.scope ?? null,
-      access_token_enc: tokenData.access_token,
-      refresh_token_enc: refreshTokenToStore,
+      access_token: tokenData.access_token ?? null,
+      refresh_token: refreshTokenToStore,
       expires_at: computeExpiresAt(tokenData.expires_in ?? null),
+      settings: {
+        display_name: me.displayName ?? null,
+        scopes_raw: tokenData.scope ?? null,
+      },
+      updated_at: new Date().toISOString(),
     };
 
-    const { error: upErr } = await supabase
-      .from("mail_accounts")
-      .upsert(payload, {
-        onConflict: "user_id,provider,email_address",
-        ignoreDuplicates: false,
-      });
+    if ((existing as any)?.id) {
+      const { error: upErr } = await supabase
+        .from("integrations")
+        .update(payload)
+        .eq("id", (existing as any).id);
 
-    if (upErr) {
-      return NextResponse.json({ error: "DB upsert failed", upErr }, { status: 500 });
+      if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
+    } else {
+      const { error: insErr } = await supabase.from("integrations").insert(payload);
+      if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
     }
+
 
     return NextResponse.redirect(new URL("/dashboard?panel=mails&toast=connected", req.url));
   } catch (e: any) {

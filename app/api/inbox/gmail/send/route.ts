@@ -212,10 +212,11 @@ export async function POST(req: Request) {
   if (!to) return NextResponse.json({ error: "Missing 'to'" }, { status: 400 });
 
   let q = supabase
-    .from("mail_accounts")
-    .select("id,access_token_enc,refresh_token_enc,expires_at,status,created_at")
+    .from("integrations")
+    .select("id,access_token,refresh_token,expires_at,status,created_at,account_email,provider")
     .eq("user_id", userId)
-    .eq("provider", "gmail");
+    .eq("provider", "gmail")
+    .eq("category", "mail");
 
   if (typeof accountId === "string" && accountId.trim()) {
     q = q.eq("id", accountId.trim());
@@ -229,8 +230,8 @@ export async function POST(req: Request) {
   if (!account) return NextResponse.json({ error: "No Gmail connected" }, { status: 400 });
 
   // ✅ tokens bruts
-  const accessTokenEnc: string | null = account.access_token_enc ?? null;
-  const refreshToken: string | null = account.refresh_token_enc ?? null;
+  const accessTokenEnc: string | null = account.access_token ?? null;
+  const refreshToken: string | null = account.refresh_token ?? null;
 
   // ✅ on garantit un string
   if (!accessTokenEnc) {
@@ -250,8 +251,8 @@ export async function POST(req: Request) {
           : null;
 
       await supabase
-        .from("mail_accounts")
-        .update({ access_token_enc: accessToken, expires_at: expiresAt, status: "connected" })
+        .from("integrations")
+        .update({ access_token: accessToken, expires_at: expiresAt, status: "connected" })
         .eq("id", account.id);
     }
   }
@@ -280,8 +281,8 @@ export async function POST(req: Request) {
           : null;
 
       await supabase
-        .from("mail_accounts")
-        .update({ access_token_enc: accessToken, expires_at: expiresAt, status: "connected" })
+        .from("integrations")
+        .update({ access_token: accessToken, expires_at: expiresAt, status: "connected" })
         .eq("id", account.id);
 
       const retry = await gmailSend(accessToken, raw, threadId || undefined);
@@ -292,7 +293,7 @@ export async function POST(req: Request) {
 
   if (!sendRes.ok) {
     if (sendRes.status === 401 || sendRes.status === 403) {
-      await supabase.from("mail_accounts").update({ status: "expired" }).eq("id", account.id);
+      await supabase.from("integrations").update({ status: "expired" }).eq("id", account.id);
     }
     return NextResponse.json(
       { error: "Gmail send failed", gmailStatus: sendRes.status, gmailError: sendData },

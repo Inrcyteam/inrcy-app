@@ -9,21 +9,25 @@ export async function loadImapAccount(accountId: string) {
   }
 
   const { data, error } = await supabase
-    .from("mail_accounts")
-    .select(
-      "id, user_id, provider, email_address, password_enc, imap_host, imap_port, imap_secure, smtp_host, smtp_port, smtp_secure, smtp_starttls"
-    )
+    .from("integrations")
+    .select("id, user_id, provider, account_email, settings")
     .eq("id", accountId)
     .eq("user_id", userData.user.id)
     .eq("provider", "imap")
+    .eq("category", "mail")
     .single();
 
   if (error || !data) {
     return { error: "Compte IMAP introuvable" as const, status: 404 };
   }
 
-  const password = decryptSecret(String(data.password_enc || ""));
-  const login = String(data.email_address || "");
+  const settings: any = (data as any).settings ?? {};
+  const passwordEnc = String(settings.password_enc || "");
+  const password = decryptSecret(passwordEnc);
+  const login = String((data as any).account_email || "");
+
+  const imap = settings.imap || {};
+  const smtp = settings.smtp || {};
 
   return {
     ok: true as const,
@@ -31,17 +35,17 @@ export async function loadImapAccount(accountId: string) {
     imap: {
       user: login,
       password,
-      host: String(data.imap_host),
-      port: Number(data.imap_port),
-      secure: !!data.imap_secure,
+      host: String(imap.host || ""),
+      port: Number(imap.port || 993),
+      secure: !!imap.secure,
     },
     smtp: {
       user: login,
       password,
-      host: String(data.smtp_host),
-      port: Number(data.smtp_port),
-      secure: !!data.smtp_secure,
-      starttls: !!data.smtp_starttls,
+      host: String(smtp.host || ""),
+      port: Number(smtp.port || 587),
+      secure: !!smtp.secure,
+      starttls: !!smtp.starttls,
     },
   };
 }

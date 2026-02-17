@@ -11,18 +11,30 @@ export async function GET() {
 
   const userId = userData.user.id;
 
-  const { data: mailAccounts, error: mailError } = await supabase
-    .from("mail_accounts")
-    .select("id, provider, email_address, display_name, status, created_at")
+  const { data: rows, error: mailError } = await supabase
+    .from("integrations")
+    .select("id, provider, account_email, settings, status, created_at")
     .eq("user_id", userId)
+    .eq("category", "mail")
     .order("created_at", { ascending: true });
+
+  const mailAccounts =
+    (rows ?? []).map((r: any) => ({
+      id: r.id,
+      provider: r.provider,
+      email_address: r.account_email,
+      display_name: r.settings?.display_name ?? null,
+      status: r.status,
+      created_at: r.created_at,
+    })) ?? [];
+
 
   if (mailError) {
     return NextResponse.json({ error: mailError.message }, { status: 500 });
   }
 
   return NextResponse.json({
-    mailAccounts: mailAccounts ?? [],
+    mailAccounts: mailAccounts,
     limits: { maxMailAccounts: 4 },
   });
 }

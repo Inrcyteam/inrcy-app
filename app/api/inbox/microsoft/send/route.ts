@@ -67,11 +67,12 @@ const formData = await req.formData();
     }
 
     const { data: account, error: accErr } = await supabase
-      .from("mail_accounts")
-      .select("id,user_id,provider,email_address,access_token_enc,refresh_token_enc,expires_at,status,scopes")
+      .from("integrations")
+      .select("id,user_id,provider,account_email,access_token,refresh_token,expires_at,status,settings")
       .eq("id", accountId)
       .eq("user_id", userId)
       .eq("provider", "microsoft")
+      .eq("category", "mail")
       .eq("status", "connected")
       .single();
 
@@ -79,8 +80,8 @@ const formData = await req.formData();
       return NextResponse.json({ error: "Microsoft mail account not found" }, { status: 404 });
     }
 
-    let accessToken: string | null = account.access_token_enc ?? null;
-    const refreshToken: string | null = account.refresh_token_enc ?? null;
+    let accessToken: string | null = account.access_token ?? null;
+    const refreshToken: string | null = account.refresh_token ?? null;
 
     if (!accessToken) {
       return NextResponse.json({ error: "Missing access token" }, { status: 500 });
@@ -88,7 +89,7 @@ const formData = await req.formData();
 
     // refresh si expiré
     if (refreshToken && isExpired(account.expires_at)) {
-      const r = await refreshAccessToken(refreshToken, account.scopes);
+      const r = await refreshAccessToken(refreshToken, (account as any)?.settings?.scopes_raw ?? null);
       if (r.ok && r.data?.access_token) {
         accessToken = String(r.data.access_token);
         const expiresAt = r.data?.expires_in
@@ -96,8 +97,8 @@ const formData = await req.formData();
           : null;
 
         await supabase
-          .from("mail_accounts")
-          .update({ access_token_enc: accessToken, expires_at: expiresAt, status: "connected" })
+          .from("integrations")
+          .update({ access_token: accessToken, expires_at: expiresAt, status: "connected" })
           .eq("id", account.id);
       }
     }

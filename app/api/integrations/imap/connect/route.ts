@@ -30,31 +30,41 @@ export async function POST(req: Request) {
     const userId = userData.user.id;
 
     // Only 1 IMAP account per user (slot 4)
-    await supabase.from("mail_accounts").delete().eq("user_id", userId).eq("provider", "imap");
+        // Only 1 IMAP account per user (slot 4)
+    await supabase
+      .from("integrations")
+      .delete()
+      .eq("user_id", userId)
+      .eq("category", "mail")
+      .eq("provider", "imap");
+
 
     const password_enc = encryptSecret(password);
 
     const { data, error } = await supabase
-      .from("mail_accounts")
+      .from("integrations")
       .insert({
         user_id: userId,
         provider: "imap",
-        email_address: login,
-        display_name: "IMAP",
-        status: "connected",
-        scopes: null,
+        category: "mail",
+        product: "imap",
+        account_email: login,
         provider_account_id: null,
-        access_token_enc: null,
-        refresh_token_enc: null,
+        status: "connected",
+        access_token: null,
+        refresh_token: null,
         expires_at: null,
-        imap_host,
-        imap_port,
-        imap_secure,
-        smtp_host,
-        smtp_port,
-        smtp_secure,
-        smtp_starttls,
-        password_enc,
+        settings: {
+          display_name: "IMAP",
+          imap: { host: imap_host, port: imap_port, secure: imap_secure },
+          smtp: {
+            host: smtp_host,
+            port: smtp_port,
+            secure: smtp_secure,
+            starttls: smtp_starttls,
+          },
+          password_enc,
+        },
       })
       .select("id")
       .single();

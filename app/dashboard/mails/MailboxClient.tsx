@@ -582,13 +582,22 @@ export default function MailboxClient() {
     if (!auth?.user) return;
 
     const { data, error } = await supabase
-      .from("mail_accounts")
-      .select("id, provider, email_address, display_name, status")
+      .from("integrations")
+      .select("id, provider, account_email, settings, status, created_at")
       .eq("user_id", auth.user.id)
+      .eq("category", "mail")
       .order("created_at", { ascending: true });
 
     if (!error && data) {
-      setMailAccounts(data as any);
+      const mapped = (data as any[]).map((r) => ({
+        id: r.id,
+        provider: r.provider,
+        email_address: r.account_email,
+        display_name: r.settings?.display_name ?? null,
+        status: r.status,
+        created_at: r.created_at,
+      }));
+      setMailAccounts(mapped as any);
       // Default selection
       const connected = (data as any[]).filter((a) => a.status === "connected");
       const defaultId = connected[0]?.id || (data as any[])[0]?.id || "";
