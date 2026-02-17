@@ -130,7 +130,7 @@ const formData = await req.formData();
     // --- iNr'Send history (Supabase) ---
     const historyPayload = {
       user_id: userId,
-      mail_account_id: accountId || null,
+      integration_id: accountId || null,
       type: (sendType as any) || "mail",
       status: "sent",
       to_emails: to,

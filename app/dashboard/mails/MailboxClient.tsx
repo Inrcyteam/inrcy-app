@@ -85,7 +85,7 @@ type MailAccount = {
 
 type SendItem = {
   id: string;
-  mail_account_id: string | null;
+  integration_id: string | null;
   type: SendType;
   status: Status;
   to_emails: string;
@@ -496,9 +496,9 @@ export default function MailboxClient() {
 
   function itemMailAccountId(it: OutboxItem): string {
     try {
-      if (it.source === "send_items") return String((it.raw as any)?.mail_account_id || "");
+      if (it.source === "send_items") return String((it.raw as any)?.integration_id || "");
       const payload = (it.raw as any)?.payload || (it.raw as any)?.raw?.payload || (it.raw as any)?.meta || {};
-      return String((payload as any)?.mail_account_id || (payload as any)?.mailAccountId || (payload as any)?.accountId || "");
+      return String((payload as any)?.integration_id || (payload as any)?.mailAccountId || (payload as any)?.accountId || "");
     } catch {
       return "";
     }
@@ -633,7 +633,7 @@ export default function MailboxClient() {
         supabase
           .from("send_items")
           .select(
-            "id, mail_account_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, provider_thread_id, error, sent_at, created_at, updated_at"
+            "id, integration_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, provider_thread_id, error, sent_at, created_at, updated_at"
           )
           .eq("user_id", auth.user.id)
           .gte("created_at", cutoffIso)
@@ -1117,7 +1117,7 @@ const subTitle = firstNonEmpty(
 
     const payload = {
       user_id: auth.user.id,
-      mail_account_id: selectedAccountId || null,
+      integration_id: selectedAccountId || null,
       type: composeType,
       status: "draft" as const,
       to_emails: to.trim(),
@@ -1193,7 +1193,7 @@ const subTitle = firstNonEmpty(
               payload: {
                 ...(pendingTrack.payload || {}),
                 // Useful context for debugging/analytics
-                mail_account_id: selectedAccount.id,
+                integration_id: selectedAccount.id,
                 to: recipients,
                 subject: subject.trim() || "(sans objet)",
               },
