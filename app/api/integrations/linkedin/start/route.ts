@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     client_id: clientId,
     redirect_uri: redirectUri,
     state,
-    scope: ["openid", "profile", "email", "w_member_social", "r_organization_social", "w_organization_social"].join(" "),
+    scope: ["openid", "profile", "email", "w_member_social"].join(" "),
   });
 
   return NextResponse.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`);
