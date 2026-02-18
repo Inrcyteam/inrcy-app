@@ -302,7 +302,15 @@ async function upsertGoogleIntegration(opts: {
     .upsert(payload, { onConflict: "user_id,provider,source,product" });
 
   if (upsertErr) {
-    throw new Error(`DB upsert failed: ${upsertErr.message || JSON.stringify(upsertErr)}`);
+    const msg = upsertErr.message || JSON.stringify(upsertErr);
+    if (msg.includes("no unique or exclusion constraint matching the ON CONFLICT specification")) {
+      throw new Error(
+        "DB upsert failed: l'index UNIQUE n'est pas aligné. " +
+          "Crée/remplace l'index integrations_unique sur (user_id, provider, source, product). Détail: " +
+          msg
+      );
+    }
+    throw new Error(`DB upsert failed: ${msg}`);
   }
 }
 
