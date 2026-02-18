@@ -42,6 +42,9 @@ export async function GET(request: Request) {
       getGoogleTokenForAnyGoogle,
     } = await import("@/lib/googleStats");
     const { gmbFetchDailyMetrics } = await import("@/lib/googleBusiness");
+    const { igFetchDailyInsights } = await import("@/lib/metaInsights");
+    const { fbFetchDailyInsights } = await import("@/lib/facebookInsights");
+    const { liFetchOrgShareStats } = await import("@/lib/linkedinAnalytics");
 
     const { searchParams } = new URL(request.url);
     const days = Math.min(Math.max(Number(searchParams.get("days") || 28), 7), 90);
@@ -402,23 +405,25 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       .sort((a, b) => b.clicks - a.clicks)
       .slice(0, 8);
 
-    // --- GMB + Facebook connections (for badges + future metrics) ---
+    // --- Connections + channel metrics ---
     const sourcesStatus: any = {
       site_inrcy: { connected: { ga4: false, gsc: false } },
       site_web: { connected: { ga4: false, gsc: false } },
       gmb: { connected: false, metrics: null },
-      facebook: { connected: false },
+      facebook: { connected: false, metrics: null },
+      instagram: { connected: false, metrics: null },
+      linkedin: { connected: false, metrics: null },
     };
 
     // copy site connections from perSource (built above)
     sourcesStatus.site_inrcy.connected = perSource.site_inrcy?.connected || { ga4: false, gsc: false };
     sourcesStatus.site_web.connected = perSource.site_web?.connected || { ga4: false, gsc: false };
 
-    // Facebook: presence of a connected row is enough (token validity is handled in its own status endpoint)
+    // Facebook: connected if a page has been selected (resource_id)
     try {
       const { data: fbRowRows } = await supabase
         .from("integrations")
-        .select("id,status")
+        .select("id,status,resource_id,access_token_enc")
         .eq("user_id", userId)
         .eq("provider", "facebook")
         .eq("source", "facebook")
@@ -430,6 +435,27 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       const fbRow = fbRowRows?.[0] as any;
 
 sourcesStatus.facebook.connected = !!fbRow;
+
+      // Real Facebook Page metrics (only if included)
+      const includeFb = includeAll || includeSet.has("facebook");
+      if (!includeFb) {
+        sourcesStatus.facebook.metrics = null;
+      } else if (fbRow?.resource_id && fbRow?.access_token_enc) {
+        try {
+          const end = new Date();
+          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          sourcesStatus.facebook.metrics = await fbFetchDailyInsights(
+            String(fbRow.access_token_enc),
+            String(fbRow.resource_id),
+            start,
+            end
+          );
+        } catch (e: any) {
+          sourcesStatus.facebook.metrics = { error: e?.message || "facebook insights fetch failed" };
+        }
+      } else {
+        sourcesStatus.facebook.metrics = null;
+      }
 
       // Legacy override
       try {
@@ -455,7 +481,7 @@ sourcesStatus.facebook.connected = !!fbRow;
     try {
       const { data: igRowRows } = await supabase
         .from("integrations")
-        .select("id,status,resource_id")
+        .select("id,status,resource_id,access_token_enc")
         .eq("user_id", userId)
         .eq("provider", "instagram")
         .eq("source", "instagram")
@@ -467,6 +493,27 @@ sourcesStatus.facebook.connected = !!fbRow;
       const igRow = igRowRows?.[0] as any;
 
 sourcesStatus.instagram.connected = !!igRow?.resource_id;
+
+      // Real Instagram metrics (only if included)
+      const includeIg = includeAll || includeSet.has("instagram");
+      if (!includeIg) {
+        sourcesStatus.instagram.metrics = null;
+      } else if (igRow?.resource_id && igRow?.access_token_enc) {
+        try {
+          const end = new Date();
+          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          sourcesStatus.instagram.metrics = await igFetchDailyInsights(
+            String(igRow.access_token_enc),
+            String(igRow.resource_id),
+            start,
+            end
+          );
+        } catch (e: any) {
+          sourcesStatus.instagram.metrics = { error: e?.message || "instagram insights fetch failed" };
+        }
+      } else {
+        sourcesStatus.instagram.metrics = null;
+      }
 
       // Legacy override
       try {
@@ -488,11 +535,11 @@ sourcesStatus.instagram.connected = !!igRow?.resource_id;
       } catch {}
     } catch {}
 
-    // LinkedIn: simple stats only. Connected if an OAuth row exists.
+    // LinkedIn: connected if an OAuth row exists.
     try {
       const { data: liRowRows } = await supabase
         .from("integrations")
-        .select("id,status")
+        .select("id,status,access_token_enc,meta")
         .eq("user_id", userId)
         .eq("provider", "linkedin")
         .eq("source", "linkedin")
@@ -504,6 +551,33 @@ sourcesStatus.instagram.connected = !!igRow?.resource_id;
       const liRow = liRowRows?.[0] as any;
 
 sourcesStatus.linkedin.connected = !!liRow;
+
+      // Real LinkedIn org share stats (only if included)
+      const includeLi = includeAll || includeSet.has("linkedin");
+      if (!includeLi) {
+        sourcesStatus.linkedin.metrics = null;
+      } else if (liRow?.access_token_enc) {
+        try {
+          const meta = (liRow as any)?.meta || {};
+          const orgUrn = String(meta?.org_urn || "");
+          if (!orgUrn) {
+            sourcesStatus.linkedin.metrics = { error: "No organization selected (org_urn missing)" };
+          } else {
+            const end = new Date();
+            const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+            sourcesStatus.linkedin.metrics = await liFetchOrgShareStats(
+              String(liRow.access_token_enc),
+              orgUrn,
+              start,
+              end
+            );
+          }
+        } catch (e: any) {
+          sourcesStatus.linkedin.metrics = { error: e?.message || "linkedin analytics fetch failed" };
+        }
+      } else {
+        sourcesStatus.linkedin.metrics = null;
+      }
 
       // Legacy override
       try {

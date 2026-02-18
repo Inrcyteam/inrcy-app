@@ -87,13 +87,42 @@ function computeOpportunities(overview: OverviewResponse): { perDay: number; con
   }, 0);
 
   // Boosts for connected acquisition channels (GMB / Facebook / Instagram / LinkedIn)
-  // – even if we don't fetch their metrics yet.
-  // /api/stats/overview exposes connection state under `sources`.
+  // /api/stats/overview exposes connection state + (when available) channel metrics under `sources.*.metrics`.
   const sourcesStatus = overview?.sources || {};
-  const gmbBoost = sourcesStatus?.gmb?.connected ? 1.08 : 1.0;
-  const fbBoost = sourcesStatus?.facebook?.connected ? 1.04 : 1.0;
-  const igBoost = sourcesStatus?.instagram?.connected ? 1.03 : 1.0;
-  const liBoost = sourcesStatus?.linkedin?.connected ? 1.02 : 1.0;
+  const gmbMetricsTotals = sourcesStatus?.gmb?.metrics?.totals || {};
+  const fbMetricsTotals = sourcesStatus?.facebook?.metrics?.totals || {};
+  const igMetricsTotals = sourcesStatus?.instagram?.metrics?.totals || {};
+  const liMetricsTotals = sourcesStatus?.linkedin?.metrics?.totals || {};
+
+  // Turn social/local actions into a comparable "intent" signal.
+  // The weights are intentionally conservative to avoid overestimating.
+  const gmbActions =
+    safeNumber(gmbMetricsTotals.websiteClicks) +
+    safeNumber(gmbMetricsTotals.callClicks) +
+    safeNumber(gmbMetricsTotals.directions) +
+    safeNumber(gmbMetricsTotals.directionRequests) +
+    safeNumber(gmbMetricsTotals.website_clicks) +
+    safeNumber(gmbMetricsTotals.call_clicks);
+
+  const fbActions =
+    safeNumber(fbMetricsTotals.page_website_clicks_logged_in_unique) +
+    safeNumber(fbMetricsTotals.page_call_phone_clicks_logged_in_unique) +
+    safeNumber(fbMetricsTotals.page_get_directions_clicks_logged_in_unique) +
+    safeNumber(fbMetricsTotals.page_engaged_users) * 0.05 +
+    safeNumber(fbMetricsTotals.page_views_total) * 0.02;
+
+  const igActions =
+    safeNumber(igMetricsTotals.website_clicks) +
+    safeNumber(igMetricsTotals.phone_call_clicks) +
+    safeNumber(igMetricsTotals.email_contacts) +
+    safeNumber(igMetricsTotals.get_direction_clicks) +
+    safeNumber(igMetricsTotals.profile_views) * 0.05;
+
+  const liActions =
+    safeNumber(liMetricsTotals.clickCount) +
+    (safeNumber(liMetricsTotals.likeCount) + safeNumber(liMetricsTotals.commentCount) + safeNumber(liMetricsTotals.shareCount)) * 0.15;
+
+  const channelActionsPerDay = (gmbActions + fbActions + igActions + liActions) / baseDays;
 
   // Normalize signals.
   const trafficScore = clamp((sessions / baseDays) / 50, 0, 1); // 50 sessions/day -> 1
@@ -111,12 +140,17 @@ function computeOpportunities(overview: OverviewResponse): { perDay: number; con
     0.10 * durationScore +
     0.05 * clamp(directShare / 0.6, 0, 1);
 
-  const multiplier = gmbBoost * fbBoost * igBoost * liBoost;
-
   // Convert index into opportunities/day.
   // - small sites still show something if there is intent
   // - larger sites scale smoothly
-  const rawPerDay = ((sessions / baseDays) * 0.08 + (clicks / baseDays) * 0.12 + (intentClicks / baseDays) * 0.30) * (0.6 + baseIndex) * multiplier;
+  const rawPerDay =
+    (
+      (sessions / baseDays) * 0.08 +
+      (clicks / baseDays) * 0.12 +
+      (intentClicks / baseDays) * 0.30 +
+      channelActionsPerDay * 0.35
+    ) *
+    (0.6 + baseIndex);
 
   const perDay = clamp(rawPerDay, 0, 999);
 
@@ -137,11 +171,11 @@ function computeOpportunities(overview: OverviewResponse): { perDay: number; con
     depthScore,
     durationScore,
     baseIndex,
-    gmbBoost,
-    fbBoost,
-    igBoost,
-    liBoost,
-    multiplier,
+    gmbActions,
+    fbActions,
+    igActions,
+    liActions,
+    channelActionsPerDay,
     rawPerDay,
     perDay,
     confidence,
