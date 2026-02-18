@@ -420,3 +420,52 @@
   color:rgba(255,255,255,0.92);
   margin-bottom:10px;
 }
+
+
+/* --- Panneau Réglages (drawer à droite) --- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 9999;
+}
+
+.settingsPanel {
+  width: min(420px, 92vw);
+  height: 100%;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 18, 40, 0.85);
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.35);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.settingsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.settingsTitle {
+  font-weight: 950;
+  letter-spacing: -0.2px;
+}
+
+.settingsBody {
+  padding-top: 12px;
+  overflow: auto;
+}
+
+.settingsItem {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 12px;
+}

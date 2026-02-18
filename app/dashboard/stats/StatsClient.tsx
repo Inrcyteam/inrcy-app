@@ -578,7 +578,7 @@ if (cubeKey === "site_web") {
   return attachEffort({
     key: "booster_publier",
     title: "Publier",
-    detail: `1 publication simple/semaine suffit pour rester visible auprès de ${socialLabel}.`,
+    detail: `1 publication simple/semaine suffit pour capter ${socialLabel}.`,
     href: "/dashboard/booster?action=publish",
     pill: "Booster",
   });
@@ -1123,7 +1123,8 @@ function Cube({
           disabled={model.loading || !action.href}
           aria-disabled={model.loading || !action.href}
         >
-          Lancer
+          <span className={styles.actionBtnDesktop}>Lancer</span>
+          <span className={styles.actionBtnMobile}>Go</span>
         </button>
       </div>
 

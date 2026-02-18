@@ -220,6 +220,29 @@ export default function DashboardClient() {
     router.push(qs ? `/dashboard?${qs}` : "/dashboard");
   };
 
+  // Preserve dashboard scroll position when opening/closing modules
+  const goToModule = useCallback(
+    (path: string) => {
+      try {
+        sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
+      } catch {}
+      router.push(path);
+    },
+    [router]
+  );
+
+  useEffect(() => {
+    try {
+      const y = sessionStorage.getItem("inrcy_dashboard_scrollY");
+      if (!y) return;
+      const top = Math.max(0, parseInt(y, 10) || 0);
+      // Let the page paint, then restore
+      requestAnimationFrame(() => window.scrollTo(0, top));
+      setTimeout(() => window.scrollTo(0, top), 60);
+      sessionStorage.removeItem("inrcy_dashboard_scrollY");
+    } catch {}
+  }, []);
+
   // ✅ Déconnexion Supabase + retour /login
   const handleLogout = async () => {
     const supabase = createClient();
@@ -2798,7 +2821,7 @@ useEffect(() => {
       </div>
       <div className={styles.loopSub}>Tous vos leads, enfin visibles</div>
       <div className={styles.loopActions}>
-        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button" onClick={() => router.push("/dashboard/stats")}>
+        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button" onClick={() => goToModule("/dashboard/stats")}>
           Voir les stats
         </button>
       </div>
@@ -2829,7 +2852,7 @@ useEffect(() => {
         <button
   className={`${styles.actionBtn} ${styles.connectBtn}`}
   type="button"
-  onClick={() => router.push("/dashboard/mails")}
+  onClick={() => goToModule("/dashboard/mails")}
 >
   Ouvrir iNr'Send
 </button>
@@ -2861,7 +2884,7 @@ useEffect(() => {
         <button
   className={`${styles.actionBtn} ${styles.connectBtn}`}
   type="button"
-  onClick={() => router.push("/dashboard/agenda")}
+  onClick={() => goToModule("/dashboard/agenda")}
 >
   Voir l’agenda
 </button>
@@ -2879,7 +2902,7 @@ useEffect(() => {
         <button
           className={`${styles.actionBtn} ${styles.connectBtn}`}
           type="button"
-          onClick={() => router.push("/dashboard/crm")}
+          onClick={() => goToModule("/dashboard/crm")}
         >
           Ouvrir le CRM
         </button>
@@ -2913,7 +2936,7 @@ useEffect(() => {
                 <button
     type="button"
     className={`${styles.gearCapsule} ${styles.gear_cyan}`}
-    onClick={() => router.push("/dashboard/booster")}
+    onClick={() => goToModule("/dashboard/booster")}
   >
     <div className={styles.gearInner}>
       <div className={styles.gearTitle}>Booster</div>
@@ -2925,7 +2948,7 @@ useEffect(() => {
                 <button
                   className={`${styles.gearCapsule} ${styles.gear_purple}`}
                   type="button"
-                  onClick={() => router.push("/dashboard/devis/new")}
+                  onClick={() => goToModule("/dashboard/devis/new")}
                 >
                   <div className={styles.gearInner}>
                     <div className={styles.gearTitle}>Devis</div>
@@ -2937,7 +2960,7 @@ useEffect(() => {
                 <button
                   className={`${styles.gearCapsule} ${styles.gear_pink}`}
                   type="button"
-                  onClick={() => router.push("/dashboard/factures/new")}
+                  onClick={() => goToModule("/dashboard/factures/new")}
                 >
                   <div className={styles.gearInner}>
                     <div className={styles.gearTitle}>Facturer</div>
@@ -2949,7 +2972,7 @@ useEffect(() => {
                 <button
     type="button"
     className={`${styles.gearCapsule} ${styles.gear_purple}`}
-    onClick={() => router.push("/dashboard/fideliser")}
+    onClick={() => goToModule("/dashboard/fideliser")}
   >
     <div className={styles.gearInner}>
       <div className={styles.gearTitle}>Fidéliser</div>

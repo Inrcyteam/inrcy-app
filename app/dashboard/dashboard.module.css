@@ -2495,6 +2495,16 @@ transform: scale(1.50);
   position: relative;
   overflow: hidden;
   min-height: 150px;
+
+  /* Motion */
+  transform: translate3d(0,0,0);
+  transition:
+    transform 220ms cubic-bezier(.2,.8,.2,1),
+    box-shadow 220ms cubic-bezier(.2,.8,.2,1),
+    border-color 180ms ease,
+    background 180ms ease;
+  will-change: transform;
+
 }
 
 /* Halo néon fonctionnel */
@@ -2527,6 +2537,34 @@ transform: scale(1.50);
 .loopNode > *{
   position: relative;
   z-index: 1;
+}
+
+/* Hover: déplacement vers le centre + léger zoom */
+.loopNode:hover{
+  border-color: rgba(255,255,255,0.35);
+  background:
+    linear-gradient(180deg,
+      rgba(255,255,255,0.22),
+      rgba(255,255,255,0.11)
+    );
+  box-shadow:
+    0 28px 80px rgba(0,0,0,0.45),
+    inset 0 0 0 1px rgba(255,255,255,0.30);
+  transform: translate3d(0,0,0) scale(1.03);
+}
+
+/* Direction par carte (vers le centre de la roue) */
+.loopNode.loopTop:hover{
+  transform: translate3d(0, 12px, 0) scale(1.03);     /* STATS : vers le bas */
+}
+.loopNode.loopBottom:hover{
+  transform: translate3d(0, -12px, 0) scale(1.03);    /* AGENDA : vers le haut */
+}
+.loopNode.loopLeft:hover{
+  transform: translate3d(12px, 0, 0) scale(1.03);     /* CRM : vers la droite */
+}
+.loopNode.loopRight:hover{
+  transform: translate3d(-12px, 0, 0) scale(1.03);    /* COMS : vers la gauche */
 }
 
 /* TITRE */
@@ -2868,7 +2906,8 @@ transform: scale(1.50);
   grid-template-columns: 1fr 1fr;
   grid-template-rows: auto auto auto auto;
   gap: 20px 18px;
-  padding: 6px;
+  /* Descend the capsules a bit inside the block */
+  padding: 18px 6px 6px;
 }
 
 /* Positions Z (PC) */
@@ -2894,14 +2933,23 @@ transform: scale(1.50);
   cursor: pointer;
   position: relative;
   overflow: hidden;
-  transition: transform .15s ease, border-color .15s ease, background .15s ease;
+
+  /* Hover animation (plus prononcée) */
+  transform: translate3d(0,0,0) scale(1);
+  will-change: transform;
+  transition: transform 240ms cubic-bezier(.2,.8,.2,1), border-color .18s ease, background .18s ease;
 }
 
 .gearCapsule:hover{
-  transform: translateY(-2px);
+  transform: translate3d(0,-14px,0) scale(1.06);
   border-color: rgba(255,255,255,0.35);
   background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.08));
 }
+
+.gearCapsule:active{
+  transform: translate3d(0,-10px,0) scale(1.04);
+}
+
 
 /* reflet verre */
 .gearCapsule::after{
@@ -3542,4 +3590,5 @@ transform: scale(1.50);
 .refreshIconSpinning{
   animation: inrcySpin 0.9s linear infinite;
 }
+
 

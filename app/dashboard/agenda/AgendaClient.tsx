@@ -5,6 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./agenda.module.css";
 
+// Reuse the exact same drawer + content as the Dashboard
+import SettingsDrawer from "../SettingsDrawer";
+import AgendaSettingsContent from "../settings/_components/AgendaSettingsContent";
+
 type CrmContact = {
   id: string;
   last_name: string;
@@ -121,7 +125,10 @@ export default function AgendaClient() {
   const [query, setQuery] = useState("");
 
   // Mode d'usage : artisans (interventions) / professions libérales (agenda)
-  const [viewKind, setViewKind] = useState<"intervention" | "agenda">("intervention");
+    const [viewKind, setViewKind] = useState<"intervention" | "agenda">("intervention");
+
+  // Panneau Réglages (sans quitter la page)
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
 // --- CRM contacts (pour relier un RDV à un contact)
 const [contacts, setContacts] = useState<CrmContact[]>([]);
@@ -169,7 +176,7 @@ function toDateOnly(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-useEffect(() => {
+  useEffect(() => {
   // Deep-link from CRM: /dashboard/agenda?action=new&contactId=...&contactName=...
   const action = (searchParams?.get("action") || "").toLowerCase();
   if (action !== "new") return;
@@ -450,9 +457,19 @@ async function deleteRdv() {
     }
   }, [connected, cursorMonth]);
 
-  const openAgendaSettings = () => {
-    router.push("/dashboard?panel=agenda");
-  };
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSettingsOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [settingsOpen]);
+
+  const openAgendaSettings = () => setSettingsOpen(true);
+  const closeAgendaSettings = () => setSettingsOpen(false);
+  const toggleAgendaSettings = () => setSettingsOpen((v) => !v);
+
 
   const monthStart = useMemo(() => startOfMonth(cursorMonth), [cursorMonth]);
   const monthEnd = useMemo(() => endOfMonth(cursorMonth), [cursorMonth]);
@@ -578,11 +595,15 @@ async function deleteRdv() {
             >
               {viewKind === "intervention" ? "🗓️ Mode agenda" : "🧰 Mode interventions"}
             </button>
-            <button className={styles.btnGhost} onClick={openAgendaSettings}>
+            <button className={styles.btnGhost} onClick={toggleAgendaSettings}>
               ⚙️ Réglages
             </button>
             <button className={styles.btnGhost} onClick={() => router.push("/dashboard")}>Fermer</button>
           </div>
+
+          <SettingsDrawer title="Réglages Agenda" isOpen={settingsOpen} onClose={closeAgendaSettings}>
+            <AgendaSettingsContent />
+          </SettingsDrawer>
         </div>
 
         {connected === false && (
@@ -593,7 +614,7 @@ async function deleteRdv() {
                 Pour afficher ton calendrier iNrCy (et qu’il corresponde à 100% à Google), connecte ton compte depuis les réglages.
               </div>
               <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button className={styles.btnPrimary} onClick={openAgendaSettings}>
+                <button className={styles.btnPrimary} onClick={toggleAgendaSettings}>
                   Connecter Google Agenda
                 </button>
                 <button className={styles.btnGhost} onClick={() => router.push("/dashboard")}>Retour dashboard</button>
@@ -725,9 +746,6 @@ async function deleteRdv() {
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <button className={styles.btnPrimary} onClick={() => openCreateRdv(selectedDate)}>
                     {viewKind === "intervention" ? "＋ Intervention" : "＋ RDV"}
-                  </button>
-                  <button className={styles.btnGhost} onClick={openAgendaSettings}>
-                    ⚙️
                   </button>
                 </div>
               </div>

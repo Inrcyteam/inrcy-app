@@ -491,6 +491,9 @@
   .pills {
     justify-content: center;
   }
+
+  .actionBtnDesktop { display: none; }
+  .actionBtnMobile { display: inline; }
 }
 
 .period {
@@ -816,6 +819,10 @@
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
+
+/* Responsive label for the action button ("Lancer" → "Go" on mobile) */
+.actionBtnDesktop { display: inline; }
+.actionBtnMobile { display: none; }
 
 .actionBtn::before {
   content: "";
