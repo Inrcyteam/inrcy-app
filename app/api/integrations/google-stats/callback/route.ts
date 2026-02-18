@@ -279,6 +279,7 @@ async function upsertGoogleIntegration(opts: {
   const payload: any = {
     user_id: userId,
     provider: "google",
+    category: "stats",
     source,
     product,
     status: "connected",

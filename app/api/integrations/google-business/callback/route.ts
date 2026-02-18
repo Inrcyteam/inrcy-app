@@ -152,6 +152,7 @@ export async function GET(req: Request) {
     const payload: any = {
       user_id: userId,
       provider: "google",
+      category: "local",
       source: "gmb",
       product: "gmb",
       status: "connected",

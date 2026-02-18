@@ -172,6 +172,7 @@ export async function GET(req: Request) {
     const payload: any = {
       user_id: userId,
       provider: "facebook",
+      category: "social",
       source: "facebook",
       product: "facebook",
       status: "account_connected",

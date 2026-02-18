@@ -125,6 +125,9 @@ export async function GET(req: Request) {
     const payload = {
       user_id: userId,
       provider: "google",
+      category: "calendar",
+      source: "gcal",
+      product: "gcal",
       email_address: userInfo.email,
       display_name: userInfo.name ?? null,
       provider_account_id: userInfo.id ?? null,

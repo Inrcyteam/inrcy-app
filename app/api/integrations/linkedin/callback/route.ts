@@ -106,6 +106,7 @@ export async function GET(req: Request) {
     const payload: any = {
       user_id: userId,
       provider: "linkedin",
+      category: "social",
       source: "linkedin",
       product: "linkedin",
       status: "connected",

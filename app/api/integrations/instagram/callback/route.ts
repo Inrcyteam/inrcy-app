@@ -98,6 +98,7 @@ export async function GET(req: Request) {
     const payload: any = {
       user_id: userId,
       provider: "instagram",
+      category: "social",
       source: "instagram",
       product: "instagram",
       status: "account_connected",
