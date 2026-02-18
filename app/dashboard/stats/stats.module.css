@@ -434,7 +434,11 @@
 }
 
 /* --- Mobile polish --- */
-@media (max-width: 720px) {
+/*
+  Some phones end up with a CSS width slightly above 720px (DPR / browser UI).
+  We use 900px so the "Go" label reliably appears on mobile.
+*/
+@media (max-width: 900px) {
   .header {
     align-items: flex-start;
     gap: 14px;

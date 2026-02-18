@@ -1007,6 +1007,52 @@ display: flex;
   background: rgba(255, 255, 255, 0.07);
 }
 
+/*
+  Mobile: prevent sticky :hover states on touch devices.
+  Module buttons/cards should remain static on mobile.
+*/
+@media (hover: none), (pointer: coarse) {
+  .moduleCard,
+  .actionBtn,
+  .quickBtn,
+  .primaryBtn,
+  .secondaryBtn,
+  .ghostBtn,
+  .connectBtn,
+  .moduleBubbleCard,
+  .loopNode,
+  .loopGearBtn,
+  .gearCapsule {
+    transition: none !important;
+  }
+
+  .moduleCard:hover,
+  .actionBtn:hover,
+  .quickBtn:hover,
+  .primaryBtn:hover,
+  .secondaryBtn:hover,
+  .ghostBtn:hover,
+  .connectBtn:hover,
+  .moduleBubbleCard:hover,
+  .loopNode:hover,
+  .loopGearBtn:hover,
+  .gearCapsule:hover {
+    transform: none !important;
+    box-shadow: inherit !important;
+  }
+
+  /* Restore base visual state for the main module cards/buttons */
+  .moduleCard:hover {
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+  }
+
+  .actionBtn:hover {
+    border-color: rgba(255, 255, 255, 0.14) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+  }
+}
+
 .moduleGlow {
   position: absolute;
   inset: auto -120px -120px auto;
