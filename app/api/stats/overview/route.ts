@@ -323,7 +323,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
     // Facebook: presence of a connected row is enough (token validity is handled in its own status endpoint)
     try {
-      const { data: fbRow } = await supabase
+      const { data: fbRowRows } = await supabase
         .from("integrations")
         .select("id,status")
         .eq("user_id", userId)
@@ -331,8 +331,12 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         .eq("source", "facebook")
         .eq("product", "facebook")
         .eq("status", "connected")
-        .maybeSingle();
-      sourcesStatus.facebook.connected = !!fbRow;
+        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const fbRow = fbRowRows?.[0] as any;
+
+sourcesStatus.facebook.connected = !!fbRow;
 
       // Legacy override
       try {
@@ -356,7 +360,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
     // Instagram: Meta family. Connected only once a profile is selected (resource_id).
     try {
-      const { data: igRow } = await supabase
+      const { data: igRowRows } = await supabase
         .from("integrations")
         .select("id,status,resource_id")
         .eq("user_id", userId)
@@ -364,8 +368,12 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         .eq("source", "instagram")
         .eq("product", "instagram")
         .eq("status", "connected")
-        .maybeSingle();
-      sourcesStatus.instagram.connected = !!igRow?.resource_id;
+        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const igRow = igRowRows?.[0] as any;
+
+sourcesStatus.instagram.connected = !!igRow?.resource_id;
 
       // Legacy override
       try {
@@ -389,7 +397,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
     // LinkedIn: simple stats only. Connected if an OAuth row exists.
     try {
-      const { data: liRow } = await supabase
+      const { data: liRowRows } = await supabase
         .from("integrations")
         .select("id,status")
         .eq("user_id", userId)
@@ -397,8 +405,12 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         .eq("source", "linkedin")
         .eq("product", "linkedin")
         .eq("status", "connected")
-        .maybeSingle();
-      sourcesStatus.linkedin.connected = !!liRow;
+        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const liRow = liRowRows?.[0] as any;
+
+sourcesStatus.linkedin.connected = !!liRow;
 
       // Legacy override
       try {
@@ -424,7 +436,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     // We consider it connected if an OAuth row exists in integrations.
     // (We still *try* to fetch metrics, but a missing API enablement should not flip the badge back to "off".)
     try {
-      const { data: gmbRow } = await supabase
+      const { data: gmbRowRows } = await supabase
         .from("integrations")
         .select("id,status,resource_id")
         .eq("user_id", userId)
@@ -432,9 +444,12 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         .eq("source", "gmb")
         .eq("product", "gmb")
         .eq("status", "connected")
-        .maybeSingle();
+        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const gmbRow = gmbRowRows?.[0] as any;
 
-      sourcesStatus.gmb.connected = !!gmbRow?.resource_id;
+sourcesStatus.gmb.connected = !!gmbRow?.resource_id;
 
       // Legacy override
       try {

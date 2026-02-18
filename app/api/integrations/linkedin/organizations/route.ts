@@ -23,16 +23,19 @@ export async function GET() {
 
   if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: row } = await supabase
+  const { data: rows } = await supabase
     .from("integrations")
     .select("access_token_enc")
     .eq("user_id", user.id)
     .eq("provider", "linkedin")
     .eq("source", "linkedin")
     .eq("product", "linkedin")
-    .maybeSingle();
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
 
-  const tok = String((row as any)?.access_token_enc || "");
+  const row = (rows?.[0] as any) ?? null;
+const tok = String((row as any)?.access_token_enc || "");
   if (!tok) return NextResponse.json({ error: "LinkedIn not connected" }, { status: 400 });
 
   // Try to list organizations where the user is admin (best-effort; may require app review/scopes)

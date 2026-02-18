@@ -21,16 +21,19 @@ export async function POST(req: Request) {
   const pageId = String(body?.pageId || "");
   if (!pageId) return NextResponse.json({ error: "Missing pageId" }, { status: 400 });
 
-  const { data: row } = await supabase
+  const { data: rows } = await supabase
     .from("integrations")
     .select("access_token_enc,id")
     .eq("user_id", user.id)
     .eq("provider", "instagram")
     .eq("source", "instagram")
     .eq("product", "instagram")
-    .maybeSingle();
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
 
-  const userToken = String((row as any)?.access_token_enc || "");
+  const row = (rows?.[0] as any) ?? null;
+const userToken = String((row as any)?.access_token_enc || "");
   if (!userToken) return NextResponse.json({ error: "Instagram account not connected" }, { status: 400 });
 
   // Get pages + tokens

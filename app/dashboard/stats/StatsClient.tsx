@@ -463,7 +463,7 @@ if (cubeKey === "site_web") {
       return {
         key: "connect",
         title: "Connecter Instagram",
-        detail: "Pour activer la visibilité de votre marque (Meta).",
+        detail: "Pour activer la visibilité de votre marque.",
         href: `/api/integrations/instagram/start?returnTo=${returnTo}`,
         pill: "Connexion",
       };
@@ -475,7 +475,7 @@ if (cubeKey === "site_web") {
       return {
         key: "connect",
         title: "Connecter LinkedIn",
-        detail: "Pour activer la crédibilité et la visibilité pro.",
+        detail: "Pour activer la crédibilité.",
         href: `/api/integrations/linkedin/start?returnTo=${returnTo}`,
         pill: "Connexion",
       };
@@ -884,12 +884,12 @@ const provenance = buildProvenance(key, ov);
     };
 
     return [
-      build("site_inrcy", "Site iNrCy", "Votre site iNrCy (optimisé pour convertir)"),
-      build("site_web", "Site Web", "Votre site externe / historique"),
-      build("gmb", "Google Business", "Visibilité locale (appels, itinéraires, clics site)"),
-      build("facebook", "Facebook", "Visibilité sociale / communauté"),
-      build("instagram", "Instagram", "Visibilité de marque (Meta)"),
-      build("linkedin", "LinkedIn", "Visibilité pro (stats simples)"),
+      build("site_inrcy", "Site iNrCy", "Optimisé pour convertir"),
+      build("site_web", "Site Web", "Votre image"),
+      build("gmb", "Google Business", "Visibilité locale"),
+      build("facebook", "Facebook", "Visibilité sociale"),
+      build("instagram", "Instagram", "Visibilité de marque"),
+      build("linkedin", "LinkedIn", "Visibilité professionnelle"),
     ];
   }, [dataByCube, periodByCube]);
 
@@ -926,46 +926,54 @@ const provenance = buildProvenance(key, ov);
           title="Fermer"
           type="button"
         >
-          ✕
+          <span className={styles.closeText}>Fermer</span>
+          <span className={styles.closeIcon} aria-hidden>
+            ✕
+          </span>
         </button>
       </div>
 
-      <div className={styles.grid}>
-        {/* Center summary */}
-        <div className={styles.center}>
-          <div className={styles.centerRing}>
-            <div className={styles.centerValue}>+{fmtInt(centralPotential30)}</div>
-            <div className={styles.centerLabel}>opportunités activables</div>
-            <div className={styles.centerSub}>projection sur 30 jours si actions menées</div>
-
-            <div className={styles.centerBreakdown}>
-              <button type="button" className={styles.centerLine} onClick={() => scrollTo("site_inrcy")}>
-                <span>Site iNrCy</span>
-                <b>+{fmtInt(centralByCube.site_inrcy)}</b>
-              </button>
-              <button type="button" className={styles.centerLine} onClick={() => scrollTo("site_web")}>
-                <span>Site Web</span>
-                <b>+{fmtInt(centralByCube.site_web)}</b>
-              </button>
-              <button type="button" className={styles.centerLine} onClick={() => scrollTo("gmb")}>
-                <span>Google Business</span>
-                <b>+{fmtInt(centralByCube.gmb)}</b>
-              </button>
-              <button type="button" className={styles.centerLine} onClick={() => scrollTo("facebook")}>
-                <span>Facebook</span>
-                <b>+{fmtInt(centralByCube.facebook)}</b>
-              </button>
-              <button type="button" className={styles.centerLine} onClick={() => scrollTo("instagram")}>
-                <span>Instagram</span>
-                <b>+{fmtInt(centralByCube.instagram)}</b>
-              </button>
-              <button type="button" className={styles.centerLine} onClick={() => scrollTo("linkedin")}>
-                <span>LinkedIn</span>
-                <b>+{fmtInt(centralByCube.linkedin)}</b>
-              </button>
-            </div>
-          </div>
+      {/* Summary bar (CRM-like) */}
+      <div className={styles.summaryBar} aria-label="Récapitulatif iNrStats">
+        <div className={styles.summaryMain}>
+          <span
+            className={styles.summaryValueBubble}
+            aria-label={`+${fmtInt(centralPotential30)} opportunités activables`}
+          >
+            <span className={styles.summaryValue}>+{fmtInt(centralPotential30)}</span>
+          </span>
+          <span className={styles.summaryLabel}>opportunités activables</span>
+          <span className={styles.summarySub}>projection sur 30 jours si actions menées</span>
         </div>
+        <div className={styles.summaryModules}>
+          <button type="button" className={styles.summaryItem} onClick={() => scrollTo("site_inrcy")}>
+            <span>Site iNrCy</span>
+            <b>+{fmtInt(centralByCube.site_inrcy)}</b>
+          </button>
+          <button type="button" className={styles.summaryItem} onClick={() => scrollTo("site_web")}>
+            <span>Site Web</span>
+            <b>+{fmtInt(centralByCube.site_web)}</b>
+          </button>
+          <button type="button" className={styles.summaryItem} onClick={() => scrollTo("gmb")}>
+            <span>Google Business</span>
+            <b>+{fmtInt(centralByCube.gmb)}</b>
+          </button>
+          <button type="button" className={styles.summaryItem} onClick={() => scrollTo("facebook")}>
+            <span>Facebook</span>
+            <b>+{fmtInt(centralByCube.facebook)}</b>
+          </button>
+          <button type="button" className={styles.summaryItem} onClick={() => scrollTo("instagram")}>
+            <span>Instagram</span>
+            <b>+{fmtInt(centralByCube.instagram)}</b>
+          </button>
+          <button type="button" className={styles.summaryItem} onClick={() => scrollTo("linkedin")}>
+            <span>LinkedIn</span>
+            <b>+{fmtInt(centralByCube.linkedin)}</b>
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.grid}>
 
         <div ref={inrcyRef}>
           <Cube
@@ -1028,6 +1036,7 @@ function Cube({
   onChangePeriod: (p: Period) => void;
   onNavigate: (href: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const isSite = model.key === "site_inrcy" || model.key === "site_web";
   const isRentedInrcy = model.key === "site_inrcy" && model.inrcyOwnership === "rented";
 
@@ -1059,7 +1068,7 @@ function Cube({
           <div className={styles.pills}>
             {isSite ? (
               isRentedInrcy ? (
-                <StatusPill ok={connectionOk} label="Connecté" />
+                <StatusPill ok={connectionOk} label={connectionOk ? "Connecté" : "Déconnecté"} />
               ) : (
                 <>
                   <StatusPill ok={!!model.connections.ga4} label="GA4" />
@@ -1067,81 +1076,92 @@ function Cube({
                 </>
               )
             ) : (
-              <StatusPill ok={!!model.connections.main} label="Connecté" />
+              <StatusPill ok={!!model.connections.main} label={model.connections.main ? "Connecté" : "Déconnecté"} />
             )}
           </div>
+          <button
+            type="button"
+            className={styles.detailsBtn}
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+          >
+            {open ? "Masquer les détails" : "Voir les détails"}
+          </button>
         </div>
       </div>
 
       {model.error ? <div className={styles.error}>Erreur : {model.error}</div> : null}
 
-      <div className={styles.cubeBody}>
-        <div className={styles.block}>
-          <div className={styles.blockTitle}>Provenance</div>
-          <Donut segments={model.provenance} />
-        </div>
+      {/* Actions always visible (compact) */}
+      <div className={styles.actionCompact}>
+        <div className={styles.actionLeft}>
+          <div className={styles.actionTopRow}>
+            <span className={`${styles.actionPill} ${styles[`action_${pillKey}`]}`}>{pill}</span>
 
-        <div className={styles.blockRow}>
-          <div className={styles.block}>
-            <div className={styles.blockTitle}>Opportunité</div>
-            <div className={styles.oppValue}>+{fmtInt(model.opportunity30)}</div>
-            <div className={styles.oppSub}>{model.opportunityLabel} (projection 30 j)</div>
-          </div>
-          <div className={styles.block}>
-            <div className={styles.blockTitle}>Qualité</div>
-            <div className={styles.qualityRow}>
-              <RingScore value={model.qualityScore} tone={model.qualityTone} />
-              <div>
-                <div className={styles.qualityLabel}>{model.qualityLabel}</div>
-                <div className={styles.qualitySub}>Structure & exploitabilité</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.block}>
-          <div className={styles.blockTitle}>Lecture business</div>
-          <ul className={styles.bullets}>
-            {model.insights.map((t, i) => (
-              <li key={i}>{t}</li>
-            ))}
-          </ul>
-        </div>
-
-        <div className={styles.action}>
-          <div className={styles.actionLeft}>
-            <div className={styles.actionTopRow}>
-              <span className={`${styles.actionPill} ${styles[`action_${pillKey}`]}`}>{pill}</span>
-
-              <div className={styles.actionTopText}>
-                {pill === "Connexion" ? (
+            <div className={styles.actionTopText}>
+              {pill === "Connexion" ? (
+                <span className={styles.actionTitle}>{action.title}</span>
+              ) : (
+                <>
+                  <span className={styles.actionArrow}>→</span>
                   <span className={styles.actionTitle}>{action.title}</span>
-                ) : (
-                  <>
-                    <span className={styles.actionArrow}>→</span>
-                    <span className={styles.actionTitle}>{action.title}</span>
-                  </>
-                )}
-              </div>
-
-              {action.effort ? (
-                <span className={`${styles.effort} ${styles[`effort_${action.effort.level}`]}`}>{action.effort.label}</span>
-              ) : null}
+                </>
+              )}
             </div>
 
-            <div className={styles.actionDetail}>{action.detail}</div>
+            {action.effort ? (
+              <span className={`${styles.effort} ${styles[`effort_${action.effort.level}`]}`}>{action.effort.label}</span>
+            ) : null}
           </div>
 
-          <button
-            className={styles.actionBtn}
-            onClick={() => (action.href ? onNavigate(action.href) : undefined)}
-            disabled={model.loading || !action.href}
-            aria-disabled={model.loading || !action.href}
-          >
-            Lancer
-          </button>
+          <div className={styles.actionDetail}>{action.detail}</div>
         </div>
+
+        <button
+          className={styles.actionBtn}
+          onClick={() => (action.href ? onNavigate(action.href) : undefined)}
+          disabled={model.loading || !action.href}
+          aria-disabled={model.loading || !action.href}
+        >
+          Lancer
+        </button>
       </div>
+
+      {open ? (
+        <div className={styles.cubeBody}>
+          <div className={styles.block}>
+            <div className={styles.blockTitle}>Provenance</div>
+            <Donut segments={model.provenance} />
+          </div>
+
+          <div className={styles.blockRow}>
+            <div className={styles.block}>
+              <div className={styles.blockTitle}>Opportunité</div>
+              <div className={styles.oppValue}>+{fmtInt(model.opportunity30)}</div>
+              <div className={styles.oppSub}>{model.opportunityLabel} (projection 30 j)</div>
+            </div>
+            <div className={styles.block}>
+              <div className={styles.blockTitle}>Qualité</div>
+              <div className={styles.qualityRow}>
+                <RingScore value={model.qualityScore} tone={model.qualityTone} />
+                <div>
+                  <div className={styles.qualityLabel}>{model.qualityLabel}</div>
+                  <div className={styles.qualitySub}>Structure & exploitabilité</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.block}>
+            <div className={styles.blockTitle}>Lecture business</div>
+            <ul className={styles.bullets}>
+              {model.insights.map((t, i) => (
+                <li key={i}>{t}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

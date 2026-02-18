@@ -94,41 +94,32 @@ export async function GET(req: Request) {
     const authorUrn = sub ? `urn:li:person:${sub}` : "";
 
     // Upsert integration
-    const { data: existing } = await supabase
-      .from("integrations")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("provider", "linkedin")
-      .eq("source", "linkedin")
-      .eq("product", "linkedin")
-      .maybeSingle();
+    // Upsert (robuste même si l’utilisateur reconnecte plusieurs fois)
+// Nécessite un UNIQUE INDEX sur (user_id, provider, source, product) côté Supabase.
+const payload: any = {
+  user_id: userId,
+  provider: "linkedin",
+  category: "social",
+  source: "linkedin",
+  product: "linkedin",
+  status: "connected",
+  email_address: email || null,
+  display_name: name || null,
+  provider_account_id: sub || null,
+  scopes: "openid profile email w_member_social",
+  access_token_enc: accessToken,
+  refresh_token_enc: null,
+  expires_at: null,
+  resource_id: authorUrn || null,
+  resource_label: name || null,
+  meta: { profile_url: profileUrl, org_urn: null },
+};
 
-    const payload: any = {
-      user_id: userId,
-      provider: "linkedin",
-      category: "social",
-      source: "linkedin",
-      product: "linkedin",
-      status: "connected",
-      email_address: email || null,
-      display_name: name || null,
-      provider_account_id: sub || null,
-      scopes: "openid profile email w_member_social",
-      access_token_enc: accessToken,
-      refresh_token_enc: null,
-      expires_at: null,
-      resource_id: authorUrn || null,
-      resource_label: name || null,
-      meta: { profile_url: profileUrl, org_urn: null },
-    };
+await supabase
+  .from("integrations")
+  .upsert(payload, { onConflict: "user_id,provider,source,product" });
 
-    if ((existing as any)?.id) {
-      await supabase.from("integrations").update(payload).eq("id", (existing as any).id);
-    } else {
-      await supabase.from("integrations").insert(payload);
-    }
-
-    // Mirror in pro_tools_configs
+// Mirror in pro_tools_configs
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = (scRow as any)?.settings ?? {};

@@ -10,16 +10,19 @@ export async function GET() {
 
   if (authErr || !user) return NextResponse.json({ connected: false }, { status: 200 });
 
-  const { data: row } = await supabase
+  const { data: rows } = await supabase
     .from("integrations")
     .select("status,resource_id,resource_label,meta")
     .eq("user_id", user.id)
     .eq("provider", "linkedin")
     .eq("source", "linkedin")
     .eq("product", "linkedin")
-    .maybeSingle();
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
 
-  const accountConnected = (row as any)?.status === "connected";
+  const row = (rows?.[0] as any) ?? null;
+const accountConnected = (row as any)?.status === "connected";
   const connected = (row as any)?.status === "connected";
 
   return NextResponse.json({

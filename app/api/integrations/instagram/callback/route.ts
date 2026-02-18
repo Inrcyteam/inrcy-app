@@ -84,41 +84,30 @@ export async function GET(req: Request) {
     } catch {}
 
     // Store as "account_connected" (selection later)
-    const { data: existing, error: existingErr } = await supabase
-      .from("integrations")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("provider", "instagram")
-      .eq("source", "instagram")
-      .eq("product", "instagram")
-      .maybeSingle();
+    // Upsert (robuste même si l’utilisateur reconnecte plusieurs fois)
+// Nécessite un UNIQUE INDEX sur (user_id, provider, source, product) côté Supabase.
+const payload: any = {
+  user_id: userId,
+  provider: "instagram",
+  category: "social",
+  source: "instagram",
+  product: "instagram",
+  status: "account_connected",
+  access_token_enc: longUserToken,
+  refresh_token_enc: null,
+  expires_at: null,
+  resource_id: null,
+  resource_label: null,
+  meta: { picked: "none" },
+};
 
-    if (existingErr) return NextResponse.json({ error: "DB read existing failed", existingErr }, { status: 500 });
+const { error: upsertErr } = await supabase
+  .from("integrations")
+  .upsert(payload, { onConflict: "user_id,provider,source,product" });
 
-    const payload: any = {
-      user_id: userId,
-      provider: "instagram",
-      category: "social",
-      source: "instagram",
-      product: "instagram",
-      status: "account_connected",
-      access_token_enc: longUserToken,
-      refresh_token_enc: null,
-      expires_at: null,
-      resource_id: null,
-      resource_label: null,
-      meta: { picked: "none" },
-    };
+if (upsertErr) return NextResponse.json({ error: "DB upsert failed", upsertErr }, { status: 500 });
 
-    if ((existing as any)?.id) {
-      const { error: upErr } = await supabase.from("integrations").update(payload).eq("id", (existing as any).id);
-      if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
-    } else {
-      const { error: insErr } = await supabase.from("integrations").insert(payload);
-      if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
-    }
-
-    // Mirror in pro_tools_configs
+// Mirror in pro_tools_configs
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = (scRow as any)?.settings ?? {};
