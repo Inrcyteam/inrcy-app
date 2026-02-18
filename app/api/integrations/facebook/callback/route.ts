@@ -155,9 +155,9 @@ export async function GET(req: Request) {
     const pageUrl = null;
     const tokenToStore = longUserToken; // token utilisateur uniquement (sélection page plus tard)
 
-    // 5) Upsert into stats_integrations
+    // 5) Upsert into integrations
     const { data: existing, error: existingErr } = await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .select("id")
       .eq("user_id", userId)
       .eq("provider", "facebook")
@@ -194,12 +194,12 @@ export async function GET(req: Request) {
 
     if ((existing as any)?.id) {
       const { error: upErr } = await supabase
-        .from("stats_integrations")
+        .from("integrations")
         .update(payload)
         .eq("id", (existing as any).id);
       if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
     } else {
-      const { error: insErr } = await supabase.from("stats_integrations").insert(payload);
+      const { error: insErr } = await supabase.from("integrations").insert(payload);
       if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
     }
 

@@ -130,7 +130,7 @@ export async function GET(req: Request) {
 
     // Preserve refresh_token if Google doesn't return it
     const { data: existing, error: existingErr } = await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .select("id,refresh_token_enc")
       .eq("user_id", userId)
       .eq("provider", "google")
@@ -166,10 +166,10 @@ export async function GET(req: Request) {
     };
 
     if ((existing as any)?.id) {
-      const { error: upErr } = await supabase.from("stats_integrations").update(payload).eq("id", (existing as any).id);
+      const { error: upErr } = await supabase.from("integrations").update(payload).eq("id", (existing as any).id);
       if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
     } else {
-      const { error: insErr } = await supabase.from("stats_integrations").insert(payload);
+      const { error: insErr } = await supabase.from("integrations").insert(payload);
       if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
     }
 
@@ -203,7 +203,7 @@ export async function GET(req: Request) {
         const firstAcc = accounts?.[0]?.name; // e.g. "accounts/123"
         if (firstAcc) {
           await supabase
-            .from("stats_integrations")
+            .from("integrations")
             .update({ meta: { ...(payload.meta || {}), account: firstAcc }, resource_id: null, resource_label: null })
             .eq("user_id", userId)
             .eq("provider", "google")

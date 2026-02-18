@@ -261,7 +261,7 @@ async function upsertGoogleIntegration(opts: {
   const { supabase, userId, source, product, tokenData, userInfo } = opts;
 
   const { data: existing } = await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .select("id,refresh_token_enc")
     .eq("user_id", userId)
     .eq("provider", "google")
@@ -293,10 +293,10 @@ async function upsertGoogleIntegration(opts: {
   };
 
   if ((existing as any)?.id) {
-    const { error: upErr } = await supabase.from("stats_integrations").update(payload).eq("id", (existing as any).id);
+    const { error: upErr } = await supabase.from("integrations").update(payload).eq("id", (existing as any).id);
     if (upErr) throw new Error("DB update failed");
   } else {
-    const { error: insErr } = await supabase.from("stats_integrations").insert(payload);
+    const { error: insErr } = await supabase.from("integrations").insert(payload);
     if (insErr) throw new Error("DB insert failed");
   }
 }

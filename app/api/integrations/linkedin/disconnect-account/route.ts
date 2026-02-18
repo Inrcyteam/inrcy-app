@@ -10,7 +10,7 @@ export async function POST() {
 
   if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await supabase.from("stats_integrations").delete().eq("user_id", user.id).eq("provider", "linkedin");
+  await supabase.from("integrations").delete().eq("user_id", user.id).eq("provider", "linkedin");
 
   try {
     const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();

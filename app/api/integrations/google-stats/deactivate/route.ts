@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
     // 1) Nouveau système
     await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .update({ status: "disconnected", access_token_enc: null, refresh_token_enc: null, expires_at: null })
       .eq("user_id", userId)
       .eq("provider", "google")

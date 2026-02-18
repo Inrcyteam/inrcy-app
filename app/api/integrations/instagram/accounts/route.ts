@@ -18,7 +18,7 @@ export async function GET() {
   if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: row } = await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .select("status,access_token_enc")
     .eq("user_id", user.id)
     .eq("provider", "instagram")

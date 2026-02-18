@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       supabase.from("inrcy_site_configs").select("site_url").eq("user_id", userId).maybeSingle(),
       supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
       supabase
-        .from("stats_integrations")
+        .from("integrations")
         .select("provider,source,product,status,resource_id,resource_label,meta")
         .eq("user_id", userId)
         .in("provider", ["google", "facebook"]),

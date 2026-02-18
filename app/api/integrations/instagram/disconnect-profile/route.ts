@@ -12,7 +12,7 @@ export async function POST() {
 
   // Keep the row but reset resource selection (account remains connected)
   await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .update({ status: "account_connected", resource_id: null, resource_label: null, meta: { picked: "none" } })
     .eq("user_id", user.id)
     .eq("provider", "instagram")

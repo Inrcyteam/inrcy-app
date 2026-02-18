@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 // POST /api/integrations/google-stats/activate
 // Utilisé principalement en mode "rented" pour Site iNrCy :
-// - Si un refresh_token Google est déjà présent en DB (stats_integrations), on rafraîchit l'access_token
+// - Si un refresh_token Google est déjà présent en DB (integrations), on rafraîchit l'access_token
 // - On résout automatiquement GA4 + GSC via le domaine du site
 // - On remplit inrcy_site_configs.settings (ga4/gsc)
 
@@ -245,12 +245,12 @@ export async function POST(req: Request) {
     const adminEmail = (process.env.INRCY_ADMIN_GOOGLE_EMAIL || "contact@admin-inrcy.com").trim().toLowerCase();
     const adminUserId = (process.env.INRCY_ADMIN_USER_ID || "").trim();
 
-    // On cherche un refresh_token admin (n'importe quelle source/product) stocké dans stats_integrations.
+    // On cherche un refresh_token admin (n'importe quelle source/product) stocké dans integrations.
     // ⚠️ On privilégie user_id si fourni, sinon on se rabat sur email_address.
     
 let adminRefreshToken = "";
 {
-  const baseQuery = supabaseAdmin.from("stats_integrations").select("refresh_token_enc").eq("provider", "google");
+  const baseQuery = supabaseAdmin.from("integrations").select("refresh_token_enc").eq("provider", "google");
   const q = adminUserId ? baseQuery.eq("user_id", adminUserId) : baseQuery.ilike("email_address", adminEmail);
   const { data: rows } = await q
     .not("refresh_token_enc", "is", null)
@@ -324,7 +324,7 @@ let adminRefreshToken = "";
     // Upsert en deux temps (plus tolérant si la contrainte unique n'est pas présente)
     for (const product of ["ga4", "gsc"] as const) {
       const { data: existing } = await supabase
-        .from("stats_integrations")
+        .from("integrations")
         .select("id")
         .eq("user_id", authData.user.id)
         .eq("provider", "google")
@@ -334,9 +334,9 @@ let adminRefreshToken = "";
 
       const payload = { ...base, product } as any;
       if ((existing as any)?.id) {
-        await supabase.from("stats_integrations").update(payload).eq("id", (existing as any).id);
+        await supabase.from("integrations").update(payload).eq("id", (existing as any).id);
       } else {
-        await supabase.from("stats_integrations").insert(payload);
+        await supabase.from("integrations").insert(payload);
       }
     }
 

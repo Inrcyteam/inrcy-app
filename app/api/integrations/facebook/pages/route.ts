@@ -19,7 +19,7 @@ export async function GET() {
     const userId = auth.user.id;
 
     const { data: integ, error: integErr } = await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .select("access_token_enc,status,meta")
       .eq("user_id", userId)
       .eq("provider", "facebook")

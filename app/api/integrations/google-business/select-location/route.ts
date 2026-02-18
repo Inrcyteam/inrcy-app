@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     }
 
     const { error: upErr } = await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .update({
         resource_id: locationName,
         resource_label: locationTitle,

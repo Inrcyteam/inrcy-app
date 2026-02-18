@@ -10,7 +10,7 @@ export async function POST() {
   }
 
   const { error } = await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .delete()
     .eq("user_id", authData.user.id)
     .eq("provider", "google")

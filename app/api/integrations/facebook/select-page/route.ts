@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
     // Read existing meta so we don't lose meta.user_access_token, page_url, etc.
     const { data: existing, error: readErr } = await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .select("meta")
       .eq("user_id", userId)
       .eq("provider", "facebook")
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
     // Update integration with the selected page + PAGE token (required for posting).
     const { error: upErr } = await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .update({
         resource_id: pageId,
         resource_label: pageName,

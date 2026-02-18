@@ -167,7 +167,7 @@ const body = await req.json().catch(() => null);
     const results: Record<string, any> = {};
 
     const { data: fbRow } = await supabaseAdmin
-      .from("stats_integrations")
+      .from("integrations")
       .select("status,resource_id,access_token_enc")
       .eq("user_id", userId)
       .eq("provider", "facebook")
@@ -176,7 +176,7 @@ const body = await req.json().catch(() => null);
       .maybeSingle();
 
     const { data: gmbRow } = await supabaseAdmin
-      .from("stats_integrations")
+      .from("integrations")
       .select("status,resource_id,meta")
       .eq("user_id", userId)
       .eq("provider", "google")
@@ -185,7 +185,7 @@ const body = await req.json().catch(() => null);
       .maybeSingle();
 
     const { data: igRow } = await supabaseAdmin
-      .from("stats_integrations")
+      .from("integrations")
       .select("status,resource_id,access_token_enc,resource_label,meta")
       .eq("user_id", userId)
       .eq("provider", "instagram")
@@ -194,7 +194,7 @@ const body = await req.json().catch(() => null);
       .maybeSingle();
 
     const { data: liRow } = await supabaseAdmin
-      .from("stats_integrations")
+      .from("integrations")
       .select("status,resource_id,access_token_enc,meta")
       .eq("user_id", userId)
       .eq("provider", "linkedin")

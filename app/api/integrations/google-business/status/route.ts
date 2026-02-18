@@ -12,7 +12,7 @@ export async function GET() {
   try {
     // Source of truth: the integration row itself.
     const { data } = await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .select("id,status,resource_id,resource_label,email_address,display_name")
       .eq("user_id", authData.user.id)
       .eq("provider", "google")

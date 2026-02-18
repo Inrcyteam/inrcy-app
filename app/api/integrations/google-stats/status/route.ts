@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
   // 1) nouveau système
   const { data, error } = await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .select("status,email_address,expires_at")
     .eq("user_id", userId)
     .eq("provider", "google")

@@ -9,7 +9,7 @@ export async function GET() {
   }
 
   const { data, error } = await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .select("id,status,resource_id,resource_label,meta")
     .eq("user_id", authData.user.id)
     .eq("provider", "facebook")

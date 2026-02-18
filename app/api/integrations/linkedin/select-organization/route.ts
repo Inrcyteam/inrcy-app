@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   const orgUrn = `urn:li:organization:${orgId}`;
 
   await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .update({ meta: { org_urn: orgUrn, org_id: orgId, org_name: orgName } })
     .eq("user_id", user.id)
     .eq("provider", "linkedin")

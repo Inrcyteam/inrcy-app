@@ -10,7 +10,7 @@ export async function POST() {
 
   if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await supabase.from("stats_integrations").delete().eq("user_id", user.id).eq("provider", "instagram");
+  await supabase.from("integrations").delete().eq("user_id", user.id).eq("provider", "instagram");
 
   // Keep pro_tools_configs in sync (best-effort)
   try {

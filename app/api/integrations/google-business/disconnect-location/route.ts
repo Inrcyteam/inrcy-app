@@ -11,7 +11,7 @@ export async function POST() {
 
   // Clear selected establishment
   const { error } = await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .update({
       resource_id: null,
       resource_label: null,

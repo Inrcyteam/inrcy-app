@@ -14,7 +14,7 @@ export async function POST() {
   }
 
   await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .delete()
     .eq("user_id", user.id)
     .eq("provider", "facebook");

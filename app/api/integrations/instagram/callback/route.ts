@@ -85,7 +85,7 @@ export async function GET(req: Request) {
 
     // Store as "account_connected" (selection later)
     const { data: existing, error: existingErr } = await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .select("id")
       .eq("user_id", userId)
       .eq("provider", "instagram")
@@ -110,10 +110,10 @@ export async function GET(req: Request) {
     };
 
     if ((existing as any)?.id) {
-      const { error: upErr } = await supabase.from("stats_integrations").update(payload).eq("id", (existing as any).id);
+      const { error: upErr } = await supabase.from("integrations").update(payload).eq("id", (existing as any).id);
       if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
     } else {
-      const { error: insErr } = await supabase.from("stats_integrations").insert(payload);
+      const { error: insErr } = await supabase.from("integrations").insert(payload);
       if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
     }
 

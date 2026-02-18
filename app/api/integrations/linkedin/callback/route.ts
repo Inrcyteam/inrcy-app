@@ -95,7 +95,7 @@ export async function GET(req: Request) {
 
     // Upsert integration
     const { data: existing } = await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .select("id")
       .eq("user_id", userId)
       .eq("provider", "linkedin")
@@ -122,9 +122,9 @@ export async function GET(req: Request) {
     };
 
     if ((existing as any)?.id) {
-      await supabase.from("stats_integrations").update(payload).eq("id", (existing as any).id);
+      await supabase.from("integrations").update(payload).eq("id", (existing as any).id);
     } else {
-      await supabase.from("stats_integrations").insert(payload);
+      await supabase.from("integrations").insert(payload);
     }
 
     // Mirror in pro_tools_configs

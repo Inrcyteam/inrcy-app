@@ -59,7 +59,7 @@ async function getAdminRefreshToken(): Promise<string | null> {
   const adminUserId = (process.env.INRCY_ADMIN_USER_ID || "").trim();
 
   const base = supabaseAdmin
-    .from("stats_integrations")
+    .from("integrations")
     .select("refresh_token_enc, updated_at")
     .eq("provider", "google")
     .eq("status", "connected")
@@ -111,13 +111,13 @@ export async function getGoogleTokenFor(source: StatsSourceKey, product: "ga4" |
   const userId = authData.user.id;
 
   // Legacy override: si une ligne existe dans integrations_statistiques en "déconnecté",
-  // on force OFF même si stats_integrations contient encore un vieux token.
+  // on force OFF même si integrations contient encore un vieux token.
   if (await legacyOverrideDisconnected(supabase, userId, "google", source, product)) {
     return null;
   }
 
   const { data, error } = await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .select("*")
     .eq("user_id", userId)
     .eq("provider", "google")
@@ -151,7 +151,7 @@ export async function getGoogleTokenFor(source: StatsSourceKey, product: "ga4" |
 
     // On cache l'access_token sur la ligne client (même si uses_admin=true)
     await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .update({ access_token_enc: accessToken, expires_at: expiresAt })
       .eq("id", row.id);
   }
@@ -313,7 +313,7 @@ export async function runGscQuery(accessToken: string, property: string, days: n
 }
 
 
-// Generic helper for any Google-backed integration stored in stats_integrations (GA4, GSC, GMB, ...).
+// Generic helper for any Google-backed integration stored in integrations (GA4, GSC, GMB, ...).
 export async function getGoogleTokenForAnyGoogle(source: StatsSourceKey, product: StatsProductKey) {
   const supabase = await createSupabaseServer();
   const { data: authData, error: authErr } = await supabase.auth.getUser();
@@ -325,7 +325,7 @@ export async function getGoogleTokenForAnyGoogle(source: StatsSourceKey, product
   }
 
   const { data, error } = await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .select("*")
     .eq("user_id", userId)
     .eq("provider", "google")
@@ -351,7 +351,7 @@ export async function getGoogleTokenForAnyGoogle(source: StatsSourceKey, product
     expiresAt = refreshed.expiresAtIso;
 
     await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .update({ access_token_enc: accessToken, expires_at: expiresAt })
       .eq("id", row.id);
   }

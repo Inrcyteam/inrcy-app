@@ -105,7 +105,7 @@ const inrcyTrackingEnabled = Boolean((inrcySettings as any)?.inrcy_tracking_enab
 // Sinon, après une déconnexion, on peut resservir un ancien payload (ex: GMB +90) jusqu'à expiration.
 //
 // On fabrique donc un "snapshot" léger des statuts, en lisant :
-// - stats_integrations (nouveau)
+// - integrations (nouveau)
 // - integrations_statistiques (legacy) si présent
 async function buildConnectionsKey() {
   const keyParts: string[] = [];
@@ -113,7 +113,7 @@ async function buildConnectionsKey() {
   // 1) nouveau système
   try {
     const { data } = await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .select("provider,source,product,status,resource_id,updated_at")
       .eq("user_id", userId);
 
@@ -324,7 +324,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     // Facebook: presence of a connected row is enough (token validity is handled in its own status endpoint)
     try {
       const { data: fbRow } = await supabase
-        .from("stats_integrations")
+        .from("integrations")
         .select("id,status")
         .eq("user_id", userId)
         .eq("provider", "facebook")
@@ -355,11 +355,11 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     } catch {}
 
     // GMB: the UI needs a stable "connected" flag like GA4/GSC.
-    // We consider it connected if an OAuth row exists in stats_integrations.
+    // We consider it connected if an OAuth row exists in integrations.
     // (We still *try* to fetch metrics, but a missing API enablement should not flip the badge back to "off".)
     try {
       const { data: gmbRow } = await supabase
-        .from("stats_integrations")
+        .from("integrations")
         .select("id,status,resource_id")
         .eq("user_id", userId)
         .eq("provider", "google")

@@ -11,7 +11,7 @@ export async function GET() {
   if (authErr || !user) return NextResponse.json({ connected: false }, { status: 200 });
 
   const { data: row } = await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .select("status,resource_id,resource_label,meta")
     .eq("user_id", user.id)
     .eq("provider", "instagram")

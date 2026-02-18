@@ -285,7 +285,7 @@ const [siteInrcyTrackingBusy, setSiteInrcyTrackingBusy] = useState(false);
   const [widgetTokenInrcySite, setWidgetTokenInrcySite] = useState<string>("");
   const [widgetTokenSiteWeb, setWidgetTokenSiteWeb] = useState<string>("");
 
-  // ✅ Connexions Google (viennent de stats_integrations, pas des IDs)
+  // ✅ Connexions Google (viennent de integrations, pas des IDs)
   const [siteInrcyGa4Connected, setSiteInrcyGa4Connected] = useState(false);
   const [siteInrcyGscConnected, setSiteInrcyGscConnected] = useState(false);
   const [siteWebGa4Connected, setSiteWebGa4Connected] = useState(false);
@@ -488,7 +488,7 @@ const loadSiteInrcy = useCallback(async () => {
   setFbSelectedPageId(fbObj?.pageId ?? "");
 	  setFbSelectedPageName(fbObj?.pageName ?? "");
 
-  // ✅ Connexions Google : la source de vérité est stats_integrations
+  // ✅ Connexions Google : la source de vérité est integrations
   const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([
     fetchGoogleConnected("site_inrcy", "ga4"),
     fetchGoogleConnected("site_inrcy", "gsc"),
@@ -500,7 +500,7 @@ const loadSiteInrcy = useCallback(async () => {
   setSiteWebGa4Connected(webGa4);
   setSiteWebGscConnected(webGsc);
 
-  // ✅ Connexions Google Business & Facebook : source de vérité = stats_integrations
+  // ✅ Connexions Google Business & Facebook : source de vérité = integrations
   try {
     const [gmbStatus, fbStatus, igStatus, liStatus] = await Promise.all([
       fetch("/api/integrations/google-business/status").then((r) => r.json()).catch(() => ({ connected: false })),

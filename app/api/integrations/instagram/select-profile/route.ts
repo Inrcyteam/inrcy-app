@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   if (!pageId) return NextResponse.json({ error: "Missing pageId" }, { status: 400 });
 
   const { data: row } = await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .select("access_token_enc,id")
     .eq("user_id", user.id)
     .eq("provider", "instagram")
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
 
   // Update integration: now connected + store page token for publishing
   await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .update({
       status: "connected",
       resource_id: igId,

@@ -37,7 +37,7 @@ export async function GET() {
 
     // External channels depend on integrations + configuration (resource_id set)
     const { data: rows } = await supabase
-      .from("stats_integrations")
+      .from("integrations")
       .select("provider,status,resource_id")
       .eq("user_id", userId)
       .in("provider", ["google", "facebook", "instagram", "linkedin"]);

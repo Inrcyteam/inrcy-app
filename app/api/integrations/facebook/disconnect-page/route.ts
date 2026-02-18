@@ -14,7 +14,7 @@ export async function POST() {
   }
 
   const { data: integ, error: integErr } = await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .select("id, meta")
     .eq("user_id", user.id)
     .eq("provider", "facebook")
@@ -29,7 +29,7 @@ export async function POST() {
   delete (meta as any).page_access_token;
 
   await supabase
-    .from("stats_integrations")
+    .from("integrations")
     .update({
       status: "account_connected",
       resource_id: null,
