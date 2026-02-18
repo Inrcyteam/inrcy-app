@@ -138,21 +138,23 @@
 @media (min-width: 980px) {
   .grid {
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto;
+    grid-template-rows: auto;
     gap: 16px;
     position: relative;
   }
+  /* Center summary spans both columns (no overlap with cubes) */
   .center {
     display: block;
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
+    position: static;
+    transform: none;
+    pointer-events: auto;
+    grid-column: 1 / -1;
+    justify-self: center;
   }
 }
 
-.center { display: none; }
+/* Center is visible on all sizes (it is a normal grid item). */
+.center { display: block; }
 
 .centerRing {
   width: 260px;

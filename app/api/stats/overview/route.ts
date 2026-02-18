@@ -354,6 +354,72 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       } catch {}
     } catch {}
 
+    // Instagram: Meta family. Connected only once a profile is selected (resource_id).
+    try {
+      const { data: igRow } = await supabase
+        .from("integrations")
+        .select("id,status,resource_id")
+        .eq("user_id", userId)
+        .eq("provider", "instagram")
+        .eq("source", "instagram")
+        .eq("product", "instagram")
+        .eq("status", "connected")
+        .maybeSingle();
+      sourcesStatus.instagram.connected = !!igRow?.resource_id;
+
+      // Legacy override
+      try {
+        const { data: l } = await supabase
+          .from("integrations_statistiques")
+          .select("statut")
+          .eq("id_utilisateur", userId)
+          .eq("fournisseur", "Instagram")
+          .eq("source", "instagram")
+          .eq("produit", "instagram")
+          .order("identifiant", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const st = String((l as any)?.statut || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/\p{Diacritic}/gu, "");
+        if (st.includes("deconnect") || st.includes("disconnected")) sourcesStatus.instagram.connected = false;
+      } catch {}
+    } catch {}
+
+    // LinkedIn: simple stats only. Connected if an OAuth row exists.
+    try {
+      const { data: liRow } = await supabase
+        .from("integrations")
+        .select("id,status")
+        .eq("user_id", userId)
+        .eq("provider", "linkedin")
+        .eq("source", "linkedin")
+        .eq("product", "linkedin")
+        .eq("status", "connected")
+        .maybeSingle();
+      sourcesStatus.linkedin.connected = !!liRow;
+
+      // Legacy override
+      try {
+        const { data: l } = await supabase
+          .from("integrations_statistiques")
+          .select("statut")
+          .eq("id_utilisateur", userId)
+          .eq("fournisseur", "LinkedIn")
+          .eq("source", "linkedin")
+          .eq("produit", "linkedin")
+          .order("identifiant", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const st = String((l as any)?.statut || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/\p{Diacritic}/gu, "");
+        if (st.includes("deconnect") || st.includes("disconnected")) sourcesStatus.linkedin.connected = false;
+      } catch {}
+    } catch {}
+
     // GMB: the UI needs a stable "connected" flag like GA4/GSC.
     // We consider it connected if an OAuth row exists in integrations.
     // (We still *try* to fetch metrics, but a missing API enablement should not flip the badge back to "off".)
@@ -441,7 +507,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       channels,
       topQueries,
       sources: sourcesStatus,
-      note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook.",
+      note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook, Instagram, LinkedIn.",
     };
 
     // cache write (best-effort)

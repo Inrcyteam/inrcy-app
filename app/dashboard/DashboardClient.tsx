@@ -747,6 +747,58 @@ const refreshKpis = useCallback(async () => {
     }
   }, []);
 
+  // ✅ Auto-refresh Générateur + statuts modules dès qu'un module se connecte / se déconnecte
+  // On écoute les changements Postgres sur les tables qui impactent:
+  // - integrations (OAuth/connecteurs)
+  // - pro_tools_configs / inrcy_site_configs / profiles (mirrors/settings)
+  useEffect(() => {
+    const supabase = createClient();
+    let disposed = false;
+    let t: any = null;
+
+    const scheduleRefresh = () => {
+      if (disposed) return;
+      if (t) window.clearTimeout(t);
+      t = window.setTimeout(() => {
+        if (disposed) return;
+        void loadSiteInrcy();
+        void refreshKpis();
+      }, 350);
+    };
+
+    const ch = supabase
+      .channel("inrcy-generator-sync")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "integrations" },
+        () => scheduleRefresh()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pro_tools_configs" },
+        () => scheduleRefresh()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "inrcy_site_configs" },
+        () => scheduleRefresh()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
+        () => scheduleRefresh()
+      )
+      .subscribe();
+
+    return () => {
+      disposed = true;
+      if (t) window.clearTimeout(t);
+      try {
+        supabase.removeChannel(ch);
+      } catch {}
+    };
+  }, [loadSiteInrcy, refreshKpis]);
+
 const activateSiteInrcyTracking = useCallback(async () => {
   if (siteInrcyOwnership !== "rented") {
     setSiteInrcySettingsError("Activation indisponible : cette action est réservée au mode rented.");

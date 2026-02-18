@@ -26,10 +26,12 @@ type Overview = {
     site_web: { connected: { ga4: boolean; gsc: boolean } };
     gmb: { connected: boolean; metrics: any | null };
     facebook: { connected: boolean };
+    instagram: { connected: boolean };
+    linkedin: { connected: boolean };
   };
 };
 
-type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook";
+type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
 type Period = 7 | 14 | 30 | 60;
 
@@ -232,6 +234,20 @@ function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
     // Until Meta insights are wired, use a small default (can be improved later).
     return 10;
   }
+
+  if (cubeKey === "instagram") {
+    const connected = !!ov?.sources?.instagram?.connected;
+    if (!connected) return 0;
+    // Placeholder until Meta insights are wired.
+    return 9;
+  }
+
+  if (cubeKey === "linkedin") {
+    const connected = !!ov?.sources?.linkedin?.connected;
+    if (!connected) return 0;
+    // Placeholder until LinkedIn simple stats are wired.
+    return 7;
+  }
   // web sites
   const perDay = computeOpportunityPerDayWeb(ov);
   return Math.max(0, Math.round(perDay * 30));
@@ -266,6 +282,22 @@ function buildProvenance(cubeKey: CubeKey, ov: Overview) {
     ];
   }
 
+  if (cubeKey === "instagram") {
+    // Placeholder until we fetch Meta Insights.
+    return [
+      { label: "Audience", value: 1, colorVar: "--cSocial" },
+      { label: "Engagement", value: 1, colorVar: "--cGoogle" },
+    ];
+  }
+
+  if (cubeKey === "linkedin") {
+    // LinkedIn (stats simples): lecture "business".
+    return [
+      { label: "Impressions", value: 1, colorVar: "--cSocial" },
+      { label: "Clics", value: 1, colorVar: "--cGoogle" },
+    ];
+  }
+
   const buckets = { google: 0, direct: 0, social: 0, other: 0 };
   for (const c of Array.isArray(ov.channels) ? ov.channels : []) {
     const b = mapChannelBucket(c.channel);
@@ -294,6 +326,18 @@ function computeQuality(cubeKey: CubeKey, ov: Overview) {
     const connected = !!ov?.sources?.facebook?.connected;
     if (!connected) return { score: 0, ...qualityLabel(0) };
     return { score: 60, ...qualityLabel(60) };
+  }
+
+  if (cubeKey === "instagram") {
+    const connected = !!ov?.sources?.instagram?.connected;
+    if (!connected) return { score: 0, ...qualityLabel(0) };
+    return { score: 62, ...qualityLabel(62) };
+  }
+
+  if (cubeKey === "linkedin") {
+    const connected = !!ov?.sources?.linkedin?.connected;
+    if (!connected) return { score: 0, ...qualityLabel(0) };
+    return { score: 58, ...qualityLabel(58) };
   }
 
   // websites: quality = engagement + structure + intent
@@ -414,6 +458,30 @@ if (cubeKey === "site_web") {
     }
   }
 
+  if (cubeKey === "instagram") {
+    if (!ov?.sources?.instagram?.connected) {
+      return {
+        key: "connect",
+        title: "Connecter Instagram",
+        detail: "Pour activer la visibilité de votre marque (Meta).",
+        href: `/api/integrations/instagram/start?returnTo=${returnTo}`,
+        pill: "Connexion",
+      };
+    }
+  }
+
+  if (cubeKey === "linkedin") {
+    if (!ov?.sources?.linkedin?.connected) {
+      return {
+        key: "connect",
+        title: "Connecter LinkedIn",
+        detail: "Pour activer la crédibilité et la visibilité pro.",
+        href: `/api/integrations/linkedin/start?returnTo=${returnTo}`,
+        pill: "Connexion",
+      };
+    }
+  }
+
   const effortMap: Partial<Record<ActionKey, CubeModel["action"]["effort"] | undefined>> = {
     booster_publier: { level: "faible", label: "Effort faible • 5 min" },
     booster_avis: { level: "moyen", label: "Effort moyen • 10 min" },
@@ -505,11 +573,12 @@ if (cubeKey === "site_web") {
     });
   }
 
-  // facebook
+  // Social channels (Facebook / Instagram / LinkedIn)
+  const socialLabel = cubeKey === "linkedin" ? "votre audience pro" : "votre audience";
   return attachEffort({
     key: "booster_publier",
     title: "Publier",
-    detail: "1 publication simple/semaine suffit pour rester visible auprès de votre audience.",
+    detail: `1 publication simple/semaine suffit pour rester visible auprès de ${socialLabel}.`,
     href: "/dashboard/booster?action=publish",
     pill: "Booster",
   });
@@ -629,13 +698,17 @@ export default function StatsClient() {
   const webRef = useRef<HTMLDivElement | null>(null);
   const gmbRef = useRef<HTMLDivElement | null>(null);
   const fbRef = useRef<HTMLDivElement | null>(null);
+  const igRef = useRef<HTMLDivElement | null>(null);
+  const liRef = useRef<HTMLDivElement | null>(null);
 
-  const scrollTo = (key: "site_inrcy" | "site_web" | "gmb" | "facebook") => {
+  const scrollTo = (key: CubeKey) => {
     const map = {
       site_inrcy: inrcyRef,
       site_web: webRef,
       gmb: gmbRef,
       facebook: fbRef,
+      instagram: igRef,
+      linkedin: liRef,
     } as const;
 
     map[key].current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -646,6 +719,8 @@ export default function StatsClient() {
     site_web: 30,
     gmb: 30,
     facebook: 30,
+    instagram: 30,
+    linkedin: 30,
   });
 
   const [dataByCube, setDataByCube] = useState<Record<CubeKey, { ov: Overview | null; loading: boolean; error?: string }>>({
@@ -653,6 +728,8 @@ export default function StatsClient() {
     site_web: { ov: null, loading: true },
     gmb: { ov: null, loading: true },
     facebook: { ov: null, loading: true },
+    instagram: { ov: null, loading: true },
+    linkedin: { ov: null, loading: true },
   });
 
   const fetchCube = async (key: CubeKey, period: Period) => {
@@ -663,7 +740,11 @@ export default function StatsClient() {
           ? "site_web_ga4,site_web_gsc"
           : key === "gmb"
             ? "gmb"
-            : "facebook";
+            : key === "facebook"
+              ? "facebook"
+              : key === "instagram"
+                ? "instagram"
+                : "linkedin";
     const r = await fetch(`/api/stats/overview?days=${period}&include=${encodeURIComponent(include)}`, { cache: "no-store" });
     if (!r.ok) {
       const txt = await r.text().catch(() => "");
@@ -675,11 +756,11 @@ export default function StatsClient() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook"];
+      const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"];
       // Set loading state
       setDataByCube((prev) => {
         const next: any = { ...prev };
-        for (const k of keys) next[k] = { ...next[k], loading: true, error: undefined };
+          for (const k of keys) next[k] = { ...next[k], loading: true, error: undefined };
         return next;
       });
 
@@ -702,7 +783,7 @@ export default function StatsClient() {
         setDataByCube((prev) => {
           const next: any = { ...prev };
           // Mark all cubes with the error only if they have no data yet.
-          for (const k of ["site_inrcy", "site_web", "gmb", "facebook"] as CubeKey[]) {
+          for (const k of ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"] as CubeKey[]) {
             next[k] = { ...next[k], loading: false, error: next[k]?.ov ? undefined : msg };
           }
           return next;
@@ -712,7 +793,14 @@ export default function StatsClient() {
     return () => {
       cancelled = true;
     };
-  }, [periodByCube.site_inrcy, periodByCube.site_web, periodByCube.gmb, periodByCube.facebook]);
+  }, [
+    periodByCube.site_inrcy,
+    periodByCube.site_web,
+    periodByCube.gmb,
+    periodByCube.facebook,
+    periodByCube.instagram,
+    periodByCube.linkedin,
+  ]);
 
   const models: CubeModel[] = useMemo(() => {
     const build = (key: CubeKey, title: string, subtitle: string): CubeModel => {
@@ -731,6 +819,8 @@ export default function StatsClient() {
             site_web: { connected: { ga4: false, gsc: false } },
             gmb: { connected: false, metrics: null },
             facebook: { connected: false },
+            instagram: { connected: false },
+            linkedin: { connected: false },
           },
         } as Overview);
 
@@ -746,7 +836,11 @@ const connections =
       ? { ga4: !!ov.sources?.site_web?.connected?.ga4, gsc: !!ov.sources?.site_web?.connected?.gsc }
       : key === "gmb"
         ? { main: !!ov.sources?.gmb?.connected }
-        : { main: !!ov.sources?.facebook?.connected };
+        : key === "facebook"
+          ? { main: !!ov.sources?.facebook?.connected }
+          : key === "instagram"
+            ? { main: !!ov.sources?.instagram?.connected }
+            : { main: !!ov.sources?.linkedin?.connected };
 
 const provenance = buildProvenance(key, ov);
       const opp30 = computeOpportunity30(key, ov);
@@ -794,12 +888,14 @@ const provenance = buildProvenance(key, ov);
       build("site_web", "Site Web", "Votre site externe / historique"),
       build("gmb", "Google Business", "Visibilité locale (appels, itinéraires, clics site)"),
       build("facebook", "Facebook", "Visibilité sociale / communauté"),
+      build("instagram", "Instagram", "Visibilité de marque (Meta)"),
+      build("linkedin", "LinkedIn", "Visibilité pro (stats simples)"),
     ];
   }, [dataByCube, periodByCube]);
 
   const centralPotential30 = useMemo(() => models.reduce((s, m) => s + safeNum(m.opportunity30), 0), [models]);
   const centralByCube = useMemo(() => {
-    const by: Record<CubeKey, number> = { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0 };
+    const by: Record<CubeKey, number> = { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0 };
     for (const m of models) by[m.key] = safeNum(m.opportunity30);
     return by;
   }, [models]);
@@ -835,25 +931,7 @@ const provenance = buildProvenance(key, ov);
       </div>
 
       <div className={styles.grid}>
-        {/* Top-left */}
-        <div ref={inrcyRef}>
-          <Cube
-          model={models[0]}
-          onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, site_inrcy: p }))}
-          onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
-        />
-        </div>
-
-        {/* Top-right */}
-        <div ref={webRef}>
-          <Cube
-          model={models[1]}
-          onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, site_web: p }))}
-          onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
-        />
-        </div>
-
-        {/* Center (desktop only via CSS) */}
+        {/* Center summary */}
         <div className={styles.center}>
           <div className={styles.centerRing}>
             <div className={styles.centerValue}>+{fmtInt(centralPotential30)}</div>
@@ -877,26 +955,64 @@ const provenance = buildProvenance(key, ov);
                 <span>Facebook</span>
                 <b>+{fmtInt(centralByCube.facebook)}</b>
               </button>
+              <button type="button" className={styles.centerLine} onClick={() => scrollTo("instagram")}>
+                <span>Instagram</span>
+                <b>+{fmtInt(centralByCube.instagram)}</b>
+              </button>
+              <button type="button" className={styles.centerLine} onClick={() => scrollTo("linkedin")}>
+                <span>LinkedIn</span>
+                <b>+{fmtInt(centralByCube.linkedin)}</b>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Bottom-left */}
-        <div ref={gmbRef}>
+        <div ref={inrcyRef}>
           <Cube
-          model={models[2]}
-          onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, gmb: p }))}
-          onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
-        />
+            model={models[0]}
+            onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, site_inrcy: p }))}
+            onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
+          />
         </div>
 
-        {/* Bottom-right */}
+        <div ref={webRef}>
+          <Cube
+            model={models[1]}
+            onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, site_web: p }))}
+            onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
+          />
+        </div>
+
+        <div ref={gmbRef}>
+          <Cube
+            model={models[2]}
+            onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, gmb: p }))}
+            onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
+          />
+        </div>
+
         <div ref={fbRef}>
           <Cube
-          model={models[3]}
-          onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, facebook: p }))}
-          onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
-        />
+            model={models[3]}
+            onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, facebook: p }))}
+            onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
+          />
+        </div>
+
+        <div ref={igRef}>
+          <Cube
+            model={models[4]}
+            onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, instagram: p }))}
+            onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
+          />
+        </div>
+
+        <div ref={liRef}>
+          <Cube
+            model={models[5]}
+            onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, linkedin: p }))}
+            onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
+          />
         </div>
       </div>
     </div>

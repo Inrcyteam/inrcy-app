@@ -86,11 +86,14 @@ function computeOpportunities(overview: OverviewResponse): { perDay: number; con
     return sum + v * 0.6;
   }, 0);
 
-  // Boosts for connected acquisition channels (GMB / Facebook) – even if we don't fetch their metrics yet.
+  // Boosts for connected acquisition channels (GMB / Facebook / Instagram / LinkedIn)
+  // – even if we don't fetch their metrics yet.
   // /api/stats/overview exposes connection state under `sources`.
   const sourcesStatus = overview?.sources || {};
   const gmbBoost = sourcesStatus?.gmb?.connected ? 1.08 : 1.0;
   const fbBoost = sourcesStatus?.facebook?.connected ? 1.04 : 1.0;
+  const igBoost = sourcesStatus?.instagram?.connected ? 1.03 : 1.0;
+  const liBoost = sourcesStatus?.linkedin?.connected ? 1.02 : 1.0;
 
   // Normalize signals.
   const trafficScore = clamp((sessions / baseDays) / 50, 0, 1); // 50 sessions/day -> 1
@@ -108,7 +111,7 @@ function computeOpportunities(overview: OverviewResponse): { perDay: number; con
     0.10 * durationScore +
     0.05 * clamp(directShare / 0.6, 0, 1);
 
-  const multiplier = gmbBoost * fbBoost;
+  const multiplier = gmbBoost * fbBoost * igBoost * liBoost;
 
   // Convert index into opportunities/day.
   // - small sites still show something if there is intent
@@ -136,6 +139,8 @@ function computeOpportunities(overview: OverviewResponse): { perDay: number; con
     baseIndex,
     gmbBoost,
     fbBoost,
+    igBoost,
+    liBoost,
     multiplier,
     rawPerDay,
     perDay,
