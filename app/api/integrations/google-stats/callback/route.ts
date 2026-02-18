@@ -294,12 +294,15 @@ async function upsertGoogleIntegration(opts: {
     meta: { picture: userInfo.picture ?? null },
   };
 
-  if ((existing as any)?.id) {
-    const { error: upErr } = await supabase.from("integrations").update(payload).eq("id", (existing as any).id);
-    if (upErr) throw new Error(`DB update failed: ${upErr.message || JSON.stringify(upErr)}`);
-  } else {
-    const { error: insErr } = await supabase.from("integrations").insert(payload);
-    if (insErr) throw new Error(`DB insert failed: ${insErr.message || JSON.stringify(insErr)}`);
+  // IMPORTANT: OAuth callbacks may be called multiple times (retries / reconnect).
+  // Use UPSERT against the unique key to avoid duplicate key errors.
+  // NOTE: `integrations_unique` enforces uniqueness on (user_id, provider, source, product).
+  const { error: upsertErr } = await supabase
+    .from("integrations")
+    .upsert(payload, { onConflict: "user_id,provider,source,product" });
+
+  if (upsertErr) {
+    throw new Error(`DB upsert failed: ${upsertErr.message || JSON.stringify(upsertErr)}`);
   }
 }
 
