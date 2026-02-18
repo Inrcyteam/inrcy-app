@@ -26,10 +26,11 @@ async function refreshAccessToken(refreshToken: string) {
 
 async function getCalendarToken(supabase: any, userId: string) {
   const { data: accounts } = await supabase
-    .from("calendar_accounts")
+    .from("integrations")
     .select("id,access_token_enc,refresh_token_enc,expires_at,status,created_at")
     .eq("user_id", userId)
     .eq("provider", "google")
+    .eq("category", "calendar")
     .order("created_at", { ascending: true })
     .limit(1);
 
@@ -49,7 +50,7 @@ async function getCalendarToken(supabase: any, userId: string) {
           : null;
 
       await supabase
-        .from("calendar_accounts")
+        .from("integrations")
         .update({ access_token_enc: accessToken, expires_at: expiresAt, status: "connected" })
         .eq("id", account.id);
     }

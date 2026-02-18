@@ -7,10 +7,11 @@ export async function GET() {
   if (!auth?.user) return NextResponse.json({ connected: false }, { status: 401 });
 
   const { data } = await supabase
-    .from("calendar_accounts")
+    .from("integrations")
     .select("id,status")
     .eq("user_id", auth.user.id)
     .eq("provider", "google")
+    .eq("category", "calendar")
     .eq("status", "connected")
     .limit(1);
 

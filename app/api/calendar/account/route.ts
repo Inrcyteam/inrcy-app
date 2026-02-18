@@ -5,10 +5,11 @@ export async function GET() {
   if (errorResponse) return errorResponse;
   const userId = user.id;
 const { data, error } = await supabase
-    .from("calendar_accounts")
+    .from("integrations")
     .select("id,provider,email_address,display_name,status,created_at")
     .eq("user_id", userId)
     .eq("provider", "google")
+    .eq("category", "calendar")
     .order("created_at", { ascending: true })
     .limit(1);
 

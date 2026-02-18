@@ -103,10 +103,11 @@ export async function GET(req: Request) {
 
     // 3) Preserve refresh_token if Google doesn't return it this time
     const { data: existing, error: existingErr } = await supabase
-      .from("calendar_accounts")
-      .select("refresh_token_enc")
+      .from("integrations")
+      .select("id,refresh_token_enc")
       .eq("user_id", userId)
       .eq("provider", "google")
+      .eq("category", "calendar")
       .eq("email_address", userInfo.email)
       .maybeSingle();
 
@@ -128,6 +129,8 @@ export async function GET(req: Request) {
       category: "calendar",
       source: "gcal",
       product: "gcal",
+      // compat : certaines zones de l'app lisent account_email
+      account_email: userInfo.email,
       email_address: userInfo.email,
       display_name: userInfo.name ?? null,
       provider_account_id: userInfo.id ?? null,
@@ -138,9 +141,11 @@ export async function GET(req: Request) {
       expires_at: expiresAt,
     };
 
-    const { error: upErr } = await supabase
-      .from("calendar_accounts")
-      .upsert(payload, { onConflict: "user_id,provider,email_address" });
+    // ⚠️ On évite un onConflict incertain (index potentiellement changé côté Supabase)
+    // et on fait un "update-or-insert" robuste.
+    const { error: upErr } = existing?.id
+      ? await supabase.from("integrations").update(payload).eq("id", existing.id)
+      : await supabase.from("integrations").insert(payload);
 
     if (upErr) {
       return NextResponse.json({ error: "DB upsert failed", upErr }, { status: 500 });

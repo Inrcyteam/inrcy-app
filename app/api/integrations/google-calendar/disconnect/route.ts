@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 
 /**
- * Déconnecte un compte Google Calendar (supprime la ligne calendar_accounts).
+ * Déconnecte un compte Google Calendar (supprime la ligne dans integrations).
  * Le front passe { accountId }.
  */
 export async function POST(req: Request) {
@@ -16,11 +16,12 @@ export async function POST(req: Request) {
   if (!accountId) return NextResponse.json({ error: "Missing accountId" }, { status: 400 });
 
   const { error } = await supabase
-    .from("calendar_accounts")
+    .from("integrations")
     .delete()
     .eq("id", accountId)
     .eq("user_id", auth.user.id)
-    .eq("provider", "google");
+    .eq("provider", "google")
+    .eq("category", "calendar");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
