@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type TokenResponse = {
   access_token?: string;
@@ -295,10 +296,10 @@ async function upsertGoogleIntegration(opts: {
 
   if ((existing as any)?.id) {
     const { error: upErr } = await supabase.from("integrations").update(payload).eq("id", (existing as any).id);
-    if (upErr) throw new Error("DB update failed");
+    if (upErr) throw new Error(`DB update failed: ${upErr.message || JSON.stringify(upErr)}`);
   } else {
     const { error: insErr } = await supabase.from("integrations").insert(payload);
-    if (insErr) throw new Error("DB insert failed");
+    if (insErr) throw new Error(`DB insert failed: ${insErr.message || JSON.stringify(insErr)}`);
   }
 }
 
@@ -342,12 +343,16 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET" }, { status: 500 });
     }
 
-    const supabase = await createSupabaseServer();
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
+    // Use session client only to read the current user (auth cookies).
+    const sessionSupabase = await createSupabaseServer();
+    const { data: authData, error: authErr } = await sessionSupabase.auth.getUser();
     if (authErr || !authData?.user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
     const userId = authData.user.id;
+
+    // Use admin client for DB writes/reads to avoid RLS issues in OAuth callbacks.
+    const supabase = supabaseAdmin;
 
     // Exchange code -> tokens
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
