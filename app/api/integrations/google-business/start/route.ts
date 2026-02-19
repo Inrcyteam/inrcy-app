@@ -23,7 +23,6 @@ export async function GET(request: Request) {
     response_type: "code",
     access_type: "offline",
     prompt: "consent",
-    include_granted_scopes: "true",
     state,
     scope: [
       "https://www.googleapis.com/auth/business.manage",

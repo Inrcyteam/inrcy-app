@@ -121,7 +121,6 @@ const rawUrl =
     response_type: "code",
     access_type: "offline",
     prompt: "consent",
-    include_granted_scopes: "true",
     state,
     scope: [
       "https://www.googleapis.com/auth/analytics.readonly",
