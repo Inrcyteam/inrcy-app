@@ -1274,12 +1274,9 @@ const subTitle = firstNonEmpty(
       <div className={styles.wrap}>
         {/* Header (aligné avec les autres modules iNrCy) */}
         <div className={styles.header}>
-          {/* Ligne 1 : Logo + titre (gauche) / actions (droite) */}
+          {/* Ligne 1 : Logo (le titre est déjà intégré dans l'image) / actions (droite) */}
           <div className={styles.brand}>
-            <img src="/inrsend-logo.png" alt="" className={styles.brandIcon} aria-hidden />
-            <div className={styles.brandTitle} aria-label="iNr’Send">
-              iNr’Send
-            </div>
+            <img src="/inrsend-logo.png" alt="iNr’Send" className={styles.brandIcon} />
           </div>
 
           <div className={styles.actions}>
@@ -1417,20 +1414,13 @@ const subTitle = firstNonEmpty(
                 <div className={styles.searchIconRight}>⌕</div>
               </div>
 
-              {/* 🔁 Inversion demandée : Filtrer prend la place du bouton d'action */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              {/* Filtre boîte: en mobile, le libellé + le select doivent rester sur la même ligne */}
+              <div className={styles.filterRow}>
                 <div className={styles.toolbarInfo}>Filtrer</div>
                 <select
+                  className={styles.filterSelect}
                   value={filterAccountId}
                   onChange={(e) => setFilterAccountId(e.target.value)}
-                  style={{
-                    background: "rgba(0,0,0,0.22)",
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    color: "rgba(255,255,255,0.9)",
-                    borderRadius: 12,
-                    padding: "8px 10px",
-                    minWidth: 220,
-                  }}
                   title="Filtrer par boîte d’envoi"
                 >
                   <option value="">Toutes les boîtes</option>
