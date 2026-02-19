@@ -25,7 +25,7 @@
 /* Header aligned with other iNrCy modules */
 .header{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content: space-between;
   gap: 14px;
   padding: 12px 0 16px;
@@ -33,12 +33,59 @@
 
 .brand{
   display:flex;
-  align-items:center;
-  gap: 12px;
+  flex-direction: column;
+  align-items:flex-start;
+  gap: 6px;
   min-width: 0;
 }
 
-.brandText{ min-width:0; }
+.headerActions{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+}
+
+.btnGhost{
+  display:inline-flex;
+  align-items:center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.92);
+  cursor: pointer;
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
+}
+
+.btnGhost:hover{
+  transform: translateY(-1px);
+  background: rgba(255,255,255,0.09);
+  border-color: rgba(255,255,255,0.20);
+}
+
+.iconOnlyBtn{
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 14px;
+  justify-content: center;
+  gap: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.srOnly{
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 .tagline{
   font-size: 14px;
@@ -442,6 +489,9 @@
     align-items:center;
     justify-content:center;
     border-radius: 18px;
+    /* one bubble only: remove the outer day bubble */
+    border: 0;
+    background: transparent;
   }
 
   .dayNumWrap{
@@ -459,6 +509,15 @@
     border: 1px solid rgba(255,255,255,0.14);
     background: rgba(255,255,255,0.06);
     font-size: 13px;
+  }
+
+  /* Mobile: selection highlight on the number bubble */
+  .daySelected{
+    box-shadow: none;
+  }
+  .daySelected .dayNumBubble{
+    border-color: rgba(56, 189, 248, 0.55);
+    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.10);
   }
 
   .pillToday{ display:none; }

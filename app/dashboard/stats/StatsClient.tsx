@@ -1123,8 +1123,8 @@ function Cube({
           disabled={model.loading || !action.href}
           aria-disabled={model.loading || !action.href}
         >
-          <span className={styles.actionBtnDesktop}>Lancer</span>
-          <span className={styles.actionBtnMobile}>Go</span>
+          <span className={styles.actionBtnDesktop}>GO</span>
+          <span className={styles.actionBtnMobile}>GO</span>
         </button>
       </div>
 

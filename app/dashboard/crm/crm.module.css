@@ -251,6 +251,7 @@
   gap: 6px;
   color: var(--inrcy-muted);
   font-size: 12px;
+  min-width: 0;
 }
 
 .input,.select,.search{
@@ -262,6 +263,9 @@
   outline: none;
   transition: border-color .12s ease, box-shadow .12s ease, background .12s ease;
   backdrop-filter: blur(10px);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .input::placeholder,.search::placeholder{ color: rgba(255,255,255,.42); }
@@ -317,6 +321,7 @@
 .tableWrap{
   width: 100%;
   overflow: auto;
+  max-height: 62vh;
   border-radius: 18px;
   border: 1px solid var(--inrcy-border);
   background: rgba(0,0,0,.12);
@@ -989,8 +994,11 @@
 .input,.select,.search{ font-size: 14px; }
 
 @media (max-width: 760px){
-  .formGrid{ grid-template-columns: 1fr; }
-  .col1,.col3,.col4,.col6{ grid-column: auto; }
+  /* Mobile: keep compact multi-line layout (Ville/CP, Catégorie/Type, SIREN/Tel) */
+  .formGrid{ grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .col3, .col4, .col5, .col6{ grid-column: 1 / -1; }
+  .col2{ grid-column: span 3; }
+  .col1{ grid-column: span 3; }
 }
 
 
@@ -1421,8 +1429,13 @@
   display:flex;
   align-items:center;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+
+.importExportActions::-webkit-scrollbar{ display:none; }
 
 
 

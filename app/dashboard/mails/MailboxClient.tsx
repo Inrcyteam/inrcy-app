@@ -1276,29 +1276,30 @@ const subTitle = firstNonEmpty(
         <div className={styles.header}>
           <div className={styles.brand}>
             <img src="/inrsend-logo.png" alt="iNr’Send" style={{ width: 154, height: 64, display: "block" }} />
-            <div className={styles.brandText}>
-              <div className={styles.tagline}>Toutes vos communications, depuis une seule et même machine.</div>
-            </div>
+            <div className={styles.tagline}>Toutes vos communications, depuis une seule et même machine.</div>
           </div>
 
           <div className={styles.actions}>
             <button
-              className={`${styles.btnGhost} ${styles.hamburgerBtn}`}
+              className={`${styles.btnGhost} ${styles.iconOnlyBtn} ${styles.hamburgerBtn}`}
               onClick={() => setMobileFoldersOpen(true)}
               type="button"
-              aria-label="Ouvrir les dossiers"
+              aria-label="Dossiers"
               title="Dossiers"
             >
-              ☰ Dossiers
+              <span aria-hidden>☰</span>
+              <span className={styles.srOnly}>Dossiers</span>
             </button>
 
             <button
-              className={styles.btnGhost}
+              className={`${styles.btnGhost} ${styles.iconOnlyBtn}`}
               onClick={() => setSettingsOpen(true)}
               type="button"
+              aria-label="Réglages"
               title="Réglages"
             >
-              ⚙️ Réglages
+              <span aria-hidden>⚙️</span>
+              <span className={styles.srOnly}>Réglages</span>
             </button>
 
             <SettingsDrawer
@@ -1309,11 +1310,14 @@ const subTitle = firstNonEmpty(
               <MailsSettingsContent />
             </SettingsDrawer>
 
-            <Link className={styles.closeBtn} href="/dashboard" title="Fermer iNr’Send" aria-label="Fermer">
-              <span className={styles.closeText}>Fermer</span>
-              <span className={styles.closeIcon} aria-hidden>
-                ✕
-              </span>
+            <Link
+              className={`${styles.closeBtn} ${styles.iconOnlyBtn}`}
+              href="/dashboard"
+              title="Fermer iNr’Send"
+              aria-label="Fermer"
+            >
+              <span aria-hidden>✕</span>
+              <span className={styles.srOnly}>Fermer</span>
             </Link>
           </div>
         </div>

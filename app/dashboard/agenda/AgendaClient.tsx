@@ -548,25 +548,32 @@ async function deleteRdv() {
               height={64}
               priority
             />
-            <div className={styles.brandText}>
-              <div className={styles.tagline}>
-                Plus qu'un agenda ! Pensé pour le terrain.
-              </div>
-            </div>
+            <div className={styles.tagline}>Plus qu'un agenda ! Pensé pour le terrain.</div>
           </div>
 
-          <button
-            className={styles.closeBtn}
-            onClick={() => router.push("/dashboard")}
-            aria-label="Fermer"
-            title="Fermer"
-            type="button"
-          >
-            <span className={styles.closeText}>Fermer</span>
-            <span className={styles.closeIcon} aria-hidden>
-              ✕
-            </span>
-          </button>
+          <div className={styles.headerActions}>
+            <button
+              className={`${styles.btnGhost} ${styles.iconOnlyBtn}`}
+              onClick={() => router.push("/dashboard/settings")}
+              aria-label="Réglages"
+              title="Réglages"
+              type="button"
+            >
+              <span aria-hidden>⚙️</span>
+              <span className={styles.srOnly}>Réglages</span>
+            </button>
+
+            <button
+              className={`${styles.closeBtn} ${styles.iconOnlyBtn}`}
+              onClick={() => router.push("/dashboard")}
+              aria-label="Fermer"
+              title="Fermer"
+              type="button"
+            >
+              <span aria-hidden>✕</span>
+              <span className={styles.srOnly}>Fermer</span>
+            </button>
+          </div>
         </div>
 
         <div className={styles.layout}>
