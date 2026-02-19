@@ -1274,9 +1274,12 @@ const subTitle = firstNonEmpty(
       <div className={styles.wrap}>
         {/* Header (aligné avec les autres modules iNrCy) */}
         <div className={styles.header}>
+          {/* Ligne 1 : Logo + titre (gauche) / actions (droite) */}
           <div className={styles.brand}>
-            <img src="/inrsend-logo.png" alt="iNr’Send" style={{ width: 154, height: 64, display: "block" }} />
-            <div className={styles.tagline}>Toutes vos communications, depuis une seule et même machine.</div>
+            <img src="/inrsend-logo.png" alt="" className={styles.brandIcon} aria-hidden />
+            <div className={styles.brandTitle} aria-label="iNr’Send">
+              iNr’Send
+            </div>
           </div>
 
           <div className={styles.actions}>
@@ -1320,6 +1323,9 @@ const subTitle = firstNonEmpty(
               <span className={styles.srOnly}>Fermer</span>
             </Link>
           </div>
+
+          {/* Ligne 2 : Accroche sur toute la largeur */}
+          <div className={styles.tagline}>Toutes vos communications, depuis une seule et même machine.</div>
         </div>
 
         {/* Mobile: menu dossiers (hamburger) */}

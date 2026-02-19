@@ -34,24 +34,43 @@
   flex-direction: column;
 }
 
-/* Header aligned with other iNrCy modules */
+/* Header aligned with other iNrCy modules
+   Row 1: icon + title (left) / actions (right)
+   Row 2: tagline spans full width */
 .header{
-  display:flex;
-  align-items:flex-start;
-  justify-content: space-between;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 10px;
   padding: 12px 0 16px;
 }
 
 .brand{
   display:flex;
-  flex-direction: column;
-  align-items:flex-start;
-  gap: 6px;
+  align-items:center;
+  gap: 12px;
   min-width: 0;
 }
 
+.brandIcon{
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  display:block;
+}
+
+.brandTitle{
+  font-size: 26px;
+  font-weight: 950;
+  letter-spacing: -0.4px;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
 .tagline{
+  grid-column: 1 / -1;
   font-size: 14px;
   color: rgba(255,255,255,0.68);
   line-height: 1.25;
@@ -95,6 +114,14 @@
 .sub { font-size: 14px; color: rgba(255, 255, 255, 0.68); }
 
 .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* En mobile, on évite que les actions passent à la ligne et on colle en haut à droite */
+@media (max-width: 560px){
+  .header{ padding-top: 10px; }
+  .actions{ flex-wrap: nowrap; justify-self: end; }
+  .brandTitle{ font-size: 24px; }
+  .brandIcon{ width: 52px; height: 52px; }
+}
 
 /* Icon-only header buttons (Dossiers / Réglages / ✕) */
 .iconOnlyBtn{
