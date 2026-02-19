@@ -1272,16 +1272,12 @@ const subTitle = firstNonEmpty(
   return (
     <div className={styles.page}>
       <div className={styles.wrap}>
-        {/* Header (on garde le layout iNr'Box) */}
-        <div className={styles.topbar}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <img
-              src="/inrsend-logo.png"
-              alt="iNr’Send"
-              style={{ width: 154, height: 64, display: "block" }}
-            />
-            <div className={styles.titleRow}>
-              <div className={styles.sub}>Toutes vos communications, depuis une seule et même machine.</div>
+        {/* Header (aligné avec les autres modules iNrCy) */}
+        <div className={styles.header}>
+          <div className={styles.brand}>
+            <img src="/inrsend-logo.png" alt="iNr’Send" style={{ width: 154, height: 64, display: "block" }} />
+            <div className={styles.brandText}>
+              <div className={styles.tagline}>Toutes vos communications, depuis une seule et même machine.</div>
             </div>
           </div>
 
@@ -1313,8 +1309,11 @@ const subTitle = firstNonEmpty(
               <MailsSettingsContent />
             </SettingsDrawer>
 
-            <Link className={styles.btnGhost} href="/dashboard" title="Fermer iNr’Send">
-              Fermer
+            <Link className={styles.closeBtn} href="/dashboard" title="Fermer iNr’Send" aria-label="Fermer">
+              <span className={styles.closeText}>Fermer</span>
+              <span className={styles.closeIcon} aria-hidden>
+                ✕
+              </span>
             </Link>
           </div>
         </div>

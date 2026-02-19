@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 import styles from "./agenda.module.css";
 
 // Reuse the exact same drawer + content as the Dashboard
@@ -538,17 +539,34 @@ async function deleteRdv() {
   return (
     <div className={styles.page}>
       <div className={styles.wrap}>
-        <div className={styles.topbar}>
-          <div className={styles.titleRow}>
-            <div className={styles.h1}>{viewKind === "intervention" ? "Interventions iNrCy" : "Agenda iNrCy"}</div>
-            <div className={styles.sub}>
-              {"Planning d’interventions iNrCy — agenda natif (sans connexion Google)."}
+        <div className={styles.header}>
+          <div className={styles.brand}>
+            <Image
+              src="/inrcalendar-logo.png"
+              alt="Interventions iNrCy"
+              width={154}
+              height={64}
+              priority
+            />
+            <div className={styles.brandText}>
+              <div className={styles.tagline}>
+                Plus qu'un agenda ! Pensé pour le terrain.
+              </div>
             </div>
           </div>
 
-          <div className={styles.actions}>
-            <button className={styles.btnGhost} onClick={() => router.push("/dashboard")}>Fermer</button>
-          </div>
+          <button
+            className={styles.closeBtn}
+            onClick={() => router.push("/dashboard")}
+            aria-label="Fermer"
+            title="Fermer"
+            type="button"
+          >
+            <span className={styles.closeText}>Fermer</span>
+            <span className={styles.closeIcon} aria-hidden>
+              ✕
+            </span>
+          </button>
         </div>
 
         <div className={styles.layout}>
@@ -622,7 +640,10 @@ async function deleteRdv() {
                         role="button"
                         tabIndex={0}
                       >
-                        <div className={styles.dayNum}>{d.getDate()}</div>
+                        <div className={styles.dayNumWrap}>
+                          <span className={styles.dayNumBubble}>{d.getDate()}</span>
+                          {list.length > 0 ? <span className={styles.hasEventsDot} aria-hidden /> : null}
+                        </div>
                         {isToday && <div className={styles.pillToday}>Aujourd’hui</div>}
 
                         <div className={styles.chips}>
@@ -661,20 +682,17 @@ async function deleteRdv() {
 
             {/* SIDEBAR DETAILS */}
             <div className={styles.card}>
-              <div className={styles.cardHeader}>
-                <div>
-                  <div className={styles.monthLabel} style={{ textTransform: "capitalize" }}>
-                    {formatDayLabel(selectedDate)}
-                  </div>
-                  <div className={styles.rangeHint}>
-                    {selectedEvents.length} événement{selectedEvents.length > 1 ? "s" : ""}
-                  </div>
+              <div className={styles.sideHeaderCentered}>
+                <div className={styles.sideDate}>
+                  {formatDayLabel(selectedDate)}
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button className={styles.btnPrimary} onClick={() => openCreateRdv(selectedDate)}>
-                    {viewKind === "intervention" ? "＋ Intervention" : "＋ RDV"}
-                  </button>
+                <div className={styles.sideEventsCount}>
+                  {selectedEvents.length} événement{selectedEvents.length > 1 ? "s" : ""}
                 </div>
+                <button className={`${styles.btnPrimaryWide} ${styles.btnBubble}`} onClick={() => openCreateRdv(selectedDate)}>
+                  {viewKind === "intervention" ? "＋ Intervention" : "＋ RDV"}
+                </button>
+                <div className={styles.sideDivider} />
               </div>
 
               <div className={styles.sidebarBody}>

@@ -78,6 +78,10 @@
   box-shadow: 0 10px 24px rgba(0,0,0,.22);
 }
 
+/* Close button responsive label ("Fermer" → "✕" on mobile) */
+.closeText{ display: inline; }
+.closeIcon{ display: none; font-size: 16px; line-height: 1; }
+
 .backBtn:hover{
   transform: translateY(-1px);
   border-color: rgba(255,255,255,.18);
@@ -421,6 +425,11 @@
   .cardHead{ flex-direction: column; align-items: flex-start; }
   .cardActions{ width: 100%; }
   .primaryBtn, .ghostBtn{ width: 100%; justify-content: center; }
+}
+
+@media (max-width: 900px){
+  .closeText{ display:none; }
+  .closeIcon{ display:inline; }
 }
 
 
@@ -927,7 +936,8 @@
 }
 
 @media (max-width: 760px){
-  .kpiRow{ grid-template-columns: 1fr; }
+  /* Mobile: keep 2 columns so the 6 KPIs render as 3 rows × 2 cards */
+  .kpiRow{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .kpiValue{ font-size: 22px; }
   .bulkActions .primaryBtn, .bulkActions .ghostBtn{ width: 100%; justify-content:center; }
   .searchWrap{ width: 100%; }
@@ -1501,40 +1511,37 @@
 
 /* =========================
    iNrCy CRM — FINAL FIX (Feb 2026)
-   Objectif:
-   - 1 seule page (pas de scroll navigateur)
-   - Scroll uniquement dans le tableau si besoin
-   - Dropdown "Actions" toujours visible + scroll interne si trop long
+   NOTE (Feb 2026):
+   - Sur desktop, on peut garder "1 seule page" avec scroll interne dans le tableau.
+   - Sur mobile, on DOIT laisser scroller la page (sinon écran figé).
    ========================= */
 
-/* 0) Page sans scroll (le dashboard reste plein écran) */
-.shell{
-  height: 100vh !important;     /* force plein écran */
-  min-height: 0 !important;
-  overflow: hidden !important;  /* empêche la scroll-bar navigateur */
-  padding-bottom: 18px !important; /* réduit la hauteur globale */
+@media (min-width: 980px){
+  /* 0) Page sans scroll (desktop) */
+  .shell{
+    height: 100vh !important;     /* force plein écran */
+    min-height: 0 !important;
+    overflow: hidden !important;  /* empêche la scroll-bar navigateur */
+    padding-bottom: 18px !important; /* réduit la hauteur globale */
+  }
+
+  /* 1) La card du bas doit laisser déborder le menu */
+  .cardBottom{ overflow: visible !important; }
+
+  /* 2) Les barres contenant le dropdown doivent autoriser le débordement */
+  .tableToolbar,
+  .bulkActions{ overflow: visible !important; }
+
+  /* 3) Tableau: hauteur adaptative + scroll interne (pas de scroll page) */
+  .tableWrap{
+    min-height: 390px !important;
+    max-height: calc(100vh - 560px) !important; /* ajuste la place en fonction du haut (KPI + form + toolbar) */
+    overflow-y: auto !important;
+    overflow-x: hidden !important; /* pas de scroll horizontal */
+  }
 }
 
-/* 1) La card du bas doit laisser déborder le menu */
-.cardBottom{
-  overflow: visible !important;
-}
-
-/* 2) Les barres contenant le dropdown doivent autoriser le débordement */
-.tableToolbar,
-.bulkActions{
-  overflow: visible !important;
-}
-
-/* 3) Tableau: hauteur adaptative + scroll interne (pas de scroll page) */
-.tableWrap{
-  min-height: 390px !important;
-  max-height: calc(100vh - 560px) !important; /* ajuste la place en fonction du haut (KPI + form + toolbar) */
-  overflow-y: auto !important;
-  overflow-x: hidden !important; /* pas de scroll horizontal */
-}
-
-/* 4) Dropdown Actions: scroll interne si trop d'items */
+/* 4) Dropdown Actions: scroll interne si trop d'items (tous écrans) */
 .actionsMenu{
   max-height: 40vh !important;   /* s’adapte à l’écran */
   overflow-y: auto !important;

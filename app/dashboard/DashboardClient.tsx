@@ -3021,6 +3021,9 @@ useEffect(() => {
         onClose={closePanel}
       >
         {panel === "contact" && <ContactContent mode="drawer" />}
+        {panel === "profil" && <ProfilContent mode="drawer" />}
+        {panel === "activite" && <ActivityContent mode="drawer" />}
+        {panel === "abonnement" && <AbonnementContent mode="drawer" />}
         {panel === "mails" && <MailsSettingsContent />}
 
 

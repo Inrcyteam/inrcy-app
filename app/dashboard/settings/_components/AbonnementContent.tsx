@@ -287,7 +287,7 @@ export default function AbonnementContent({ mode = "page", onOpenContact }: Prop
 
         <div className="datesGrid">
           <div style={miniBox}>
-            <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Démarrage</div>
+            <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Actualisation</div>
             <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.startLabel}</div>
           </div>
 

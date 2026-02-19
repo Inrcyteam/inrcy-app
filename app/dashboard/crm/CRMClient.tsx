@@ -793,7 +793,10 @@ const exportCsv = () => {
           type="button"
           onClick={() => router.push("/dashboard")}
         >
-         Fermer
+          <span className={styles.closeText}>Fermer</span>
+          <span className={styles.closeIcon} aria-hidden>
+            ✕
+          </span>
         </button>
       </header>
 

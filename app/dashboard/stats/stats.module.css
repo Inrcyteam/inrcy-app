@@ -498,6 +498,22 @@
 
   .actionBtnDesktop { display: none; }
   .actionBtnMobile { display: inline; }
+
+  /* Summary bubbles: 3 rows × 2 items on mobile */
+  .summaryModules {
+    gap: 8px;
+  }
+  .summaryItem {
+    flex: 0 0 calc(50% - 8px);
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 10px;
+    font-size: 12px;
+    border-radius: 999px;
+  }
+  .summaryItem b {
+    font-size: 12px;
+  }
 }
 
 .period {
@@ -824,7 +840,10 @@
   -webkit-backface-visibility: hidden;
 }
 
-/* Responsive label for the action button ("Lancer" → "Go" on mobile) */
+/* Responsive label for the action button ("Lancer" → "Go" on mobile)
+   NOTE: default = desktop. Mobile override is in the @media (max-width: 900px) block.
+   We keep these definitions *only once* so they don't override the media query.
+*/
 .actionBtnDesktop { display: inline; }
 .actionBtnMobile { display: none; }
 

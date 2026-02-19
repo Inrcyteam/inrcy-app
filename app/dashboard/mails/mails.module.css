@@ -34,7 +34,55 @@
   flex-direction: column;
 }
 
-/* TOPBAR */
+/* Header aligned with other iNrCy modules */
+.header{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0 16px;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brandText{ min-width:0; }
+
+.tagline{
+  font-size: 14px;
+  color: rgba(255,255,255,0.68);
+  line-height: 1.25;
+}
+
+.closeBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.92);
+  cursor:pointer;
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
+  text-decoration:none;
+}
+
+.closeBtn:hover{
+  transform: translateY(-1px);
+  background: rgba(255,255,255,0.09);
+  border-color: rgba(255,255,255,0.20);
+}
+
+.closeText{ display:inline; }
+.closeIcon{ display:none; font-size: 18px; line-height: 1; }
+
+/* TOPBAR (legacy - kept for safety) */
 .topbar {
   display: flex;
   align-items: center;
@@ -244,12 +292,17 @@
     height: 100dvh; /* plus fiable que 100vh sur mobile */
   }
 
+  .header,
   .topbar {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
     padding: 10px 0 12px;
   }
+
+  /* Mobile: close button becomes ✕ only */
+  .closeText{ display:none; }
+  .closeIcon{ display:inline; }
 
   .actions {
     width: 100%;
@@ -1945,6 +1998,7 @@ width: 100%;
   color: rgba(255,255,255,0.90);
   font-size: 14px;
   line-height: 1.6;
+  padding-left: 6px;
 }
 
 .messageText {
@@ -1953,6 +2007,7 @@ width: 100%;
   color: rgba(255,255,255,0.90);
   font-size: 14px;
   line-height: 1.6;
+  padding-left: 6px;
 }
 
 /* ===== Publication details (Booster) ===== */

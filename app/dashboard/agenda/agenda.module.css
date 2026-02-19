@@ -22,6 +22,53 @@
   margin: 0 auto;
 }
 
+/* Header aligned with other iNrCy modules */
+.header{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0 16px;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brandText{ min-width:0; }
+
+.tagline{
+  font-size: 14px;
+  color: rgba(255,255,255,0.68);
+  line-height: 1.25;
+}
+
+.closeBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.closeBtn:hover{
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.closeText{ display:inline; }
+.closeIcon{ display:none; font-size: 18px; line-height: 1; }
+
 .topbar {
   display: flex;
   align-items: center;
@@ -197,10 +244,24 @@
   opacity: 0.55;
 }
 
-.dayNum {
+.dayNumWrap{
+  display:flex;
+  align-items:center;
+  gap: 6px;
+}
+
+.dayNumBubble{
   font-weight: 950;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.86);
+}
+
+.hasEventsDot{
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.95);
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.10);
 }
 
 .pillToday {
@@ -368,6 +429,40 @@
   .layout {
     grid-template-columns: 1fr;
   }
+
+  /* Mobile header: show ✕ only */
+  .closeText{ display:none; }
+  .closeIcon{ display:inline; }
+
+  /* Mobile calendar: compact "bubbles" per day */
+  .day{
+    min-height: 52px;
+    padding: 0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius: 18px;
+  }
+
+  .dayNumWrap{
+    gap: 6px;
+  }
+
+  .dayNumBubble{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width: 34px;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.06);
+    font-size: 13px;
+  }
+
+  .pillToday{ display:none; }
+  .chips{ display:none; }
 }
 
 
@@ -468,4 +563,83 @@
   background: rgba(255, 255, 255, 0.05);
   border-radius: 16px;
   padding: 12px;
+}
+
+
+/* === Sidebar header centered redesign === */
+.sideHeaderCentered{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  gap:8px;
+  padding:16px 12px 6px;
+}
+
+.sideDate{
+  font-size:18px;
+  font-weight:600;
+  text-transform:capitalize;
+}
+
+.sideEventsCount{
+  font-size:13px;
+  opacity:.75;
+}
+
+.btnPrimaryWide{
+  width:100%;
+  max-width:220px;
+  padding:10px 16px;
+  border-radius:12px;
+}
+
+/* make button slightly thinner on mobile */
+@media (max-width:760px){
+  .btnPrimaryWide{
+    padding:8px 14px;
+    max-width:200px;
+  }
+}
+
+
+/* === Fix select dropdown (white on white) in dark modal === */
+.input option{
+  background: rgba(10,14,28,0.98);
+  color: rgba(255,255,255,0.95);
+}
+
+/* Some browsers render <select> popup using <optgroup>/<option> defaults */
+.input optgroup{
+  background: rgba(10,14,28,0.98);
+  color: rgba(255,255,255,0.95);
+}
+
+/* === Important bubble button for + Intervention === */
+.btnBubble{
+  background: linear-gradient(135deg, rgba(77,163,255,0.95), rgba(162,79,255,0.92), rgba(255,72,164,0.85));
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.btnBubble:hover{
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.btnBubble:active{
+  transform: translateY(0px);
+  filter: brightness(0.98);
+}
+
+/* Divider between header action and day details */
+.sideDivider{
+  width: 100%;
+  max-width: 260px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.20), rgba(255,255,255,0));
+  margin-top: 6px;
 }
