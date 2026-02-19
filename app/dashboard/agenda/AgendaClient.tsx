@@ -6,8 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./agenda.module.css";
 
 // Reuse the exact same drawer + content as the Dashboard
-import SettingsDrawer from "../SettingsDrawer";
-import AgendaSettingsContent from "../settings/_components/AgendaSettingsContent";
+// Agenda iNrCy : calendrier natif (plus de connexion Google Agenda)
 
 type CrmContact = {
   id: string;
@@ -112,7 +111,6 @@ function accentFor(id: string) {
 export default function AgendaClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [connected, setConnected] = useState<boolean | null>(null);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,11 +122,8 @@ export default function AgendaClient() {
   });
   const [query, setQuery] = useState("");
 
-  // Mode d'usage : artisans (interventions) / professions libérales (agenda)
-    const [viewKind, setViewKind] = useState<"intervention" | "agenda">("intervention");
-
-  // Panneau Réglages (sans quitter la page)
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Module Agenda = planning d'interventions iNrCy (mode unique)
+  const viewKind: "intervention" = "intervention";
 
 // --- CRM contacts (pour relier un RDV à un contact)
 const [contacts, setContacts] = useState<CrmContact[]>([]);
@@ -157,12 +152,7 @@ const [rdvNewContactAddress, setRdvNewContactAddress] = useState<string>("");
 const [rdvSaving, setRdvSaving] = useState(false);
 const [rdvError, setRdvError] = useState<string | null>(null);
 
-function setLocalMode(kind: "intervention" | "agenda") {
-  setViewKind(kind);
-  try {
-    localStorage.setItem("inrcy_calendar_view_kind", kind);
-  } catch {}
-}
+
 
 async function loadContacts() {
   setContactsLoading(true);
@@ -195,7 +185,7 @@ function toDateOnly(d: Date) {
     .trim();
 
   // Ensure we are in Intervention mode for the CRM workflow
-  setLocalMode("intervention");
+  
   // Load contacts (lazy) so the dropdown can resolve contactId if it exists
   loadContacts();
 
@@ -403,17 +393,6 @@ async function deleteRdv() {
   }
 }
 
-
-  async function loadStatus() {
-    const r = await fetch("/api/calendar/status");
-    if (!r.ok) {
-      setConnected(false);
-      return;
-    }
-    const j = await r.json().catch(() => ({}));
-    setConnected(Boolean(j.connected));
-  }
-
   async function loadEventsForMonth(monthDate: Date) {
     setLoading(true);
     setError(null);
@@ -443,32 +422,14 @@ async function deleteRdv() {
   }
 
   useEffect(() => {
-    loadStatus();
-    try {
-      const saved = localStorage.getItem("inrcy_calendar_view_kind") as any;
-      if (saved === "agenda" || saved === "intervention") setViewKind(saved);
-    } catch {}
+    // Initial load
+    loadEventsForMonth(cursorMonth);
+    loadContacts();
   }, []);
 
   useEffect(() => {
-    if (connected) {
-      loadEventsForMonth(cursorMonth);
-      loadContacts();
-    }
-  }, [connected, cursorMonth]);
-
-  useEffect(() => {
-    if (!settingsOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSettingsOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [settingsOpen]);
-
-  const openAgendaSettings = () => setSettingsOpen(true);
-  const closeAgendaSettings = () => setSettingsOpen(false);
-  const toggleAgendaSettings = () => setSettingsOpen((v) => !v);
+    loadEventsForMonth(cursorMonth);
+  }, [cursorMonth]);
 
 
   const monthStart = useMemo(() => startOfMonth(cursorMonth), [cursorMonth]);
@@ -581,50 +542,16 @@ async function deleteRdv() {
           <div className={styles.titleRow}>
             <div className={styles.h1}>{viewKind === "intervention" ? "Interventions iNrCy" : "Agenda iNrCy"}</div>
             <div className={styles.sub}>
-              {viewKind === "intervention"
-                ? "Planning d’interventions (artisan) — avec option agenda classique. Synchronisé avec Google Calendar."
-                : "Agenda classique — synchronisé avec Google Calendar."}
+              {"Planning d’interventions iNrCy — agenda natif (sans connexion Google)."}
             </div>
           </div>
 
           <div className={styles.actions}>
-            <button
-              className={styles.btnGhost}
-              onClick={() => setLocalMode(viewKind === "intervention" ? "agenda" : "intervention")}
-              title="Basculer entre planning d’interventions et agenda classique"
-            >
-              {viewKind === "intervention" ? "🗓️ Mode agenda" : "🧰 Mode interventions"}
-            </button>
-            <button className={styles.btnGhost} onClick={toggleAgendaSettings}>
-              ⚙️ Réglages
-            </button>
             <button className={styles.btnGhost} onClick={() => router.push("/dashboard")}>Fermer</button>
           </div>
-
-          <SettingsDrawer title="Réglages Agenda" isOpen={settingsOpen} onClose={closeAgendaSettings}>
-            <AgendaSettingsContent />
-          </SettingsDrawer>
         </div>
 
-        {connected === false && (
-          <div className={styles.center}>
-            <div className={styles.notice}>
-              <div style={{ fontWeight: 950, fontSize: 16 }}>Google Agenda n’est pas connecté</div>
-              <div style={{ marginTop: 6, color: "rgba(255,255,255,0.72)" }}>
-                Pour afficher ton calendrier iNrCy (et qu’il corresponde à 100% à Google), connecte ton compte depuis les réglages.
-              </div>
-              <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button className={styles.btnPrimary} onClick={toggleAgendaSettings}>
-                  Connecter Google Agenda
-                </button>
-                <button className={styles.btnGhost} onClick={() => router.push("/dashboard")}>Retour dashboard</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {connected && (
-          <div className={styles.layout}>
+        <div className={styles.layout}>
             {/* CALENDRIER */}
             <div className={styles.card}>
               <div className={styles.cardHeader}>
@@ -651,7 +578,7 @@ async function deleteRdv() {
                     className={styles.btnGhost}
                     onClick={() => loadEventsForMonth(cursorMonth)}
                     disabled={loading}
-                    title="Rafraîchir depuis Google"
+                    title="Rafraîchir"
                   >
                     {loading ? "Chargement…" : "↻ Rafraîchir"}
                   </button>
@@ -864,7 +791,7 @@ async function deleteRdv() {
               </div>
             </div>
           </div>
-        )}
+
       </div>
 
       {/* MODALE création/édition */}

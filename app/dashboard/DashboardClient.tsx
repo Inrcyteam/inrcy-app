@@ -10,7 +10,6 @@ import ActivityContent from "./settings/_components/ActivityContent";
 import AbonnementContent from "./settings/_components/AbonnementContent";
 import ContactContent from "./settings/_components/ContactContent";
 import MailsSettingsContent from "./settings/_components/MailsSettingsContent";
-import AgendaSettingsContent from "./settings/_components/AgendaSettingsContent";
 
 
 // ✅ IMPORTANT : même client que ta page login
@@ -191,7 +190,7 @@ export default function DashboardClient() {
   const router = useRouter();
 
   const searchParams = useSearchParams();
-  const panel = searchParams.get("panel"); // "contact" | "profil" | "activite" | "abonnement" | "mails" | "agenda" | ... | null
+  const panel = searchParams.get("panel"); // "contact" | "profil" | "activite" | "abonnement" | "mails" | ... | null
 
   const openPanel = (
     name:
@@ -200,7 +199,6 @@ export default function DashboardClient() {
       | "activite"
       | "abonnement"
       | "mails"
-      | "agenda"
       | "site_inrcy"
       | "site_web"
       | "instagram"
@@ -2866,18 +2864,7 @@ useEffect(() => {
   <div className={styles.loopTitle}>AGENDA</div>
 </div>
 
-<button
-  className={styles.loopGearBtn}
-  type="button"
-  aria-label="Réglages Agenda"
-  title="Réglages"
-  onClick={() => openPanel("agenda")}
->
-  <svg className={styles.loopGearSvg} viewBox="0 0 24 24" aria-hidden="true">
-  <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-  <path d="M19.4 15a7.9 7.9 0 0 0 .1-1 7.9 7.9 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7.7 7.7 0 0 0-1.7-1l-.4-2.6H10l-.4 2.6a7.7 7.7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.9 7.9 0 0 0-.1 1 7.9 7.9 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.5-2-1.5Z" />
-</svg>
-</button>
+
 
       <div className={styles.loopSub}>Transformez les contacts en RDV</div>
       <div className={styles.loopActions}>
@@ -2999,8 +2986,6 @@ useEffect(() => {
             ? "Mon abonnement"
             : panel === "mails"
             ? "Réglages iNr’Send"
-            : panel === "agenda"
-            ? "Réglages Agenda"
             : panel === "site_inrcy"
             ? "Configuration — Site iNrCy"
             : panel === "site_web"
@@ -3021,7 +3006,6 @@ useEffect(() => {
           panel === "activite" ||
           panel === "abonnement" ||
           panel === "mails" ||
-          panel === "agenda" ||
           panel === "site_inrcy"
         ||
           panel === "site_web"
@@ -3038,7 +3022,7 @@ useEffect(() => {
       >
         {panel === "contact" && <ContactContent mode="drawer" />}
         {panel === "mails" && <MailsSettingsContent />}
-        {panel === "agenda" && <AgendaSettingsContent />}
+
 
         {panel === "site_inrcy" && (
           <div style={{ display: "grid", gap: 14 }}>

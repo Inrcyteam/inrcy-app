@@ -1,37 +1,15 @@
 import { NextResponse } from "next/server";
 
-export async function GET(request: Request) {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const redirectFromEnv = process.env.GOOGLE_CALENDAR_REDIRECT_URI;
-
-  const origin = new URL(request.url).origin;
-  const redirectUri = redirectFromEnv || `${origin}/api/integrations/google-calendar/callback`;
-
-  if (!clientId) {
-    return NextResponse.json(
-      {
-        error: "Missing GOOGLE_CLIENT_ID env var",
-        hint:
-          "Set GOOGLE_CLIENT_ID (and GOOGLE_CLIENT_SECRET) in your deployment environment. " +
-          "Also add the redirect URI in Google Cloud Console: " +
-          redirectUri,
-      },
-      { status: 500 }
-    );
-  }
-
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: "code",
-    scope: [
-      "https://www.googleapis.com/auth/calendar.events",
-      "https://www.googleapis.com/auth/userinfo.email",
-    ].join(" "),
-    access_type: "offline",
-    prompt: "consent",
-  });
-
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  return NextResponse.redirect(url);
+/**
+ * Google Calendar integration has been removed from iNrCy.
+ */
+export async function GET() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "google_calendar_integration_removed",
+      message: "Google Agenda has been removed from iNrCy. Please use the iNrCy agenda.",
+    },
+    { status: 410 }
+  );
 }
