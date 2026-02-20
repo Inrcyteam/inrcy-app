@@ -52,6 +52,19 @@
   min-width: 0;
 }
 
+.brandText{
+  display:flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brandRow{
+  display:flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .brandIcon{
   /* Le logo iNr'Send contient déjà le texte : on le garde lisible */
   width: 154px;
@@ -63,12 +76,12 @@
 
 .tagline{
   min-width: 0;
-  font-size: 14px;
+  font-size: clamp(10px, 3.2vw, 14px);
   color: rgba(255,255,255,0.68);
   line-height: 1.25;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .closeBtn{
@@ -356,7 +369,7 @@
   .header,
   .topbar {
     flex-direction: row;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
     padding: 10px 0 12px;
   }
@@ -365,8 +378,9 @@
   .topbar .actions {
     width: auto;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: flex-end;
+    padding-top: 2px; /* remonte légèrement les boutons par rapport à la tagline */
     gap: 10px;
     flex-wrap: nowrap;
   }

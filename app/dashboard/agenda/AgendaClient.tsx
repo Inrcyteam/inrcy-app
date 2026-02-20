@@ -560,7 +560,12 @@ async function deleteRdv() {
               height={64}
               priority
             />
-            <div className={styles.tagline}>Plus qu'un agenda ! Pensé pour le terrain.</div>
+
+            <div className={styles.brandText}>
+              <div className={styles.brandRow}>
+                <span className={styles.tagline}>Plus qu'un agenda ! Pensé pour le terrain.</span>
+              </div>
+            </div>
           </div>
 
           

@@ -213,6 +213,56 @@ function categoryBadgeClass(c: Category) {
 export default function CRMClient() {
   const router = useRouter();
 
+  // --- Mobile: obligatoire en paysage (overlay en portrait) ---
+  const [needLandscape, setNeedLandscape] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(max-width: 900px) and (orientation: portrait)");
+    const update = () => setNeedLandscape(mq.matches);
+    update();
+
+    // Tentative de lock paysage (non garanti selon navigateur/OS)
+    const tryLock = async () => {
+      try {
+        // @ts-ignore
+        if (screen?.orientation?.lock) {
+          // @ts-ignore
+          await screen.orientation.lock("landscape");
+        }
+      } catch {
+        // ignore
+      }
+    };
+    void tryLock();
+
+    if ("addEventListener" in mq) mq.addEventListener("change", update);
+    // @ts-ignore (Safari)
+    else mq.addListener(update);
+
+    window.addEventListener("orientationchange", update);
+    window.addEventListener("resize", update);
+
+    return () => {
+      if ("removeEventListener" in mq) mq.removeEventListener("change", update);
+      // @ts-ignore (Safari)
+      else mq.removeListener(update);
+
+      window.removeEventListener("orientationchange", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const prev = document.body.style.overflow;
+    if (needLandscape) document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [needLandscape]);
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,6 +272,10 @@ export default function CRMClient() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
+  // Mobile UI
+  const [addOpen, setAddOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const statsRef = useRef<HTMLDivElement | null>(null);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -286,6 +340,17 @@ export default function CRMClient() {
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
   }, [actionsOpen]);
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const el = statsRef.current;
+      if (!el) return;
+      if (el.contains(e.target as any)) return;
+      setStatsOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, []);
 
 
   const filtered = useMemo(() => {
@@ -651,6 +716,14 @@ const exportCsv = () => {
       notes: ((c.notes as any) ?? "") as string,
       important: Boolean((c as any).important ?? importantIds.has(c.id)),
     });
+    // Mobile: on édite dans la fenêtre (modal)
+    try {
+      if (window.matchMedia("(max-width: 900px)").matches) {
+        setAddOpen(true);
+        return;
+      }
+    } catch {}
+
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -775,25 +848,86 @@ const exportCsv = () => {
         startNew();
       }}
     >
+      {needLandscape ? (
+        <div className={styles.landscapeGate} role="dialog" aria-modal="true">
+          <div className={styles.landscapeGateCard}>
+            <div className={styles.landscapeGateIcon}>🔄</div>
+            <div className={styles.landscapeGateTitle}>Passez en mode paysage</div>
+            <div className={styles.landscapeGateText}>
+              Le CRM est optimisé en écran <strong>paysage</strong> sur mobile.
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <header className={styles.header}>
-      <div className={styles.titleWrap}>
-  <img
-    src="/inrcrm-logo.png"
-    alt="iNr’CRM"
-    style={{ width: 154, height: 64, display: "block" }}
-  />
+        <div className={styles.titleWrap}>
+          <img src="/inrcrm-logo.png" alt="iNr’CRM" style={{ width: 154, height: 64, display: "block" }} />
 
-  <p className={styles.subInline}>
-    Un tableau simple et connecté pour suivre tous vos contacts.
-  </p>
-</div>
+          <p className={styles.subInline}>Un tableau simple et connecté pour suivre tous vos contacts.</p>
+        </div>
 
+        <div className={styles.headerRight}>
+          <div className={styles.statsWrap} ref={statsRef}>
+            <button
+              type="button"
+              className={`${styles.headerIconBtn} ${styles.statsBtn}`}
+              onClick={() => setStatsOpen((v) => !v)}
+              aria-expanded={statsOpen ? "true" : "false"}
+              title="Statistiques"
+            >
+              ≡
+            </button>
 
-        <ResponsiveActionButton
-          desktopLabel="Fermer"
-          mobileIcon="✕"
-          onClick={() => router.push("/dashboard")}
-        />
+            {statsOpen ? (
+              <div className={styles.statsDropdown} role="menu">
+                <div className={styles.statsTitle}>Statistiques</div>
+                <div className={styles.statsGrid}>
+                  <div className={styles.statsItem}>
+                    <span>Contacts</span>
+                    <strong>{kpis.total}</strong>
+                  </div>
+                  <div className={styles.statsItem}>
+                    <span>Prospects</span>
+                    <strong>{kpis.prospects}</strong>
+                  </div>
+                  <div className={styles.statsItem}>
+                    <span>Clients</span>
+                    <strong>{kpis.clients}</strong>
+                  </div>
+                  <div className={styles.statsItem}>
+                    <span>Partenaires</span>
+                    <strong>{kpis.partenaires}</strong>
+                  </div>
+                  <div className={styles.statsItem}>
+                    <span>Fournisseurs</span>
+                    <strong>{kpis.fournisseurs}</strong>
+                  </div>
+                  <div className={styles.statsItem}>
+                    <span>Autres</span>
+                    <strong>{kpis.autres}</strong>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            className={`${styles.headerIconBtn} ${styles.addBtn}`}
+            onClick={() => {
+              startNew();
+              setAddOpen(true);
+            }}
+            title="Ajouter un contact"
+          >
+            +
+          </button>
+
+          <div className={styles.closeWrap}>
+            <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
+          </div>
+        </div>
       </header>
 
       <div className={styles.kpiRow}>
@@ -824,7 +958,7 @@ const exportCsv = () => {
         </div>
       </div>
 
-      <section className={styles.card} onClick={(e) => e.stopPropagation()}>
+      <section className={`${styles.card} ${styles.formCard}`} onClick={(e) => e.stopPropagation()}>
         <div className={styles.cardHead}>
         </div>
 
@@ -1016,7 +1150,178 @@ const exportCsv = () => {
 </div>
       </section>
 
-      <section className={styles.card} onClick={(e) => e.stopPropagation()}>
+      {/* Mobile: ajout/modif contact via bouton + (modal) */}
+      {addOpen ? (
+        <div className={styles.modalOverlay} role="dialog" aria-modal="true" onClick={() => setAddOpen(false)}>
+          <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHead}>
+              <div className={styles.modalTitle}>{editingId ? "Modifier un contact" : "Ajouter un contact"}</div>
+              <button type="button" className={styles.modalClose} onClick={() => setAddOpen(false)} aria-label="Fermer">
+                ✕
+              </button>
+            </div>
+
+            {error ? <div className={styles.error}>{error}</div> : null}
+
+            <div className={styles.formGrid}>
+              {/* Ligne 1 */}
+              <label className={`${styles.label} ${styles.col3}`}>
+                <span>Nom Prénom / Raison sociale</span>
+                <input
+                  className={styles.input}
+                  value={draft.display_name}
+                  onChange={(e) => setDraft((s) => ({ ...s, display_name: e.target.value }))}
+                  placeholder="Dupont Marie / SAS Exemple"
+                  autoComplete="name"
+                />
+              </label>
+
+              <label className={`${styles.label} ${styles.col2}`}>
+                <span>SIREN</span>
+                <input
+                  className={styles.input}
+                  value={draft.siret}
+                  onChange={(e) => setDraft((s) => ({ ...s, siret: e.target.value }))}
+                  placeholder="123 456 789"
+                  inputMode="numeric"
+                />
+              </label>
+
+              <label className={`${styles.label} ${styles.col2}`}>
+                <span>Catégorie</span>
+                <select
+                  className={styles.select}
+                  value={draft.category}
+                  onChange={(e) => setDraft((s) => ({ ...s, category: e.target.value as Category }))}
+                >
+                  <option value="">—</option>
+                  <option value="particulier">Particulier</option>
+                  <option value="professionnel">Professionnel</option>
+                  <option value="collectivite_publique">Institution</option>
+                </select>
+              </label>
+
+              <label className={`${styles.label} ${styles.col2}`}>
+                <span>Type</span>
+                <select
+                  className={styles.select}
+                  value={draft.contact_type}
+                  onChange={(e) => setDraft((s) => ({ ...s, contact_type: e.target.value as ContactType }))}
+                >
+                  <option value="">—</option>
+                  <option value="client">Client</option>
+                  <option value="prospect">Prospect</option>
+                  <option value="fournisseur">Fournisseur</option>
+                  <option value="partenaire">Partenaire</option>
+                  <option value="autre">Autre</option>
+                </select>
+              </label>
+
+              <label className={`${styles.label} ${styles.col2}`}>
+                <span>Téléphone</span>
+                <input
+                  className={styles.input}
+                  value={draft.phone}
+                  onChange={(e) => setDraft((s) => ({ ...s, phone: e.target.value }))}
+                  placeholder="06 00 00 00 00"
+                  autoComplete="tel"
+                />
+              </label>
+
+              <label className={`${styles.label} ${styles.starField} ${styles.col1}`}>
+                <span>Important</span>
+                <button
+                  type="button"
+                  className={styles.starToggle}
+                  onClick={() => {
+                    if (editingId) toggleImportant(editingId);
+                    setDraft((s) => ({ ...s, important: !s.important }));
+                  }}
+                  aria-pressed={draft.important ? "true" : "false"}
+                  title={draft.important ? "Contact important" : "Marquer comme important"}
+                >
+                  {draft.important ? "★" : "☆"}
+                </button>
+              </label>
+
+              {/* Ligne 2 */}
+              <label className={`${styles.label} ${styles.col2}`}>
+                <span>Mail</span>
+                <input
+                  className={styles.input}
+                  value={draft.email}
+                  onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
+                  placeholder="marie@exemple.fr"
+                  autoComplete="email"
+                />
+              </label>
+
+              <label className={`${styles.label} ${styles.col3}`}>
+                <span>Adresse</span>
+                <input
+                  className={styles.input}
+                  value={draft.address}
+                  onChange={(e) => setDraft((s) => ({ ...s, address: e.target.value }))}
+                  placeholder="12 rue ..."
+                  autoComplete="street-address"
+                />
+              </label>
+
+              <label className={`${styles.label} ${styles.col2}`}>
+                <span>Ville</span>
+                <input
+                  className={styles.input}
+                  value={draft.city}
+                  onChange={(e) => setDraft((s) => ({ ...s, city: e.target.value }))}
+                  placeholder="Paris"
+                  autoComplete="address-level2"
+                />
+              </label>
+
+              <label className={`${styles.label} ${styles.col2}`}>
+                <span>CP</span>
+                <input
+                  className={styles.input}
+                  value={draft.postal_code}
+                  onChange={(e) => setDraft((s) => ({ ...s, postal_code: e.target.value }))}
+                  placeholder="75000"
+                  inputMode="numeric"
+                  autoComplete="postal-code"
+                />
+              </label>
+
+              <label className={`${styles.label} ${styles.col6}`}>
+                <span>Notes</span>
+                <textarea
+                  className={styles.textarea}
+                  value={draft.notes}
+                  onChange={(e) => setDraft((s) => ({ ...s, notes: e.target.value }))}
+                  placeholder="Notes internes"
+                />
+              </label>
+            </div>
+
+            <div className={styles.modalFooter}>
+              <button type="button" className={styles.ghostBtn} onClick={() => setAddOpen(false)}>
+                Annuler
+              </button>
+              <button
+                type="button"
+                className={styles.primaryBtn}
+                onClick={async () => {
+                  await save();
+                  setAddOpen(false);
+                }}
+                disabled={saving}
+              >
+                {editingId ? "Mettre à jour" : "Ajouter"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <section className={`${styles.card} ${styles.tableCard}`} onClick={(e) => e.stopPropagation()}>
         <div className={styles.cardHead}>
           <h2 className={styles.h2}>Tableau CRM</h2>
           <div className={styles.tableToolbar}>

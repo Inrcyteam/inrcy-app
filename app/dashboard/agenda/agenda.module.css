@@ -39,6 +39,19 @@
   min-width: 0;
 }
 
+.brandText{
+  display:flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brandRow{
+  display:flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .headerActions{
   display:flex;
   align-items:center;
@@ -88,12 +101,12 @@
 }
 
 .tagline{
-  font-size: 14px;
+  font-size: clamp(10px, 3.2vw, 14px);
   color: rgba(255,255,255,0.68);
   line-height: 1.25;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 

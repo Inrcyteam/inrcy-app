@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./mails.module.css";
+import Image from "next/image";
 import SettingsDrawer from "../SettingsDrawer";
 import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
 import { createClient } from "@/lib/supabaseClient";
@@ -1307,13 +1308,27 @@ async function deleteDraftPermanently(id: string) {
       <div className={styles.wrap}>
         {/* Header (aligné avec les autres modules iNrCy) */}
         <div className={styles.header}>
-          {/* Ligne 1 : Logo (le titre est déjà intégré dans l'image) / actions (droite) */}
+          {/* Logo (gauche) */}
           <div className={styles.brand}>
-            <img src="/inrsend-logo.png" alt="iNr’Send" className={styles.brandIcon} />
-          
-            <div className={styles.tagline}>Toutes vos communications, depuis une seule et même machine.</div>
+            <Image
+              src="/inrsend-logo.png"
+              alt="iNr’Send"
+              width={154}
+              height={64}
+              priority
+              className={styles.brandIcon}
+            />
+
+            <div className={styles.brandText}>
+              <div className={styles.brandRow}>
+                <span className={styles.tagline}>
+                  Toutes vos communications, depuis une seule et même machine.
+                </span>
+              </div>
+            </div>
           </div>
 
+          {/* Actions (droite) */}
           <div className={styles.actions}>
             <button
               className={`${styles.btnGhost} ${styles.iconOnlyBtn} ${styles.hamburgerBtn}`}
