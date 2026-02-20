@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./stats.module.css";
 import Image from "next/image";
+import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -919,18 +920,11 @@ const provenance = buildProvenance(key, ov);
           </div>
         </div>
 
-        <button
-          className={styles.closeBtn}
+        <ResponsiveActionButton
+          desktopLabel="Fermer"
+          mobileIcon="✕"
           onClick={() => router.push("/dashboard")}
-          aria-label="Fermer"
-          title="Fermer"
-          type="button"
-        >
-          <span className={styles.closeText}>Fermer</span>
-          <span className={styles.closeIcon} aria-hidden>
-            ✕
-          </span>
-        </button>
+        />
       </div>
 
       {/* Summary bar (CRM-like) */}

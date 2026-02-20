@@ -7,6 +7,7 @@ import styles from "./mails.module.css";
 import SettingsDrawer from "../SettingsDrawer";
 import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
 import { createClient } from "@/lib/supabaseClient";
+import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 
 
 function safeDecode(v: string): string {
@@ -425,6 +426,8 @@ export default function MailboxClient() {
   const [crmContacts, setCrmContacts] = useState<CrmContact[]>([]);
   const [crmLoading, setCrmLoading] = useState(false);
   const [crmFilter, setCrmFilter] = useState("");
+  const [crmSearchOpen, setCrmSearchOpen] = useState(false);
+  const crmSearchRef = useRef<HTMLInputElement | null>(null);
   const [crmError, setCrmError] = useState<string | null>(null);
   const [crmPickerOpen, setCrmPickerOpen] = useState(false);
   const [crmCategory, setCrmCategory] = useState<"all" | CrmContact["category"]>("all");
@@ -1307,6 +1310,8 @@ async function deleteDraftPermanently(id: string) {
           {/* Ligne 1 : Logo (le titre est déjà intégré dans l'image) / actions (droite) */}
           <div className={styles.brand}>
             <img src="/inrsend-logo.png" alt="iNr’Send" className={styles.brandIcon} />
+          
+            <div className={styles.tagline}>Toutes vos communications, depuis une seule et même machine.</div>
           </div>
 
           <div className={styles.actions}>
@@ -1321,16 +1326,11 @@ async function deleteDraftPermanently(id: string) {
               <span className={styles.srOnly}>Dossiers</span>
             </button>
 
-            <button
-              className={`${styles.btnGhost} ${styles.iconOnlyBtn}`}
+            <ResponsiveActionButton
+              desktopLabel="Réglages"
+              mobileIcon="⚙️"
               onClick={() => setSettingsOpen(true)}
-              type="button"
-              aria-label="Réglages"
-              title="Réglages"
-            >
-              <span aria-hidden>⚙️</span>
-              <span className={styles.srOnly}>Réglages</span>
-            </button>
+            />
 
             <SettingsDrawer
               title="Réglages iNr’Send"
@@ -1340,20 +1340,14 @@ async function deleteDraftPermanently(id: string) {
               <MailsSettingsContent />
             </SettingsDrawer>
 
-            <Link
-              className={`${styles.closeBtn} ${styles.iconOnlyBtn}`}
+            <ResponsiveActionButton
+              desktopLabel="Fermer"
+              mobileIcon="✕"
               href="/dashboard"
               title="Fermer iNr’Send"
-              aria-label="Fermer"
-            >
-              <span aria-hidden>✕</span>
-              <span className={styles.srOnly}>Fermer</span>
-            </Link>
+            />
           </div>
-
-          {/* Ligne 2 : Accroche sur toute la largeur */}
-          <div className={styles.tagline}>Toutes vos communications, depuis une seule et même machine.</div>
-        </div>
+</div>
 
         {/* Mobile: menu dossiers (hamburger) */}
         {mobileFoldersOpen ? (
@@ -1974,65 +1968,100 @@ async function deleteDraftPermanently(id: string) {
                         }}
                       >
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                            <input
-                              value={crmFilter}
-                              onChange={(e) => setCrmFilter(e.target.value)}
-                              placeholder="Rechercher…"
-                              style={{ ...inputStyle, padding: "8px 10px", maxWidth: 240 }}
-                            />
+                          
+                          <div className={styles.crmFilterRow}>
                             <select
                               value={crmCategory ?? "all"}
                               onChange={(e) => setCrmCategory(e.target.value as any)}
-                              style={{
-                                background: "rgba(0,0,0,0.22)",
-                                border: "1px solid rgba(255,255,255,0.18)",
-                                color: "rgba(255,255,255,0.9)",
-                                borderRadius: 12,
-                                padding: "8px 10px",
-                              }}
+                              className={styles.crmSelect}
                               title="Filtrer par catégorie"
                             >
-                              <option value="all">Toutes catégories</option>
+                              <option value="all">Catégories</option>
                               <option value="particulier">Particuliers</option>
                               <option value="professionnel">Professionnels</option>
                               <option value="collectivite_publique">Collectivités</option>
                             </select>
+
                             <select
                               value={crmContactType ?? "all"}
                               onChange={(e) => setCrmContactType(e.target.value as any)}
-                              style={{
-                                background: "rgba(0,0,0,0.22)",
-                                border: "1px solid rgba(255,255,255,0.18)",
-                                color: "rgba(255,255,255,0.9)",
-                                borderRadius: 12,
-                                padding: "8px 10px",
-                              }}
+                              className={styles.crmSelect}
                               title="Filtrer par type"
                             >
-                              <option value="all">Tous types</option>
+                              <option value="all">Types</option>
                               <option value="client">Clients</option>
                               <option value="prospect">Prospects</option>
                               <option value="fournisseur">Fournisseurs</option>
                               <option value="partenaire">Partenaires</option>
                               <option value="autre">Autres</option>
                             </select>
-                            <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, color: "rgba(255,255,255,0.78)" }}>
-                              <input type="checkbox" checked={crmImportantOnly} onChange={(e) => setCrmImportantOnly(e.target.checked)} />
-                              Important
-                            </label>
+
+                            <button
+                              type="button"
+                              className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.crmIconBtn}`}
+                              onClick={() => {
+                                setCrmSearchOpen((v) => !v);
+                                // focus next tick (after render)
+                                setTimeout(() => crmSearchRef.current?.focus(), 0);
+                              }}
+                              title="Rechercher"
+                              aria-label="Rechercher"
+                            >
+                              <span className={styles.iconWrap}>
+                                🔎
+                                {!crmSearchOpen && crmFilter.trim() ? <span className={styles.searchDot} /> : null}
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.crmIconBtn} ${styles.starToggleBtn} ${
+                                crmImportantOnly ? styles.starActive : styles.starInactive
+                              }`}
+                              onClick={() => setCrmImportantOnly((v) => !v)}
+                              title={crmImportantOnly ? "Important uniquement" : "Tous les contacts"}
+                              aria-label="Important"
+                            >
+                              {crmImportantOnly ? "★" : "☆"}
+                            </button>
                           </div>
 
-                          <button
-                            type="button"
-                            className={styles.btnGhost}
-                            onClick={() => void loadCrmContacts()}
-                            disabled={crmLoading}
-                            title="Recharger les contacts"
-                            style={{ padding: "8px 10px" }}
-                          >
-                            ↻
-                          </button>
+                          {crmSearchOpen ? (
+                            <div className={styles.crmSearchRow}>
+                              <input
+                                ref={crmSearchRef}
+                                value={crmFilter}
+                                onChange={(e) => setCrmFilter(e.target.value)}
+                                placeholder="Rechercher…"
+                                className={styles.crmSearchInput}
+                              />
+                              {crmFilter.trim() ? (
+                                <button
+                                  type="button"
+                                  className={styles.searchClearBtn}
+                                  onClick={() => {
+                                    setCrmFilter("");
+                                    setTimeout(() => crmSearchRef.current?.focus(), 0);
+                                  }}
+                                  aria-label="Effacer la recherche"
+                                  title="Effacer"
+                                >
+                                  ×
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                className={styles.btnGhost}
+                                onClick={() => setCrmSearchOpen(false)}
+                                style={{ padding: "8px 10px" }}
+                                aria-label="Fermer la recherche"
+                                title="Fermer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ) : null}
+
                         </div>
 
                         <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>

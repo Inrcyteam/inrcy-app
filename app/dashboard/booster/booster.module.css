@@ -31,7 +31,30 @@
 }
 
 @media (max-width: 980px){
-  .tagline{ display:none; }
+  /* Mobile: accroche visible sous le titre, sur une seule ligne */
+  .headerRow{
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "title close"
+      "tagline tagline";
+    align-items: center;
+    gap: 10px;
+  }
+
+  .titleLine{ grid-area: title; }
+  .closeWrap{ grid-area: close; justify-content: flex-end; }
+
+  .tagline{
+    grid-area: tagline;
+    display: block;
+    text-align: left;
+    font-size: 13px;
+    padding: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 .grid3{

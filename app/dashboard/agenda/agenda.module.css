@@ -33,9 +33,9 @@
 
 .brand{
   display:flex;
-  flex-direction: column;
-  align-items:flex-start;
-  gap: 6px;
+  flex-direction: row;
+  align-items:center;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -91,7 +91,12 @@
   font-size: 14px;
   color: rgba(255,255,255,0.68);
   line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
+
 
 .closeBtn{
   display:inline-flex;
@@ -225,12 +230,28 @@
 }
 
 .cardHeader {
+  text-align: center;
   padding: 12px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.headerControls{
+  width: 100%;
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+
+
+.headerControls > *{
+  flex: 0 0 auto;
 }
 
 .monthLabel {
@@ -701,4 +722,107 @@
   height: 1px;
   background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.20), rgba(255,255,255,0));
   margin-top: 6px;
+}
+
+
+/* --- Header actions: desktop vs mobile --- */
+.desktopOnly{ display: flex; }
+.mobileOnly{ display: none; }
+
+.headerSearch{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.headerSearchInput{
+  height: 38px;
+  min-width: 260px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.25);
+  color: rgba(255,255,255,0.92);
+  outline: none;
+}
+
+.headerSearchInput::placeholder{
+  color: rgba(255,255,255,0.55);
+}
+
+.headerBtnText{
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.92);
+  font-weight: 800;
+}
+
+.headerBtnText:hover{
+  background: rgba(255,255,255,0.09);
+}
+
+.mobileSearchBar{
+  margin-top: 10px;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+
+.mobileSearchBar input{
+  width: 100%;
+}
+
+@media (max-width: 720px){
+  .desktopOnly{ display: none; }
+  .mobileOnly{ display: flex; gap: 8px; align-items: center; }
+  .headerActions{
+    gap: 8px;
+  }
+
+  /* Mobile: accroche sous le logo (1 ligne) */
+  .brand{
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .tagline{
+    max-width: 100%;
+  }
+}
+
+
+/* Desktop: prevent page scroll (tout visible, pas de scroll global) */
+@media (min-width: 900px){
+  .page{
+    height: 100vh;
+    overflow: hidden;
+    padding-bottom: 18px;
+  }
+
+  .wrap{
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .layout{
+    flex: 1;
+    min-height: 0;
+  }
+
+  .layout > .card{
+    height: 100%;
+  }
+}
+
+
+/* Mobile: keep tagline on one line */
+@media (max-width: 520px){
+  .tagline{
+    font-size: 13px;
+  }
 }

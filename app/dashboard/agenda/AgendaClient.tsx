@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import styles from "./agenda.module.css";
+import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 
 // Reuse the exact same drawer + content as the Dashboard
 // Agenda iNrCy : calendrier natif (plus de connexion Google Agenda)
@@ -122,6 +123,7 @@ export default function AgendaClient() {
     return new Date(t.getFullYear(), t.getMonth(), t.getDate(), 0, 0, 0, 0);
   });
   const [query, setQuery] = useState("");
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
 
   // Module Agenda = planning d'interventions iNrCy (mode unique)
   const viewKind: "intervention" = "intervention";
@@ -511,11 +513,21 @@ async function deleteRdv() {
 
   const selectedKey = useMemo(() => keyOf(selectedDate), [selectedDate]);
   const selectedEvents = useMemo(() => {
-    const list = eventsByDay.get(selectedKey) ?? [];
+    return eventsByDay.get(selectedKey) ?? [];
+  }, [eventsByDay, selectedKey]);
+
+  const globalMatches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((e) => (e.summary ?? "").toLowerCase().includes(q) || (e.location ?? "").toLowerCase().includes(q));
-  }, [eventsByDay, selectedKey, query]);
+    if (!q) return [];
+    return normalized
+      .filter((e) => (e.summary ?? "").toLowerCase().includes(q) || (e.location ?? "").toLowerCase().includes(q))
+      .sort((a, b) => {
+        const ta = a.startDate ? a.startDate.getTime() : 0;
+        const tb = b.startDate ? b.startDate.getTime() : 0;
+        return ta - tb;
+      });
+  }, [normalized, query]);
+
 
   const todayKey = useMemo(() => keyOf(new Date()), []);
 
@@ -551,61 +563,88 @@ async function deleteRdv() {
             <div className={styles.tagline}>Plus qu'un agenda ! Pensé pour le terrain.</div>
           </div>
 
+          
           <div className={styles.headerActions}>
-            <button
-              className={`${styles.btnGhost} ${styles.iconOnlyBtn}`}
-              onClick={() => router.push("/dashboard/settings")}
-              aria-label="Réglages"
-              title="Réglages"
-              type="button"
-            >
-              <span aria-hidden>⚙️</span>
-              <span className={styles.srOnly}>Réglages</span>
-            </button>
+            {/* Desktop: recherche globale + boutons texte */}
+            <div className={`${styles.headerSearch} ${styles.desktopOnly}`}>
+              <input
+                className={styles.headerSearchInput}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Rechercher un évènement..."
+              />
 
-            <button
-              className={`${styles.closeBtn} ${styles.iconOnlyBtn}`}
-              onClick={() => router.push("/dashboard")}
-              aria-label="Fermer"
-              title="Fermer"
-              type="button"
-            >
-              <span aria-hidden>✕</span>
-              <span className={styles.srOnly}>Fermer</span>
-            </button>
+              <ResponsiveActionButton
+                desktopLabel="Fermer"
+                mobileIcon="✕"
+                onClick={() => router.push("/dashboard")}
+              />
+            </div>
+
+            {/* Mobile: icônes Loupe / Fermer */}
+            <div className={styles.mobileOnly}>
+              <button
+                className={`${styles.btnGhost} ${styles.iconOnlyBtn}`}
+                onClick={() => setShowMobileSearch((v) => !v)}
+                aria-label="Rechercher"
+                title="Rechercher"
+                type="button"
+              >
+                <span aria-hidden>🔎</span>
+              </button>
+
+              <ResponsiveActionButton
+                desktopLabel="Fermer"
+                mobileIcon="✕"
+                onClick={() => router.push("/dashboard")}
+              />
+            </div>
           </div>
-        </div>
 
-        <div className={styles.layout}>
+		</div>
+
+		{/* Mobile: barre de recherche globale */}
+        {showMobileSearch && (
+          <div className={`${styles.mobileSearchBar} ${styles.mobileOnly}`}>
+            <input
+              className={styles.headerSearchInput}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher un évènement..."
+            />
+          </div>
+        )}
+
+		<div className={styles.layout}>
             {/* CALENDRIER */}
             <div className={styles.card}>
               <div className={styles.cardHeader}>
-                <div>
-                  <div className={styles.monthLabel} style={{ textTransform: "capitalize" }}>
-                    {formatMonthLabel(cursorMonth)}
-                  </div>
-                  <div className={styles.rangeHint}>
-                    Vue mensuelle — clique un jour pour voir les détails.
-                  </div>
+                <div className={styles.monthLabel} style={{ textTransform: "capitalize" }}>
+                  {formatMonthLabel(cursorMonth)}
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <button className={styles.btnIcon} onClick={goPrev} aria-label="Mois précédent">
+                <div className={styles.rangeHint}>
+                  Vue mensuelle — clique un jour pour voir les détails.
+                </div>
+
+                <div className={styles.headerControls}>
+                  <button className={styles.btnIcon} onClick={goPrev} aria-label="Mois précédent" title="Mois précédent">
                     ‹
                   </button>
-                  <button className={styles.btnIcon} onClick={goToday} aria-label="Aujourd’hui">
+                  <button className={styles.btnIcon} onClick={goToday} aria-label="Aujourd’hui" title="Aujourd’hui">
                     ●
                   </button>
-                  <button className={styles.btnIcon} onClick={goNext} aria-label="Mois suivant">
+                  <button className={styles.btnIcon} onClick={goNext} aria-label="Mois suivant" title="Mois suivant">
                     ›
                   </button>
                   <button
-                    className={styles.btnGhost}
+                    className={styles.btnIcon}
                     onClick={() => loadEventsForMonth(cursorMonth)}
                     disabled={loading}
-                    title="Rafraîchir"
+                    aria-label="Actualiser"
+                    title="Actualiser"
                   >
-                    {loading ? "Chargement…" : "↻ Rafraîchir"}
+                    {loading ? "…" : "↻"}
                   </button>
                 </div>
               </div>
@@ -708,111 +747,104 @@ async function deleteRdv() {
                   Astuce : iNrCy peut stocker des infos “Intervention” (statut, type, contact). Si vous passez en mode Agenda, vous gardez un calendrier classique.
                 </div>
 
-                <input
-                  className={styles.search}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Rechercher un événement (titre / lieu)…"
-                />
+                
+                {query.trim() ? (
+                  <>
+                    <div className={styles.list}>
+                      {globalMatches.length === 0 && <div className={styles.empty}>Aucun résultat.</div>}
 
-                <div className={styles.list}>
-                  {selectedEvents.length === 0 && <div className={styles.empty}>Aucun événement ce jour-là.</div>}
+                      {globalMatches.map((ev) => {
+                        const accent = accentFor(ev.id);
+                        const accentClass =
+                          accent === "cyan"
+                            ? styles.accentCyan
+                            : accent === "purple"
+                            ? styles.accentPurple
+                            : accent === "pink"
+                            ? styles.accentPink
+                            : styles.accentOrange;
 
-                  {selectedEvents.map((ev) => {
-                    const accent = accentFor(ev.id);
-                    const accentClass =
-                      accent === "cyan"
-                        ? styles.accentCyan
-                        : accent === "purple"
-                        ? styles.accentPurple
-                        : accent === "pink"
-                        ? styles.accentPink
-                        : styles.accentOrange;
+                        const when = ev.allDay
+                          ? "Toute la journée"
+                          : ev.startDate
+                          ? `${formatTime(ev.startDate)}${ev.endDate ? ` → ${formatTime(ev.endDate)}` : ""}`
+                          : "";
 
-                    const when = ev.allDay
-                      ? "Toute la journée"
-                      : ev.startDate
-                      ? `${formatTime(ev.startDate)}${ev.endDate ? ` → ${formatTime(ev.endDate)}` : ""}`
-                      : "";
+                        const dayLabel = ev.startDate ? formatDayLabel(ev.startDate) : "";
 
-                    const kind = (ev as any)?.inrcy?.kind === "agenda" ? "agenda" : "intervention";
-                    const status = String((ev as any)?.inrcy?.intervention?.status ?? "").trim();
-                    const type = String((ev as any)?.inrcy?.intervention?.type ?? "").trim();
-                    const contact = (ev as any)?.inrcy?.contact ?? null;
-
-                    return (
-                      <div key={ev.id} className={`${styles.eventRow} ${accentClass}`} role="button" tabIndex={0} onClick={() => openEditRdv(ev)}>
-                        <div className={styles.eventTitle}>
-                          {kind === "intervention" ? "🧰 " : "🗓️ "}
-                          {ev.summary}
-                        </div>
-                        <div className={styles.eventSub}>
-                          {when}
-                          {ev.location ? ` — ${ev.location}` : ""}
-                        </div>
-                        {kind === "intervention" && (status || type) ? (
-                          <div className={styles.eventSub} style={{ marginTop: 4 }}>
-                            {type ? `${type}` : "Intervention"}
-                            {status ? ` • ${status}` : ""}
+                        return (
+                          <div
+                            key={ev.id}
+                            className={`${styles.eventRow} ${accentClass}`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              if (!ev.startDate) return;
+                              const d = new Date(ev.startDate.getFullYear(), ev.startDate.getMonth(), ev.startDate.getDate(), 0, 0, 0, 0);
+                              setSelectedDate(d);
+                              setCursorMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                              setShowMobileSearch(false);
+                            }}
+                          >
+                            <div className={styles.eventMain}>
+                              <div className={styles.eventTitle}>{ev.summary || "Sans titre"}</div>
+                              <div className={styles.eventMeta}>
+                                {dayLabel}
+                                {when ? ` • ${when}` : ""}
+                                {ev.location ? ` • ${ev.location}` : ""}
+                              </div>
+                            </div>
                           </div>
-                        ) : null}
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <>
+					<div className={styles.list}>
+					  {selectedEvents.length === 0 && <div className={styles.empty}>Aucun évènement ce jour-là.</div>}
+					  {selectedEvents.map((ev) => {
+						const accent = accentFor(ev.id);
+						const accentClass =
+						  accent === "cyan"
+							? styles.accentCyan
+							: accent === "purple"
+							? styles.accentPurple
+							: accent === "pink"
+							? styles.accentPink
+							: styles.accentOrange;
 
-                        {kind === "intervention" && contact?.display_name ? (
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                            <button
-                              className={styles.btnGhost}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                const qs = new URLSearchParams({
-                                  clientName: String(contact.display_name ?? ""),
-                                  clientEmail: String(contact.email ?? ""),
-                                  clientAddress: String(contact.address ?? ""),
-                                });
-                                router.push(`/dashboard/devis/new?${qs.toString()}`);
-                              }}
-                              title="Créer un devis à partir de cette intervention"
-                            >
-                              🧾 Devis
-                            </button>
-                            <button
-                              className={styles.btnGhost}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                const qs = new URLSearchParams({
-                                  clientName: String(contact.display_name ?? ""),
-                                  clientEmail: String(contact.email ?? ""),
-                                  clientAddress: String(contact.address ?? ""),
-                                });
-                                router.push(`/dashboard/factures/new?${qs.toString()}`);
-                              }}
-                              title="Créer une facture à partir de cette intervention"
-                            >
-                              🧾 Facture
-                            </button>
-                            <button
-                              className={styles.btnGhost}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                router.push("/dashboard/crm");
-                              }}
-                              title="Ouvrir le CRM"
-                            >
-                              👤 CRM
-                            </button>
-                          </div>
-                        ) : null}
-                        {ev.htmlLink ? (
-                          <a className={styles.eventLink} href={ev.htmlLink} target="_blank" rel="noreferrer">
-                            Ouvrir dans Google
-                          </a>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
+						const when = ev.allDay
+						  ? "Toute la journée"
+						  : ev.startDate
+						  ? `${formatTime(ev.startDate)}${ev.endDate ? ` → ${formatTime(ev.endDate)}` : ""}`
+						  : "";
+
+						return (
+						  <div
+							key={ev.id}
+							className={`${styles.eventRow} ${accentClass}`}
+							role="button"
+							tabIndex={0}
+							onClick={() => openEditRdv(ev)}
+							onKeyDown={(e) => {
+							  if (e.key === "Enter" || e.key === " ") openEditRdv(ev);
+							}}
+						  >
+							<div className={styles.eventMain}>
+							  <div className={styles.eventTitle}>{ev.summary || "Sans titre"}</div>
+							  <div className={styles.eventMeta}>
+								{when}
+								{ev.location ? ` • ${ev.location}` : ""}
+							  </div>
+							</div>
+						  </div>
+						);
+					  })}
+					</div>
+                  </>
+                )}
+
               </div>
             </div>
           </div>

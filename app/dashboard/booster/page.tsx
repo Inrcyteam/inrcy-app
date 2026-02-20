@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import styles from "../../dashboard/dashboard.module.css";
@@ -9,6 +8,7 @@ import BaseModal from "./components/BaseModal";
 import PublishModal from "./components/PublishModal";
 import ReviewModal from "./components/ReviewModal";
 import PromoModal from "./components/PromoModal";
+import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 
 type ActiveModal = null | "publish" | "reviews" | "promo";
 
@@ -206,9 +206,7 @@ useEffect(() => {
             </div>
 
             <div className={b.closeWrap}>
-              <Link href="/dashboard" className={styles.ghostBtn}>
-                Fermer
-              </Link>
+              <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" />
             </div>
           </header>
 

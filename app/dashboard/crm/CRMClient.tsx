@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./crm.module.css";
 import { getTemplates } from "@/lib/messageTemplates";
+import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 
 type Category = "" | "particulier" | "professionnel" | "collectivite_publique";
 type ContactType = "" | "client" | "prospect" | "fournisseur" | "partenaire" | "autre";
@@ -788,16 +789,11 @@ const exportCsv = () => {
 </div>
 
 
-        <button aria-label="action"
-          className={styles.backBtn}
-          type="button"
+        <ResponsiveActionButton
+          desktopLabel="Fermer"
+          mobileIcon="✕"
           onClick={() => router.push("/dashboard")}
-        >
-          <span className={styles.closeText}>Fermer</span>
-          <span className={styles.closeIcon} aria-hidden>
-            ✕
-          </span>
-        </button>
+        />
       </header>
 
       <div className={styles.kpiRow}>

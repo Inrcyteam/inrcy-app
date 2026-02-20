@@ -453,10 +453,16 @@
 
   .brandRow {
     gap: 6px;
+    /* Mobile: la phrase d'accroche doit rester sur une seule ligne */
+    flex-wrap: nowrap;
   }
 
   .tagline {
     font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 
   /* En responsive : bouton = icône X uniquement */

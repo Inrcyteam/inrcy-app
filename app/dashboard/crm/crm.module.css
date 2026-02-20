@@ -604,7 +604,11 @@
     align-items:flex-start;
   }
   .subInline{
-    white-space:normal;
+    /* Mobile: sous le logo, sur une seule ligne */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 }
 
