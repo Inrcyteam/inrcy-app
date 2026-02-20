@@ -3295,18 +3295,117 @@ width: 100%;
 }
 
 .toolbarBtn{
-  padding:10px 12px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  height:40px;
+  padding:0 12px;
   border-radius:12px;
   border:1px solid rgba(255,255,255,0.10);
   background:rgba(255,255,255,0.06);
   color:rgba(255,255,255,0.92);
   font-weight:850;
   cursor:pointer;
+  white-space:nowrap;
+  text-decoration:none;
 }
 
 .toolbarBtn:hover{
   background:rgba(255,255,255,0.09);
 }
+
+/* Icon buttons in the toolbar (loupe / refresh) */
+.toolbarIconBtn{
+  width:40px;
+  padding:0;
+}
+
+.toolbarIconBtnActive{
+  border-color: rgba(56, 189, 248, 0.55);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}
+
+.toolbarIconGlyph{
+  line-height:1;
+  font-size:18px;
+}
+
+.activeDot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background: rgba(56, 189, 248, 0.95);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+}
+
+/* Search panel (opened by the loupe) */
+.searchPanel{
+  padding: 0 12px 12px;
+}
+
+.searchPanelInner{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  width:100%;
+  max-width:520px;
+  padding:10px 10px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,0.10);
+  background:rgba(255,255,255,0.06);
+}
+
+
+.searchInputInline{
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.92);
+  padding: 0 8px;
+  outline: none;
+}
+.searchInputInline::placeholder{
+  color: rgba(255,255,255,0.55);
+}
+
+.searchClearBtn,
+.searchCloseBtn{
+  width:36px;
+  height:36px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,0.10);
+  background:rgba(255,255,255,0.06);
+  color:rgba(255,255,255,0.92);
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:900;
+}
+
+
+.searchInputInline{
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.92);
+  padding: 0 8px;
+  outline: none;
+}
+.searchInputInline::placeholder{
+  color: rgba(255,255,255,0.55);
+}
+
+.searchClearBtn:hover,
+.searchCloseBtn:hover{
+  background:rgba(255,255,255,0.09);
+}
+
 
 .toolbarInfo{
   color:rgba(255,255,255,0.65);
@@ -3365,9 +3464,12 @@ width: 100%;
 
   .toolbarBtn{
     font-size:12px;
-    padding:8px 10px;
+    height:36px;
+    padding:0 10px;
     white-space:nowrap;
   }
+
+  .toolbarIconBtn{ width:36px; }
 
   /* Un peu d'air à droite pour la date en liste */
   .messageRow{

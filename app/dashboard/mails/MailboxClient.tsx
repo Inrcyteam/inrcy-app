@@ -461,6 +461,8 @@ export default function MailboxClient() {
 
   // Recherche dans l'historique iNr'Send
   const [historyQuery, setHistoryQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const historySearchRef = useRef<HTMLInputElement | null>(null);
 
   const filteredContacts = useMemo(() => {
     const q = crmFilter.trim().toLowerCase();
@@ -773,9 +775,9 @@ const subTitle = firstNonEmpty(
       case "mails":
         return { label: "✉️ Envoyer", href: null as string | null };
       case "factures":
-        return { label: "📄 Factures", href: "/dashboard/factures" };
+        return { label: "📄 Factures", href: "/dashboard/devis/factures" };
       case "devis":
-        return { label: "🧾 Devis", href: "/dashboard/devis" };
+        return { label: "🧾 Devis", href: "/dashboard/devis/new" };
 
       // Booster
       case "publications":
@@ -807,6 +809,36 @@ const subTitle = firstNonEmpty(
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // UX recherche: Ctrl/Cmd+K pour ouvrir, Esc pour fermer (sans perdre la saisie)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const key = (e.key || "").toLowerCase();
+      const isK = key === "k";
+      const isEsc = key === "escape" || key === "esc";
+
+      if ((e.ctrlKey || e.metaKey) && isK) {
+        e.preventDefault();
+        setSearchOpen(true);
+        // focus après rendu
+        requestAnimationFrame(() => historySearchRef.current?.focus());
+        return;
+      }
+
+      if (isEsc && searchOpen) {
+        e.preventDefault();
+        setSearchOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    requestAnimationFrame(() => historySearchRef.current?.focus());
+  }, [searchOpen]);
 
   // Recharger l'historique quand le filtre "boîte d'envoi" change
   useEffect(() => {
@@ -1402,16 +1434,6 @@ async function deleteDraftPermanently(id: string) {
 
             {/* Toolbar (recherche + sélection boîte + refresh) */}
             <div className={styles.toolbarRow}>
-              <div className={styles.searchRow}>
-                <input
-                  className={styles.searchInput}
-                  placeholder="Rechercher un envoi…"
-                  value={historyQuery}
-                  onChange={(e) => setHistoryQuery(e.target.value)}
-                />
-                <div className={styles.searchIconRight}>⌕</div>
-              </div>
-
               {/* Filtre boîte: en mobile, le libellé + le select doivent rester sur la même ligne */}
               <div className={styles.filterRow}>
                 <div className={styles.toolbarInfo}>Filtrer</div>
@@ -1457,9 +1479,23 @@ async function deleteDraftPermanently(id: string) {
                 >
                   Brouillons
                 </button>
+                <button
+                  className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${
+                    !searchOpen && historyQuery.trim() ? styles.toolbarIconBtnActive : ""
+                  }`}
+                  onClick={() => setSearchOpen((v) => !v)}
+                  type="button"
+                  title={searchOpen ? "Fermer la recherche" : "Rechercher (Ctrl/Cmd+K)"}
+                  aria-label="Rechercher"
+                >
+                  <span className={styles.toolbarIconGlyph}>⌕</span>
+                  {!searchOpen && historyQuery.trim() ? <span className={styles.activeDot} /> : null}
+                </button>
+
+
 
                 <button
-                  className={`${styles.toolbarBtn} ${styles.iconBtn}`}
+                  className={`${styles.toolbarBtn} ${styles.toolbarIconBtn}`}
                   onClick={loadHistory}
                   type="button"
                   title="Actualiser"
@@ -1467,6 +1503,45 @@ async function deleteDraftPermanently(id: string) {
                 >
                   ↻
                 </button>
+
+            {searchOpen ? (
+              <div className={styles.searchPanel}>
+                <div className={styles.searchPanelInner}>
+                  <input
+                    ref={historySearchRef}
+                    className={styles.searchInputInline}
+                    placeholder="Rechercher un envoi…"
+                    value={historyQuery}
+                    onChange={(e) => setHistoryQuery(e.target.value)}
+                  />
+                  {historyQuery.trim() ? (
+                    <button
+                      className={styles.searchClearBtn}
+                      type="button"
+                      onClick={() => {
+                        setHistoryQuery("");
+                        requestAnimationFrame(() => historySearchRef.current?.focus());
+                      }}
+                      title="Effacer"
+                      aria-label="Effacer"
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                  <button
+                    className={styles.searchCloseBtn}
+                    type="button"
+                    onClick={() => setSearchOpen(false)}
+                    title="Fermer"
+                    aria-label="Fermer"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+
               </div>
             </div>
 
