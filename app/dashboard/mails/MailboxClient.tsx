@@ -775,7 +775,7 @@ const subTitle = firstNonEmpty(
       case "mails":
         return { label: "✉️ Envoyer", href: null as string | null };
       case "factures":
-        return { label: "📄 Factures", href: "/dashboard/devis/factures" };
+        return { label: "📄 Factures", href: "/dashboard/factures/new" };
       case "devis":
         return { label: "🧾 Devis", href: "/dashboard/devis/new" };
 
@@ -1504,6 +1504,11 @@ async function deleteDraftPermanently(id: string) {
                   ↻
                 </button>
 
+            
+              </div>
+            </div>
+
+            
             {searchOpen ? (
               <div className={styles.searchPanel}>
                 <div className={styles.searchPanelInner}>
@@ -1541,11 +1546,7 @@ async function deleteDraftPermanently(id: string) {
               </div>
             ) : null}
 
-
-              </div>
-            </div>
-
-            <div className={styles.scrollArea}>
+<div className={styles.scrollArea}>
               {loading ? (
                 <div style={{ padding: 14, color: "rgba(255,255,255,0.75)" }}>Chargement…</div>
               ) : visibleItems.length === 0 ? (

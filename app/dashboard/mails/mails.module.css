@@ -3341,6 +3341,7 @@ width: 100%;
 
 /* Search panel (opened by the loupe) */
 .searchPanel{
+  width:100%;
   padding: 0 12px 12px;
 }
 
@@ -3478,6 +3479,9 @@ width: 100%;
   .date{
     padding-right:6px;
   }
+
+  .searchPanel{ padding: 10px 0 0; }
+  .searchPanelInner{ max-width: none; width: 100%; }
 
 }
 
