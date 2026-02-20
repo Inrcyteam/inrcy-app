@@ -73,7 +73,7 @@ type Folder =
 
 // Typage historique d'envoi (ancienne table send_items)
 type SendType = "mail" | "facture" | "devis";
-type Status = "draft" | "sent" | "deleted" | "error";
+type Status = "draft" | "sent" | "error";
 
 type MailAccount = {
   id: string;
@@ -344,18 +344,16 @@ function folderLabel(f: Folder) {
   }
 }
 
-type BoxView = "sent" | "drafts" | "trash";
+type BoxView = "sent" | "drafts";
 
 function isVisibleInFolder(folder: Folder, item: OutboxItem, view: BoxView) {
   if (item.folder !== folder) return false;
 
   // Brouillons : uniquement pour l'historique send_items.
   if (view === "drafts") return item.source === "send_items" && item.status === "draft";
-  // Corbeille : tous les éléments "deleted" (send_items + soft-delete local Booster/Fidéliser)
-  if (view === "trash") return item.status === "deleted";
 
-  // Vue principale: uniquement les éléments réellement "envoyés" (ou en erreur), jamais les drafts/supprimés.
-  return item.status !== "draft" && item.status !== "deleted";
+  // Vue principale: uniquement les éléments réellement "envoyés" (ou en erreur), jamais les drafts.
+  return item.status !== "draft";
 }
 
 function pill(provider?: string | null) {
@@ -398,6 +396,8 @@ export default function MailboxClient() {
   const [files, setFiles] = useState<File[]>([]);
   const [sendBusy, setSendBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
+
 
   // Attachments uploaded by Factures / Devis screens are stored here.
   const ATTACH_BUCKET = "inrbox_attachments";
@@ -433,66 +433,6 @@ export default function MailboxClient() {
 
   // Used to trigger the hidden file input with a nice button
   const fileInputId = "inrsend-attachments";
-
-
-  // --- Corbeille locale (Booster / Fidéliser) ---
-  // On n'a pas de statut "deleted" côté DB pour app_events,
-  // donc on fait un soft-delete côté client (localStorage), par utilisateur.
-  function trashKey(userId: string) {
-    return `inrsend_trash_ids_${userId}`;
-  }
-
-  function readLocalTrash(userId: string): Set<string> {
-    if (typeof window === "undefined") return new Set();
-    try {
-      const raw = window.localStorage.getItem(trashKey(userId));
-      const arr = raw ? (JSON.parse(raw) as string[]) : [];
-      return new Set(Array.isArray(arr) ? arr.filter(Boolean) : []);
-    } catch {
-      return new Set();
-    }
-  }
-
-  function writeLocalTrash(userId: string, ids: Set<string>) {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(trashKey(userId), JSON.stringify(Array.from(ids)));
-    } catch {}
-  }
-
-  async function softDeleteNonSendItem(id: string) {
-    const { data: auth } = await supabase.auth.getUser();
-    const userId = auth?.user?.id;
-    if (!userId) return;
-    const s = readLocalTrash(userId);
-    s.add(id);
-    writeLocalTrash(userId, s);
-    setItems((prev) => prev.map((x) => (x.id === id ? { ...x, status: "deleted" } : x)));
-  }
-
-  async function restoreNonSendItem(id: string) {
-    const { data: auth } = await supabase.auth.getUser();
-    const userId = auth?.user?.id;
-    if (!userId) return;
-    const s = readLocalTrash(userId);
-    s.delete(id);
-    writeLocalTrash(userId, s);
-    setItems((prev) => prev.map((x) => (x.id === id ? { ...x, status: "sent" } : x)));
-  }
-
-  async function markLocalTrashOnLoaded(list: OutboxItem[]): Promise<OutboxItem[]> {
-    const { data: auth } = await supabase.auth.getUser();
-    const userId = auth?.user?.id;
-    if (!userId) return list;
-    const trash = readLocalTrash(userId);
-    if (!trash.size) return list;
-    return list.map((it) => (trash.has(it.id) && it.source !== "send_items" ? { ...it, status: "deleted" } : it));
-  }
-
-  async function moveToTrash(it: OutboxItem) {
-    if (it.source === "send_items") return moveToDeleted(it.id);
-    return softDeleteNonSendItem(it.id);
-  }
 
   function itemMailAccountId(it: OutboxItem): string {
     try {
@@ -560,8 +500,8 @@ export default function MailboxClient() {
     };
     for (const it of items) {
       // Les compteurs en haut représentent les ENVOIS.
-      // Donc: jamais les brouillons, jamais la corbeille.
-      if (it.status === "draft" || it.status === "deleted") continue;
+      // Donc: jamais les brouillons.
+      if (it.status === "draft") continue;
       c[it.folder] += 1;
     }
     return c;
@@ -579,12 +519,13 @@ export default function MailboxClient() {
 
   async function loadAccounts() {
     const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) return;
+    const userId = auth?.user?.id;
+    if (!userId) return;
 
     const { data, error } = await supabase
       .from("integrations")
       .select("id, provider, account_email, settings, status, created_at")
-      .eq("user_id", auth.user.id)
+      .eq("user_id", userId)
       .eq("category", "mail")
       .order("created_at", { ascending: true });
 
@@ -609,7 +550,8 @@ export default function MailboxClient() {
     setLoading(true);
     try {
       const { data: auth } = await supabase.auth.getUser();
-      if (!auth?.user) return;
+    const userId = auth?.user?.id;
+    if (!userId) return;
 
       const strip = (v: any) =>
         String(v || "")
@@ -635,30 +577,33 @@ export default function MailboxClient() {
           .select(
             "id, integration_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, provider_thread_id, error, sent_at, created_at, updated_at"
           )
-          .eq("user_id", auth.user.id)
+          .eq("user_id", userId)
+          .in("status", ["sent", "draft"])
           .gte("created_at", cutoffIso)
           .order("created_at", { ascending: false })
-          .limit(500),
+          .limit(80),
         supabase
           .from("app_events")
           .select("id, module, type, payload, created_at")
-          .eq("user_id", auth.user.id)
+          .eq("user_id", userId)
           .in("module", ["booster", "fideliser"])
           .gte("created_at", cutoffIso)
           .order("created_at", { ascending: false })
-          .limit(500),
+          .limit(80),
       ]);
 
       if (sendRes.error) console.error(sendRes.error);
       if (eventsRes.error) console.error(eventsRes.error);
 
       const sendItems = ((sendRes.data || []) as SendItem[])
-        .map<OutboxItem>((x) => {
+        .map<OutboxItem | null>((x) => {
+          // Historical deleted items are ignored (trash has been removed).
+          if ((x as any).status === "deleted") return null;
           const folder: Folder = x.type === "facture" ? "factures" : x.type === "devis" ? "devis" : "mails";
           const title = safeS(x.subject, folder === "factures" ? "Facture" : folder === "devis" ? "Devis" : "(sans objet)");
           const preview = safeS(x.body_text || x.body_html, "").slice(0, 140);
-          // status = draft | sent | deleted ; error est dérivé du champ error
-          const status: Status = x.status === "sent" && x.error ? "error" : (x.status as Status);
+          // status = draft | sent ; error est dérivé du champ error
+          const status: Status = x.status === "sent" && x.error ? "error" : (x.status as any);
           return {
             id: x.id,
             source: "send_items",
@@ -677,7 +622,8 @@ export default function MailboxClient() {
             to: x.to_emails,
             raw: x,
           };
-        });
+        })
+        .filter(Boolean) as OutboxItem[];
 
       const eventRows = (eventsRes.data || []) as any[];
 
@@ -777,8 +723,6 @@ const subTitle = firstNonEmpty(
         combined = combined.filter((it) => itemMailAccountId(it) === filterAccountId);
       }
 
-      combined = await markLocalTrashOnLoaded(combined);
-
       setItems(combined);
 
       if (combined.length > 0) setSelectedId((prev) => prev || combined[0].id);
@@ -790,12 +734,15 @@ const subTitle = firstNonEmpty(
 
   const visibleItems = useMemo(() => {
     const q = historyQuery.trim().toLowerCase();
-    return items.filter((it) => {
+    const filtered = items.filter((it) => {
       if (!isVisibleInFolder(folder, it, boxView)) return false;
       if (!q) return true;
       const hay = `${it.title || ""} ${it.subTitle || ""} ${it.target || ""} ${it.preview || ""} ${it.provider || ""}`.toLowerCase();
       return hay.includes(q);
     });
+    // Always show the latest 20 items in the main view.
+    if (boxView === "sent" || boxView === "drafts") return filtered.slice(0, 20);
+    return filtered;
   }, [items, folder, historyQuery, boxView]);
 
   const selected = useMemo(() => {
@@ -1113,10 +1060,41 @@ const subTitle = firstNonEmpty(
 
   async function saveDraft() {
     const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) return;
+    const userId = auth?.user?.id;
+    if (!userId) return;
+
+    // Storage guardrail: keep only the latest 20 drafts per user.
+    // Prefer ordering by updated_at (so editing an old draft bumps it),
+    // and fallback to created_at if updated_at doesn't exist.
+    async function enforceDraftLimit() {
+      try {
+        const base = supabase
+          .from("send_items")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("status", "draft");
+
+        // Try updated_at first
+        const { data: recentByUpdate, error: errUpdate } = await base
+          .order("updated_at", { ascending: false })
+          .limit(80);
+
+        const recent = errUpdate
+          ? (await base.order("created_at", { ascending: false }).limit(80)).data
+          : recentByUpdate;
+
+        const ids = (recent || []).map((r: any) => r.id).filter(Boolean);
+        if (ids.length > 20) {
+          const toDelete = ids.slice(20);
+          await supabase.from("send_items").delete().in("id", toDelete);
+        }
+      } catch {
+        // Never block draft saving
+      }
+    }
 
     const payload = {
-      user_id: auth.user.id,
+      user_id: userId,
       integration_id: selectedAccountId || null,
       type: composeType,
       status: "draft" as const,
@@ -1131,6 +1109,7 @@ const subTitle = firstNonEmpty(
       const { error } = await supabase.from("send_items").update(payload).eq("id", draftId);
       if (!error) {
         setToast("Brouillon sauvegardé");
+        await enforceDraftLimit();
         await loadHistory();
       }
       return;
@@ -1140,6 +1119,7 @@ const subTitle = firstNonEmpty(
     if (!error && data?.id) {
       setDraftId(data.id);
       setToast("Brouillon sauvegardé");
+      await enforceDraftLimit();
       await loadHistory();
     }
   }
@@ -1149,6 +1129,48 @@ const subTitle = firstNonEmpty(
     if (provider === "microsoft") return "/api/inbox/microsoft/send";
     return "/api/inbox/imap/send";
   }
+
+async function deleteDraftPermanently(id: string) {
+  try {
+    if (!id) return;
+    if (deletingDraftId) return;
+
+    const ok = window.confirm("Supprimer ce brouillon définitivement ?");
+    if (!ok) return;
+
+    setDeletingDraftId(id);
+
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth?.user?.id;
+    if (!userId) return;
+
+    const { error } = await supabase
+      .from("send_items")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
+
+    if (error) {
+      setToast("Impossible de supprimer ce brouillon.");
+      return;
+    }
+
+    // Optimistic UI
+    setItems((prev) => prev.filter((x) => x.id !== id));
+    if (selectedId === id) setSelectedId(null);
+    if (detailsId === id) {
+      setDetailsOpen(false);
+      setDetailsId(null);
+    }
+
+    setToast("Brouillon supprimé");
+    // Reload to keep the list consistent (and still capped at 20)
+    await loadHistory();
+  } finally {
+    setDeletingDraftId(null);
+  }
+}
+
 
   async function doSend() {
     if (!selectedAccount) {
@@ -1222,31 +1244,7 @@ const subTitle = firstNonEmpty(
     }
   }
 
-  async function moveToDeleted(id: string) {
-    const { error } = await supabase.from("send_items").update({ status: "deleted" }).eq("id", id);
-    if (!error) await loadHistory();
-  }
-
-  async function restoreFromDeleted(id: string) {
-    // Restore as sent by default (keeps type)
-    const { data, error } = await supabase.from("send_items").select("status, type").eq("id", id).single();
-    if (error) return;
-    const nextStatus: Status = data.status === "deleted" ? "sent" : data.status;
-    const { error: e2 } = await supabase.from("send_items").update({ status: nextStatus }).eq("id", id);
-    if (!e2) await loadHistory();
-  }
-
-  async function deleteForever(id: string) {
-    const ok = window.confirm("Supprimer définitivement ce message ? Cette action est irréversible.");
-    if (!ok) return;
-    const { error } = await supabase.from("send_items").delete().eq("id", id);
-    if (!error) {
-      setSelectedId(null);
-      setDetailsOpen(false);
-      setDetailsId(null);
-      await loadHistory();
-    }
-  }
+  // Trash has been intentionally removed: the tool always shows the last sent items.
 
   function openDetails(it: OutboxItem) {
     setSelectedId(it.id);
@@ -1461,15 +1459,6 @@ const subTitle = firstNonEmpty(
                 </button>
 
                 <button
-                  className={`${styles.toolbarBtn} ${boxView === "trash" ? styles.toolbarBtnActive : ""}`}
-                  onClick={() => setBoxView((v) => (v === "trash" ? "sent" : "trash"))}
-                  type="button"
-                  title="Corbeille"
-                >
-                  Corbeille
-                </button>
-
-                <button
                   className={`${styles.toolbarBtn} ${styles.iconBtn}`}
                   onClick={loadHistory}
                   type="button"
@@ -1545,6 +1534,23 @@ const subTitle = firstNonEmpty(
 
 
                             <div className={styles.rowActions}>
+
+{it.status === "draft" ? (
+  <button
+    type="button"
+    className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost}`}
+    title="Supprimer (définitif)"
+    disabled={deletingDraftId === it.id}
+    onClick={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (it.source === "send_items") void deleteDraftPermanently(it.id);
+    }}
+  >
+    🗑
+  </button>
+) : null}
+
                               <button
                                 type="button"
                                 className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost}`}
@@ -1557,34 +1563,6 @@ const subTitle = firstNonEmpty(
                               >
                                 ↗
                               </button>
-
-                              {it.status === "deleted" ? (
-                                <button
-                                  type="button"
-                                  className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost}`}
-                                  title="Restaurer"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    it.source === "send_items" ? restoreFromDeleted(it.id) : restoreNonSendItem(it.id);
-                                  }}
-                                >
-                                  ↩
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className={`${styles.iconBtnSmall} ${styles.iconBtnSmallDanger}`}
-                                  title="Supprimer"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    moveToTrash(it);
-                                  }}
-                                >
-                                  🗑
-                                </button>
-                              )}
                             </div>
                           </div>
                         </div>
@@ -1616,7 +1594,7 @@ const subTitle = firstNonEmpty(
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {detailsItem ? rememberActions(detailsItem, moveToDeleted, restoreFromDeleted, deleteForever) : null}
+                  {/* Trash removed intentionally */}
                   <button className={styles.btnGhost} onClick={() => setDetailsOpen(false)} type="button">
                     ✕
                   </button>
@@ -1635,8 +1613,8 @@ const subTitle = firstNonEmpty(
                         <div className={styles.detailsSub}>
                           {detailsItem.status === "draft"
                             ? "Brouillon"
-                            : detailsItem.status === "deleted"
-                            ? "Corbeille"
+                            : detailsItem.status === "error"
+                            ? "Erreur"
                             : detailsItem.sent_at
                             ? `Envoyé • ${new Date(detailsItem.sent_at).toLocaleString()}`
                             : `Historique • ${new Date(detailsItem.created_at).toLocaleString()}`}
@@ -1709,17 +1687,6 @@ const subTitle = firstNonEmpty(
                       <div className={styles.detailsMessage}>
                         <div className={styles.messageHeaderRow}>
                           <div className={styles.messageHeaderTitle}>Message</div>
-                          {/* Bouton supprimer à droite du message (rappel) */}
-                          {detailsItem.status !== "deleted" ? (
-                            <button
-                              type="button"
-                              className={styles.btnDangerSmall}
-                              onClick={() => moveToTrash(detailsItem)}
-                              title="Supprimer"
-                            >
-                              🗑 Supprimer
-                            </button>
-                          ) : null}
                         </div>
 
                         {/* Détails enrichis pour Publication (Booster) */}
@@ -1871,7 +1838,9 @@ const subTitle = firstNonEmpty(
                         color: "rgba(255,255,255,0.9)",
                         borderRadius: 12,
                         padding: "8px 10px",
-                        minWidth: 280,
+                        width: "min(520px, 100%)",
+                        flex: "1 1 280px",
+                        minWidth: 0,
                       }}
                     >
                       {mailAccounts.map((a) => (
@@ -2184,50 +2153,6 @@ const subTitle = firstNonEmpty(
         ) : null}
       </div>
     </div>
-  );
-}
-
-function rememberActions(
-  selected: OutboxItem,
-  moveToDeleted: (id: string) => Promise<void>,
-  restoreFromDeleted: (id: string) => Promise<void>,
-  deleteForever?: (id: string) => Promise<void>
-) {
-  if (!selected) return null;
-  // Suppression/restauration uniquement sur l'historique "send_items".
-  if (selected.source !== "send_items") return null;
-  if (selected.status === "error") return null;
-
-  if (selected.status === "deleted" || (selected as any).raw?.status === "deleted") {
-    return (
-      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <button className={styles.btnPrimary} onClick={() => restoreFromDeleted(selected.id)} type="button">
-          Restaurer
-        </button>
-        {deleteForever ? (
-          <button
-            className={`${styles.btnGhost} ${styles.trashBtn}`}
-            onClick={() => deleteForever(selected.id)}
-            type="button"
-            title="Supprimer définitivement"
-          >
-            Supprimer
-          </button>
-        ) : null}
-      </div>
-    );
-  }
-
-  return (
-    <button
-      className={`${styles.btnGhost} ${styles.trashBtn}`}
-      onClick={() => moveToDeleted(selected.id)}
-      type="button"
-      aria-label="Supprimer"
-      title="Supprimer"
-    >
-      🗑️
-    </button>
   );
 }
 

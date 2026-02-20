@@ -198,6 +198,7 @@ export async function POST(req: Request) {
     }
   } else {
     const body = await req.json().catch(() => ({}));
+    accountId = String(body.accountId || "").trim();
     sendItemId = String(body.sendItemId || "").trim();
     sendType = String(body.type || "mail").trim() || "mail";
     to = String(body.to || "").trim();
@@ -209,6 +210,12 @@ export async function POST(req: Request) {
     references = String(body.references || "");
   }
 
+  // A send action must always be tied to an explicit sending mailbox.
+  // This prevents silent fallbacks to "first account" and avoids history rows with NULL integration_id.
+  if (!accountId) {
+    return NextResponse.json({ error: "Missing 'accountId' (sending mailbox)" }, { status: 400 });
+  }
+
   if (!to) return NextResponse.json({ error: "Missing 'to'" }, { status: 400 });
 
   let q = supabase
@@ -218,9 +225,7 @@ export async function POST(req: Request) {
     .eq("provider", "gmail")
     .eq("category", "mail");
 
-  if (typeof accountId === "string" && accountId.trim()) {
-    q = q.eq("id", accountId.trim());
-  }
+  q = q.eq("id", accountId);
 
   const { data: accounts, error: accErr } = await q.order("created_at", { ascending: true }).limit(1);
 
@@ -304,7 +309,7 @@ export async function POST(req: Request) {
   // --- iNr'Send history (Supabase) ---
   const historyPayload = {
     user_id: userId,
-    integration_id: accountId || null,
+    integration_id: accountId,
     type: (sendType as any) || "mail",
     status: "sent",
     to_emails: to,
@@ -322,6 +327,25 @@ export async function POST(req: Request) {
     await supabase.from("send_items").update(historyPayload).eq("id", sendItemId);
   } else {
     await supabase.from("send_items").insert(historyPayload);
+  }
+
+  // Keep only the latest 20 SENT items in history (trash removed).
+  try {
+    const { data: recent } = await supabase
+      .from("send_items")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("status", "sent")
+      .order("created_at", { ascending: false })
+      .limit(60);
+
+    const ids = (recent || []).map((r: any) => r.id).filter(Boolean);
+    if (ids.length > 20) {
+      const toDelete = ids.slice(20);
+      await supabase.from("send_items").delete().in("id", toDelete);
+    }
+  } catch {
+    // Never block sending
   }
 
 

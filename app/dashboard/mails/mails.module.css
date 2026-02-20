@@ -624,6 +624,15 @@
 
 .iconBtnSmallGhost { }
 
+/* Draft-only delete button (suppression définitive) */
+.trashBtn {
+  color: rgba(239, 68, 68, 0.95); /* red */
+}
+
+.trashBtn:hover {
+  color: rgba(220, 38, 38, 1);
+}
+
 .iconBtnSmallDanger {
   border-color: rgba(244,114,182,0.30);
   background: rgba(244,114,182,0.08);
@@ -3244,6 +3253,29 @@ width: 100%;
 
 .folderTabLabel{
   white-space:nowrap;
+}
+
+/* Desktop: make the 9 folder "bubbles" fill the full available width */
+@media (min-width: 821px){
+  .folderTabs{
+    /* Fill the available width while keeping pills sized to their label (no truncation) */
+    display:flex;
+    width:100%;
+    justify-content:space-between;
+    gap:10px;
+    flex-wrap:wrap;
+    overflow:hidden;
+  }
+  .folderTabBtn{
+    width:auto;
+    justify-content:center;
+    flex:0 0 auto;
+  }
+  .folderTabLabel{
+    /* Always show full labels on desktop */
+    overflow:visible;
+    text-overflow:clip;
+  }
 }
 
 .toolbarRow{

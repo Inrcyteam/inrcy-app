@@ -55,15 +55,18 @@ export async function POST(req: Request) {
   if (errorResponse) return errorResponse;
   const userId = user.id;
 const formData = await req.formData();
-    const accountId = String(formData.get("accountId") || "");
+    const accountId = String(formData.get("accountId") || "").trim();
     const sendItemId = String(formData.get("sendItemId") || "").trim();
     const sendType = String(formData.get("type") || "mail").trim() || "mail";
     const to = String(formData.get("to") || "").trim();
     const subject = String(formData.get("subject") || "(sans objet)");
     const text = String(formData.get("text") || "");
 
-    if (!accountId || !to) {
-      return NextResponse.json({ error: "Missing accountId or to" }, { status: 400 });
+    if (!accountId) {
+      return NextResponse.json({ error: "Missing 'accountId' (sending mailbox)" }, { status: 400 });
+    }
+    if (!to) {
+      return NextResponse.json({ error: "Missing 'to'" }, { status: 400 });
     }
 
     const { data: account, error: accErr } = await supabase
@@ -130,7 +133,7 @@ const formData = await req.formData();
     // --- iNr'Send history (Supabase) ---
     const historyPayload = {
       user_id: userId,
-      integration_id: accountId || null,
+      integration_id: accountId,
       type: (sendType as any) || "mail",
       status: "sent",
       to_emails: to,
@@ -148,6 +151,25 @@ const formData = await req.formData();
       await supabase.from("send_items").update(historyPayload).eq("id", sendItemId);
     } else {
       await supabase.from("send_items").insert(historyPayload);
+    }
+
+    // Keep only the latest 20 SENT items in history (trash removed).
+    try {
+      const { data: recent } = await supabase
+        .from("send_items")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("status", "sent")
+        .order("created_at", { ascending: false })
+        .limit(60);
+
+      const ids = (recent || []).map((r: any) => r.id).filter(Boolean);
+      if (ids.length > 20) {
+        const toDelete = ids.slice(20);
+        await supabase.from("send_items").delete().in("id", toDelete);
+      }
+    } catch {
+      // Never block sending
     }
 
     return NextResponse.json({ success: true });
