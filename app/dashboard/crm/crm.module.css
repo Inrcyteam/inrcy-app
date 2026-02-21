@@ -357,6 +357,7 @@
 .table{
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   min-width: 720px;
 }
 
@@ -456,6 +457,39 @@
   .cardHead{ flex-direction: column; align-items: flex-start; }
   .cardActions{ width: 100%; }
   .primaryBtn, .ghostBtn{ width: 100%; justify-content: center; }
+  /* ===== Table responsive tweaks ===== */
+  .table{ min-width: 0; }
+  .table th, .table td{ padding: 10px 8px; }
+  /* start name closer to left edge (checkbox column hidden in JSX) */
+  .thName, .tdName{ padding-left: 6px !important; }
+  /* Cat header short label */
+  .colLabelFull{ display:none; }
+  .colLabelShort{ display:inline; }
+
+  /* Keep Important at the very end */
+  .thStar, .tdStar{ width: 42px; }
+
+  /* Mobile: the CRM table must fit the full width (no horizontal scroll) */
+  .tableWrap{ overflow: hidden; }
+  .table{ table-layout: fixed; width: 100%; }
+  .table th, .table td{ font-size: 12px; }
+
+  /* Hide CP in mobile to keep 6 columns max (Name, Mail, Tel, Cat, Type, ⭐) */
+  .thCp, .tdCp{ display:none; }
+
+  /* Column widths (sum ~100%) */
+  .thName, .tdName{ width: 30%; }
+  .thMail, .tdMail{ width: 22%; }
+  .thTel, .tdTel{ width: 18%; }
+  .thType{ width: 14%; }
+
+  /* Prevent long values from blowing up the layout */
+  .tdName, .tdMail, .tdTel{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
 }
 
 @media (max-width: 900px){
@@ -935,12 +969,25 @@
 }
 
 /* Selection column */
-.thSelect{ width: 44px; }
-.tdSelect{ width: 44px; }
+.thSelect{ width: 44px; padding: 0; text-align: center; }
+.tdSelect{ width: 44px; padding: 0; text-align: center; }
 
+
+/* Column labels (responsive) */
+.colLabelFull{ display: inline; }
+.colLabelShort{ display: none; }
+
+/* Name column spacing (responsive tweaks) */
+.thName{}
+.tdName{}
 /* Columns (for responsive-only tweaks) */
 .thCp{}
 .tdCp{}
+.thMail{}
+.tdMail{}
+.thTel{}
+.tdTel{}
+.thType{}
 .thStar{ width: 54px; text-align: center; }
 .tdStar{ text-align: center; }
 .nameImportant{}
@@ -948,6 +995,8 @@
 .checkbox{
   width: 16px;
   height: 16px;
+  display: block;
+  margin: 0 auto;
   accent-color: rgb(56,189,248);
   cursor: pointer;
 }
@@ -1161,8 +1210,8 @@
 
 /* Selection visuals */
 .checkbox{
-  width: 16px;
-  height: 16px;
+  width: 6px;
+  height: 6px;
   accent-color: rgb(56,189,248);
 }
 
@@ -1201,6 +1250,26 @@
 .col4{ grid-column: span 4; }
 .col6{ grid-column: span 6; }
 
+/* Mobile modal form (Ajouter/Modifier un contact)
+   We keep a 12-column grid even on small screens so fields stay grouped:
+   L1: Nom/RS + SIREN + Catégorie + Type
+   L2: Téléphone + Mail + Important
+   L3: Adresse + Ville + CP
+   L4: Notes
+*/
+.modalFormGrid{ }
+.fName{ }
+.fSiren{ }
+.fCategory{ }
+.fType{ }
+.fPhone{ }
+.fMail{ }
+.fImportant{ }
+.fAddress{ }
+.fCity{ }
+.fCp{ }
+.fNotes{ }
+
 .selectSoft{
   background: rgba(255,255,255,.88) !important;
   color: rgba(10,12,18,0.92) !important;
@@ -1233,6 +1302,28 @@
   .col3, .col4, .col5, .col6{ grid-column: 1 / -1; }
   .col2{ grid-column: span 3; }
   .col1{ grid-column: span 3; }
+
+  /* Mobile modal: enforce requested order & keep the compact grid */
+  .modalFormGrid{ grid-template-columns: repeat(12, minmax(0, 1fr)); }
+
+  /* Ligne 1 */
+  .modalFormGrid .fName{ grid-column: 1 / 7; }
+  .modalFormGrid .fSiren{ grid-column: 7 / 9; }
+  .modalFormGrid .fCategory{ grid-column: 9 / 11; }
+  .modalFormGrid .fType{ grid-column: 11 / 13; }
+
+  /* Ligne 2 */
+  .modalFormGrid .fPhone{ grid-column: 1 / 5; }
+  .modalFormGrid .fMail{ grid-column: 5 / 11; }
+  .modalFormGrid .fImportant{ grid-column: 11 / 13; }
+
+  /* Ligne 3 */
+  .modalFormGrid .fAddress{ grid-column: 1 / 7; }
+  .modalFormGrid .fCity{ grid-column: 7 / 10; }
+  .modalFormGrid .fCp{ grid-column: 10 / 13; }
+
+  /* Ligne 4 */
+  .modalFormGrid .fNotes{ grid-column: 1 / -1; }
 }
 
 
@@ -1824,6 +1915,22 @@
   font-weight: 700;
   border-radius: 8px;
   position: relative;        /* nécessaire pour le point */
+
+  /* Narrow the checkbox (select) column on mobile */
+  .thSelect, .tdSelect{
+    width: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    padding: 0 !important;
+    text-align: center;
+    box-sizing: border-box;
+  }
+  .thSelect .checkbox, .tdSelect .checkbox{
+    width: 14px;
+    height: 14px;
+    margin: 0 auto;
+    display: block;
+  }
 }
 
 .nameImportant::after{
@@ -1846,17 +1953,83 @@
   .starField{ grid-column: span 2; order: 3; }
 }
 
-/* Narrow the checkbox (select) column on mobile */
-.thSelect, .tdSelect{
-  width: 30px;
-  min-width: 30px;
-  max-width: 30px;
-  padding-left: 6px;
-  padding-right: 6px;
-  text-align: center;
+
+
+/* Badge labels: abbreviations only on mobile */
+.badgeLabelShort { display: none; }
+.badgeLabelFull { display: inline; }
+
+@media (max-width: 760px){
+  .badgeLabelFull { display: none; }
+  .badgeLabelShort { display: inline; }
 }
 
-.thSelect .checkbox, .tdSelect .checkbox{
-  width: 14px;
-  height: 14px;
+
+/* Form: show titles for Téléphone / Mail / Important */
+.phoneField .labelPill,
+.mailField .labelPill,
+.starField .labelPill {
+  display: inline-flex;
+}
+
+@media (max-width: 760px){
+  /* 3 bubbles on one row: Téléphone / Mail / Important */
+  .phoneField { grid-column: span 2; }
+  .mailField { grid-column: span 2; }
+  .starField { grid-column: span 2; }
+}
+
+
+/* =========================
+   Responsive form ordering (Feb 2026)
+   Mobile layout demandé :
+   L1: Nom/Prénom/RS + SIREN + Catégorie + Type
+   L2: Téléphone + Mail + Important
+   L3: Adresse + Ville + CP
+   L4: Notes
+   ========================= */
+
+.fName{}
+.fSiren{}
+.fCategory{}
+.fType{}
+.fPhone{}
+.fMail{}
+.fAddress{}
+.fCity{}
+.fCP{}
+.fNotes{}
+.fImportant{}
+.fActions{}
+
+@media (max-width: 760px){
+  /* Keep 12-col grid for precise placement */
+  .formGrid{
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .formGrid .fName{ grid-column: 1 / span 6 !important; grid-row: 1 !important; }
+  .formGrid .fSiren{ grid-column: 7 / span 2 !important; grid-row: 1 !important; }
+  .formGrid .fCategory{ grid-column: 9 / span 2 !important; grid-row: 1 !important; }
+  .formGrid .fType{ grid-column: 11 / span 2 !important; grid-row: 1 !important; }
+
+  .formGrid .fPhone{ grid-column: 1 / span 4 !important; grid-row: 2 !important; }
+  .formGrid .fMail{ grid-column: 5 / span 6 !important; grid-row: 2 !important; }
+  .formGrid .fImportant{ grid-column: 11 / span 2 !important; grid-row: 2 !important; }
+
+  .formGrid .fAddress{ grid-column: 1 / span 6 !important; grid-row: 3 !important; }
+  .formGrid .fCity{ grid-column: 7 / span 4 !important; grid-row: 3 !important; }
+  .formGrid .fCP{ grid-column: 11 / span 2 !important; grid-row: 3 !important; }
+
+  .formGrid .fNotes{ grid-column: 1 / -1 !important; grid-row: 4 !important; }
+
+  /* Actions under the form on mobile */
+  .formGrid .fActions{
+    grid-column: 1 / -1 !important;
+    grid-row: 5 !important;
+    justify-content: stretch;
+  }
+  .formGrid .fActions > button{
+    flex: 1;
+  }
 }

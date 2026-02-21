@@ -42,6 +42,21 @@ const TYPE_LABEL: Record<Exclude<ContactType, "">, string> = {
   autre: "Autre",
 };
 
+const CATEGORY_LABEL_SHORT: Record<Exclude<Category, "">, string> = {
+  particulier: "Part",
+  professionnel: "Pro",
+  collectivite_publique: "Inst",
+};
+
+const TYPE_LABEL_SHORT: Record<Exclude<ContactType, "">, string> = {
+  client: "Client",
+  prospect: "Prosp",
+  fournisseur: "Fourn",
+  partenaire: "Parten",
+  autre: "Autre",
+};
+
+
 function emptyDraft() {
   return {
     display_name: "",
@@ -212,6 +227,19 @@ function categoryBadgeClass(c: Category) {
 
 export default function CRMClient() {
   const router = useRouter();
+
+  // --- Responsive (table & layout) ---
+  const [isResponsive, setIsResponsive] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 760px)");
+    const update = () => setIsResponsive(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
+
 
   // --- Mobile: obligatoire en paysage (overlay en portrait) ---
   const [needLandscape, setNeedLandscape] = useState(false);
@@ -967,7 +995,7 @@ const exportCsv = () => {
                 
 <div className={styles.formGrid}>
   {/* Ligne 1 */}
-  <label className={`${styles.label} ${styles.col3}`}>
+  <label className={`${styles.label} ${styles.col4} ${styles.fName}`}>
     <span>Nom Prénom / Raison sociale</span>
     <input
       className={styles.input}
@@ -978,7 +1006,7 @@ const exportCsv = () => {
     />
   </label>
 
-  <label className={`${styles.label} ${styles.col2}`}>
+  <label className={`${styles.label} ${styles.col2} ${styles.fSiren}`}>
     <span>SIREN</span>
     <input
       className={styles.input}
@@ -989,7 +1017,7 @@ const exportCsv = () => {
     />
   </label>
 
-  <label className={`${styles.label} ${styles.col2}`}>
+  <label className={`${styles.label} ${styles.col2} ${styles.fCategory}`}>
     <span>Catégorie</span>
     <select
       className={styles.select}
@@ -1003,7 +1031,7 @@ const exportCsv = () => {
     </select>
   </label>
 
-  <label className={`${styles.label} ${styles.col2}`}>
+  <label className={`${styles.label} ${styles.col2} ${styles.fType}`}>
     <span>Type</span>
     <select
       className={styles.select}
@@ -1019,8 +1047,8 @@ const exportCsv = () => {
     </select>
   </label>
 
-  <label className={`${styles.label} ${styles.col2} ${styles.phoneField}`}>
-    <span className={styles.labelPill}>Téléphone</span>
+  <label className={`${styles.label} ${styles.col2} ${styles.fPhone}`}>
+    <span>Téléphone</span>
     <input
       className={styles.input}
       value={draft.phone}
@@ -1030,9 +1058,68 @@ const exportCsv = () => {
     />
   </label>
 
+  {/* Ligne 2 */}
+  <label className={`${styles.label} ${styles.col3} ${styles.fMail}`}>
+    <span>Mail</span>
+    <input
+      className={styles.input}
+      value={draft.email}
+      onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
+      placeholder="marie@exemple.fr"
+      autoComplete="email"
+    />
+  </label>
 
-  <label className={`${styles.label} ${styles.starField} ${styles.col1}`}>
-    <span className={styles.labelPill}>Important</span>
+  <label className={`${styles.label} ${styles.col3} ${styles.fAddress}`}>
+    <span>Adresse</span>
+    <input
+      className={styles.input}
+      value={draft.address}
+      onChange={(e) => setDraft((s) => ({ ...s, address: e.target.value }))}
+      placeholder="12 rue ... "
+      autoComplete="street-address"
+    />
+  </label>
+
+  <label className={`${styles.label} ${styles.col2} ${styles.fCity}`}>
+    <span>Ville</span>
+    <input
+      className={styles.input}
+      value={draft.city}
+      onChange={(e) => setDraft((s) => ({ ...s, city: e.target.value }))}
+      placeholder="Paris"
+      autoComplete="address-level2"
+    />
+  </label>
+
+  <label className={`${styles.label} ${styles.col1} ${styles.fCP}`}>
+    <span>CP</span>
+    <input
+      className={styles.input}
+      value={draft.postal_code}
+      onChange={(e) => setDraft((s) => ({ ...s, postal_code: e.target.value }))}
+      placeholder="75000"
+      autoComplete="postal-code"
+      inputMode="numeric"
+    />
+  </label>
+
+  <label className={`${styles.label} ${styles.col2} ${styles.notesField} ${styles.fNotes}`}>
+    <span>Notes</span>
+    <input
+      className={styles.input}
+      value={draft.notes}
+      onChange={(e) => {
+        const v = e.target.value;
+        setDraft((s) => ({ ...s, notes: v }));
+        if (editingId) setNoteForId(editingId, v);
+      }}
+      placeholder="Info utile sur ce contact..."
+    />
+  </label>
+
+  <label className={`${styles.label} ${styles.col1} ${styles.fImportant}`}>
+    <span>Important</span>
     <button
       type="button"
       className={styles.starToggle}
@@ -1048,69 +1135,7 @@ const exportCsv = () => {
     </button>
   </label>
 
-  {/* Ligne 2 */}
-  <label className={`${styles.label} ${styles.col2} ${styles.mailField}`}>
-    <span className={styles.labelPill}>Mail</span>
-    <input
-      className={styles.input}
-      value={draft.email}
-      onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
-      placeholder="marie@exemple.fr"
-      autoComplete="email"
-    />
-  </label>
-
-  <label className={`${styles.label} ${styles.col3}`}>
-    <span>Adresse</span>
-    <input
-      className={styles.input}
-      value={draft.address}
-      onChange={(e) => setDraft((s) => ({ ...s, address: e.target.value }))}
-      placeholder="12 rue ... "
-      autoComplete="street-address"
-    />
-  </label>
-
-  <label className={`${styles.label} ${styles.col2}`}>
-    <span>Ville</span>
-    <input
-      className={styles.input}
-      value={draft.city}
-      onChange={(e) => setDraft((s) => ({ ...s, city: e.target.value }))}
-      placeholder="Paris"
-      autoComplete="address-level2"
-    />
-  </label>
-
-  <label className={`${styles.label} ${styles.col1}`}>
-    <span>CP</span>
-    <input
-      className={styles.input}
-      value={draft.postal_code}
-      onChange={(e) => setDraft((s) => ({ ...s, postal_code: e.target.value }))}
-      placeholder="75000"
-      autoComplete="postal-code"
-      inputMode="numeric"
-    />
-  </label>
-
-
-  <label className={`${styles.label} ${styles.col3} ${styles.notesField}`}>
-    <span className={styles.labelPill}>Notes</span>
-    <input
-      className={styles.input}
-      value={draft.notes}
-      onChange={(e) => {
-        const v = e.target.value;
-        setDraft((s) => ({ ...s, notes: v }));
-        if (editingId) setNoteForId(editingId, v);
-      }}
-      placeholder="Info utile sur ce contact..."
-    />
-  </label>
-
-
-  <div className={`${styles.formActions} ${styles.col1}`}>
+<div className={`${styles.formActions} ${styles.col1} ${styles.fActions}`}>
     {editingId ? (
       <>
         <button
@@ -1163,9 +1188,9 @@ const exportCsv = () => {
 
             {error ? <div className={styles.error}>{error}</div> : null}
 
-            <div className={styles.formGrid}>
+            <div className={`${styles.formGrid} ${styles.modalFormGrid}`}>
               {/* Ligne 1 */}
-              <label className={`${styles.label} ${styles.col3}`}>
+              <label className={`${styles.label} ${styles.col3} ${styles.fName}`}>
                 <span>Nom Prénom / Raison sociale</span>
                 <input
                   className={styles.input}
@@ -1176,7 +1201,7 @@ const exportCsv = () => {
                 />
               </label>
 
-              <label className={`${styles.label} ${styles.col2}`}>
+              <label className={`${styles.label} ${styles.col2} ${styles.fSiren}`}>
                 <span>SIREN</span>
                 <input
                   className={styles.input}
@@ -1187,7 +1212,7 @@ const exportCsv = () => {
                 />
               </label>
 
-              <label className={`${styles.label} ${styles.col2}`}>
+              <label className={`${styles.label} ${styles.col2} ${styles.fCategory}`}>
                 <span>Catégorie</span>
                 <select
                   className={styles.select}
@@ -1201,7 +1226,7 @@ const exportCsv = () => {
                 </select>
               </label>
 
-              <label className={`${styles.label} ${styles.col2}`}>
+              <label className={`${styles.label} ${styles.col2} ${styles.fType}`}>
                 <span>Type</span>
                 <select
                   className={styles.select}
@@ -1217,8 +1242,9 @@ const exportCsv = () => {
                 </select>
               </label>
 
-              <label className={`${styles.label} ${styles.col2} ${styles.phoneField}`}>
-                <span className={styles.labelPill}>Téléphone</span>
+              {/* Ligne 2 */}
+              <label className={`${styles.label} ${styles.col2} ${styles.phoneField} ${styles.fPhone}`}>
+                <span>Téléphone</span>
                 <input
                   className={styles.input}
                   value={draft.phone}
@@ -1228,8 +1254,8 @@ const exportCsv = () => {
                 />
               </label>
 
-              <label className={`${styles.label} ${styles.col2} ${styles.mailField}`}>
-                <span className={styles.labelPill}>Mail</span>
+              <label className={`${styles.label} ${styles.col2} ${styles.mailField} ${styles.fMail}`}>
+                <span>Mail</span>
                 <input
                   className={styles.input}
                   value={draft.email}
@@ -1239,8 +1265,8 @@ const exportCsv = () => {
                 />
               </label>
 
-              <label className={`${styles.label} ${styles.starField} ${styles.col1}`}>
-                <span className={styles.labelPill}>Important</span>
+              <label className={`${styles.label} ${styles.starField} ${styles.col1} ${styles.fImportant}`}>
+                <span>Important</span>
                 <button
                   type="button"
                   className={styles.starToggle}
@@ -1255,10 +1281,8 @@ const exportCsv = () => {
                 </button>
               </label>
 
-              {/* Ligne 2 */}
-              {/* Mail déplacé au-dessus (même ligne que Téléphone + Étoile en responsive) */}
-
-              <label className={`${styles.label} ${styles.col3}`}>
+              {/* Ligne 3 */}
+              <label className={`${styles.label} ${styles.col3} ${styles.fAddress}`}>
                 <span>Adresse</span>
                 <input
                   className={styles.input}
@@ -1269,7 +1293,7 @@ const exportCsv = () => {
                 />
               </label>
 
-              <label className={`${styles.label} ${styles.col2}`}>
+              <label className={`${styles.label} ${styles.col2} ${styles.fCity}`}>
                 <span>Ville</span>
                 <input
                   className={styles.input}
@@ -1280,7 +1304,7 @@ const exportCsv = () => {
                 />
               </label>
 
-              <label className={`${styles.label} ${styles.col2}`}>
+              <label className={`${styles.label} ${styles.col2} ${styles.fCp}`}>
                 <span>CP</span>
                 <input
                   className={styles.input}
@@ -1292,8 +1316,9 @@ const exportCsv = () => {
                 />
               </label>
 
-              <label className={`${styles.label} ${styles.col6}`}>
-                <span className={styles.labelPill}>Notes</span>
+              {/* Ligne 4 */}
+              <label className={`${styles.label} ${styles.col6} ${styles.fNotes}`}>
+                <span>Notes</span>
                 <textarea
                   className={styles.textarea}
                   value={draft.notes}
@@ -1584,36 +1609,50 @@ const exportCsv = () => {
           <table className={styles.table}>
                         <thead>
               <tr>
-                <th className={styles.thSelect}>
-                  <input
-                    type="checkbox"
-                    className={styles.checkbox}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={toggleSelectAllFiltered}
-                    checked={filtered.length > 0 && filtered.every((c) => selectedContactIds.has(c.id))}
-                    aria-label="Sélectionner tous les contacts filtrés"
-                  />
+                {!isResponsive && (
+                  <th className={styles.thSelect}>
+                    <input
+                      type="checkbox"
+                      className={styles.checkbox}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={toggleSelectAllFiltered}
+                      checked={filtered.length > 0 && filtered.every((c) => selectedContactIds.has(c.id))}
+                      aria-label="Sélectionner tous les contacts filtrés"
+                    />
+                  </th>
+                )}
+                <th className={styles.thName}>
+                  <span className={styles.colLabelFull}>Nom Prénom / RS</span>
+                  <span className={styles.colLabelShort}>Nom/RS</span>
                 </th>
-                <th>Nom Prénom / RS</th>
-                <th>Mail</th>
-                <th>Téléphone</th>
-<th className={styles.thCp}>CP</th>
-                <th>Catégorie</th>
-                <th>Type</th>
-<th className={styles.thStar}>⭐</th>
+                <th className={styles.thMail}>Mail</th>
+                <th className={styles.thTel}>
+                  <span className={styles.colLabelFull}>Téléphone</span>
+                  <span className={styles.colLabelShort}>Tél</span>
+                </th>
+                <th className={styles.thCp}>CP</th>
+                <th>
+                  <span className={styles.colLabelFull}>Catégorie</span>
+                  <span className={styles.colLabelShort}>Cat</span>
+                </th>
+                <th className={styles.thType}>
+                  <span className={styles.colLabelFull}>Type</span>
+                  <span className={styles.colLabelShort}>Typ</span>
+                </th>
+                <th className={styles.thStar}>⭐</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className={styles.empty}>
+                  <td colSpan={isResponsive ? 6 : 8} className={styles.empty}>
                     Aucun contact pour le moment.
                   </td>
                 </tr>
               ) : (
                                 filtered.map((c) => (
-                  <tr key={c.id} className={selectedContactIds.has(c.id) ? styles.rowSelected : undefined} onClick={() => startEdit(c)} style={{ cursor: "pointer" }}>
-                    <td className={styles.tdSelect}>
+                  <tr key={c.id} className={selectedContactIds.has(c.id) ? styles.rowSelected : undefined} onClick={() => (isResponsive ? toggleSelect(c.id) : startEdit(c))} onDoubleClick={() => (isResponsive ? startEdit(c) : undefined)} style={{ cursor: "pointer" }}>
+                    {!isResponsive && (<td className={styles.tdSelect}>
                       <input
                         type="checkbox"
                         className={styles.checkbox}
@@ -1622,21 +1661,21 @@ const exportCsv = () => {
                         onChange={() => toggleSelect(c.id)}
                         aria-label={`Sélectionner ${buildDisplayName(c)}`}
                       />
-                    </td>
-                    <td className={importantIds.has(c.id) ? styles.nameImportant : undefined}>{buildDisplayName(c)}</td>
-                    <td className={styles.mono}>{c.email}</td>
-                    <td className={styles.mono}>{c.phone}</td>
-<td className={`${styles.mono} ${styles.tdCp}`}>{c.postal_code ?? ""}</td>
+                    </td>)}
+                    <td className={`${styles.tdName} ${importantIds.has(c.id) ? styles.nameImportant : ""}`.trim()}>{buildDisplayName(c)}</td>
+                    <td className={`${styles.mono} ${styles.tdMail}`}>{c.email}</td>
+                    <td className={`${styles.mono} ${styles.tdTel}`}>{c.phone}</td>
+                    <td className={`${styles.mono} ${styles.tdCp}`}>{c.postal_code ?? ""}</td>
                     <td>
                       {c.category ? (
-                        <span className={categoryBadgeClass(c.category)}>{CATEGORY_LABEL[c.category as Exclude<Category, "">]}</span>
+                        <span className={categoryBadgeClass(c.category)}><span className={styles.badgeLabelFull}>{CATEGORY_LABEL[c.category as Exclude<Category, "">]}</span><span className={styles.badgeLabelShort}>{CATEGORY_LABEL_SHORT[c.category as Exclude<Category, "">]}</span></span>
                       ) : (
                         <span className={styles.dash}>—</span>
                       )}
                     </td>
                     <td>
                       {c.contact_type ? (
-                        <span className={typeBadgeClass(c.contact_type)}>{TYPE_LABEL[c.contact_type as Exclude<ContactType, "">]}</span>
+                        <span className={typeBadgeClass(c.contact_type)}><span className={styles.badgeLabelFull}>{TYPE_LABEL[c.contact_type as Exclude<ContactType, "">]}</span><span className={styles.badgeLabelShort}>{TYPE_LABEL_SHORT[c.contact_type as Exclude<ContactType, "">]}</span></span>
                       ) : (
                         <span className={styles.dash}>—</span>
                       )}
