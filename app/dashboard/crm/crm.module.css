@@ -1215,7 +1215,11 @@
   /* Mobile: keep 2 columns so the 6 KPIs render as 3 rows × 2 cards */
   .kpiRow{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .kpiValue{ font-size: 22px; }
-  .bulkActions .primaryBtn, .bulkActions .ghostBtn{ width: 100%; justify-content:center; }
+  /* Mobile: bulk actions must stay on ONE line: Désélectionner + 🗑️ + Actions */
+  .bulkActions{ flex-wrap: nowrap; width: 100%; }
+  .bulkActions .primaryBtn, .bulkActions .ghostBtn{ width: auto; justify-content:center; white-space: nowrap; }
+  .actionsWrap{ flex: 1 1 auto; min-width: 0; }
+  .actionsBtn{ width: 100%; }
   .searchWrap{ width: 100%; }
   .search{ width: 100%; }
 }
@@ -1708,8 +1712,13 @@
 .mhStar{ opacity: .85; }
 
 @media (max-width: 760px){
-  /* Ensure mobile grid is truly full-width inside the glass container */
-  .tableWrap{ overflow: visible !important; }
+  /* Mobile: make the table area scrollable so rows never "fall under" the card */
+  .tableWrap{
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    max-height: 62vh;
+    -webkit-overflow-scrolling: touch;
+  }
 
   /* Desktop table is not rendered on mobile (handled by TSX). */
 }
