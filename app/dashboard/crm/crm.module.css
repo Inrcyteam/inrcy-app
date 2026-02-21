@@ -1826,20 +1826,18 @@
   position: relative;        /* nécessaire pour le point */
 }
 
-/* ✅ point jaune discret au centre du nom */
 .nameImportant::after{
-  content:"";
+  content:"★";                 /* ⭐ l’étoile */
   position:absolute;
   left:50%;
   top:50%;
   transform:translate(-50%, -50%);
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: #facc15;
-  opacity: .55;             /* discret */
+  font-size: 32px;             /* ← taille de l’étoile */
+  color: #facc15;
+  opacity: .85;
   pointer-events: none;
-  box-shadow: 0 0 0 5px rgba(250, 204, 21, .08); /* petit halo doux */
+  line-height: 1;
+  text-shadow: 0 0 10px rgba(250, 204, 21, .35); /* petit glow */
 }
 
   /* Form: 3 bubbles on same row */
@@ -1848,3 +1846,17 @@
   .starField{ grid-column: span 2; order: 3; }
 }
 
+/* Narrow the checkbox (select) column on mobile */
+.thSelect, .tdSelect{
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px;
+  padding-left: 6px;
+  padding-right: 6px;
+  text-align: center;
+}
+
+.thSelect .checkbox, .tdSelect .checkbox{
+  width: 14px;
+  height: 14px;
+}
