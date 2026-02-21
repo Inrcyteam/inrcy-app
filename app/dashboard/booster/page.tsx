@@ -18,10 +18,13 @@ export default function BoosterPage() {
   const searchParams = useSearchParams();
 
   // Deep-link support: /dashboard/booster?action=publish|reviews|promo
+  // (aliases FR acceptés pour compat: publier|recolter|offrir)
   useEffect(() => {
     const a = (searchParams?.get("action") || "").toLowerCase();
-    if (a === "publish" || a === "reviews" || a === "promo") {
-      setActive(a as ActiveModal);
+    const normalized =
+      a === "publier" ? "publish" : a === "recolter" ? "reviews" : a === "offrir" ? "promo" : a;
+    if (normalized === "publish" || normalized === "reviews" || normalized === "promo") {
+      setActive(normalized as ActiveModal);
     }
   }, [searchParams]);
 

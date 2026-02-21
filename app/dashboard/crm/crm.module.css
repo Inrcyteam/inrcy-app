@@ -268,6 +268,32 @@
   box-sizing: border-box;
 }
 
+/* Notes textarea (mobile modal) */
+.textarea{
+  border: 1px solid var(--inrcy-border-2);
+  background: rgba(0,0,0,.22);
+  color: var(--inrcy-text);
+  border-radius: 16px;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color .12s ease, box-shadow .12s ease, background .12s ease;
+  backdrop-filter: blur(10px);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.35;
+}
+
+.textarea::placeholder{ color: rgba(255,255,255,.42); }
+
+.textarea:focus{
+  border-color: rgba(0,255,255,.30);
+  box-shadow: 0 0 0 4px rgba(0,255,255,.08), 0 0 0 1px rgba(157,78,255,.10);
+  background: rgba(0,0,0,.28);
+}
+
 .input::placeholder,.search::placeholder{ color: rgba(255,255,255,.42); }
 
 .input:focus,.select:focus,.search:focus{
@@ -734,6 +760,8 @@
   border: 1px solid rgba(255,255,255,.14);
   box-shadow: 0 20px 60px rgba(0,0,0,.55);
   padding: 14px;
+  /* Fix: texte lisible (évite noir sur noir) */
+  color: var(--inrcy-text);
 }
 
 .modalHead{
@@ -744,7 +772,7 @@
   margin-bottom: 10px;
 }
 
-.modalTitle{ font-weight: 900; font-size: 16px; }
+.modalTitle{ font-weight: 900; font-size: 16px; color: #fff; }
 
 .modalClose{
   width: 38px;
@@ -1791,11 +1819,28 @@
 
   .table{ min-width: 0; width: 100%; }
 
-  .nameImportant{
-    background: linear-gradient(to bottom, transparent 62%, rgba(255, 214, 0, 0.22) 62%, rgba(255, 214, 0, 0.22) 100%);
-    font-weight: 700;
-    border-radius: 8px;
-  }
+ .nameImportant{
+  background: none;          /* ✅ supprime le surlignage */
+  font-weight: 700;
+  border-radius: 8px;
+  position: relative;        /* nécessaire pour le point */
+}
+
+/* ✅ point jaune discret au centre du nom */
+.nameImportant::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%, -50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #facc15;
+  opacity: .55;             /* discret */
+  pointer-events: none;
+  box-shadow: 0 0 0 5px rgba(250, 204, 21, .08); /* petit halo doux */
+}
 
   /* Form: 3 bubbles on same row */
   .phoneField{ grid-column: span 2; order: 1; }

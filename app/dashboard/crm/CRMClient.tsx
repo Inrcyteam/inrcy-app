@@ -1217,8 +1217,8 @@ const exportCsv = () => {
                 </select>
               </label>
 
-              <label className={`${styles.label} ${styles.col2}`}>
-                <span>Téléphone</span>
+              <label className={`${styles.label} ${styles.col2} ${styles.phoneField}`}>
+                <span className={styles.labelPill}>Téléphone</span>
                 <input
                   className={styles.input}
                   value={draft.phone}
@@ -1228,8 +1228,19 @@ const exportCsv = () => {
                 />
               </label>
 
+              <label className={`${styles.label} ${styles.col2} ${styles.mailField}`}>
+                <span className={styles.labelPill}>Mail</span>
+                <input
+                  className={styles.input}
+                  value={draft.email}
+                  onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
+                  placeholder="marie@exemple.fr"
+                  autoComplete="email"
+                />
+              </label>
+
               <label className={`${styles.label} ${styles.starField} ${styles.col1}`}>
-                <span>Important</span>
+                <span className={styles.labelPill}>Important</span>
                 <button
                   type="button"
                   className={styles.starToggle}
@@ -1245,16 +1256,7 @@ const exportCsv = () => {
               </label>
 
               {/* Ligne 2 */}
-              <label className={`${styles.label} ${styles.col2}`}>
-                <span>Mail</span>
-                <input
-                  className={styles.input}
-                  value={draft.email}
-                  onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
-                  placeholder="marie@exemple.fr"
-                  autoComplete="email"
-                />
-              </label>
+              {/* Mail déplacé au-dessus (même ligne que Téléphone + Étoile en responsive) */}
 
               <label className={`${styles.label} ${styles.col3}`}>
                 <span>Adresse</span>
@@ -1291,7 +1293,7 @@ const exportCsv = () => {
               </label>
 
               <label className={`${styles.label} ${styles.col6}`}>
-                <span>Notes</span>
+                <span className={styles.labelPill}>Notes</span>
                 <textarea
                   className={styles.textarea}
                   value={draft.notes}

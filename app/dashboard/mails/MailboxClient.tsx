@@ -785,19 +785,25 @@ const subTitle = firstNonEmpty(
 
       // Booster
       case "publications":
-        return { label: "📣 Publier", href: "/dashboard/booster?action=publier" };
+        // Deep-link vers la modale Booster "Publier"
+        return { label: "📣 Publier", href: "/dashboard/booster?action=publish" };
       case "recoltes":
-        return { label: "⭐ Récolter", href: "/dashboard/booster?action=recolter" };
+        // Deep-link vers la modale Booster "Récolter" (bouton "Demander")
+        return { label: "⭐ Récolter", href: "/dashboard/booster?action=reviews" };
       case "offres":
-        return { label: "🏷️ Offrir", href: "/dashboard/booster?action=offrir" };
+        // Deep-link vers la modale Booster "Offrir" (mail promo)
+        return { label: "🏷️ Offrir", href: "/dashboard/booster?action=promo" };
 
       // Fidéliser
       case "informations":
-        return { label: "📰 Informer", href: "/dashboard/fideliser?action=informer" };
+        // Deep-link vers la modale Fidéliser "Informer"
+        return { label: "📰 Informer", href: "/dashboard/fideliser?action=inform" };
       case "suivis":
-        return { label: "🤝 Suivre", href: "/dashboard/fideliser?action=suivre" };
+        // Deep-link vers la modale Fidéliser "Suivre" (thanks)
+        return { label: "🤝 Suivre", href: "/dashboard/fideliser?action=thanks" };
       case "enquetes":
-        return { label: "😊 Enquêter", href: "/dashboard/fideliser?action=enqueter" };
+        // Deep-link vers la modale Fidéliser "Enquêter" (satisfaction)
+        return { label: "😊 Enquêter", href: "/dashboard/fideliser?action=satisfaction" };
 
       default:
         return { label: "Ouvrir l’outil", href: null as string | null };

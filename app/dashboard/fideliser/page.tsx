@@ -18,10 +18,13 @@ export default function FideliserPage() {
   const searchParams = useSearchParams();
 
   // Deep-link support: /dashboard/fideliser?action=inform|thanks|satisfaction
+  // (aliases FR acceptés pour compat: informer|suivre|enqueter)
   useEffect(() => {
     const a = (searchParams?.get("action") || "").toLowerCase();
-    if (a === "inform" || a === "thanks" || a === "satisfaction") {
-      setActive(a as ActiveModal);
+    const normalized =
+      a === "informer" ? "inform" : a === "suivre" ? "thanks" : a === "enqueter" ? "satisfaction" : a;
+    if (normalized === "inform" || normalized === "thanks" || normalized === "satisfaction") {
+      setActive(normalized as ActiveModal);
     }
   }, [searchParams]);
 
