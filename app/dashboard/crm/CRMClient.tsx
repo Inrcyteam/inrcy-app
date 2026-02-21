@@ -1304,7 +1304,7 @@ const exportCsv = () => {
                 />
               </label>
 
-              <label className={`${styles.label} ${styles.col2} ${styles.fCp}`}>
+              <label className={`${styles.label} ${styles.col2} ${styles.fCP}`}>
                 <span>CP</span>
                 <input
                   className={styles.input}
@@ -1631,7 +1631,7 @@ const exportCsv = () => {
                   <span className={styles.colLabelShort}>Tél</span>
                 </th>
                 <th className={styles.thCp}>CP</th>
-                <th>
+                <th className={styles.thCat}>
                   <span className={styles.colLabelFull}>Catégorie</span>
                   <span className={styles.colLabelShort}>Cat</span>
                 </th>
@@ -1666,7 +1666,7 @@ const exportCsv = () => {
                     <td className={`${styles.mono} ${styles.tdMail}`}>{c.email}</td>
                     <td className={`${styles.mono} ${styles.tdTel}`}>{c.phone}</td>
                     <td className={`${styles.mono} ${styles.tdCp}`}>{c.postal_code ?? ""}</td>
-                    <td>
+                    <td className={styles.tdCat}>
                       {c.category ? (
                         <span className={categoryBadgeClass(c.category)}><span className={styles.badgeLabelFull}>{CATEGORY_LABEL[c.category as Exclude<Category, "">]}</span><span className={styles.badgeLabelShort}>{CATEGORY_LABEL_SHORT[c.category as Exclude<Category, "">]}</span></span>
                       ) : (
