@@ -653,6 +653,7 @@
   border-radius: 16px;
   padding: 12px;
   background: rgba(20, 24, 38, 0.92);
+  color: rgba(255,255,255,.92);
   border: 1px solid rgba(255,255,255,.14);
   box-shadow: 0 18px 50px rgba(0,0,0,.45);
   z-index: 50;
@@ -684,6 +685,11 @@
 
 .statsItem span{ font-size: 12px; opacity: .85; }
 .statsItem strong{ font-size: 16px; }
+
+/* Stats text color fix (prevents black-on-black in some contexts) */
+.statsTitle{ color: rgba(255,255,255,.94); }
+.statsItem span{ color: rgba(255,255,255,.80); }
+.statsItem strong{ color: rgba(255,255,255,.96); }
 
 /* --- Mobile: only show table + header buttons --- */
 @media (max-width: 900px){
@@ -904,6 +910,13 @@
 .thSelect{ width: 44px; }
 .tdSelect{ width: 44px; }
 
+/* Columns (for responsive-only tweaks) */
+.thCp{}
+.tdCp{}
+.thStar{ width: 54px; text-align: center; }
+.tdStar{ text-align: center; }
+.nameImportant{}
+
 .checkbox{
   width: 16px;
   height: 16px;
@@ -976,6 +989,17 @@
 .h1{ font-size: 26px; }
 .h2{ font-size: 18px; }
 .label span{ font-size: 13px; }
+
+.labelPill{
+  display:inline-flex;
+  align-items:center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.78);
+  width: fit-content;
+}
 .input,.select,.search{ font-size: 14px; }
 
 /* Back/close button border more visible */
@@ -1755,3 +1779,27 @@
 .actionsMenu::-webkit-scrollbar-track{
   background: rgba(255,255,255,0.06);
 }
+
+
+@media (max-width: 760px){
+  /* Responsive-only:
+     - CRM table: hide CP + Important (star) column
+     - Important highlight: thinner marker style on the name cell
+     - Add form row: Téléphone + Mail + Étoile on the same line */
+  .thCp, .tdCp{ display: none; }
+  .thStar, .tdStar{ display: none; }
+
+  .table{ min-width: 0; width: 100%; }
+
+  .nameImportant{
+    background: linear-gradient(to bottom, transparent 62%, rgba(255, 214, 0, 0.22) 62%, rgba(255, 214, 0, 0.22) 100%);
+    font-weight: 700;
+    border-radius: 8px;
+  }
+
+  /* Form: 3 bubbles on same row */
+  .phoneField{ grid-column: span 2; order: 1; }
+  .mailField{ grid-column: span 2; order: 2; }
+  .starField{ grid-column: span 2; order: 3; }
+}
+

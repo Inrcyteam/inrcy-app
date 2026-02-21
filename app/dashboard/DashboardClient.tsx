@@ -2285,7 +2285,7 @@ useEffect(() => {
         <div className={styles.brand}>
           <img className={styles.logoImg} src="/logo-inrcy.png" alt="iNrCy" />
           <div className={styles.brandText}>
-            <div className={styles.brandTag}>Générateur de contacts</div>
+                       <div className={styles.brandTag}>Générateur de business</div>
           </div>
         </div>
 

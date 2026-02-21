@@ -692,10 +692,12 @@ async function deleteRdv() {
                         tabIndex={0}
                       >
                         <div className={styles.dayNumWrap}>
-                          <span className={styles.dayNumBubble}>{d.getDate()}</span>
-                          {list.length > 0 ? <span className={styles.hasEventsDot} aria-hidden /> : null}
+                          <div className={styles.dayNumRow}>
+                            <span className={styles.dayNumBubble}>{d.getDate()}</span>
+                            {list.length > 0 ? <span className={styles.hasEventsDot} aria-hidden /> : null}
+                          </div>
+                          {isToday && <div className={styles.pillToday}>Aujourd’hui</div>}
                         </div>
-                        {isToday && <div className={styles.pillToday}>Aujourd’hui</div>}
 
                         <div className={styles.chips}>
                           {show.map((ev) => {
@@ -748,12 +750,7 @@ async function deleteRdv() {
 
               <div className={styles.sidebarBody}>
                 <div className={styles.sideTitle}>Détails du jour</div>
-                <div className={styles.meta}>
-                  Astuce : iNrCy peut stocker des infos “Intervention” (statut, type, contact). Si vous passez en mode Agenda, vous gardez un calendrier classique.
-                </div>
-
-                
-                {query.trim() ? (
+{query.trim() ? (
                   <>
                     <div className={styles.list}>
                       {globalMatches.length === 0 && <div className={styles.empty}>Aucun résultat.</div>}

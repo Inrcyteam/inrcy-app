@@ -1019,8 +1019,8 @@ const exportCsv = () => {
     </select>
   </label>
 
-  <label className={`${styles.label} ${styles.col2}`}>
-    <span>Téléphone</span>
+  <label className={`${styles.label} ${styles.col2} ${styles.phoneField}`}>
+    <span className={styles.labelPill}>Téléphone</span>
     <input
       className={styles.input}
       value={draft.phone}
@@ -1032,7 +1032,7 @@ const exportCsv = () => {
 
 
   <label className={`${styles.label} ${styles.starField} ${styles.col1}`}>
-    <span>Important</span>
+    <span className={styles.labelPill}>Important</span>
     <button
       type="button"
       className={styles.starToggle}
@@ -1049,8 +1049,8 @@ const exportCsv = () => {
   </label>
 
   {/* Ligne 2 */}
-  <label className={`${styles.label} ${styles.col2}`}>
-    <span>Mail</span>
+  <label className={`${styles.label} ${styles.col2} ${styles.mailField}`}>
+    <span className={styles.labelPill}>Mail</span>
     <input
       className={styles.input}
       value={draft.email}
@@ -1095,8 +1095,8 @@ const exportCsv = () => {
   </label>
 
 
-  <label className={`${styles.label} ${styles.col3}`}>
-    <span>Notes</span>
+  <label className={`${styles.label} ${styles.col3} ${styles.notesField}`}>
+    <span className={styles.labelPill}>Notes</span>
     <input
       className={styles.input}
       value={draft.notes}
@@ -1595,7 +1595,7 @@ const exportCsv = () => {
                 <th>Nom Prénom / RS</th>
                 <th>Mail</th>
                 <th>Téléphone</th>
-<th>CP</th>
+<th className={styles.thCp}>CP</th>
                 <th>Catégorie</th>
                 <th>Type</th>
 <th className={styles.thStar}>⭐</th>
@@ -1621,10 +1621,10 @@ const exportCsv = () => {
                         aria-label={`Sélectionner ${buildDisplayName(c)}`}
                       />
                     </td>
-                    <td>{buildDisplayName(c)}</td>
+                    <td className={importantIds.has(c.id) ? styles.nameImportant : undefined}>{buildDisplayName(c)}</td>
                     <td className={styles.mono}>{c.email}</td>
                     <td className={styles.mono}>{c.phone}</td>
-<td className={styles.mono}>{c.postal_code ?? ""}</td>
+<td className={`${styles.mono} ${styles.tdCp}`}>{c.postal_code ?? ""}</td>
                     <td>
                       {c.category ? (
                         <span className={categoryBadgeClass(c.category)}>{CATEGORY_LABEL[c.category as Exclude<Category, "">]}</span>
@@ -1639,7 +1639,7 @@ const exportCsv = () => {
                         <span className={styles.dash}>—</span>
                       )}
                     </td>
-<td>
+<td className={styles.tdStar}>
                       {importantIds.has(c.id) ? (
                         <span className={styles.starStatic} title="Important" aria-label="Important">★</span>
                       ) : null}
