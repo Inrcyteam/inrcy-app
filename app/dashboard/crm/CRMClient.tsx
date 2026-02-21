@@ -1188,145 +1188,293 @@ const exportCsv = () => {
 
             {error ? <div className={styles.error}>{error}</div> : null}
 
-            <div className={`${styles.formGrid} ${styles.modalFormGrid}`}>
-              {/* Ligne 1 */}
-              <label className={`${styles.label} ${styles.col3} ${styles.fName}`}>
-                <span>Nom Prénom / Raison sociale</span>
-                <input
-                  className={styles.input}
-                  value={draft.display_name}
-                  onChange={(e) => setDraft((s) => ({ ...s, display_name: e.target.value }))}
-                  placeholder="Dupont Marie / SAS Exemple"
-                  autoComplete="name"
-                />
-              </label>
+            {/*
+              Responsive (mobile): formulaire "détaché" du desktop.
+              On garde les mêmes champs mais une construction/grille dédiée,
+              pour garantir l'ordre demandé sur petits écrans.
+            */}
+            {isResponsive ? (
+              <div className={styles.mobileModalForm}>
+                {/* Ligne 1: Nom/RS + SIREN */}
+                <label className={`${styles.label} ${styles.mfName} ${styles.fName}`}>
+                  <span>Nom Prénom / Raison sociale</span>
+                  <input
+                    className={styles.input}
+                    value={draft.display_name}
+                    onChange={(e) => setDraft((s) => ({ ...s, display_name: e.target.value }))}
+                    placeholder="Dupont Marie / SAS Exemple"
+                    autoComplete="name"
+                  />
+                </label>
 
-              <label className={`${styles.label} ${styles.col2} ${styles.fSiren}`}>
-                <span>SIREN</span>
-                <input
-                  className={styles.input}
-                  value={draft.siret}
-                  onChange={(e) => setDraft((s) => ({ ...s, siret: e.target.value }))}
-                  placeholder="123 456 789"
-                  inputMode="numeric"
-                />
-              </label>
+                <label className={`${styles.label} ${styles.mfSiren} ${styles.fSiren}`}>
+                  <span>SIREN</span>
+                  <input
+                    className={styles.input}
+                    value={draft.siret}
+                    onChange={(e) => setDraft((s) => ({ ...s, siret: e.target.value }))}
+                    placeholder="123 456 789"
+                    inputMode="numeric"
+                  />
+                </label>
 
-              <label className={`${styles.label} ${styles.col2} ${styles.fCategory}`}>
-                <span>Catégorie</span>
-                <select
-                  className={styles.select}
-                  value={draft.category}
-                  onChange={(e) => setDraft((s) => ({ ...s, category: e.target.value as Category }))}
-                >
-                  <option value="">—</option>
-                  <option value="particulier">Particulier</option>
-                  <option value="professionnel">Professionnel</option>
-                  <option value="collectivite_publique">Institution</option>
-                </select>
-              </label>
+                {/* Ligne 2: Catégorie + Type + Important */}
+                <label className={`${styles.label} ${styles.mfCategory} ${styles.fCategory}`}>
+                  <span>Catégorie</span>
+                  <select
+                    className={styles.select}
+                    value={draft.category}
+                    onChange={(e) => setDraft((s) => ({ ...s, category: e.target.value as Category }))}
+                  >
+                    <option value="">—</option>
+                    <option value="particulier">Particulier</option>
+                    <option value="professionnel">Professionnel</option>
+                    <option value="collectivite_publique">Institution</option>
+                  </select>
+                </label>
 
-              <label className={`${styles.label} ${styles.col2} ${styles.fType}`}>
-                <span>Type</span>
-                <select
-                  className={styles.select}
-                  value={draft.contact_type}
-                  onChange={(e) => setDraft((s) => ({ ...s, contact_type: e.target.value as ContactType }))}
-                >
-                  <option value="">—</option>
-                  <option value="client">Client</option>
-                  <option value="prospect">Prospect</option>
-                  <option value="fournisseur">Fournisseur</option>
-                  <option value="partenaire">Partenaire</option>
-                  <option value="autre">Autre</option>
-                </select>
-              </label>
+                <label className={`${styles.label} ${styles.mfType} ${styles.fType}`}>
+                  <span>Type</span>
+                  <select
+                    className={styles.select}
+                    value={draft.contact_type}
+                    onChange={(e) => setDraft((s) => ({ ...s, contact_type: e.target.value as ContactType }))}
+                  >
+                    <option value="">—</option>
+                    <option value="client">Client</option>
+                    <option value="prospect">Prospect</option>
+                    <option value="fournisseur">Fournisseur</option>
+                    <option value="partenaire">Partenaire</option>
+                    <option value="autre">Autre</option>
+                  </select>
+                </label>
 
-              {/* Ligne 2 */}
-              <label className={`${styles.label} ${styles.col2} ${styles.phoneField} ${styles.fPhone}`}>
-                <span>Téléphone</span>
-                <input
-                  className={styles.input}
-                  value={draft.phone}
-                  onChange={(e) => setDraft((s) => ({ ...s, phone: e.target.value }))}
-                  placeholder="06 00 00 00 00"
-                  autoComplete="tel"
-                />
-              </label>
+                <label className={`${styles.label} ${styles.mfImportant} ${styles.fImportant}`}>
+                  <span>Important</span>
+                  <button
+                    type="button"
+                    className={styles.starToggle}
+                    onClick={() => {
+                      if (editingId) toggleImportant(editingId);
+                      setDraft((s) => ({ ...s, important: !s.important }));
+                    }}
+                    aria-pressed={draft.important ? "true" : "false"}
+                    title={draft.important ? "Contact important" : "Marquer comme important"}
+                  >
+                    {draft.important ? "★" : "☆"}
+                  </button>
+                </label>
 
-              <label className={`${styles.label} ${styles.col2} ${styles.mailField} ${styles.fMail}`}>
-                <span>Mail</span>
-                <input
-                  className={styles.input}
-                  value={draft.email}
-                  onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
-                  placeholder="marie@exemple.fr"
-                  autoComplete="email"
-                />
-              </label>
+                {/* Ligne 3: Téléphone + Mail */}
+                <label className={`${styles.label} ${styles.mfPhone} ${styles.fPhone}`}>
+                  <span>Téléphone</span>
+                  <input
+                    className={styles.input}
+                    value={draft.phone}
+                    onChange={(e) => setDraft((s) => ({ ...s, phone: e.target.value }))}
+                    placeholder="06 00 00 00 00"
+                    autoComplete="tel"
+                  />
+                </label>
 
-              <label className={`${styles.label} ${styles.starField} ${styles.col1} ${styles.fImportant}`}>
-                <span>Important</span>
-                <button
-                  type="button"
-                  className={styles.starToggle}
-                  onClick={() => {
-                    if (editingId) toggleImportant(editingId);
-                    setDraft((s) => ({ ...s, important: !s.important }));
-                  }}
-                  aria-pressed={draft.important ? "true" : "false"}
-                  title={draft.important ? "Contact important" : "Marquer comme important"}
-                >
-                  {draft.important ? "★" : "☆"}
-                </button>
-              </label>
+                <label className={`${styles.label} ${styles.mfMail} ${styles.fMail}`}>
+                  <span>Mail</span>
+                  <input
+                    className={styles.input}
+                    value={draft.email}
+                    onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
+                    placeholder="marie@exemple.fr"
+                    autoComplete="email"
+                  />
+                </label>
 
-              {/* Ligne 3 */}
-              <label className={`${styles.label} ${styles.col3} ${styles.fAddress}`}>
-                <span>Adresse</span>
-                <input
-                  className={styles.input}
-                  value={draft.address}
-                  onChange={(e) => setDraft((s) => ({ ...s, address: e.target.value }))}
-                  placeholder="12 rue ..."
-                  autoComplete="street-address"
-                />
-              </label>
+                {/* Ligne 4: Adresse + Ville + CP */}
+                <label className={`${styles.label} ${styles.mfAddress} ${styles.fAddress}`}>
+                  <span>Adresse</span>
+                  <input
+                    className={styles.input}
+                    value={draft.address}
+                    onChange={(e) => setDraft((s) => ({ ...s, address: e.target.value }))}
+                    placeholder="12 rue ..."
+                    autoComplete="street-address"
+                  />
+                </label>
 
-              <label className={`${styles.label} ${styles.col2} ${styles.fCity}`}>
-                <span>Ville</span>
-                <input
-                  className={styles.input}
-                  value={draft.city}
-                  onChange={(e) => setDraft((s) => ({ ...s, city: e.target.value }))}
-                  placeholder="Paris"
-                  autoComplete="address-level2"
-                />
-              </label>
+                <label className={`${styles.label} ${styles.mfCity} ${styles.fCity}`}>
+                  <span>Ville</span>
+                  <input
+                    className={styles.input}
+                    value={draft.city}
+                    onChange={(e) => setDraft((s) => ({ ...s, city: e.target.value }))}
+                    placeholder="Paris"
+                    autoComplete="address-level2"
+                  />
+                </label>
 
-              <label className={`${styles.label} ${styles.col2} ${styles.fCP}`}>
-                <span>CP</span>
-                <input
-                  className={styles.input}
-                  value={draft.postal_code}
-                  onChange={(e) => setDraft((s) => ({ ...s, postal_code: e.target.value }))}
-                  placeholder="75000"
-                  inputMode="numeric"
-                  autoComplete="postal-code"
-                />
-              </label>
+                <label className={`${styles.label} ${styles.mfCP} ${styles.fCP}`}>
+                  <span>CP</span>
+                  <input
+                    className={styles.input}
+                    value={draft.postal_code}
+                    onChange={(e) => setDraft((s) => ({ ...s, postal_code: e.target.value }))}
+                    placeholder="75000"
+                    inputMode="numeric"
+                    autoComplete="postal-code"
+                  />
+                </label>
 
-              {/* Ligne 4 */}
-              <label className={`${styles.label} ${styles.col6} ${styles.fNotes}`}>
-                <span>Notes</span>
-                <textarea
-                  className={styles.textarea}
-                  value={draft.notes}
-                  onChange={(e) => setDraft((s) => ({ ...s, notes: e.target.value }))}
-                  placeholder="Notes internes"
-                />
-              </label>
-            </div>
+                {/* Ligne 5: Notes */}
+                <label className={`${styles.label} ${styles.mfNotes} ${styles.fNotes}`}>
+                  <span>Notes</span>
+                  <textarea
+                    className={styles.textarea}
+                    value={draft.notes}
+                    onChange={(e) => setDraft((s) => ({ ...s, notes: e.target.value }))}
+                    placeholder="Notes internes"
+                  />
+                </label>
+              </div>
+            ) : (
+              <div className={`${styles.formGrid} ${styles.modalFormGrid}`}>
+                {/* Ligne 1 */}
+                <label className={`${styles.label} ${styles.col3} ${styles.fName}`}>
+                  <span>Nom Prénom / Raison sociale</span>
+                  <input
+                    className={styles.input}
+                    value={draft.display_name}
+                    onChange={(e) => setDraft((s) => ({ ...s, display_name: e.target.value }))}
+                    placeholder="Dupont Marie / SAS Exemple"
+                    autoComplete="name"
+                  />
+                </label>
+
+                <label className={`${styles.label} ${styles.col2} ${styles.fSiren}`}>
+                  <span>SIREN</span>
+                  <input
+                    className={styles.input}
+                    value={draft.siret}
+                    onChange={(e) => setDraft((s) => ({ ...s, siret: e.target.value }))}
+                    placeholder="123 456 789"
+                    inputMode="numeric"
+                  />
+                </label>
+
+                <label className={`${styles.label} ${styles.col2} ${styles.fCategory}`}>
+                  <span>Catégorie</span>
+                  <select
+                    className={styles.select}
+                    value={draft.category}
+                    onChange={(e) => setDraft((s) => ({ ...s, category: e.target.value as Category }))}
+                  >
+                    <option value="">—</option>
+                    <option value="particulier">Particulier</option>
+                    <option value="professionnel">Professionnel</option>
+                    <option value="collectivite_publique">Institution</option>
+                  </select>
+                </label>
+
+                <label className={`${styles.label} ${styles.col2} ${styles.fType}`}>
+                  <span>Type</span>
+                  <select
+                    className={styles.select}
+                    value={draft.contact_type}
+                    onChange={(e) => setDraft((s) => ({ ...s, contact_type: e.target.value as ContactType }))}
+                  >
+                    <option value="">—</option>
+                    <option value="client">Client</option>
+                    <option value="prospect">Prospect</option>
+                    <option value="fournisseur">Fournisseur</option>
+                    <option value="partenaire">Partenaire</option>
+                    <option value="autre">Autre</option>
+                  </select>
+                </label>
+
+                {/* Ligne 2 */}
+                <label className={`${styles.label} ${styles.col2} ${styles.phoneField} ${styles.fPhone}`}>
+                  <span>Téléphone</span>
+                  <input
+                    className={styles.input}
+                    value={draft.phone}
+                    onChange={(e) => setDraft((s) => ({ ...s, phone: e.target.value }))}
+                    placeholder="06 00 00 00 00"
+                    autoComplete="tel"
+                  />
+                </label>
+
+                <label className={`${styles.label} ${styles.col2} ${styles.mailField} ${styles.fMail}`}>
+                  <span>Mail</span>
+                  <input
+                    className={styles.input}
+                    value={draft.email}
+                    onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
+                    placeholder="marie@exemple.fr"
+                    autoComplete="email"
+                  />
+                </label>
+
+                <label className={`${styles.label} ${styles.starField} ${styles.col1} ${styles.fImportant}`}>
+                  <span>Important</span>
+                  <button
+                    type="button"
+                    className={styles.starToggle}
+                    onClick={() => {
+                      if (editingId) toggleImportant(editingId);
+                      setDraft((s) => ({ ...s, important: !s.important }));
+                    }}
+                    aria-pressed={draft.important ? "true" : "false"}
+                    title={draft.important ? "Contact important" : "Marquer comme important"}
+                  >
+                    {draft.important ? "★" : "☆"}
+                  </button>
+                </label>
+
+                {/* Ligne 3 */}
+                <label className={`${styles.label} ${styles.col3} ${styles.fAddress}`}>
+                  <span>Adresse</span>
+                  <input
+                    className={styles.input}
+                    value={draft.address}
+                    onChange={(e) => setDraft((s) => ({ ...s, address: e.target.value }))}
+                    placeholder="12 rue ..."
+                    autoComplete="street-address"
+                  />
+                </label>
+
+                <label className={`${styles.label} ${styles.col2} ${styles.fCity}`}>
+                  <span>Ville</span>
+                  <input
+                    className={styles.input}
+                    value={draft.city}
+                    onChange={(e) => setDraft((s) => ({ ...s, city: e.target.value }))}
+                    placeholder="Paris"
+                    autoComplete="address-level2"
+                  />
+                </label>
+
+                <label className={`${styles.label} ${styles.col2} ${styles.fCP}`}>
+                  <span>CP</span>
+                  <input
+                    className={styles.input}
+                    value={draft.postal_code}
+                    onChange={(e) => setDraft((s) => ({ ...s, postal_code: e.target.value }))}
+                    placeholder="75000"
+                    inputMode="numeric"
+                    autoComplete="postal-code"
+                  />
+                </label>
+
+                {/* Ligne 4 */}
+                <label className={`${styles.label} ${styles.col6} ${styles.fNotes}`}>
+                  <span>Notes</span>
+                  <textarea
+                    className={styles.textarea}
+                    value={draft.notes}
+                    onChange={(e) => setDraft((s) => ({ ...s, notes: e.target.value }))}
+                    placeholder="Notes internes"
+                  />
+                </label>
+              </div>
+            )}
 
             <div className={styles.modalFooter}>
               <button type="button" className={styles.ghostBtn} onClick={() => setAddOpen(false)}>
@@ -1606,10 +1754,81 @@ const exportCsv = () => {
         {loading ? <div className={styles.muted}>Chargement...</div> : null}
 
         <div className={styles.tableWrap}>
-          <table className={styles.table}>
-                        <thead>
-              <tr>
-                {!isResponsive && (
+          {/*
+            Responsive (mobile): tableau "détaché" du desktop.
+            On garde les mêmes infos mais une construction différente (grid) pour coller au design.
+          */}
+          {isResponsive ? (
+            <div className={styles.mobileTable}>
+              <div className={styles.mobileHead}>
+                <div className={styles.mhName}>Nom Prénom / RS</div>
+                <div className={styles.mhMail}>Mail</div>
+                <div className={styles.mhTel}>Tél</div>
+                <div className={styles.mhCat}>Cat</div>
+                <div className={styles.mhType}>Type</div>
+                <div className={styles.mhStar}>Imp</div>
+              </div>
+
+              {filtered.length === 0 ? (
+                <div className={styles.mobileEmpty}>Aucun contact pour le moment.</div>
+              ) : (
+                filtered.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`${styles.mobileRow} ${selectedContactIds.has(c.id) ? styles.mobileRowSelected : ""}`.trim()}
+                    onClick={() => toggleSelect(c.id)}
+                    onDoubleClick={() => startEdit(c)}
+                    role="row"
+                    aria-label={buildDisplayName(c)}
+                  >
+                    <div className={`${styles.mcName} ${importantIds.has(c.id) ? styles.nameImportant : ""}`.trim()}>
+                      {buildDisplayName(c)}
+                    </div>
+                    <div className={`${styles.mcMail} ${styles.mono}`.trim()} title={c.email}>
+                      {c.email}
+                    </div>
+                    <div className={`${styles.mcTel} ${styles.mono}`.trim()} title={c.phone}>
+                      {c.phone}
+                    </div>
+                    <div className={styles.mcCat}>
+                      {c.category ? (
+                        <span className={categoryBadgeClass(c.category)}>
+                          <span className={styles.badgeLabelShort}>
+                            {CATEGORY_LABEL_SHORT[c.category as Exclude<Category, "">]}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className={styles.dash}>—</span>
+                      )}
+                    </div>
+                    <div className={styles.mcType}>
+                      {c.contact_type ? (
+                        <span className={typeBadgeClass(c.contact_type)}>
+                          <span className={styles.badgeLabelShort}>
+                            {TYPE_LABEL_SHORT[c.contact_type as Exclude<ContactType, "">]}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className={styles.dash}>—</span>
+                      )}
+                    </div>
+                    <div className={styles.mcStar}>
+                      {importantIds.has(c.id) ? (
+                        <span className={styles.starStatic} title="Important" aria-label="Important">
+                          ★
+                        </span>
+                      ) : (
+                        <span className={styles.dash}> </span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : (
+            <table className={styles.table}>
+              <thead>
+                <tr>
                   <th className={styles.thSelect}>
                     <input
                       type="checkbox"
@@ -1620,77 +1839,88 @@ const exportCsv = () => {
                       aria-label="Sélectionner tous les contacts filtrés"
                     />
                   </th>
-                )}
-                <th className={styles.thName}>
-                  <span className={styles.colLabelFull}>Nom Prénom / RS</span>
-                  <span className={styles.colLabelShort}>Nom/RS</span>
-                </th>
-                <th className={styles.thMail}>Mail</th>
-                <th className={styles.thTel}>
-                  <span className={styles.colLabelFull}>Téléphone</span>
-                  <span className={styles.colLabelShort}>Tél</span>
-                </th>
-                <th className={styles.thCp}>CP</th>
-                <th className={styles.thCat}>
-                  <span className={styles.colLabelFull}>Catégorie</span>
-                  <span className={styles.colLabelShort}>Cat</span>
-                </th>
-                <th className={styles.thType}>
-                  <span className={styles.colLabelFull}>Type</span>
-                  <span className={styles.colLabelShort}>Typ</span>
-                </th>
-                <th className={styles.thStar}>⭐</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={isResponsive ? 6 : 8} className={styles.empty}>
-                    Aucun contact pour le moment.
-                  </td>
+                  <th className={styles.thName}>Nom Prénom / RS</th>
+                  <th className={styles.thMail}>Mail</th>
+                  <th className={styles.thTel}>Téléphone</th>
+                  <th className={styles.thCp}>CP</th>
+                  <th className={styles.thCat}>Catégorie</th>
+                  <th className={styles.thType}>Type</th>
+                  <th className={styles.thStar}>⭐</th>
                 </tr>
-              ) : (
-                                filtered.map((c) => (
-                  <tr key={c.id} className={selectedContactIds.has(c.id) ? styles.rowSelected : undefined} onClick={() => (isResponsive ? toggleSelect(c.id) : startEdit(c))} onDoubleClick={() => (isResponsive ? startEdit(c) : undefined)} style={{ cursor: "pointer" }}>
-                    {!isResponsive && (<td className={styles.tdSelect}>
-                      <input
-                        type="checkbox"
-                        className={styles.checkbox}
-                        checked={selectedContactIds.has(c.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={() => toggleSelect(c.id)}
-                        aria-label={`Sélectionner ${buildDisplayName(c)}`}
-                      />
-                    </td>)}
-                    <td className={`${styles.tdName} ${importantIds.has(c.id) ? styles.nameImportant : ""}`.trim()}>{buildDisplayName(c)}</td>
-                    <td className={`${styles.mono} ${styles.tdMail}`}>{c.email}</td>
-                    <td className={`${styles.mono} ${styles.tdTel}`}>{c.phone}</td>
-                    <td className={`${styles.mono} ${styles.tdCp}`}>{c.postal_code ?? ""}</td>
-                    <td className={styles.tdCat}>
-                      {c.category ? (
-                        <span className={categoryBadgeClass(c.category)}><span className={styles.badgeLabelFull}>{CATEGORY_LABEL[c.category as Exclude<Category, "">]}</span><span className={styles.badgeLabelShort}>{CATEGORY_LABEL_SHORT[c.category as Exclude<Category, "">]}</span></span>
-                      ) : (
-                        <span className={styles.dash}>—</span>
-                      )}
-                    </td>
-                    <td>
-                      {c.contact_type ? (
-                        <span className={typeBadgeClass(c.contact_type)}><span className={styles.badgeLabelFull}>{TYPE_LABEL[c.contact_type as Exclude<ContactType, "">]}</span><span className={styles.badgeLabelShort}>{TYPE_LABEL_SHORT[c.contact_type as Exclude<ContactType, "">]}</span></span>
-                      ) : (
-                        <span className={styles.dash}>—</span>
-                      )}
-                    </td>
-<td className={styles.tdStar}>
-                      {importantIds.has(c.id) ? (
-                        <span className={styles.starStatic} title="Important" aria-label="Important">★</span>
-                      ) : null}
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className={styles.empty}>
+                      Aucun contact pour le moment.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>        
+                ) : (
+                  filtered.map((c) => (
+                    <tr
+                      key={c.id}
+                      className={selectedContactIds.has(c.id) ? styles.rowSelected : undefined}
+                      onClick={() => startEdit(c)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <td className={styles.tdSelect}>
+                        <input
+                          type="checkbox"
+                          className={styles.checkbox}
+                          checked={selectedContactIds.has(c.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => toggleSelect(c.id)}
+                          aria-label={`Sélectionner ${buildDisplayName(c)}`}
+                        />
+                      </td>
+                      <td className={`${styles.tdName} ${importantIds.has(c.id) ? styles.nameImportant : ""}`.trim()}>
+                        {buildDisplayName(c)}
+                      </td>
+                      <td className={`${styles.mono} ${styles.tdMail}`}>{c.email}</td>
+                      <td className={`${styles.mono} ${styles.tdTel}`}>{c.phone}</td>
+                      <td className={`${styles.mono} ${styles.tdCp}`}>{c.postal_code ?? ""}</td>
+                      <td className={styles.tdCat}>
+                        {c.category ? (
+                          <span className={categoryBadgeClass(c.category)}>
+                            <span className={styles.badgeLabelFull}>
+                              {CATEGORY_LABEL[c.category as Exclude<Category, "">]}
+                            </span>
+                            <span className={styles.badgeLabelShort}>
+                              {CATEGORY_LABEL_SHORT[c.category as Exclude<Category, "">]}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className={styles.dash}>—</span>
+                        )}
+                      </td>
+                      <td>
+                        {c.contact_type ? (
+                          <span className={typeBadgeClass(c.contact_type)}>
+                            <span className={styles.badgeLabelFull}>
+                              {TYPE_LABEL[c.contact_type as Exclude<ContactType, "">]}
+                            </span>
+                            <span className={styles.badgeLabelShort}>
+                              {TYPE_LABEL_SHORT[c.contact_type as Exclude<ContactType, "">]}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className={styles.dash}>—</span>
+                        )}
+                      </td>
+                      <td className={styles.tdStar}>
+                        {importantIds.has(c.id) ? (
+                          <span className={styles.starStatic} title="Important" aria-label="Important">
+                            ★
+                          </span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
       </section>
     </div>
   );

@@ -294,6 +294,43 @@
   background: rgba(0,0,0,.28);
 }
 
+/* =========================
+   Mobile modal form (detached from desktop)
+   Goal: keep a stable, explicit field order on small screens.
+   ========================= */
+
+.mobileModalForm{
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* Row 1: Name + SIREN */
+.mfName{ grid-column: span 8; }
+.mfSiren{ grid-column: span 4; }
+
+/* Row 2: Cat + Type + Important */
+.mfCategory{ grid-column: span 4; }
+.mfType{ grid-column: span 4; }
+.mfImportant{ grid-column: span 4; }
+
+/* Row 3: Phone + Mail */
+.mfPhone{ grid-column: span 5; }
+.mfMail{ grid-column: span 7; }
+
+/* Row 4: Address + City + CP */
+.mfAddress{ grid-column: span 6; }
+.mfCity{ grid-column: span 3; }
+.mfCP{ grid-column: span 3; }
+
+/* Row 5: Notes */
+.mfNotes{ grid-column: 1 / -1; }
+
+@media (max-width: 760px){
+  /* Keep same 12-col logic in the modal; avoid inheriting desktop formGrid overrides */
+  .mobileModalForm{ grid-template-columns: repeat(12, minmax(0, 1fr)); }
+}
+
 .input::placeholder,.search::placeholder{ color: rgba(255,255,255,.42); }
 
 .input:focus,.select:focus,.search:focus{
@@ -357,7 +394,6 @@
 .table{
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
   min-width: 720px;
 }
 
@@ -457,82 +493,6 @@
   .cardHead{ flex-direction: column; align-items: flex-start; }
   .cardActions{ width: 100%; }
   .primaryBtn, .ghostBtn{ width: 100%; justify-content: center; }
-  /* ===== Table responsive tweaks ===== */
-  .table{ min-width: 0; }
-  .table th, .table td{ padding: 10px 8px; }
-  /* start name closer to left edge (checkbox column hidden in JSX) */
-  .thName, .tdName{ padding-left: 6px !important; }
-  /* Cat header short label */
-  .colLabelFull{ display:none; }
-  .colLabelShort{ display:inline; }
-
-  /* Keep Important at the very end */
-  .thStar, .tdStar{ width: 42px; }
-
-  /* Mobile: the CRM table must fit the full width (no horizontal scroll) */
-  .tableWrap{ overflow: hidden; }
-  .table{ table-layout: fixed; width: 100%; }
-  .table th, .table td{ font-size: 12px; }
-
-  /* Hide CP in mobile to keep 6 columns max (Name, Mail, Tel, Cat, Type, ⭐) */
-  .thCp, .tdCp{ display:none; }
-
-  /* Column widths (sum ~100%) */
-  .thName, .tdName{ width: 30%; }
-  .thMail, .tdMail{ width: 22%; }
-  .thTel, .tdTel{ width: 18%; }
-  .thType{ width: 14%; }
-
-  /* Prevent long values from blowing up the layout */
-  .tdName, .tdMail, .tdTel{
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-}
-
-
-/* =========================
-   Mobile hotfixes (Feb 2026)
-   - CP next to Ville in modal (class fCP)
-   - Table: give Catégorie more room + shift first cols to the right
-   - Toolbar: put "Désélectionner" on same row as 🗑️ + Actions
-   ========================= */
-
-@media (max-width: 760px){
-  /* --- Toolbar row --- */
-  .bulkActions{
-    width: 100%;
-    flex-wrap: nowrap;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 10px;
-  }
-
-  /* Undo the generic "100% width" buttons rule for this row */
-  .bulkActions .ghostBtn{ width: auto !important; justify-content: center; }
-  .bulkActions .dangerBtn{ width: 44px !important; padding-left: 0; padding-right: 0; }
-
-  /* Let the Actions dropdown take remaining space */
-  .actionsWrap{ flex: 1; min-width: 170px; }
-  .actionsBtn{ width: 100%; justify-content: center; }
-
-  /* --- Table columns (responsive view has no select column, and CP is hidden) --- */
-  .table{ width: 100% !important; table-layout: fixed !important; }
-
-  /* More breathing room for the first 3 columns */
-  .thName, .tdName{ padding-left: 14px !important; }
-  .thMail, .tdMail{ padding-left: 12px !important; }
-  .thTel, .tdTel{ padding-left: 12px !important; }
-
-  /* Widths (Name, Mail, Tel, Cat, Type, Star) */
-  .thName, .tdName{ width: 32% !important; }
-  .thMail, .tdMail{ width: 24% !important; }
-  .thTel, .tdTel{ width: 16% !important; }
-  .thCat, .tdCat{ width: 16% !important; }
-  .thType{ width: 12% !important; }
-  .thStar, .tdStar{ width: 44px !important; }
 }
 
 @media (max-width: 900px){
@@ -1012,36 +972,19 @@
 }
 
 /* Selection column */
-.thSelect{ width: 44px; padding: 0; text-align: center; }
-.tdSelect{ width: 44px; padding: 0; text-align: center; }
+.thSelect{ width: 44px; }
+.tdSelect{ width: 44px; }
 
-
-/* Column labels (responsive) */
-.colLabelFull{ display: inline; }
-.colLabelShort{ display: none; }
-
-/* Name column spacing (responsive tweaks) */
-.thName{}
-.tdName{}
 /* Columns (for responsive-only tweaks) */
 .thCp{}
 .tdCp{}
-.thMail{}
-.tdMail{}
-.thTel{}
-.tdTel{}
-.thType{}
 .thStar{ width: 54px; text-align: center; }
 .tdStar{ text-align: center; }
-.thCat{}
-.tdCat{}
 .nameImportant{}
 
 .checkbox{
   width: 16px;
   height: 16px;
-  display: block;
-  margin: 0 auto;
   accent-color: rgb(56,189,248);
   cursor: pointer;
 }
@@ -1255,8 +1198,8 @@
 
 /* Selection visuals */
 .checkbox{
-  width: 6px;
-  height: 6px;
+  width: 16px;
+  height: 16px;
   accent-color: rgb(56,189,248);
 }
 
@@ -1295,26 +1238,6 @@
 .col4{ grid-column: span 4; }
 .col6{ grid-column: span 6; }
 
-/* Mobile modal form (Ajouter/Modifier un contact)
-   We keep a 12-column grid even on small screens so fields stay grouped:
-   L1: Nom/RS + SIREN + Catégorie + Type
-   L2: Téléphone + Mail + Important
-   L3: Adresse + Ville + CP
-   L4: Notes
-*/
-.modalFormGrid{ }
-.fName{ }
-.fSiren{ }
-.fCategory{ }
-.fType{ }
-.fPhone{ }
-.fMail{ }
-.fImportant{ }
-.fAddress{ }
-.fCity{ }
-.fCp{ }
-.fNotes{ }
-
 .selectSoft{
   background: rgba(255,255,255,.88) !important;
   color: rgba(10,12,18,0.92) !important;
@@ -1347,28 +1270,6 @@
   .col3, .col4, .col5, .col6{ grid-column: 1 / -1; }
   .col2{ grid-column: span 3; }
   .col1{ grid-column: span 3; }
-
-  /* Mobile modal: enforce requested order & keep the compact grid */
-  .modalFormGrid{ grid-template-columns: repeat(12, minmax(0, 1fr)); }
-
-  /* Ligne 1 */
-  .modalFormGrid .fName{ grid-column: 1 / 7; }
-  .modalFormGrid .fSiren{ grid-column: 7 / 9; }
-  .modalFormGrid .fCategory{ grid-column: 9 / 11; }
-  .modalFormGrid .fType{ grid-column: 11 / 13; }
-
-  /* Ligne 2 */
-  .modalFormGrid .fPhone{ grid-column: 1 / 5; }
-  .modalFormGrid .fMail{ grid-column: 5 / 11; }
-  .modalFormGrid .fImportant{ grid-column: 11 / 13; }
-
-  /* Ligne 3 */
-  .modalFormGrid .fAddress{ grid-column: 1 / 7; }
-  .modalFormGrid .fCity{ grid-column: 7 / 10; }
-  .modalFormGrid .fCp{ grid-column: 10 / 13; }
-
-  /* Ligne 4 */
-  .modalFormGrid .fNotes{ grid-column: 1 / -1; }
 }
 
 
@@ -1719,6 +1620,101 @@
 }
 
 
+/* =========================
+   Mobile CRM table (detached from desktop)
+   Design goal: match the mobile sketch (columns aligned, badges in Cat/Type, Imp star)
+   ========================= */
+
+.mobileTable{
+  width: 100%;
+  /* Force readable text on glass background (some parent rules may set dark text) */
+  color: rgba(255,255,255,.90);
+}
+
+/* 6 columns: Nom | Mail | Tel | Cat | Type | Imp */
+.mobileHead,
+.mobileRow{
+  display: grid;
+  grid-template-columns: 2.25fr 2.05fr 1.25fr 1.15fr 1.15fr 0.65fr;
+  column-gap: 12px;
+  align-items: center;
+}
+
+.mobileHead{
+  padding: 16px 18px 14px;
+  color: rgba(255,255,255,.92);
+  font-weight: 700;
+  font-size: 14px;
+  border-bottom: 1px solid rgba(255,255,255,.10);
+}
+
+.mobileRow{
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  cursor: pointer;
+  color: rgba(255,255,255,.90);
+}
+
+.mobileRow:last-child{
+  border-bottom: 0;
+}
+
+.mobileRowSelected{
+  background: rgba(0,255,255,.06);
+}
+
+.mobileEmpty{
+  padding: 18px;
+  color: rgba(255,255,255,.62);
+}
+
+/* Cells: truncate nicely */
+.mcName,
+.mcMail,
+.mcTel{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcName{ font-weight: 700; }
+
+.mcMail,
+.mcTel{
+  color: rgba(255,255,255,.80);
+}
+
+.mcCat,
+.mcType,
+.mcStar{
+  color: rgba(255,255,255,.88);
+}
+
+.mcCat,
+.mcType,
+.mcStar{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mhCat,
+.mhType,
+.mhStar,
+.mhTel{
+  justify-self: center;
+}
+
+.mhStar{ opacity: .85; }
+
+@media (max-width: 760px){
+  /* Ensure mobile grid is truly full-width inside the glass container */
+  .tableWrap{ overflow: visible !important; }
+
+  /* Desktop table is not rendered on mobile (handled by TSX). */
+}
+
+
 
 
 /* Row actions (Mail / Devis / Facture) */
@@ -1955,30 +1951,14 @@
 
   .table{ min-width: 0; width: 100%; }
 
- .nameImportant{
+ .table .nameImportant{
   background: none;          /* ✅ supprime le surlignage */
   font-weight: 700;
   border-radius: 8px;
   position: relative;        /* nécessaire pour le point */
-
-  /* Narrow the checkbox (select) column on mobile */
-  .thSelect, .tdSelect{
-    width: 32px !important;
-    min-width: 32px !important;
-    max-width: 32px !important;
-    padding: 0 !important;
-    text-align: center;
-    box-sizing: border-box;
-  }
-  .thSelect .checkbox, .tdSelect .checkbox{
-    width: 14px;
-    height: 14px;
-    margin: 0 auto;
-    display: block;
-  }
 }
 
-.nameImportant::after{
+.table .nameImportant::after{
   content:"★";                 /* ⭐ l’étoile */
   position:absolute;
   left:50%;
@@ -1998,83 +1978,17 @@
   .starField{ grid-column: span 2; order: 3; }
 }
 
-
-
-/* Badge labels: abbreviations only on mobile */
-.badgeLabelShort { display: none; }
-.badgeLabelFull { display: inline; }
-
-@media (max-width: 760px){
-  .badgeLabelFull { display: none; }
-  .badgeLabelShort { display: inline; }
+/* Narrow the checkbox (select) column on mobile */
+.thSelect, .tdSelect{
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px;
+  padding-left: 6px;
+  padding-right: 6px;
+  text-align: center;
 }
 
-
-/* Form: show titles for Téléphone / Mail / Important */
-.phoneField .labelPill,
-.mailField .labelPill,
-.starField .labelPill {
-  display: inline-flex;
-}
-
-@media (max-width: 760px){
-  /* 3 bubbles on one row: Téléphone / Mail / Important */
-  .phoneField { grid-column: span 2; }
-  .mailField { grid-column: span 2; }
-  .starField { grid-column: span 2; }
-}
-
-
-/* =========================
-   Responsive form ordering (Feb 2026)
-   Mobile layout demandé :
-   L1: Nom/Prénom/RS + SIREN + Catégorie + Type
-   L2: Téléphone + Mail + Important
-   L3: Adresse + Ville + CP
-   L4: Notes
-   ========================= */
-
-.fName{}
-.fSiren{}
-.fCategory{}
-.fType{}
-.fPhone{}
-.fMail{}
-.fAddress{}
-.fCity{}
-.fCP{}
-.fNotes{}
-.fImportant{}
-.fActions{}
-
-@media (max-width: 760px){
-  /* Keep 12-col grid for precise placement */
-  .formGrid{
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-  }
-
-  .formGrid .fName{ grid-column: 1 / span 6 !important; grid-row: 1 !important; }
-  .formGrid .fSiren{ grid-column: 7 / span 2 !important; grid-row: 1 !important; }
-  .formGrid .fCategory{ grid-column: 9 / span 2 !important; grid-row: 1 !important; }
-  .formGrid .fType{ grid-column: 11 / span 2 !important; grid-row: 1 !important; }
-
-  .formGrid .fPhone{ grid-column: 1 / span 4 !important; grid-row: 2 !important; }
-  .formGrid .fMail{ grid-column: 5 / span 6 !important; grid-row: 2 !important; }
-  .formGrid .fImportant{ grid-column: 11 / span 2 !important; grid-row: 2 !important; }
-
-  .formGrid .fAddress{ grid-column: 1 / span 6 !important; grid-row: 3 !important; }
-  .formGrid .fCity{ grid-column: 7 / span 4 !important; grid-row: 3 !important; }
-  .formGrid .fCP{ grid-column: 11 / span 2 !important; grid-row: 3 !important; }
-
-  .formGrid .fNotes{ grid-column: 1 / -1 !important; grid-row: 4 !important; }
-
-  /* Actions under the form on mobile */
-  .formGrid .fActions{
-    grid-column: 1 / -1 !important;
-    grid-row: 5 !important;
-    justify-content: stretch;
-  }
-  .formGrid .fActions > button{
-    flex: 1;
-  }
+.thSelect .checkbox, .tdSelect .checkbox{
+  width: 14px;
+  height: 14px;
 }
