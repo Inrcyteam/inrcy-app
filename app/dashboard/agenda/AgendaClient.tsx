@@ -10,35 +10,23 @@ import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 // Reuse the exact same drawer + content as the Dashboard
 // Agenda iNrCy : calendrier natif (plus de connexion Google Agenda)
 
-type CrmContactCategory = "particulier" | "professionnel" | "collectivite_publique";
-type CrmContactType = "prospect" | "client" | "fournisseur" | "partenaire";
-
 type CrmContact = {
   id: string;
-
-  // identité
-  last_name?: string;
-  first_name?: string;
   display_name?: string;
+  last_name: string;
+  first_name: string;
   company_name?: string;
-
-  // coordonnées
-  email?: string;
-  phone?: string;
-  address?: string;
+  email: string;
+  phone: string;
+  address: string;
   city?: string;
   postal_code?: string;
-
-  // champs business
-  siret?: string;
-  category?: CrmContactCategory;
-  contact_type?: CrmContactType;
-  important?: boolean;
-
-  // divers
+  siren?: string;
+  category?: string;
+  contact_type?: string;
   notes?: string;
+  important?: boolean;
 };
-
 
 type EventItem = {
   id: string;
@@ -128,6 +116,23 @@ function accentFor(id: string) {
   return pick === 0 ? "cyan" : pick === 1 ? "purple" : pick === 2 ? "pink" : "orange";
 }
 
+function buildCrmDisplayName(firstName: string, lastName: string, companyName?: string) {
+  const left = [firstName ?? "", lastName ?? ""].join(" ").replace(/\s+/g, " ").trim();
+  const right = (companyName ?? "").trim();
+  if (left && right) return `${left} / ${right}`;
+  return left || right;
+}
+
+function parseCrmDisplayName(v: string) {
+  const raw = (v || "").trim();
+  if (!raw) return { last_name: "", first_name: "", company_name: "" };
+  const parts = raw.split("/");
+  const left = (parts[0] || "").trim();
+  const right = (parts.slice(1).join("/") || "").trim();
+  // Même convention que le CRM : tout le bloc "Nom Prénom" part dans last_name.
+  return { last_name: left, first_name: "", company_name: right };
+}
+
 export default function AgendaClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -178,7 +183,8 @@ const [rdvNewContactAddress, setRdvNewContactAddress] = useState<string>("");
 const [rdvNewContactCity, setRdvNewContactCity] = useState<string>("");
 const [rdvNewContactPostal, setRdvNewContactPostal] = useState<string>("");
 
-const [rdvNewContactSiret, setRdvNewContactSiret] = useState<string>("");
+
+const [rdvNewContactSiren, setRdvNewContactSiren] = useState<string>("");
 const [rdvNewContactCategory, setRdvNewContactCategory] = useState<"particulier" | "professionnel" | "collectivite_publique">("particulier");
 const [rdvNewContactType, setRdvNewContactType] = useState<"prospect" | "client" | "fournisseur" | "partenaire" | "autre">("prospect");
 const [rdvNewContactImportant, setRdvNewContactImportant] = useState<boolean>(false);
@@ -203,15 +209,17 @@ useEffect(() => {
   setRdvLocation(line);
 
   // Remplit le bloc "Coordonnées" (copie locale, ne modifie pas le CRM)
+  const dn = buildCrmDisplayName((c.first_name ?? "").trim(), (c.last_name ?? "").trim(), (c.company_name ?? "").trim());
+  setRdvNewContactName(dn);
+  // Champs historiques (on ne les affiche plus, mais on les garde pour compat)
   setRdvNewContactFirstName((c.first_name ?? "").trim());
-  setRdvNewContactName((c.last_name ?? "").trim());
   setRdvNewContactCompany((c.company_name ?? "").trim());
   setRdvNewContactEmail((c.email ?? "").trim());
   setRdvNewContactPhone((c.phone ?? "").trim());
   setRdvNewContactAddress((c.address ?? "").trim());
   setRdvNewContactCity((c.city ?? "").trim());
   setRdvNewContactPostal((c.postal_code ?? "").trim());
-  setRdvNewContactSiret((c.siret ?? "").trim());
+  setRdvNewContactSiren((c.siren ?? "").trim());
   setRdvNewContactCategory((c.category as any) || "particulier");
   setRdvNewContactType((c.contact_type as any) || "prospect");
   setRdvNewContactImportant(Boolean(c.important));
@@ -251,21 +259,6 @@ async function loadContacts() {
   setContactsLoading(false);
 }
 
-
-
-function persistCrmImportant(id: string, isImportant: boolean) {
-  try {
-    const key = "inrcy_crm_important_ids";
-    const raw = localStorage.getItem(key);
-    const arr = raw ? JSON.parse(raw) : [];
-    const next = new Set<string>(Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : []);
-    if (isImportant) next.add(id);
-    else next.delete(id);
-    localStorage.setItem(key, JSON.stringify(Array.from(next)));
-  } catch {
-    // ignore
-  }
-}
 function toDateOnly(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
@@ -315,7 +308,7 @@ function openCreateRdv(date: Date) {
   setRdvMode("create");
   setRdvEventId("");
   setRdvKind(viewKind);
-  setRdvSummary(viewKind === "intervention" ? "Intervention" : "Rendez-vous");
+  setRdvSummary("Évènement");
   setRdvDate(toDateOnly(date));
   setRdvStart("09:00");
   setRdvEnd("10:00");
@@ -336,7 +329,7 @@ function openCreateRdv(date: Date) {
   setRdvNewContactAddress("");
   setRdvNewContactCity("");
   setRdvNewContactPostal("");
-  setRdvError(null);
+setRdvError(null);
   setRdvOpen(true);
 }
 
@@ -397,7 +390,7 @@ async function ensureContact(): Promise<null | {
   address: string;
   city?: string;
   postal_code?: string;
-  siret?: string;
+  siren?: string;
   category?: any;
   contact_type?: any;
   notes?: string;
@@ -427,7 +420,7 @@ async function ensureContact(): Promise<null | {
       address,
       city: city || undefined,
       postal_code: postal_code || undefined,
-      siret: (c.siret ?? "").trim() || undefined,
+      siren: (c.siren ?? "").trim() || undefined,
       category: (c.category as any) || "particulier",
       contact_type: (c.contact_type as any) || "prospect",
       notes: (c.notes ?? "").trim() || undefined,
@@ -436,22 +429,20 @@ async function ensureContact(): Promise<null | {
   }
 
   // 2) Contact saisi dans le bloc Coordonnées (non enregistré automatiquement)
-  const lastName = rdvNewContactName.trim();
-  const firstName = rdvNewContactFirstName.trim();
-  const companyName = rdvNewContactCompany.trim();
+  const rawDisplayName = rdvNewContactName.trim();
+  const parsed = parseCrmDisplayName(rawDisplayName);
+  const lastName = parsed.last_name.trim();
+  const firstName = parsed.first_name.trim();
+  const companyName = parsed.company_name.trim();
   const email = rdvNewContactEmail.trim();
   const phone = rdvNewContactPhone.trim();
   const address = rdvNewContactAddress.trim();
   const city = rdvNewContactCity.trim();
   const postal_code = rdvNewContactPostal.trim();
 
-  if (!lastName && !firstName && !companyName && !email && !phone && !address) return null;
+  if (!rawDisplayName && !email && !phone && !address) return null;
 
-  const display_name =
-    (companyName ||
-      [firstName, lastName].filter(Boolean).join(" ").trim() ||
-      lastName ||
-      "Nouveau contact").trim();
+  const display_name = rawDisplayName || "Nouveau contact";
 
   return {
     display_name,
@@ -463,7 +454,7 @@ async function ensureContact(): Promise<null | {
     address,
     city: city || undefined,
     postal_code: postal_code || undefined,
-    siret: rdvNewContactSiret.trim() || undefined,
+    siren: rdvNewContactSiren.trim() || undefined,
     category: rdvNewContactCategory,
     contact_type: rdvNewContactType,
     notes: rdvNewContactNotes.trim() || undefined,
@@ -480,18 +471,20 @@ async function addContactToCrmFromCoords() {
       return;
     }
 
-    const firstName = rdvNewContactFirstName.trim();
-    const lastName = rdvNewContactName.trim();
-    const companyName = rdvNewContactCompany.trim();
+    const rawDisplayName = rdvNewContactName.trim();
+    const parsed = parseCrmDisplayName(rawDisplayName);
+    const firstName = parsed.first_name.trim();
+    const lastName = parsed.last_name.trim();
+    const companyName = parsed.company_name.trim();
     const email = rdvNewContactEmail.trim();
     const phone = rdvNewContactPhone.trim();
     const address = rdvNewContactAddress.trim();
     const city = rdvNewContactCity.trim();
     const postal_code = rdvNewContactPostal.trim();
-    const siret = rdvNewContactSiret.trim();
+    const siren = rdvNewContactSiren.trim();
     const notes = rdvNewContactNotes.trim();
 
-    const display_name = (companyName || [firstName, lastName].filter(Boolean).join(" ").trim() || lastName || "Nouveau contact").trim();
+    const display_name = (rawDisplayName || "Nouveau contact").trim();
 
     if (!display_name && !email && !phone) {
       setCrmAddFeedback("Renseigne au minimum un nom / email / téléphone");
@@ -520,22 +513,23 @@ async function addContactToCrmFromCoords() {
     const r = await fetch("/api/crm/contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        display_name,
-        first_name: firstName || undefined,
-        last_name: lastName || undefined,
-        company_name: companyName || undefined,
-        email,
-        phone,
-        address,
-        city: city || undefined,
-        postal_code: postal_code || undefined,
-        siret: siret || undefined,
-        category: rdvNewContactCategory,
-        contact_type: rdvNewContactType,
-        notes: notes || undefined,
-        important: rdvNewContactImportant,
-      }),
+body: JSON.stringify({
+  display_name,
+  first_name: firstName || undefined,
+  last_name: lastName || undefined,
+  company_name: companyName || undefined,
+  email,
+  phone,
+  address,
+  city: city || undefined,
+  postal_code: postal_code || undefined,
+  siren: siren || undefined,
+  category: rdvNewContactCategory,
+  contact_type: rdvNewContactType,
+  notes: notes || undefined,
+  important: rdvNewContactImportant,
+}),
+
     }).catch(() => null);
 
     const j = r ? await r.json().catch(() => ({})) : {};
@@ -545,33 +539,18 @@ async function addContactToCrmFromCoords() {
     const createdId = (j as any)?.id as string | undefined;
 
     // Si l’API renvoie l’id, on sélectionne directement le contact; sinon on tente de le retrouver
-    let finalId: string | undefined = createdId;
-
-    if (finalId) {
-      setRdvContactId(finalId);
+    if (createdId) {
+      setRdvContactId(createdId);
     } else {
       // fallback: recherche par email / téléphone / nom
       const updated = await fetch("/api/crm/contacts").then((x) => x.json()).catch(() => null);
       if (Array.isArray(updated)) {
-        const found = updated.find(
-          (c: any) =>
-            (email && (c.email ?? "").toLowerCase() === normEmail) ||
-            (normPhone && (c.phone ?? "").replace(/\D/g, "") === normPhone) ||
-            ((c.display_name ?? "").toLowerCase().trim() === display_name.toLowerCase()),
-        );
-        if (found?.id) {
-          finalId = found.id;
-          setRdvContactId(String(found.id));
-        }
+        const found = updated.find((c: any) => (email && (c.email ?? "").toLowerCase() === normEmail) || (normPhone && (c.phone ?? "").replace(/\D/g, "") === normPhone) || ((c.display_name ?? "").toLowerCase().trim() === display_name.toLowerCase()));
+        if (found?.id) setRdvContactId(found.id);
       }
     }
 
-    if (finalId) {
-      // Le CRM persiste l'étoile en localStorage (front-only)
-      persistCrmImportant(finalId, rdvNewContactImportant);
-    }
-
-setCrmAddFeedback("Ajouté au CRM ✅");
+    setCrmAddFeedback("Ajouté au CRM ✅");
   } catch (e: any) {
     setCrmAddFeedback(e?.message ?? "Erreur");
   }
@@ -589,22 +568,30 @@ async function submitRdv() {
   setRdvSaving(true);
   setRdvError(null);
   try {
-    if (!rdvSummary.trim()) throw new Error("Titre requis");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(rdvDate)) throw new Error("Date invalide");
-    if (!/^\d{2}:\d{2}$/.test(rdvStart) || !/^\d{2}:\d{2}$/.test(rdvEnd)) throw new Error("Heure invalide");
+    // Doit pouvoir s'enregistrer même si aucun champ n'est rempli → on applique des valeurs par défaut.
+    const safeSummary = rdvSummary.trim() || "Évènement";
 
-    const startIso = buildIso(rdvDate, rdvStart);
-    const endIso = buildIso(rdvDate, rdvEnd);
-    if (Date.parse(endIso) <= Date.parse(startIso)) throw new Error("L’heure de fin doit être après l’heure de début");
+    const safeDate = /^\d{4}-\d{2}-\d{2}$/.test(rdvDate) ? rdvDate : keyOf(selectedDate);
+    const safeStart = /^\d{2}:\d{2}$/.test(rdvStart) ? rdvStart : "09:00";
+    const safeEnd = /^\d{2}:\d{2}$/.test(rdvEnd) ? rdvEnd : "10:00";
 
+    const startIso = buildIso(safeDate, safeStart);
+    let endIso = buildIso(safeDate, safeEnd);
+
+    // Si fin <= début, on force +60 min
+    if (Date.parse(endIso) <= Date.parse(startIso)) {
+      const dt = new Date(Date.parse(startIso));
+      dt.setMinutes(dt.getMinutes() + 60);
+      endIso = dt.toISOString();
+    }
     const contact = await ensureContact();
 
-    const structuredLocation =
-      rdvKind === "intervention" ? composeAddressLine(rdvAddrStreet, rdvAddrPostal, rdvAddrCity) : rdvLocation.trim();
+    const coordsLocation = composeAddressLine(rdvNewContactAddress.trim(), rdvNewContactPostal.trim(), rdvNewContactCity.trim());
+    const structuredLocation = (rdvLocation.trim() || coordsLocation).trim();
 
     const payload: any = {
-      summary: rdvSummary.trim(),
-      location: structuredLocation,
+      summary: safeSummary,
+      location: structuredLocation || null,
       description: rdvNotes.trim(),
       start: startIso,
       end: endIso,
@@ -617,11 +604,13 @@ async function submitRdv() {
             ? {
                 type: intType.trim() || undefined,
                 status: intStatus.trim() || undefined,
-                address: {
-                  street: rdvAddrStreet.trim() || undefined,
-                  city: rdvAddrCity.trim() || undefined,
-                  postal_code: rdvAddrPostal.trim() || undefined,
-                },
+                address: rdvLocation.trim()
+                  ? { street: rdvLocation.trim() || undefined }
+                  : {
+                      street: rdvNewContactAddress.trim() || undefined,
+                      city: rdvNewContactCity.trim() || undefined,
+                      postal_code: rdvNewContactPostal.trim() || undefined,
+                    },
                 reference: intReference.trim() || undefined,
               }
             : undefined,
@@ -671,6 +660,22 @@ async function deleteRdv() {
     setRdvSaving(false);
   }
 }
+
+async function deleteEventById(id: string) {
+  if (!id) return;
+  try {
+    const r = await fetch(`/api/calendar/events?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j?.error ?? "Impossible de supprimer");
+    await loadEventsForMonth(cursorMonth);
+  } catch (e: any) {
+    // Affiche l'erreur dans la modale si elle est ouverte, sinon en haut
+    const msg = e?.message ?? "Erreur";
+    if (rdvOpen) setRdvError(msg);
+    else setError(msg);
+  }
+}
+
 
   async function loadEventsForMonth(monthDate: Date) {
     setLoading(true);
@@ -1019,7 +1024,7 @@ async function deleteRdv() {
                   {selectedEvents.length} événement{selectedEvents.length > 1 ? "s" : ""}
                 </div>
                 <button className={`${styles.btnPrimaryWide} ${styles.btnBubble}`} onClick={() => openCreateRdv(selectedDate)}>
-                  {viewKind === "intervention" ? "＋ Intervention" : "＋ RDV"}
+                  ＋ Évènement
                 </button>
                 <div className={styles.sideDivider} />
               </div>
@@ -1116,6 +1121,27 @@ async function deleteRdv() {
 								{ev.location ? ` • ${ev.location}` : ""}
 							  </div>
 							</div>
+							<button
+							  type="button"
+							  aria-label="Supprimer l’évènement"
+							  onClick={(e) => {
+							    e.stopPropagation();
+							    if (confirm("Supprimer cet évènement ?")) deleteEventById(ev.id);
+							  }}
+							  style={{
+							    marginLeft: "auto",
+							    background: "transparent",
+							    border: "none",
+							    color: "inherit",
+							    opacity: 0.8,
+							    cursor: "pointer",
+							    padding: 6,
+							    borderRadius: 8,
+							  }}
+							  title="Supprimer"
+							>
+							  🗑️
+							</button>
 						  </div>
 						);
 					  })}
@@ -1135,13 +1161,7 @@ async function deleteRdv() {
           <div className={styles.modal}>
             <div className={styles.modalHeader}>
               <div style={{ fontWeight: 950 }}>
-                {rdvMode === "create"
-                  ? rdvKind === "intervention"
-                    ? "Nouvelle intervention"
-                    : "Nouveau rendez-vous"
-                  : rdvKind === "intervention"
-                  ? "Modifier l’intervention"
-                  : "Modifier le rendez-vous"}
+                {rdvMode === "create" ? "Nouvel évènement" : "Modifier l’évènement"}
               </div>
               <button className={styles.btnGhost} onClick={() => setRdvOpen(false)} aria-label="Fermer">
                 ✕
@@ -1167,13 +1187,12 @@ async function deleteRdv() {
 
               <div className={styles.field} style={{ marginTop: 10 }}>
                 <div className={styles.label}>Titre</div>
-                <input className={styles.input} value={rdvSummary} onChange={(e) => setRdvSummary(e.target.value)} placeholder={rdvKind === "intervention" ? "Ex: Dépannage chaudière" : "Ex: Consultation"} />
+                <input className={styles.input} value={rdvSummary} onChange={(e) => setRdvSummary(e.target.value)} placeholder="Ex: Intervention / Rendez-vous" />
               </div>
 
-              {rdvKind === "intervention" && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
                   <div className={styles.field}>
-                    <div className={styles.label}>Type d’intervention</div>
+                    <div className={styles.label}>Type</div>
                     <input className={styles.input} value={intType} onChange={(e) => setIntType(e.target.value)} placeholder="Ex: Dépannage / Chantier / Entretien" />
                   </div>
                   <div className={styles.field}>
@@ -1187,7 +1206,6 @@ async function deleteRdv() {
                     </select>
                   </div>
                 </div>
-              )}
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
                 <div className={styles.field}>
@@ -1243,7 +1261,7 @@ async function deleteRdv() {
                 >
                   Ajouter au CRM
                 </button>
-              </div>
+</div>
 
               {crmAddFeedback ? (
                 <div className={styles.eventSub} style={{ marginTop: 6 }}>
@@ -1254,23 +1272,24 @@ async function deleteRdv() {
               <div className={styles.coordsBlock}>
                 <div className={styles.coordsTitle}>Coordonnées</div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <input className={styles.input} value={rdvNewContactFirstName} onChange={(e) => { setRdvNewContactFirstName(e.target.value); setCrmAddFeedback(""); }} placeholder="Prénom" />
-                  <input className={styles.input} value={rdvNewContactName} onChange={(e) => { setRdvNewContactName(e.target.value); setCrmAddFeedback(""); }} placeholder="Nom" />
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginTop: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
                   <input
                     className={styles.input}
-                    value={rdvNewContactCompany}
-                    onChange={(e) => { setRdvNewContactCompany(e.target.value); setCrmAddFeedback(""); }}
-                    placeholder="Raison sociale (optionnel)"
+                    value={rdvNewContactName}
+                    onChange={(e) => {
+                      setRdvNewContactName(e.target.value);
+                      setCrmAddFeedback("");
+                    }}
+                    placeholder="Nom Prénom / Raison sociale"
                   />
                   <input
                     className={styles.input}
-                    value={rdvNewContactSiret}
-                    onChange={(e) => { setRdvNewContactSiret(e.target.value); setCrmAddFeedback(""); }}
-                    placeholder="SIRET (optionnel)"
+                    value={rdvNewContactSiren}
+                    onChange={(e) => {
+                      setRdvNewContactSiren(e.target.value);
+                      setCrmAddFeedback("");
+                    }}
+                    placeholder="SIREN (optionnel)"
                   />
                 </div>
 
@@ -1285,23 +1304,50 @@ async function deleteRdv() {
                   <input className={styles.input} value={rdvNewContactPostal} onChange={(e) => { setRdvNewContactPostal(e.target.value); setCrmAddFeedback(""); }} placeholder="Code postal" />
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10, alignItems: "center" }}>
-                  <select className={styles.input} value={rdvNewContactCategory} onChange={(e) => { setRdvNewContactCategory(e.target.value as any); setCrmAddFeedback(""); }}>
-                    <option value="particulier">{CATEGORY_LABEL.particulier}</option>
-                    <option value="professionnel">{CATEGORY_LABEL.professionnel}</option>
-                    <option value="collectivite_publique">{CATEGORY_LABEL.collectivite_publique}</option>
-                  </select>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10, alignItems: "end" }}>
+                  <div className={styles.field} style={{ marginTop: 0 }}>
+                    <div className={styles.label}>Catégorie</div>
+                    <select
+                      className={styles.input}
+                      value={rdvNewContactCategory}
+                      onChange={(e) => {
+                        setRdvNewContactCategory(e.target.value as any);
+                        setCrmAddFeedback("");
+                      }}
+                    >
+                      <option value="particulier">{CATEGORY_LABEL.particulier}</option>
+                      <option value="professionnel">{CATEGORY_LABEL.professionnel}</option>
+                      <option value="collectivite_publique">{CATEGORY_LABEL.collectivite_publique}</option>
+                    </select>
+                  </div>
 
-                  <select className={styles.input} value={rdvNewContactType} onChange={(e) => { setRdvNewContactType(e.target.value as any); setCrmAddFeedback(""); }}>
-                    <option value="prospect">{TYPE_LABEL.prospect}</option>
-                    <option value="client">{TYPE_LABEL.client}</option>
-                    <option value="fournisseur">{TYPE_LABEL.fournisseur}</option>
-                    <option value="partenaire">{TYPE_LABEL.partenaire}</option>
-                    <option value="autre">{TYPE_LABEL.autre}</option>
-                  </select>
+                  <div className={styles.field} style={{ marginTop: 0 }}>
+                    <div className={styles.label}>Type</div>
+                    <select
+                      className={styles.input}
+                      value={rdvNewContactType}
+                      onChange={(e) => {
+                        setRdvNewContactType(e.target.value as any);
+                        setCrmAddFeedback("");
+                      }}
+                    >
+                      <option value="prospect">{TYPE_LABEL.prospect}</option>
+                      <option value="client">{TYPE_LABEL.client}</option>
+                      <option value="fournisseur">{TYPE_LABEL.fournisseur}</option>
+                      <option value="partenaire">{TYPE_LABEL.partenaire}</option>
+                      <option value="autre">{TYPE_LABEL.autre}</option>
+                    </select>
+                  </div>
 
-                  <label className={styles.importantToggle}>
-                    <input type="checkbox" checked={rdvNewContactImportant} onChange={(e) => { setRdvNewContactImportant(e.target.checked); setCrmAddFeedback(""); }} />
+                  <label className={styles.importantToggle} style={{ height: 42 }}>
+                    <input
+                      type="checkbox"
+                      checked={rdvNewContactImportant}
+                      onChange={(e) => {
+                        setRdvNewContactImportant(e.target.checked);
+                        setCrmAddFeedback("");
+                      }}
+                    />
                     <span>Important</span>
                   </label>
                 </div>
@@ -1318,27 +1364,20 @@ async function deleteRdv() {
               
 
 
-              {rdvKind === "intervention" ? (
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10, marginTop: 10 }}>
-                  <div className={styles.field}>
-                    <div className={styles.label}>Adresse / lieu</div>
-                    <input className={styles.input} value={rdvAddrStreet} onChange={(e) => setRdvAddrStreet(e.target.value)} placeholder="Ex: 12 rue …" />
-                  </div>
-                  <div className={styles.field}>
-                    <div className={styles.label}>Ville</div>
-                    <input className={styles.input} value={rdvAddrCity} onChange={(e) => setRdvAddrCity(e.target.value)} placeholder="Ex: Berck" />
-                  </div>
-                  <div className={styles.field}>
-                    <div className={styles.label}>Code postal</div>
-                    <input className={styles.input} value={rdvAddrPostal} onChange={(e) => setRdvAddrPostal(e.target.value)} placeholder="Ex: 62600" />
-                  </div>
-                </div>
-              ) : (
+              
                 <div className={styles.field} style={{ marginTop: 10 }}>
-                  <div className={styles.label}>Lieu</div>
-                  <input className={styles.input} value={rdvLocation} onChange={(e) => setRdvLocation(e.target.value)} placeholder="Ex: Cabinet / Visio" />
+                  <div className={styles.label}>Lieu du RDV (optionnel)</div>
+                  <input
+                    className={styles.input}
+                    value={rdvLocation}
+                    onChange={(e) => setRdvLocation(e.target.value)}
+                    placeholder="Ex: 12 rue ... / Zone industrielle ... (si vide, on prend l’adresse des coordonnées)"
+                  />
+                  <div className={styles.eventSub} style={{ marginTop: 6 }}>
+                    Si ce champ est vide, l’adresse sera prise depuis les <b>Coordonnées</b>.
+                  </div>
                 </div>
-              )}
+
 
               <div className={styles.field} style={{ marginTop: 10 }}>
                 <div className={styles.label}>Notes</div>
