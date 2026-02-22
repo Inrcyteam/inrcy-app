@@ -336,12 +336,17 @@
   display:flex;
   align-items:center;
   gap: 6px;
+  position: relative;
+  padding-top: 10px;
+
 }
 
 .dayNumBubble{
-  font-weight: 950;
+font-weight: 950;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.86);
+  display: inline-block;
+
 }
 
 .hasEventsDot{
@@ -350,6 +355,12 @@
   border-radius: 999px;
   background: rgba(56, 189, 248, 0.95);
   box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.10);
+  position: absolute;
+  /* place the indicator ABOVE the date bubble (not on the right) */
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+
 }
 
 .pillToday {
@@ -539,31 +550,13 @@
   }
 
   .dayNumBubble{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-width: 34px;
-    height: 34px;
-    padding: 0 10px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,0.14);
-    background: rgba(255,255,255,0.06);
-    font-size: 13px;
-  }
+font-weight: 950;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.86);
+  display: inline-block;
 
-  /* Mobile: selection highlight on the number bubble */
-  .daySelected{
-    box-shadow: none;
-  }
-  .daySelected .dayNumBubble{
-    border-color: rgba(56, 189, 248, 0.55);
-    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.10);
-  }
-
-  .pillToday{ display:none; }
-  .chips{ display:none; }
 }
-
+}
 
 /* --- RDV modal form helpers --- */
 .field{display:grid;gap:8px}

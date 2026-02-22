@@ -309,8 +309,24 @@ export default function CRMClient() {
 
   // ✅ Sélection multi-contacts (pour actions : mail, etc.)
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(() => new Set());
-  const [importantIds, setImportantIds] = useState<Set<string>>(() => new Set());
-  const [notesById, setNotesById] = useState<Record<string, string>>(() => ({}));
+  const [importantIds, setImportantIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem("inrcy_crm_important_ids");
+      const ids = raw ? JSON.parse(raw) : [];
+      return new Set<string>(Array.isArray(ids) ? ids.filter((x) => typeof x === "string") : []);
+    } catch {
+      return new Set<string>();
+    }
+  });
+  const [notesById, setNotesById] = useState<Record<string, string>>(() => {
+    try {
+      const raw = localStorage.getItem("inrcy_crm_notes_by_id");
+      const obj = raw ? JSON.parse(raw) : {};
+      return obj && typeof obj === "object" ? (obj as Record<string, string>) : {};
+    } catch {
+      return {};
+    }
+  });
 
   const [draft, setDraft] = useState<ReturnType<typeof emptyDraft>>(() => emptyDraft());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -327,7 +343,7 @@ export default function CRMClient() {
       const merged = base.map((c: any) => ({
         ...c,
         notes: (c?.notes ?? notesById?.[c.id] ?? "") as string,
-        important: Boolean(c?.important ?? importantIds.has(c.id)),
+        important: Boolean(c?.important || importantIds.has(c.id)),
       }));
       setContacts(merged);
     } catch (e: any) {
@@ -342,20 +358,17 @@ export default function CRMClient() {
   }, []);
 
   useEffect(() => {
-    // Persist local (front-only) for ⭐ important + notes (safe even if backend doesn't support it yet)
-    try {
-      const impRaw = localStorage.getItem("inrcy_crm_important_ids");
-      if (impRaw) {
-        const ids = JSON.parse(impRaw);
-        if (Array.isArray(ids)) setImportantIds(new Set(ids.filter((x) => typeof x === "string")));
-      }
-      const notesRaw = localStorage.getItem("inrcy_crm_notes_by_id");
-      if (notesRaw) {
-        const obj = JSON.parse(notesRaw);
-        if (obj && typeof obj === "object") setNotesById(obj as Record<string, string>);
-      }
-    } catch {}
-  }, []);
+    // Keep derived fields in sync when local ⭐ important / notes change
+    setContacts((prev) =>
+      prev.map((c: any) => ({
+        ...c,
+        notes: (c?.notes ?? notesById?.[c.id] ?? "") as string,
+        important: Boolean((c as any)?.important || importantIds.has(c.id)),
+      })),
+    );
+  }, [importantIds, notesById]);
+
+
 
   useEffect(() => {
     if (!actionsOpen) return;
@@ -442,7 +455,7 @@ export default function CRMClient() {
       prev.map((c) => ({
         ...c,
         notes: (c?.notes ?? notesById?.[c.id] ?? "") as string,
-        important: Boolean(c?.important ?? importantIds.has(c.id)),
+        important: Boolean(c?.important || importantIds.has(c.id)),
       }))
     );
   }, [notesById, importantIds]);
@@ -539,12 +552,35 @@ export default function CRMClient() {
   };
 
   const toggleImportant = (id: string) => {
+    // Source of truth: the backend `important` boolean.
+    // We still keep the local storage set for backward compatibility, but UI prefers `contact.important`.
+    const current = contacts.find((c) => c.id === id);
+    const nextImportant = !Boolean(current?.important || importantIds.has(id));
+
+    // Optimistic UI update
+    setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, important: nextImportant } : c)));
     setImportantIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (nextImportant) next.add(id);
+      else next.delete(id);
       persistImportant(next);
       return next;
+    });
+
+    fetch("/api/crm/contacts", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, important: nextImportant }),
+    }).catch(() => {
+      // Revert on network error
+      setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, important: !nextImportant } : c)));
+      setImportantIds((prev) => {
+        const next = new Set(prev);
+        if (!nextImportant) next.add(id);
+        else next.delete(id);
+        persistImportant(next);
+        return next;
+      });
     });
   };
 
@@ -1781,7 +1817,7 @@ const exportCsv = () => {
                     role="row"
                     aria-label={buildDisplayName(c)}
                   >
-                    <div className={`${styles.mcName} ${importantIds.has(c.id) ? styles.nameImportant : ""}`.trim()}>
+                    <div className={`${styles.mcName} ${c.important ? styles.nameImportant : ""}`.trim()}>
                       {buildDisplayName(c)}
                     </div>
                     <div className={`${styles.mcMail} ${styles.mono}`.trim()} title={c.email}>
@@ -1813,7 +1849,7 @@ const exportCsv = () => {
                       )}
                     </div>
                     <div className={styles.mcStar}>
-                      {importantIds.has(c.id) ? (
+                      {c.important ? (
                         <span className={styles.starStatic} title="Important" aria-label="Important">
                           ★
                         </span>
@@ -1873,7 +1909,7 @@ const exportCsv = () => {
                           aria-label={`Sélectionner ${buildDisplayName(c)}`}
                         />
                       </td>
-                      <td className={`${styles.tdName} ${importantIds.has(c.id) ? styles.nameImportant : ""}`.trim()}>
+                      <td className={`${styles.tdName} ${c.important ? styles.nameImportant : ""}`.trim()}>
                         {buildDisplayName(c)}
                       </td>
                       <td className={`${styles.mono} ${styles.tdMail}`}>{c.email}</td>
@@ -1908,7 +1944,7 @@ const exportCsv = () => {
                         )}
                       </td>
                       <td className={styles.tdStar}>
-                        {importantIds.has(c.id) ? (
+                        {c.important ? (
                           <span className={styles.starStatic} title="Important" aria-label="Important">
                             ★
                           </span>

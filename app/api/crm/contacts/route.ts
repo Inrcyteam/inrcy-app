@@ -210,6 +210,9 @@ if (Array.isArray(body?.contacts)) {
     postal_code: cleanString(body.postal_code),
     category: isCategory(body.category) ? body.category : ("particulier" as Category),
     contact_type: isContactType(body.contact_type) ? body.contact_type : ("prospect" as ContactType),
+    // Keep these editable from the UI (star + notes)
+    notes: cleanString(body.notes),
+    important: typeof body.important === "boolean" ? body.important : Boolean(body.important),
   };
 
   const { error } = await supabase
