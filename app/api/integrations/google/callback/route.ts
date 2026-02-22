@@ -27,21 +27,40 @@ export async function GET(req: Request) {
 
     const clientId = process.env.GOOGLE_CLIENT_ID!;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
-    const origin = new URL(req.url).origin;
-const redirectUri = `${origin}/api/integrations/google/callback`;
+    const redirectFromEnv = process.env.GOOGLE_REDIRECT_URI;
 
+    // ✅ Robust redirect_uri (must match the one used in /start)
+    const origin = new URL(req.url).origin;
+    const redirectUri = redirectFromEnv || `${origin}/api/integrations/google/callback`;
 
     if (!clientId || !clientSecret) {
-  return NextResponse.json(
-    { error: "Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET" },
-    { status: 500 }
-  );
-}
+      return NextResponse.json(
+        { error: "Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET" },
+        { status: 500 }
+      );
+    }
+
+    // ✅ Read state (CSRF protection + post-auth redirect)
+    const stateB64 = searchParams.get("state");
+    let returnTo = "/dashboard?panel=mails&toast=connected";
+    if (stateB64) {
+      try {
+        const decoded = JSON.parse(
+          Buffer.from(stateB64, "base64url").toString("utf8")
+        );
+        if (decoded?.returnTo && typeof decoded.returnTo === "string") {
+          returnTo = decoded.returnTo;
+        }
+      } catch {
+        // ignore malformed state
+      }
+    }
 
     const { supabase, user, errorResponse } = await requireUser();
-  if (errorResponse) return errorResponse;
-  const userId = user.id;
-// 1) Exchange code -> tokens
+    if (errorResponse) return errorResponse;
+    const userId = user.id;
+
+    // 1) Exchange code -> tokens
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -128,19 +147,22 @@ const redirectUri = `${origin}/api/integrations/google/callback`;
         .eq("id", (existing as any).id);
 
       if (upErr) {
-        return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
+        return NextResponse.json(
+          { error: "DB update failed", upErr },
+          { status: 500 }
+        );
       }
     } else {
       const { error: insErr } = await supabase.from("integrations").insert(payload);
       if (insErr) {
-        return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
+        return NextResponse.json(
+          { error: "DB insert failed", insErr },
+          { status: 500 }
+        );
       }
     }
 
-
-    return NextResponse.redirect(
-      new URL("/dashboard?panel=mails&toast=connected", req.url)
-    );
+    return NextResponse.redirect(new URL(returnTo, req.url));
   } catch (e: any) {
     return NextResponse.json(
       { error: "Unhandled exception", message: e?.message, stack: e?.stack },

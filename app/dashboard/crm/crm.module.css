@@ -26,8 +26,14 @@
 }
 
 .shell{
+  /* Desktop goal: keep the CRM "page" fixed to the viewport.
+     Only the contacts table should scroll. */
   min-height: 100vh;
-  padding: 24px 18px 56px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 24px 18px 18px;
   max-width: 1180px;
   margin: 0 auto;
   position: relative;
@@ -384,10 +390,11 @@
 .tableWrap{
   width: 100%;
   overflow: auto;
-  max-height: 62vh;
+  /* height is managed by the flex layout (.tableCard) on desktop */
+  max-height: none;
   border-radius: 18px;
-  border: 1px solid var(--inrcy-border);
-  background: rgba(0,0,0,.12);
+  border: 1px solid var(--inrcy-border-2);
+  background: rgba(0,0,0,.14);
   position: relative;
 }
 
@@ -397,12 +404,35 @@
   min-width: 720px;
 }
 
+/* --- Desktop layout: keep the whole CRM inside the viewport and scroll only the table --- */
+@media (min-width: 900px){
+  .tableCard{
+    flex: 1;
+    min-height: 0; /* required for nested scroll containers */
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tableWrap{
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: auto;
+  }
+}
+
 .table th, .table td{
   padding: 11px 12px;
-  border-bottom: 1px solid rgba(255,255,255,.06);
+  border-bottom: 1px solid rgba(255,255,255,.10);
+  border-right: 1px solid rgba(255,255,255,.06);
   vertical-align: top;
   font-size: 13px;
   color: rgba(255,255,255,.86);
+}
+
+.table th:last-child,
+.table td:last-child{
+  border-right: 0;
 }
 
 .table th{
@@ -414,7 +444,7 @@
   font-size: 12px;
   letter-spacing: .25px;
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255,255,255,.10);
+  border-bottom: 1px solid rgba(255,255,255,.16);
 }
 
 /* zebra + hover like iNrbox lists */
@@ -1608,6 +1638,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Badge labels: desktop shows full label; small screens show short label only */
+.badgeLabelFull{
+  display: inline;
+}
+.badgeLabelShort{
+  display: none;
+}
+
+@media (max-width: 760px){
+  .badgeLabelFull{ display: none; }
+  .badgeLabelShort{ display: inline; }
 }
 
 /* Dernière colonne (⭐) : centrage */

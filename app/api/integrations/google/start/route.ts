@@ -22,6 +22,10 @@ export async function GET(request: Request) {
     );
   }
 
+  // ✅ Add state (CSRF protection + lets us redirect back safely after OAuth)
+  const returnTo = "/dashboard?panel=mails";
+  const state = Buffer.from(JSON.stringify({ returnTo })).toString("base64url");
+
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -32,6 +36,7 @@ export async function GET(request: Request) {
     ].join(" "),
     access_type: "offline",
     prompt: "consent",
+    state,
   });
 
   const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;

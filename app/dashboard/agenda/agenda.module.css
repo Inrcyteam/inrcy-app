@@ -568,8 +568,49 @@
 /* --- RDV modal form helpers --- */
 .field{display:grid;gap:8px}
 .label{font-size:12px;font-weight:800;color:rgba(255,255,255,0.85)}
-.input{width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.04);padding:10px 12px;color:white;outline:none}
+.input{width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.04);padding:10px 12px;color:white;outline:none;height:42px;line-height:20px}
 .textarea{width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.04);padding:10px 12px;color:white;outline:none;min-height:110px;resize:vertical}
+
+
+/* --- Contact/Coordonnées block (Agenda ↔ CRM) --- */
+.contactRow{
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  flex-wrap: wrap;
+}
+
+.coordsBlock{
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.03);
+}
+
+.coordsTitle{
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  color: rgba(255,255,255,0.88);
+  margin-bottom: 10px;
+}
+
+.importantToggle{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  user-select:none;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(255,255,255,0.85);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.04);
+  height: 42px;
+}
+.importantToggle input{ transform: translateY(1px); }
 .btnDanger{border:1px solid rgba(248,113,113,0.55);background:rgba(248,113,113,0.12);color:white;border-radius:14px;padding:10px 12px;font-weight:900;cursor:pointer}
 
 /* --- Modal --- */
