@@ -208,15 +208,58 @@ export default function DashboardClient() {
   ) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", name);
-    router.push(`/dashboard?${params.toString()}`);
+    // ✅ En mobile, on garde la position de scroll (pas de jump en haut)
+    try {
+      sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
+    } catch {}
+    router.push(`/dashboard?${params.toString()}`, { scroll: false });
   };
 
   const closePanel = () => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("panel");
     const qs = params.toString();
-    router.push(qs ? `/dashboard?${qs}` : "/dashboard");
+    // ✅ En mobile, on garde la position de scroll (pas de jump en haut)
+    try {
+      sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
+    } catch {}
+    router.push(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false });
   };
+
+  // --- Mobile: garder le dashboard en portrait (best-effort, dépend du navigateur) ---
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(max-width: 900px)");
+    const tryLockPortrait = async () => {
+      try {
+        // @ts-ignore
+        if (mq.matches && screen?.orientation?.lock) {
+          // @ts-ignore
+          await screen.orientation.lock("portrait");
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    void tryLockPortrait();
+
+    const onChange = () => void tryLockPortrait();
+    mq.addEventListener?.("change", onChange);
+    window.addEventListener("orientationchange", onChange);
+
+    return () => {
+      mq.removeEventListener?.("change", onChange);
+      window.removeEventListener("orientationchange", onChange);
+      try {
+        // @ts-ignore
+        screen?.orientation?.unlock?.();
+      } catch {
+        // ignore
+      }
+    };
+  }, []);
 
   // Preserve dashboard scroll position when opening/closing modules
   const goToModule = useCallback(
@@ -224,7 +267,7 @@ export default function DashboardClient() {
       try {
         sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
       } catch {}
-      router.push(path);
+      router.push(path, { scroll: false });
     },
     [router]
   );
@@ -239,7 +282,7 @@ export default function DashboardClient() {
       setTimeout(() => window.scrollTo(0, top), 60);
       sessionStorage.removeItem("inrcy_dashboard_scrollY");
     } catch {}
-  }, []);
+  }, [panel]);
 
   // ✅ Déconnexion Supabase + retour /login
   const handleLogout = async () => {

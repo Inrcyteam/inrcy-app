@@ -105,6 +105,15 @@ export default function NewFacturePage() {
     if (mustRotate) void tryLockLandscape();
     return () => {
       document.body.style.overflow = "";
+
+      // ✅ Important : en sortant du module (ou quand on repasse non-bloquant),
+      // on relâche le lock paysage
+      try {
+        // @ts-ignore
+        screen?.orientation?.unlock?.();
+      } catch {
+        // ignore
+      }
     };
   }, [mustRotate]);
 

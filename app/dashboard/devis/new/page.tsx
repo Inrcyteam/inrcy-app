@@ -234,6 +234,14 @@ export default function NewDevisPage() {
 
       window.removeEventListener("orientationchange", update);
       window.removeEventListener("resize", update);
+
+      // ✅ Important : en sortant du module, on relâche le lock paysage
+      try {
+        // @ts-ignore
+        screen?.orientation?.unlock?.();
+      } catch {
+        // ignore
+      }
     };
   }, []);
 
