@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { withApi } from "@/lib/observability/withApi";
 
 export const runtime = "nodejs";
 
@@ -63,7 +64,7 @@ export async function OPTIONS(req: Request) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(null) });
 }
 
-export async function GET(req: Request) {
+const handler = async (req: Request) => {
   try {
     const secret = process.env.INRCY_WIDGETS_SIGNING_SECRET;
     if (!secret) {
@@ -140,4 +141,6 @@ export async function GET(req: Request) {
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500, headers: corsHeaders(null) });
   }
-}
+};
+
+export const GET = withApi(handler, { route: "/api/widgets/issue-token" });

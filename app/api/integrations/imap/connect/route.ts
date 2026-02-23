@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptSecret } from "@/lib/imapCrypto";
 import net from "net";
+import { withApi } from "@/lib/observability/withApi";
 
 function isPrivateIp(ip: string): boolean {
   // IPv4 private ranges
@@ -43,7 +44,7 @@ function validatePort(n: number, fallback: number): number {
   return p;
 }
 
-export async function POST(req: Request) {
+const handler = async (req: Request) => {
   const supabase = await createSupabaseServer();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -104,4 +105,6 @@ export async function POST(req: Request) {
     const msg = e?.message || "Connexion impossible";
     return NextResponse.json({ error: msg }, { status: 400 });
   }
-}
+};
+
+export const POST = withApi(handler, { route: "/api/integrations/imap/connect" });

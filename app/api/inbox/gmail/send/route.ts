@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
+import { withApi } from "@/lib/observability/withApi";
 function toBase64Url(str: string) {
   return Buffer.from(str, "utf8")
     .toString("base64")
@@ -158,7 +159,7 @@ async function gmailSend(token: string, raw: string, threadId?: string) {
   return { res, data };
 }
 
-export async function POST(req: Request) {
+const handler = async (req: Request) => {
   const { supabase, user, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
   const userId = user.id;
@@ -238,6 +239,8 @@ export async function POST(req: Request) {
 
   const account = accounts?.[0];
   if (!account) return NextResponse.json({ error: "No Gmail connected" }, { status: 400 });
+
+  // ... rest of file unchanged
 
   // ✅ tokens (chiffrés en DB)
   const accessTokenEnc: string | null = (account as any).access_token_enc ?? null;
@@ -364,4 +367,6 @@ export async function POST(req: Request) {
     id: sendData?.id || null,
     threadId: sendData?.threadId || null,
   });
-}
+};
+
+export const POST = withApi(handler, { route: "/api/inbox/gmail/send" });

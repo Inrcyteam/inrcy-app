@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { openaiGenerateJSON } from "@/lib/openaiClient";
+import { withApi } from "@/lib/observability/withApi";
 import {
   boosterSystemPrompt,
   boosterUserPrompt,
@@ -22,7 +23,7 @@ type BoosterGenResponse = {
 
 const allowedChannels: BoosterChannels[] = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"];
 
-export async function POST(req: Request) {
+const handler = async (req: Request) => {
   try {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
@@ -85,4 +86,6 @@ const body = (await req.json().catch(() => ({}))) as Payload;
     const msg = typeof e?.message === "string" ? e.message : "Server error";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-}
+};
+
+export const POST = withApi(handler, { route: "/api/booster/generate" });

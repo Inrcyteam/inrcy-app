@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
+import { withApi } from "@/lib/observability/withApi";
+import { fetchWithRetry } from "@/lib/observability/fetch";
 function isExpired(expires_at?: string | null, skewSeconds = 60) {
   if (!expires_at) return false;
   const t = Date.parse(expires_at);
@@ -25,7 +27,7 @@ async function refreshAccessToken(refreshToken: string, scope?: string | null) {
     "Mail.Send",
   ].join(" ");
 
-  const res = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+  const res = await fetchWithRetry("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -35,6 +37,8 @@ async function refreshAccessToken(refreshToken: string, scope?: string | null) {
       refresh_token: refreshToken,
       scope: scope || fallbackScope,
     }),
+    retries: 2,
+    timeoutMs: 15_000,
   });
 
   const data = await res.json().catch(() => ({}));
@@ -50,7 +54,7 @@ function textToHtml(text: string) {
   return `<div style="font-family:system-ui,Segoe UI,Arial">${escaped}</div>`;
 }
 
-export async function POST(req: Request) {
+const handler = async (req: Request) => {
   try {
     const { supabase, user, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
@@ -177,5 +181,7 @@ const formData = await req.formData();
   } catch (e: any) {
     return NextResponse.json({ error: "Internal server error", message: e?.message }, { status: 500 });
   }
-}
+};
+
+export const POST = withApi(handler, { route: "/api/inbox/microsoft/send" });
 

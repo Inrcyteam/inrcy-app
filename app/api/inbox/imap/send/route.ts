@@ -6,11 +6,12 @@ import nodemailer from "nodemailer";
 import MailComposer from "nodemailer/lib/mail-composer";
 import { loadImapAccount } from "@/lib/imapAccount";
 import { appendRawMessage } from "@/lib/imapClient";
+import { withApi } from "@/lib/observability/withApi";
 
 // IMAP + SMTP require Node.js runtime (Edge runtime can't open raw TCP sockets)
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
+const handler = async (req: Request) => {
   try {
     const { supabase, user, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
@@ -164,4 +165,6 @@ const html = String(formData.get("html") || "").trim();
       { status: 500 }
     );
   }
-}
+};
+
+export const POST = withApi(handler, { route: "/api/inbox/imap/send" });

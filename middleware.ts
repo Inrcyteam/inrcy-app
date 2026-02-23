@@ -45,9 +45,16 @@ function pickLimit(pathname: string, method: string) {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Correlation ID (visible to client + used in server logs)
+  const requestId = req.headers.get("x-request-id") || crypto.randomUUID();
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-request-id", requestId);
+
   // Skip callback routes (already protected at route-level)
   if (isOauthCallback(pathname)) {
-    return NextResponse.next();
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    res.headers.set("x-request-id", requestId);
+    return res;
   }
 
   const ip = getIp(req);
@@ -62,14 +69,21 @@ export async function middleware(req: NextRequest) {
       limit: lim.tokens,
       window: `${lim.windowSeconds} s`,
     });
-    if (res) return res;
+    if (res) {
+      res.headers.set("x-request-id", requestId);
+      return res;
+    }
   } catch (err) {
     // Edge runtime: keep it simple and do not block traffic if rate limiting is unavailable.
     console.warn("[rateLimit] middleware disabled (fail-open)", err);
-    return NextResponse.next();
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    res.headers.set("x-request-id", requestId);
+    return res;
   }
 
-  return NextResponse.next();
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
+  res.headers.set("x-request-id", requestId);
+  return res;
 }
 
 export const config = {

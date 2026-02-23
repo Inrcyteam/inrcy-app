@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchWithRetry } from "@/lib/observability/fetch";
 type OpenAIResponseJSON = Record<string, unknown>;
 
 /**
@@ -17,7 +18,7 @@ export async function openaiGenerateJSON<T extends OpenAIResponseJSON>(opts: {
   const model = opts.model || process.env.OPENAI_MODEL || "gpt-4o-mini";
   const max_output_tokens = Math.max(128, Math.min(1200, opts.maxOutputTokens ?? 700));
 
-  const res = await fetch("https://api.openai.com/v1/responses", {
+  const res = await fetchWithRetry("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -38,6 +39,8 @@ export async function openaiGenerateJSON<T extends OpenAIResponseJSON>(opts: {
         { role: "user", content: [{ type: "input_text", text: opts.input }] },
       ],
     }),
+    retries: 2,
+    timeoutMs: 30_000,
   });
 
   if (!res.ok) {
