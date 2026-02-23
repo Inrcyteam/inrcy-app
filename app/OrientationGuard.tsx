@@ -1,19 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import styles from "./orientationGuard.module.css";
 import { usePathname } from "next/navigation";
 
 export default function OrientationGuard() {
   const pathname = usePathname();
+
+  // ✅ Mobile + tablette uniquement (≤ 1024px)
+  const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
 
-  // routes qui DOIVENT être en paysage
-  const landscapeRoutes = [
-    "/dashboard/factures",
-    "/dashboard/devis",
-    "/dashboard/crm",
-  ];
+  const landscapeRoutes = useMemo(
+    () => ["/dashboard/factures", "/dashboard/devis", "/dashboard/crm"],
+    []
+  );
 
   const mustBeLandscape = landscapeRoutes.some((r) =>
     pathname?.startsWith(r)
@@ -21,6 +22,9 @@ export default function OrientationGuard() {
 
   useEffect(() => {
     const check = () => {
+      const isSmallScreen = window.innerWidth <= 1024;
+
+      setIsMobileOrTablet(isSmallScreen);
       setIsLandscape(window.innerWidth > window.innerHeight);
     };
 
@@ -34,45 +38,40 @@ export default function OrientationGuard() {
     };
   }, []);
 
+  // ✅ Desktop large → jamais d’overlay
+  if (!isMobileOrTablet) return null;
+
   const showLandscapeBlock = mustBeLandscape && !isLandscape;
   const showPortraitBlock = !mustBeLandscape && isLandscape;
 
   if (!showLandscapeBlock && !showPortraitBlock) return null;
 
   const title = showLandscapeBlock
-    ? "Passez en mode paysage"
+    ? "Passe en mode paysage"
     : "Revenez en mode portrait";
 
   const subtitle = showLandscapeBlock
-    ? "Ce module est optimisé pour une lecture horizontale."
+    ? "Pour une meilleure lisibilité de ce module."
     : "Pour une meilleure expérience, l’app fonctionne en vertical.";
 
   const badge = showLandscapeBlock ? "Paysage requis" : "Portrait requis";
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true">
-      <div className={styles.card}>
-        <div className={styles.top}>
+    <div className={styles.overlay}>
+      <div className={styles.card} role="dialog" aria-modal="true">
+        <div className={styles.header}>
           <div className={styles.brand}>
-            <img
-              className={styles.logo}
-              src="/logo-inrcy.png"
-              alt="iNrCy"
-              draggable={false}
-            />
-            <div className={styles.brandText}>
-              <div className={styles.brandName}>iNrCy</div>
-              <div className={styles.brandTag}>Hub connecté</div>
-            </div>
+            <span aria-hidden>⚡</span>
+            <span>iNrCy</span>
           </div>
-          <div className={styles.badge}>{badge}</div>
+          <span className={styles.badge}>{badge}</span>
         </div>
 
         <div className={styles.content}>
           <h2 className={styles.title}>{title}</h2>
           <p className={styles.subtitle}>{subtitle}</p>
 
-          <div className={styles.illu} aria-hidden>
+          <div className={styles.phoneWrap} aria-hidden>
             <div
               className={`${styles.phone} ${
                 showLandscapeBlock
@@ -84,13 +83,13 @@ export default function OrientationGuard() {
               <div className={styles.screen} />
             </div>
 
-            <div className={styles.hintRow}>
-              <span className={styles.pill}>⟲</span>
-              <span className={styles.hintText}>Tournez votre téléphone</span>
-              <span className={styles.pill}>⟳</span>
+            <div className={styles.arrows}>
+              <span className={styles.arrow}>⟲</span>
+              <span>Tournez votre téléphone</span>
+              <span className={styles.arrow}>⟳</span>
             </div>
 
-            <div className={styles.hintSmall}>
+            <div className={styles.hint}>
               Astuce : désactivez le verrouillage d’orientation si besoin.
             </div>
           </div>
