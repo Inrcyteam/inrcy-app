@@ -54,13 +54,20 @@ export async function middleware(req: NextRequest) {
   const lim = pickLimit(pathname, req.method);
   // NOTE: enforceRateLimit() takes a single config object.
   // We keep a stable identifier per IP + path so users don't share buckets.
-  const res = await enforceRateLimit({
-    name: `mw:${lim.name}`,
-    identifier: `${pathname}:${ip}`,
-    limit: lim.tokens,
-   window: `${lim.windowSeconds} s`,
-  });
-  if (res) return res;
+  // FAIL-OPEN: If Upstash / env vars / network fails, we allow the request.
+  try {
+    const res = await enforceRateLimit({
+      name: `mw:${lim.name}`,
+      identifier: `${pathname}:${ip}`,
+      limit: lim.tokens,
+      window: `${lim.windowSeconds} s`,
+    });
+    if (res) return res;
+  } catch (err) {
+    // Edge runtime: keep it simple and do not block traffic if rate limiting is unavailable.
+    console.warn("[rateLimit] middleware disabled (fail-open)", err);
+    return NextResponse.next();
+  }
 
   return NextResponse.next();
 }
