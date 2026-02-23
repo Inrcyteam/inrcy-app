@@ -13,11 +13,7 @@ type PayloadV1 = {
 };
 
 function b64urlEncode(buf: Buffer) {
-  return buf
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function normalizeDomain(input: string | null): string {
@@ -42,14 +38,36 @@ function sign(payload: PayloadV1, secret: string) {
   return `${body}.${sig}`;
 }
 
+function originHost(req: Request): string {
+  const origin = req.headers.get("origin") || "";
+  if (origin) {
+    try {
+      return new URL(origin).hostname.toLowerCase().replace(/^www\./, "");
+    } catch {}
+  }
+  return "";
+}
+
+function corsHeaders(allowOrigin: string | null) {
+  return {
+    "Access-Control-Allow-Origin": allowOrigin || "null",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Cache-Control": "no-store",
+    Vary: "Origin",
+  } as Record<string, string>;
+}
+
+export async function OPTIONS(req: Request) {
+  // Preflight: we don't know the domain yet, answer with "null".
+  return new NextResponse(null, { status: 204, headers: corsHeaders(null) });
+}
+
 export async function GET(req: Request) {
   try {
     const secret = process.env.INRCY_WIDGETS_SIGNING_SECRET;
     if (!secret) {
-      return NextResponse.json(
-        { ok: false, error: "Missing INRCY_WIDGETS_SIGNING_SECRET" },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "Missing INRCY_WIDGETS_SIGNING_SECRET" }, { status: 500 });
     }
 
     const { searchParams } = new URL(req.url);
@@ -57,10 +75,10 @@ export async function GET(req: Request) {
     const source = (searchParams.get("source") || "").trim();
 
     if (!domain) {
-      return NextResponse.json({ ok: false, error: "Missing domain" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Missing domain" }, { status: 400, headers: corsHeaders(null) });
     }
     if (source !== "inrcy_site" && source !== "site_web") {
-      return NextResponse.json({ ok: false, error: "Invalid source" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Invalid source" }, { status: 400, headers: corsHeaders(null) });
     }
 
     // Must be an authenticated dashboard user.
@@ -71,7 +89,7 @@ export async function GET(req: Request) {
     } = await supabase.auth.getUser();
 
     if (userErr || !user) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: corsHeaders(null) });
     }
 
     // Extra safety: ensure the domain belongs to THIS user for this source.
@@ -84,10 +102,7 @@ export async function GET(req: Request) {
       if (error) throw error;
       const d = normalizeDomain((data as any)?.site_url || "");
       if (!d || d !== domain) {
-        return NextResponse.json(
-          { ok: false, error: "Domain not linked to your iNrCy site" },
-          { status: 403 }
-        );
+        return NextResponse.json({ ok: false, error: "Domain not linked to your iNrCy site" }, { status: 403, headers: corsHeaders(null) });
       }
     } else {
       const { data, error } = await supabase
@@ -99,11 +114,15 @@ export async function GET(req: Request) {
       if (error) throw error;
       const d = normalizeDomain((data as any)?.settings?.site_web?.url || "");
       if (!d || d !== domain) {
-        return NextResponse.json(
-          { ok: false, error: "Domain not linked to your website" },
-          { status: 403 }
-        );
+        return NextResponse.json({ ok: false, error: "Domain not linked to your website" }, { status: 403, headers: corsHeaders(null) });
       }
+    }
+
+    // CORS hard-binding: only allow calls from the same domain.
+    const host = originHost(req);
+    const allowOrigin = host && host === domain ? req.headers.get("origin") : null;
+    if (!allowOrigin) {
+      return NextResponse.json({ ok: false, error: "Origin not allowed" }, { status: 403, headers: corsHeaders(null) });
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -117,11 +136,8 @@ export async function GET(req: Request) {
     };
 
     const token = sign(payload, secret);
-    return NextResponse.json({ ok: true, token, payload }, { status: 200 });
+    return NextResponse.json({ ok: true, token, payload }, { status: 200, headers: corsHeaders(allowOrigin) });
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500, headers: corsHeaders(null) });
   }
 }

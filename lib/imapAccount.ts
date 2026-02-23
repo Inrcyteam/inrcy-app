@@ -10,7 +10,7 @@ export async function loadImapAccount(accountId: string) {
 
   const { data, error } = await supabase
     .from("integrations")
-    .select("id, user_id, provider, account_email, settings")
+    .select("id, user_id, provider, account_email, settings, refresh_token_enc")
     .eq("id", accountId)
     .eq("user_id", userData.user.id)
     .eq("provider", "imap")
@@ -22,7 +22,7 @@ export async function loadImapAccount(accountId: string) {
   }
 
   const settings: any = (data as any).settings ?? {};
-  const passwordEnc = String(settings.password_enc || "");
+  const passwordEnc = String((data as any).refresh_token_enc || "");
   const password = decryptSecret(passwordEnc);
   const login = String((data as any).account_email || "");
 

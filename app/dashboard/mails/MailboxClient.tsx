@@ -524,32 +524,17 @@ export default function MailboxClient() {
   }
 
   async function loadAccounts() {
-    const { data: auth } = await supabase.auth.getUser();
-    const userId = auth?.user?.id;
-    if (!userId) return;
+    const res = await fetch("/api/integrations/status", { cache: "no-store" });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j?.accounts) return;
 
-    const { data, error } = await supabase
-      .from("integrations")
-      .select("id, provider, account_email, settings, status, created_at")
-      .eq("user_id", userId)
-      .eq("category", "mail")
-      .order("created_at", { ascending: true });
+    // Only keep mail accounts
+    const accounts = (j.accounts as any[]).filter((a) => a?.category === "mail");
+    setMailAccounts(accounts as any);
 
-    if (!error && data) {
-      const mapped = (data as any[]).map((r) => ({
-        id: r.id,
-        provider: r.provider,
-        email_address: r.account_email,
-        display_name: r.settings?.display_name ?? null,
-        status: r.status,
-        created_at: r.created_at,
-      }));
-      setMailAccounts(mapped as any);
-      // Default selection
-      const connected = (data as any[]).filter((a) => a.status === "connected");
-      const defaultId = connected[0]?.id || (data as any[])[0]?.id || "";
-      setSelectedAccountId((prev) => prev || defaultId);
-    }
+    const connected = accounts.filter((a) => a.status === "connected");
+    const defaultId = connected[0]?.id || accounts[0]?.id || "";
+    setSelectedAccountId((prev) => prev || defaultId);
   }
 
   async function loadHistory() {

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { safeInternalPath, verifyOAuthState } from "@/lib/security";
+
 type TokenResponse = {
   access_token?: string;
   refresh_token?: string;
@@ -19,6 +21,8 @@ type GoogleUserInfo = {
 };
 
 export async function GET(req: Request) {
+  const origin = new URL(req.url).origin;
+
   try {
     const { searchParams } = new URL(req.url);
     const code = searchParams.get("code");
@@ -32,7 +36,6 @@ export async function GET(req: Request) {
     const redirectFromEnv = process.env.GOOGLE_REDIRECT_URI;
 
     // ✅ Robust redirect_uri (must match the one used in /start)
-    const origin = new URL(req.url).origin;
     const redirectUri = redirectFromEnv || `${origin}/api/integrations/google/callback`;
 
     if (!clientId || !clientSecret) {
@@ -42,25 +45,24 @@ export async function GET(req: Request) {
       );
     }
 
-    // ✅ Read state (CSRF protection + post-auth redirect)
-    const stateB64 = searchParams.get("state");
-    let returnTo = "/dashboard?panel=mails&toast=connected";
-    if (stateB64) {
-      try {
-        const decoded = JSON.parse(
-          Buffer.from(stateB64, "base64url").toString("utf8")
-        );
-        if (decoded?.returnTo && typeof decoded.returnTo === "string") {
-          returnTo = decoded.returnTo;
-        }
-      } catch {
-        // ignore malformed state
-      }
+    // ✅ CSRF protection: verify state against HttpOnly cookie
+    const st = verifyOAuthState(req, "google", searchParams.get("state"));
+    const returnTo = safeInternalPath(st.returnTo || "/dashboard?panel=mails&toast=connected", "/dashboard?panel=mails&toast=connected");
+
+    if (!st.ok) {
+      const res = NextResponse.redirect(new URL(`/dashboard?panel=mails&toast=oauth_state`, origin));
+      // Clear cookie anyway
+      res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+      return res;
     }
 
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
     const userId = user.id;
+
+    // Clear state cookie once used
+    // (do it early; if the rest fails, user can restart the flow)
+    // We'll attach it to the final response.
 
     // Rate limit OAuth callbacks
     const rlUser = await enforceRateLimit({
@@ -96,8 +98,10 @@ export async function GET(req: Request) {
     const tokenData = (await tokenRes.json()) as TokenResponse;
 
     if (!tokenRes.ok || !tokenData.access_token) {
+      // Avoid leaking provider response details in prod
+      const detail = process.env.NODE_ENV === "production" ? undefined : tokenData;
       return NextResponse.json(
-        { error: "Token exchange failed", tokenData },
+        { error: "Token exchange failed", detail },
         { status: 500 }
       );
     }
@@ -110,8 +114,9 @@ export async function GET(req: Request) {
     const userInfo = (await userRes.json()) as GoogleUserInfo;
 
     if (!userRes.ok || !userInfo?.email) {
+      const detail = process.env.NODE_ENV === "production" ? undefined : userInfo;
       return NextResponse.json(
-        { error: "Userinfo fetch failed", userInfo },
+        { error: "Userinfo fetch failed", detail },
         { status: 500 }
       );
     }
@@ -127,14 +132,13 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     if (existingErr) {
-      return NextResponse.json(
-        { error: "DB read existing failed", existingErr },
-        { status: 500 }
-      );
+      const detail = process.env.NODE_ENV === "production" ? undefined : existingErr;
+      return NextResponse.json({ error: "DB read existing failed", detail }, { status: 500 });
     }
 
-    const refreshTokenEncToStore =
-      tokenData.refresh_token ? encryptToken(tokenData.refresh_token) : (existing as any)?.refresh_token_enc ?? null;
+    const refreshTokenEncToStore = tokenData.refresh_token
+      ? encryptToken(tokenData.refresh_token)
+      : (existing as any)?.refresh_token_enc ?? null;
 
     const expiresAt =
       tokenData.expires_in != null
@@ -169,26 +173,30 @@ export async function GET(req: Request) {
         .eq("id", (existing as any).id);
 
       if (upErr) {
-        return NextResponse.json(
-          { error: "DB update failed", upErr },
-          { status: 500 }
-        );
+        const detail = process.env.NODE_ENV === "production" ? undefined : upErr;
+        return NextResponse.json({ error: "DB update failed", detail }, { status: 500 });
       }
     } else {
       const { error: insErr } = await supabase.from("integrations").insert(payload);
       if (insErr) {
-        return NextResponse.json(
-          { error: "DB insert failed", insErr },
-          { status: 500 }
-        );
+        const detail = process.env.NODE_ENV === "production" ? undefined : insErr;
+        return NextResponse.json({ error: "DB insert failed", detail }, { status: 500 });
       }
     }
 
-    return NextResponse.redirect(new URL(returnTo, req.url));
+    const res = NextResponse.redirect(new URL(returnTo, origin));
+    res.cookies.set(st.cookieName, "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
+    });
+    return res;
   } catch (e: any) {
-    return NextResponse.json(
-      { error: "Unhandled exception", message: e?.message, stack: e?.stack },
-      { status: 500 }
-    );
+    // No stack traces to clients in production.
+    const message = e?.message || "Server error";
+    const body = process.env.NODE_ENV === "production" ? { error: "Server error" } : { error: "Unhandled exception", message };
+    return NextResponse.json(body, { status: 500 });
   }
 }

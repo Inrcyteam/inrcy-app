@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { makeOAuthState, safeInternalPath } from "@/lib/security";
 
 export async function GET(request: Request) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -22,9 +23,10 @@ export async function GET(request: Request) {
     );
   }
 
-  // ✅ Add state (CSRF protection + lets us redirect back safely after OAuth)
-  const returnTo = "/dashboard?panel=mails";
-  const state = Buffer.from(JSON.stringify({ returnTo })).toString("base64url");
+  // ✅ CSRF-safe OAuth state + safe post-auth redirect
+  const { searchParams } = new URL(request.url);
+  const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=mails", "/dashboard?panel=mails");
+  const { stateB64, nonce, cookieName } = makeOAuthState("google", returnTo);
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -36,9 +38,17 @@ export async function GET(request: Request) {
     ].join(" "),
     access_type: "offline",
     prompt: "consent",
-    state,
+    state: stateB64,
   });
 
   const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  return NextResponse.redirect(url);
+  const res = NextResponse.redirect(url);
+  res.cookies.set(cookieName, nonce, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 10, // 10 minutes
+  });
+  return res;
 }

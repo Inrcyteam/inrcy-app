@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 
 type TokenResponse = {
   access_token?: string;
@@ -50,22 +51,29 @@ export async function GET(req: Request) {
     const code = urlObj.searchParams.get("code");
     const stateRaw = urlObj.searchParams.get("state");
 
+    // Canonical base URL: never guess from req.url (can be vercel preview, localhost, etc.)
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+
     // If Facebook returns an OAuth error, surface it back to the dashboard instead of "Missing ?code".
     const fbErrorMsg = urlObj.searchParams.get("error_message") || urlObj.searchParams.get("error_description");
     const fbErrorCode = urlObj.searchParams.get("error_code") || urlObj.searchParams.get("error");
 
-    if (!stateRaw) return NextResponse.json({ error: "Missing ?state" }, { status: 400 });
-
-    let state: any;
-    try {
-      state = JSON.parse(Buffer.from(stateRaw, "base64url").toString("utf-8"));
-    } catch {
-      return NextResponse.json({ error: "Invalid state" }, { status: 400 });
+    if (!stateRaw) {
+      return NextResponse.redirect(new URL("/dashboard?panel=facebook&toast=oauth_state", siteUrl));
     }
 
-    // Canonical base URL: never guess from req.url (can be vercel preview, localhost, etc.)
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
-    const returnTo = state?.returnTo || "/dashboard?panel=facebook";
+    // ✅ CSRF protection: verify state against HttpOnly cookie
+    const st = verifyOAuthState(req, "facebook", stateRaw);
+    const returnTo = safeInternalPath(st.returnTo || "/dashboard?panel=facebook", "/dashboard?panel=facebook");
+
+    const clearStateCookie = (res: NextResponse) => {
+      res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+      return res;
+    };
+
+    if (!st.ok) {
+      return clearStateCookie(NextResponse.redirect(new URL("/dashboard?panel=facebook&toast=oauth_state", siteUrl)));
+    }
 
     // If Facebook returned an error, redirect back with a readable reason.
     if (!code) {
@@ -74,7 +82,7 @@ export async function GET(req: Request) {
       finalUrl.searchParams.set("ok", "0");
       if (fbErrorCode) finalUrl.searchParams.set("reason", String(fbErrorCode));
       if (fbErrorMsg) finalUrl.searchParams.set("message", String(fbErrorMsg).slice(0, 200));
-      return NextResponse.redirect(finalUrl);
+      return clearStateCookie(NextResponse.redirect(finalUrl));
     }
 
     const appId = process.env.FACEBOOK_APP_ID;
@@ -252,7 +260,7 @@ export async function GET(req: Request) {
     finalUrl.searchParams.set("linked", "facebook");
     finalUrl.searchParams.set("ok", "1");
     if (!pages.length) finalUrl.searchParams.set("warning", "no_pages_or_no_permission");
-    return NextResponse.redirect(finalUrl);
+    return clearStateCookie(NextResponse.redirect(finalUrl));
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
