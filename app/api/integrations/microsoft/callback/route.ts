@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 
 type TokenResponse = {
   token_type?: string;
@@ -100,7 +101,7 @@ export async function GET(req: Request) {
     // Preserve refresh token if not returned (rare but possible)
     const { data: existing, error: existingErr } = await supabase
       .from("integrations")
-      .select("id, refresh_token")
+      .select("id, refresh_token_enc")
       .eq("user_id", userId)
       .eq("provider", "microsoft")
       .eq("category", "mail")
@@ -111,7 +112,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "DB read existing failed", existingErr }, { status: 500 });
     }
 
-    const refreshTokenToStore = tokenData.refresh_token ?? (existing as any)?.refresh_token ?? null;
+    const existingRefreshEnc = (existing as any)?.refresh_token_enc ?? null;
+    const existingRefreshPlain = existingRefreshEnc ? tryDecryptToken(String(existingRefreshEnc)) : null;
+    const refreshTokenToStore = tokenData.refresh_token ?? existingRefreshPlain ?? null;
+    const refreshTokenEncToStore = refreshTokenToStore ? encryptToken(String(refreshTokenToStore)) : null;
 
     const payload = {
       user_id: userId,
@@ -121,8 +125,10 @@ export async function GET(req: Request) {
       account_email: email,
       provider_account_id: me.id ?? null,
       status: "connected",
-      access_token: tokenData.access_token ?? null,
-      refresh_token: refreshTokenToStore,
+      access_token: null,
+      refresh_token: null,
+      access_token_enc: tokenData.access_token ? encryptToken(tokenData.access_token) : null,
+      refresh_token_enc: refreshTokenEncToStore,
       expires_at: computeExpiresAt(tokenData.expires_in ?? null),
       settings: {
         display_name: me.displayName ?? null,
@@ -147,7 +153,7 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL("/dashboard?panel=mails&toast=connected", req.url));
   } catch (e: any) {
     return NextResponse.json(
-      { error: "Unhandled exception", message: e?.message, stack: e?.stack },
+      { error: "Unhandled exception", message: e?.message },
       { status: 500 }
     );
   }

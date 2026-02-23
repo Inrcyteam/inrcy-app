@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
+import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 function toBase64Url(str: string) {
   return Buffer.from(str, "utf8")
     .toString("base64")
@@ -220,7 +221,7 @@ export async function POST(req: Request) {
 
   let q = supabase
     .from("integrations")
-    .select("id,access_token,refresh_token,expires_at,status,created_at,account_email,provider")
+    .select("id,access_token_enc,refresh_token_enc,expires_at,status,created_at,account_email,provider")
     .eq("user_id", userId)
     .eq("provider", "gmail")
     .eq("category", "mail");
@@ -234,15 +235,20 @@ export async function POST(req: Request) {
   const account = accounts?.[0];
   if (!account) return NextResponse.json({ error: "No Gmail connected" }, { status: 400 });
 
-  // ✅ tokens bruts
-  const accessTokenEnc: string | null = account.access_token ?? null;
-  const refreshToken: string | null = account.refresh_token ?? null;
+  // ✅ tokens (chiffrés en DB)
+  const accessTokenEnc: string | null = (account as any).access_token_enc ?? null;
+  const accessTokenPlain = tryDecryptToken(accessTokenEnc);
 
-  // ✅ on garantit un string
-  if (!accessTokenEnc) {
+  const refreshTokenEnc: string | null = (account as any).refresh_token_enc ?? null;
+  const refreshTokenPlain = tryDecryptToken(refreshTokenEnc);
+
+  if (!accessTokenPlain) {
     return NextResponse.json({ error: "Missing access token" }, { status: 400 });
   }
-  let accessToken: string = accessTokenEnc;
+
+  // on utilise un token en clair uniquement en mémoire
+  let accessToken: string = accessTokenPlain;
+  const refreshToken: string | null = refreshTokenPlain;
 
   // refresh proactif
   if (refreshToken && isExpired(account.expires_at)) {
@@ -257,7 +263,7 @@ export async function POST(req: Request) {
 
       await supabase
         .from("integrations")
-        .update({ access_token: accessToken, expires_at: expiresAt, status: "connected" })
+        .update({ access_token_enc: encryptToken(accessToken), expires_at: expiresAt, status: "connected" })
         .eq("id", account.id);
     }
   }
@@ -287,7 +293,7 @@ export async function POST(req: Request) {
 
       await supabase
         .from("integrations")
-        .update({ access_token: accessToken, expires_at: expiresAt, status: "connected" })
+        .update({ access_token_enc: encryptToken(accessToken), expires_at: expiresAt, status: "connected" })
         .eq("id", account.id);
 
       const retry = await gmailSend(accessToken, raw, threadId || undefined);

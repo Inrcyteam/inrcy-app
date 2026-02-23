@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { tryDecryptToken } from "@/lib/oauthCrypto";
 
 type FbPage = { id: string; name?: string; access_token?: string };
 
@@ -34,7 +35,8 @@ export async function GET() {
 
     // access_token_enc may be a PAGE token after selection.
     // For /me/accounts we need the USER token (stored in meta.user_access_token).
-    const userToken = String((integ as any)?.meta?.user_access_token || integ.access_token_enc || "").trim();
+    const userTokenRaw = String((integ as any)?.meta?.user_access_token_enc || (integ as any)?.meta?.user_access_token || integ.access_token_enc || "").trim();
+    const userToken = tryDecryptToken(userTokenRaw);
     if (!userToken) return NextResponse.json({ error: "Facebook token manquant" }, { status: 400 });
 
     const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({

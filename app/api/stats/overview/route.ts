@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { StatsSourceKey } from "@/lib/googleStats";
+import { tryDecryptToken } from "@/lib/oauthCrypto";
 
 // NOTE: We lazy-import internal libs inside the handler to avoid returning an HTML error page
 // when a dependency throws at module-evaluation time (e.g. cookies()/headers() scope issues).
@@ -445,7 +446,7 @@ sourcesStatus.facebook.connected = !!fbRow;
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           sourcesStatus.facebook.metrics = await fbFetchDailyInsights(
-            String(fbRow.access_token_enc),
+            tryDecryptToken(String(fbRow.access_token_enc)) || "",
             String(fbRow.resource_id),
             start,
             end
@@ -503,7 +504,7 @@ sourcesStatus.instagram.connected = !!igRow?.resource_id;
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           sourcesStatus.instagram.metrics = await igFetchDailyInsights(
-            String(igRow.access_token_enc),
+            tryDecryptToken(String(igRow.access_token_enc)) || "",
             String(igRow.resource_id),
             start,
             end
@@ -566,7 +567,7 @@ sourcesStatus.linkedin.connected = !!liRow;
             const end = new Date();
             const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
             sourcesStatus.linkedin.metrics = await liFetchOrgShareStats(
-              String(liRow.access_token_enc),
+              tryDecryptToken(String(liRow.access_token_enc)) || "",
               orgUrn,
               start,
               end

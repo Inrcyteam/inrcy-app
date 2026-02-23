@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
+import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { randomUUID } from "crypto";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -283,7 +284,8 @@ const body = await req.json().catch(() => null);
 
         if (ch === "facebook") {
           const pageId = String((fbRow as any)?.resource_id || "");
-          const pageToken = String((fbRow as any)?.access_token_enc || "");
+          const pageTokenRaw = String((fbRow as any)?.access_token_enc || "");
+          const pageToken = tryDecryptToken(pageTokenRaw) || "";
           if ((fbRow as any)?.status !== "connected" || !pageId || !pageToken) {
             await setDelivery(ch, { status: "failed", last_error: "Facebook non configuré (page/token manquant)" });
             results[ch] = { ok: false, error: "not_configured" };
@@ -315,7 +317,8 @@ const body = await req.json().catch(() => null);
 
         if (ch === "instagram") {
           const igUserId = String((igRow as any)?.resource_id || "");
-          const igToken = String((igRow as any)?.access_token_enc || "");
+          const igTokenRaw = String((igRow as any)?.access_token_enc || "");
+          const igToken = tryDecryptToken(igTokenRaw) || "";
           if ((igRow as any)?.status !== "connected" || !igUserId || !igToken) {
             await setDelivery(ch, { status: "failed", last_error: "Instagram non configuré (compte/token manquant)" });
             results[ch] = { ok: false, error: "not_configured" };
@@ -353,7 +356,8 @@ const body = await req.json().catch(() => null);
         }
 
         if (ch === "linkedin") {
-          const accessToken = String((liRow as any)?.access_token_enc || "");
+          const accessTokenRaw = String((liRow as any)?.access_token_enc || "");
+          const accessToken = tryDecryptToken(accessTokenRaw) || "";
           const authorUrn = String((liRow as any)?.resource_id || "");
           if ((liRow as any)?.status !== "connected" || !accessToken || !authorUrn) {
             await setDelivery(ch, { status: "failed", last_error: "LinkedIn non configuré (token/auteur manquant)" });

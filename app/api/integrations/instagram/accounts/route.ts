@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { tryDecryptToken } from "@/lib/oauthCrypto";
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
@@ -29,7 +30,8 @@ export async function GET() {
     .limit(1);
 
   const row = (rows?.[0] as any) ?? null;
-const tok = String((row as any)?.access_token_enc || "");
+  const tokRaw = String((row as any)?.access_token_enc || "");
+  const tok = tryDecryptToken(tokRaw);
   if (!tok) return NextResponse.json({ error: "Instagram account not connected" }, { status: 400 });
 
   const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({

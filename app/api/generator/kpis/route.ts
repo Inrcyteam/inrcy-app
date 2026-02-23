@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { tryDecryptToken } from "@/lib/oauthCrypto";
 
 /**
  * /api/generator/kpis
@@ -71,15 +72,15 @@ async function refreshGmailAccessToken(refreshToken: string) {
 
 function extractGmailTokens(account: AnyRec) {
   // Your DB shows encrypted columns: access_token_enc / refresh_token_enc
-  // We keep these in the field list for debug, but we CAN'T decrypt here without your helper.
-  const accessToken = pickFirst<string>(
+  // We can decrypt tokens server-side to avoid storing clear tokens in DB.
+  const accessTokenPlain = pickFirst<string>(
     account.access_token,
     account.accessToken,
     account.token,
     account.oauth_access_token
   );
 
-  const refreshToken = pickFirst<string>(
+  const refreshTokenPlain = pickFirst<string>(
     account.refresh_token,
     account.refreshToken,
     account.oauth_refresh_token
@@ -94,6 +95,9 @@ function extractGmailTokens(account: AnyRec) {
   // Encrypted (for debug only)
   const accessTokenEnc = pickFirst<string>(account.access_token_enc);
   const refreshTokenEnc = pickFirst<string>(account.refresh_token_enc);
+
+  const accessToken = accessTokenPlain || tryDecryptToken(accessTokenEnc) || undefined;
+  const refreshToken = refreshTokenPlain || tryDecryptToken(refreshTokenEnc) || undefined;
 
   return { accessToken, refreshToken, expiresAt, accessTokenEnc, refreshTokenEnc };
 }

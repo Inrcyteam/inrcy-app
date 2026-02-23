@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
+import { encryptToken } from "@/lib/oauthCrypto";
 type TokenResponse = {
   access_token?: string;
   refresh_token?: string;
@@ -99,7 +100,7 @@ export async function GET(req: Request) {
     // 3) Read existing row (to preserve refresh_token if not returned)
     const { data: existing, error: existingErr } = await supabase
       .from("integrations")
-      .select("id, refresh_token")
+      .select("id, refresh_token_enc")
       .eq("user_id", userId)
       .eq("provider", "gmail")
       .eq("category", "mail")
@@ -113,8 +114,8 @@ export async function GET(req: Request) {
       );
     }
 
-    const refreshTokenToStore =
-      tokenData.refresh_token ?? (existing as any)?.refresh_token ?? null;
+    const refreshTokenEncToStore =
+      tokenData.refresh_token ? encryptToken(tokenData.refresh_token) : (existing as any)?.refresh_token_enc ?? null;
 
     const expiresAt =
       tokenData.expires_in != null
@@ -129,8 +130,10 @@ export async function GET(req: Request) {
       account_email: userInfo.email,
       provider_account_id: userInfo.id ?? null,
       status: "connected",
-      access_token: tokenData.access_token ?? null,
-      refresh_token: refreshTokenToStore,
+      access_token: null,
+      refresh_token: null,
+      access_token_enc: tokenData.access_token ? encryptToken(tokenData.access_token) : null,
+      refresh_token_enc: refreshTokenEncToStore,
       expires_at: expiresAt,
       settings: {
         display_name: userInfo.name ?? null,

@@ -1,5 +1,6 @@
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 
 export type StatsSourceKey = "site_inrcy" | "site_web" | "gmb" | "facebook";
 export type StatsProductKey = "ga4" | "gsc" | "gmb" | "facebook";
@@ -132,7 +133,7 @@ export async function getGoogleTokenFor(source: StatsSourceKey, product: "ga4" |
   const row = data as unknown as GoogleTokenRow;
   const usesAdmin = Boolean((row as any)?.meta?.uses_admin);
 
-  let refreshToken = row.refresh_token_enc;
+  let refreshToken = tryDecryptToken(row.refresh_token_enc);
 
   // Mode RENTED: pas de refresh_token sur la ligne client -> on utilise le refresh_token du compte admin iNrCy
   if (!refreshToken) {
@@ -141,7 +142,7 @@ export async function getGoogleTokenFor(source: StatsSourceKey, product: "ga4" |
     if (!refreshToken) return null;
   }
 
-  let accessToken = row.access_token_enc;
+  let accessToken = tryDecryptToken(row.access_token_enc);
   let expiresAt = row.expires_at;
 
   if (!accessToken || isExpired(expiresAt)) {
@@ -152,7 +153,7 @@ export async function getGoogleTokenFor(source: StatsSourceKey, product: "ga4" |
     // On cache l'access_token sur la ligne client (même si uses_admin=true)
     await supabase
       .from("integrations")
-      .update({ access_token_enc: accessToken, expires_at: expiresAt })
+      .update({ access_token_enc: accessToken ? encryptToken(accessToken) : null, expires_at: expiresAt })
       .eq("id", row.id);
   }
 
@@ -342,7 +343,7 @@ export async function getGoogleTokenForAnyGoogle(source: StatsSourceKey, product
   // For any Google integration, refresh token is required to keep the connection alive.
   if (!row.refresh_token_enc) return null;
 
-  let accessToken = row.access_token_enc;
+  let accessToken = tryDecryptToken(row.access_token_enc);
   let expiresAt = row.expires_at;
 
   if (!accessToken || isExpired(expiresAt)) {
@@ -352,7 +353,7 @@ export async function getGoogleTokenForAnyGoogle(source: StatsSourceKey, product
 
     await supabase
       .from("integrations")
-      .update({ access_token_enc: accessToken, expires_at: expiresAt })
+      .update({ access_token_enc: accessToken ? encryptToken(accessToken) : null, expires_at: expiresAt })
       .eq("id", row.id);
   }
 

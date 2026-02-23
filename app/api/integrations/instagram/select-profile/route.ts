@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
@@ -33,7 +34,8 @@ export async function POST(req: Request) {
     .limit(1);
 
   const row = (rows?.[0] as any) ?? null;
-const userToken = String((row as any)?.access_token_enc || "");
+const userTokenRaw = String((row as any)?.access_token_enc || "");
+    const userToken = tryDecryptToken(userTokenRaw) || "";
   if (!userToken) return NextResponse.json({ error: "Instagram account not connected" }, { status: 400 });
 
   // Get pages + tokens
@@ -63,7 +65,7 @@ const userToken = String((row as any)?.access_token_enc || "");
       status: "connected",
       resource_id: igId,
       resource_label: username || null,
-      access_token_enc: page.access_token,
+      access_token_enc: encryptToken(page.access_token),
       meta: { page_id: pageId, page_name: page.name || null },
     })
     .eq("user_id", user.id)

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { encryptToken } from "@/lib/oauthCrypto";
 
 async function postForm(url: string, form: Record<string, string>) {
   const res = await fetch(url, {
@@ -107,7 +108,7 @@ const payload: any = {
   display_name: name || null,
   provider_account_id: sub || null,
   scopes: "openid profile email w_member_social",
-  access_token_enc: accessToken,
+  access_token_enc: encryptToken(accessToken),
   refresh_token_enc: null,
   expires_at: null,
   resource_id: authorUrn || null,

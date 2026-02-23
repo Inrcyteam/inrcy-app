@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { tryDecryptToken } from "@/lib/oauthCrypto";
 
 // POST /api/integrations/google-stats/activate
 // Utilisé principalement en mode "rented" pour Site iNrCy :
@@ -256,9 +257,8 @@ let adminRefreshToken = "";
     .not("refresh_token_enc", "is", null)
     .order("updated_at", { ascending: false })
     .limit(10);
-  adminRefreshToken = String(
-    (rows as any[])?.find((r) => String((r as any)?.refresh_token_enc || "").trim())?.refresh_token_enc || ""
-  ).trim();
+  const raw = String((rows as any[])?.find((r) => String((r as any)?.refresh_token_enc || "").trim())?.refresh_token_enc || "").trim();
+  adminRefreshToken = tryDecryptToken(raw) || "";
 }
     if (!adminRefreshToken) {
       return NextResponse.json(

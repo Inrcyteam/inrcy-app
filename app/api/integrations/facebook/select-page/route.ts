@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { encryptToken } from "@/lib/oauthCrypto";
 
 export async function POST(req: Request) {
   try {
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
       .update({
         resource_id: pageId,
         resource_label: pageName,
-        access_token_enc: pageAccessToken,
+        access_token_enc: encryptToken(pageAccessToken),
         status: "connected",
         meta: nextMeta,
       })

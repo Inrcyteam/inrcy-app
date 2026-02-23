@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { encryptToken } from "@/lib/oauthCrypto";
 
 type TokenResponse = {
   access_token?: string;
@@ -180,7 +181,7 @@ export async function GET(req: Request) {
       display_name: me.name ?? null,
       provider_account_id: me.id ?? null,
       scopes: "public_profile,email,pages_show_list,pages_manage_posts,pages_read_engagement,read_insights",
-      access_token_enc: tokenToStore,
+      access_token_enc: encryptToken(tokenToStore),
       refresh_token_enc: null,
       expires_at: null,
       resource_id: null,
@@ -188,7 +189,8 @@ export async function GET(req: Request) {
       meta: {
         picked: "none",
         pages_found: pages.length,
-        user_access_token: longUserToken,
+        user_access_token: null,
+        user_access_token_enc: encryptToken(longUserToken),
         page_url: null,
       },
     };

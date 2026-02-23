@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { tryDecryptToken } from "@/lib/oauthCrypto";
 
 async function fetchJson(url: string, accessToken: string) {
   const res = await fetch(url, {
@@ -35,7 +36,8 @@ export async function GET() {
     .limit(1);
 
   const row = (rows?.[0] as any) ?? null;
-const tok = String((row as any)?.access_token_enc || "");
+const tokRaw = String((row as any)?.access_token_enc || "");
+    const tok = tryDecryptToken(tokRaw) || "";
   if (!tok) return NextResponse.json({ error: "LinkedIn not connected" }, { status: 400 });
 
   // Try to list organizations where the user is admin (best-effort; may require app review/scopes)

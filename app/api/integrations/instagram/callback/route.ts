@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { encryptToken } from "@/lib/oauthCrypto";
 
 type TokenResponse = {
   access_token?: string;
@@ -93,7 +94,7 @@ const payload: any = {
   source: "instagram",
   product: "instagram",
   status: "account_connected",
-  access_token_enc: longUserToken,
+  access_token_enc: encryptToken(longUserToken),
   refresh_token_enc: null,
   expires_at: null,
   resource_id: null,

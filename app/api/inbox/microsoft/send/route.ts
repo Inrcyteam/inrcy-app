@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
+import { tryDecryptToken } from "@/lib/oauthCrypto";
 function isExpired(expires_at?: string | null, skewSeconds = 60) {
   if (!expires_at) return false;
   const t = Date.parse(expires_at);
