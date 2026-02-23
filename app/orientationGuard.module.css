@@ -216,15 +216,30 @@
 
 /* ✅ Mode paysage: compacte en 2 colonnes (évite coupe) */
 @media (orientation: landscape){
-  .card{ width: min(760px, 94vw); }
+  /* un petit décalage à gauche pour être parfaitement centré visuellement */
+  .card{
+    width: min(760px, 94vw);
+    transform: translateX(-18px);
+  }
 
   .title, .subtitle{ text-align: left; }
 
   .grid{
-    grid-template-columns: 160px 1fr;
+    grid-template-columns: 180px 1fr;
     align-items: center;
-    justify-items: start;
+    justify-items: stretch;
     gap: 18px;
+  }
+
+  /* on centre et on “contient” le téléphone pour éviter qu’il sorte du cadre */
+  .phoneWrap{
+    justify-self: center;
+    width: 180px;
+    overflow: hidden;
+  }
+  .phone{
+    width: 76px;
+    height: 146px;
   }
 
   .hintSmall{ text-align: left; }
