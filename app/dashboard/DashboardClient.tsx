@@ -234,6 +234,8 @@ export default function DashboardClient() {
     const tryLockPortrait = async () => {
       try {
         // @ts-ignore
+        // IMPORTANT: on tente le lock dès qu'on est en mobile, même si on est déjà en paysage.
+        // Certains navigateurs n'autorisent le lock qu'après un geste utilisateur -> on retente aussi sur click/touch.
         if (mq.matches && screen?.orientation?.lock) {
           // @ts-ignore
           await screen.orientation.lock("portrait");
@@ -249,9 +251,16 @@ export default function DashboardClient() {
     mq.addEventListener?.("change", onChange);
     window.addEventListener("orientationchange", onChange);
 
+    // Retente après un geste utilisateur (requis sur certains navigateurs)
+    const onFirstGesture = () => void tryLockPortrait();
+    window.addEventListener("click", onFirstGesture as any, { once: true, passive: true } as any);
+    window.addEventListener("touchstart", onFirstGesture as any, { once: true, passive: true } as any);
+
     return () => {
       mq.removeEventListener?.("change", onChange);
       window.removeEventListener("orientationchange", onChange);
+      window.removeEventListener("click", onFirstGesture as any);
+      window.removeEventListener("touchstart", onFirstGesture as any);
       try {
         // @ts-ignore
         screen?.orientation?.unlock?.();
@@ -261,13 +270,15 @@ export default function DashboardClient() {
     };
   }, []);
 
-  // Preserve dashboard scroll position when opening/closing modules
+  // Preserve dashboard scroll position when leaving the dashboard (vers un module)
   const goToModule = useCallback(
     (path: string) => {
       try {
         sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
       } catch {}
-      router.push(path, { scroll: false });
+      // IMPORTANT: en allant dans un module, on VEUT arriver en haut de page.
+      // On ne désactive donc PAS le scroll automatique de Next ici.
+      router.push(path);
     },
     [router]
   );

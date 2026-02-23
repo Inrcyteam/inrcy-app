@@ -228,6 +228,12 @@ function categoryBadgeClass(c: Category) {
 export default function CRMClient() {
   const router = useRouter();
 
+  // Toujours arriver en haut du module (évite de récupérer le scroll du dashboard)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.scrollTo(0, 0);
+  }, []);
+
   // --- Responsive (table & layout) ---
   const [isResponsive, setIsResponsive] = useState(false);
 
@@ -279,6 +285,15 @@ export default function CRMClient() {
 
       window.removeEventListener("orientationchange", update);
       window.removeEventListener("resize", update);
+
+      // ✅ Important : en sortant du module, on relâche le lock paysage
+      // (sinon le dashboard peut rester en paysage)
+      try {
+        // @ts-ignore
+        screen?.orientation?.unlock?.();
+      } catch {
+        // ignore
+      }
     };
   }, []);
 

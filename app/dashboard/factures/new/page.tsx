@@ -60,6 +60,12 @@ export default function NewFacturePage() {
   const searchParams = useSearchParams();
   const supabase = createClient();
 
+  // Toujours arriver en haut du module (évite de récupérer le scroll du dashboard)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.scrollTo(0, 0);
+  }, []);
+
   // PDF → Supabase Storage (PJ iNrbox)
   const ATTACH_BUCKET = "inrbox_attachments";
   const previewRef = useRef<HTMLDivElement | null>(null);
@@ -105,6 +111,15 @@ export default function NewFacturePage() {
     if (mustRotate) void tryLockLandscape();
     return () => {
       document.body.style.overflow = "";
+
+      // ✅ Important : en sortant du module (ou quand on repasse non-bloquant),
+      // on relâche le lock paysage
+      try {
+        // @ts-ignore
+        screen?.orientation?.unlock?.();
+      } catch {
+        // ignore
+      }
     };
   }, [mustRotate]);
 

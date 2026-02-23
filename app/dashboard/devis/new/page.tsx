@@ -68,6 +68,12 @@ export default function NewDevisPage() {
   const searchParams = useSearchParams();
   const supabase = createClient();
 
+  // Toujours arriver en haut du module (évite de récupérer le scroll du dashboard)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.scrollTo(0, 0);
+  }, []);
+
   // PDF → Supabase Storage (PJ iNrbox)
   const ATTACH_BUCKET = "inrbox_attachments";
   const previewRef = useRef<HTMLDivElement | null>(null);
@@ -234,6 +240,14 @@ export default function NewDevisPage() {
 
       window.removeEventListener("orientationchange", update);
       window.removeEventListener("resize", update);
+
+      // ✅ Important : en sortant du module, on relâche le lock paysage
+      try {
+        // @ts-ignore
+        screen?.orientation?.unlock?.();
+      } catch {
+        // ignore
+      }
     };
   }, []);
 
