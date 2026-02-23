@@ -9,8 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@sentry/nextjs": "^10.39.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.90.1",
+    "@upstash/ratelimit": "^2.0.5",
+    "@upstash/redis": "^1.34.4",
     "html2canvas": "^1.4.1",
     "imapflow": "^1.2.9",
     "jspdf": "^4.0.0",
@@ -18,9 +21,7 @@
     "next": "^16.1.6",
     "nodemailer": "^6.10.1",
     "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "@upstash/redis": "^1.34.4",
-    "@upstash/ratelimit": "^2.0.5"
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
