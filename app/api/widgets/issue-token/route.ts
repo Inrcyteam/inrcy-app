@@ -49,6 +49,27 @@ function originHost(req: Request): string {
   return "";
 }
 
+function requestHost(req: Request): string {
+  const h = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "").trim();
+  return h.toLowerCase().replace(/^www\./, "");
+}
+
+function requestProto(req: Request): string {
+  return (req.headers.get("x-forwarded-proto") || "https").trim();
+}
+
+function parseAllowedOrigins(): string[] {
+  return (process.env.INRCY_WIDGET_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function isAllowedOrigin(origin: string | null, allowedOrigins: string[]): boolean {
+  if (!origin) return false;
+  return allowedOrigins.includes(origin);
+}
+
 function corsHeaders(allowOrigin: string | null) {
   return {
     "Access-Control-Allow-Origin": allowOrigin || "null",
@@ -119,10 +140,35 @@ const handler = async (req: Request) => {
       }
     }
 
-    // CORS hard-binding: only allow calls from the same domain.
-    const host = originHost(req);
-    const allowOrigin = host && host === domain ? req.headers.get("origin") : null;
-    if (!allowOrigin) {
+    // CORS hard-binding (widgets) + dashboard allowlist (issuing tokens from app.inrcy.com).
+    // - For embedded widgets: Origin must match the target domain.
+    // - For the dashboard: allow explicit origins from env var INRCY_WIDGET_ALLOWED_ORIGINS.
+    const origin = req.headers.get("origin");
+    const originH = originHost(req);
+    const allowedOrigins = parseAllowedOrigins();
+
+    // Dashboard calls (Origin in allowlist)
+    let allowOrigin: string | null = isAllowedOrigin(origin, allowedOrigins) ? origin! : null;
+
+    // Widget calls (Origin host matches the domain)
+    if (!allowOrigin && origin && originH === domain) {
+      allowOrigin = origin;
+    }
+
+    // If Origin is missing (e.g., direct navigation or some same-origin calls), allow only if
+    // the request host itself is on the allowlist.
+    if (!allowOrigin && !origin) {
+      const h = requestHost(req);
+      const proto = requestProto(req);
+      const effective = h ? `${proto}://${h}` : null;
+      if (isAllowedOrigin(effective, allowedOrigins)) {
+        allowOrigin = null; // Not needed for navigation; keep CORS conservative.
+      } else {
+        return NextResponse.json({ ok: false, error: "Origin not allowed" }, { status: 403, headers: corsHeaders(null) });
+      }
+    }
+
+    if (!allowOrigin && origin) {
       return NextResponse.json({ ok: false, error: "Origin not allowed" }, { status: 403, headers: corsHeaders(null) });
     }
 
