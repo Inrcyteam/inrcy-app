@@ -1,0 +1,20 @@
+.overlay{
+  position: fixed;
+  inset: 0;
+  background: #0b1220;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.box{
+  text-align: center;
+  color: white;
+  padding: 24px;
+}
+
+.icon{
+  font-size: 48px;
+  margin-bottom: 12px;
+}

@@ -201,64 +201,7 @@ export default function NewDevisPage() {
 
   const [validityDays, setValidityDays] = useState<number>(30);
 
-  // --- Mobile: obligatoire en paysage (overlay en portrait) ---
-  const [needLandscape, setNeedLandscape] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mq = window.matchMedia("(max-width: 900px) and (orientation: portrait)");
-
-    const update = () => setNeedLandscape(mq.matches);
-    update();
-
-    // Tentative de lock paysage (non garanti selon navigateur/OS)
-    const tryLock = async () => {
-      try {
-        // @ts-ignore
-        if (screen?.orientation?.lock) {
-          // @ts-ignore
-          await screen.orientation.lock("landscape");
-        }
-      } catch {
-        // ignore
-      }
-    };
-    tryLock();
-
-    if ("addEventListener" in mq) mq.addEventListener("change", update);
-    // @ts-ignore (Safari)
-    else mq.addListener(update);
-
-    window.addEventListener("orientationchange", update);
-    window.addEventListener("resize", update);
-
-    return () => {
-      if ("removeEventListener" in mq) mq.removeEventListener("change", update);
-      // @ts-ignore (Safari)
-      else mq.removeListener(update);
-
-      window.removeEventListener("orientationchange", update);
-      window.removeEventListener("resize", update);
-
-      // ✅ Important : en sortant du module, on relâche le lock paysage
-      try {
-        // @ts-ignore
-        screen?.orientation?.unlock?.();
-      } catch {
-        // ignore
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const prev = document.body.style.overflow;
-    if (needLandscape) document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [needLandscape]);
+  // Orientation: gérée globalement via <OrientationGuard />
 
   // IMPORTANT: id stable au 1er render
   const [lines, setLines] = useState<LineItem[]>([
@@ -594,18 +537,6 @@ const addLine = () =>
 
   return (
     <div className={`${dash.page} ${styles.editorPage}`}>
-      {needLandscape ? (
-        <div className={styles.landscapeGate} role="dialog" aria-modal="true">
-          <div className={styles.landscapeGateCard}>
-            <div className={styles.landscapeGateIcon}>🔄</div>
-            <div className={styles.landscapeGateTitle}>Passez en mode paysage</div>
-            <div className={styles.landscapeGateText}>
-              La création de devis est optimisée en écran paysage sur mobile.
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <div className={styles.container}>
         {/* Formulaire */}
         <div className={styles.panel}>

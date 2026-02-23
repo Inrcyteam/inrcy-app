@@ -247,64 +247,7 @@ export default function CRMClient() {
   }, []);
 
 
-  // --- Mobile: obligatoire en paysage (overlay en portrait) ---
-  const [needLandscape, setNeedLandscape] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mq = window.matchMedia("(max-width: 900px) and (orientation: portrait)");
-    const update = () => setNeedLandscape(mq.matches);
-    update();
-
-    // Tentative de lock paysage (non garanti selon navigateur/OS)
-    const tryLock = async () => {
-      try {
-        // @ts-ignore
-        if (screen?.orientation?.lock) {
-          // @ts-ignore
-          await screen.orientation.lock("landscape");
-        }
-      } catch {
-        // ignore
-      }
-    };
-    void tryLock();
-
-    if ("addEventListener" in mq) mq.addEventListener("change", update);
-    // @ts-ignore (Safari)
-    else mq.addListener(update);
-
-    window.addEventListener("orientationchange", update);
-    window.addEventListener("resize", update);
-
-    return () => {
-      if ("removeEventListener" in mq) mq.removeEventListener("change", update);
-      // @ts-ignore (Safari)
-      else mq.removeListener(update);
-
-      window.removeEventListener("orientationchange", update);
-      window.removeEventListener("resize", update);
-
-      // ✅ Important : en sortant du module, on relâche le lock paysage
-      // (sinon le dashboard peut rester en paysage)
-      try {
-        // @ts-ignore
-        screen?.orientation?.unlock?.();
-      } catch {
-        // ignore
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const prev = document.body.style.overflow;
-    if (needLandscape) document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [needLandscape]);
+  // Orientation: gérée globalement via <OrientationGuard />
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -927,18 +870,6 @@ const exportCsv = () => {
         startNew();
       }}
     >
-      {needLandscape ? (
-        <div className={styles.landscapeGate} role="dialog" aria-modal="true">
-          <div className={styles.landscapeGateCard}>
-            <div className={styles.landscapeGateIcon}>🔄</div>
-            <div className={styles.landscapeGateTitle}>Passez en mode paysage</div>
-            <div className={styles.landscapeGateText}>
-              Le CRM est optimisé en écran <strong>paysage</strong> sur mobile.
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <header className={styles.header}>
         <div className={styles.titleWrap}>
           <img src="/inrcrm-logo.png" alt="iNr’CRM" style={{ width: 154, height: 64, display: "block" }} />

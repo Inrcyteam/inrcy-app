@@ -73,55 +73,7 @@ export default function NewFacturePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const vatDispense = !!profile?.vat_dispense;
 
-  // --- Mobile: this screen is unusable in portrait -> require landscape
-  const [mustRotate, setMustRotate] = useState(false);
-
-  const tryLockLandscape = async () => {
-    try {
-      // Works only on some mobile browsers and often requires a user gesture
-      // so we also keep a blocking overlay until the user rotates.
-      // @ts-ignore
-      await screen?.orientation?.lock?.("landscape");
-    } catch {
-      // ignore
-    }
-  };
-
-  useEffect(() => {
-    const update = () => {
-      if (typeof window === "undefined") return;
-      const isMobile = window.matchMedia("(max-width: 900px)").matches;
-      const isPortrait = window.matchMedia("(orientation: portrait)").matches;
-      setMustRotate(isMobile && isPortrait);
-    };
-
-    update();
-    window.addEventListener("resize", update);
-    window.addEventListener("orientationchange", update);
-
-    return () => {
-      window.removeEventListener("resize", update);
-      window.removeEventListener("orientationchange", update);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    document.body.style.overflow = mustRotate ? "hidden" : "";
-    if (mustRotate) void tryLockLandscape();
-    return () => {
-      document.body.style.overflow = "";
-
-      // ✅ Important : en sortant du module (ou quand on repasse non-bloquant),
-      // on relâche le lock paysage
-      try {
-        // @ts-ignore
-        screen?.orientation?.unlock?.();
-      } catch {
-        // ignore
-      }
-    };
-  }, [mustRotate]);
+  // Orientation: gérée globalement via <OrientationGuard />
 
   // IMPORTANT: valeur stable SSR/CSR -> on initialise à vide, puis on remplit après mount
   const [number, setNumber] = useState<string>("");
@@ -599,20 +551,6 @@ const addLine = () =>
     PAYMENT_METHODS.find((m) => m.key === paymentMethod)?.label ?? "—";
 
   return (
-
-    <>
-      {mustRotate ? (
-        <div className={styles.landscapeGate} role="dialog" aria-modal="true">
-          <div className={styles.landscapeGateCard}>
-            <div className={styles.landscapeGateIcon}>🔁</div>
-            <div className={styles.landscapeGateTitle}>Passez en mode paysage</div>
-            <div className={styles.landscapeGateText}>
-              La création de facture est optimisée en écran <strong>paysage</strong> sur mobile.
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <div className={`${dash.page} ${styles.editorPage}`}>
       <div className={styles.container}>
         {/* Formulaire */}
@@ -1282,6 +1220,5 @@ const addLine = () =>
         </div>
       </div>
     </div>
-    </>
   );
 }

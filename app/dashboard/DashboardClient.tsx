@@ -226,49 +226,7 @@ export default function DashboardClient() {
     router.push(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false });
   };
 
-  // --- Mobile: garder le dashboard en portrait (best-effort, dépend du navigateur) ---
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mq = window.matchMedia("(max-width: 900px)");
-    const tryLockPortrait = async () => {
-      try {
-        // @ts-ignore
-        // IMPORTANT: on tente le lock dès qu'on est en mobile, même si on est déjà en paysage.
-        // Certains navigateurs n'autorisent le lock qu'après un geste utilisateur -> on retente aussi sur click/touch.
-        if (mq.matches && screen?.orientation?.lock) {
-          // @ts-ignore
-          await screen.orientation.lock("portrait");
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    void tryLockPortrait();
-
-    const onChange = () => void tryLockPortrait();
-    mq.addEventListener?.("change", onChange);
-    window.addEventListener("orientationchange", onChange);
-
-    // Retente après un geste utilisateur (requis sur certains navigateurs)
-    const onFirstGesture = () => void tryLockPortrait();
-    window.addEventListener("click", onFirstGesture as any, { once: true, passive: true } as any);
-    window.addEventListener("touchstart", onFirstGesture as any, { once: true, passive: true } as any);
-
-    return () => {
-      mq.removeEventListener?.("change", onChange);
-      window.removeEventListener("orientationchange", onChange);
-      window.removeEventListener("click", onFirstGesture as any);
-      window.removeEventListener("touchstart", onFirstGesture as any);
-      try {
-        // @ts-ignore
-        screen?.orientation?.unlock?.();
-      } catch {
-        // ignore
-      }
-    };
-  }, []);
+  // Orientation: gérée globalement via <OrientationGuard />
 
   // Preserve dashboard scroll position when leaving the dashboard (vers un module)
   const goToModule = useCallback(
