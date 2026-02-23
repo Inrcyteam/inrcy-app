@@ -437,21 +437,17 @@ export async function GET(req: Request) {
       // Persist the binding in DB (nouveau schéma)
 // - site_inrcy -> inrcy_site_configs.settings
 // - site_web -> pro_tools_configs.settings.site_web
-// Fallback legacy : site_configs.settings
 
-const [inrcyCfgRes, proCfgRes, legacyCfgRes] = await Promise.all([
+const [inrcyCfgRes, proCfgRes] = await Promise.all([
   supabase.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle(),
   supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
-  supabase.from("site_configs").select("settings").eq("user_id", userId).maybeSingle(),
 ]);
 
 const nowIso = new Date().toISOString();
 // NOTE: SiteSettings has only optional fields, so an empty object is a valid fallback.
 // Using `null` breaks TS in production builds (null not assignable to SiteSettings).
-const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as any)?.settings, {}) ??
-  safeJsonParse<SiteSettings>((legacyCfgRes.data as any)?.settings, {});
-const proSettings = safeJsonParse<any>((proCfgRes.data as any)?.settings, null) ??
-  safeJsonParse<any>((legacyCfgRes.data as any)?.settings, {});
+const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as any)?.settings, {});
+const proSettings = safeJsonParse<any>((proCfgRes.data as any)?.settings, {});
 
 if (source === "site_inrcy") {
   const next: SiteSettings = { ...(inrcySettings ?? {}) };
@@ -496,19 +492,15 @@ if (domain && tokenData.access_token) {
       // Nouveau schéma :
       // - site_inrcy -> inrcy_site_configs.settings
       // - site_web -> pro_tools_configs.settings.site_web
-      // Fallback legacy : site_configs.settings
 
-      const [inrcyCfgRes, proCfgRes, legacyCfgRes] = await Promise.all([
+      const [inrcyCfgRes, proCfgRes] = await Promise.all([
         supabase.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle(),
         supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
-        supabase.from("site_configs").select("settings").eq("user_id", userId).maybeSingle(),
       ]);
 
       const nowIso = new Date().toISOString();
-      const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as any)?.settings, {}) ??
-        safeJsonParse<SiteSettings>((legacyCfgRes.data as any)?.settings, {});
-      const proSettings = safeJsonParse<any>((proCfgRes.data as any)?.settings, null) ??
-        safeJsonParse<any>((legacyCfgRes.data as any)?.settings, {});
+      const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as any)?.settings, {});
+      const proSettings = safeJsonParse<any>((proCfgRes.data as any)?.settings, {});
 
       if (source === "site_web") {
         const nextPro = { ...(proSettings ?? {}) };

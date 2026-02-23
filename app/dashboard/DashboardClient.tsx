@@ -411,7 +411,7 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
 // - ownership + url iNrCy : profiles
 // - config iNrCy : inrcy_site_configs
 // - outils du pro (site_web, gmb, facebook, houzz, pages_jaunes, ...) : pro_tools_configs
-// - fallback de transition : site_configs (ancienne table) si une ligne n'existe pas encore
+// (ancienne table site_configs supprimée)
 const loadSiteInrcy = useCallback(async () => {
   const supabase = createClient();
   const { data: authData } = await supabase.auth.getUser();
@@ -430,7 +430,7 @@ const loadSiteInrcy = useCallback(async () => {
   setSiteInrcyOwnership(ownership);
 
   // 2) Lecture configs (nouveaux schémas)
-  const [inrcyRes, proRes, legacyRes] = await Promise.all([
+  const [inrcyRes, proRes] = await Promise.all([
     supabase
       .from("inrcy_site_configs")
       .select("contact_email,settings,site_url")
@@ -441,28 +441,22 @@ const loadSiteInrcy = useCallback(async () => {
       .select("settings")
       .eq("user_id", user.id)
       .maybeSingle(),
-    // fallback (ancienne table) — on ne dépend plus d'elle, mais elle évite de casser si la migration n'a pas encore été faite
-    supabase
-      .from("site_configs")
-      .select("contact_email,settings,site_url")
-      .eq("user_id", user.id)
-      .maybeSingle(),
   ]);
 
   const inrcyCfg = (inrcyRes.data as any | null) ?? null;
   const proCfg = (proRes.data as any | null) ?? null;
-  const legacyCfg = (legacyRes.data as any | null) ?? null;
+  const legacyCfg = null;
 
-  // URL iNrCy : profile > inrcy table > legacy
-  const url = (profile?.inrcy_site_url ?? inrcyCfg?.site_url ?? legacyCfg?.site_url ?? "") as string;
+  // URL iNrCy : profile > inrcy table
+  const url = (profile?.inrcy_site_url ?? inrcyCfg?.site_url ?? "") as string;
   setSiteInrcyUrl(url);
 
-  // Contact email iNrCy : inrcy table > legacy
-  const email = (inrcyCfg?.contact_email ?? legacyCfg?.contact_email ?? "") as string;
+  // Contact email iNrCy : inrcy table
+  const email = (inrcyCfg?.contact_email ?? "") as string;
   setSiteInrcyContactEmail(email);
 
-  // Settings iNrCy : inrcy table > legacy
-  const inrcySettingsObj = inrcyCfg?.settings ?? legacyCfg?.settings ?? {};
+  // Settings iNrCy : inrcy table
+  const inrcySettingsObj = inrcyCfg?.settings ?? {};
   try {
     setSiteInrcySettingsText(JSON.stringify(inrcySettingsObj, null, 2));
   } catch {
@@ -474,7 +468,9 @@ const loadSiteInrcy = useCallback(async () => {
   setGscProperty((inrcySettingsObj as any)?.gsc?.property ?? "");
 
   // Settings pro : pro_tools_configs > legacy.settings
-  const proSettingsObj = proCfg?.settings ?? legacyCfg?.settings ?? {};
+type SettingsRow = { settings?: any | null } | null;  
+const proSettingsObj =
+  (proCfg as SettingsRow)?.settings ?? (legacyCfg as SettingsRow)?.settings ?? {};
 
   // ✅ Site web (stocké dans pro_tools_configs.settings.site_web)
   const siteWebObj = (proSettingsObj as any)?.site_web ?? {};
@@ -983,7 +979,7 @@ const disconnectSiteInrcyGsc = useCallback(() => {
   void disconnectGoogleStats("site_inrcy", "gsc");
 }, [disconnectGoogleStats, siteInrcyOwnership]);
 
-// ✅ Enregistrer le lien du site iNrCy (site_configs.site_url)
+// ✅ Enregistrer le lien du site iNrCy (inrcy_site_configs.site_url)
 const saveSiteInrcyUrl = useCallback(async () => {
   if (siteInrcyOwnership === "none") return;
   const url = siteInrcyUrl.trim();
@@ -1131,7 +1127,7 @@ const resetSiteWebAll = useCallback(async () => {
   setSiteWebGscConnected(false);
 }, [resetGoogleStats, updateSiteWebSettings]);
 
-// ✅ Houzz / Pages Jaunes (liens uniquement, stockés dans site_configs.settings)
+// ✅ Houzz / Pages Jaunes (liens uniquement, stockés dans inrcy_site_configs.settings)
 const updateRootSettingsKey = useCallback(
   async (key: "gmb" | "facebook" | "instagram" | "linkedin", nextObj: any) => {
     const supabase = createClient();

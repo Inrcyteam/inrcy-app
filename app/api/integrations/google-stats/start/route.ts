@@ -78,27 +78,22 @@ if (mode === "activate") {
 // Nouveau schéma :
 // - site_inrcy -> inrcy_site_configs.site_url
 // - site_web -> pro_tools_configs.settings.site_web.url
-// Fallback : ancienne table site_configs
 
-const [inrcyCfgRes, proCfgRes, legacyCfgRes] = await Promise.all([
+const [inrcyCfgRes, proCfgRes] = await Promise.all([
   supabase.from("inrcy_site_configs").select("site_url").eq("user_id", userId).maybeSingle(),
   supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
-  supabase.from("site_configs").select("settings,site_url").eq("user_id", userId).maybeSingle(),
 ]);
 
-// On ne bloque pas si la legacy table n'existe plus, mais on garde ce fallback pendant la transition.
 const inrcySiteUrl = (inrcyCfgRes.data as any | null)?.site_url ?? "";
 const proSettings = (proCfgRes.data as any | null)?.settings ?? {};
-const legacySettings = (legacyCfgRes.data as any | null)?.settings ?? {};
-const legacySiteUrl = (legacyCfgRes.data as any | null)?.site_url ?? "";
 
 const rawUrl =
   (siteUrlFromQuery && String(siteUrlFromQuery).trim())
     ? String(siteUrlFromQuery).trim()
-    : (
+      : (
         source === "site_web"
-          ? (proSettings?.site_web?.url ?? legacySettings?.site_web?.url ?? "")
-          : (inrcySiteUrl || legacySiteUrl || "")
+          ? (proSettings?.site_web?.url ?? "")
+          : (inrcySiteUrl || "")
       );
 
     const parsed = extractDomainFromUrl(String(rawUrl || "").trim());
