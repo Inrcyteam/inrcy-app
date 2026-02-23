@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { withApi } from "@/lib/observability/withApi";
+import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -103,43 +104,6 @@ const handler = async (req: Request) => {
       return NextResponse.json({ ok: false, error: "Invalid source" }, { status: 400, headers: corsHeaders(null) });
     }
 
-    // Must be an authenticated dashboard user.
-    const supabase = await createSupabaseServer();
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-
-    if (userErr || !user) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: corsHeaders(null) });
-    }
-
-    // Extra safety: ensure the domain belongs to THIS user for this source.
-    if (source === "inrcy_site") {
-      const { data, error } = await supabase
-        .from("inrcy_site_configs")
-        .select("site_url")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (error) throw error;
-      const d = normalizeDomain((data as any)?.site_url || "");
-      if (!d || d !== domain) {
-        return NextResponse.json({ ok: false, error: "Domain not linked to your iNrCy site" }, { status: 403, headers: corsHeaders(null) });
-      }
-    } else {
-      const { data, error } = await supabase
-        .from("pro_tools_configs")
-        .select("settings")
-        .eq("user_id", user.id)
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      const d = normalizeDomain((data as any)?.settings?.site_web?.url || "");
-      if (!d || d !== domain) {
-        return NextResponse.json({ ok: false, error: "Domain not linked to your website" }, { status: 403, headers: corsHeaders(null) });
-      }
-    }
-
     // CORS hard-binding (widgets) + dashboard allowlist (issuing tokens from app.inrcy.com).
     // - For embedded widgets: Origin must match the target domain.
     // - For the dashboard: allow explicit origins from env var INRCY_WIDGET_ALLOWED_ORIGINS.
@@ -172,6 +136,75 @@ const handler = async (req: Request) => {
       return NextResponse.json({ ok: false, error: "Origin not allowed" }, { status: 403, headers: corsHeaders(null) });
     }
 
+    // Rate-limit early (IP-based) to protect against anonymous abuse.
+    const ip = getClientIp(req);
+    const ipLimit = await enforceRateLimit({
+      name: "widgets_issue_token_ip",
+      identifier: `${ip}:${domain}:${source}`,
+      limit: 120,
+      window: "1 m",
+    });
+    if (ipLimit) {
+      // ensure CORS headers are present so the browser can read the 429
+      Object.entries(corsHeaders(allowOrigin)).forEach(([k, v]) => ipLimit.headers.set(k, v));
+      return ipLimit;
+    }
+
+    // Must be an authenticated dashboard user.
+    const supabase = await createSupabaseServer();
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr || !user) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: corsHeaders(allowOrigin) });
+    }
+
+    // User-based limiter (protect costs + prevent a single account from hammering).
+    const userLimit = await enforceRateLimit({
+      name: "widgets_issue_token_user",
+      identifier: `${user.id}:${domain}:${source}`,
+      limit: 60,
+      window: "1 m",
+    });
+    if (userLimit) {
+      Object.entries(corsHeaders(allowOrigin)).forEach(([k, v]) => userLimit.headers.set(k, v));
+      return userLimit;
+    }
+
+    // Extra safety: ensure the domain belongs to THIS user for this source.
+    if (source === "inrcy_site") {
+      const { data, error } = await supabase
+        .from("inrcy_site_configs")
+        .select("site_url")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      const d = normalizeDomain((data as any)?.site_url || "");
+      if (!d || d !== domain) {
+        return NextResponse.json(
+          { ok: false, error: "Domain not linked to your iNrCy site" },
+          { status: 403, headers: corsHeaders(allowOrigin) }
+        );
+      }
+    } else {
+      const { data, error } = await supabase
+        .from("pro_tools_configs")
+        .select("settings")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      const d = normalizeDomain((data as any)?.settings?.site_web?.url || "");
+      if (!d || d !== domain) {
+        return NextResponse.json(
+          { ok: false, error: "Domain not linked to your website" },
+          { status: 403, headers: corsHeaders(allowOrigin) }
+        );
+      }
+    }
+
     const now = Math.floor(Date.now() / 1000);
     // Long-lived token (1 year). Rotation is possible by changing the signing secret.
     const payload: PayloadV1 = {
@@ -185,6 +218,8 @@ const handler = async (req: Request) => {
     const token = sign(payload, secret);
     return NextResponse.json({ ok: true, token, payload }, { status: 200, headers: corsHeaders(allowOrigin) });
   } catch (e: any) {
+    // We can't reliably know the correct origin in this catch (it may have failed before parsing),
+    // so keep CORS conservative.
     return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500, headers: corsHeaders(null) });
   }
 };
