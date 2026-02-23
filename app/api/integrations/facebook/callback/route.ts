@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
+import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 
 type TokenResponse = {
   access_token?: string;
@@ -93,6 +94,23 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
     const userId = authData.user.id;
+
+    const rlUser = await enforceRateLimit({
+      name: "oauth_facebook_cb",
+      identifier: userId,
+      limit: 10,
+      window: "10 m",
+    });
+    if (rlUser) return rlUser;
+
+    const ip = getClientIp(req);
+    const rlIp = await enforceRateLimit({
+      name: "oauth_facebook_cb_ip",
+      identifier: ip,
+      limit: 20,
+      window: "10 m",
+    });
+    if (rlIp) return rlIp;
 
     // 1) Exchange code -> short-lived user access token
     const tokenUrl = `https://graph.facebook.com/v20.0/oauth/access_token?${new URLSearchParams({

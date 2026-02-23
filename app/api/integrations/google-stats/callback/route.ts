@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 
 type TokenResponse = {
   access_token?: string;
@@ -362,6 +363,24 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
     const userId = authData.user.id;
+
+    // Rate limit OAuth callbacks (prevents abuse + accidental double-callbacks)
+    const rlUser = await enforceRateLimit({
+      name: `oauth_google_stats_cb_${product}`,
+      identifier: userId,
+      limit: 10,
+      window: "10 m",
+    });
+    if (rlUser) return rlUser;
+
+    const ip = getClientIp(req);
+    const rlIp = await enforceRateLimit({
+      name: `oauth_google_stats_cb_ip_${product}`,
+      identifier: ip,
+      limit: 20,
+      window: "10 m",
+    });
+    if (rlIp) return rlIp;
 
     // Use admin client for DB writes/reads to avoid RLS issues in OAuth callbacks.
     const supabase = supabaseAdmin;

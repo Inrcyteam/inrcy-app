@@ -84,3 +84,17 @@ export async function enforceRateLimit(config: RateLimitConfig): Promise<NextRes
     return null;
   }
 }
+
+/** Best-effort client IP extraction for serverless/edge (Vercel). */
+export function getClientIp(req: Request): string {
+  const h = req.headers;
+  const xff = h.get("x-forwarded-for");
+  if (xff) {
+    // may contain multiple: client, proxy1, proxy2
+    const first = xff.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  const realIp = h.get("x-real-ip");
+  if (realIp) return realIp.trim();
+  return "unknown";
+}

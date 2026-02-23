@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { encryptToken } from "@/lib/oauthCrypto";
+import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 type TokenResponse = {
   access_token?: string;
   refresh_token?: string;
@@ -60,6 +61,24 @@ export async function GET(req: Request) {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
     const userId = user.id;
+
+    // Rate limit OAuth callbacks
+    const rlUser = await enforceRateLimit({
+      name: "oauth_google_cb",
+      identifier: userId,
+      limit: 10,
+      window: "10 m",
+    });
+    if (rlUser) return rlUser;
+
+    const ip = getClientIp(req);
+    const rlIp = await enforceRateLimit({
+      name: "oauth_google_cb_ip",
+      identifier: ip,
+      limit: 20,
+      window: "10 m",
+    });
+    if (rlIp) return rlIp;
 
     // 1) Exchange code -> tokens
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {

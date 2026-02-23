@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
+import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 
 async function postForm(url: string, form: Record<string, string>) {
   const res = await fetch(url, {
@@ -66,6 +67,23 @@ export async function GET(req: Request) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     const userId = authData.user.id;
+
+    const rlUser = await enforceRateLimit({
+      name: "oauth_linkedin_cb",
+      identifier: userId,
+      limit: 10,
+      window: "10 m",
+    });
+    if (rlUser) return rlUser;
+
+    const ip = getClientIp(req);
+    const rlIp = await enforceRateLimit({
+      name: "oauth_linkedin_cb_ip",
+      identifier: ip,
+      limit: 20,
+      window: "10 m",
+    });
+    if (rlIp) return rlIp;
 
     const token = await postForm("https://www.linkedin.com/oauth/v2/accessToken", {
       grant_type: "authorization_code",
