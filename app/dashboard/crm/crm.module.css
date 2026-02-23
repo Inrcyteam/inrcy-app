@@ -1032,9 +1032,22 @@
 }
 
 @media (max-width: 980px){
-  .shell{ padding: 18px 14px 46px; }
+  /* Mobile/tablette: on réactive le scroll de la page CRM.
+     Sur desktop, la page est "fixe" (100vh) et seul le tableau scrolle.
+     Sur mobile, on laisse la page scroller pour éviter un module bloqué. */
+  .shell{
+    padding: 18px 14px 46px;
+    height: auto;              /* important: ne bloque pas le scroll */
+    min-height: 100vh;
+    overflow-y: auto;          /* scroll vertical */
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .h1{ font-size: 22px; }
   .subInline{ white-space: normal; }
+
+  /* Le tableau desktop peut dépasser : on garde une largeur minimale */
   .table{ min-width: 900px; }
 }
 

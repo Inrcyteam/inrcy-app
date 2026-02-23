@@ -336,17 +336,12 @@
   display:flex;
   align-items:center;
   gap: 6px;
-  position: relative;
-  padding-top: 10px;
-
 }
 
 .dayNumBubble{
-font-weight: 950;
+  font-weight: 950;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.86);
-  display: inline-block;
-
 }
 
 .hasEventsDot{
@@ -355,12 +350,6 @@ font-weight: 950;
   border-radius: 999px;
   background: rgba(56, 189, 248, 0.95);
   box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.10);
-  position: absolute;
-  /* place the indicator ABOVE the date bubble (not on the right) */
-  top: -4px;
-  left: 50%;
-  transform: translateX(-50%);
-
 }
 
 .pillToday {
@@ -550,13 +539,49 @@ font-weight: 950;
   }
 
   .dayNumBubble{
-font-weight: 950;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.86);
-  display: inline-block;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width: 34px;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.06);
+    font-size: 13px;
+  }
 
+  /* Mobile: selection highlight on the number bubble */
+  .daySelected{
+    box-shadow: none;
+  }
+  .daySelected .dayNumBubble{
+    border-color: rgba(56, 189, 248, 0.55);
+    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.10);
+  }
+
+  .pillToday{ display:none; }
+  .chips{ display:none; }
 }
-}
+
+  /* Mobile: la bille "événements" ne doit plus décaler la grille */
+  .dayNumRow{
+    position: relative;
+    gap: 0; /* on supprime l'espace réservé à la bille */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Mobile: la bille se place DANS la bulle, sous le nombre */
+  .hasEventsDot{
+    position: absolute;
+    left: 50%;
+    bottom: 6px;              /* ajuste si tu la veux plus haut/bas */
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
 
 /* --- RDV modal form helpers --- */
 .field{display:grid;gap:8px}
