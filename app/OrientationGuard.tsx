@@ -16,15 +16,11 @@ export default function OrientationGuard() {
     []
   );
 
-  const mustBeLandscape = landscapeRoutes.some((r) =>
-    pathname?.startsWith(r)
-  );
+  const mustBeLandscape = landscapeRoutes.some((r) => pathname?.startsWith(r));
 
   useEffect(() => {
     const check = () => {
-      const isSmallScreen = window.innerWidth <= 1024;
-
-      setIsMobileOrTablet(isSmallScreen);
+      setIsMobileOrTablet(window.innerWidth <= 1024);
       setIsLandscape(window.innerWidth > window.innerHeight);
     };
 
@@ -56,41 +52,66 @@ export default function OrientationGuard() {
 
   const badge = showLandscapeBlock ? "Paysage requis" : "Portrait requis";
 
+  // ✅ Logo: on tente png puis svg puis sans extension
+  const logoCandidates = [
+    "/logo-appli-inrcy.png",
+    "/logo-appli-inrcy.svg",
+    "/logo-appli-inrcy",
+  ];
+
   return (
     <div className={styles.overlay}>
       <div className={styles.card} role="dialog" aria-modal="true">
-        <div className={styles.header}>
-          <div className={styles.brand}>
-            <span aria-hidden>⚡</span>
-            <span>iNrCy</span>
+        <div className={styles.inner}>
+          <div className={styles.header}>
+            <div className={styles.brand}>
+              <img
+                className={styles.logo}
+                src={logoCandidates[0]}
+                alt="Logo iNrCy"
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  const current = img.getAttribute("data-idx")
+                    ? Number(img.getAttribute("data-idx"))
+                    : 0;
+                  const next = current + 1;
+                  if (next < logoCandidates.length) {
+                    img.setAttribute("data-idx", String(next));
+                    img.src = logoCandidates[next];
+                  }
+                }}
+              />
+              <div className={styles.brandName}>iNrCy</div>
+            </div>
+            <span className={styles.badge}>{badge}</span>
           </div>
-          <span className={styles.badge}>{badge}</span>
-        </div>
 
-        <div className={styles.content}>
           <h2 className={styles.title}>{title}</h2>
           <p className={styles.subtitle}>{subtitle}</p>
 
-          <div className={styles.phoneWrap} aria-hidden>
-            <div
-              className={`${styles.phone} ${
-                showLandscapeBlock
-                  ? styles.rotateToLandscape
-                  : styles.rotateToPortrait
-              }`}
-            >
-              <div className={styles.notch} />
-              <div className={styles.screen} />
+          <div className={styles.grid} aria-hidden>
+            <div className={styles.phoneWrap}>
+              <div
+                className={`${styles.phone} ${
+                  showLandscapeBlock
+                    ? styles.rotateToLandscape
+                    : styles.rotateToPortrait
+                }`}
+              >
+                <div className={styles.notch} />
+                <div className={styles.screen} />
+              </div>
             </div>
 
-            <div className={styles.arrows}>
-              <span className={styles.arrow}>⟲</span>
-              <span>Tournez votre téléphone</span>
-              <span className={styles.arrow}>⟳</span>
-            </div>
-
-            <div className={styles.hint}>
-              Astuce : désactivez le verrouillage d’orientation si besoin.
+            <div>
+              <div className={styles.hintRow}>
+                <span className={styles.pill}>⟲</span>
+                <span className={styles.hintText}>Tournez votre téléphone</span>
+                <span className={styles.pill}>⟳</span>
+              </div>
+              <div className={styles.hintSmall}>
+                Astuce : désactivez le verrouillage d’orientation si besoin.
+              </div>
             </div>
           </div>
         </div>
