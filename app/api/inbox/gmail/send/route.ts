@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
+import { enforceRateLimit } from "@/lib/rateLimit";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 function toBase64Url(str: string) {
   return Buffer.from(str, "utf8")
@@ -161,6 +162,9 @@ export async function POST(req: Request) {
   const { supabase, user, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
   const userId = user.id;
+
+  const rl = await enforceRateLimit({ name: "gmail_send", identifier: userId, limit: 30, window: "1 m" });
+  if (rl) return rl;
 // Support JSON ou multipart/form-data
   let to = "";
   let subject = "(sans objet)";

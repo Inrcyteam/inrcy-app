@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
+import { enforceRateLimit } from "@/lib/rateLimit";
 import { openaiGenerateJSON } from "@/lib/openaiClient";
 import {
   boosterSystemPrompt,
@@ -26,6 +27,9 @@ export async function POST(req: Request) {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
     const userId = user.id;
+
+    const rl = await enforceRateLimit({ name: "booster_generate", identifier: userId, limit: 10, window: "1 m" });
+    if (rl) return rl;
 const body = (await req.json().catch(() => ({}))) as Payload;
     const idea = (body?.idea || "").trim();
     if (!idea) {
