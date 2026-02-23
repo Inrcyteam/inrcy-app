@@ -187,6 +187,8 @@ const quickActions: Array<{ key: string; title: string; sub: string; disabled?: 
 ];
 
 export default function DashboardClient() {
+ // 🔥 TEST SENTRY — TEMPORAIRE
+  throw new Error("SENTRY TEST INRcY");
   const router = useRouter();
 
   const searchParams = useSearchParams();
@@ -4597,3 +4599,4 @@ useEffect(() => {
     </main>
   );
 }
+
