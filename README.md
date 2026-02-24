@@ -56,3 +56,29 @@ Optional tuning env (defaults are safe):
 - `QUOTA_WIDGET_ISSUE_TOKEN_PER_DAY` (default: 2000)
 
 Expensive endpoints are configured **fail-closed** to protect costs if KV is unavailable.
+
+## Ops (production)
+
+### Internal health
+
+- Public (safe): `GET /api/health`
+- Internal (deep): `GET /api/health/internal` with header `x-health-token: <HEALTHCHECK_TOKEN>`
+
+Add in Vercel (Production + Preview):
+
+- `HEALTHCHECK_TOKEN` (random long secret)
+
+### Smoke check after deploy
+
+Run locally:
+
+- `APP_BASE_URL=https://app.inrcy.com HEALTHCHECK_TOKEN=... npm run smoke:health`
+
+### Runbook
+
+See:
+
+- `ops/RUNBOOK.md`
+- `ops/DEPLOY_CHECKLIST.md`
+- `ops/MIGRATIONS.md`
+
