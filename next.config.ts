@@ -21,7 +21,9 @@ const cspReportOnly = [
   // Keeping https:/wss: broad for report-only; tighten after observing reports.
   "connect-src 'self' https: wss:",
   // Where the browser should send CSP violation reports
+  // Support both legacy `report-uri` and modern Reporting API `report-to`.
   "report-uri /api/csp-report",
+  "report-to csp",
 ].join("; ");
 
 const nextConfig: NextConfig = {
@@ -51,6 +53,9 @@ const nextConfig: NextConfig = {
           // Safer cross-origin behavior
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
           { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+          // Modern Reporting API endpoint for CSP reports
+          // (Chrome/Edge prefer this over legacy `report-uri`.)
+          { key: "Reporting-Endpoints", value: 'csp="/api/csp-report"' },
           // CSP in report-only mode (safe to enable globally)
           { key: "Content-Security-Policy-Report-Only", value: cspReportOnly },
           // HSTS (only effective on HTTPS)

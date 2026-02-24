@@ -13,7 +13,12 @@ export async function POST(req: Request) {
     const contentType = (req.headers.get("content-type") || "").toLowerCase();
 
     let payload: any = null;
-    if (contentType.includes("application/json") || contentType.includes("application/csp-report")) {
+    // Reporting API (report-to) commonly sends `application/reports+json` with an array payload.
+    if (
+      contentType.includes("application/json") ||
+      contentType.includes("application/csp-report") ||
+      contentType.includes("application/reports+json")
+    ) {
       try {
         payload = await req.json();
       } catch {
@@ -30,24 +35,48 @@ export async function POST(req: Request) {
     }
 
     // Log a minimal, non-sensitive summary.
-    // Browsers often send either {"csp-report": {...}} or Reporting API shapes.
-    const report = payload?.["csp-report"] ?? payload?.report ?? payload;
+    // Shapes we may receive:
+    // - Legacy: {"csp-report": {...}}
+    // - Some UAs: {"report": {...}}
+    // - Reporting API: [{ type: "csp-violation", body: {...}, ... }, ...]
 
-    const summary = {
-      ua: req.headers.get("user-agent") || undefined,
-      ref: req.headers.get("referer") || undefined,
-      violatedDirective: report?.["violated-directive"] ?? report?.violatedDirective,
-      effectiveDirective: report?.["effective-directive"] ?? report?.effectiveDirective,
-      blockedUri: report?.["blocked-uri"] ?? report?.blockedURL ?? report?.blockedUri,
-      disposition: report?.disposition,
+    const ua = req.headers.get("user-agent") || undefined;
+    const ref = req.headers.get("referer") || undefined;
+
+    const normalize = (r: any) => ({
+      violatedDirective: r?.["violated-directive"] ?? r?.violatedDirective,
+      effectiveDirective: r?.["effective-directive"] ?? r?.effectiveDirective,
+      blockedUri: r?.["blocked-uri"] ?? r?.blockedURL ?? r?.blockedUri,
+      documentUri: r?.["document-uri"] ?? r?.documentURL ?? r?.documentUri,
+      disposition: r?.disposition,
+    });
+
+    let summaries: any[] = [];
+
+    if (Array.isArray(payload)) {
+      // Reporting API array
+      const cspItems = payload.filter(
+        (it) => it?.type === "csp-violation" || it?.type === "csp-report" || it?.body?.["violated-directive"]
+      );
+      summaries = cspItems.map((it) => normalize(it?.body ?? it));
+    } else {
+      const report = payload?.["csp-report"] ?? payload?.report ?? payload;
+      summaries = [normalize(report)];
+    }
+
+    const compact = {
+      ua,
+      ref,
+      count: summaries.length,
+      first: summaries[0],
     };
 
     // In production, keep it compact.
     // In development, you may want the full payload to tune the policy.
     if (process.env.NODE_ENV === "development") {
-      console.log("[csp] report", { summary, payload });
+      console.log("[csp] report", { compact, payload });
     } else {
-      console.log("[csp] report", summary);
+      console.log("[csp] report", compact);
     }
   } catch {
     // Never fail the caller
