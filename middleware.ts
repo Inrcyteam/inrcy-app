@@ -45,16 +45,49 @@ function pickLimit(pathname: string, method: string) {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // --- Light security hardening (safe defaults)
+  // 1) Block weird HTTP methods early.
+  const method = req.method.toUpperCase();
+  const allowed = new Set(["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]);
+  if (!allowed.has(method)) {
+    return new NextResponse("Method Not Allowed", {
+      status: 405,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+      },
+    });
+  }
+
+  // 2) Enforce https in production when possible (Vercel sets x-forwarded-proto).
+  // This should not trigger on normal Vercel traffic.
+  if (process.env.NODE_ENV === "production") {
+    const proto = req.headers.get("x-forwarded-proto");
+    if (proto && proto !== "https") {
+      const url = req.nextUrl.clone();
+      url.protocol = "https:";
+      return NextResponse.redirect(url, 308);
+    }
+  }
+
   // Correlation ID (visible to client + used in server logs)
   const requestId = req.headers.get("x-request-id") || crypto.randomUUID();
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-request-id", requestId);
 
+  const applyApiHeaders = (res: NextResponse) => {
+    // Correlate request/response across Vercel logs + Sentry
+    res.headers.set("x-request-id", requestId);
+    // Avoid caching API responses at the edge/browser by default
+    res.headers.set("cache-control", "no-store");
+    // Prevent API endpoints from being indexed
+    res.headers.set("x-robots-tag", "noindex, nofollow");
+    return res;
+  };
+
   // Skip callback routes (already protected at route-level)
   if (isOauthCallback(pathname)) {
     const res = NextResponse.next({ request: { headers: requestHeaders } });
-    res.headers.set("x-request-id", requestId);
-    return res;
+    return applyApiHeaders(res);
   }
 
   const ip = getIp(req);
@@ -70,20 +103,17 @@ export async function middleware(req: NextRequest) {
       window: `${lim.windowSeconds} s`,
     });
     if (res) {
-      res.headers.set("x-request-id", requestId);
-      return res;
+      return applyApiHeaders(res);
     }
   } catch (err) {
     // Edge runtime: keep it simple and do not block traffic if rate limiting is unavailable.
     console.warn("[rateLimit] middleware disabled (fail-open)", err);
     const res = NextResponse.next({ request: { headers: requestHeaders } });
-    res.headers.set("x-request-id", requestId);
-    return res;
+    return applyApiHeaders(res);
   }
 
   const res = NextResponse.next({ request: { headers: requestHeaders } });
-  res.headers.set("x-request-id", requestId);
-  return res;
+  return applyApiHeaders(res);
 }
 
 export const config = {

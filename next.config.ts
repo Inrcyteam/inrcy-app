@@ -11,10 +11,14 @@ const nextConfig: NextConfig = {
         headers: [
           // Prevent MIME sniffing
           { key: "X-Content-Type-Options", value: "nosniff" },
+          // Reduce DNS prefetching
+          { key: "X-DNS-Prefetch-Control", value: "off" },
           // Clickjacking protection
           { key: "X-Frame-Options", value: "DENY" },
           // Reduce referrer leakage
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // Block legacy cross-domain policies
+          { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
           // Limit powerful browser features
           {
             key: "Permissions-Policy",
