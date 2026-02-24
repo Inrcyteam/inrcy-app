@@ -34,3 +34,25 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Rate limiting & quotas (production)
+
+This app uses Upstash/Vercel KV for rate limiting and daily quotas.
+
+Required env (already present in Vercel KV integration):
+
+- `KV_REST_API_URL`
+- `KV_REST_API_TOKEN`
+
+Optional tuning env (defaults are safe):
+
+- `RL_BOOSTER_GENERATE_PER_MIN` (default: 8)
+- `QUOTA_BOOSTER_GENERATE_PER_DAY` (default: 120)
+- `RL_TEMPLATES_RENDER_PER_MIN` (default: 20)
+- `QUOTA_TEMPLATES_RENDER_PER_DAY` (default: 500)
+- `RL_PUBLISH_NOW_PER_MIN` (default: 6)
+- `QUOTA_PUBLISH_NOW_PER_DAY` (default: 80)
+- `RL_WIDGET_ISSUE_TOKEN_PER_MIN` (default: 30)
+- `QUOTA_WIDGET_ISSUE_TOKEN_PER_DAY` (default: 2000)
+
+Expensive endpoints are configured **fail-closed** to protect costs if KV is unavailable.

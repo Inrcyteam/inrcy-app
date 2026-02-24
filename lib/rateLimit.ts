@@ -35,6 +35,11 @@ type RateLimitConfig = {
   limit: number;
   /** e.g. "1 m", "10 s", "1 h" */
   window: Window;
+  /**
+   * If true, block when the rate limiter backend is unavailable.
+   * Use this for expensive endpoints to protect costs/abuse.
+   */
+  failClosed?: boolean;
 };
 
 function getLimiter(name: string, limit: number, window: Window) {
@@ -81,6 +86,81 @@ export async function enforceRateLimit(config: RateLimitConfig): Promise<NextRes
       }
     );
   } catch {
+    if (config.failClosed) {
+      return NextResponse.json(
+        { error: "Rate limiter unavailable" },
+        {
+          status: 503,
+          headers: {
+            "Retry-After": "5",
+          },
+        }
+      );
+    }
+    return null;
+  }
+}
+
+type QuotaConfig = {
+  /** unique name for the quota counter (e.g. "booster_generate_day") */
+  name: string;
+  /** identifier (user id is ideal; fallback to ip) */
+  identifier: string;
+  /** max allowed in period */
+  limit: number;
+  /** period in seconds (e.g. 86400 for day) */
+  periodSeconds: number;
+  /** if true, block when KV is unavailable */
+  failClosed?: boolean;
+};
+
+/**
+ * Simple KV-backed quota (counter with TTL).
+ * Returns `null` if allowed, otherwise a NextResponse(429).
+ */
+export async function enforceQuota(config: QuotaConfig): Promise<NextResponse | null> {
+  try {
+    const redis = getRedis();
+    const key = `inrcy_q:${config.name}:${config.identifier}`;
+
+    // Atomic-ish: INCR + set expiry only when first seen.
+    const count = await redis.incr(key);
+    if (count === 1) {
+      await redis.expire(key, config.periodSeconds);
+    }
+
+    if (count <= config.limit) return null;
+
+    // Best-effort: fetch remaining TTL
+    const ttl = await redis.ttl(key);
+    const retryAfter = ttl && ttl > 0 ? String(ttl) : "60";
+
+    return NextResponse.json(
+      {
+        error: "Quota exceeded",
+        name: config.name,
+        limit: config.limit,
+        periodSeconds: config.periodSeconds,
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": retryAfter,
+        },
+      }
+    );
+  } catch {
+    if (config.failClosed) {
+      return NextResponse.json(
+        { error: "Quota backend unavailable" },
+        {
+          status: 503,
+          headers: {
+            "Retry-After": "5",
+          },
+        }
+      );
+    }
     return null;
   }
 }
