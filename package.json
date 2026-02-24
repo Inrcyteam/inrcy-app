@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint . --max-warnings=9999",
     "verify:env": "node scripts/verify-env.mjs",
     "smoke:health": "node scripts/smoke-health.mjs",
     "test:e2e": "playwright test",
