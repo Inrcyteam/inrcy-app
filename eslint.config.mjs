@@ -22,28 +22,35 @@ export default defineConfig([
   // Project-wide rule tuning (applies to JS/TS in the repo)
   {
     files: ["**/*.{js,jsx,ts,tsx}"],
-    rules: {
-      // CI blockers seen in your logs
-      "react/no-unescaped-entities": "off",
+  rules: {
+  "react/no-unescaped-entities": "off",
 
-      // Keep these visible but non-blocking
-      "prefer-const": "warn",
-      "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/prefer-as-const": "warn",
+  "prefer-const": "warn",
+  "@typescript-eslint/no-explicit-any": "warn",
+  "@typescript-eslint/prefer-as-const": "warn",
 
-      // Unused vars: allow underscore-prefixed vars/args and caught errors
-      "@typescript-eslint/no-unused-vars": [
-        "warn",
-        {
-          argsIgnorePattern: "^_",
-          varsIgnorePattern: "^_",
-          caughtErrorsIgnorePattern: "^_",
-          ignoreRestSiblings: true,
-        },
-      ],
-
-      // Next rule that warns on <img> – keep as warning (or set to "off" if you prefer)
-      "@next/next/no-img-element": "warn",
+  // ✅ AJOUT CRITIQUE
+  "no-unused-vars": [
+    "warn",
+    {
+      argsIgnorePattern: "^_",
+      varsIgnorePattern: "^_",
+      caughtErrorsIgnorePattern: "^_",
+      ignoreRestSiblings: true,
     },
+  ],
+
+  "@typescript-eslint/no-unused-vars": [
+    "warn",
+    {
+      argsIgnorePattern: "^_",
+      varsIgnorePattern: "^_",
+      caughtErrorsIgnorePattern: "^_",
+      ignoreRestSiblings: true,
+    },
+  ],
+
+  "@next/next/no-img-element": "warn",
+},
   },
 ]);

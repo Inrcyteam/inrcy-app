@@ -17,11 +17,6 @@ const cspReportOnly = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
-  // ✅ FIX CI — empêche next build d’échouer à cause d’ESLint
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-
   async headers() {
     return [
       {
