@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { withImap } from "@/lib/imapClient";
+import { requireUser } from "@/lib/requireUser";
+import { withApi } from "@/lib/observability/withApi";
 
-export async function POST(req: Request) {
+export const POST = withApi(async (req: Request) => {
+  // This endpoint is intentionally protected: it accepts email credentials for connectivity checks.
+  // Never allow it to be called anonymously.
+  const { errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
+
   try {
     const body = await req.json().catch(() => ({}));
     const login = String(body.login || "").trim();
@@ -14,6 +21,14 @@ export async function POST(req: Request) {
     const smtp_port = Number(body.smtp_port || 587);
     const smtp_secure = !!body.smtp_secure;
     const smtp_starttls = !!body.smtp_starttls;
+
+    // Basic input validation (avoid abuse and weird payloads)
+    if (login.length > 320 || password.length > 2048) {
+      return NextResponse.json({ error: "Paramètres invalides" }, { status: 400 });
+    }
+    if (imap_host.length > 255 || smtp_host.length > 255) {
+      return NextResponse.json({ error: "Paramètres invalides" }, { status: 400 });
+    }
 
     if (!login || !password) {
       return NextResponse.json({ error: "Identifiant et mot de passe requis" }, { status: 400 });
@@ -48,7 +63,9 @@ tls: process.env.NODE_ENV === "development"
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    const msg = e?.message || "Test IMAP impossible";
-    return NextResponse.json({ error: msg }, { status: 400 });
+    // Don't leak provider/internal error details in production.
+    const generic = "Test IMAP/SMTP impossible";
+    const detail = process.env.NODE_ENV === "development" ? (e?.message || generic) : undefined;
+    return NextResponse.json({ error: generic, detail }, { status: 400 });
   }
-}
+}, { route: "/api/integrations/imap/test" });

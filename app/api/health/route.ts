@@ -3,32 +3,27 @@ import { withApi } from "@/lib/observability/withApi";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const GET = withApi(async () => {
-  const checks: Record<string, { ok: boolean; detail?: string }> = {};
+  // Public health check MUST NOT leak env state, secrets presence, or internal error details.
+  // Keep it simple: a very light DB ping + build/version metadata.
 
-  // Env sanity
-  const required = [
-    "NEXT_PUBLIC_SUPABASE_URL",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    "SUPABASE_SERVICE_ROLE_KEY",
-  ];
-  for (const k of required) {
-    checks[`env_${k}`] = { ok: Boolean(process.env[k]) };
-  }
-
-  // Supabase ping (very light)
+  let supabaseOk = true;
   try {
     const { error } = await supabaseAdmin.from("profiles").select("user_id").limit(1);
-    checks.supabase = { ok: !error, detail: error?.message };
-  } catch (e: any) {
-    checks.supabase = { ok: false, detail: e?.message || "error" };
+    supabaseOk = !error;
+  } catch {
+    supabaseOk = false;
   }
 
-  const ok = Object.values(checks).every((c) => c.ok);
+  const ok = supabaseOk;
   return NextResponse.json(
     {
       ok,
-      checks,
       ts: new Date().toISOString(),
+      // Useful for ops, harmless for public exposure.
+      version:
+        process.env.VERCEL_GIT_COMMIT_SHA ||
+        process.env.NEXT_PUBLIC_COMMIT_SHA ||
+        null,
     },
     { status: ok ? 200 : 503 }
   );

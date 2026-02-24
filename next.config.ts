@@ -1,6 +1,29 @@
 import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
+// Content Security Policy (CSP)
+// Start in Report-Only mode to observe violations without blocking.
+// Once stable, you can switch the header key to `Content-Security-Policy`.
+const cspReportOnly = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  // Allow images from HTTPS + data/blob for uploaded/inline assets
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data: https:",
+  // Next.js commonly needs inline styles in many setups
+  "style-src 'self' 'unsafe-inline' https:",
+  // Keep permissive in report-only to avoid noisy false positives.
+  // You can later remove 'unsafe-eval' and tighten hosts.
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
+  // Allow XHR/fetch/websocket to known external services.
+  // Keeping https:/wss: broad for report-only; tighten after observing reports.
+  "connect-src 'self' https: wss:",
+  // Where the browser should send CSP violation reports
+  "report-uri /api/csp-report",
+].join("; ");
+
 const nextConfig: NextConfig = {
   // Security headers suitable for production on Vercel.
   // Kept conservative to avoid breaking OAuth flows.
@@ -28,6 +51,8 @@ const nextConfig: NextConfig = {
           // Safer cross-origin behavior
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
           { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+          // CSP in report-only mode (safe to enable globally)
+          { key: "Content-Security-Policy-Report-Only", value: cspReportOnly },
           // HSTS (only effective on HTTPS)
           {
             key: "Strict-Transport-Security",
