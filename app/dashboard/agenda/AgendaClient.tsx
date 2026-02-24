@@ -149,7 +149,7 @@ export default function AgendaClient() {
   const [showMobileSearch, setShowMobileSearch] = useState(false);
 
   // Module Agenda = planning d'interventions iNrCy (mode unique)
-  const viewKind: "intervention" = "intervention";
+  const viewKind = "intervention" as const;
 
 // --- CRM contacts (pour relier un RDV à un contact)
 const [contacts, setContacts] = useState<CrmContact[]>([]);

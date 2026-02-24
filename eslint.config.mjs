@@ -29,6 +29,7 @@ export default defineConfig([
       // Keep these visible but non-blocking
       "prefer-const": "warn",
       "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/prefer-as-const": "warn",
 
       // Unused vars: allow underscore-prefixed vars/args and caught errors
       "@typescript-eslint/no-unused-vars": [
