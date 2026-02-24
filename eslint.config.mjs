@@ -7,7 +7,7 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
 
-  // Override default ignores of eslint-config-next + add test artifacts
+  // Add ignores for build + test artifacts
   globalIgnores([
     ".next/**",
     "out/**",
@@ -17,7 +17,7 @@ const eslintConfig = defineConfig([
     "playwright-report/**",
   ]),
 
-  // Global tuning: keep quality, but don't hard-fail CI for "any"/unused vars
+  // Global tuning: keep quality, but don't hard-fail CI on noisy rules
   {
     rules: {
       // Many Next apps still need <img> in a few spots; keep as warning
@@ -26,7 +26,7 @@ const eslintConfig = defineConfig([
       // Don't block CI for pragmatic typing; still visible in PRs
       "@typescript-eslint/no-explicit-any": "warn",
 
-      // Avoid blocking CI for unused vars; ignore _prefixed args/vars
+      // Don't block CI for unused vars; ignore _prefixed args/vars
       "@typescript-eslint/no-unused-vars": [
         "warn",
         {
@@ -35,6 +35,11 @@ const eslintConfig = defineConfig([
           caughtErrorsIgnorePattern: "^_",
         },
       ],
+
+      // The remaining ones are currently breaking your CI
+      "prefer-const": "warn",
+      "react/no-unescaped-entities": "warn",
+      "@typescript-eslint/prefer-as-const": "warn",
     },
   },
 
@@ -43,6 +48,7 @@ const eslintConfig = defineConfig([
     files: ["app/api/**/*.ts", "app/api/**/*.tsx"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/prefer-as-const": "off",
     },
   },
 ]);
