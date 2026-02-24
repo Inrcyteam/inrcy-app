@@ -82,3 +82,29 @@ See:
 - `ops/DEPLOY_CHECKLIST.md`
 - `ops/MIGRATIONS.md`
 
+## E2E tests (Playwright)
+
+### Run locally
+
+```bash
+npm i
+npm run test:e2e:install
+npm run test:e2e
+```
+
+This starts a local Next dev server automatically and runs the tests.
+
+### Run against a deployed environment
+
+```bash
+E2E_BASE_URL=https://app.inrcy.com npm run test:e2e
+```
+
+### Authenticated tests (optional)
+
+If you want to run the authenticated flow, set:
+
+```bash
+E2E_EMAIL=you@example.com E2E_PASSWORD=... npm run test:e2e
+```
+
