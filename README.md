@@ -108,3 +108,23 @@ If you want to run the authenticated flow, set:
 E2E_EMAIL=you@example.com E2E_PASSWORD=... npm run test:e2e
 ```
 
+## CI (GitHub Actions)
+
+A CI workflow is included at `.github/workflows/ci.yml`.
+
+- On every PR and push to `main`: runs **lint + build**.
+- Runs **E2E tests** only when required secrets are available (secrets are not exposed to forked PRs).
+
+Required secrets to enable E2E in CI:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `KV_REST_API_URL`
+- `KV_REST_API_TOKEN`
+
+Optional secrets (to enable authenticated E2E):
+
+- `E2E_EMAIL`
+- `E2E_PASSWORD`
+

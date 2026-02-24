@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 
+type JsonRecord = Record<string, unknown>;
+const asRecord = (v: unknown): JsonRecord => (v && typeof v === "object" ? (v as JsonRecord) : {});
+
 type EventRow = {
   type: "publish" | "review_mail" | "promo_mail";
   created_at: string;
-  payload: any;
+  payload: unknown;
 };
 
 function daysAgoISO(days: number) {
@@ -49,13 +52,14 @@ const sinceMonth = daysAgoISO(days);
   const isWeek = (iso: string) => new Date(iso).toISOString() >= sinceWeek;
 
   for (const e of events) {
+    const payload = asRecord(e.payload);
     const inWeek = isWeek(e.created_at);
 
     if (e.type === "publish") {
       publish.month += 1;
       if (inWeek) publish.week += 1;
 
-      const ch = Array.isArray(e.payload?.channels) ? e.payload.channels : [];
+      const ch = Array.isArray(payload["channels"]) ? (payload["channels"] as unknown[]) : [];
       for (const c of ch) {
         if (typeof c === "string") {
           publish.channels[c] = (publish.channels[c] ?? 0) + 1;
@@ -66,14 +70,14 @@ const sinceMonth = daysAgoISO(days);
     if (e.type === "review_mail") {
       review_mail.month += 1;
       if (inWeek) review_mail.week += 1;
-      const recipients = Number(e.payload?.recipients ?? 0);
+      const recipients = Number(payload["recipients"] ?? 0);
       review_mail.sent += recipients;
     }
 
     if (e.type === "promo_mail") {
       promo_mail.month += 1;
       if (inWeek) promo_mail.week += 1;
-      const recipients = Number(e.payload?.recipients ?? 0);
+      const recipients = Number(payload["recipients"] ?? 0);
       promo_mail.sent += recipients;
     }
   }

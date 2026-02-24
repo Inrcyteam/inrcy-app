@@ -3,6 +3,9 @@ import { requireUser } from "@/lib/requireUser";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
+type JsonRecord = Record<string, unknown>;
+const asRecord = (v: unknown): JsonRecord => (v && typeof v === "object" ? (v as JsonRecord) : {});
+
 export async function GET() {
   try {
     const { supabase, user, errorResponse } = await requireUser();
@@ -27,12 +30,16 @@ export async function GET() {
       supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
     ]);
 
-    const ownership = String((profileRes.data as any)?.inrcy_site_ownership ?? "none");
-    const inrcyUrl = String((profileRes.data as any)?.inrcy_site_url ?? (inrcyCfgRes.data as any)?.site_url ?? "").trim();
+    const profile = asRecord(profileRes.data);
+    const inrcyCfg = asRecord(inrcyCfgRes.data);
+    const ownership = String(profile["inrcy_site_ownership"] ?? "none");
+    const inrcyUrl = String(profile["inrcy_site_url"] ?? inrcyCfg["site_url"] ?? "").trim();
     base.inrcy_site = ownership !== "none" && !!inrcyUrl;
 
-    const proSettings = ((proCfgRes.data as any)?.settings ?? {}) as any;
-    const siteWebUrl = String(proSettings?.site_web?.url ?? "").trim();
+    const proCfg = asRecord(proCfgRes.data);
+    const proSettings = asRecord(proCfg["settings"]);
+    const siteWeb = asRecord(proSettings["site_web"]);
+    const siteWebUrl = String(siteWeb["url"] ?? "").trim();
     base.site_web = !!siteWebUrl;
 
     // External channels depend on integrations + configuration (resource_id set)

@@ -21,6 +21,8 @@ type BoosterGenResponse = {
   hashtags: string[];
 };
 
+type JsonRecord = Record<string, unknown>;
+
 const allowedChannels: BoosterChannels[] = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"];
 
 const handler = async (req: Request) => {
@@ -48,14 +50,14 @@ const body = (await req.json().catch(() => ({}))) as Payload;
       .maybeSingle();
 
     // Load business profile (Mon activité)
-    let business: any = null;
+    let business: JsonRecord | null = null;
     try {
       const { data } = await supabase
         .from("business_profiles")
         .select("*")
         .eq("user_id", userId)
         .maybeSingle();
-      business = data ?? null;
+      business = data && typeof data === "object" ? (data as JsonRecord) : null;
     } catch {
       business = null;
     }
@@ -82,8 +84,8 @@ const body = (await req.json().catch(() => ({}))) as Payload;
     };
 
     return NextResponse.json(safe);
-  } catch (e: any) {
-    const msg = typeof e?.message === "string" ? e.message : "Server error";
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Server error";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 };

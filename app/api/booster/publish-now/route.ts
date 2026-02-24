@@ -12,6 +12,10 @@ import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
+type JsonRecord = Record<string, unknown>;
+const asRecord = (v: unknown): JsonRecord => (v && typeof v === "object" ? (v as JsonRecord) : {});
+const errMessage = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
+
 function slugify(input: string): string {
   return String(input || "")
     .normalize("NFD")
@@ -169,7 +173,7 @@ const body = await req.json().catch(() => null);
     await supabaseAdmin.from("publication_deliveries").insert(deliveries);
 
     // 4) Publish now
-    const results: Record<string, any> = {};
+    const results: Record<string, unknown> = {};
 
     const { data: fbRow } = await supabaseAdmin
       .from("integrations")
@@ -213,15 +217,20 @@ const body = await req.json().catch(() => null);
       supabaseAdmin.from("inrcy_site_configs").select("site_url").eq("user_id", userId).maybeSingle(),
       supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
     ]);
-    const ownership = String((profileRes.data as any)?.inrcy_site_ownership ?? "none");
-    const inrcySiteUrl = String((profileRes.data as any)?.inrcy_site_url ?? (inrcyCfgRes.data as any)?.site_url ?? "").trim();
-    const proSettings = ((proCfgRes.data as any)?.settings ?? {}) as any;
-    const siteWebUrl = String(proSettings?.site_web?.url ?? "").trim();
+    const profile = asRecord(profileRes.data);
+    const inrcyCfg = asRecord(inrcyCfgRes.data);
+    const proCfg = asRecord(proCfgRes.data);
+    const proSettings = asRecord(proCfg["settings"]);
+    const proSiteWeb = asRecord(proSettings["site_web"]);
+
+    const ownership = String(profile["inrcy_site_ownership"] ?? "none");
+    const inrcySiteUrl = String(profile["inrcy_site_url"] ?? inrcyCfg["site_url"] ?? "").trim();
+    const siteWebUrl = String(proSiteWeb["url"] ?? "").trim();
 
     const canonMessage = buildCanonMessage(title, content, cta);
     const externalImageUrls = (publishableUrls.length ? publishableUrls : uploadedUrls).slice(0, 5);
 
-    async function setDelivery(channel: ChannelKey, patch: any) {
+    async function setDelivery(channel: ChannelKey, patch: JsonRecord) {
       await supabaseAdmin
         .from("publication_deliveries")
         .update(patch)
@@ -287,10 +296,11 @@ const body = await req.json().catch(() => null);
         }
 
         if (ch === "facebook") {
-          const pageId = String((fbRow as any)?.resource_id || "");
-          const pageTokenRaw = String((fbRow as any)?.access_token_enc || "");
+          const fb = asRecord(fbRow);
+          const pageId = String(fb["resource_id"] ?? "");
+          const pageTokenRaw = String(fb["access_token_enc"] ?? "");
           const pageToken = tryDecryptToken(pageTokenRaw) || "";
-          if ((fbRow as any)?.status !== "connected" || !pageId || !pageToken) {
+          if (String(fb["status"] ?? "") !== "connected" || !pageId || !pageToken) {
             await setDelivery(ch, { status: "failed", last_error: "Facebook non configuré (page/token manquant)" });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
@@ -320,10 +330,11 @@ const body = await req.json().catch(() => null);
         }
 
         if (ch === "instagram") {
-          const igUserId = String((igRow as any)?.resource_id || "");
-          const igTokenRaw = String((igRow as any)?.access_token_enc || "");
+          const ig = asRecord(igRow);
+          const igUserId = String(ig["resource_id"] ?? "");
+          const igTokenRaw = String(ig["access_token_enc"] ?? "");
           const igToken = tryDecryptToken(igTokenRaw) || "";
-          if ((igRow as any)?.status !== "connected" || !igUserId || !igToken) {
+          if (String(ig["status"] ?? "") !== "connected" || !igUserId || !igToken) {
             await setDelivery(ch, { status: "failed", last_error: "Instagram non configuré (compte/token manquant)" });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
@@ -360,16 +371,18 @@ const body = await req.json().catch(() => null);
         }
 
         if (ch === "linkedin") {
-          const accessTokenRaw = String((liRow as any)?.access_token_enc || "");
+          const li = asRecord(liRow);
+          const accessTokenRaw = String(li["access_token_enc"] ?? "");
           const accessToken = tryDecryptToken(accessTokenRaw) || "";
-          const authorUrn = String((liRow as any)?.resource_id || "");
-          if ((liRow as any)?.status !== "connected" || !accessToken || !authorUrn) {
+          const authorUrn = String(li["resource_id"] ?? "");
+          if (String(li["status"] ?? "") !== "connected" || !accessToken || !authorUrn) {
             await setDelivery(ch, { status: "failed", last_error: "LinkedIn non configuré (token/auteur manquant)" });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
           }
 
-          const orgUrn = String((liRow as any)?.meta?.org_urn || "");
+          const liMeta = asRecord(li["meta"]);
+          const orgUrn = String(liMeta["org_urn"] ?? "");
           const useAuthor = orgUrn || authorUrn;
           const resp = await linkedinPublishText({
             accessToken,
@@ -394,9 +407,11 @@ const body = await req.json().catch(() => null);
         }
 
         if (ch === "gmb") {
-          const locationName = String((gmbRow as any)?.resource_id || "");
-          const accountName = String((gmbRow as any)?.meta?.account || "");
-          if ((gmbRow as any)?.status !== "connected" || !locationName || !accountName) {
+          const gmb = asRecord(gmbRow);
+          const locationName = String(gmb["resource_id"] ?? "");
+          const gmbMeta = asRecord(gmb["meta"]);
+          const accountName = String(gmbMeta["account"] ?? "");
+          if (String(gmb["status"] ?? "") !== "connected" || !locationName || !accountName) {
             await setDelivery(ch, { status: "failed", last_error: "Google Business non configuré (compte/location manquant)" });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
@@ -418,16 +433,18 @@ const body = await req.json().catch(() => null);
             languageCode: "fr-FR",
           });
 
-          const externalId = String((gmbResp as any)?.name || "");
+          const gmbRespRec = asRecord(gmbResp);
+          const externalId = String(gmbRespRec["name"] ?? "");
           await setDelivery(ch, { status: "delivered", delivered_at: new Date().toISOString(), external_id: externalId || null });
           results[ch] = { ok: true, external_id: externalId || null };
           continue;
         }
 
         results[ch] = { ok: false, error: "unsupported_channel" };
-      } catch (e: any) {
-        await setDelivery(ch, { status: "failed", last_error: e?.message || "Erreur" });
-        results[ch] = { ok: false, error: e?.message || "Erreur" };
+      } catch (e: unknown) {
+        const msg = errMessage(e, "Erreur");
+        await setDelivery(ch, { status: "failed", last_error: msg });
+        results[ch] = { ok: false, error: msg };
       }
     }
 
@@ -457,7 +474,7 @@ const body = await req.json().catch(() => null);
       uploadErrors,
       results,
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
+  } catch (e: unknown) {
+    return NextResponse.json({ error: errMessage(e, "Erreur") }, { status: 500 });
   }
 }
