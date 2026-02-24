@@ -13,6 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,7 +30,6 @@ jobs:
       - name: Verify env (non-strict)
         run: npm run verify:env
         env:
-          # In CI we usually don't have prod secrets. This step is informational unless STRICT=1.
           STRICT: '0'
 
       - name: Lint
@@ -39,12 +39,13 @@ jobs:
         run: npm run build
 
   e2e:
-    # Run E2E only when the required secrets are available.
-    # (Forked PRs won't have access to secrets, so this job will be skipped.)
-    if: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' && secrets.KV_REST_API_URL != '' && secrets.KV_REST_API_TOKEN != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: build
+
+    # ✅ SAFE CONDITION (compatible forks & secrets)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,7 +71,6 @@ jobs:
           KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
           KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
           HEALTHCHECK_TOKEN: ${{ secrets.HEALTHCHECK_TOKEN }}
-          # Optional: enable authenticated E2E if you provide these
           E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
           E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
 
