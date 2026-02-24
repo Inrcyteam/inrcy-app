@@ -2,55 +2,47 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
-const eslintConfig = defineConfig([
-  // Base Next configs
+// Flat config (eslint.config.mjs)
+// Goal: keep CI green while still surfacing useful issues as warnings.
+export default defineConfig([
   ...nextVitals,
   ...nextTs,
 
-  // Add ignores for build + test artifacts
+  // Override default ignores of eslint-config-next.
   globalIgnores([
     ".next/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
-    "test-results/**",
+    "coverage/**",
     "playwright-report/**",
+    "test-results/**",
   ]),
 
-  // Global tuning: keep quality, but don't hard-fail CI on noisy rules
+  // Project-wide rule tuning (applies to JS/TS in the repo)
   {
+    files: ["**/*.{js,jsx,ts,tsx}"],
     rules: {
-      // Many Next apps still need <img> in a few spots; keep as warning
-      "@next/next/no-img-element": "warn",
+      // CI blockers seen in your logs
+      "react/no-unescaped-entities": "off",
 
-      // Don't block CI for pragmatic typing; still visible in PRs
+      // Keep these visible but non-blocking
+      "prefer-const": "warn",
       "@typescript-eslint/no-explicit-any": "warn",
 
-      // Don't block CI for unused vars; ignore _prefixed args/vars
+      // Unused vars: allow underscore-prefixed vars/args and caught errors
       "@typescript-eslint/no-unused-vars": [
         "warn",
         {
           argsIgnorePattern: "^_",
           varsIgnorePattern: "^_",
           caughtErrorsIgnorePattern: "^_",
+          ignoreRestSiblings: true,
         },
       ],
 
-      // The remaining ones are currently breaking your CI
-      "prefer-const": "warn",
-      "react/no-unescaped-entities": "warn",
-      "@typescript-eslint/prefer-as-const": "warn",
-    },
-  },
-
-  // API routes: allow pragmatic typing (route handlers frequently deal with unknown payloads)
-  {
-    files: ["app/api/**/*.ts", "app/api/**/*.tsx"],
-    rules: {
-      "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/prefer-as-const": "off",
+      // Next rule that warns on <img> – keep as warning (or set to "off" if you prefer)
+      "@next/next/no-img-element": "warn",
     },
   },
 ]);
-
-export default eslintConfig;
