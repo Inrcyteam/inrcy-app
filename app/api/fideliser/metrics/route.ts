@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
 
 type EventRow = {
   type: "newsletter_mail" | "thanks_mail" | "satisfaction_mail";
@@ -49,7 +52,7 @@ const sinceMonth = daysAgoISO(days);
 
   for (const e of events) {
     const inWeek = isWeek(e.created_at);
-    const recipients = Number(e.payload?.recipients ?? 0);
+    const recipients = Number(asRecord(e.payload)["recipients"] ?? 0);
 
     if (e.type === "newsletter_mail") {
       newsletter_mail.month += 1;
