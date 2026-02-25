@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       .eq("user_id", userId)
       .maybeSingle();
 
-    const ownership = String((prof as unknown)?.inrcy_site_ownership || "none");
+    const ownership = String(asRecord(prof)["inrcy_site_ownership"] ?? "none");
     if (ownership !== "rented") {
       return NextResponse.json({ error: "Désactivation réservée au mode rented." }, { status: 403 });
     }

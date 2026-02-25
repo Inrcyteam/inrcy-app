@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { asRecord } from "@/lib/tsSafe";
 
 export async function GET() {
   const supabase = await createSupabaseServer();
@@ -19,14 +20,18 @@ export async function GET() {
     .order("created_at", { ascending: true });
 
   const mailAccounts =
-    (rows ?? []).map((r: Record<string, unknown>) => ({
-      id: r.id,
-      provider: r.provider,
-      email_address: r.account_email,
-      display_name: r.settings?.display_name ?? null,
-      status: r.status,
-      created_at: r.created_at,
-    })) ?? [];
+    (rows ?? []).map((r: Record<string, unknown>) => {
+      const rr = asRecord(r);
+      const settings = asRecord(rr["settings"]);
+      return {
+        id: rr["id"],
+        provider: rr["provider"],
+        email_address: rr["account_email"],
+        display_name: settings["display_name"] ?? null,
+        status: rr["status"],
+        created_at: rr["created_at"],
+      };
+    }) ?? [];
 
 
   if (mailError) {

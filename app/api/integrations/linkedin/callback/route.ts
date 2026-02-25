@@ -116,7 +116,7 @@ export async function GET(req: Request) {
     const name = String(userinfo?.name || userinfo?.localizedFirstName || "");
     const email = String(userinfo?.email || "");
     // OpenID Connect can optionally provide a public profile URL via the standard "profile" claim.
-    const profileUrl = (userinfo as unknown)?.profile || (userinfo as unknown)?.profile_url || null;
+    const profileUrl = asRecord(userinfo)["profile"] || asRecord(userinfo)["profile_url"] || null;
 
     const authorUrn = sub ? `urn:li:person:${sub}` : "";
 
@@ -149,11 +149,11 @@ await supabase
 // Mirror in pro_tools_configs
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = (scRow as unknown)?.settings ?? {};
+      const current = asRecord(asRecord(scRow)["settings"]);
       const merged = {
         ...current,
         linkedin: {
-          ...(current?.linkedin ?? {}),
+          ...asRecord(current["linkedin"]),
           accountConnected: true,
           connected: true,
           displayName: name || null,

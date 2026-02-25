@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { asRecord } from "@/lib/tsSafe";
 
 export const runtime = "nodejs";
 
@@ -237,7 +238,7 @@ export async function GET(req: Request) {
         .maybeSingle();
 
       if (error) throw error;
-      userId = (data as unknown)?.user_id ?? null;
+      userId = (asRecord(data)["user_id"] as string | null) ?? null;
     } else {
       // site_web: pro_tools_configs has settings JSON with settings.site_web.url
       const { data, error } = await supabase
@@ -249,11 +250,14 @@ export async function GET(req: Request) {
 
       const rows = (data || []) as unknown[];
       const match = rows.find((r) => {
-        const url = String(r?.settings?.site_web?.url || "");
+        const rr = asRecord(r);
+        const settings = asRecord(rr["settings"]);
+        const siteWeb = asRecord(settings["site_web"]);
+        const url = String(siteWeb["url"] ?? "");
         return normalizeDomain(url) === domain;
       });
 
-      userId = match?.user_id ?? null;
+      userId = (asRecord(match)["user_id"] as string | null) ?? null;
     }
 
     if (!userId) {

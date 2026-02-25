@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
+import { asRecord } from "@/lib/tsSafe";
 
 const ALLOWED_SOURCES = ["site_inrcy", "site_web"] as const;
 const ALLOWED_PRODUCTS = ["ga4", "gsc"] as const;
+
+type Source = (typeof ALLOWED_SOURCES)[number];
+type Product = (typeof ALLOWED_PRODUCTS)[number];
+
+function isAllowedSource(v: string): v is Source {
+  return (ALLOWED_SOURCES as readonly string[]).includes(v);
+}
+function isAllowedProduct(v: string): v is Product {
+  return (ALLOWED_PRODUCTS as readonly string[]).includes(v);
+}
 
 function extractDomainFromUrl(rawUrl: string): { normalizedUrl: string; domain: string } | null {
   try {
@@ -44,10 +55,10 @@ export async function GET(request: Request) {
   // so the callback can auto-resolve GA4/GSC for THAT site without requiring manual IDs.
   const siteUrlFromQuery = searchParams.get("siteUrl") || "";
 
-  if (!ALLOWED_SOURCES.includes(source as unknown)) {
+  if (!isAllowedSource(source)) {
     return NextResponse.json({ error: "Invalid source" }, { status: 400 });
   }
-  if (!ALLOWED_PRODUCTS.includes(product as unknown)) {
+  if (!isAllowedProduct(product)) {
     return NextResponse.json({ error: "Invalid product" }, { status: 400 });
   }
 
@@ -84,15 +95,15 @@ const [inrcyCfgRes, proCfgRes] = await Promise.all([
   supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
 ]);
 
-const inrcySiteUrl = (inrcyCfgRes.data as unknown | null)?.site_url ?? "";
-const proSettings = (proCfgRes.data as unknown | null)?.settings ?? {};
+const inrcySiteUrl = String(asRecord(inrcyCfgRes.data)["site_url"] ?? "");
+const proSettings = asRecord(asRecord(proCfgRes.data)["settings"]);
 
 const rawUrl =
   (siteUrlFromQuery && String(siteUrlFromQuery).trim())
     ? String(siteUrlFromQuery).trim()
       : (
         source === "site_web"
-          ? (proSettings?.site_web?.url ?? "")
+          ? (String(asRecord(asRecord(proSettings)["site_web"])["url"] ?? ""))
           : (inrcySiteUrl || "")
       );
 

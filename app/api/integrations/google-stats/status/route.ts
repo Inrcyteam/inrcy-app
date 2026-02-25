@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { asRecord } from "@/lib/tsSafe";
 
 function normStatus(s: unknown) {
   return String(s || "")
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
       .order("identifiant", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const st = normStatus((l as unknown)?.statut);
+    const st = normStatus(asRecord(l)["statut"]);
     if (st.includes("deconnect") || st.includes("disconnected")) connected = false;
   } catch {}
 

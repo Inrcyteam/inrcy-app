@@ -135,11 +135,11 @@ if (upsertErr) return NextResponse.json({ error: "DB upsert failed", upsertErr }
 // Mirror in pro_tools_configs
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = (scRow as unknown)?.settings ?? {};
+      const current = asRecord(asRecord(scRow)["settings"]);
       const merged = {
         ...current,
         instagram: {
-          ...(current?.instagram ?? {}),
+          ...asRecord(current["instagram"]),
           accountConnected: true,
           connected: false,
           username: null,

@@ -167,11 +167,11 @@ export async function GET(req: Request) {
     };
 
     // 4) Update or insert
-    if ((existing as unknown)?.id) {
+    if (asRecord(existing)["id"]) {
       const { error: upErr } = await supabase
         .from("integrations")
         .update(payload)
-        .eq("id", (existing as Record<string, unknown>)?.id as string);
+        .eq("id", String(asRecord(existing)["id"]));
 
       if (upErr) {
         const detail = process.env.NODE_ENV === "production" ? undefined : upErr;

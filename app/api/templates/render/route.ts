@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { renderWithContext, buildDefaultContext } from "@/lib/templateEngine";
+import { asRecord } from "@/lib/tsSafe";
 
 // POST /api/templates/render
 // Body: { template_key?: string, subject_override?: string, body_override?: string }
@@ -11,9 +12,9 @@ export async function POST(req: Request) {
     if (errorResponse) return errorResponse;
     const userId = user.id;
 
-    const body = (await req.json().catch(() => ({}))) as unknown;
-    const subjectOverride = String(body?.subject_override ?? "");
-    const bodyOverride = String(body?.body_override ?? "");
+    const body = asRecord(await req.json().catch(() => ({})) as unknown);
+    const subjectOverride = String(body["subject_override"] ?? "");
+    const bodyOverride = String(body["body_override"] ?? "");
 
     // --- Fetch profile + activity
     const [profileRes, businessRes, inrcyCfgRes, proCfgRes, statsRes] = await Promise.all([
@@ -28,15 +29,15 @@ export async function POST(req: Request) {
         .in("provider", ["google", "facebook"]),
     ]);
 
-    const profile: unknown = profileRes.data ?? {};
-    const business: unknown = businessRes.data ?? {};
+    const profile = asRecord(profileRes.data);
+    const business = asRecord(businessRes.data);
 
     // --- Links logic (priority: iNrCy site > site web ; plus Facebook if connected)
-    const ownership = String(profile?.inrcy_site_ownership ?? "none");
-    const inrcyUrl = String(profile?.inrcy_site_url ?? (inrcyCfgRes.data as unknown)?.site_url ?? "").trim();
+    const ownership = String(profile["inrcy_site_ownership"] ?? "none");
+    const inrcyUrl = String(profile["inrcy_site_url"] ?? asRecord(inrcyCfgRes.data)["site_url"] ?? "").trim();
 
-    const proSettings = ((proCfgRes.data as unknown)?.settings ?? {}) as unknown;
-    const siteWebUrl = String(proSettings?.site_web?.url ?? "").trim();
+    const proSettings = asRecord(asRecord(proCfgRes.data)["settings"]);
+    const siteWebUrl = String(asRecord(asRecord(proSettings)["site_web"])["url"] ?? "").trim();
 
     const hasInrcySite = ownership !== "none" && !!inrcyUrl;
     const siteUrl = hasInrcySite ? inrcyUrl : siteWebUrl;
@@ -44,12 +45,13 @@ export async function POST(req: Request) {
     let facebookUrl = "";
     let gmbUrl = "";
 
-    for (const r of (statsRes.data ?? []) as unknown[]) {
-      if (r.provider === "facebook" && (r.status === "connected") && r.resource_id) {
-        facebookUrl = `https://www.facebook.com/${r.resource_id}`;
+    for (const r0 of (statsRes.data ?? []) as unknown[]) {
+      const r = asRecord(r0);
+      if (r["provider"] === "facebook" && r["status"] === "connected" && r["resource_id"]) {
+        facebookUrl = `https://www.facebook.com/${String(r["resource_id"])}`;
       }
-      if (r.provider === "google" && (r.status === "connected") && r.resource_id) {
-        const label = String(r.resource_label || r.resource_id || "").trim();
+      if (r["provider"] === "google" && r["status"] === "connected" && r["resource_id"]) {
+        const label = String(r["resource_label"] || r["resource_id"] || "").trim();
         gmbUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label)}`;
       }
     }

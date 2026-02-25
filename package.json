@@ -11,7 +11,8 @@
     "smoke:health": "node scripts/smoke-health.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:install": "playwright install --with-deps"
+    "test:e2e:install": "playwright install --with-deps",
+    "typecheck": "tsc --noEmit --pretty false --noErrorTruncation"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.39.0",

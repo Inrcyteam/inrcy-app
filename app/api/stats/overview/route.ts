@@ -18,6 +18,24 @@ function safeJsonParse<T>(s: unknown, fallback: T): T {
   }
 }
 
+type SiteConn = { ga4: boolean; gsc: boolean };
+
+type SourcesStatus = {
+  site_inrcy: { connected: SiteConn };
+  site_web: { connected: SiteConn };
+  gmb: { connected: boolean; metrics: unknown | null };
+  facebook: { connected: boolean; metrics: unknown | null };
+  instagram: { connected: boolean; metrics: unknown | null };
+  linkedin: { connected: boolean; metrics: unknown | null };
+};
+
+type SocialSnapshot = {
+  gmb: { connected: boolean; metrics: unknown | null };
+  facebook: { connected: boolean };
+  instagram: { connected: boolean };
+  linkedin: { connected: boolean };
+};
+
 type SiteSettings = {
   ga4?: { property_id?: string; measurement_id?: string };
   gsc?: { property?: string };
@@ -83,7 +101,7 @@ export async function GET(request: Request) {
     // the UI can incorrectly show "Déconnecté" even when integrations are connected.
     // So we always (re)hydrate social connection flags from `integrations` before returning.
     async function fetchSocialStatus() {
-      const out: Record<string, unknown> = {
+      const out: SocialSnapshot = {
         gmb: { connected: false, metrics: null },
         facebook: { connected: false },
         instagram: { connected: false },
@@ -119,7 +137,8 @@ export async function GET(request: Request) {
           .order("updated_at", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(1);
-        out.instagram.connected = !!(data as unknown[])?.[0]?.resource_id;
+        const ig0 = Array.isArray(data) ? (data as unknown[])[0] : null;
+        out.instagram.connected = !!asRecord(ig0)["resource_id"];
       } catch {}
 
       // LinkedIn
@@ -151,7 +170,8 @@ export async function GET(request: Request) {
           .order("updated_at", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(1);
-        out.gmb.connected = !!(data as unknown[])?.[0]?.resource_id;
+        const gmb0 = Array.isArray(data) ? (data as unknown[])[0] : null;
+        out.gmb.connected = !!asRecord(gmb0)["resource_id"];
       } catch {}
 
       return out;
@@ -165,7 +185,7 @@ const { data: profileRow } = await supabase
   .eq("user_id", userId)
   .maybeSingle();
 
-const inrcySiteOwnership = String((profileRow as unknown)?.inrcy_site_ownership || "none");
+const inrcySiteOwnership = String(asRecord(profileRow)["inrcy_site_ownership"] ?? "none");
 
     
 // Load settings from the new schema:
@@ -178,11 +198,11 @@ const [inrcyCfgRes, proCfgRes] = await Promise.all([
 
 // NOTE: SiteSettings has only optional fields, so an empty object is a valid fallback.
 // Using `null` breaks TS in production builds (null not assignable to SiteSettings).
-const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as unknown)?.settings, {});
-const proSettings = safeJsonParse<unknown>((proCfgRes.data as unknown)?.settings, {});
+const inrcySettings = safeJsonParse<SiteSettings>(asRecord(inrcyCfgRes.data)["settings"], {});
+const proSettings = safeJsonParse<Record<string, unknown>>(asRecord(proCfgRes.data)["settings"], {});
 
 // Flag: en mode rented, on peut couper uniquement la couche iNrCy (sans débrancher GA4/GSC)
-const inrcyTrackingEnabled = Boolean((inrcySettings as unknown)?.inrcy_tracking_enabled ?? true);
+const inrcyTrackingEnabled = Boolean(asRecord(inrcySettings)["inrcy_tracking_enabled"] ?? true);
 
 // ---- Cache (anti-quota Google) ----
 // ⚠️ Correctif critique : la clé de cache DOIT dépendre de l'état des connexions.
@@ -202,10 +222,11 @@ async function buildConnectionsKey() {
       .eq("user_id", userId);
 
     for (const r of (data as unknown[]) || []) {
-      const k = `${r.provider}:${r.source}:${r.product}`;
-      const st = String(r.status || "").toLowerCase();
-      const rid = String(r.resource_id || "");
-      const ts = String(r.updated_at || "");
+      const rr = asRecord(r);
+      const k = `${String(rr["provider"] ?? "")}:${String(rr["source"] ?? "")}:${String(rr["product"] ?? "")}`;
+      const st = String(rr["status"] || "").toLowerCase();
+      const rid = String(rr["resource_id"] || "");
+      const ts = String(rr["updated_at"] || "");
       keyParts.push(`${k}=${st}|rid=${rid}@${ts}`);
     }
   } catch {
@@ -220,14 +241,15 @@ async function buildConnectionsKey() {
       .eq("id_utilisateur", userId);
 
     for (const r of (data as unknown[]) || []) {
-      const prov = String(r.fournisseur || "").toLowerCase();
-      const src = String(r.source || "").toLowerCase();
-      const prod = String(r.produit || "").toLowerCase();
-      const st = String(r.statut || "")
+      const rr = asRecord(r);
+      const prov = String(rr["fournisseur"] || "").toLowerCase();
+      const src = String(rr["source"] || "").toLowerCase();
+      const prod = String(rr["produit"] || "").toLowerCase();
+      const st = String(rr["statut"] || "")
         .toLowerCase()
         .normalize("NFD")
         .replace(/\p{Diacritic}/gu, "");
-      const id = String(r.identifiant || "");
+      const id = String(rr["identifiant"] || "");
       keyParts.push(`legacy:${prov}:${src}:${prod}=${st}@${id}`);
     }
   } catch {
@@ -254,12 +276,12 @@ try {
     .order("expires_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if ((cacheHit as unknown)?.payload) {
-      const payload = asRecord(cacheHit)["payload"] as unknown;
+  if (asRecord(cacheHit)["payload"]) {
+      const payload = asRecord(asRecord(cacheHit)["payload"]);
       // Rehydrate social connection flags to avoid stale/missing keys in cached payloads.
       try {
         const social = await fetchSocialStatus();
-        payload.sources = { ...(payload.sources || {}), ...social };
+        payload["sources"] = { ...asRecord(payload["sources"]), ...social };
       } catch {}
       return NextResponse.json(payload);
   }
@@ -279,12 +301,12 @@ try {
     .limit(1)
     .maybeSingle();
 
-  if ((legacyHit as unknown)?.charge_utile) {
-    const payload = asRecord(legacyHit)["charge_utile"] as unknown;
+  if (asRecord(legacyHit)["charge_utile"]) {
+    const payload = asRecord(asRecord(legacyHit)["charge_utile"]);
     // Rehydrate social connection flags to avoid stale/missing keys in legacy cached payloads.
     try {
       const social = await fetchSocialStatus();
-      payload.sources = { ...(payload.sources || {}), ...social };
+      payload["sources"] = { ...asRecord(payload["sources"]), ...social };
     } catch {}
     return NextResponse.json(payload);
   }
@@ -292,22 +314,21 @@ try {
   // ignore
 }
 
+const proSiteWeb = asRecord(asRecord(proSettings)["site_web"]);
+const proGa4 = asRecord(proSiteWeb["ga4"]);
+const proGsc = asRecord(proSiteWeb["gsc"]);
+
 const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: string }> = [
   {
     key: "site_inrcy",
-    ga4Property: inrcyTrackingEnabled ? (inrcySettings as unknown)?.ga4?.property_id : undefined,
-    gscProperty: inrcyTrackingEnabled ? (inrcySettings as unknown)?.gsc?.property : undefined,
-  },
-  {
-    key: "site_web",
-    ga4Property: (proSettings as unknown)?.site_web?.ga4?.property_id,
-    gscProperty: (proSettings as unknown)?.site_web?.gsc?.property,
+    ga4Property: (String(proGa4["property_id"] ?? "").trim() || undefined),
+    gscProperty: (String(proGsc["property"] ?? "").trim() || undefined),
   },
 ];
 
 
     // Fetch each source
-    const perSource: Record<string, unknown> = {};
+    const perSource: Record<string, { ga4: unknown | null; gsc: unknown | null; connected: SiteConn }> = {};
     const pageAgg = new Map<string, number>();
     const channelAgg = new Map<string, number>();
     const queryAgg = new Map<string, { clicks: number; impressions: number; positionSum: number; rows: number }>();
@@ -364,17 +385,24 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const q = await runGscQuery(token.accessToken, s.gscProperty, days);
           perSource[s.key].gsc = { property: s.gscProperty, queries: q.rows };
 
-          for (const r of q.rows) {
+          const rows = Array.isArray(asRecord(q)["rows"]) ? (asRecord(q)["rows"] as unknown[]) : [];
+          for (const r of rows) {
             if (!includeGsc) continue;
-            totalClicks += r.clicks;
-            totalImpressions += r.impressions;
+            const rr = asRecord(r);
+            const clicks = Number(rr["clicks"] ?? 0) || 0;
+            const impressions = Number(rr["impressions"] ?? 0) || 0;
+            const query = String(rr["query"] ?? "");
+            const position = Number(rr["position"] ?? 0) || 0;
 
-            const cur = queryAgg.get(r.query) || { clicks: 0, impressions: 0, positionSum: 0, rows: 0 };
-            cur.clicks += r.clicks;
-            cur.impressions += r.impressions;
-            cur.positionSum += r.position;
+            totalClicks += clicks;
+            totalImpressions += impressions;
+
+            const cur = queryAgg.get(query) || { clicks: 0, impressions: 0, positionSum: 0, rows: 0 };
+            cur.clicks += clicks;
+            cur.impressions += impressions;
+            cur.positionSum += position;
             cur.rows += 1;
-            queryAgg.set(r.query, cur);
+            queryAgg.set(query, cur);
           }
         }
       }
@@ -406,7 +434,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       .slice(0, 8);
 
     // --- Connections + channel metrics ---
-    const sourcesStatus: Record<string, unknown> = {
+    const sourcesStatus: SourcesStatus = {
       site_inrcy: { connected: { ga4: false, gsc: false } },
       site_web: { connected: { ga4: false, gsc: false } },
       gmb: { connected: false, metrics: null },
@@ -416,8 +444,8 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     };
 
     // copy site connections from perSource (built above)
-    sourcesStatus.site_inrcy.connected = perSource.site_inrcy?.connected || { ga4: false, gsc: false };
-    sourcesStatus.site_web.connected = perSource.site_web?.connected || { ga4: false, gsc: false };
+    sourcesStatus.site_inrcy.connected = (asRecord(asRecord(perSource)["site_inrcy"])["connected"] as SiteConn) || { ga4: false, gsc: false };
+    sourcesStatus.site_web.connected = (asRecord(asRecord(perSource)["site_web"])["connected"] as SiteConn) || { ga4: false, gsc: false };
 
     // Facebook: connected if a page has been selected (resource_id)
     try {
@@ -432,21 +460,21 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         .order("updated_at", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(1);
-      const fbRow = fbRowRows?.[0] as unknown;
+      const fbRow = asRecord(fbRowRows?.[0]);
 
-sourcesStatus.facebook.connected = !!fbRow;
+sourcesStatus.facebook.connected = !!fbRowRows?.[0];
 
       // Real Facebook Page metrics (only if included)
       const includeFb = includeAll || includeSet.has("facebook");
       if (!includeFb) {
         sourcesStatus.facebook.metrics = null;
-      } else if (fbRow?.resource_id && fbRow?.access_token_enc) {
+      } else if (fbRow["resource_id"] && fbRow["access_token_enc"]) {
         try {
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           sourcesStatus.facebook.metrics = await fbFetchDailyInsights(
-            tryDecryptToken(String(fbRow.access_token_enc)) || "",
-            String(fbRow.resource_id),
+            tryDecryptToken(String(fbRow["access_token_enc"])) || "",
+            String(fbRow["resource_id"]),
             start,
             end
           );
@@ -469,7 +497,7 @@ sourcesStatus.facebook.connected = !!fbRow;
           .order("identifiant", { ascending: false })
           .limit(1)
           .maybeSingle();
-        const st = String((l as unknown)?.statut || "")
+        const st = String(asRecord(l)["statut"] || "")
           .toLowerCase()
           .normalize("NFD")
           .replace(/\p{Diacritic}/gu, "");
@@ -490,21 +518,21 @@ sourcesStatus.facebook.connected = !!fbRow;
         .order("updated_at", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(1);
-      const igRow = igRowRows?.[0] as unknown;
+      const igRow = asRecord(igRowRows?.[0]);
 
-sourcesStatus.instagram.connected = !!igRow?.resource_id;
+sourcesStatus.instagram.connected = !!asRecord(igRow)["resource_id"];
 
       // Real Instagram metrics (only if included)
       const includeIg = includeAll || includeSet.has("instagram");
       if (!includeIg) {
         sourcesStatus.instagram.metrics = null;
-      } else if (igRow?.resource_id && igRow?.access_token_enc) {
+      } else if (igRow["resource_id"] && igRow["access_token_enc"]) {
         try {
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           sourcesStatus.instagram.metrics = await igFetchDailyInsights(
-            tryDecryptToken(String(igRow.access_token_enc)) || "",
-            String(igRow.resource_id),
+            tryDecryptToken(String(igRow["access_token_enc"])) || "",
+            String(igRow["resource_id"]),
             start,
             end
           );
@@ -527,7 +555,7 @@ sourcesStatus.instagram.connected = !!igRow?.resource_id;
           .order("identifiant", { ascending: false })
           .limit(1)
           .maybeSingle();
-        const st = String((l as unknown)?.statut || "")
+        const st = String(asRecord(l)["statut"] || "")
           .toLowerCase()
           .normalize("NFD")
           .replace(/\p{Diacritic}/gu, "");
@@ -548,25 +576,25 @@ sourcesStatus.instagram.connected = !!igRow?.resource_id;
         .order("updated_at", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(1);
-      const liRow = liRowRows?.[0] as unknown;
+      const liRow = asRecord(liRowRows?.[0]);
 
-sourcesStatus.linkedin.connected = !!liRow;
+sourcesStatus.linkedin.connected = !!liRowRows?.[0];
 
       // Real LinkedIn org share stats (only if included)
       const includeLi = includeAll || includeSet.has("linkedin");
       if (!includeLi) {
         sourcesStatus.linkedin.metrics = null;
-      } else if (liRow?.access_token_enc) {
+      } else if (liRow["access_token_enc"]) {
         try {
-          const meta = (liRow as unknown)?.meta || {};
-          const orgUrn = String(meta?.org_urn || "");
+          const meta = asRecord(liRow["meta"]);
+          const orgUrn = String(meta["org_urn"] || "");
           if (!orgUrn) {
             sourcesStatus.linkedin.metrics = { error: "No organization selected (org_urn missing)" };
           } else {
             const end = new Date();
             const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
             sourcesStatus.linkedin.metrics = await liFetchOrgShareStats(
-              tryDecryptToken(String(liRow.access_token_enc)) || "",
+              tryDecryptToken(String(liRow["access_token_enc"])) || "",
               orgUrn,
               start,
               end
@@ -591,7 +619,7 @@ sourcesStatus.linkedin.connected = !!liRow;
           .order("identifiant", { ascending: false })
           .limit(1)
           .maybeSingle();
-        const st = String((l as unknown)?.statut || "")
+        const st = String(asRecord(l)["statut"] || "")
           .toLowerCase()
           .normalize("NFD")
           .replace(/\p{Diacritic}/gu, "");
@@ -614,9 +642,9 @@ sourcesStatus.linkedin.connected = !!liRow;
         .order("updated_at", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(1);
-      const gmbRow = gmbRowRows?.[0] as unknown;
+      const gmbRow = asRecord(gmbRowRows?.[0]);
 
-sourcesStatus.gmb.connected = !!gmbRow?.resource_id;
+sourcesStatus.gmb.connected = !!gmbRowRows?.[0] && !!gmbRow["resource_id"];
 
       // Legacy override
       try {
@@ -630,14 +658,14 @@ sourcesStatus.gmb.connected = !!gmbRow?.resource_id;
           .order("identifiant", { ascending: false })
           .limit(1)
           .maybeSingle();
-        const st = String((l as unknown)?.statut || "")
+        const st = String(asRecord(l)["statut"] || "")
           .toLowerCase()
           .normalize("NFD")
           .replace(/\p{Diacritic}/gu, "");
         if (st.includes("deconnect") || st.includes("disconnected")) sourcesStatus.gmb.connected = false;
       } catch {}
 
-      if (gmbRow) {
+      if (gmbRowRows?.[0]) {
         const includeGmb = includeAll || includeSet.has("gmb");
         if (!includeGmb) {
           // Do not fetch metrics when filtered out.
@@ -651,7 +679,7 @@ sourcesStatus.gmb.connected = !!gmbRow?.resource_id;
         // So we only fetch metrics once a location has been explicitly selected and saved.
         // Never fallback to a token-row resource_id here, otherwise we can show stale metrics
         // even when the user hasn't selected a location in the UI.
-        const loc = gmbRow?.resource_id;
+        const loc = String(gmbRow["resource_id"] || "");
 
         if (accessToken && loc) {
           const end = new Date();

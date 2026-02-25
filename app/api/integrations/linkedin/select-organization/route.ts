@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { asRecord } from "@/lib/tsSafe";
 
 export async function POST(req: Request) {
   const supabase = await createSupabaseServer();
@@ -27,11 +28,11 @@ export async function POST(req: Request) {
 
   try {
     const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
-    const current = (scRow as unknown)?.settings ?? {};
+    const current = asRecord(asRecord(scRow)["settings"]);
     const merged = {
       ...current,
       linkedin: {
-        ...(current?.linkedin ?? {}),
+        ...asRecord(current["linkedin"]),
         accountConnected: true,
         connected: true,
         orgId,

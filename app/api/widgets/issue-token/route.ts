@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { withApi } from "@/lib/observability/withApi";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { asRecord } from "@/lib/tsSafe";
 
 export const runtime = "nodejs";
 
@@ -41,7 +42,7 @@ function sign(payload: PayloadV1, secret: string) {
 }
 
 function originHost(_req: Request): string {
-  const origin = req.headers.get("origin") || "";
+  const origin = _req.headers.get("origin") || "";
   if (origin) {
     try {
       return new URL(origin).hostname.toLowerCase().replace(/^www\./, "");
@@ -51,12 +52,12 @@ function originHost(_req: Request): string {
 }
 
 function requestHost(_req: Request): string {
-  const h = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "").trim();
+  const h = (_req.headers.get("x-forwarded-host") || _req.headers.get("host") || "").trim();
   return h.toLowerCase().replace(/^www\./, "");
 }
 
 function requestProto(_req: Request): string {
-  return (req.headers.get("x-forwarded-proto") || "https").trim();
+  return (_req.headers.get("x-forwarded-proto") || "https").trim();
 }
 
 function parseAllowedOrigins(): string[] {
@@ -93,7 +94,7 @@ const handler = async (_req: Request) => {
       return NextResponse.json({ ok: false, error: "Missing INRCY_WIDGETS_SIGNING_SECRET" }, { status: 500 });
     }
 
-    const { searchParams } = new URL(req.url);
+    const { searchParams } = new URL(_req.url);
     const domain = normalizeDomain(searchParams.get("domain"));
     const source = (searchParams.get("source") || "").trim();
 
@@ -107,7 +108,7 @@ const handler = async (_req: Request) => {
     // CORS hard-binding (widgets) + dashboard allowlist (issuing tokens from app.inrcy.com).
     // - For embedded widgets: Origin must match the target domain.
     // - For the dashboard: allow explicit origins from env var INRCY_WIDGET_ALLOWED_ORIGINS.
-    const origin = req.headers.get("origin");
+    const origin = _req.headers.get("origin");
     const originH = originHost(_req);
     const allowedOrigins = parseAllowedOrigins();
 
@@ -181,7 +182,7 @@ const handler = async (_req: Request) => {
         .eq("user_id", user.id)
         .maybeSingle();
       if (error) throw error;
-      const d = normalizeDomain((data as unknown)?.site_url || "");
+      const d = normalizeDomain(String(asRecord(data)["site_url"] ?? ""));
       if (!d || d !== domain) {
         return NextResponse.json(
           { ok: false, error: "Domain not linked to your iNrCy site" },
@@ -196,7 +197,9 @@ const handler = async (_req: Request) => {
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      const d = normalizeDomain((data as unknown)?.settings?.site_web?.url || "");
+      const settings = asRecord(asRecord(data)["settings"]);
+      const siteWeb = asRecord(settings["site_web"]);
+      const d = normalizeDomain(String(siteWeb["url"] ?? ""));
       if (!d || d !== domain) {
         return NextResponse.json(
           { ok: false, error: "Domain not linked to your website" },

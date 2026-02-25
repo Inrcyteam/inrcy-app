@@ -155,11 +155,11 @@ export async function GET(req: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    if ((existing as unknown)?.id) {
+    if (asRecord(existing)["id"]) {
       const { error: upErr } = await supabase
         .from("integrations")
         .update(payload)
-        .eq("id", (existing as Record<string, unknown>)?.id as string);
+        .eq("id", String(asRecord(existing)["id"]));
 
       if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
     } else {
