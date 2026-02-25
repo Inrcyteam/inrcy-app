@@ -230,13 +230,18 @@ export async function GET(req: Request) {
     // chooses a location in the UI, we must not fetch or display metrics.
     // We can however store a default *account* hint to help list locations faster.
     try {
-      if (payload.access_token_enc) {
-        const accounts = await gmbListAccounts(payload.access_token_enc);
+      // tokenData.access_token is the raw access token returned by Google.
+      // payload.access_token_enc is stored for DB usage but is typed as unknown (Record<string, unknown>).
+      // For calling Google APIs we must use a real string access token.
+      const accessToken = typeof tokenData.access_token === "string" ? tokenData.access_token.trim() : "";
+      if (accessToken) {
+        const accounts = await gmbListAccounts(accessToken);
         const firstAcc = accounts?.[0]?.name; // e.g. "accounts/123"
         if (firstAcc) {
+          const metaToMerge = asRecord(payload["meta"]);
           await supabase
             .from("integrations")
-            .update({ meta: { ...(payload.meta || {}), account: firstAcc }, resource_id: null, resource_label: null })
+            .update({ meta: { ...metaToMerge, account: firstAcc }, resource_id: null, resource_label: null })
             .eq("user_id", userId)
             .eq("provider", "google")
             .eq("source", "gmb")
