@@ -5,7 +5,7 @@ import nodemailer from "nodemailer";
 // @ts-ignore - nodemailer exposes this internal helper and it's stable in practice
 import MailComposer from "nodemailer/lib/mail-composer";
 import { loadImapAccount } from "@/lib/imapAccount";
-import { appendRawMessage } from "@/lib/imapClient";
+import { appendRawMessage, type ImapConfig } from "@/lib/imapClient";
 import { withApi } from "@/lib/observability/withApi";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
 
@@ -59,6 +59,15 @@ const handler = async (req: Request) => {
 
     // loadImapAccount() returns { smtp: { user, password, host, port, secure, starttls } }
     const smtp = asRecord(accRec["smtp"]);
+    const imap = asRecord(accRec["imap"]);
+
+    const imapCfg: ImapConfig = {
+      user: String(imap.user || ""),
+      password: String(imap.password || ""),
+      host: String(imap.host || ""),
+      port: Number(imap.port || 0),
+      secure: typeof imap.secure === "boolean" ? imap.secure : Number(imap.port) === 993,
+    };
 
     // Strict validation: IMAP alone is not enough, SMTP is required to send
     if (!smtp?.host || !smtp?.port || !smtp?.user || !smtp?.password) {
@@ -86,8 +95,11 @@ const handler = async (req: Request) => {
           : undefined,
     });
 
+    const fromName = String(imapCfg.user || smtp.user);
+    const from = `"${fromName}" <${String(smtp.user)}>`;
+
     const info = await transporter.sendMail({
-      from: `"${String(acc?.imap?.user || smtp.user)}" <${String(smtp.user)}>`,
+      from,
       to,
       subject,
       text,
@@ -99,7 +111,7 @@ const handler = async (req: Request) => {
     try {
       const raw = await new Promise<Buffer>((resolve, reject) => {
         const mc = new MailComposer({
-          from: `"${String(acc?.imap?.user || smtp.user)}" <${String(smtp.user)}>` ,
+          from,
           to,
           subject,
           text,
@@ -114,7 +126,10 @@ const handler = async (req: Request) => {
       });
 
       // Best-effort: do not fail the whole request if append fails
-      await appendRawMessage(acc.imap, "sent", raw);
+      // Only attempt IMAP append when the config looks valid
+      if (imapCfg.host && imapCfg.port && imapCfg.user && imapCfg.password) {
+        await appendRawMessage(imapCfg, "sent", raw);
+      }
     } catch {
       // ignore
     }
