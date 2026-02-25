@@ -8,6 +8,9 @@ import { loadImapAccount } from "@/lib/imapAccount";
 import { appendRawMessage } from "@/lib/imapClient";
 import { withApi } from "@/lib/observability/withApi";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
 
 // IMAP + SMTP require Node.js runtime (Edge runtime can't open raw TCP sockets)
 export const runtime = "nodejs";
@@ -57,7 +60,7 @@ const html = String(formData.get("html") || "").trim();
     );
 
     // loadImapAccount() returns { smtp: { user, password, host, port, secure, starttls } }
-    const smtp = acc.smtp;
+    const smtp = asRecord(accRec["smtp"]);
 
     // Strict validation: IMAP alone is not enough, SMTP is required to send
     if (!smtp?.host || !smtp?.port || !smtp?.user || !smtp?.password) {
