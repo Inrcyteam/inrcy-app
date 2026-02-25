@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { asRecord } from "@/lib/tsSafe";
 
 export async function POST(req: Request) {
   try {
@@ -41,10 +42,12 @@ export async function POST(req: Request) {
     // Mirror to pro_tools_configs for UI
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = (scRow as unknown)?.settings ?? {};
+      const scRec = asRecord(scRow);
+      const current = asRecord(scRec["settings"]);
+      const currentGmb = asRecord(current["gmb"]);
       const merged = {
         ...current,
-        gmb: { ...(current?.gmb ?? {}), connected: true, accountName, locationName, locationTitle, url: gmbUrl },
+        gmb: { ...currentGmb, connected: true, accountName, locationName, locationTitle, url: gmbUrl },
       };
       await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
     } catch {

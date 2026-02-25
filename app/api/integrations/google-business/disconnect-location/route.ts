@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { asRecord } from "@/lib/tsSafe";
 
 // Disconnect Google Business ONLY: clears the selected location/page, keeps the Google account OAuth connected.
 export async function POST() {
@@ -44,11 +45,13 @@ export async function POST() {
       .eq("user_id", authData.user.id)
       .maybeSingle();
 
-    const current = (cfg as unknown)?.settings ?? {};
+    const cfgRec = asRecord(cfg);
+    const current = asRecord(cfgRec["settings"]);
+    const currentGmb = asRecord(current["gmb"]);
     const next = {
-      ...(current ?? {}),
+      ...current,
       gmb: {
-        ...(((current ?? {}) as unknown)?.gmb ?? {}),
+        ...currentGmb,
         connected: false,
         url: "",
         resource_id: "",
