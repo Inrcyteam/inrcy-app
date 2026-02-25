@@ -40,7 +40,14 @@ export async function GET() {
 
     // access_token_enc may be a PAGE token after selection.
     // For /me/accounts we need the USER token (stored in meta.user_access_token).
-    const userTokenRaw = String((integ as unknown)?.meta?.user_access_token_enc || (integ as unknown)?.meta?.user_access_token || integ.access_token_enc || "").trim();
+    const integRec = asRecord(integ);
+    const metaRec = asRecord(integRec["meta"]);
+    const userTokenRaw = String(
+      asString(metaRec["user_access_token_enc"]) ||
+        asString(metaRec["user_access_token"]) ||
+        asString(integRec["access_token_enc"]) ||
+        "",
+    ).trim();
     const userToken = tryDecryptToken(userTokenRaw);
     if (!userToken) return NextResponse.json({ error: "Facebook token manquant" }, { status: 400 });
 

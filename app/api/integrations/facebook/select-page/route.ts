@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 export async function POST(req: Request) {
   try {
@@ -11,10 +12,11 @@ export async function POST(req: Request) {
     const userId = auth.user.id;
     const body = await req.json().catch(() => null);
     if (!body) return NextResponse.json({ error: "Bad payload" }, { status: 400 });
+    const bodyRec = asRecord(body);
 
-    const pageId = String(body.pageId || "").trim();
-    const pageName = String(body.pageName || "").trim() || null;
-    const pageAccessToken = String(body.pageAccessToken || "").trim();
+    const pageId = String(asString(bodyRec["pageId"]) || "").trim();
+    const pageName = String(asString(bodyRec["pageName"]) || "").trim() || null;
+    const pageAccessToken = String(asString(bodyRec["pageAccessToken"]) || "").trim();
 
     if (!pageId || !pageAccessToken) {
       return NextResponse.json({ error: "Missing pageId/pageAccessToken" }, { status: 400 });
@@ -32,7 +34,8 @@ export async function POST(req: Request) {
 
     if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
 
-    const prevMeta = ((existing as unknown)?.meta ?? {}) as unknown;
+    const existingRec = asRecord(existing);
+    const prevMeta = asRecord(existingRec["meta"]);
     const pageUrl = `https://www.facebook.com/${pageId}`;
     const nextMeta = { ...prevMeta, selected: true, page_url: pageUrl };
 
@@ -56,11 +59,13 @@ export async function POST(req: Request) {
     // Also mirror to pro_tools_configs so UI updates instantly
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = (scRow as unknown)?.settings ?? {};
+      const scRec = asRecord(scRow);
+      const current = asRecord(scRec["settings"]);
+      const currentFb = asRecord(current["facebook"]);
       const merged = {
         ...current,
         facebook: {
-          ...(current?.facebook ?? {}),
+          ...currentFb,
           accountConnected: true,
           pageConnected: true,
           pageId,
