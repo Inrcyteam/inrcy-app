@@ -103,9 +103,9 @@ function extractGmailTokens(account: AnyRec) {
   );
 
   const expiresAt = pickFirst<string>(
-    account.expires_at,
-    account.expiresAt,
-    account.token_expires_at
+    asString(account.expires_at),
+    asString(account.expiresAt),
+    asString(account.token_expires_at)
   );
 
   // Encrypted (for debug only)
