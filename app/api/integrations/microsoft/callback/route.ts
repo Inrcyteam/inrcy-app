@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 type TokenResponse = {
   token_type?: string;
@@ -129,7 +130,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "DB read existing failed", existingErr }, { status: 500 });
     }
 
-    const existingRefreshEnc = (existing as unknown)?.refresh_token_enc ?? null;
+    const existingRefreshEnc = asString(asRecord(existing)["refresh_token_enc"]) ?? null;
     const existingRefreshPlain = existingRefreshEnc ? tryDecryptToken(String(existingRefreshEnc)) : null;
     const refreshTokenToStore = tokenData.refresh_token ?? existingRefreshPlain ?? null;
     const refreshTokenEncToStore = refreshTokenToStore ? encryptToken(String(refreshTokenToStore)) : null;

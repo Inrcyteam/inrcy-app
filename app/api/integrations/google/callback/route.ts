@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/requireUser";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 type TokenResponse = {
   access_token?: string;
@@ -138,7 +139,7 @@ export async function GET(req: Request) {
 
     const refreshTokenEncToStore = tokenData.refresh_token
       ? encryptToken(tokenData.refresh_token)
-      : (existing as unknown)?.refresh_token_enc ?? null;
+      : asString(asRecord(existing)["refresh_token_enc"]) ?? null;
 
     const expiresAt =
       tokenData.expires_in != null

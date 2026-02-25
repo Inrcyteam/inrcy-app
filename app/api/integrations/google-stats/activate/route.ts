@@ -288,7 +288,14 @@ let adminRefreshToken = "";
     .not("refresh_token_enc", "is", null)
     .order("updated_at", { ascending: false })
     .limit(10);
-  const raw = String((rows as unknown[])?.find((r) => String((r as unknown)?.refresh_token_enc || "").trim())?.refresh_token_enc || "").trim();
+  const rowWithToken = Array.isArray(rows)
+    ? rows.find((r) => {
+        const rr = asRecord(r);
+        const t = asString(rr["refresh_token_enc"]);
+        return !!(t && t.trim());
+      })
+    : undefined;
+  const raw = (asString(asRecord(rowWithToken)["refresh_token_enc"]) ?? "").trim();
   adminRefreshToken = tryDecryptToken(raw) || "";
 }
     if (!adminRefreshToken) {

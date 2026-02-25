@@ -296,7 +296,7 @@ async function upsertGoogleIntegration(opts: {
     .eq("product", product)
     .maybeSingle();
 
-  const refreshTokenToStore = tokenData.refresh_token ?? (existing as unknown)?.refresh_token_enc ?? null;
+  const refreshTokenToStore = tokenData.refresh_token ?? asString(asRecord(existing)["refresh_token_enc"]) ?? null;
 
   const expiresAt =
     tokenData.expires_in != null
