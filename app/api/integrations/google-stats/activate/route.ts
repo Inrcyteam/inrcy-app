@@ -189,7 +189,11 @@ async function resolveGscFromDomain(accessToken: string, domain: string, siteUrl
     throw new Error(`GSC sites.list failed: ${asString(err["message"]) || "unknown"}`);
   }
 
-  const entries: Array<{ siteUrl: string }> = Array.isArray(rec["siteEntry"]) ? (rec["siteEntry"] as any) : [];
+  const rawEntries = Array.isArray(rec["siteEntry"]) ? rec["siteEntry"] : [];
+  const entries: Array<{ siteUrl: string }> = rawEntries
+    .map((e) => asRecord(e))
+    .map((e) => ({ siteUrl: asString(e["siteUrl"]) || "" }))
+    .filter((e) => Boolean(e.siteUrl));
   const wantedScDomain = `sc-domain:${domain}`;
   const exactScDomain = entries.find((e) => String(e.siteUrl).toLowerCase() === wantedScDomain.toLowerCase());
   if (exactScDomain) return exactScDomain.siteUrl;

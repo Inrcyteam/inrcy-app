@@ -226,11 +226,13 @@ export async function GET(req: Request) {
       },
     };
 
-    if ((existing as unknown)?.id) {
+    const existingRec = asRecord(existing);
+    const existingId = asString(existingRec["id"]);
+    if (existingId) {
       const { error: upErr } = await supabase
         .from("integrations")
         .update(payload)
-        .eq("id", (existing as Record<string, unknown>)?.id as string);
+        .eq("id", existingId);
       if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
     } else {
       const { error: insErr } = await supabase.from("integrations").insert(payload);
@@ -240,11 +242,12 @@ export async function GET(req: Request) {
     // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = (scRow as unknown)?.settings ?? {};
-      const merged = {
+      const current = asRecord(asRecord(scRow)["settings"]);
+      const currentFacebook = asRecord(current["facebook"]);
+      const merged: Record<string, unknown> = {
         ...current,
         facebook: {
-          ...(current?.facebook ?? {}),
+          ...currentFacebook,
           accountConnected: true,
           userEmail: me.email ?? null,
           pageConnected: false,
