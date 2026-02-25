@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
-import { tryDecryptToken as _tryDecryptToken } from "@/lib/oauthCrypto";
 import { withApi } from "@/lib/observability/withApi";
 import { fetchWithRetry } from "@/lib/observability/fetch";
+import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
+
+// Microsoft Graph mail send requires Node.js runtime in most deployments.
+export const runtime = "nodejs";
 function isExpired(expires_at?: string | null, skewSeconds = 60) {
   if (!expires_at) return false;
   const t = Date.parse(expires_at);
@@ -57,9 +60,9 @@ function textToHtml(text: string) {
 const handler = async (req: Request) => {
   try {
     const { supabase, user, errorResponse } = await requireUser();
-  if (errorResponse) return errorResponse;
-  const userId = user.id;
-const formData = await req.formData();
+    if (errorResponse) return errorResponse;
+    const userId = user.id;
+    const formData = await req.formData();
     const accountId = String(formData.get("accountId") || "").trim();
     const sendItemId = String(formData.get("sendItemId") || "").trim();
     const sendType = String(formData.get("type") || "mail").trim() || "mail";
@@ -88,26 +91,34 @@ const formData = await req.formData();
       return NextResponse.json({ error: "Microsoft mail account not found" }, { status: 404 });
     }
 
-    let accessToken: string | null = account.access_token ?? null;
-    const refreshToken: string | null = account.refresh_token ?? null;
+    // Supabase row typing may be '{}' depending on generated types.
+    // Parse defensively from unknown to avoid Next.js build-time type errors.
+    const accRec = asRecord(account);
+    const accountRowId = asString(accRec["id"]) || accountId;
+    const expiresAt = asString(accRec["expires_at"]);
+    const refreshToken: string | null = asString(accRec["refresh_token"]) ?? null;
+    let accessToken: string | null = asString(accRec["access_token"]) ?? null;
+
+    const settingsRec = asRecord(accRec["settings"]);
+    const scopesRaw = asString(settingsRec["scopes_raw"]);
 
     if (!accessToken) {
       return NextResponse.json({ error: "Missing access token" }, { status: 500 });
     }
 
     // refresh si expiré
-    if (refreshToken && isExpired(account.expires_at)) {
-      const r = await refreshAccessToken(refreshToken, (account as unknown)?.settings?.scopes_raw ?? null);
+    if (refreshToken && isExpired(expiresAt)) {
+      const r = await refreshAccessToken(refreshToken, scopesRaw ?? null);
       if (r.ok && r.data?.access_token) {
         accessToken = String(r.data.access_token);
-        const expiresAt = r.data?.expires_in
+        const newExpiresAt = r.data?.expires_in
           ? new Date(Date.now() + Number(r.data.expires_in) * 1000).toISOString()
           : null;
 
         await supabase
           .from("integrations")
-          .update({ access_token: accessToken, expires_at: expiresAt, status: "connected" })
-          .eq("id", account.id);
+          .update({ access_token: accessToken, expires_at: newExpiresAt, status: "connected" })
+          .eq("id", accountRowId);
       }
     }
 
@@ -179,7 +190,10 @@ const formData = await req.formData();
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
-    return NextResponse.json({ error: "Internal server error", message: e?.message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(e) || "Internal server error" },
+      { status: asHttpStatus(asRecord(e)["status"], 500) }
+    );
   }
 };
 
