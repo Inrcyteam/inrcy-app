@@ -7,15 +7,7 @@ import MailComposer from "nodemailer/lib/mail-composer";
 import { loadImapAccount } from "@/lib/imapAccount";
 import { appendRawMessage } from "@/lib/imapClient";
 import { withApi } from "@/lib/observability/withApi";
-function asRecord(v: unknown): Record<string, unknown> {
-  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
-}
-
-function asString(v: unknown): string | null {
-  if (typeof v === "string") return v;
-  if (typeof v === "number") return String(v);
-  return null;
-}
+import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
 
 // IMAP + SMTP require Node.js runtime (Edge runtime can't open raw TCP sockets)
 export const runtime = "nodejs";
@@ -45,8 +37,8 @@ const html = String(formData.get("html") || "").trim();
     const accRec = asRecord(acc);
     if (!accRec["ok"]) {
       return NextResponse.json(
-        { error: accRec["error"] || "Unauthorized" },
-        { status: accRec["status"] || 401 }
+        { error: asString(accRec["error"]) || "Unauthorized" },
+        { status: asHttpStatus(accRec["status"], 401) }
       );
     }
 
