@@ -16,20 +16,20 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const accountName = url.searchParams.get("account") || accounts?.[0]?.name || null;
 
-    let locations: any[] = [];
+    let locations: unknown[] = [];
     let locationsError: string | null = null;
 
     if (accountName) {
       try {
         locations = await gmbListLocationsWithFallback(tok.accessToken, accountName);
-      } catch (e: any) {
+      } catch (e: Record<string, unknown>) {
         locationsError = e?.message || String(e);
         locations = [];
       }
     }
 
     return NextResponse.json({ accounts, accountName, locations, locationsError });
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
   }
 }

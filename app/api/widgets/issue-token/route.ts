@@ -181,7 +181,7 @@ const handler = async (req: Request) => {
         .eq("user_id", user.id)
         .maybeSingle();
       if (error) throw error;
-      const d = normalizeDomain((data as any)?.site_url || "");
+      const d = normalizeDomain((data as unknown)?.site_url || "");
       if (!d || d !== domain) {
         return NextResponse.json(
           { ok: false, error: "Domain not linked to your iNrCy site" },
@@ -196,7 +196,7 @@ const handler = async (req: Request) => {
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      const d = normalizeDomain((data as any)?.settings?.site_web?.url || "");
+      const d = normalizeDomain((data as unknown)?.settings?.site_web?.url || "");
       if (!d || d !== domain) {
         return NextResponse.json(
           { ok: false, error: "Domain not linked to your website" },
@@ -217,7 +217,7 @@ const handler = async (req: Request) => {
 
     const token = sign(payload, secret);
     return NextResponse.json({ ok: true, token, payload }, { status: 200, headers: corsHeaders(allowOrigin) });
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     // We can't reliably know the correct origin in this catch (it may have failed before parsing),
     // so keep CORS conservative.
     return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500, headers: corsHeaders(null) });

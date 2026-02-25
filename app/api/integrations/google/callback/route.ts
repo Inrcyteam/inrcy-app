@@ -138,7 +138,7 @@ export async function GET(req: Request) {
 
     const refreshTokenEncToStore = tokenData.refresh_token
       ? encryptToken(tokenData.refresh_token)
-      : (existing as any)?.refresh_token_enc ?? null;
+      : (existing as unknown)?.refresh_token_enc ?? null;
 
     const expiresAt =
       tokenData.expires_in != null
@@ -166,11 +166,11 @@ export async function GET(req: Request) {
     };
 
     // 4) Update or insert
-    if ((existing as any)?.id) {
+    if ((existing as unknown)?.id) {
       const { error: upErr } = await supabase
         .from("integrations")
         .update(payload)
-        .eq("id", (existing as any).id);
+        .eq("id", (existing as unknown).id);
 
       if (upErr) {
         const detail = process.env.NODE_ENV === "production" ? undefined : upErr;
@@ -193,7 +193,7 @@ export async function GET(req: Request) {
       maxAge: 0,
     });
     return res;
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     // No stack traces to clients in production.
     const message = e?.message || "Server error";
     const body = process.env.NODE_ENV === "production" ? { error: "Server error" } : { error: "Unhandled exception", message };

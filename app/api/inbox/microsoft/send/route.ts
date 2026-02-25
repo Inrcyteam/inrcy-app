@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
-import { tryDecryptToken } from "@/lib/oauthCrypto";
+import { tryDecryptToken as _tryDecryptToken } from "@/lib/oauthCrypto";
 import { withApi } from "@/lib/observability/withApi";
 import { fetchWithRetry } from "@/lib/observability/fetch";
 function isExpired(expires_at?: string | null, skewSeconds = 60) {
@@ -97,7 +97,7 @@ const formData = await req.formData();
 
     // refresh si expiré
     if (refreshToken && isExpired(account.expires_at)) {
-      const r = await refreshAccessToken(refreshToken, (account as any)?.settings?.scopes_raw ?? null);
+      const r = await refreshAccessToken(refreshToken, (account as unknown)?.settings?.scopes_raw ?? null);
       if (r.ok && r.data?.access_token) {
         accessToken = String(r.data.access_token);
         const expiresAt = r.data?.expires_in
@@ -139,7 +139,7 @@ const formData = await req.formData();
     const historyPayload = {
       user_id: userId,
       integration_id: accountId,
-      type: (sendType as any) || "mail",
+      type: (sendType as unknown) || "mail",
       status: "sent",
       to_emails: to,
       subject: subject || null,
@@ -168,7 +168,7 @@ const formData = await req.formData();
         .order("created_at", { ascending: false })
         .limit(60);
 
-      const ids = (recent || []).map((r: any) => r.id).filter(Boolean);
+      const ids = (recent || []).map((r: Record<string, unknown>) => r.id).filter(Boolean);
       if (ids.length > 20) {
         const toDelete = ids.slice(20);
         await supabase.from("send_items").delete().in("id", toDelete);
@@ -178,7 +178,7 @@ const formData = await req.formData();
     }
 
     return NextResponse.json({ success: true });
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json({ error: "Internal server error", message: e?.message }, { status: 500 });
   }
 };

@@ -146,7 +146,7 @@ async function refreshAccessToken(refreshToken: string) {
 }
 
 async function gmailSend(token: string, raw: string, threadId?: string) {
-  const body: any = { raw };
+  const body: Record<string, unknown> = { raw };
   if (threadId) body.threadId = threadId;
 
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
@@ -243,10 +243,10 @@ const handler = async (req: Request) => {
   // ... rest of file unchanged
 
   // ✅ tokens (chiffrés en DB)
-  const accessTokenEnc: string | null = (account as any).access_token_enc ?? null;
+  const accessTokenEnc: string | null = (account as unknown).access_token_enc ?? null;
   const accessTokenPlain = tryDecryptToken(accessTokenEnc);
 
-  const refreshTokenEnc: string | null = (account as any).refresh_token_enc ?? null;
+  const refreshTokenEnc: string | null = (account as unknown).refresh_token_enc ?? null;
   const refreshTokenPlain = tryDecryptToken(refreshTokenEnc);
 
   if (!accessTokenPlain) {
@@ -323,7 +323,7 @@ const handler = async (req: Request) => {
   const historyPayload = {
     user_id: userId,
     integration_id: accountId,
-    type: (sendType as any) || "mail",
+    type: (sendType as unknown) || "mail",
     status: "sent",
     to_emails: to,
     subject: subject || null,
@@ -352,7 +352,7 @@ const handler = async (req: Request) => {
       .order("created_at", { ascending: false })
       .limit(60);
 
-    const ids = (recent || []).map((r: any) => r.id).filter(Boolean);
+    const ids = (recent || []).map((r: Record<string, unknown>) => r.id).filter(Boolean);
     if (ids.length > 20) {
       const toDelete = ids.slice(20);
       await supabase.from("send_items").delete().in("id", toDelete);

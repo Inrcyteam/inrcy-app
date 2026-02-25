@@ -23,7 +23,7 @@ type FbPage = {
   access_token?: string;
 };
 
-async function invalidateUserStatsCache(supabase: any, userId: string) {
+async function invalidateUserStatsCache(supabase: unknown, userId: string) {
   try {
     await supabase.from("stats_cache").delete().eq("user_id", userId);
   } catch {}
@@ -37,7 +37,7 @@ async function invalidateUserStatsCache(supabase: any, userId: string) {
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
-  const data = (await res.json()) as any;
+  const data = (await res.json()) as unknown;
   if (!res.ok) {
     const msg = data?.error?.message || `HTTP ${res.status}`;
     throw new Error(msg);
@@ -177,9 +177,9 @@ export async function GET(req: Request) {
       pages = [];
     }
 
-    const pageId = null;
-    const pageName = null;
-    const pageUrl = null;
+    const _pageId = null;
+    const _pageName = null;
+    const _pageUrl = null;
     const tokenToStore = longUserToken; // token utilisateur uniquement (sélection page plus tard)
 
     // 5) Upsert into integrations
@@ -196,7 +196,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "DB read existing failed", existingErr }, { status: 500 });
     }
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       user_id: userId,
       provider: "facebook",
       category: "social",
@@ -221,11 +221,11 @@ export async function GET(req: Request) {
       },
     };
 
-    if ((existing as any)?.id) {
+    if ((existing as unknown)?.id) {
       const { error: upErr } = await supabase
         .from("integrations")
         .update(payload)
-        .eq("id", (existing as any).id);
+        .eq("id", (existing as unknown).id);
       if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
     } else {
       const { error: insErr } = await supabase.from("integrations").insert(payload);
@@ -235,7 +235,7 @@ export async function GET(req: Request) {
     // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = (scRow as any)?.settings ?? {};
+      const current = (scRow as unknown)?.settings ?? {};
       const merged = {
         ...current,
         facebook: {
@@ -261,7 +261,7 @@ export async function GET(req: Request) {
     finalUrl.searchParams.set("ok", "1");
     if (!pages.length) finalUrl.searchParams.set("warning", "no_pages_or_no_permission");
     return clearStateCookie(NextResponse.redirect(finalUrl));
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }

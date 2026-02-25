@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
-import { encryptToken } from "@/lib/oauthCrypto";
+import { encryptToken as _encryptToken } from "@/lib/oauthCrypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 
@@ -23,7 +23,7 @@ type GoogleUserInfo = {
 const ALLOWED_SOURCES = ["site_inrcy", "site_web"] as const;
 const ALLOWED_PRODUCTS = ["ga4", "gsc"] as const;
 
-function safeJsonParse<T>(s: any, fallback: T): T {
+function safeJsonParse<T>(s: unknown, fallback: T): T {
   if (!s) return fallback;
   try {
     if (typeof s === "string") return JSON.parse(s) as T;
@@ -49,7 +49,7 @@ async function gaAdminFetch<T>(accessToken: string, url: string): Promise<T> {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
-  const data = (await res.json()) as any;
+  const data = (await res.json()) as unknown;
   if (!res.ok) {
     throw new Error(`GA4 Admin request failed: ${data?.error?.message || "unknown"}`);
   }
@@ -57,7 +57,7 @@ async function gaAdminFetch<T>(accessToken: string, url: string): Promise<T> {
 }
 
 type GaAccount = { name: string; displayName?: string };
-type GaProperty = { name: string; displayName?: string };
+type _GaProperty = { name: string; displayName?: string };
 
 async function fetchAllGa4Properties(accessToken: string) {
   const accountsData = await gaAdminFetch<{ accounts?: GaAccount[] }>(
@@ -78,7 +78,7 @@ async function fetchAllGa4Properties(accessToken: string) {
       url.searchParams.set("filter", `parent:${acc.name}`);
       if (pageToken) url.searchParams.set("pageToken", pageToken);
 
-      const data = await gaAdminFetch<any>(accessToken, url.toString());
+      const data = await gaAdminFetch<unknown>(accessToken, url.toString());
       for (const p of data?.properties ?? []) props.push({ name: p?.name, displayName: p?.displayName });
       pageToken = data?.nextPageToken;
       if (!pageToken) break;
@@ -104,13 +104,13 @@ async function fetchDataStreams(accessToken: string, propertyName: string) {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
-  const data = (await res.json()) as any;
+  const data = (await res.json()) as unknown;
   if (!res.ok) {
     // Do not fail the whole activation on a single property; just ignore.
     return [];
   }
 
-  return (data?.dataStreams ?? []) as any[];
+  return (data?.dataStreams ?? []) as unknown[];
 }
 
 function extractPropertyId(propertyName: string): string | null {
@@ -172,7 +172,7 @@ async function resolveGscFromDomain(accessToken: string, domain: string, siteUrl
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
-  const data = (await res.json()) as any;
+  const data = (await res.json()) as unknown;
   if (!res.ok) {
     throw new Error(`GSC sites.list failed: ${data?.error?.message || "unknown"}`);
   }
@@ -254,7 +254,7 @@ type SiteSettings = {
 };
 
 async function upsertGoogleIntegration(opts: {
-  supabase: any;
+  supabase: unknown;
   userId: string;
   source: "site_inrcy" | "site_web";
   product: "ga4" | "gsc";
@@ -272,14 +272,14 @@ async function upsertGoogleIntegration(opts: {
     .eq("product", product)
     .maybeSingle();
 
-  const refreshTokenToStore = tokenData.refresh_token ?? (existing as any)?.refresh_token_enc ?? null;
+  const refreshTokenToStore = tokenData.refresh_token ?? (existing as unknown)?.refresh_token_enc ?? null;
 
   const expiresAt =
     tokenData.expires_in != null
       ? new Date(Date.now() + Number(tokenData.expires_in) * 1000).toISOString()
       : null;
 
-  const payload: any = {
+  const payload: Record<string, unknown> = {
     user_id: userId,
     provider: "google",
     category: "stats",
@@ -325,7 +325,7 @@ export async function GET(req: Request) {
     if (!code) return NextResponse.json({ error: "Missing ?code" }, { status: 400 });
     if (!stateRaw) return NextResponse.json({ error: "Missing ?state" }, { status: 400 });
 
-    let state: any = null;
+    let state: unknown = null;
     try {
       state = JSON.parse(Buffer.from(stateRaw, "base64url").toString("utf-8"));
     } catch {
@@ -446,8 +446,8 @@ const [inrcyCfgRes, proCfgRes] = await Promise.all([
 const nowIso = new Date().toISOString();
 // NOTE: SiteSettings has only optional fields, so an empty object is a valid fallback.
 // Using `null` breaks TS in production builds (null not assignable to SiteSettings).
-const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as any)?.settings, {});
-const proSettings = safeJsonParse<any>((proCfgRes.data as any)?.settings, {});
+const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as unknown)?.settings, {});
+const proSettings = safeJsonParse<unknown>((proCfgRes.data as unknown)?.settings, {});
 
 if (source === "site_inrcy") {
   const next: SiteSettings = { ...(inrcySettings ?? {}) };
@@ -465,8 +465,8 @@ if (source === "site_inrcy") {
   nextPro.site_web = {
     ...(nextPro.site_web ?? {}),
     url: siteUrlFromState || (nextPro.site_web?.url ?? ""),
-    ga4: { ...((nextPro.site_web as any)?.ga4 ?? {}), property_id: ga4Resolved.propertyId, measurement_id: ga4Resolved.measurementId ?? undefined, verified_at: nowIso },
-    gsc: { ...((nextPro.site_web as any)?.gsc ?? {}), property: gscResolved, verified_at: nowIso },
+    ga4: { ...((nextPro.site_web as unknown)?.ga4 ?? {}), property_id: ga4Resolved.propertyId, measurement_id: ga4Resolved.measurementId ?? undefined, verified_at: nowIso },
+    gsc: { ...((nextPro.site_web as unknown)?.gsc ?? {}), property: gscResolved, verified_at: nowIso },
   };
 
   const { error: upErr } = await supabase
@@ -499,8 +499,8 @@ if (domain && tokenData.access_token) {
       ]);
 
       const nowIso = new Date().toISOString();
-      const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as any)?.settings, {});
-      const proSettings = safeJsonParse<any>((proCfgRes.data as any)?.settings, {});
+      const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as unknown)?.settings, {});
+      const proSettings = safeJsonParse<unknown>((proCfgRes.data as unknown)?.settings, {});
 
       if (source === "site_web") {
         const nextPro = { ...(proSettings ?? {}) };
@@ -509,7 +509,7 @@ if (domain && tokenData.access_token) {
         if (siteUrlHint) nextPro.site_web.url = siteUrlHint;
 
         if (product === "ga4") {
-          const existingGa4 = (nextPro.site_web as any)?.ga4 ?? {};
+          const existingGa4 = (nextPro.site_web as unknown)?.ga4 ?? {};
           const existingPid = String(existingGa4?.property_id || "").trim();
           const existingMid = String(existingGa4?.measurement_id || "").trim();
 
@@ -520,7 +520,7 @@ if (domain && tokenData.access_token) {
                 const resolved = await resolveGa4FromDomain(tokenData.access_token, domain);
                 nextPro.site_web = {
                   ...(nextPro.site_web ?? {}),
-                  ga4: { ...((nextPro.site_web as any)?.ga4 ?? {}), property_id: resolved.propertyId, measurement_id: resolved.measurementId ?? undefined, verified_at: nowIso },
+                  ga4: { ...((nextPro.site_web as unknown)?.ga4 ?? {}), property_id: resolved.propertyId, measurement_id: resolved.measurementId ?? undefined, verified_at: nowIso },
                 };
               } else {
                 return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=ga4_mismatch_domain`, origin));
@@ -529,7 +529,7 @@ if (domain && tokenData.access_token) {
               if (!existingMid && v.measurementId) {
                 nextPro.site_web = {
                   ...(nextPro.site_web ?? {}),
-                  ga4: { ...((nextPro.site_web as any)?.ga4 ?? {}), measurement_id: v.measurementId, verified_at: nowIso },
+                  ga4: { ...((nextPro.site_web as unknown)?.ga4 ?? {}), measurement_id: v.measurementId, verified_at: nowIso },
                 };
               }
             }
@@ -537,13 +537,13 @@ if (domain && tokenData.access_token) {
             const resolved = await resolveGa4FromDomain(tokenData.access_token, domain);
             nextPro.site_web = {
               ...(nextPro.site_web ?? {}),
-              ga4: { ...((nextPro.site_web as any)?.ga4 ?? {}), property_id: resolved.propertyId, measurement_id: resolved.measurementId ?? undefined, verified_at: nowIso },
+              ga4: { ...((nextPro.site_web as unknown)?.ga4 ?? {}), property_id: resolved.propertyId, measurement_id: resolved.measurementId ?? undefined, verified_at: nowIso },
             };
           }
         }
 
         if (product === "gsc") {
-          const existingGsc = (nextPro.site_web as any)?.gsc ?? {};
+          const existingGsc = (nextPro.site_web as unknown)?.gsc ?? {};
           const existingProp = String(existingGsc?.property || "").trim();
 
           if (existingProp) {
@@ -558,7 +558,7 @@ if (domain && tokenData.access_token) {
             const resolvedProp = await resolveGscFromDomain(tokenData.access_token, domain, siteUrlHint || null);
             nextPro.site_web = {
               ...(nextPro.site_web ?? {}),
-              gsc: { ...((nextPro.site_web as any)?.gsc ?? {}), property: resolvedProp, verified_at: nowIso },
+              gsc: { ...((nextPro.site_web as unknown)?.gsc ?? {}), property: resolvedProp, verified_at: nowIso },
             };
           }
         }
@@ -626,7 +626,7 @@ if (domain && tokenData.access_token) {
 
     return NextResponse.redirect(new URL(`${returnTo}&linked=${product}&ok=1`, origin));
 
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }

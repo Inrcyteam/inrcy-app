@@ -28,7 +28,7 @@ function assertInternalAuth(req: Request) {
 function getRedis() {
   const url = requireEnv("KV_REST_API_URL");
   const token = requireEnv("KV_REST_API_TOKEN");
-  const g = globalThis as any;
+  const g = globalThis as unknown;
   if (!g.__inrcy_health_redis) {
     g.__inrcy_health_redis = new Redis({ url, token });
   }

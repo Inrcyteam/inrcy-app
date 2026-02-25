@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 // - /dashboard/stats (iNr'Stats)
 // - /api/generator/kpis (home generator KPIs)
 
-type OverviewResponse = any;
+type OverviewResponse = unknown;
 
 type OpportunitiesResult = {
   baseDays: number;
@@ -13,7 +13,7 @@ type OpportunitiesResult = {
   week: number;
   month: number;
   confidence: "low" | "medium" | "high";
-  debug?: Record<string, any>;
+  debug?: Record<string, unknown>;
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -51,7 +51,7 @@ function pageKind(path: string) {
   return "other";
 }
 
-function computeOpportunities(overview: OverviewResponse): { perDay: number; confidence: OpportunitiesResult["confidence"]; debug: Record<string, any> } {
+function computeOpportunities(overview: OverviewResponse): { perDay: number; confidence: OpportunitiesResult["confidence"]; debug: Record<string, unknown> } {
   const baseDays = Math.max(1, safeNumber(overview?.days, 28));
 
   const totals = overview?.totals || {};
@@ -252,7 +252,7 @@ export async function GET(request: Request) {
     };
 
     return NextResponse.json(result);
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json(
       { error: "inrstats_opportunities_failed", message: e?.message || String(e) },
       { status: 500 }

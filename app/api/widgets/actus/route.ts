@@ -237,7 +237,7 @@ export async function GET(req: Request) {
         .maybeSingle();
 
       if (error) throw error;
-      userId = (data as any)?.user_id ?? null;
+      userId = (data as unknown)?.user_id ?? null;
     } else {
       // site_web: pro_tools_configs has settings JSON with settings.site_web.url
       const { data, error } = await supabase
@@ -247,7 +247,7 @@ export async function GET(req: Request) {
 
       if (error) throw error;
 
-      const rows = (data || []) as any[];
+      const rows = (data || []) as unknown[];
       const match = rows.find((r) => {
         const url = String(r?.settings?.site_web?.url || "");
         return normalizeDomain(url) === domain;
@@ -278,7 +278,7 @@ export async function GET(req: Request) {
       { ok: true, domain, user_id: userId, articles: articles || [] },
       { status: 200, headers: headersOk }
     );
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Server error" },
       { status: 500, headers: corsHeaders(req) }

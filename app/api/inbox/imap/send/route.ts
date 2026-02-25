@@ -32,7 +32,7 @@ const html = String(formData.get("html") || "").trim();
       return NextResponse.json({ error: "Missing 'to'" }, { status: 400 });
     }
 
-    const acc: any = await loadImapAccount(accountId);
+    const acc: unknown = await loadImapAccount(accountId);
     if (!acc?.ok) {
       return NextResponse.json(
         { error: acc?.error || "Unauthorized" },
@@ -43,7 +43,7 @@ const html = String(formData.get("html") || "").trim();
     const files = formData.getAll("files") as File[];
     const attachments = await Promise.all(
       (files || [])
-        .filter((f) => f && typeof (f as any).arrayBuffer === "function")
+        .filter((f) => f && typeof (f as unknown).arrayBuffer === "function")
         .map(async (f) => {
           const ab = await f.arrayBuffer();
           return {
@@ -104,7 +104,7 @@ const html = String(formData.get("html") || "").trim();
           // Keep a simple, widely supported encoding
           date: new Date(),
         });
-        mc.compile().build((err: any, message: Buffer) => {
+        mc.compile().build((err: unknown, message: Buffer) => {
           if (err) return reject(err);
           resolve(message);
         });
@@ -120,7 +120,7 @@ const html = String(formData.get("html") || "").trim();
     const historyPayload = {
       user_id: userId,
       integration_id: accountId,
-      type: (sendType as any) || "mail",
+      type: (sendType as unknown) || "mail",
       status: "sent",
       to_emails: to,
       subject: subject || null,
@@ -149,7 +149,7 @@ const html = String(formData.get("html") || "").trim();
         .order("created_at", { ascending: false })
         .limit(60);
 
-      const ids = (recent || []).map((r: any) => r.id).filter(Boolean);
+      const ids = (recent || []).map((r: Record<string, unknown>) => r.id).filter(Boolean);
       if (ids.length > 20) {
         const toDelete = ids.slice(20);
         await supabase.from("send_items").delete().in("id", toDelete);
@@ -159,7 +159,7 @@ const html = String(formData.get("html") || "").trim();
     }
 
     return NextResponse.json({ success: true, id: info.messageId });
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json(
       { error: e?.message || "IMAP send failed" },
       { status: 500 }

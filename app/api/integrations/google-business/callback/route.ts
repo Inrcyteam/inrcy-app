@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
-import { encryptToken } from "@/lib/oauthCrypto";
+import { encryptToken as _encryptToken } from "@/lib/oauthCrypto";
 import { gmbListAccounts } from "@/lib/googleBusiness";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 
@@ -20,7 +20,7 @@ type GoogleUserInfo = {
   picture?: string;
 };
 
-async function invalidateUserStatsCache(supabase: any, userId: string) {
+async function invalidateUserStatsCache(supabase: unknown, userId: string) {
   // Best-effort cache invalidation (new + legacy). Never fail the OAuth flow on cache.
   try {
     await supabase.from("stats_cache").delete().eq("user_id", userId);
@@ -68,7 +68,7 @@ export async function GET(req: Request) {
     if (!code) return NextResponse.json({ error: "Missing ?code" }, { status: 400 });
     if (!stateRaw) return NextResponse.json({ error: "Missing ?state" }, { status: 400 });
 
-    let state: any = null;
+    let state: unknown = null;
     try {
       state = JSON.parse(Buffer.from(stateRaw, "base64url").toString("utf-8"));
     } catch {
@@ -161,14 +161,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "DB read existing failed", existingErr }, { status: 500 });
     }
 
-    const refreshTokenToStore = tokenData.refresh_token ?? (existing as any)?.refresh_token_enc ?? null;
+    const refreshTokenToStore = tokenData.refresh_token ?? (existing as unknown)?.refresh_token_enc ?? null;
 
     const expiresAt =
       tokenData.expires_in != null
         ? new Date(Date.now() + Number(tokenData.expires_in) * 1000).toISOString()
         : null;
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       user_id: userId,
       provider: "google",
       category: "local",
@@ -185,8 +185,8 @@ export async function GET(req: Request) {
       meta: { picture: userInfo.picture ?? null },
     };
 
-    if ((existing as any)?.id) {
-      const { error: upErr } = await supabase.from("integrations").update(payload).eq("id", (existing as any).id);
+    if ((existing as unknown)?.id) {
+      const { error: upErr } = await supabase.from("integrations").update(payload).eq("id", (existing as unknown).id);
       if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
     } else {
       const { error: insErr } = await supabase.from("integrations").insert(payload);
@@ -196,7 +196,7 @@ export async function GET(req: Request) {
     // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = (scRow as any)?.settings ?? {};
+      const current = (scRow as unknown)?.settings ?? {};
       const merged = {
         ...current,
         gmb: {
@@ -244,7 +244,7 @@ export async function GET(req: Request) {
     finalUrl.searchParams.set("ok", "1");
 
     return NextResponse.redirect(finalUrl);
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }

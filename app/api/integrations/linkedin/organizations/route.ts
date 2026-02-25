@@ -35,8 +35,8 @@ export async function GET() {
     .order("created_at", { ascending: false })
     .limit(1);
 
-  const row = (rows?.[0] as any) ?? null;
-const tokRaw = String((row as any)?.access_token_enc || "");
+  const row = (rows?.[0] as unknown) ?? null;
+const tokRaw = String((row as unknown)?.access_token_enc || "");
     const tok = tryDecryptToken(tokRaw) || "";
   if (!tok) return NextResponse.json({ error: "LinkedIn not connected" }, { status: 400 });
 
@@ -49,7 +49,7 @@ const tokRaw = String((row as any)?.access_token_enc || "");
 
     const elements = Array.isArray(acl?.elements) ? acl.elements : [];
     const orgUrns = elements
-      .map((e: any) => String(e?.organizationalTarget || ""))
+      .map((e: Record<string, unknown>) => String(e?.organizationalTarget || ""))
       .filter((u: string) => u.startsWith("urn:li:organization:"));
 
     const orgIds = orgUrns.map((u: string) => u.split(":").pop() as string);

@@ -24,8 +24,8 @@ export async function GET() {
     // - accountConnected: OAuth token exists (the Google account is connected)
     // - configured: a specific Business Profile location has been selected
     // For the dashboard bubble, "connected" must mean "ready to fetch stats".
-    const accountConnected = !!data && (data as any).status === "connected";
-    const configured = accountConnected && !!(data as any)?.resource_id;
+    const accountConnected = !!data && (data as unknown).status === "connected";
+    const configured = accountConnected && !!(data as unknown)?.resource_id;
     const connected = configured;
 
     if (!accountConnected) {
@@ -49,10 +49,10 @@ export async function GET() {
       accountConnected,
       configured,
       accountsCount,
-      email: (data as any)?.email_address ?? null,
-      displayName: (data as any)?.display_name ?? null,
-      resource_id: (data as any)?.resource_id ?? null,
-      resource_label: (data as any)?.resource_label ?? null,
+      email: (data as unknown)?.email_address ?? null,
+      displayName: (data as unknown)?.display_name ?? null,
+      resource_id: (data as unknown)?.resource_id ?? null,
+      resource_label: (data as unknown)?.resource_label ?? null,
     });
   } catch {
     return NextResponse.json({ connected: false, accountConnected: false, configured: false });

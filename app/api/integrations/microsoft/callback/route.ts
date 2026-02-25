@@ -129,7 +129,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "DB read existing failed", existingErr }, { status: 500 });
     }
 
-    const existingRefreshEnc = (existing as any)?.refresh_token_enc ?? null;
+    const existingRefreshEnc = (existing as unknown)?.refresh_token_enc ?? null;
     const existingRefreshPlain = existingRefreshEnc ? tryDecryptToken(String(existingRefreshEnc)) : null;
     const refreshTokenToStore = tokenData.refresh_token ?? existingRefreshPlain ?? null;
     const refreshTokenEncToStore = refreshTokenToStore ? encryptToken(String(refreshTokenToStore)) : null;
@@ -154,11 +154,11 @@ export async function GET(req: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    if ((existing as any)?.id) {
+    if ((existing as unknown)?.id) {
       const { error: upErr } = await supabase
         .from("integrations")
         .update(payload)
-        .eq("id", (existing as any).id);
+        .eq("id", (existing as unknown).id);
 
       if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
     } else {
@@ -168,7 +168,7 @@ export async function GET(req: Request) {
 
 
     return NextResponse.redirect(new URL("/dashboard?panel=mails&toast=connected", req.url));
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json(
       { error: "Unhandled exception", message: e?.message },
       { status: 500 }

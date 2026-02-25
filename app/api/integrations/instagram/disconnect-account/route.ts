@@ -15,7 +15,7 @@ export async function POST() {
   // Keep pro_tools_configs in sync (best-effort)
   try {
     const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
-    const current = (scRow as any)?.settings ?? {};
+    const current = (scRow as unknown)?.settings ?? {};
     const merged = {
       ...current,
       instagram: {

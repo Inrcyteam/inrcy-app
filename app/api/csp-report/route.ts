@@ -12,7 +12,7 @@ export async function POST(req: Request) {
 
     const contentType = (req.headers.get("content-type") || "").toLowerCase();
 
-    let payload: any = null;
+    let payload: unknown = null;
     // Reporting API (report-to) commonly sends `application/reports+json` with an array payload.
     if (
       contentType.includes("application/json") ||
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     const ua = req.headers.get("user-agent") || undefined;
     const ref = req.headers.get("referer") || undefined;
 
-    const normalize = (r: any) => ({
+    const normalize = (r: Record<string, unknown>) => ({
       violatedDirective: r?.["violated-directive"] ?? r?.violatedDirective,
       effectiveDirective: r?.["effective-directive"] ?? r?.effectiveDirective,
       blockedUri: r?.["blocked-uri"] ?? r?.blockedURL ?? r?.blockedUri,
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       disposition: r?.disposition,
     });
 
-    let summaries: any[] = [];
+    let summaries: unknown[] = [];
 
     if (Array.isArray(payload)) {
       // Reporting API array

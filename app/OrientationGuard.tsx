@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import styles from "./orientationGuard.module.css";
 import { usePathname } from "next/navigation";
 
@@ -59,28 +60,27 @@ export default function OrientationGuard() {
     "/logo-appli-inrcy",
   ];
 
+  const [logoIdx, setLogoIdx] = useState(0);
+  const logoSrc = logoCandidates[logoIdx] || logoCandidates[0];
+
   return (
     <div className={styles.overlay}>
       <div className={styles.card} role="dialog" aria-modal="true">
         <div className={styles.inner}>
           <div className={styles.header}>
             <div className={styles.brand}>
-              <img
-                className={styles.logo}
-                src={logoCandidates[0]}
-                alt="Logo iNrCy"
-                onError={(e) => {
-                  const img = e.currentTarget;
-                  const current = img.getAttribute("data-idx")
-                    ? Number(img.getAttribute("data-idx"))
-                    : 0;
-                  const next = current + 1;
-                  if (next < logoCandidates.length) {
-                    img.setAttribute("data-idx", String(next));
-                    img.src = logoCandidates[next];
-                  }
-                }}
-              />
+              <Image
+          className={styles.logo}
+          src={logoSrc}
+          alt="Logo iNrCy"
+          width={80}
+          height={80}
+          priority
+          unoptimized
+          onError={() => {
+            setLogoIdx((i) => (i + 1 < logoCandidates.length ? i + 1 : i));
+          }}
+        />
               <div className={styles.brandName}>iNrCy</div>
             </div>
             <span className={styles.badge}>{badge}</span>

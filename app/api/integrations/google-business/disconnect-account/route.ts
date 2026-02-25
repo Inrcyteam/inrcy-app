@@ -39,11 +39,11 @@ export async function POST() {
       .eq("user_id", authData.user.id)
       .maybeSingle();
 
-    const current = (cfg as any)?.settings ?? {};
+    const current = (cfg as unknown)?.settings ?? {};
     const next = {
       ...(current ?? {}),
       gmb: {
-        ...(((current ?? {}) as any)?.gmb ?? {}),
+        ...(((current ?? {}) as unknown)?.gmb ?? {}),
         connected: false,
         url: "",
         resource_id: "",

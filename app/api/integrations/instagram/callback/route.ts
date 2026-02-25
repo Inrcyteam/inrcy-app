@@ -11,7 +11,7 @@ type TokenResponse = {
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
-  const data = (await res.json()) as any;
+  const data = (await res.json()) as unknown;
   if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
   return data as T;
 }
@@ -27,7 +27,7 @@ export async function GET(req: Request) {
 
     if (!stateRaw) return NextResponse.json({ error: "Missing ?state" }, { status: 400 });
 
-    let state: any;
+    let state: unknown;
     try {
       state = JSON.parse(Buffer.from(stateRaw, "base64url").toString("utf-8"));
     } catch {
@@ -105,7 +105,7 @@ export async function GET(req: Request) {
     // Store as "account_connected" (selection later)
     // Upsert (robuste même si l’utilisateur reconnecte plusieurs fois)
 // Nécessite un UNIQUE INDEX sur (user_id, provider, source, product) côté Supabase.
-const payload: any = {
+const payload: Record<string, unknown> = {
   user_id: userId,
   provider: "instagram",
   category: "social",
@@ -129,7 +129,7 @@ if (upsertErr) return NextResponse.json({ error: "DB upsert failed", upsertErr }
 // Mirror in pro_tools_configs
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = (scRow as any)?.settings ?? {};
+      const current = (scRow as unknown)?.settings ?? {};
       const merged = {
         ...current,
         instagram: {
@@ -149,7 +149,7 @@ if (upsertErr) return NextResponse.json({ error: "DB upsert failed", upsertErr }
     finalUrl.searchParams.set("linked", "instagram");
     finalUrl.searchParams.set("ok", "1");
     return NextResponse.redirect(finalUrl);
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }

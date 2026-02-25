@@ -19,7 +19,7 @@ export async function GET() {
     .order("created_at", { ascending: true });
 
   const mailAccounts =
-    (rows ?? []).map((r: any) => ({
+    (rows ?? []).map((r: Record<string, unknown>) => ({
       id: r.id,
       provider: r.provider,
       email_address: r.account_email,

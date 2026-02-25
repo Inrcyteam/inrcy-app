@@ -18,19 +18,19 @@ import { tryDecryptToken } from "@/lib/oauthCrypto";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-type AnyRec = Record<string, any>;
+type AnyRec = Record<string, unknown>;
 
 function pickFirst<T>(...vals: Array<T | null | undefined>): T | null {
   for (const v of vals) if (v !== null && v !== undefined) return v;
   return null;
 }
 
-function num(v: any, fallback = 0) {
+function num(v: unknown, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 }
 
-function isExpired(expiresAt: any): boolean {
+function isExpired(expiresAt: unknown): boolean {
   if (!expiresAt) return true;
   const t = new Date(expiresAt).getTime();
   return Number.isNaN(t) || t <= Date.now() + 60_000;
@@ -124,7 +124,7 @@ async function getLatestGmailAccount(
   return account;
 }
 
-async function countGmailInbox(
+async function _countGmailInbox(
   supabase: Awaited<ReturnType<typeof createSupabaseServer>>,
   userId: string,
   days: number,
@@ -177,7 +177,7 @@ async function countGmailInbox(
   return json.resultSizeEstimate ?? 0;
 }
 
-async function getStats(origin: string, days: number, req: Request) {
+async function _getStats(origin: string, days: number, req: Request) {
   const cookie = req.headers.get("cookie") ?? "";
 
   const res = await fetch(`${origin}/api/stats/overview?days=${days}`, {
@@ -230,7 +230,7 @@ async function getProfile(
 
   if (error) throw new Error(`Supabase profiles error: ${error.message}`);
 
-  const row = (data as any) || null;
+  const row = (data as unknown) || null;
   debug.profiles_found = row ? 1 : 0;
   debug.profile_fields = row ? Object.keys(row) : [];
 
@@ -295,7 +295,7 @@ export async function GET(req: Request) {
     const safe = async <T>(key: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
       try {
         return await fn();
-      } catch (e: any) {
+      } catch (e: Record<string, unknown>) {
         debug.errors[key] = e?.message ?? String(e);
         return fallback;
       }
@@ -339,7 +339,7 @@ export async function GET(req: Request) {
       },
       ...(includeDebug ? { debug } : {}),
     });
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     debug.errors.unhandled = e?.message ?? String(e);
     const includeDebug =
       process.env.NODE_ENV === "development" || req.headers.get("x-inrcy-debug") === "1";

@@ -62,7 +62,7 @@ tls: process.env.NODE_ENV === "development"
     await transport.verify();
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     // Don't leak provider/internal error details in production.
     const generic = "Test IMAP/SMTP impossible";
     const detail = process.env.NODE_ENV === "development" ? (e?.message || generic) : undefined;

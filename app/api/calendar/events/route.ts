@@ -18,17 +18,17 @@ type CreateEventBody = {
   end?: string; // ISO datetime
   allDay?: boolean;
   date?: string; // YYYY-MM-DD if allDay
-  inrcy?: any;
-  contact?: any;
+  inrcy?: unknown;
+  contact?: unknown;
 };
 
-function assertIsoDateTime(v: any) {
+function assertIsoDateTime(v: unknown) {
   if (typeof v !== "string") return false;
   const t = Date.parse(v);
   return !Number.isNaN(t);
 }
 
-function assertDateOnly(v: any) {
+function assertDateOnly(v: unknown) {
   return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
 
@@ -69,7 +69,7 @@ export async function GET(req: Request) {
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-  const events = (data ?? []).map((e: any) => ({
+  const events = (data ?? []).map((e: Record<string, unknown>) => ({
     id: e.id,
     summary: e.title ?? "(Sans titre)",
     start: e.all_day ? (e.start_at ? String(e.start_at).slice(0, 10) : null) : e.start_at,
@@ -146,7 +146,7 @@ export async function PATCH(req: Request) {
   const body = (await req.json().catch(() => ({}))) as CreateEventBody;
   const allDay = Boolean(body.allDay);
 
-  const patch: any = {
+  const patch: Record<string, unknown> = {
     title: body.summary ?? undefined,
     description: body.description ?? undefined,
     location: body.location ?? undefined,

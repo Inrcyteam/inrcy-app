@@ -4,20 +4,20 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 type Category = "particulier" | "professionnel" | "collectivite_publique";
 type ContactType = "client" | "prospect" | "fournisseur" | "partenaire" | "autre";
 
-function isCategory(v: any): v is Category {
+function isCategory(v: unknown): v is Category {
   return v === "particulier" || v === "professionnel" || v === "collectivite_publique";
 }
 
-function isContactType(v: any): v is ContactType {
+function isContactType(v: unknown): v is ContactType {
   return v === "client" || v === "prospect" || v === "fournisseur" || v === "partenaire" || v === "autre";
 }
 
-function cleanString(v: any) {
+function cleanString(v: unknown) {
   if (typeof v !== "string") return "";
   return v.trim();
 }
 
-function parseDisplayName(v: any) {
+function parseDisplayName(v: unknown) {
   const raw = cleanString(v);
   if (!raw) return { last_name: "", first_name: "", company_name: "" };
 
@@ -66,7 +66,7 @@ const body = await req.json().catch(() => ({}));
 if (Array.isArray(body?.contacts)) {
   const rows = body.contacts;
   const payloads = rows
-    .map((row: any) => {
+    .map((row: Record<string, unknown>) => {
       const fromDisplay = parseDisplayName(row.display_name);
       const p = {
         user_id: userData.user.id,
@@ -89,7 +89,7 @@ if (Array.isArray(body?.contacts)) {
       if (!p.last_name && !p.first_name && !p.company_name && !p.email && !p.phone) return null;
       return p;
     })
-    .filter(Boolean) as any[];
+    .filter(Boolean) as unknown[];
 
   if (payloads.length === 0) {
     return NextResponse.json({ error: "Aucune ligne importable." }, { status: 400 });
@@ -158,7 +158,7 @@ const body = await req.json().catch(() => ({}));
 if (Array.isArray(body?.contacts)) {
   const rows = body.contacts;
   const payloads = rows
-    .map((row: any) => {
+    .map((row: Record<string, unknown>) => {
       const fromDisplay = parseDisplayName(row.display_name);
       const p = {
         user_id: userData.user.id,
@@ -179,7 +179,7 @@ if (Array.isArray(body?.contacts)) {
       if (!p.last_name && !p.first_name && !p.company_name && !p.email && !p.phone) return null;
       return p;
     })
-    .filter(Boolean) as any[];
+    .filter(Boolean) as unknown[];
 
   if (payloads.length === 0) {
     return NextResponse.json({ error: "Aucune ligne importable." }, { status: 400 });

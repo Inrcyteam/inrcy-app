@@ -35,7 +35,7 @@ export async function GET(req: Request) {
 
     if (!stateRaw) return NextResponse.json({ error: "Missing ?state" }, { status: 400 });
 
-    let state: any;
+    let state: unknown;
     try {
       state = JSON.parse(Buffer.from(stateRaw, "base64url").toString("utf-8"));
     } catch {
@@ -97,7 +97,7 @@ export async function GET(req: Request) {
     if (!accessToken) return NextResponse.json({ error: "No access_token from LinkedIn", token }, { status: 500 });
 
     // OpenID Connect userinfo (works when openid scope granted)
-    let userinfo: any = {};
+    let userinfo: Record<string, unknown> = {};
     try {
       userinfo = await fetchJson("https://api.linkedin.com/v2/userinfo", accessToken);
     } catch {
@@ -108,14 +108,14 @@ export async function GET(req: Request) {
     const name = String(userinfo?.name || userinfo?.localizedFirstName || "");
     const email = String(userinfo?.email || "");
     // OpenID Connect can optionally provide a public profile URL via the standard "profile" claim.
-    const profileUrl = (userinfo as any)?.profile || (userinfo as any)?.profile_url || null;
+    const profileUrl = (userinfo as unknown)?.profile || (userinfo as unknown)?.profile_url || null;
 
     const authorUrn = sub ? `urn:li:person:${sub}` : "";
 
     // Upsert integration
     // Upsert (robuste même si l’utilisateur reconnecte plusieurs fois)
 // Nécessite un UNIQUE INDEX sur (user_id, provider, source, product) côté Supabase.
-const payload: any = {
+const payload: Record<string, unknown> = {
   user_id: userId,
   provider: "linkedin",
   category: "social",
@@ -141,7 +141,7 @@ await supabase
 // Mirror in pro_tools_configs
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = (scRow as any)?.settings ?? {};
+      const current = (scRow as unknown)?.settings ?? {};
       const merged = {
         ...current,
         linkedin: {
@@ -159,7 +159,7 @@ await supabase
     finalUrl.searchParams.set("linked", "linkedin");
     finalUrl.searchParams.set("ok", "1");
     return NextResponse.redirect(finalUrl);
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }

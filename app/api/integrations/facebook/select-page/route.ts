@@ -32,7 +32,7 @@ export async function POST(req: Request) {
 
     if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
 
-    const prevMeta = ((existing as any)?.meta ?? {}) as any;
+    const prevMeta = ((existing as unknown)?.meta ?? {}) as unknown;
     const pageUrl = `https://www.facebook.com/${pageId}`;
     const nextMeta = { ...prevMeta, selected: true, page_url: pageUrl };
 
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     // Also mirror to pro_tools_configs so UI updates instantly
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = (scRow as any)?.settings ?? {};
+      const current = (scRow as unknown)?.settings ?? {};
       const merged = {
         ...current,
         facebook: {
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true, pageUrl });
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
   }
 }

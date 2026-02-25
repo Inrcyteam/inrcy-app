@@ -23,10 +23,10 @@ export async function POST() {
   if (integErr) return NextResponse.json({ error: "DB error" }, { status: 500 });
   if (!integ) return NextResponse.json({ ok: true });
 
-  const meta = { ...(integ as any).meta };
-  delete (meta as any).page_url;
-  delete (meta as any).page_id;
-  delete (meta as any).page_access_token;
+  const meta = { ...(integ as unknown).meta };
+  delete (meta as unknown).page_url;
+  delete (meta as unknown).page_id;
+  delete (meta as unknown).page_access_token;
 
   await supabase
     .from("integrations")
@@ -39,7 +39,7 @@ export async function POST() {
       meta,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", (integ as any).id);
+    .eq("id", (integ as unknown).id);
 
   // Sync pro tools config
   try {
@@ -49,7 +49,7 @@ export async function POST() {
       .eq("user_id", user.id)
       .maybeSingle();
 
-    const current = (cfg as any)?.facebook || {};
+    const current = (cfg as unknown)?.facebook || {};
     const merged = {
       ...current,
       accountConnected: true,
@@ -62,7 +62,7 @@ export async function POST() {
     await supabase
       .from("configurations_pro_tools")
       .update({ facebook: merged, updated_at: new Date().toISOString() })
-      .eq("id", (cfg as any).id);
+      .eq("id", (cfg as unknown).id);
   } catch {
     // ignore
   }

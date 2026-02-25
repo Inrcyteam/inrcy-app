@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     if (errorResponse) return errorResponse;
     const userId = user.id;
 
-    const body = (await req.json().catch(() => ({}))) as any;
+    const body = (await req.json().catch(() => ({}))) as unknown;
     const subjectOverride = String(body?.subject_override ?? "");
     const bodyOverride = String(body?.body_override ?? "");
 
@@ -28,14 +28,14 @@ export async function POST(req: Request) {
         .in("provider", ["google", "facebook"]),
     ]);
 
-    const profile: any = profileRes.data ?? {};
-    const business: any = businessRes.data ?? {};
+    const profile: unknown = profileRes.data ?? {};
+    const business: unknown = businessRes.data ?? {};
 
     // --- Links logic (priority: iNrCy site > site web ; plus Facebook if connected)
     const ownership = String(profile?.inrcy_site_ownership ?? "none");
-    const inrcyUrl = String(profile?.inrcy_site_url ?? (inrcyCfgRes.data as any)?.site_url ?? "").trim();
+    const inrcyUrl = String(profile?.inrcy_site_url ?? (inrcyCfgRes.data as unknown)?.site_url ?? "").trim();
 
-    const proSettings = ((proCfgRes.data as any)?.settings ?? {}) as any;
+    const proSettings = ((proCfgRes.data as unknown)?.settings ?? {}) as unknown;
     const siteWebUrl = String(proSettings?.site_web?.url ?? "").trim();
 
     const hasInrcySite = ownership !== "none" && !!inrcyUrl;
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     let facebookUrl = "";
     let gmbUrl = "";
 
-    for (const r of (statsRes.data ?? []) as any[]) {
+    for (const r of (statsRes.data ?? []) as unknown[]) {
       if (r.provider === "facebook" && (r.status === "connected") && r.resource_id) {
         facebookUrl = `https://www.facebook.com/${r.resource_id}`;
       }

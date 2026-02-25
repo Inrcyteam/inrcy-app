@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 
-async function purgeStatsCache(supabase: any, userId: string) {
+async function purgeStatsCache(supabase: unknown, userId: string) {
   try {
     await supabase.from("stats_cache").delete().eq("user_id", userId);
   } catch {}

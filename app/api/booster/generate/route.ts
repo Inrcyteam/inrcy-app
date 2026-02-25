@@ -84,7 +84,7 @@ const body = (await req.json().catch(() => ({}))) as Payload;
     };
 
     return NextResponse.json(safe);
-  } catch (e: unknown) {
+  } catch (e: Record<string, unknown>) {
     const msg = e instanceof Error ? e.message : "Server error";
     return NextResponse.json({ error: msg }, { status: 500 });
   }

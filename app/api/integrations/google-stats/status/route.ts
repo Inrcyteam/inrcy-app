@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 
-function normStatus(s: any) {
+function normStatus(s: unknown) {
   return String(s || "")
     .toLowerCase()
     .normalize("NFD")
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
       .order("identifiant", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const st = normStatus((l as any)?.statut);
+    const st = normStatus((l as unknown)?.statut);
     if (st.includes("deconnect") || st.includes("disconnected")) connected = false;
   } catch {}
 

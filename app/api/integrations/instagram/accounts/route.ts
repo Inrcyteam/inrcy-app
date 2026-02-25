@@ -4,7 +4,7 @@ import { tryDecryptToken } from "@/lib/oauthCrypto";
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
-  const data = (await res.json()) as any;
+  const data = (await res.json()) as unknown;
   if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
   return data as T;
 }
@@ -29,8 +29,8 @@ export async function GET() {
     .order("created_at", { ascending: false })
     .limit(1);
 
-  const row = (rows?.[0] as any) ?? null;
-  const tokRaw = String((row as any)?.access_token_enc || "");
+  const row = (rows?.[0] as unknown) ?? null;
+  const tokRaw = String((row as unknown)?.access_token_enc || "");
   const tok = tryDecryptToken(tokRaw);
   if (!tok) return NextResponse.json({ error: "Instagram account not connected" }, { status: 400 });
 
@@ -49,7 +49,7 @@ export async function GET() {
           fields: "instagram_business_account{username,id}",
           access_token: tok,
         }).toString()}`;
-        const info = await fetchJson<any>(infoUrl);
+        const info = await fetchJson<unknown>(infoUrl);
         const ig = info?.instagram_business_account;
         if (!ig?.id) return null;
         return {

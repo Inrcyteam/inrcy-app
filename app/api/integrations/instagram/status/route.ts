@@ -21,11 +21,11 @@ export async function GET() {
     .order("created_at", { ascending: false })
     .limit(1);
 
-  const row = (rows?.[0] as any) ?? null;
-const accountConnected = (row as any)?.status === "account_connected" || (row as any)?.status === "connected";
-  const connected = (row as any)?.status === "connected" && !!(row as any)?.resource_id;
+  const row = (rows?.[0] as unknown) ?? null;
+const accountConnected = (row as unknown)?.status === "account_connected" || (row as unknown)?.status === "connected";
+  const connected = (row as unknown)?.status === "connected" && !!(row as unknown)?.resource_id;
 
-  const username = String((row as any)?.resource_label || "");
+  const username = String((row as unknown)?.resource_label || "");
   const profile_url = username ? `https://www.instagram.com/${username}/` : "";
 
   return NextResponse.json({

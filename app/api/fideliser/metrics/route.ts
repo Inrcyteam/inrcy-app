@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/requireUser";
 type EventRow = {
   type: "newsletter_mail" | "thanks_mail" | "satisfaction_mail";
   created_at: string;
-  payload: any;
+  payload: unknown;
 };
 
 function daysAgoISO(days: number) {

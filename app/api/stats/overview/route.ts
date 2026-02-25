@@ -5,7 +5,7 @@ import { tryDecryptToken } from "@/lib/oauthCrypto";
 // NOTE: We lazy-import internal libs inside the handler to avoid returning an HTML error page
 // when a dependency throws at module-evaluation time (e.g. cookies()/headers() scope issues).
 
-function safeJsonParse<T>(s: any, fallback: T): T {
+function safeJsonParse<T>(s: unknown, fallback: T): T {
   if (!s) return fallback;
   try {
     if (typeof s === "string") return JSON.parse(s) as T;
@@ -80,7 +80,7 @@ export async function GET(request: Request) {
     // the UI can incorrectly show "Déconnecté" even when integrations are connected.
     // So we always (re)hydrate social connection flags from `integrations` before returning.
     async function fetchSocialStatus() {
-      const out: any = {
+      const out: Record<string, unknown> = {
         gmb: { connected: false, metrics: null },
         facebook: { connected: false },
         instagram: { connected: false },
@@ -100,7 +100,7 @@ export async function GET(request: Request) {
           .order("updated_at", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(1);
-        out.facebook.connected = !!(data as any[])?.[0];
+        out.facebook.connected = !!(data as unknown[])?.[0];
       } catch {}
 
       // Instagram (requires profile selection => resource_id)
@@ -116,7 +116,7 @@ export async function GET(request: Request) {
           .order("updated_at", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(1);
-        out.instagram.connected = !!(data as any[])?.[0]?.resource_id;
+        out.instagram.connected = !!(data as unknown[])?.[0]?.resource_id;
       } catch {}
 
       // LinkedIn
@@ -132,7 +132,7 @@ export async function GET(request: Request) {
           .order("updated_at", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(1);
-        out.linkedin.connected = !!(data as any[])?.[0];
+        out.linkedin.connected = !!(data as unknown[])?.[0];
       } catch {}
 
       // GMB (connected flag only; metrics handled later)
@@ -148,7 +148,7 @@ export async function GET(request: Request) {
           .order("updated_at", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(1);
-        out.gmb.connected = !!(data as any[])?.[0]?.resource_id;
+        out.gmb.connected = !!(data as unknown[])?.[0]?.resource_id;
       } catch {}
 
       return out;
@@ -162,7 +162,7 @@ const { data: profileRow } = await supabase
   .eq("user_id", userId)
   .maybeSingle();
 
-const inrcySiteOwnership = String((profileRow as any)?.inrcy_site_ownership || "none");
+const inrcySiteOwnership = String((profileRow as unknown)?.inrcy_site_ownership || "none");
 
     
 // Load settings from the new schema:
@@ -175,11 +175,11 @@ const [inrcyCfgRes, proCfgRes] = await Promise.all([
 
 // NOTE: SiteSettings has only optional fields, so an empty object is a valid fallback.
 // Using `null` breaks TS in production builds (null not assignable to SiteSettings).
-const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as any)?.settings, {});
-const proSettings = safeJsonParse<any>((proCfgRes.data as any)?.settings, {});
+const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as unknown)?.settings, {});
+const proSettings = safeJsonParse<unknown>((proCfgRes.data as unknown)?.settings, {});
 
 // Flag: en mode rented, on peut couper uniquement la couche iNrCy (sans débrancher GA4/GSC)
-const inrcyTrackingEnabled = Boolean((inrcySettings as any)?.inrcy_tracking_enabled ?? true);
+const inrcyTrackingEnabled = Boolean((inrcySettings as unknown)?.inrcy_tracking_enabled ?? true);
 
 // ---- Cache (anti-quota Google) ----
 // ⚠️ Correctif critique : la clé de cache DOIT dépendre de l'état des connexions.
@@ -198,7 +198,7 @@ async function buildConnectionsKey() {
       .select("provider,source,product,status,resource_id,updated_at")
       .eq("user_id", userId);
 
-    for (const r of (data as any[]) || []) {
+    for (const r of (data as unknown[]) || []) {
       const k = `${r.provider}:${r.source}:${r.product}`;
       const st = String(r.status || "").toLowerCase();
       const rid = String(r.resource_id || "");
@@ -216,7 +216,7 @@ async function buildConnectionsKey() {
       .select("fournisseur,source,produit,statut,identifiant")
       .eq("id_utilisateur", userId);
 
-    for (const r of (data as any[]) || []) {
+    for (const r of (data as unknown[]) || []) {
       const prov = String(r.fournisseur || "").toLowerCase();
       const src = String(r.source || "").toLowerCase();
       const prod = String(r.produit || "").toLowerCase();
@@ -251,8 +251,8 @@ try {
     .order("expires_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if ((cacheHit as any)?.payload) {
-      const payload = (cacheHit as any).payload as any;
+  if ((cacheHit as unknown)?.payload) {
+      const payload = (cacheHit as unknown).payload as unknown;
       // Rehydrate social connection flags to avoid stale/missing keys in cached payloads.
       try {
         const social = await fetchSocialStatus();
@@ -276,8 +276,8 @@ try {
     .limit(1)
     .maybeSingle();
 
-  if ((legacyHit as any)?.charge_utile) {
-    const payload = (legacyHit as any).charge_utile as any;
+  if ((legacyHit as unknown)?.charge_utile) {
+    const payload = (legacyHit as unknown).charge_utile as unknown;
     // Rehydrate social connection flags to avoid stale/missing keys in legacy cached payloads.
     try {
       const social = await fetchSocialStatus();
@@ -292,19 +292,19 @@ try {
 const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: string }> = [
   {
     key: "site_inrcy",
-    ga4Property: inrcyTrackingEnabled ? (inrcySettings as any)?.ga4?.property_id : undefined,
-    gscProperty: inrcyTrackingEnabled ? (inrcySettings as any)?.gsc?.property : undefined,
+    ga4Property: inrcyTrackingEnabled ? (inrcySettings as unknown)?.ga4?.property_id : undefined,
+    gscProperty: inrcyTrackingEnabled ? (inrcySettings as unknown)?.gsc?.property : undefined,
   },
   {
     key: "site_web",
-    ga4Property: (proSettings as any)?.site_web?.ga4?.property_id,
-    gscProperty: (proSettings as any)?.site_web?.gsc?.property,
+    ga4Property: (proSettings as unknown)?.site_web?.ga4?.property_id,
+    gscProperty: (proSettings as unknown)?.site_web?.gsc?.property,
   },
 ];
 
 
     // Fetch each source
-    const perSource: any = {};
+    const perSource: Record<string, unknown> = {};
     const pageAgg = new Map<string, number>();
     const channelAgg = new Map<string, number>();
     const queryAgg = new Map<string, { clicks: number; impressions: number; positionSum: number; rows: number }>();
@@ -403,7 +403,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       .slice(0, 8);
 
     // --- Connections + channel metrics ---
-    const sourcesStatus: any = {
+    const sourcesStatus: Record<string, unknown> = {
       site_inrcy: { connected: { ga4: false, gsc: false } },
       site_web: { connected: { ga4: false, gsc: false } },
       gmb: { connected: false, metrics: null },
@@ -429,7 +429,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         .order("updated_at", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(1);
-      const fbRow = fbRowRows?.[0] as any;
+      const fbRow = fbRowRows?.[0] as unknown;
 
 sourcesStatus.facebook.connected = !!fbRow;
 
@@ -447,7 +447,7 @@ sourcesStatus.facebook.connected = !!fbRow;
             start,
             end
           );
-        } catch (e: any) {
+        } catch (e: Record<string, unknown>) {
           sourcesStatus.facebook.metrics = { error: e?.message || "facebook insights fetch failed" };
         }
       } else {
@@ -466,7 +466,7 @@ sourcesStatus.facebook.connected = !!fbRow;
           .order("identifiant", { ascending: false })
           .limit(1)
           .maybeSingle();
-        const st = String((l as any)?.statut || "")
+        const st = String((l as unknown)?.statut || "")
           .toLowerCase()
           .normalize("NFD")
           .replace(/\p{Diacritic}/gu, "");
@@ -487,7 +487,7 @@ sourcesStatus.facebook.connected = !!fbRow;
         .order("updated_at", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(1);
-      const igRow = igRowRows?.[0] as any;
+      const igRow = igRowRows?.[0] as unknown;
 
 sourcesStatus.instagram.connected = !!igRow?.resource_id;
 
@@ -505,7 +505,7 @@ sourcesStatus.instagram.connected = !!igRow?.resource_id;
             start,
             end
           );
-        } catch (e: any) {
+        } catch (e: Record<string, unknown>) {
           sourcesStatus.instagram.metrics = { error: e?.message || "instagram insights fetch failed" };
         }
       } else {
@@ -524,7 +524,7 @@ sourcesStatus.instagram.connected = !!igRow?.resource_id;
           .order("identifiant", { ascending: false })
           .limit(1)
           .maybeSingle();
-        const st = String((l as any)?.statut || "")
+        const st = String((l as unknown)?.statut || "")
           .toLowerCase()
           .normalize("NFD")
           .replace(/\p{Diacritic}/gu, "");
@@ -545,7 +545,7 @@ sourcesStatus.instagram.connected = !!igRow?.resource_id;
         .order("updated_at", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(1);
-      const liRow = liRowRows?.[0] as any;
+      const liRow = liRowRows?.[0] as unknown;
 
 sourcesStatus.linkedin.connected = !!liRow;
 
@@ -555,7 +555,7 @@ sourcesStatus.linkedin.connected = !!liRow;
         sourcesStatus.linkedin.metrics = null;
       } else if (liRow?.access_token_enc) {
         try {
-          const meta = (liRow as any)?.meta || {};
+          const meta = (liRow as unknown)?.meta || {};
           const orgUrn = String(meta?.org_urn || "");
           if (!orgUrn) {
             sourcesStatus.linkedin.metrics = { error: "No organization selected (org_urn missing)" };
@@ -569,7 +569,7 @@ sourcesStatus.linkedin.connected = !!liRow;
               end
             );
           }
-        } catch (e: any) {
+        } catch (e: Record<string, unknown>) {
           sourcesStatus.linkedin.metrics = { error: e?.message || "linkedin analytics fetch failed" };
         }
       } else {
@@ -588,7 +588,7 @@ sourcesStatus.linkedin.connected = !!liRow;
           .order("identifiant", { ascending: false })
           .limit(1)
           .maybeSingle();
-        const st = String((l as any)?.statut || "")
+        const st = String((l as unknown)?.statut || "")
           .toLowerCase()
           .normalize("NFD")
           .replace(/\p{Diacritic}/gu, "");
@@ -611,7 +611,7 @@ sourcesStatus.linkedin.connected = !!liRow;
         .order("updated_at", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(1);
-      const gmbRow = gmbRowRows?.[0] as any;
+      const gmbRow = gmbRowRows?.[0] as unknown;
 
 sourcesStatus.gmb.connected = !!gmbRow?.resource_id;
 
@@ -627,7 +627,7 @@ sourcesStatus.gmb.connected = !!gmbRow?.resource_id;
           .order("identifiant", { ascending: false })
           .limit(1)
           .maybeSingle();
-        const st = String((l as any)?.statut || "")
+        const st = String((l as unknown)?.statut || "")
           .toLowerCase()
           .normalize("NFD")
           .replace(/\p{Diacritic}/gu, "");
@@ -655,7 +655,7 @@ sourcesStatus.gmb.connected = !!gmbRow?.resource_id;
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           try {
             sourcesStatus.gmb.metrics = await gmbFetchDailyMetrics(accessToken, loc, start, end);
-          } catch (e: any) {
+          } catch (e: Record<string, unknown>) {
             sourcesStatus.gmb.metrics = { error: e?.message || "performance fetch failed", location: loc };
           }
         } else {
@@ -712,7 +712,7 @@ try {
 } catch {}
 
     return NextResponse.json(payload);
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }

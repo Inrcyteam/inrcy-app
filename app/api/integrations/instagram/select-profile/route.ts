@@ -4,7 +4,7 @@ import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
-  const data = (await res.json()) as any;
+  const data = (await res.json()) as unknown;
   if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
   return data as T;
 }
@@ -33,8 +33,8 @@ export async function POST(req: Request) {
     .order("created_at", { ascending: false })
     .limit(1);
 
-  const row = (rows?.[0] as any) ?? null;
-const userTokenRaw = String((row as any)?.access_token_enc || "");
+  const row = (rows?.[0] as unknown) ?? null;
+const userTokenRaw = String((row as unknown)?.access_token_enc || "");
     const userToken = tryDecryptToken(userTokenRaw) || "";
   if (!userToken) return NextResponse.json({ error: "Instagram account not connected" }, { status: 400 });
 
@@ -52,7 +52,7 @@ const userTokenRaw = String((row as any)?.access_token_enc || "");
     fields: "instagram_business_account{username,id}",
     access_token: userToken,
   }).toString()}`;
-  const info = await fetchJson<any>(infoUrl);
+  const info = await fetchJson<unknown>(infoUrl);
   const ig = info?.instagram_business_account;
   const igId = String(ig?.id || "");
   const username = String(ig?.username || "");
@@ -78,7 +78,7 @@ const userTokenRaw = String((row as any)?.access_token_enc || "");
   // Mirror in pro_tools_configs
   try {
     const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
-    const current = (scRow as any)?.settings ?? {};
+    const current = (scRow as unknown)?.settings ?? {};
     const merged = {
       ...current,
       instagram: {

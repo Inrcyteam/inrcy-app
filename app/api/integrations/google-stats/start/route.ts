@@ -44,10 +44,10 @@ export async function GET(request: Request) {
   // so the callback can auto-resolve GA4/GSC for THAT site without requiring manual IDs.
   const siteUrlFromQuery = searchParams.get("siteUrl") || "";
 
-  if (!ALLOWED_SOURCES.includes(source as any)) {
+  if (!ALLOWED_SOURCES.includes(source as unknown)) {
     return NextResponse.json({ error: "Invalid source" }, { status: 400 });
   }
-  if (!ALLOWED_PRODUCTS.includes(product as any)) {
+  if (!ALLOWED_PRODUCTS.includes(product as unknown)) {
     return NextResponse.json({ error: "Invalid product" }, { status: 400 });
   }
 
@@ -84,8 +84,8 @@ const [inrcyCfgRes, proCfgRes] = await Promise.all([
   supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
 ]);
 
-const inrcySiteUrl = (inrcyCfgRes.data as any | null)?.site_url ?? "";
-const proSettings = (proCfgRes.data as any | null)?.settings ?? {};
+const inrcySiteUrl = (inrcyCfgRes.data as unknown | null)?.site_url ?? "";
+const proSettings = (proCfgRes.data as unknown | null)?.settings ?? {};
 
 const rawUrl =
   (siteUrlFromQuery && String(siteUrlFromQuery).trim())

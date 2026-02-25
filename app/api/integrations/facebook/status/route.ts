@@ -21,9 +21,9 @@ export async function GET() {
     return NextResponse.json({ connected: false, error: error.message }, { status: 200 });
   }
 
-  const status = (data as any)?.status ?? null;
+  const status = (data as unknown)?.status ?? null;
   const accountConnected = status === "account_connected" || status === "connected";
-  const pageConnected = status === "connected" && !!(data as any)?.resource_id;
+  const pageConnected = status === "connected" && !!(data as unknown)?.resource_id;
 
   return NextResponse.json({
     status,
@@ -31,10 +31,10 @@ export async function GET() {
     pageConnected,
     // Compat (ancien)
     connected: pageConnected,
-    resource_id: (data as any)?.resource_id ?? null,
-    resource_label: (data as any)?.resource_label ?? null,
-    page_url: (data as any)?.meta?.page_url ?? null,
-    user_email: (data as any)?.meta?.user_email ?? null,
-    pages_found: (data as any)?.meta?.pages_found ?? null,
+    resource_id: (data as unknown)?.resource_id ?? null,
+    resource_label: (data as unknown)?.resource_label ?? null,
+    page_url: (data as unknown)?.meta?.page_url ?? null,
+    user_email: (data as unknown)?.meta?.user_email ?? null,
+    pages_found: (data as unknown)?.meta?.pages_found ?? null,
   });
 }

@@ -9,10 +9,10 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 type SiteSettings = {
   ga4?: { property_id?: string; measurement_id?: string; verified_at?: string };
   gsc?: { property?: string; verified_at?: string };
-  [k: string]: any;
+  [k: string]: unknown;
 };
 
-function safeJsonParse<T>(s: any, fallback: T): T {
+function safeJsonParse<T>(s: unknown, fallback: T): T {
   if (!s) return fallback;
   try {
     if (typeof s === "string") return JSON.parse(s) as T;
@@ -22,7 +22,7 @@ function safeJsonParse<T>(s: any, fallback: T): T {
   }
 }
 
-async function purgeStatsCache(supabase: any, userId: string) {
+async function purgeStatsCache(supabase: unknown, userId: string) {
   try {
     await supabase.from("stats_cache").delete().eq("user_id", userId);
   } catch {}
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
 
     const userId = authData.user.id;
 
-    const body = (await req.json().catch(() => ({}))) as any;
+    const body = (await req.json().catch(() => ({}))) as unknown;
     const source = String(body?.source || "site_inrcy");
     if (source !== "site_inrcy") return NextResponse.json({ error: "Invalid source" }, { status: 400 });
 
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       .eq("user_id", userId)
       .maybeSingle();
 
-    const ownership = String((prof as any)?.inrcy_site_ownership || "none");
+    const ownership = String((prof as unknown)?.inrcy_site_ownership || "none");
     if (ownership !== "rented") {
       return NextResponse.json({ error: "Désactivation réservée au mode rented." }, { status: 403 });
     }
@@ -81,16 +81,16 @@ export async function POST(req: Request) {
       .eq("user_id", userId)
       .maybeSingle();
 
-    const current = safeJsonParse<SiteSettings>((cfg as any)?.settings, {});
+    const current = safeJsonParse<SiteSettings>((cfg as unknown)?.settings, {});
     const next: SiteSettings = { ...(current ?? {}) };
-    (next as any).inrcy_tracking_enabled = false;
+    (next as unknown).inrcy_tracking_enabled = false;
 
     await supabase.from("inrcy_site_configs").upsert({ user_id: userId, settings: next }, { onConflict: "user_id" });
 
     await purgeStatsCache(supabase, userId);
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }

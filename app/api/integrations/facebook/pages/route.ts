@@ -6,7 +6,7 @@ type FbPage = { id: string; name?: string; access_token?: string };
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
-  const data = (await res.json()) as any;
+  const data = (await res.json()) as unknown;
   if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
   return data as T;
 }
@@ -35,7 +35,7 @@ export async function GET() {
 
     // access_token_enc may be a PAGE token after selection.
     // For /me/accounts we need the USER token (stored in meta.user_access_token).
-    const userTokenRaw = String((integ as any)?.meta?.user_access_token_enc || (integ as any)?.meta?.user_access_token || integ.access_token_enc || "").trim();
+    const userTokenRaw = String((integ as unknown)?.meta?.user_access_token_enc || (integ as unknown)?.meta?.user_access_token || integ.access_token_enc || "").trim();
     const userToken = tryDecryptToken(userTokenRaw);
     if (!userToken) return NextResponse.json({ error: "Facebook token manquant" }, { status: 400 });
 
@@ -48,7 +48,7 @@ export async function GET() {
     const pages = (resp.data || []).filter((p) => p?.id);
 
     return NextResponse.json({ pages });
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
   }
 }

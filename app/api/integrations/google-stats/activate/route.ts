@@ -23,7 +23,7 @@ type SiteSettings = {
   gsc?: { property?: string; verified_at?: string };
 };
 
-function safeJsonParse<T>(s: any, fallback: T): T {
+function safeJsonParse<T>(s: unknown, fallback: T): T {
   if (!s) return fallback;
   try {
     if (typeof s === "string") return JSON.parse(s) as T;
@@ -52,7 +52,7 @@ async function gaAdminFetch<T>(accessToken: string, url: string): Promise<T> {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
-  const data = (await res.json()) as any;
+  const data = (await res.json()) as unknown;
   if (!res.ok) {
     throw new Error(`GA4 Admin request failed: ${data?.error?.message || "unknown"}`);
   }
@@ -79,7 +79,7 @@ async function fetchAllGa4Properties(accessToken: string) {
       url.searchParams.set("filter", `parent:${acc.name}`);
       if (pageToken) url.searchParams.set("pageToken", pageToken);
 
-      const data = await gaAdminFetch<any>(accessToken, url.toString());
+      const data = await gaAdminFetch<unknown>(accessToken, url.toString());
       for (const p of data?.properties ?? []) props.push({ name: p?.name, displayName: p?.displayName });
       pageToken = data?.nextPageToken;
       if (!pageToken) break;
@@ -103,9 +103,9 @@ async function fetchDataStreams(accessToken: string, propertyName: string) {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
-  const data = (await res.json()) as any;
+  const data = (await res.json()) as unknown;
   if (!res.ok) return [];
-  return (data?.dataStreams ?? []) as any[];
+  return (data?.dataStreams ?? []) as unknown[];
 }
 
 function normalizeDomainFromUrl(raw: string): string | null {
@@ -171,7 +171,7 @@ async function resolveGscFromDomain(accessToken: string, domain: string, siteUrl
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
-  const data = (await res.json()) as any;
+  const data = (await res.json()) as unknown;
   if (!res.ok) throw new Error(`GSC sites.list failed: ${data?.error?.message || "unknown"}`);
 
   const entries: Array<{ siteUrl: string }> = data?.siteEntry ?? [];
@@ -207,7 +207,7 @@ export async function POST(req: Request) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-    const body = (await req.json().catch(() => ({}))) as any;
+    const body = (await req.json().catch(() => ({}))) as unknown;
     const source = String(body?.source || "site_inrcy");
     if (source !== "site_inrcy") {
       return NextResponse.json({ error: "Invalid source" }, { status: 400 });
@@ -221,7 +221,7 @@ export async function POST(req: Request) {
         .select("site_url")
         .eq("user_id", authData.user.id)
         .maybeSingle();
-      siteUrl = String((row as any)?.site_url || "").trim();
+      siteUrl = String((row as unknown)?.site_url || "").trim();
     }
 
     const parsed = extractDomainFromUrl(siteUrl);
@@ -238,7 +238,7 @@ export async function POST(req: Request) {
       .eq("user_id", authData.user.id)
       .maybeSingle();
 
-    const ownership = String((prof as any)?.inrcy_site_ownership || "none");
+    const ownership = String((prof as unknown)?.inrcy_site_ownership || "none");
     if (ownership !== "rented") {
       return NextResponse.json({ error: "Activation réservée au mode rented." }, { status: 403 });
     }
@@ -257,7 +257,7 @@ let adminRefreshToken = "";
     .not("refresh_token_enc", "is", null)
     .order("updated_at", { ascending: false })
     .limit(10);
-  const raw = String((rows as any[])?.find((r) => String((r as any)?.refresh_token_enc || "").trim())?.refresh_token_enc || "").trim();
+  const raw = String((rows as unknown[])?.find((r) => String((r as unknown)?.refresh_token_enc || "").trim())?.refresh_token_enc || "").trim();
   adminRefreshToken = tryDecryptToken(raw) || "";
 }
     if (!adminRefreshToken) {
@@ -295,7 +295,7 @@ let adminRefreshToken = "";
     }
 
     const accessToken = tokenData.access_token;
-    const expiresAt =
+    const _expiresAt =
       tokenData.expires_in != null ? new Date(Date.now() + Number(tokenData.expires_in) * 1000).toISOString() : null;
 
     // Resolve GA4 + GSC
@@ -319,7 +319,7 @@ let adminRefreshToken = "";
       expires_at: null,
       email_address: adminEmail,
       meta: { uses_admin: true },
-    } as any;
+    } as unknown;
 
     // Upsert en deux temps (plus tolérant si la contrainte unique n'est pas présente)
     for (const product of ["ga4", "gsc"] as const) {
@@ -332,9 +332,9 @@ let adminRefreshToken = "";
         .eq("product", product)
         .maybeSingle();
 
-      const payload = { ...base, product } as any;
-      if ((existing as any)?.id) {
-        await supabase.from("integrations").update(payload).eq("id", (existing as any).id);
+      const payload = { ...base, product } as unknown;
+      if ((existing as unknown)?.id) {
+        await supabase.from("integrations").update(payload).eq("id", (existing as unknown).id);
       } else {
         await supabase.from("integrations").insert(payload);
       }
@@ -347,7 +347,7 @@ let adminRefreshToken = "";
       .eq("user_id", authData.user.id)
       .maybeSingle();
 
-    const current = safeJsonParse<SiteSettings>((cfg as any)?.settings, {});
+    const current = safeJsonParse<SiteSettings>((cfg as unknown)?.settings, {});
     const next: SiteSettings = { ...(current ?? {}) };
     next.ga4 = {
       ...(next.ga4 ?? {}),
@@ -357,7 +357,7 @@ let adminRefreshToken = "";
     };
     next.gsc = { ...(next.gsc ?? {}), property: gscResolved, verified_at: nowIso };
     // En mode RENTED, on garde GA4/GSC branchés, mais on peut couper/réactiver la couche iNrCy.
-    (next as any).inrcy_tracking_enabled = true;
+    (next as unknown).inrcy_tracking_enabled = true;
 
     const { error: upErr } = await supabase
       .from("inrcy_site_configs")
@@ -370,7 +370,7 @@ let adminRefreshToken = "";
     } catch {}
 
     return NextResponse.json({ ok: true, ga4: ga4Resolved, gsc: { property: gscResolved } });
-  } catch (e: any) {
+  } catch (e: Record<string, unknown>) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }
