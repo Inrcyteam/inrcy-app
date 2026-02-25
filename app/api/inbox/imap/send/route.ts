@@ -8,8 +8,7 @@ import { loadImapAccount } from "@/lib/imapAccount";
 import { appendRawMessage } from "@/lib/imapClient";
 import { withApi } from "@/lib/observability/withApi";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
-function asRecord(v: unknown): Record<string, unknown> {
-  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+;
 }
 
 // IMAP + SMTP require Node.js runtime (Edge runtime can't open raw TCP sockets)
