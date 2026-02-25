@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
 
 // Receives browser CSP violation reports.
 // This endpoint should never throw or leak details.
@@ -60,7 +63,8 @@ export async function POST(req: Request) {
       );
       summaries = cspItems.map((it) => normalize(it?.body ?? it));
     } else {
-      const report = payload?.["csp-report"] ?? payload?.report ?? payload;
+      const _payloadRec = asRecord(payload);
+      const report = _payloadRec["csp-report"] ?? _payloadRec["report"] ?? _payloadRec;
       summaries = [normalize(report)];
     }
 
