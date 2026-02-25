@@ -253,8 +253,10 @@ type SiteSettings = {
   };
 };
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
 async function upsertGoogleIntegration(opts: {
-  supabase: unknown;
+  supabase: SupabaseServerClient;
   userId: string;
   source: "site_inrcy" | "site_web";
   product: "ga4" | "gsc";

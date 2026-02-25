@@ -25,7 +25,9 @@ function safeJsonParse<T>(s: unknown, fallback: T): T {
   }
 }
 
-async function purgeStatsCache(supabase: unknown, userId: string) {
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
+async function purgeStatsCache(supabase: SupabaseServerClient, userId: string) {
   try {
     await supabase.from("stats_cache").delete().eq("user_id", userId);
   } catch {}

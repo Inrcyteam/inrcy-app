@@ -23,7 +23,9 @@ type FbPage = {
   access_token?: string;
 };
 
-async function invalidateUserStatsCache(supabase: unknown, userId: string) {
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
+async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
   try {
     await supabase.from("stats_cache").delete().eq("user_id", userId);
   } catch {}

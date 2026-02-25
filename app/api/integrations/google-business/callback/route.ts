@@ -20,7 +20,9 @@ type GoogleUserInfo = {
   picture?: string;
 };
 
-async function invalidateUserStatsCache(supabase: unknown, userId: string) {
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
+async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
   // Best-effort cache invalidation (new + legacy). Never fail the OAuth flow on cache.
   try {
     await supabase.from("stats_cache").delete().eq("user_id", userId);
