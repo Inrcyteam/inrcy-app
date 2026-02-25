@@ -367,7 +367,7 @@ export async function GET(req: Request) {
       ...(includeDebug ? { debug } : {}),
     });
   } catch (e: unknown) {
-    debug.errors.unhandled = e?.message ?? String(e);
+    (debug.errors as Record<string, string>)["unhandled"] = (e instanceof Error ? e.message : String(e));
     const includeDebug =
       process.env.NODE_ENV === "development" || req.headers.get("x-inrcy-debug") === "1";
     return NextResponse.json(
