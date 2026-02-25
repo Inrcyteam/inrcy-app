@@ -24,6 +24,17 @@ type GoogleUserInfo = {
 const ALLOWED_SOURCES = ["site_inrcy", "site_web"] as const;
 const ALLOWED_PRODUCTS = ["ga4", "gsc"] as const;
 
+type AllowedSource = (typeof ALLOWED_SOURCES)[number];
+type AllowedProduct = (typeof ALLOWED_PRODUCTS)[number];
+
+function isAllowedSource(v: string): v is AllowedSource {
+  return (ALLOWED_SOURCES as readonly string[]).includes(v);
+}
+
+function isAllowedProduct(v: string): v is AllowedProduct {
+  return (ALLOWED_PRODUCTS as readonly string[]).includes(v);
+}
+
 function safeJsonParse<T>(s: unknown, fallback: T): T {
   if (!s) return fallback;
   try {
@@ -361,19 +372,22 @@ export async function GET(req: Request) {
     }
 
     const st = asRecord(state);
-    const source = asString(st["source"]);
-    const product = asString(st["product"]);
+	    const sourceRaw = asString(st["source"]) ?? "";
+	    const productRaw = asString(st["product"]) ?? "";
     const returnTo = asString(st["returnTo"]) || "/dashboard";
     const mode = asString(st["mode"]);
     const domainFromState = asString(st["domain"]);
     const siteUrlFromState = asString(st["siteUrl"]);
 
-    if (!(ALLOWED_SOURCES as readonly string[]).includes(source)) {
+	    if (!sourceRaw || !isAllowedSource(sourceRaw)) {
       return NextResponse.json({ error: "Invalid state.source" }, { status: 400 });
     }
-    if (!(ALLOWED_PRODUCTS as readonly string[]).includes(product)) {
+	    if (!productRaw || !isAllowedProduct(productRaw)) {
       return NextResponse.json({ error: "Invalid state.product" }, { status: 400 });
     }
+
+	    const source: AllowedSource = sourceRaw;
+	    const product: AllowedProduct = productRaw;
 
     const clientId = process.env.GOOGLE_CLIENT_ID!;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
@@ -475,8 +489,12 @@ const [inrcyCfgRes, proCfgRes] = await Promise.all([
 const nowIso = new Date().toISOString();
 // NOTE: SiteSettings has only optional fields, so an empty object is a valid fallback.
 // Using `null` breaks TS in production builds (null not assignable to SiteSettings).
-const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as unknown)?.settings, {});
-const proSettings = safeJsonParse<unknown>((proCfgRes.data as unknown)?.settings, {});
+const inrcyDataRec = asRecord(inrcyCfgRes.data);
+const proDataRec = asRecord(proCfgRes.data);
+
+const inrcySettings = safeJsonParse<SiteSettings>(inrcyDataRec["settings"], {});
+// pro_tools_configs.settings is a JSON blob; treat it as an object map.
+const proSettings = safeJsonParse<Record<string, unknown>>(proDataRec["settings"], {});
 
 if (source === "site_inrcy") {
   const next: SiteSettings = { ...(inrcySettings ?? {}) };
@@ -490,13 +508,28 @@ if (source === "site_inrcy") {
     return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=db_update_settings`, origin));
   }
 } else {
-  const nextPro = { ...(proSettings ?? {}) };
-  nextPro.site_web = {
-    ...(nextPro.site_web ?? {}),
-    url: siteUrlFromState || (nextPro.site_web?.url ?? ""),
-    ga4: { ...((nextPro.site_web as unknown)?.ga4 ?? {}), property_id: ga4Resolved.propertyId, measurement_id: ga4Resolved.measurementId ?? undefined, verified_at: nowIso },
-    gsc: { ...((nextPro.site_web as unknown)?.gsc ?? {}), property: gscResolved, verified_at: nowIso },
+  const nextPro: Record<string, unknown> = { ...(proSettings ?? {}) };
+  const siteWeb = asRecord(nextPro["site_web"]);
+  const siteWebGa4 = asRecord(siteWeb["ga4"]);
+  const siteWebGsc = asRecord(siteWeb["gsc"]);
+
+  const nextSiteWeb: Record<string, unknown> = {
+    ...siteWeb,
+    url: siteUrlFromState || (asString(siteWeb["url"]) ?? ""),
+    ga4: {
+      ...siteWebGa4,
+      property_id: ga4Resolved.propertyId,
+      measurement_id: ga4Resolved.measurementId ?? undefined,
+      verified_at: nowIso,
+    },
+    gsc: {
+      ...siteWebGsc,
+      property: gscResolved,
+      verified_at: nowIso,
+    },
   };
+
+  nextPro["site_web"] = nextSiteWeb;
 
   const { error: upErr } = await supabase
     .from("pro_tools_configs")
@@ -528,52 +561,44 @@ if (domain && tokenData.access_token) {
       ]);
 
       const nowIso = new Date().toISOString();
-      const inrcySettings = safeJsonParse<SiteSettings>((inrcyCfgRes.data as unknown)?.settings, {});
-      const proSettings = safeJsonParse<unknown>((proCfgRes.data as unknown)?.settings, {});
+      const inrcySettings = safeJsonParse<SiteSettings>(asRecord(inrcyCfgRes.data)["settings"], {});
+      const proSettings = safeJsonParse<Record<string, unknown>>(asRecord(proCfgRes.data)["settings"], {});
 
       if (source === "site_web") {
-        const nextPro = { ...(proSettings ?? {}) };
-        nextPro.site_web = { ...(nextPro.site_web ?? {}) };
+        const nextPro: Record<string, unknown> = { ...(proSettings ?? {}) };
+        const siteWebNext: Record<string, unknown> = { ...asRecord(nextPro["site_web"]) };
         // Prefer state hint (user just typed it), otherwise keep stored
-        if (siteUrlHint) nextPro.site_web.url = siteUrlHint;
+        if (siteUrlHint) siteWebNext["url"] = siteUrlHint;
+        nextPro["site_web"] = siteWebNext;
 
         if (product === "ga4") {
-          const existingGa4 = (nextPro.site_web as unknown)?.ga4 ?? {};
-          const existingPid = String(existingGa4?.property_id || "").trim();
-          const existingMid = String(existingGa4?.measurement_id || "").trim();
+          const existingGa4 = asRecord(siteWebNext["ga4"]);
+          const existingPid = (asString(existingGa4["property_id"]) ?? "").trim();
+          const existingMid = (asString(existingGa4["measurement_id"]) ?? "").trim();
 
           if (existingPid) {
             const v = await validateGa4Binding(tokenData.access_token, domain, existingPid, existingMid || null);
             if (!v.ok) {
               if (!existingMid) {
                 const resolved = await resolveGa4FromDomain(tokenData.access_token, domain);
-                nextPro.site_web = {
-                  ...(nextPro.site_web ?? {}),
-                  ga4: { ...((nextPro.site_web as unknown)?.ga4 ?? {}), property_id: resolved.propertyId, measurement_id: resolved.measurementId ?? undefined, verified_at: nowIso },
-                };
+                siteWebNext["ga4"] = { ...existingGa4, property_id: resolved.propertyId, measurement_id: resolved.measurementId ?? undefined, verified_at: nowIso };
               } else {
                 return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=ga4_mismatch_domain`, origin));
               }
             } else {
               if (!existingMid && v.measurementId) {
-                nextPro.site_web = {
-                  ...(nextPro.site_web ?? {}),
-                  ga4: { ...((nextPro.site_web as unknown)?.ga4 ?? {}), measurement_id: v.measurementId, verified_at: nowIso },
-                };
+                siteWebNext["ga4"] = { ...existingGa4, measurement_id: v.measurementId, verified_at: nowIso };
               }
             }
           } else {
             const resolved = await resolveGa4FromDomain(tokenData.access_token, domain);
-            nextPro.site_web = {
-              ...(nextPro.site_web ?? {}),
-              ga4: { ...((nextPro.site_web as unknown)?.ga4 ?? {}), property_id: resolved.propertyId, measurement_id: resolved.measurementId ?? undefined, verified_at: nowIso },
-            };
+            siteWebNext["ga4"] = { ...existingGa4, property_id: resolved.propertyId, measurement_id: resolved.measurementId ?? undefined, verified_at: nowIso };
           }
         }
 
         if (product === "gsc") {
-          const existingGsc = (nextPro.site_web as unknown)?.gsc ?? {};
-          const existingProp = String(existingGsc?.property || "").trim();
+          const existingGsc = asRecord(siteWebNext["gsc"]);
+          const existingProp = (asString(existingGsc["property"]) ?? "").trim();
 
           if (existingProp) {
             if (!validateGscPropertyAgainstDomain(domain, existingProp)) {
@@ -585,10 +610,7 @@ if (domain && tokenData.access_token) {
             }
           } else {
             const resolvedProp = await resolveGscFromDomain(tokenData.access_token, domain, siteUrlHint || null);
-            nextPro.site_web = {
-              ...(nextPro.site_web ?? {}),
-              gsc: { ...((nextPro.site_web as unknown)?.gsc ?? {}), property: resolvedProp, verified_at: nowIso },
-            };
+            siteWebNext["gsc"] = { ...existingGsc, property: resolvedProp, verified_at: nowIso };
           }
         }
 
@@ -598,7 +620,7 @@ if (domain && tokenData.access_token) {
         if (upErr) {
           return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=db_update_settings`, origin));
         }
-      } else {
+	      } else {
         const next: SiteSettings = { ...(inrcySettings ?? {}) };
 
         if (product === "ga4") {
