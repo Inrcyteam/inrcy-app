@@ -323,7 +323,7 @@ export async function GET(req: Request) {
       try {
         return await fn();
       } catch (e: unknown) {
-        debug.errors[key] = e?.message ?? String(e);
+        (debug.errors as Record<string, string>)[String(key)] = (e instanceof Error ? e.message : String(e));
         return fallback;
       }
     };
