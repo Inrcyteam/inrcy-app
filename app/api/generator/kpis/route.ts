@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
 function pickFirstString(...vals: unknown[]): string | undefined {
   for (const v of vals) {
     if (typeof v === "string" && v) return v;
@@ -257,12 +260,13 @@ async function getProfile(
   debug.profiles_found = row ? 1 : 0;
   debug.profile_fields = row ? Object.keys(row) : [];
 
+  const r = asRecord(row);
   const lead_conversion_rate = num(
-    pickFirst(row?.lead_conversion_rate, row?.tx_conversion, row?.conversion_rate, row?.leadConversionRate),
+    pickFirst(r["lead_conversion_rate"], r["tx_conversion"], r["conversion_rate"], r["leadConversionRate"]),
     0
   );
   const avg_basket = num(
-    pickFirst(row?.avg_basket, row?.panier_moyen, row?.average_basket, row?.avgBasket),
+    pickFirst(r["avg_basket"], r["panier_moyen"], r["average_basket"], r["avgBasket"]),
     0
   );
 
