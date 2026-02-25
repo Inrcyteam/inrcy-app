@@ -268,7 +268,8 @@ export async function POST(req: Request) {
       .eq("user_id", authData.user.id)
       .maybeSingle();
 
-    const ownership = String((prof as unknown)?.inrcy_site_ownership || "none");
+    const profRec = asRecord(prof);
+    const ownership = asString(profRec["inrcy_site_ownership"]) ?? "none";
     if (ownership !== "rented") {
       return NextResponse.json({ error: "Activation réservée au mode rented." }, { status: 403 });
     }
