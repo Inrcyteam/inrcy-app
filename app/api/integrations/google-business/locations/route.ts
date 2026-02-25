@@ -23,13 +23,13 @@ export async function GET(req: Request) {
       try {
         locations = await gmbListLocationsWithFallback(tok.accessToken, accountName);
       } catch (e: unknown) {
-        locationsError = e?.message || String(e);
+        locationsError = (e instanceof Error ? e.message : String(e)) || String(e);
         locations = [];
       }
     }
 
     return NextResponse.json({ accounts, accountName, locations, locationsError });
   } catch (e: unknown) {
-    return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
+    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Erreur" }, { status: 500 });
   }
 }

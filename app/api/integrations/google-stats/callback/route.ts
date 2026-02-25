@@ -627,6 +627,6 @@ if (domain && tokenData.access_token) {
     return NextResponse.redirect(new URL(`${returnTo}&linked=${product}&ok=1`, origin));
 
   } catch (e: unknown) {
-    return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
+    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
   }
 }

@@ -160,6 +160,6 @@ await supabase
     finalUrl.searchParams.set("ok", "1");
     return NextResponse.redirect(finalUrl);
   } catch (e: unknown) {
-    return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
+    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
   }
 }

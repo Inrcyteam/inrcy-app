@@ -170,7 +170,7 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL("/dashboard?panel=mails&toast=connected", req.url));
   } catch (e: unknown) {
     return NextResponse.json(
-      { error: "Unhandled exception", message: e?.message },
+      { error: "Unhandled exception", message: (e instanceof Error ? e.message : String(e)) },
       { status: 500 }
     );
   }

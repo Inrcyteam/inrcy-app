@@ -451,7 +451,7 @@ sourcesStatus.facebook.connected = !!fbRow;
             end
           );
         } catch (e: unknown) {
-          sourcesStatus.facebook.metrics = { error: e?.message || "facebook insights fetch failed" };
+          sourcesStatus.facebook.metrics = { error: (e instanceof Error ? e.message : String(e)) || "facebook insights fetch failed" };
         }
       } else {
         sourcesStatus.facebook.metrics = null;
@@ -509,7 +509,7 @@ sourcesStatus.instagram.connected = !!igRow?.resource_id;
             end
           );
         } catch (e: unknown) {
-          sourcesStatus.instagram.metrics = { error: e?.message || "instagram insights fetch failed" };
+          sourcesStatus.instagram.metrics = { error: (e instanceof Error ? e.message : String(e)) || "instagram insights fetch failed" };
         }
       } else {
         sourcesStatus.instagram.metrics = null;
@@ -573,7 +573,7 @@ sourcesStatus.linkedin.connected = !!liRow;
             );
           }
         } catch (e: unknown) {
-          sourcesStatus.linkedin.metrics = { error: e?.message || "linkedin analytics fetch failed" };
+          sourcesStatus.linkedin.metrics = { error: (e instanceof Error ? e.message : String(e)) || "linkedin analytics fetch failed" };
         }
       } else {
         sourcesStatus.linkedin.metrics = null;
@@ -659,7 +659,7 @@ sourcesStatus.gmb.connected = !!gmbRow?.resource_id;
           try {
             sourcesStatus.gmb.metrics = await gmbFetchDailyMetrics(accessToken, loc, start, end);
           } catch (e: unknown) {
-            sourcesStatus.gmb.metrics = { error: e?.message || "performance fetch failed", location: loc };
+            sourcesStatus.gmb.metrics = { error: (e instanceof Error ? e.message : String(e)) || "performance fetch failed", location: loc };
           }
         } else {
           // Connected account but not configured (no location selected yet).
@@ -716,6 +716,6 @@ try {
 
     return NextResponse.json(payload);
   } catch (e: unknown) {
-    return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
+    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
   }
 }

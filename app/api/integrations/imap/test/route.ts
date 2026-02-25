@@ -65,7 +65,7 @@ tls: process.env.NODE_ENV === "development"
   } catch (e: unknown) {
     // Don't leak provider/internal error details in production.
     const generic = "Test IMAP/SMTP impossible";
-    const detail = process.env.NODE_ENV === "development" ? (e?.message || generic) : undefined;
+    const detail = process.env.NODE_ENV === "development" ? ((e instanceof Error ? e.message : String(e)) || generic) : undefined;
     return NextResponse.json({ error: generic, detail }, { status: 400 });
   }
 }, { route: "/api/integrations/imap/test" });

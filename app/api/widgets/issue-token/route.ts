@@ -220,7 +220,7 @@ const handler = async (_req: Request) => {
   } catch (e: unknown) {
     // We can't reliably know the correct origin in this catch (it may have failed before parsing),
     // so keep CORS conservative.
-    return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500, headers: corsHeaders(null) });
+    return NextResponse.json({ ok: false, error: (e instanceof Error ? e.message : String(e)) || "Server error" }, { status: 500, headers: corsHeaders(null) });
   }
 };
 

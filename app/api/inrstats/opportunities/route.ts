@@ -25,6 +25,16 @@ function safeNumber(n: unknown, fallback = 0): number {
   return v;
 }
 
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+}
+
+function safeErrorMessage(e: unknown, fallback = "Unknown error") {
+  if (e instanceof Error && typeof e.message === "string" && e.message.trim()) return e.message;
+  const s = String(e ?? "").trim();
+  return s || fallback;
+}
+
 function isIntentQuery(q: string) {
   const s = (q || "").toLowerCase();
   return (
@@ -52,31 +62,32 @@ function pageKind(path: string) {
 }
 
 function computeOpportunities(overview: OverviewResponse): { perDay: number; confidence: OpportunitiesResult["confidence"]; debug: Record<string, unknown> } {
-  const baseDays = Math.max(1, safeNumber(overview?.days, 28));
+  const ov = asRecord(overview);
+  const baseDays = Math.max(1, safeNumber(ov["days"], 28));
 
-  const totals = overview?.totals || {};
-  const sessions = safeNumber(totals.sessions);
-  const pageviews = safeNumber(totals.pageviews);
-  const clicks = safeNumber(totals.clicks);
-  const engagementRate = clamp(safeNumber(totals.engagementRate, 0.45), 0, 1);
-  const avgSessionDurationSec = clamp(safeNumber(totals.avgSessionDuration, 110), 10, 600);
+  const totals = asRecord(ov["totals"]);
+  const sessions = safeNumber(totals["sessions"]);
+  const pageviews = safeNumber(totals["pageviews"]);
+  const clicks = safeNumber(totals["clicks"]);
+  const engagementRate = clamp(safeNumber(totals["engagementRate"], 0.45), 0, 1);
+  const avgSessionDurationSec = clamp(safeNumber(totals["avgSessionDuration"], 110), 10, 600);
 
   // GA4 traffic mix: direct share is a proxy for notoriety / bouche-à-oreille / lien partagé.
-  const channels: Array<{ name: string; sessions: number }> = Array.isArray(overview?.channels) ? overview.channels : [];
+  const channels: Array<{ name: string; sessions: number }> = Array.isArray(ov["channels"]) ? (ov["channels"] as Array<{ name: string; sessions: number }>) : [];
   const direct = channels.find((c) => (c?.name || "").toLowerCase().includes("direct"));
   const directSessions = safeNumber(direct?.sessions);
   const directShare = sessions > 0 ? clamp(directSessions / sessions, 0, 1) : 0;
 
   // GSC business intent: queries that look like someone who wants a quote / price / nearby.
-  const topQueries: Array<{ query: string; clicks?: number; impressions?: number }> = Array.isArray(overview?.topQueries)
-    ? overview.topQueries
+  const topQueries: Array<{ query: string; clicks?: number; impressions?: number }> = Array.isArray(ov["topQueries"])
+    ? (ov["topQueries"] as Array<{ query: string; clicks?: number; impressions?: number }>)
     : [];
   const intentClicks = topQueries
     .filter((q) => isIntentQuery(q?.query || ""))
     .reduce((sum, q) => sum + safeNumber(q?.clicks), 0);
 
   // High-value pages (contact, pricing, service) increase opportunity potential.
-  const topPages: Array<{ path: string; views: number }> = Array.isArray(overview?.topPages) ? overview.topPages : [];
+  const topPages: Array<{ path: string; views: number }> = Array.isArray(ov["topPages"]) ? (ov["topPages"] as Array<{ path: string; views: number }>) : [];
   const pageWeight = topPages.reduce((sum, p) => {
     const kind = pageKind(p?.path || "");
     const v = safeNumber(p?.views);
@@ -88,39 +99,39 @@ function computeOpportunities(overview: OverviewResponse): { perDay: number; con
 
   // Boosts for connected acquisition channels (GMB / Facebook / Instagram / LinkedIn)
   // /api/stats/overview exposes connection state + (when available) channel metrics under `sources.*.metrics`.
-  const sourcesStatus = overview?.sources || {};
-  const gmbMetricsTotals = sourcesStatus?.gmb?.metrics?.totals || {};
-  const fbMetricsTotals = sourcesStatus?.facebook?.metrics?.totals || {};
-  const igMetricsTotals = sourcesStatus?.instagram?.metrics?.totals || {};
-  const liMetricsTotals = sourcesStatus?.linkedin?.metrics?.totals || {};
+  const sourcesStatus = asRecord(ov["sources"]);
+  const gmbMetricsTotals = asRecord(asRecord(asRecord(sourcesStatus["gmb"])["metrics"])["totals"]);
+  const fbMetricsTotals = asRecord(asRecord(asRecord(sourcesStatus["facebook"])["metrics"])["totals"]);
+  const igMetricsTotals = asRecord(asRecord(asRecord(sourcesStatus["instagram"])["metrics"])["totals"]);
+  const liMetricsTotals = asRecord(asRecord(asRecord(sourcesStatus["linkedin"])["metrics"])["totals"]);
 
   // Turn social/local actions into a comparable "intent" signal.
   // The weights are intentionally conservative to avoid overestimating.
   const gmbActions =
-    safeNumber(gmbMetricsTotals.websiteClicks) +
-    safeNumber(gmbMetricsTotals.callClicks) +
-    safeNumber(gmbMetricsTotals.directions) +
-    safeNumber(gmbMetricsTotals.directionRequests) +
-    safeNumber(gmbMetricsTotals.website_clicks) +
-    safeNumber(gmbMetricsTotals.call_clicks);
+    safeNumber(gmbMetricsTotals["websiteClicks"]) +
+    safeNumber(gmbMetricsTotals["callClicks"]) +
+    safeNumber(gmbMetricsTotals["directions"]) +
+    safeNumber(gmbMetricsTotals["directionRequests"]) +
+    safeNumber(gmbMetricsTotals["website_clicks"]) +
+    safeNumber(gmbMetricsTotals["call_clicks"]);
 
   const fbActions =
-    safeNumber(fbMetricsTotals.page_website_clicks_logged_in_unique) +
-    safeNumber(fbMetricsTotals.page_call_phone_clicks_logged_in_unique) +
-    safeNumber(fbMetricsTotals.page_get_directions_clicks_logged_in_unique) +
-    safeNumber(fbMetricsTotals.page_engaged_users) * 0.05 +
-    safeNumber(fbMetricsTotals.page_views_total) * 0.02;
+    safeNumber(fbMetricsTotals["page_website_clicks_logged_in_unique"]) +
+    safeNumber(fbMetricsTotals["page_call_phone_clicks_logged_in_unique"]) +
+    safeNumber(fbMetricsTotals["page_get_directions_clicks_logged_in_unique"]) +
+    safeNumber(fbMetricsTotals["page_engaged_users"]) * 0.05 +
+    safeNumber(fbMetricsTotals["page_views_total"]) * 0.02;
 
   const igActions =
-    safeNumber(igMetricsTotals.website_clicks) +
-    safeNumber(igMetricsTotals.phone_call_clicks) +
-    safeNumber(igMetricsTotals.email_contacts) +
-    safeNumber(igMetricsTotals.get_direction_clicks) +
-    safeNumber(igMetricsTotals.profile_views) * 0.05;
+    safeNumber(igMetricsTotals["website_clicks"]) +
+    safeNumber(igMetricsTotals["phone_call_clicks"]) +
+    safeNumber(igMetricsTotals["email_contacts"]) +
+    safeNumber(igMetricsTotals["get_direction_clicks"]) +
+    safeNumber(igMetricsTotals["profile_views"]) * 0.05;
 
   const liActions =
-    safeNumber(liMetricsTotals.clickCount) +
-    (safeNumber(liMetricsTotals.likeCount) + safeNumber(liMetricsTotals.commentCount) + safeNumber(liMetricsTotals.shareCount)) * 0.15;
+    safeNumber(liMetricsTotals["clickCount"]) +
+    (safeNumber(liMetricsTotals["likeCount"]) + safeNumber(liMetricsTotals["commentCount"]) + safeNumber(liMetricsTotals["shareCount"])) * 0.15;
 
   const channelActionsPerDay = (gmbActions + fbActions + igActions + liActions) / baseDays;
 
@@ -254,7 +265,7 @@ export async function GET(request: Request) {
     return NextResponse.json(result);
   } catch (e: unknown) {
     return NextResponse.json(
-      { error: "inrstats_opportunities_failed", message: e?.message || String(e) },
+      { error: "inrstats_opportunities_failed", message: safeErrorMessage(e) },
       { status: 500 }
     );
   }

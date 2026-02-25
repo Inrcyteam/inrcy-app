@@ -195,7 +195,7 @@ export async function GET(req: Request) {
     return res;
   } catch (e: unknown) {
     // No stack traces to clients in production.
-    const message = e?.message || "Server error";
+    const message = (e instanceof Error ? e.message : String(e)) || "Server error";
     const body = process.env.NODE_ENV === "production" ? { error: "Server error" } : { error: "Unhandled exception", message };
     return NextResponse.json(body, { status: 500 });
   }

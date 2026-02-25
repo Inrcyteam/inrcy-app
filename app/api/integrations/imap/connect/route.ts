@@ -102,7 +102,7 @@ const handler = async (req: Request) => {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, id: data?.id });
   } catch (e: unknown) {
-    const msg = e?.message || "Connexion impossible";
+    const msg = (e instanceof Error ? e.message : String(e)) || "Connexion impossible";
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 };
