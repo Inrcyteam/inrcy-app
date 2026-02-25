@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken as _encryptToken } from "@/lib/oauthCrypto";
 import { gmbListAccounts } from "@/lib/googleBusiness";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { asRecord } from "@/lib/tsSafe";
 
 type TokenResponse = {
   access_token?: string;
@@ -84,7 +85,8 @@ export async function GET(req: Request) {
     // We use NEXT_PUBLIC_SITE_URL as the canonical base URL to redirect back to.
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
 
-    const returnToPath = safeReturnTo(state?.returnTo, siteUrl);
+    const st = asRecord(state);
+    const returnToPath = safeReturnTo(st["returnTo"], siteUrl);
 
     const clientId = process.env.GOOGLE_CLIENT_ID!;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;

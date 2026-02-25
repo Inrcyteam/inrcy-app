@@ -343,17 +343,18 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Invalid state" }, { status: 400 });
     }
 
-    const source = state?.source;
-    const product = state?.product;
-    const returnTo = state?.returnTo || "/dashboard";
-    const mode = state?.mode || "";
-    const domainFromState = (state?.domain || "") as string;
-    const siteUrlFromState = (state?.siteUrl || "") as string;
+    const st = asRecord(state);
+    const source = asString(st["source"]);
+    const product = asString(st["product"]);
+    const returnTo = asString(st["returnTo"]) || "/dashboard";
+    const mode = asString(st["mode"]);
+    const domainFromState = asString(st["domain"]);
+    const siteUrlFromState = asString(st["siteUrl"]);
 
-    if (!ALLOWED_SOURCES.includes(source)) {
+    if (!(ALLOWED_SOURCES as readonly string[]).includes(source)) {
       return NextResponse.json({ error: "Invalid state.source" }, { status: 400 });
     }
-    if (!ALLOWED_PRODUCTS.includes(product)) {
+    if (!(ALLOWED_PRODUCTS as readonly string[]).includes(product)) {
       return NextResponse.json({ error: "Invalid state.product" }, { status: 400 });
     }
 
