@@ -97,9 +97,9 @@ function extractGmailTokens(account: AnyRec) {
   );
 
   const refreshTokenPlain = pickFirst<string>(
-    account.refresh_token,
-    account.refreshToken,
-    account.oauth_refresh_token
+    asString(account.refresh_token),
+    asString(account.refreshToken),
+    asString(account.oauth_refresh_token)
   );
 
   const expiresAt = pickFirst<string>(
