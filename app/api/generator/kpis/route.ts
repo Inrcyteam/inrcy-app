@@ -303,7 +303,7 @@ export async function GET(req: Request) {
       error: authErr,
     } = await supabase.auth.getUser();
 
-    if (authErr) debug.errors.auth = authErr.message;
+    if (authErr) (debug.errors as Record<string, string>)["auth"] = authErr.message;
     if (!user) {
       return NextResponse.json(
         { error: "Unauthorized", debug: process.env.NODE_ENV === "development" ? debug : undefined },
