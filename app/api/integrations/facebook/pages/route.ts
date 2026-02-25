@@ -48,7 +48,7 @@ export async function GET() {
     const pages = (resp.data || []).filter((p) => p?.id);
 
     return NextResponse.json({ pages });
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
   }
 }

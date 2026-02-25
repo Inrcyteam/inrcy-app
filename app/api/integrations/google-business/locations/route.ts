@@ -22,14 +22,14 @@ export async function GET(req: Request) {
     if (accountName) {
       try {
         locations = await gmbListLocationsWithFallback(tok.accessToken, accountName);
-      } catch (e: Record<string, unknown>) {
+      } catch (e: unknown) {
         locationsError = e?.message || String(e);
         locations = [];
       }
     }
 
     return NextResponse.json({ accounts, accountName, locations, locationsError });
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
   }
 }

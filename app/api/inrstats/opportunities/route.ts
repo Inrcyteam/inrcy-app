@@ -252,7 +252,7 @@ export async function GET(request: Request) {
     };
 
     return NextResponse.json(result);
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json(
       { error: "inrstats_opportunities_failed", message: e?.message || String(e) },
       { status: 500 }

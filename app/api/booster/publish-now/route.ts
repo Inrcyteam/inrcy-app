@@ -13,7 +13,8 @@ import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
 type JsonRecord = Record<string, unknown>;
-const asRecord = (v: Record<string, unknown>): JsonRecord => (v && typeof v === "object" ? (v as JsonRecord) : {});
+const asRecord = (v: unknown): JsonRecord =>
+  v && typeof v === "object" && !Array.isArray(v) ? (v as JsonRecord) : {};
 const errMessage = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
 function slugify(input: string): string {
@@ -441,7 +442,7 @@ const body = await req.json().catch(() => null);
         }
 
         results[ch] = { ok: false, error: "unsupported_channel" };
-      } catch (e: Record<string, unknown>) {
+      } catch (e: unknown) {
         const msg = errMessage(e, "Erreur");
         await setDelivery(ch, { status: "failed", last_error: msg });
         results[ch] = { ok: false, error: msg };
@@ -474,7 +475,7 @@ const body = await req.json().catch(() => null);
       uploadErrors,
       results,
     });
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: errMessage(e, "Erreur") }, { status: 500 });
   }
 }

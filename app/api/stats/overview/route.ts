@@ -447,7 +447,7 @@ sourcesStatus.facebook.connected = !!fbRow;
             start,
             end
           );
-        } catch (e: Record<string, unknown>) {
+        } catch (e: unknown) {
           sourcesStatus.facebook.metrics = { error: e?.message || "facebook insights fetch failed" };
         }
       } else {
@@ -505,7 +505,7 @@ sourcesStatus.instagram.connected = !!igRow?.resource_id;
             start,
             end
           );
-        } catch (e: Record<string, unknown>) {
+        } catch (e: unknown) {
           sourcesStatus.instagram.metrics = { error: e?.message || "instagram insights fetch failed" };
         }
       } else {
@@ -569,7 +569,7 @@ sourcesStatus.linkedin.connected = !!liRow;
               end
             );
           }
-        } catch (e: Record<string, unknown>) {
+        } catch (e: unknown) {
           sourcesStatus.linkedin.metrics = { error: e?.message || "linkedin analytics fetch failed" };
         }
       } else {
@@ -655,7 +655,7 @@ sourcesStatus.gmb.connected = !!gmbRow?.resource_id;
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           try {
             sourcesStatus.gmb.metrics = await gmbFetchDailyMetrics(accessToken, loc, start, end);
-          } catch (e: Record<string, unknown>) {
+          } catch (e: unknown) {
             sourcesStatus.gmb.metrics = { error: e?.message || "performance fetch failed", location: loc };
           }
         } else {
@@ -712,7 +712,7 @@ try {
 } catch {}
 
     return NextResponse.json(payload);
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }

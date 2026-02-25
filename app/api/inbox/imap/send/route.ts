@@ -159,7 +159,7 @@ const html = String(formData.get("html") || "").trim();
     }
 
     return NextResponse.json({ success: true, id: info.messageId });
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json(
       { error: e?.message || "IMAP send failed" },
       { status: 500 }

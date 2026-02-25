@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 
 type JsonRecord = Record<string, unknown>;
-const asRecord = (v: Record<string, unknown>): JsonRecord => (v && typeof v === "object" ? (v as JsonRecord) : {});
+const asRecord = (v: unknown): JsonRecord =>
+  v && typeof v === "object" && !Array.isArray(v) ? (v as JsonRecord) : {};
 
 type EventRow = {
   type: "publish" | "review_mail" | "promo_mail";

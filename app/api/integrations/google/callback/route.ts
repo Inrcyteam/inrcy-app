@@ -193,7 +193,7 @@ export async function GET(req: Request) {
       maxAge: 0,
     });
     return res;
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     // No stack traces to clients in production.
     const message = e?.message || "Server error";
     const body = process.env.NODE_ENV === "production" ? { error: "Server error" } : { error: "Unhandled exception", message };

@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true, pageUrl });
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
   }
 }

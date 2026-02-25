@@ -178,7 +178,7 @@ const formData = await req.formData();
     }
 
     return NextResponse.json({ success: true });
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: "Internal server error", message: e?.message }, { status: 500 });
   }
 };

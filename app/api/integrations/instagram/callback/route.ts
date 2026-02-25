@@ -149,7 +149,7 @@ if (upsertErr) return NextResponse.json({ error: "DB upsert failed", upsertErr }
     finalUrl.searchParams.set("linked", "instagram");
     finalUrl.searchParams.set("ok", "1");
     return NextResponse.redirect(finalUrl);
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }

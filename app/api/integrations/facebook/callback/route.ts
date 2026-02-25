@@ -261,7 +261,7 @@ export async function GET(req: Request) {
     finalUrl.searchParams.set("ok", "1");
     if (!pages.length) finalUrl.searchParams.set("warning", "no_pages_or_no_permission");
     return clearStateCookie(NextResponse.redirect(finalUrl));
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }

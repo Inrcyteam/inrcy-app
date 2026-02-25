@@ -278,7 +278,7 @@ export async function GET(req: Request) {
       { ok: true, domain, user_id: userId, articles: articles || [] },
       { status: 200, headers: headersOk }
     );
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Server error" },
       { status: 500, headers: corsHeaders(req) }

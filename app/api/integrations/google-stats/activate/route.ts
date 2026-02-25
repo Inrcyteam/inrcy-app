@@ -370,7 +370,7 @@ let adminRefreshToken = "";
     } catch {}
 
     return NextResponse.json({ ok: true, ga4: ga4Resolved, gsc: { property: gscResolved } });
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }

@@ -295,7 +295,7 @@ export async function GET(req: Request) {
     const safe = async <T>(key: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
       try {
         return await fn();
-      } catch (e: Record<string, unknown>) {
+      } catch (e: unknown) {
         debug.errors[key] = e?.message ?? String(e);
         return fallback;
       }
@@ -339,7 +339,7 @@ export async function GET(req: Request) {
       },
       ...(includeDebug ? { debug } : {}),
     });
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     debug.errors.unhandled = e?.message ?? String(e);
     const includeDebug =
       process.env.NODE_ENV === "development" || req.headers.get("x-inrcy-debug") === "1";

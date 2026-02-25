@@ -90,7 +90,7 @@ export async function POST(req: Request) {
     await purgeStatsCache(supabase, userId);
 
     return NextResponse.json({ ok: true });
-  } catch (e: Record<string, unknown>) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
   }
 }
