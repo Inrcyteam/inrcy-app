@@ -2,6 +2,15 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { getGoogleTokenForAnyGoogle } from "@/lib/googleStats";
 import { testGmbConnectivity } from "@/lib/googleBusiness";
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+function asString(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return null;
+}
 
 export async function GET() {
   const supabase = await createSupabaseServer();
@@ -24,7 +33,7 @@ export async function GET() {
     // - accountConnected: OAuth token exists (the Google account is connected)
     // - configured: a specific Business Profile location has been selected
     // For the dashboard bubble, "connected" must mean "ready to fetch stats".
-    const accountConnected = !!data && (data as unknown).status === "connected";
+    const accountConnected = !!data && asRecord(data)["status"] === "connected";
     const configured = accountConnected && !!(data as unknown)?.resource_id;
     const connected = configured;
 

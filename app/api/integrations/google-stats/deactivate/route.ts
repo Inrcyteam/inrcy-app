@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+function asString(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return null;
+}
 
 // POST /api/integrations/google-stats/deactivate
 // Mode rented (Site iNrCy) : "Déconnecter le suivi"
@@ -83,7 +92,7 @@ export async function POST(req: Request) {
 
     const current = safeJsonParse<SiteSettings>((cfg as unknown)?.settings, {});
     const next: SiteSettings = { ...(current ?? {}) };
-    (next as unknown).inrcy_tracking_enabled = false;
+    asRecord(next)["inrcy_tracking_enabled"] = false;
 
     await supabase.from("inrcy_site_configs").upsert({ user_id: userId, settings: next }, { onConflict: "user_id" });
 

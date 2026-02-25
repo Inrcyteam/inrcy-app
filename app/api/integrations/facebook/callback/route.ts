@@ -3,6 +3,15 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+function asString(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return null;
+}
 
 type TokenResponse = {
   access_token?: string;
@@ -225,7 +234,7 @@ export async function GET(req: Request) {
       const { error: upErr } = await supabase
         .from("integrations")
         .update(payload)
-        .eq("id", (existing as unknown).id);
+        .eqasRecord("id", (existing)["id"]);
       if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
     } else {
       const { error: insErr } = await supabase.from("integrations").insert(payload);

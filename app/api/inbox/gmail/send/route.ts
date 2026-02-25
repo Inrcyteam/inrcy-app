@@ -3,6 +3,15 @@ import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 import { withApi } from "@/lib/observability/withApi";
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+function asString(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return null;
+}
 function toBase64Url(str: string) {
   return Buffer.from(str, "utf8")
     .toString("base64")
@@ -243,10 +252,10 @@ const handler = async (req: Request) => {
   // ... rest of file unchanged
 
   // ✅ tokens (chiffrés en DB)
-  const accessTokenEnc: string | null = (account as unknown).access_token_enc ?? null;
+  const accessTokenEnc: string | null = asString(asRecord(account)["access_token_enc"]);
   const accessTokenPlain = tryDecryptToken(accessTokenEnc);
 
-  const refreshTokenEnc: string | null = (account as unknown).refresh_token_enc ?? null;
+  const refreshTokenEnc: string | null = asString(asRecord(account)["refresh_token_enc"]);
   const refreshTokenPlain = tryDecryptToken(refreshTokenEnc);
 
   if (!accessTokenPlain) {

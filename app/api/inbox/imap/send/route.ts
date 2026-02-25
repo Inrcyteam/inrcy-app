@@ -7,6 +7,15 @@ import MailComposer from "nodemailer/lib/mail-composer";
 import { loadImapAccount } from "@/lib/imapAccount";
 import { appendRawMessage } from "@/lib/imapClient";
 import { withApi } from "@/lib/observability/withApi";
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+function asString(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return null;
+}
 
 // IMAP + SMTP require Node.js runtime (Edge runtime can't open raw TCP sockets)
 export const runtime = "nodejs";
@@ -43,7 +52,7 @@ const html = String(formData.get("html") || "").trim();
     const files = formData.getAll("files") as File[];
     const attachments = await Promise.all(
       (files || [])
-        .filter((f) => f && typeof (f as unknown).arrayBuffer === "function")
+        .filter((f) => f && typeof asRecord(f)["arrayBuffer"] === "function")
         .map(async (f) => {
           const ab = await f.arrayBuffer();
           return {

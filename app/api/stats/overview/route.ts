@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import type { StatsSourceKey } from "@/lib/googleStats";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+function asString(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return null;
+}
 
 // NOTE: We lazy-import internal libs inside the handler to avoid returning an HTML error page
 // when a dependency throws at module-evaluation time (e.g. cookies()/headers() scope issues).
@@ -252,7 +261,7 @@ try {
     .limit(1)
     .maybeSingle();
   if ((cacheHit as unknown)?.payload) {
-      const payload = (cacheHit as unknown).payload as unknown;
+      const payload = asRecord(cacheHit)["payload"] as unknown;
       // Rehydrate social connection flags to avoid stale/missing keys in cached payloads.
       try {
         const social = await fetchSocialStatus();
@@ -277,7 +286,7 @@ try {
     .maybeSingle();
 
   if ((legacyHit as unknown)?.charge_utile) {
-    const payload = (legacyHit as unknown).charge_utile as unknown;
+    const payload = asRecord(legacyHit)["charge_utile"] as unknown;
     // Rehydrate social connection flags to avoid stale/missing keys in legacy cached payloads.
     try {
       const social = await fetchSocialStatus();

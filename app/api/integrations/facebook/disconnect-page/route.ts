@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+function asString(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return null;
+}
 
 // Déconnecte uniquement la PAGE (laisse le compte Facebook OAuth connecté)
 export async function POST() {
@@ -23,10 +32,10 @@ export async function POST() {
   if (integErr) return NextResponse.json({ error: "DB error" }, { status: 500 });
   if (!integ) return NextResponse.json({ ok: true });
 
-  const meta = { ...(integ as unknown).meta };
-  delete (meta as unknown).page_url;
-  delete (meta as unknown).page_id;
-  delete (meta as unknown).page_access_token;
+  const meta = { ...asRecord(integ)["meta"] };
+  delete asRecord(meta)["page_url"];
+  delete asRecord(meta)["page_id"];
+  delete asRecord(meta)["page_access_token"];
 
   await supabase
     .from("integrations")
@@ -39,7 +48,7 @@ export async function POST() {
       meta,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", (integ as unknown).id);
+    .eqasRecord("id", (integ)["id"]);
 
   // Sync pro tools config
   try {
@@ -62,7 +71,7 @@ export async function POST() {
     await supabase
       .from("configurations_pro_tools")
       .update({ facebook: merged, updated_at: new Date().toISOString() })
-      .eq("id", (cfg as unknown).id);
+      .eqasRecord("id", (cfg)["id"]);
   } catch {
     // ignore
   }
