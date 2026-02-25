@@ -32,7 +32,18 @@ function num(v: unknown, fallback = 0) {
 
 function isExpired(expiresAt: unknown): boolean {
   if (!expiresAt) return true;
-  const t = new Date(expiresAt).getTime();
+
+  // Accept Date, ISO string, or timestamp (ms)
+  const v =
+    expiresAt instanceof Date
+      ? expiresAt
+      : typeof expiresAt === "string" || typeof expiresAt === "number"
+        ? new Date(expiresAt)
+        : null;
+
+  if (!v) return true;
+
+  const t = v.getTime();
   return Number.isNaN(t) || t <= Date.now() + 60_000;
 }
 
