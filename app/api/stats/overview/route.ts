@@ -314,15 +314,26 @@ try {
   // ignore
 }
 
+// --- GA4/GSC properties ---
+// iNrCy site settings live in `inrcy_site_configs.settings` (root ga4/gsc)
+const inrcyGa4 = asRecord(asRecord(inrcySettings)["ga4"]);
+const inrcyGsc = asRecord(asRecord(inrcySettings)["gsc"]);
+
+// Pro "site web" settings live in `pro_tools_configs.settings.site_web`
 const proSiteWeb = asRecord(asRecord(proSettings)["site_web"]);
-const proGa4 = asRecord(proSiteWeb["ga4"]);
-const proGsc = asRecord(proSiteWeb["gsc"]);
+const webGa4 = asRecord(proSiteWeb["ga4"]);
+const webGsc = asRecord(proSiteWeb["gsc"]);
 
 const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: string }> = [
   {
     key: "site_inrcy",
-    ga4Property: (String(proGa4["property_id"] ?? "").trim() || undefined),
-    gscProperty: (String(proGsc["property"] ?? "").trim() || undefined),
+    ga4Property: String(inrcyGa4["property_id"] ?? "").trim() || undefined,
+    gscProperty: String(inrcyGsc["property"] ?? "").trim() || undefined,
+  },
+  {
+    key: "site_web",
+    ga4Property: String(webGa4["property_id"] ?? "").trim() || undefined,
+    gscProperty: String(webGsc["property"] ?? "").trim() || undefined,
   },
 ];
 
