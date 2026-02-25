@@ -196,7 +196,11 @@ async function resolveGscFromDomain(accessToken: string, domain: string, siteUrl
   const rawEntries = Array.isArray(rec["siteEntry"]) ? rec["siteEntry"] : [];
   const entries: Array<{ siteUrl: string; permissionLevel?: string }> = rawEntries
     .map((e) => asRecord(e))
-    .map((e) => ({ siteUrl: asString(e["siteUrl"]) || "", permissionLevel: asString(e["permissionLevel"]) }))
+    .map((e) => {
+      const siteUrl = asString(e["siteUrl"]) || "";
+      const perm = asString(e["permissionLevel"]);
+      return perm ? { siteUrl, permissionLevel: perm } : { siteUrl };
+    })
     .filter((e) => Boolean(e.siteUrl));
 
   const wantedScDomain = `sc-domain:${domain}`;
