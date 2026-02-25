@@ -371,7 +371,7 @@ export async function GET(req: Request) {
     const includeDebug =
       process.env.NODE_ENV === "development" || req.headers.get("x-inrcy-debug") === "1";
     return NextResponse.json(
-      { error: debug.errors.unhandled, ...(includeDebug ? { debug } : {}) },
+      { error: (debug.errors as Record<string, string>)["unhandled"], ...(includeDebug ? { debug } : {}) },
       { status: 500 }
     );
   }
