@@ -4,7 +4,8 @@ import { requireUser } from "@/lib/requireUser";
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
 type JsonRecord = Record<string, unknown>;
-const asRecord = (v: Record<string, unknown>): JsonRecord => (v && typeof v === "object" ? (v as JsonRecord) : {});
+const asRecord = (v: unknown): JsonRecord =>
+  v && typeof v === "object" && !Array.isArray(v) ? (v as JsonRecord) : {};
 
 export async function GET() {
   try {
