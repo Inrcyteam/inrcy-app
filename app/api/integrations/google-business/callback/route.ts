@@ -3,7 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken as _encryptToken } from "@/lib/oauthCrypto";
 import { gmbListAccounts } from "@/lib/googleBusiness";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
-import { asRecord } from "@/lib/tsSafe";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 type TokenResponse = {
   access_token?: string;
@@ -165,7 +165,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "DB read existing failed", existingErr }, { status: 500 });
     }
 
-    const refreshTokenToStore = tokenData.refresh_token ?? (existing as unknown)?.refresh_token_enc ?? null;
+    const existingRec = asRecord(existing);
+    const existingRefresh = asString(existingRec["refresh_token_enc"]);
+    const existingId = asString(existingRec["id"]);
+
+    const refreshTokenToStore = tokenData.refresh_token ?? existingRefresh ?? null;
 
     const expiresAt =
       tokenData.expires_in != null
@@ -189,11 +193,11 @@ export async function GET(req: Request) {
       meta: { picture: userInfo.picture ?? null },
     };
 
-    if ((existing as unknown)?.id) {
+    if (existingId) {
       const { error: upErr } = await supabase
         .from("integrations")
         .update(payload)
-        .eq("id", (existing as Record<string, unknown>)?.id as string);
+        .eq("id", existingId);
       if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
     } else {
       const { error: insErr } = await supabase.from("integrations").insert(payload);
@@ -203,11 +207,12 @@ export async function GET(req: Request) {
     // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
     try {
       const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = (scRow as unknown)?.settings ?? {};
+      const current = asRecord(asRecord(scRow)["settings"]);
+      const currentGmb = asRecord(current["gmb"]);
       const merged = {
         ...current,
         gmb: {
-          ...(current?.gmb ?? {}),
+          ...currentGmb,
           connected: true,
           accountEmail: userInfo.email,
           accountDisplayName: userInfo.name ?? null,
