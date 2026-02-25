@@ -346,7 +346,7 @@ let adminRefreshToken = "";
     // ✅ On marque l'intégration comme connectée pour CE client,
     // sans jamais stocker le refresh_token admin sur son user_id.
     const nowIso = new Date().toISOString();
-    const base = {
+    const base: Record<string, unknown> = {
       user_id: authData.user.id,
       provider: "google",
       source: "site_inrcy",
@@ -357,7 +357,7 @@ let adminRefreshToken = "";
       expires_at: null,
       email_address: adminEmail,
       meta: { uses_admin: true },
-    } as unknown;
+    };
 
     // Upsert en deux temps (plus tolérant si la contrainte unique n'est pas présente)
     for (const product of ["ga4", "gsc"] as const) {
@@ -370,12 +370,13 @@ let adminRefreshToken = "";
         .eq("product", product)
         .maybeSingle();
 
-      const payload = { ...base, product } as unknown;
-      if ((existing as unknown)?.id) {
+      const payload: Record<string, unknown> = { ...base, product };
+      const existingId = asString(asRecord(existing)["id"]);
+      if (existingId) {
         await supabase
           .from("integrations")
           .update(payload)
-          .eq("id", (existing as Record<string, unknown>)?.id as string);
+          .eq("id", existingId);
       } else {
         await supabase.from("integrations").insert(payload);
       }
@@ -388,7 +389,7 @@ let adminRefreshToken = "";
       .eq("user_id", authData.user.id)
       .maybeSingle();
 
-    const current = safeJsonParse<SiteSettings>((cfg as unknown)?.settings, {});
+    const current = safeJsonParse<SiteSettings>(asRecord(cfg)["settings"], {});
     const next: SiteSettings = { ...(current ?? {}) };
     next.ga4 = {
       ...(next.ga4 ?? {}),
