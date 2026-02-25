@@ -91,8 +91,15 @@ async function fetchAllGa4Properties(accessToken: string) {
       if (pageToken) url.searchParams.set("pageToken", pageToken);
 
       const data = await gaAdminFetch<unknown>(accessToken, url.toString());
-      for (const p of data?.properties ?? []) props.push({ name: p?.name, displayName: p?.displayName });
-      pageToken = data?.nextPageToken;
+      const rec = asRecord(data);
+      const rawProps = Array.isArray(rec["properties"]) ? rec["properties"] : [];
+      for (const p of rawProps) {
+        const pr = asRecord(p);
+        const name = asString(pr["name"]);
+        if (!name) continue;
+        props.push({ name, displayName: asString(pr["displayName"]) ?? undefined });
+      }
+      pageToken = asString(rec["nextPageToken"]) ?? undefined;
       if (!pageToken) break;
     }
   }
@@ -116,7 +123,9 @@ async function fetchDataStreams(accessToken: string, propertyName: string) {
   });
   const data = (await res.json()) as unknown;
   if (!res.ok) return [];
-  return (data?.dataStreams ?? []) as unknown[];
+  const rec = asRecord(data);
+  const raw = Array.isArray(rec["dataStreams"]) ? rec["dataStreams"] : [];
+  return raw;
 }
 
 function normalizeDomainFromUrl(raw: string): string | null {
@@ -158,9 +167,11 @@ async function resolveGa4FromDomain(accessToken: string, domain: string) {
     if (!pid) continue;
     const streams = await fetchDataStreams(accessToken, p.name);
     for (const s of streams) {
-      if (String(s?.type || "").toUpperCase() !== "WEB_DATA_STREAM") continue;
-      const defaultUri = s?.webStreamData?.defaultUri;
-      const measurementId = s?.webStreamData?.measurementId;
+      const sr = asRecord(s);
+      if (String(asString(sr["type"]) || "").toUpperCase() !== "WEB_DATA_STREAM") continue;
+      const web = asRecord(sr["webStreamData"]);
+      const defaultUri = asString(web["defaultUri"]);
+      const measurementId = asString(web["measurementId"]) ?? undefined;
       if (!defaultUri) continue;
       const d = normalizeDomainFromUrl(String(defaultUri));
       if (!d) continue;
