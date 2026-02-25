@@ -28,7 +28,7 @@ function parseYMD(ymd: string) {
 function lastMonthlyAnniversary(start: Date, now: Date) {
   const day = start.getDate();
   const y = now.getFullYear();
-  const m = now.getMonth();
+  let m = now.getMonth();
 
   let cand = new Date(y, m, day);
 
