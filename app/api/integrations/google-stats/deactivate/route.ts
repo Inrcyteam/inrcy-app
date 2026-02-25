@@ -4,6 +4,12 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
+function asString(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return null;
+}
+
 // POST /api/integrations/google-stats/deactivate
 // Mode rented (Site iNrCy) : "Déconnecter le suivi"
 // - Marque l'intégration comme déconnectée pour l'utilisateur (ga4 + gsc)
@@ -44,8 +50,8 @@ export async function POST(req: Request) {
 
     const userId = authData.user.id;
 
-    const body = (await req.json().catch(() => ({}))) as unknown;
-    const source = String(body?.source || "site_inrcy");
+    const body = asRecord((await req.json().catch(() => ({}))) as unknown);
+    const source = asString(body["source"]) ?? "site_inrcy";
     if (source !== "site_inrcy") return NextResponse.json({ error: "Invalid source" }, { status: 400 });
 
     const { data: prof } = await supabase
@@ -86,7 +92,7 @@ export async function POST(req: Request) {
       .eq("user_id", userId)
       .maybeSingle();
 
-    const current = safeJsonParse<SiteSettings>((cfg as unknown)?.settings, {});
+    const current = safeJsonParse<SiteSettings>(asRecord(cfg)["settings"], {});
     const next: SiteSettings = { ...(current ?? {}) };
     asRecord(next)["inrcy_tracking_enabled"] = false;
 

@@ -237,21 +237,21 @@ export async function POST(req: Request) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-    const body = (await req.json().catch(() => ({}))) as unknown;
-    const source = String(body?.source || "site_inrcy");
+    const body = asRecord((await req.json().catch(() => ({}))) as unknown);
+    const source = asString(body["source"]) ?? "site_inrcy";
     if (source !== "site_inrcy") {
       return NextResponse.json({ error: "Invalid source" }, { status: 400 });
     }
 
     // siteUrl peut être fourni par le front ; sinon on le prend en DB
-    let siteUrl = String(body?.siteUrl || "").trim();
+    let siteUrl = String(asString(body["siteUrl"]) ?? "").trim();
     if (!siteUrl) {
       const { data: row } = await supabase
         .from("inrcy_site_configs")
         .select("site_url")
         .eq("user_id", authData.user.id)
         .maybeSingle();
-      siteUrl = String((row as unknown)?.site_url || "").trim();
+      siteUrl = String(asString(asRecord(row)["site_url"]) ?? "").trim();
     }
 
     const parsed = extractDomainFromUrl(siteUrl);
