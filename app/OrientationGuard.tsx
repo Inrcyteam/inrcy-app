@@ -35,6 +35,17 @@ export default function OrientationGuard() {
     };
   }, []);
 
+
+  // ✅ Logo: on tente png puis svg puis sans extension
+  const logoCandidates = [
+    "/logo-appli-inrcy.png",
+    "/logo-appli-inrcy.svg",
+    "/logo-appli-inrcy",
+  ];
+
+  const [logoIdx, setLogoIdx] = useState(0);
+  const logoSrc = logoCandidates[logoIdx] || logoCandidates[0];
+
   // ✅ Desktop large → jamais d’overlay
   if (!isMobileOrTablet) return null;
 
@@ -52,16 +63,6 @@ export default function OrientationGuard() {
     : "Pour une meilleure expérience, l’app fonctionne en vertical.";
 
   const badge = showLandscapeBlock ? "Paysage requis" : "Portrait requis";
-
-  // ✅ Logo: on tente png puis svg puis sans extension
-  const logoCandidates = [
-    "/logo-appli-inrcy.png",
-    "/logo-appli-inrcy.svg",
-    "/logo-appli-inrcy",
-  ];
-
-  const [logoIdx, setLogoIdx] = useState(0);
-  const logoSrc = logoCandidates[logoIdx] || logoCandidates[0];
 
   return (
     <div className={styles.overlay}>

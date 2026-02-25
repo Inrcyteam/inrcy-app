@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     const bodyText = renderWithContext(bodyOverride, ctx);
 
     return NextResponse.json({ subject, body_text: bodyText, ctx, links });
-  } catch (e) {
+  } catch (_e) {
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
 }

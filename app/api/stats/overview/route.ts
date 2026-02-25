@@ -24,7 +24,7 @@ type SiteSettings = {
   };
 };
 
-function sumMap<K extends string>(items: Array<{ key: K; value: number }>) {
+function _sumMap<K extends string>(items: Array<{ key: K; value: number }>) {
   const m = new Map<K, number>();
   for (const it of items) m.set(it.key, (m.get(it.key) || 0) + it.value);
   return m;

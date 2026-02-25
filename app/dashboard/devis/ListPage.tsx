@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import styles from "../_documents/documents.module.css";
 import {
@@ -25,15 +25,11 @@ type Row = DocRecord & { totals: ReturnType<typeof calcTotalsWithDiscount> };
 
 export default function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
   const router = useRouter();
-  const [docs, setDocs] = useState<DocRecord[]>([]);
+  const [docs, setDocs] = useState<DocRecord[]>(() => loadDocs().filter((d) => d.kind === kind));
 
   const refresh = useCallback(() => {
     setDocs(loadDocs().filter((d) => d.kind === kind));
   }, [kind]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   const rows: Row[] = useMemo(() => {
     return docs.map((d) => ({

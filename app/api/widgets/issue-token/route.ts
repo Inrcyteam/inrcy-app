@@ -40,7 +40,7 @@ function sign(payload: PayloadV1, secret: string) {
   return `${body}.${sig}`;
 }
 
-function originHost(req: Request): string {
+function originHost(_req: Request): string {
   const origin = req.headers.get("origin") || "";
   if (origin) {
     try {
@@ -50,12 +50,12 @@ function originHost(req: Request): string {
   return "";
 }
 
-function requestHost(req: Request): string {
+function requestHost(_req: Request): string {
   const h = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "").trim();
   return h.toLowerCase().replace(/^www\./, "");
 }
 
-function requestProto(req: Request): string {
+function requestProto(_req: Request): string {
   return (req.headers.get("x-forwarded-proto") || "https").trim();
 }
 
@@ -81,12 +81,12 @@ function corsHeaders(allowOrigin: string | null) {
   } as Record<string, string>;
 }
 
-export async function OPTIONS(req: Request) {
+export async function OPTIONS(_req: Request) {
   // Preflight: we don't know the domain yet, answer with "null".
   return new NextResponse(null, { status: 204, headers: corsHeaders(null) });
 }
 
-const handler = async (req: Request) => {
+const handler = async (_req: Request) => {
   try {
     const secret = process.env.INRCY_WIDGETS_SIGNING_SECRET;
     if (!secret) {
@@ -108,7 +108,7 @@ const handler = async (req: Request) => {
     // - For embedded widgets: Origin must match the target domain.
     // - For the dashboard: allow explicit origins from env var INRCY_WIDGET_ALLOWED_ORIGINS.
     const origin = req.headers.get("origin");
-    const originH = originHost(req);
+    const originH = originHost(_req);
     const allowedOrigins = parseAllowedOrigins();
 
     // Dashboard calls (Origin in allowlist)
@@ -122,8 +122,8 @@ const handler = async (req: Request) => {
     // If Origin is missing (e.g., direct navigation or some same-origin calls), allow only if
     // the request host itself is on the allowlist.
     if (!allowOrigin && !origin) {
-      const h = requestHost(req);
-      const proto = requestProto(req);
+      const h = requestHost(_req);
+      const proto = requestProto(_req);
       const effective = h ? `${proto}://${h}` : null;
       if (isAllowedOrigin(effective, allowedOrigins)) {
         allowOrigin = null; // Not needed for navigation; keep CORS conservative.
@@ -137,7 +137,7 @@ const handler = async (req: Request) => {
     }
 
     // Rate-limit early (IP-based) to protect against anonymous abuse.
-    const ip = getClientIp(req);
+    const ip = getClientIp(_req);
     const ipLimit = await enforceRateLimit({
       name: "widgets_issue_token_ip",
       identifier: `${ip}:${domain}:${source}`,

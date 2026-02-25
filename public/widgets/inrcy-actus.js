@@ -9,7 +9,7 @@
       var host = (url.hostname || "").toLowerCase();
       host = host.replace(/^www\./, "");
       return host;
-    } catch (e) {
+    } catch (_e) {
       return raw
         .toLowerCase()
         .replace(/^https?:\/\//i, "")
@@ -35,7 +35,7 @@
     if (src) {
       try {
         return new URL(src).origin;
-      } catch (e) {}
+      } catch (_e) {}
     }
     return "https://app.inrcy.com";
   }
@@ -64,7 +64,7 @@
     try {
       var d = new Date(iso);
       return d.toLocaleDateString("fr-FR", { year: "numeric", month: "long", day: "numeric" });
-    } catch (e) {
+    } catch (_e) {
       return "";
     }
   }
@@ -186,7 +186,7 @@
           .catch(function (err) {
             showError(container, "Widget iNrCy : impossible de charger les actus (" + escapeHtml(String(err && err.message ? err.message : err)) + ").");
           });
-      } catch (e) {
+      } catch (_e) {
         showError(container, "Widget iNrCy : erreur d'initialisation.");
       }
     })(containers[i]);

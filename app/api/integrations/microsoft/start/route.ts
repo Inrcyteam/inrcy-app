@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
  * Démarre l'OAuth Microsoft (Outlook/Hotmail/Office365) via Microsoft Identity Platform v2.
  * On utilise /common pour supporter comptes perso + org.
  */
-export async function GET(req: Request) {
+export async function GET(_req: Request) {
   const clientId = process.env.MICROSOFT_CLIENT_ID;
   const redirectUri = process.env.MICROSOFT_REDIRECT_URI;
 

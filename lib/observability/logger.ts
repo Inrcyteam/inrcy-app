@@ -23,7 +23,6 @@ function emit(level: LogLevel, msg: string, ctx: LogContext = {}) {
   };
 
   // Vercel logs: JSON is easiest to filter.
-  // eslint-disable-next-line no-console
   console.log(JSON.stringify(payload));
 }
 

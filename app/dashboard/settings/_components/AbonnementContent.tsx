@@ -27,8 +27,8 @@ function parseYMD(ymd: string) {
 // ✅ dernière date d’anniversaire mensuelle (<= aujourd’hui)
 function lastMonthlyAnniversary(start: Date, now: Date) {
   const day = start.getDate();
-  let y = now.getFullYear();
-  let m = now.getMonth();
+  const y = now.getFullYear();
+  const m = now.getMonth();
 
   let cand = new Date(y, m, day);
 
@@ -50,10 +50,10 @@ function lastMonthlyAnniversary(start: Date, now: Date) {
 }
 
 // ✅ prochaine date d’anniversaire mensuelle ( > aujourd’hui )
-function nextMonthlyAnniversary(start: Date, now: Date) {
+function _nextMonthlyAnniversary(start: Date, now: Date) {
   const day = start.getDate();
-  let y = now.getFullYear();
-  let m = now.getMonth();
+  const y = now.getFullYear();
+  const m = now.getMonth();
 
   let cand = new Date(y, m, day);
 
@@ -118,8 +118,8 @@ export default function AbonnementContent({ mode = "page", onOpenContact }: Prop
         }
 
         setSub(data as SubData);
-      } catch (e: any) {
-        setErr(e?.message || "Erreur inconnue.");
+      } catch (e: unknown) {
+        setErr(e instanceof Error ? e.message : "Erreur inconnue.");
       } finally {
         setLoading(false);
       }

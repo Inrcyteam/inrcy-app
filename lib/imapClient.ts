@@ -86,7 +86,7 @@ async function resolveMailbox(client: ImapFlow, folder: string): Promise<string>
 
 export async function withImap<T>(
   cfg: ImapConfig,
-  fn: (client: ImapFlow) => Promise<T>
+  fn: (_client: ImapFlow) => Promise<T>
 ): Promise<T> {
   const client = new ImapFlow({
     host: cfg.host,
