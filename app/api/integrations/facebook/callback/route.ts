@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 type TokenResponse = {
   access_token?: string;
@@ -41,7 +42,9 @@ async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   const data = (await res.json()) as unknown;
   if (!res.ok) {
-    const msg = data?.error?.message || `HTTP ${res.status}`;
+    const rec = asRecord(data);
+    const err = asRecord(rec["error"]);
+    const msg = asString(err["message"]) || `HTTP ${res.status}`;
     throw new Error(msg);
   }
   return data as T;

@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 type FbPage = { id: string; name?: string; access_token?: string };
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   const data = (await res.json()) as unknown;
-  if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const rec = asRecord(data);
+    const err = asRecord(rec["error"]);
+    throw new Error(asString(err["message"]) || `HTTP ${res.status}`);
+  }
   return data as T;
 }
 

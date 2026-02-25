@@ -6,6 +6,12 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
+function asString(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return null;
+}
+
 // POST /api/integrations/google-stats/activate
 // Utilisé principalement en mode "rented" pour Site iNrCy :
 // - Si un refresh_token Google est déjà présent en DB (integrations), on rafraîchit l'access_token
@@ -57,7 +63,9 @@ async function gaAdminFetch<T>(accessToken: string, url: string): Promise<T> {
   });
   const data = (await res.json()) as unknown;
   if (!res.ok) {
-    throw new Error(`GA4 Admin request failed: ${data?.error?.message || "unknown"}`);
+    const rec = asRecord(data);
+    const err = asRecord(rec["error"]);
+    throw new Error(`GA4 Admin request failed: ${asString(err["message"]) || "unknown"}`);
   }
   return data as T;
 }
@@ -175,9 +183,13 @@ async function resolveGscFromDomain(accessToken: string, domain: string, siteUrl
     cache: "no-store",
   });
   const data = (await res.json()) as unknown;
-  if (!res.ok) throw new Error(`GSC sites.list failed: ${data?.error?.message || "unknown"}`);
+  const rec = asRecord(data);
+  if (!res.ok) {
+    const err = asRecord(rec["error"]);
+    throw new Error(`GSC sites.list failed: ${asString(err["message"]) || "unknown"}`);
+  }
 
-  const entries: Array<{ siteUrl: string }> = data?.siteEntry ?? [];
+  const entries: Array<{ siteUrl: string }> = Array.isArray(rec["siteEntry"]) ? (rec["siteEntry"] as any) : [];
   const wantedScDomain = `sc-domain:${domain}`;
   const exactScDomain = entries.find((e) => String(e.siteUrl).toLowerCase() === wantedScDomain.toLowerCase());
   if (exactScDomain) return exactScDomain.siteUrl;

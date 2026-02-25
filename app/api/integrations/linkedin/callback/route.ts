@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 async function postForm(url: string, form: Record<string, string>) {
   const res = await fetch(url, {
@@ -10,9 +11,12 @@ async function postForm(url: string, form: Record<string, string>) {
     body: new URLSearchParams(form).toString(),
     cache: "no-store",
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error_description || data?.error || `HTTP ${res.status}`);
-  return data;
+  const data: unknown = await res.json().catch(() => ({}));
+  const rec = asRecord(data);
+  if (!res.ok) {
+    throw new Error(asString(rec["error_description"]) || asString(rec["error"]) || `HTTP ${res.status}`);
+  }
+  return rec;
 }
 
 async function fetchJson(url: string, accessToken: string) {
@@ -20,9 +24,12 @@ async function fetchJson(url: string, accessToken: string) {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
-  return data;
+  const data: unknown = await res.json().catch(() => ({}));
+  const rec = asRecord(data);
+  if (!res.ok) {
+    throw new Error(asString(rec["message"]) || asString(rec["error"]) || `HTTP ${res.status}`);
+  }
+  return rec;
 }
 
 export async function GET(req: Request) {
@@ -43,7 +50,8 @@ export async function GET(req: Request) {
     }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
-    const returnTo = state?.returnTo || "/dashboard?panel=linkedin";
+    const st = asRecord(state);
+    const returnTo = asString(st["returnTo"]) || "/dashboard?panel=linkedin";
 
     if (!code) {
       const finalUrl = new URL(returnTo, siteUrl);

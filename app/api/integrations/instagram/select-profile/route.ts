@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   const data = (await res.json()) as unknown;
-  if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const rec = asRecord(data);
+    const err = asRecord(rec["error"]);
+    throw new Error(asString(err["message"]) || `HTTP ${res.status}`);
+  }
   return data as T;
 }
 
@@ -19,7 +24,8 @@ export async function POST(req: Request) {
   if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => null);
-  const pageId = String(body?.pageId || "");
+  const bodyRec = asRecord(body);
+  const pageId = String(bodyRec["pageId"] || "");
   if (!pageId) return NextResponse.json({ error: "Missing pageId" }, { status: 400 });
 
   const { data: rows } = await supabase
@@ -34,8 +40,9 @@ export async function POST(req: Request) {
     .limit(1);
 
   const row = (rows?.[0] as unknown) ?? null;
-const userTokenRaw = String((row as unknown)?.access_token_enc || "");
-    const userToken = tryDecryptToken(userTokenRaw) || "";
+  const rowRec = asRecord(row);
+  const userTokenRaw = String(rowRec["access_token_enc"] || "");
+  const userToken = tryDecryptToken(userTokenRaw) || "";
   if (!userToken) return NextResponse.json({ error: "Instagram account not connected" }, { status: 400 });
 
   // Get pages + tokens
@@ -53,9 +60,10 @@ const userTokenRaw = String((row as unknown)?.access_token_enc || "");
     access_token: userToken,
   }).toString()}`;
   const info = await fetchJson<unknown>(infoUrl);
-  const ig = info?.instagram_business_account;
-  const igId = String(ig?.id || "");
-  const username = String(ig?.username || "");
+  const infoRec = asRecord(info);
+  const ig = asRecord(infoRec["instagram_business_account"]);
+  const igId = String(asString(ig["id"]) || "");
+  const username = String(asString(ig["username"]) || "");
   if (!igId) return NextResponse.json({ error: "Aucun Instagram Business relié à cette page" }, { status: 400 });
 
   // Update integration: now connected + store page token for publishing
@@ -78,11 +86,13 @@ const userTokenRaw = String((row as unknown)?.access_token_enc || "");
   // Mirror in pro_tools_configs
   try {
     const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
-    const current = (scRow as unknown)?.settings ?? {};
+    const scRec = asRecord(scRow);
+    const current = asRecord(scRec["settings"]);
+    const currentIg = asRecord(current["instagram"]);
     const merged = {
       ...current,
       instagram: {
-        ...(current?.instagram ?? {}),
+        ...currentIg,
         accountConnected: true,
         connected: true,
         username: username || null,

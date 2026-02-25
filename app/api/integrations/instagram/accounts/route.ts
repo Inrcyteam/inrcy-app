@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   const data = (await res.json()) as unknown;
-  if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const rec = asRecord(data);
+    const err = asRecord(rec["error"]);
+    throw new Error(asString(err["message"]) || `HTTP ${res.status}`);
+  }
   return data as T;
 }
 
@@ -30,7 +35,8 @@ export async function GET() {
     .limit(1);
 
   const row = (rows?.[0] as unknown) ?? null;
-  const tokRaw = String((row as unknown)?.access_token_enc || "");
+  const rowRec = asRecord(row);
+  const tokRaw = String(rowRec["access_token_enc"] || "");
   const tok = tryDecryptToken(tokRaw);
   if (!tok) return NextResponse.json({ error: "Instagram account not connected" }, { status: 400 });
 
@@ -50,13 +56,15 @@ export async function GET() {
           access_token: tok,
         }).toString()}`;
         const info = await fetchJson<unknown>(infoUrl);
-        const ig = info?.instagram_business_account;
-        if (!ig?.id) return null;
+        const infoRec = asRecord(info);
+        const ig = asRecord(infoRec["instagram_business_account"]);
+        const igId = asString(ig["id"]);
+        if (!igId) return null;
         return {
           page_id: p.id,
           page_name: p.name || null,
-          ig_id: String(ig.id),
-          username: String(ig.username || ""),
+          ig_id: igId,
+          username: String(asString(ig["username"]) || ""),
           page_access_token: p.access_token || null,
         };
       } catch {

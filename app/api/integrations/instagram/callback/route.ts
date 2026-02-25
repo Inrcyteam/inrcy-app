@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 type TokenResponse = {
   access_token?: string;
@@ -12,7 +13,11 @@ type TokenResponse = {
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   const data = (await res.json()) as unknown;
-  if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const rec = asRecord(data);
+    const err = asRecord(rec["error"]);
+    throw new Error(asString(err["message"]) || `HTTP ${res.status}`);
+  }
   return data as T;
 }
 
@@ -35,7 +40,8 @@ export async function GET(req: Request) {
     }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
-    const returnTo = state?.returnTo || "/dashboard?panel=instagram";
+    const st = asRecord(state);
+    const returnTo = asString(st["returnTo"]) || "/dashboard?panel=instagram";
 
     if (!code) {
       const finalUrl = new URL(returnTo, siteUrl);

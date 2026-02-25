@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken as _encryptToken } from "@/lib/oauthCrypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 type TokenResponse = {
   access_token?: string;
@@ -51,7 +52,9 @@ async function gaAdminFetch<T>(accessToken: string, url: string): Promise<T> {
   });
   const data = (await res.json()) as unknown;
   if (!res.ok) {
-    throw new Error(`GA4 Admin request failed: ${data?.error?.message || "unknown"}`);
+    const rec = asRecord(data);
+    const err = asRecord(rec["error"]);
+    throw new Error(`GA4 Admin request failed: ${asString(err["message"]) || "unknown"}`);
   }
   return data as T;
 }
@@ -173,11 +176,13 @@ async function resolveGscFromDomain(accessToken: string, domain: string, siteUrl
   });
 
   const data = (await res.json()) as unknown;
+  const rec = asRecord(data);
   if (!res.ok) {
-    throw new Error(`GSC sites.list failed: ${data?.error?.message || "unknown"}`);
+    const err = asRecord(rec["error"]);
+    throw new Error(`GSC sites.list failed: ${asString(err["message"]) || "unknown"}`);
   }
 
-  const entries: Array<{ siteUrl: string; permissionLevel?: string }> = data?.siteEntry ?? [];
+  const entries: Array<{ siteUrl: string; permissionLevel?: string }> = Array.isArray(rec["siteEntry"]) ? (rec["siteEntry"] as any) : [];
 
   const wantedScDomain = `sc-domain:${domain}`;
   const exactScDomain = entries.find((e) => String(e.siteUrl).toLowerCase() === wantedScDomain.toLowerCase());
