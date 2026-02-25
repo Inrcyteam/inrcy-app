@@ -65,7 +65,7 @@ export async function POST(req: Request) {
     } else {
       const _payloadRec = asRecord(payload);
       const report = _payloadRec["csp-report"] ?? _payloadRec["report"] ?? _payloadRec;
-      summaries = [normalize(report)];
+      summaries = [normalize(asRecord(report))];
     }
 
     const compact = {
