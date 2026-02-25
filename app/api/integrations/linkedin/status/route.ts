@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 export async function GET() {
   const supabase = await createSupabaseServer();
@@ -22,13 +23,17 @@ export async function GET() {
     .limit(1);
 
   const row = (rows?.[0] as unknown) ?? null;
-const accountConnected = (row as unknown)?.status === "connected";
-  const connected = (row as unknown)?.status === "connected";
+  const rowRec = asRecord(row);
+  const status = asString(rowRec["status"]);
+  const accountConnected = status === "connected";
+  const connected = status === "connected";
+
+  const meta = asRecord(rowRec["meta"]);
 
   return NextResponse.json({
     accountConnected,
     connected,
-    display_name: (row as unknown)?.resource_label || null,
-    profile_url: (row as unknown)?.meta?.profile_url || null,
+    display_name: asString(rowRec["resource_label"]),
+    profile_url: asString(meta["profile_url"]),
   });
 }

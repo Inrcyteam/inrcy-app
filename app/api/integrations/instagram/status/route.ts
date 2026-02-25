@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 export async function GET() {
   const supabase = await createSupabaseServer();
@@ -22,10 +23,12 @@ export async function GET() {
     .limit(1);
 
   const row = (rows?.[0] as unknown) ?? null;
-const accountConnected = (row as unknown)?.status === "account_connected" || (row as unknown)?.status === "connected";
-  const connected = (row as unknown)?.status === "connected" && !!(row as unknown)?.resource_id;
+  const rowRec = asRecord(row);
+  const status = asString(rowRec["status"]);
+  const accountConnected = status === "account_connected" || status === "connected";
+  const connected = status === "connected" && !!asString(rowRec["resource_id"]);
 
-  const username = String((row as unknown)?.resource_label || "");
+  const username = String(asString(rowRec["resource_label"]) || "");
   const profile_url = username ? `https://www.instagram.com/${username}/` : "";
 
   return NextResponse.json({

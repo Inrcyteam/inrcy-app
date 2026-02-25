@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { getGoogleTokenForAnyGoogle } from "@/lib/googleStats";
 import { testGmbConnectivity } from "@/lib/googleBusiness";
-function asRecord(v: unknown): Record<string, unknown> {
-  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
-}
+import { asRecord, asString } from "@/lib/tsSafe";
 
 export async function GET() {
   const supabase = await createSupabaseServer();
@@ -27,8 +25,9 @@ export async function GET() {
     // - accountConnected: OAuth token exists (the Google account is connected)
     // - configured: a specific Business Profile location has been selected
     // For the dashboard bubble, "connected" must mean "ready to fetch stats".
-    const accountConnected = !!data && asRecord(data)["status"] === "connected";
-    const configured = accountConnected && !!(data as unknown)?.resource_id;
+    const dataRec = asRecord(data);
+    const accountConnected = !!data && dataRec["status"] === "connected";
+    const configured = accountConnected && !!asString(dataRec["resource_id"]);
     const connected = configured;
 
     if (!accountConnected) {
@@ -52,10 +51,10 @@ export async function GET() {
       accountConnected,
       configured,
       accountsCount,
-      email: (data as unknown)?.email_address ?? null,
-      displayName: (data as unknown)?.display_name ?? null,
-      resource_id: (data as unknown)?.resource_id ?? null,
-      resource_label: (data as unknown)?.resource_label ?? null,
+      email: asString(dataRec["email_address"]),
+      displayName: asString(dataRec["display_name"]),
+      resource_id: asString(dataRec["resource_id"]),
+      resource_label: asString(dataRec["resource_label"]),
     });
   } catch {
     return NextResponse.json({ connected: false, accountConnected: false, configured: false });
