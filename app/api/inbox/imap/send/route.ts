@@ -42,10 +42,11 @@ const html = String(formData.get("html") || "").trim();
     }
 
     const acc: unknown = await loadImapAccount(accountId);
-    if (!acc?.ok) {
+    const accRec = asRecord(acc);
+    if (!accRec["ok"]) {
       return NextResponse.json(
-        { error: acc?.error || "Unauthorized" },
-        { status: acc?.status || 401 }
+        { error: accRec["error"] || "Unauthorized" },
+        { status: accRec["status"] || 401 }
       );
     }
 
