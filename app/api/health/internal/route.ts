@@ -3,6 +3,9 @@ import { withApi } from "@/lib/observability/withApi";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireEnv } from "@/lib/env";
 import { Redis } from "@upstash/redis";
+type GlobalWithHealthRedis = typeof globalThis & {
+  __inrcy_health_redis?: Redis;
+};
 
 /**
  * INTERNAL health check.
@@ -28,7 +31,7 @@ function assertInternalAuth(req: Request) {
 function getRedis() {
   const url = requireEnv("KV_REST_API_URL");
   const token = requireEnv("KV_REST_API_TOKEN");
-  const g = globalThis as unknown;
+  const g = globalThis as GlobalWithHealthRedis;
   if (!g.__inrcy_health_redis) {
     g.__inrcy_health_redis = new Redis({ url, token });
   }
