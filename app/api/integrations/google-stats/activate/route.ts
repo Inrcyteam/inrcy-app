@@ -6,12 +6,6 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
-function asString(v: unknown): string | null {
-  if (typeof v === "string") return v;
-  if (typeof v === "number") return String(v);
-  return null;
-}
-
 // POST /api/integrations/google-stats/activate
 // Utilisé principalement en mode "rented" pour Site iNrCy :
 // - Si un refresh_token Google est déjà présent en DB (integrations), on rafraîchit l'access_token
@@ -343,7 +337,10 @@ let adminRefreshToken = "";
 
       const payload = { ...base, product } as unknown;
       if ((existing as unknown)?.id) {
-        await supabase.from("integrations").update(payload).eqasRecord("id", (existing)["id"]);
+        await supabase
+          .from("integrations")
+          .update(payload)
+          .eq("id", (existing as Record<string, unknown>)?.id as string);
       } else {
         await supabase.from("integrations").insert(payload);
       }

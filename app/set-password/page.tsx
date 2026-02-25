@@ -19,6 +19,8 @@ type WanderDot = {
   x5: number; y5: number;
 };
 
+type CSSVars = React.CSSProperties & Record<`--${string}`, string>;
+
 function rand(min: number, max: number) {
   return Math.random() * (max - min) + min;
 }
@@ -231,21 +233,21 @@ function SetPasswordInner() {
                   width: `${d.size}px`,
                   height: `${d.size}px`,
                   opacity: d.alpha,
-                  ["--dur" as any]: `${d.dur}s`,
-                  ["--delay" as any]: `${d.delay}s`,
-                  ["--x1" as any]: `${d.x1}px`,
-                  ["--y1" as any]: `${d.y1}px`,
-                  ["--x2" as any]: `${d.x2}px`,
-                  ["--y2" as any]: `${d.y2}px`,
-                  ["--x3" as any]: `${d.x3}px`,
-                  ["--y3" as any]: `${d.y3}px`,
-                  ["--x4" as any]: `${d.x4}px`,
-                  ["--y4" as any]: `${d.y4}px`,
-                  ["--x5" as any]: `${d.x5}px`,
-                  ["--y5" as any]: `${d.y5}px`,
-                  ["--cA" as any]: c.a,
-                  ["--cB" as any]: c.b,
-                }}
+                  "--dur": `${d.dur}s`,
+                  "--delay": `${d.delay}s`,
+                  "--x1": `${d.x1}px`,
+                  "--y1": `${d.y1}px`,
+                  "--x2": `${d.x2}px`,
+                  "--y2": `${d.y2}px`,
+                  "--x3": `${d.x3}px`,
+                  "--y3": `${d.y3}px`,
+                  "--x4": `${d.x4}px`,
+                  "--y4": `${d.y4}px`,
+                  "--x5": `${d.x5}px`,
+                  "--y5": `${d.y5}px`,
+                  "--cA": c.a,
+                  "--cB": c.b,
+                } as CSSVars}
               />
             );
           })}

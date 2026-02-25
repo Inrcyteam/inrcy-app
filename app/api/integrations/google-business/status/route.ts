@@ -6,12 +6,6 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
-function asString(v: unknown): string | null {
-  if (typeof v === "string") return v;
-  if (typeof v === "number") return String(v);
-  return null;
-}
-
 export async function GET() {
   const supabase = await createSupabaseServer();
   const { data: authData } = await supabase.auth.getUser();

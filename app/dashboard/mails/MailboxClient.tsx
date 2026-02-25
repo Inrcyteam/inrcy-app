@@ -802,7 +802,6 @@ const subTitle = firstNonEmpty(
       await loadAccounts();
       await loadHistory();
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // UX recherche: Ctrl/Cmd+K pour ouvrir, Esc pour fermer (sans perdre la saisie)
@@ -838,7 +837,6 @@ const subTitle = firstNonEmpty(
   // Recharger l'historique quand le filtre "boîte d'envoi" change
   useEffect(() => {
     void loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterAccountId]);
 
   // open folder from URL
@@ -940,10 +938,9 @@ const subTitle = firstNonEmpty(
     };
 
     void run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-    // Prefill compose modal from template modules (Booster / Fidéliser).
+  // Prefill compose modal from template modules (Booster / Fidéliser).
   // Usage:
   // - /dashboard/mails?folder=offres&template_key=...&prefill_subject=...&prefill_text=...&compose=1
   // If template_key is provided, we render placeholders server-side from the user's profile/activity + connected tools.
@@ -1073,7 +1070,6 @@ const subTitle = firstNonEmpty(
     if (!composeOpen) return;
     if (crmContacts.length > 0) return;
     void loadCrmContacts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composeOpen]);
 
   function updateFolder(next: Folder) {

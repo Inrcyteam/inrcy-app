@@ -4,12 +4,6 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
-function asString(v: unknown): string | null {
-  if (typeof v === "string") return v;
-  if (typeof v === "number") return String(v);
-  return null;
-}
-
 // Déconnecte uniquement la PAGE (laisse le compte Facebook OAuth connecté)
 export async function POST() {
   const supabase = await createSupabaseServer();
@@ -48,7 +42,7 @@ export async function POST() {
       meta,
       updated_at: new Date().toISOString(),
     })
-    .eqasRecord("id", (integ)["id"]);
+    .eq("id", (integ as Record<string, unknown>)?.id as string);
 
   // Sync pro tools config
   try {
@@ -71,7 +65,7 @@ export async function POST() {
     await supabase
       .from("configurations_pro_tools")
       .update({ facebook: merged, updated_at: new Date().toISOString() })
-      .eqasRecord("id", (cfg)["id"]);
+      .eq("id", (cfg as Record<string, unknown>)?.id as string);
   } catch {
     // ignore
   }

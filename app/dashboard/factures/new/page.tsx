@@ -131,7 +131,6 @@ export default function NewFacturePage() {
     if (name) setClientName((prev) => prev || name);
     if (email) setClientEmail((prev) => prev || email);
     if (address) setClientAddress((prev) => prev || address);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ✅ Liste des contacts CRM pour import dans ce formulaire
@@ -333,9 +332,9 @@ export default function NewFacturePage() {
 
   useEffect(() => {
     void refreshSaves();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-const addLine = () =>
+
+  const addLine = () =>
     setLines((prev) => [
       ...prev,
       {

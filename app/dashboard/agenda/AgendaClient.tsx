@@ -301,7 +301,6 @@ function toDateOnly(d: Date) {
     q.delete("action");
     router.replace(`/dashboard/agenda?${q.toString()}`);
   } catch {}
-  // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [searchParams]);
 
 function openCreateRdv(date: Date) {

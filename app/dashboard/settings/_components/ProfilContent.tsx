@@ -171,7 +171,6 @@ export default function ProfilContent({
       if (!form.capitalDispenseEI) setForm((p) => ({ ...p, capitalDispenseEI: true }));
       if (!form.vatDispense) setForm((p) => ({ ...p, vatDispense: true }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.legalForm]);
 
   const isEI = form.legalForm === "EI";

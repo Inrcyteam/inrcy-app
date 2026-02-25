@@ -5,12 +5,6 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
-function asString(v: unknown): string | null {
-  if (typeof v === "string") return v;
-  if (typeof v === "number") return String(v);
-  return null;
-}
-
 // NOTE: We lazy-import internal libs inside the handler to avoid returning an HTML error page
 // when a dependency throws at module-evaluation time (e.g. cookies()/headers() scope issues).
 

@@ -4,12 +4,6 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
-function asString(v: unknown): string | null {
-  if (typeof v === "string") return v;
-  if (typeof v === "number") return String(v);
-  return null;
-}
-
 // POST /api/integrations/google-stats/deactivate
 // Mode rented (Site iNrCy) : "Déconnecter le suivi"
 // - Marque l'intégration comme déconnectée pour l'utilisateur (ga4 + gsc)

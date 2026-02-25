@@ -29,7 +29,6 @@ function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
 
   useEffect(() => {
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind]);
 
   const rows = useMemo(() => {

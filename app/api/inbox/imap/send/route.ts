@@ -8,8 +8,7 @@ import { loadImapAccount } from "@/lib/imapAccount";
 import { appendRawMessage } from "@/lib/imapClient";
 import { withApi } from "@/lib/observability/withApi";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
-;
-}
+
 
 // IMAP + SMTP require Node.js runtime (Edge runtime can't open raw TCP sockets)
 export const runtime = "nodejs";
@@ -17,16 +16,16 @@ export const runtime = "nodejs";
 const handler = async (req: Request) => {
   try {
     const { supabase, user, errorResponse } = await requireUser();
-  if (errorResponse) return errorResponse;
-  const userId = user.id;
-const formData = await req.formData();
+    if (errorResponse) return errorResponse;
+    const userId = user.id;
+    const formData = await req.formData();
     const accountId = String(formData.get("accountId") || "").trim();
     const sendItemId = String(formData.get("sendItemId") || "").trim();
     const sendType = String(formData.get("type") || "mail").trim() || "mail";
     const to = String(formData.get("to") || "").trim();
     const subject = String(formData.get("subject") || "(sans objet)");
     const text = String(formData.get("text") || "");
-const html = String(formData.get("html") || "").trim();
+    const html = String(formData.get("html") || "").trim();
 
     if (!accountId) {
       return NextResponse.json({ error: "Missing 'accountId' (sending mailbox)" }, { status: 400 });
@@ -165,7 +164,7 @@ const html = String(formData.get("html") || "").trim();
     return NextResponse.json({ success: true, id: info.messageId });
   } catch (e: unknown) {
     return NextResponse.json(
-      { error: e?.message || "IMAP send failed" },
+      { error: safeErrorMessage(e) || "IMAP send failed" },
       { status: 500 }
     );
   }

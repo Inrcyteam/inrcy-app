@@ -306,10 +306,6 @@ export async function runGscQuery(accessToken: string, property: string, days: n
     position: Number(r?.position || 0),
   }));
 
-  const totals = {
-    clicks: Number(data?.responseAggregationType ? 0 : 0), // API doesn't return totals; we'll sum
-  };
-
   return { rows };
 }
 
