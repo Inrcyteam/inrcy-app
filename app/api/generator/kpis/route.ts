@@ -16,6 +16,11 @@ import { tryDecryptToken } from "@/lib/oauthCrypto";
  * so Gmail will stay at 0 until we plug in your decrypt helper.
  */
 
+function asString(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return null;
+}
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 type AnyRec = Record<string, unknown>;
@@ -85,10 +90,10 @@ function extractGmailTokens(account: AnyRec) {
   // Your DB shows encrypted columns: access_token_enc / refresh_token_enc
   // We can decrypt tokens server-side to avoid storing clear tokens in DB.
   const accessTokenPlain = pickFirst<string>(
-    account.access_token,
-    account.accessToken,
-    account.token,
-    account.oauth_access_token
+    asString(account.access_token),
+    asString(account.accessToken),
+    asString(account.token),
+    asString(account.oauth_access_token)
   );
 
   const refreshTokenPlain = pickFirst<string>(
