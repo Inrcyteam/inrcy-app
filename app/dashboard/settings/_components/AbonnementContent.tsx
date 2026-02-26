@@ -9,8 +9,8 @@ type Props = {
 };
 
 type SubData = {
-  plan: "Démarrage" | "Accélération" | "Pleine vitesse";
-  status: "essai" | "actif" | "suspendu" | "résilié";
+  plan: "Essai 30j" | "Démarrage" | "Accélération" | "Pleine vitesse";
+  status: "actif" | "suspendu" | "résilié" | string;
   monthly_price_eur: number;
   start_date: string; // YYYY-MM-DD
 };
@@ -78,17 +78,25 @@ function addMonthsSafe(date: Date, months: number) {
   return res;
 }
 
-function statusLabel(raw: string) {
-  if (raw === "actif" || raw === "active") return "ACTIF";
-  if (raw === "essai" || raw === "trial") return "ESSAI";
-  if (raw === "suspendu" || raw === "paused") return "SUSPENDU";
-  return "RÉSILIÉ";
+function addDays(date: Date, days: number) {
+  const res = new Date(date);
+  res.setDate(res.getDate() + days);
+  return res;
 }
 
-export default function AbonnementContent({ mode = "page", onOpenContact }: Props) {
+function statusLabel(raw: string) {
+  if (raw === "actif" || raw === "active") return "ACTIF";
+  if (raw === "suspendu" || raw === "paused" || raw === "past_due") return "SUSPENDU";
+  if (raw === "résilié" || raw === "canceled" || raw === "cancelled") return "RÉSILIÉ";
+  return String(raw || "").toUpperCase() || "INCONNU";
+}
+
+export default function AbonnementContent({ mode: _mode = "page", onOpenContact }: Props) {
   const [loading, setLoading] = useState(true);
   const [sub, setSub] = useState<SubData | null>(null);
   const [err, setErr] = useState("");
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingMsg, setBillingMsg] = useState<string>("");
 
   useEffect(() => {
     const load = async () => {
@@ -129,31 +137,28 @@ export default function AbonnementContent({ mode = "page", onOpenContact }: Prop
   }, []);
 
   const computed = useMemo(() => {
-  if (!sub) return null;
+    if (!sub) return null;
 
-  const start = parseYMD(sub.start_date);
-  const now = new Date();
+    const isTrialPlan = sub.plan === "Essai 30j";
 
-  // ✅ lastAnniv = dernière date d'anniversaire <= now
-  // si l'abonnement n'a pas encore commencé (now < start) => on prend start
-  const lastAnniv = now < start ? start : lastMonthlyAnniversary(start, now);
+    const start = parseYMD(sub.start_date);
+    const now = new Date();
 
-  // ✅ Renouvellement = anniversaire suivant du cycle en cours
-  const renewal = addMonthsSafe(lastAnniv, 1);
+    const lastAnniv = now < start ? start : lastMonthlyAnniversary(start, now);
+    const renewal = addMonthsSafe(lastAnniv, 1);
+    const endEst = addMonthsSafe(lastAnniv, 2);
+    const trialEnd = addDays(start, 30);
 
-  // ✅ Fin prévisionnelle = dernier anniversaire + 2 mois
-  const endEst = addMonthsSafe(lastAnniv, 2);
+    return {
+      startLabel: frDate(start),
+      trialEndLabel: frDate(trialEnd),
+      renewalLabel: frDate(renewal),
+      endEstLabel: frDate(endEst),
+      priceLabel: `${sub.monthly_price_eur} €`,
+      statusText: isTrialPlan ? "ESSAI" : statusLabel(sub.status),
+    };
+  }, [sub]);
 
-  return {
-    startLabel: frDate(start),
-    renewalLabel: frDate(renewal),
-    endEstLabel: frDate(endEst),
-    priceLabel: `${sub.monthly_price_eur} €`,
-    statusText: statusLabel(sub.status),
-  };
-}, [sub]);
-
-  // ✅ Palette douce iNrCy (dégradé)
   const shell: React.CSSProperties = {
     borderRadius: 16,
     border: "1px solid rgba(255,255,255,0.10)",
@@ -190,7 +195,7 @@ export default function AbonnementContent({ mode = "page", onOpenContact }: Prop
     borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(0,0,0,0.18)",
-    minWidth: 0, // ✅ évite débordement dans grid
+    minWidth: 0,
   };
 
   const primaryBtn: React.CSSProperties = {
@@ -209,15 +214,66 @@ export default function AbonnementContent({ mode = "page", onOpenContact }: Prop
     width: "100%",
   };
 
-  const linkBtn: React.CSSProperties = {
-    background: "transparent",
-    border: "none",
-    padding: 0,
-    margin: 0,
-    color: "rgba(255,255,255,0.95)",
-    textDecoration: "underline",
+  const ghostBtn: React.CSSProperties = {
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.06)",
+    color: "white",
+    borderRadius: 14,
+    padding: "10px 12px",
     cursor: "pointer",
-    fontWeight: 800,
+    fontWeight: 900,
+    textDecoration: "none",
+    display: "inline-flex",
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+    opacity: billingBusy ? 0.7 : 1,
+    pointerEvents: billingBusy ? "none" : "auto",
+  };
+
+  const dangerBtn: React.CSSProperties = {
+    ...ghostBtn,
+    border: "1px solid rgba(255, 120, 120, 0.35)",
+    background: "rgba(255, 80, 80, 0.10)",
+  };
+
+  const doCheckout = async () => {
+    try {
+      setBillingMsg("");
+      setBillingBusy(true);
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.url) throw new Error(json?.error || "Impossible de démarrer le paiement.");
+      window.location.href = json.url;
+    } catch (e: unknown) {
+      setBillingMsg(e instanceof Error ? e.message : "Erreur paiement.");
+      setBillingBusy(false);
+    }
+  };
+
+  const doCancel = async () => {
+    const ok = window.confirm("Confirmer la résiliation ? (préavis 1 mois)");
+    if (!ok) return;
+    try {
+      setBillingMsg("");
+      setBillingBusy(true);
+      const res = await fetch("/api/billing/cancel", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Impossible de résilier.");
+      setBillingMsg("Résiliation programmée (préavis 1 mois).");
+      window.location.reload();
+    } catch (e: unknown) {
+      setBillingMsg(e instanceof Error ? e.message : "Erreur résiliation.");
+      setBillingBusy(false);
+    }
   };
 
   if (loading) return <div style={{ opacity: 0.85 }}>Chargement…</div>;
@@ -236,7 +292,6 @@ export default function AbonnementContent({ mode = "page", onOpenContact }: Prop
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      {/* ✅ CSS responsive uniquement pour la grille Dates */}
       <style>{`
         .datesGrid {
           display: grid;
@@ -251,16 +306,11 @@ export default function AbonnementContent({ mode = "page", onOpenContact }: Prop
         }
       `}</style>
 
-      {/* HERO coloré */}
       <div style={{ ...card, ...shell, padding: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ opacity: 0.85, fontSize: 12, fontWeight: 900, letterSpacing: 0.4 }}>
-              PACK
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 950, marginTop: 4, lineHeight: 1.15 }}>
-              {sub.plan}
-            </div>
+            <div style={{ opacity: 0.85, fontSize: 12, fontWeight: 900, letterSpacing: 0.4 }}>PACK</div>
+            <div style={{ fontSize: 22, fontWeight: 950, marginTop: 4, lineHeight: 1.15 }}>{sub.plan}</div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
               <span style={badge}>SANS ENGAGEMENT</span>
@@ -270,60 +320,105 @@ export default function AbonnementContent({ mode = "page", onOpenContact }: Prop
           </div>
 
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <div style={{ opacity: 0.85, fontSize: 12, fontWeight: 900, letterSpacing: 0.4 }}>
-              PRIX
-            </div>
-            <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4, lineHeight: 1 }}>
-              {computed.priceLabel}
-            </div>
+            <div style={{ opacity: 0.85, fontSize: 12, fontWeight: 900, letterSpacing: 0.4 }}>PRIX</div>
+            <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4, lineHeight: 1 }}>{computed.priceLabel}</div>
             <div style={{ opacity: 0.75, fontSize: 12, marginTop: 6 }}>HT par mois</div>
           </div>
         </div>
       </div>
 
-      {/* DATES */}
       <div style={card}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Dates</h2>
 
-        <div className="datesGrid">
-          <div style={miniBox}>
-            <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Actualisation</div>
-            <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.startLabel}</div>
-          </div>
+        <div
+          className="datesGrid"
+          style={sub.plan === "Essai 30j" ? ({ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" } as any) : undefined}
+        >
+          {sub.plan === "Essai 30j" ? (
+            <>
+              <div style={miniBox}>
+                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Inscription</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.startLabel}</div>
+              </div>
 
-          <div style={miniBox}>
-            <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Renouvellement</div>
-            <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.renewalLabel}</div>
-          </div>
+              <div style={miniBox}>
+                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Fin de période d’essai</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.trialEndLabel}</div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={miniBox}>
+                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Actualisation</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.startLabel}</div>
+              </div>
 
-          <div style={miniBox}>
-  <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Fin prévisionnelle</div>
-  <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.endEstLabel}</div>
-  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75, lineHeight: 1.3 }}>
-    Préavis inclus (1 mois)</div>
-          </div>
+              <div style={miniBox}>
+                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Renouvellement</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.renewalLabel}</div>
+              </div>
+
+              <div style={miniBox}>
+                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Fin prévisionnelle</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.endEstLabel}</div>
+                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75, lineHeight: 1.3 }}>Préavis inclus (1 mois)</div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* MODIFS */}
       <div style={card}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Modifier / Résilier</h2>
-        <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
-          Les modifications ou résiliations d’abonnement se font en{" "}
-          {onOpenContact ? (
-            <button type="button" onClick={onOpenContact} style={linkBtn}>
-              nous contactant
-            </button>
-          ) : (
-            <span style={{ fontWeight: 900, textDecoration: "underline" }}>nous contactant</span>
-          )}
-          .
-        </p>
 
-        <div style={{ marginTop: 12 }}>
-          <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={primaryBtn}>
+        {sub.plan === "Essai 30j" ? (
+          <>
+            <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
+              Tu es en période d’essai 30 jours. Pour continuer après l’essai, abonne-toi.
+            </p>
+            <div style={{ marginTop: 12 }}>
+              <button type="button" onClick={doCheckout} style={primaryBtn} disabled={billingBusy}>
+                S’abonner
+              </button>
+            </div>
+          </>
+        ) : sub.status === "actif" ? (
+          <>
+            <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
+              Gère ton abonnement directement ici.
+            </p>
+            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+              <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
+                Modifier mon pack
+              </a>
+              <button type="button" onClick={doCancel} style={dangerBtn} disabled={billingBusy}>
+                Résilier (préavis 1 mois)
+              </button>
+            </div>
+          </>
+        ) : (
+          <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
+            Ton abonnement est actuellement {computed.statusText.toLowerCase()}.
+          </p>
+        )}
+
+        {billingMsg ? (
+          <p style={{ margin: "10px 0 0", opacity: 0.9, lineHeight: 1.35 }}>⚠️ {billingMsg}</p>
+        ) : null}
+
+        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+          <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
             Voir nos packs
           </a>
+          {onOpenContact ? (
+            <button type="button" onClick={onOpenContact} style={ghostBtn}>
+              Contactez-nous
+            </button>
+          ) : (
+            <a href="https://inrcy.com/contact/" target="_blank" rel="noreferrer" style={ghostBtn}>
+              Contactez-nous
+            </a>
+          )}
         </div>
       </div>
     </div>
