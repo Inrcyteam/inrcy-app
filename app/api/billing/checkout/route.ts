@@ -53,8 +53,8 @@ export async function POST(req: Request) {
     sessionParams.set("customer", customerId);
     sessionParams.set("line_items[0][price]", priceId);
     sessionParams.set("line_items[0][quantity]", "1");
-    sessionParams.set("success_url", `${appUrl}/dashboard/settings/abonnement?checkout=success`);
-    sessionParams.set("cancel_url", `${appUrl}/dashboard/settings/abonnement?checkout=cancel`);
+    sessionParams.set("success_url", `${appUrl}/dashboard?panel=abonnement&checkout=success`);
+    sessionParams.set("cancel_url", `${appUrl}/dashboard?panel=abonnement&checkout=cancel`);
     // Link user to the session for webhook reconciliation
     sessionParams.set("metadata[user_id]", userId);
     sessionParams.set("subscription_data[metadata][user_id]", userId);
