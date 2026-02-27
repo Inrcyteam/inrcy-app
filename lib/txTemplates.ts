@@ -10,20 +10,20 @@ export function buildTrialReminderEmail(input: TrialReminderInput) {
   const { endDateFr, ctaUrl, reminderDay } = input;
 
   const title =
-    reminderDay === 30 ? "Dernier jour d’essai" : "Ton essai se termine bientôt";
+    reminderDay === 30 ? "Dernier jour d’essai" : "Votre essai se termine bientôt";
 
   const subtitle =
-    "Continue sans interruption en activant ton abonnement (l’abonnement démarre à la fin de l’essai).";
+    "Continuez sans interruption en activant votre abonnement (l’abonnement démarre à la fin de l’essai).";
 
   const body1 =
     reminderDay === 30
-      ? `C’est le dernier jour de ton essai iNrCy (fin : <strong>${endDateFr}</strong>).`
-      : `Ton essai iNrCy se termine le <strong>${endDateFr}</strong>.`;
+      ? `C’est le dernier jour de votre essai iNrCy (fin : <strong>${endDateFr}</strong>).`
+      : `Votre essai iNrCy se termine le <strong>${endDateFr}</strong>.`;
 
   const body2 =
     reminderDay === 30
-      ? "Pour continuer, connecte-toi et clique sur <strong>“S’abonner”</strong> avant ce soir."
-      : "Pour continuer après l’essai, connecte-toi et clique sur <strong>“S’abonner”</strong>.";
+      ? "Pour continuer, connectez-vous et cliquez sur <strong>“S’abonner”</strong> avant ce soir."
+      : "Pour continuer après l’essai, connectez-vous et cliquez sur <strong>“S’abonner”</strong>.";
 
   // Outlook-safe HTML (table layout, inline styles)
   const html = `<!doctype html>
@@ -117,7 +117,7 @@ export function buildTrialReminderEmail(input: TrialReminderInput) {
                 </p>
 
                 <p style="margin:12px 0 0 0;font-size:12px;color:#94a3b8;line-height:1.6;">
-                  Si tu as déjà souscrit, tu peux ignorer cet email.
+                  Si vous avez déjà souscrit, vous pouvez ignorer cet email.
                 </p>
               </td>
             </tr>
@@ -153,8 +153,8 @@ export function buildTrialReminderEmail(input: TrialReminderInput) {
 
   const text =
     reminderDay === 30
-      ? `Bonjour,\n\nC’est le dernier jour de ton essai iNrCy (fin : ${endDateFr}).\n\nPour continuer, connecte-toi et clique sur “S’abonner” avant ce soir.\n\n${ctaUrl}\n\nÀ très vite !`
-      : `Bonjour,\n\nTon essai iNrCy se termine le ${endDateFr}.\n\nPour continuer après l’essai, connecte-toi et clique sur “S’abonner”.\n\n${ctaUrl}\n\nÀ très vite !`;
+      ? `Bonjour,\n\nC’est le dernier jour de votre essai iNrCy (fin : ${endDateFr}).\n\nPour continuer, connectez-vous et cliquez sur “S’abonner” avant ce soir.\n\n${ctaUrl}\n\nÀ très vite !`
+      : `Bonjour,\n\nVotre essai iNrCy se termine le ${endDateFr}.\n\nPour continuer après l’essai, connectez-vous et cliquez sur “S’abonner”.\n\n${ctaUrl}\n\nÀ très vite !`;
 
   return { html, text };
 }
