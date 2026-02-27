@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import styles from "./gps.module.css";
+import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import { GPS_SECTIONS, type GpsArticle } from "./noticeContent";
 
 function normalizeText(input: string) {
@@ -23,6 +24,12 @@ type SearchHit = {
 };
 
 export default function GpsClient() {
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
+  }, []);
+
   const [query, setQuery] = useState("");
   const [activeSection, setActiveSection] = useState(GPS_SECTIONS[0]?.id ?? "generateur");
   const [activeArticleId, setActiveArticleId] = useState<string>(GPS_SECTIONS[0]?.articles?.[0]?.id ?? "");
@@ -90,6 +97,9 @@ export default function GpsClient() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
+        <div className={styles.gpsClose}>
+          <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" />
+        </div>
         <div>
           <div className={styles.kicker}>Votre cockpit iNrCy</div>
           <h1 className={styles.title}>GPS d’utilisation</h1>
