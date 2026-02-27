@@ -5,7 +5,7 @@ import { enforceQuota, enforceRateLimit } from "./lib/rateLimit";
 
 function getIp(req: NextRequest): string {
   // Vercel provides req.ip, but keep fallbacks for local/dev/proxies.
-  const direct = (req as any).ip as string | undefined;
+  const direct = (req as unknown as { ip?: string }).ip;
   if (direct) return direct;
 
   const xff = req.headers.get("x-forwarded-for");

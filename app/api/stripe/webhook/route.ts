@@ -5,6 +5,15 @@ import { optionalEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
 
+type StripeEvent = {
+  type?: string;
+  data?: {
+    object?: unknown;
+  };
+};
+
+type StripeObjectLoose = Record<string, unknown>;
+
 // We store Stripe subscription statuses as-is in Supabase (enum aligned with Stripe).
 function normalizeStripeStatus(status: string): string {
   const s = String(status || "").toLowerCase();
@@ -52,11 +61,12 @@ export async function POST(req: Request) {
 
   try {
     verifyStripeWebhookSignature(payload, sig);
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Invalid signature" }, { status: 400 });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Invalid signature";
+    return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  let evt: any;
+  let evt: StripeEvent;
   try {
     evt = JSON.parse(payload);
   } catch {
@@ -68,7 +78,7 @@ export async function POST(req: Request) {
   const updateSubscriptionRow = async (
     userId: string | null | undefined,
     customerId: string | null | undefined,
-    patch: Record<string, any>
+    patch: Record<string, unknown>
   ) => {
     if (userId) {
       return supabaseAdmin.from("subscriptions").update(patch).eq("user_id", userId);
@@ -80,16 +90,17 @@ export async function POST(req: Request) {
   };
 
   try {
-    const type = evt.type as string;
-    const obj = evt.data?.object;
+    const type = String(evt.type || "");
+    const obj = (evt.data?.object ?? null) as StripeObjectLoose | null;
 
     // 1) Checkout completed -> persist customer + subscription id ASAP
     if (type === "checkout.session.completed") {
       const session = obj;
-      const userId = session?.metadata?.user_id;
-      const customerId = session?.customer;
+      const metadata = (session?.metadata as StripeObjectLoose | undefined) ?? undefined;
+      const userId = typeof metadata?.user_id === "string" ? metadata.user_id : null;
+      const customerId = typeof session?.customer === "string" ? session.customer : null;
       // In subscription-mode checkout sessions, Stripe gives you the subscription id here.
-      const subId = session?.subscription;
+      const subId = typeof session?.subscription === "string" ? session.subscription : null;
 
       await updateSubscriptionRow(userId, customerId, {
         stripe_customer_id: customerId || null,
@@ -100,9 +111,10 @@ export async function POST(req: Request) {
     // 2) Subscription upserts
     if (type === "customer.subscription.created" || type === "customer.subscription.updated") {
       const sub = obj;
-      const userId = sub?.metadata?.user_id;
-      const customerId = sub?.customer;
-      const subId = sub?.id;
+      const metadata = (sub?.metadata as StripeObjectLoose | undefined) ?? undefined;
+      const userId = typeof metadata?.user_id === "string" ? metadata.user_id : null;
+      const customerId = typeof sub?.customer === "string" ? sub.customer : null;
+      const subId = typeof sub?.id === "string" ? sub.id : null;
       const stripeStatus = normalizeStripeStatus(String(sub?.status || ""));
 
       // current_period_end is unix
@@ -114,7 +126,11 @@ export async function POST(req: Request) {
       const cancelAtPeriodEnd = !!sub?.cancel_at_period_end;
 
       // find price id (first item)
-      const priceId = sub?.items?.data?.[0]?.price?.id || null;
+      const items = (sub?.items as StripeObjectLoose | undefined) ?? undefined;
+      const dataArr = (items?.data as unknown[]) || [];
+      const firstItem = (dataArr[0] as StripeObjectLoose | undefined) ?? undefined;
+      const priceObj = (firstItem?.price as StripeObjectLoose | undefined) ?? undefined;
+      const priceId = typeof priceObj?.id === "string" ? priceObj.id : null;
 
       // Trial end (if any)
       const trialEndAt = sub?.trial_end ? new Date(Number(sub.trial_end) * 1000).toISOString() : null;
@@ -155,8 +171,9 @@ export async function POST(req: Request) {
 
     if (type === "customer.subscription.deleted") {
       const sub = obj;
-      const userId = sub?.metadata?.user_id;
-      const customerId = sub?.customer;
+      const metadata = (sub?.metadata as StripeObjectLoose | undefined) ?? undefined;
+      const userId = typeof metadata?.user_id === "string" ? metadata.user_id : null;
+      const customerId = typeof sub?.customer === "string" ? sub.customer : null;
       const endedAt = sub?.ended_at ? new Date(Number(sub.ended_at) * 1000).toISOString() : null;
 
       await updateSubscriptionRow(userId, customerId, {
@@ -168,7 +185,7 @@ export async function POST(req: Request) {
     // 3) Payment events (impayés)
     if (type === "invoice.payment_failed") {
       const invoice = obj;
-      const subId = invoice?.subscription;
+      const subId = typeof invoice?.subscription === "string" ? invoice.subscription : null;
       if (subId) {
         await supabaseAdmin.from("subscriptions").update({ status: "past_due" }).eq("stripe_subscription_id", subId);
       }
@@ -178,7 +195,8 @@ export async function POST(req: Request) {
     // Subscription status transitions are handled by customer.subscription.updated.
 
     return NextResponse.json({ received: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Webhook error" }, { status: 500 });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Webhook error";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

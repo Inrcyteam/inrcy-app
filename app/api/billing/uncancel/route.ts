@@ -20,7 +20,7 @@ export async function POST() {
       .maybeSingle();
 
     if (subErr) throw subErr;
-    const stripeSubId = (subRow as any)?.stripe_subscription_id as string | null;
+    const stripeSubId = (subRow as { stripe_subscription_id?: string | null } | null | undefined)?.stripe_subscription_id ?? null;
     if (!stripeSubId) {
       return NextResponse.json({ error: "Aucun abonnement Stripe trouvé" }, { status: 400 });
     }
@@ -45,7 +45,8 @@ export async function POST() {
       .eq("user_id", user.id);
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Erreur";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

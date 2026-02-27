@@ -55,7 +55,8 @@ export async function POST(req: Request) {
       });
 
     return NextResponse.json({ ok: true, user_id: userId, trial_end_at: end.toISOString() });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Erreur";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

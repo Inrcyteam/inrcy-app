@@ -240,24 +240,24 @@ useEffect(() => {
       clearInterval(timer);
     };
 
-// ✅ Nettoie l'URL après un retour Stripe (évite de garder ?checkout=success et de repoll inutilement)
-useEffect(() => {
-  if (!checkoutState) return;
-
-  const t = window.setTimeout(() => {
-    const current = new URLSearchParams(searchParams.toString());
-    if (!current.has("checkout")) return;
-    current.delete("checkout");
-
-    const qs = current.toString();
-    const nextUrl = qs ? `${pathname}?${qs}` : pathname;
-    router.replace(nextUrl);
-  }, 2500);
-
-  return () => window.clearTimeout(t);
-}, [checkoutState, pathname, router, searchParams]);
-
   }, [checkoutState]);
+
+  // ✅ Nettoie l'URL après un retour Stripe (évite de garder ?checkout=success et de repoll inutilement)
+  useEffect(() => {
+    if (!checkoutState) return;
+
+    const t = window.setTimeout(() => {
+      const current = new URLSearchParams(searchParams.toString());
+      if (!current.has("checkout")) return;
+      current.delete("checkout");
+
+      const qs = current.toString();
+      const nextUrl = qs ? `${pathname}?${qs}` : pathname;
+      router.replace(nextUrl);
+    }, 2500);
+
+    return () => window.clearTimeout(t);
+  }, [checkoutState, pathname, router, searchParams]);
 
   const computed = useMemo(() => {
     if (!sub) return null;

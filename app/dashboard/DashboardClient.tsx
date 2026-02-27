@@ -254,7 +254,6 @@ export default function DashboardClient() {
       return;
     }
     closePanel();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Orientation: gérée globalement via <OrientationGuard />

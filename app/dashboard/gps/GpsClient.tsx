@@ -32,7 +32,11 @@ export default function GpsClient() {
 
   const [query, setQuery] = useState("");
   const [activeSection, setActiveSection] = useState(GPS_SECTIONS[0]?.id ?? "generateur");
-  const [activeArticleId, setActiveArticleId] = useState<string>(GPS_SECTIONS[0]?.articles?.[0]?.id ?? "");
+
+  // ✅ IMPORTANT: no auto-selected article on first load
+  const [activeArticleId, setActiveArticleId] = useState<string>("");
+  const hasMountedRef = useRef(false);
+
   const contentRef = useRef<HTMLDivElement | null>(null);
 
   const hits = useMemo((): SearchHit[] => {
@@ -84,14 +88,18 @@ export default function GpsClient() {
 
   useEffect(() => {
     // When section changes, jump to first article
+    // ✅ BUT: do nothing on first mount (prevents auto-selection on page load)
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+
     const section = GPS_SECTIONS.find((s) => s.id === activeSection);
     const first = section?.articles?.[0]?.id;
     if (first) {
       setActiveArticleId(first);
-      // do not auto-scroll on first mount if already at top
       setTimeout(() => scrollToArticle(first), 0);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection]);
 
   return (
@@ -208,7 +216,9 @@ export default function GpsClient() {
                       <ol className={styles.steps}>
                         {article.steps.map((s, idx) => (
                           <li key={idx} className={styles.step}>
-                            <span dangerouslySetInnerHTML={{ __html: s.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />
+                            <span
+                              dangerouslySetInnerHTML={{ __html: s.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }}
+                            />
                           </li>
                         ))}
                       </ol>

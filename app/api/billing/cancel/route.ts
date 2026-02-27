@@ -18,7 +18,7 @@ export async function POST() {
       .maybeSingle();
 
     if (error) throw new Error(error.message);
-    const stripeSubId = (sub as any)?.stripe_subscription_id as string | undefined;
+    const stripeSubId = (sub as { stripe_subscription_id?: string | null } | null | undefined)?.stripe_subscription_id ?? undefined;
     if (!stripeSubId) {
       return NextResponse.json({ error: "Aucun abonnement Stripe trouvé" }, { status: 400 });
     }
@@ -33,7 +33,8 @@ export async function POST() {
 
     // DB will be synced by webhook (subscription.updated)
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Erreur";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

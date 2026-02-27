@@ -6,6 +6,16 @@ import { getAppUrl, stripePost } from "@/lib/stripeRest";
 
 export const runtime = "nodejs";
 
+type SubscriptionRow = {
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  status?: string | null;
+  plan?: string | null;
+  start_date?: string | null;
+  trial_end_at?: string | null;
+  contact_email?: string | null;
+};
+
 export async function POST(req: Request) {
   try {
     const { supabase, user, errorResponse } = await requireUser();
@@ -13,9 +23,9 @@ export async function POST(req: Request) {
 
     const userId = user.id;
 
-    const body = await req.json().catch(() => ({}));
+    const body: unknown = await req.json().catch(() => ({}));
     // Allowed paid plans (Trial is managed by iNrCy, not selectable here)
-    const wantedPlan = String(body?.plan || "Starter");
+    const wantedPlan = String((body as { plan?: unknown } | null | undefined)?.plan || "Starter");
 
     const priceIdByPlan: Record<string, string | undefined> = {
       Starter: requireEnv("STRIPE_PRICE_STARTER_ID"),
@@ -37,15 +47,17 @@ export async function POST(req: Request) {
 
     if (subErr) throw new Error(subErr.message);
 
+    const row = sub as SubscriptionRow | null | undefined;
+
     const appUrl = getAppUrl(req) || requireEnv("NEXT_PUBLIC_APP_URL");
 
     // ✅ iNrCy rule: user can only subscribe DURING the 30-day trial.
     // After trial end, account + data are deleted, so checkout must be blocked.
     // ✅ Trial end is stored in subscriptions.trial_end_at, but some existing rows may not have it yet.
     // In that case, we compute it from start_date (+30 days) and persist it so future checkouts work.
-    let trialEndAt = (sub as any)?.trial_end_at as string | undefined;
+    let trialEndAt = row?.trial_end_at ?? undefined;
     if (!trialEndAt) {
-      const startYmd = (sub as any)?.start_date as string | undefined;
+      const startYmd = row?.start_date ?? undefined;
       if (!startYmd) {
         return NextResponse.json(
           { error: "Période d'essai introuvable. L'abonnement est indisponible." },
@@ -78,8 +90,8 @@ export async function POST(req: Request) {
 
     // 🔒 Prevent creating multiple subscriptions for the same user.
     // If there's already a Stripe subscription attached and it's not cancelled, block checkout.
-    const existingSubId = (sub as any)?.stripe_subscription_id as string | undefined;
-    const existingStatus = String((sub as any)?.status || "").toLowerCase();
+    const existingSubId = row?.stripe_subscription_id ?? undefined;
+    const existingStatus = String(row?.status || "").toLowerCase();
     const alreadySubscribed =
       !!existingSubId &&
       existingStatus !== "canceled" &&
@@ -94,13 +106,13 @@ export async function POST(req: Request) {
     }
 
     // Ensure we have an email
-    const email = (sub as any)?.contact_email || user.email;
+    const email = row?.contact_email || user.email;
     if (!email) {
       return NextResponse.json({ error: "Email manquant" }, { status: 400 });
     }
 
     // Create customer if missing
-    let customerId = (sub as any)?.stripe_customer_id as string | undefined;
+    let customerId = row?.stripe_customer_id ?? undefined;
     if (!customerId) {
       const customerParams = new URLSearchParams();
       customerParams.set("email", email);
@@ -152,7 +164,8 @@ export async function POST(req: Request) {
       .eq("user_id", userId);
 
     return NextResponse.json({ url: session.url });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Erreur" }, { status: 500 });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Erreur";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
