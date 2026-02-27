@@ -2,13 +2,13 @@ import LegalPageShell from "../_components/LegalPageShell";
 import styles from "../legal.module.css";
 
 export const metadata = {
-  title: "CGA — Conditions Générales d’Abonnement — iNrCy",
+  title: "CGA — iNrCy",
 };
 
 export default function CgaPage() {
   return (
     <LegalPageShell
-      title="CGA — Conditions Générales d’Abonnement"
+      title="CGA"
       subtitle="Version du 11/02/2026"
     >
       <section>

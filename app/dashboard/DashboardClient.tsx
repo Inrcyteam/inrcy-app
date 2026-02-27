@@ -2127,10 +2127,10 @@ const checkActivity = useCallback(async () => {
                 m.key === "site_inrcy"
                   ? siteInrcyOwnership === "rented"
                     ? siteInrcyAllGreen
-                      ? "Déconnecter le suivi (GA4 + Search Console)"
+                      ? "Désactiver (GA4 + Search Console)"
                       : !canActivateInrcyTracking
                         ? "Renseigne le lien du site pour activer le suivi"
-                        : "Activer le suivi (GA4 + Search Console)"
+                        : "Activer (GA4 + Search Console)"
                     : !canConfigureSite
                       ? "Configuration disponible uniquement si le site est vendu"
                       : undefined
@@ -2146,8 +2146,8 @@ const checkActivity = useCallback(async () => {
                       </span>
                     )
                   : siteInrcyAllGreen
-                    ? "Déconnecter le suivi"
-                    : "Activer le suivi"
+                    ? "Désactiver"
+                    : "Activer"
                 : "Configurer"}
             </button>
           </div>
@@ -2463,6 +2463,18 @@ const checkActivity = useCallback(async () => {
                   Informations légales
                 </button>
 
+                <button
+                  type="button"
+                  className={styles.userMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    router.push("/dashboard/gps");
+                  }}
+                >
+                  GPS d’utilisation
+                </button>
+
                 <div className={styles.userMenuDivider} />
 
                 <button
@@ -2601,6 +2613,18 @@ const checkActivity = useCallback(async () => {
                 }}
               >
                 Informations légales
+              </button>
+
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  router.push("/dashboard/gps");
+                }}
+              >
+                GPS d’utilisation
               </button>
 
               <div className={styles.mobileMenuDivider} />

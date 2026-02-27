@@ -31,7 +31,7 @@ export const legalDocs: Record<
   },
   cga: {
     key: "cga",
-    title: "CGA — Conditions Générales d’Abonnement",
+    title: "CGA",
     subtitle: "Version du 11/02/2026",
     Content: CgaContent,
   },

@@ -15,7 +15,7 @@ export default function LegalDocumentsModal({
   const Content = doc.Content;
 
   return (
-    <BaseModal title={doc.title} moduleLabel="Documents" onClose={onClose}>
+    <BaseModal title={doc.title} moduleLabel="" onClose={onClose}>
       <div style={{ width: "100%", maxWidth: 980, margin: "0 auto" }}>
         <div className={legalStyles.card} style={{ marginTop: 0 }}>
           {doc.subtitle ? <p className={legalStyles.subtitle} style={{ marginTop: 0 }}>{doc.subtitle}</p> : null}

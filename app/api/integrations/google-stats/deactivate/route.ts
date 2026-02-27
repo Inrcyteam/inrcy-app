@@ -11,7 +11,7 @@ function asString(v: unknown): string | null {
 }
 
 // POST /api/integrations/google-stats/deactivate
-// Mode rented (Site iNrCy) : "Déconnecter le suivi"
+// Mode rented (Site iNrCy) : "Désactiver"
 // - Marque l'intégration comme déconnectée pour l'utilisateur (ga4 + gsc)
 // - Coupe le suivi iNrCy (sans débrancher GA4/GSC).
 

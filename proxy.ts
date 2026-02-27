@@ -1,3 +1,4 @@
+// proxy.ts
 import { NextRequest, NextResponse } from "next/server";
 
 import { enforceQuota, enforceRateLimit } from "./lib/rateLimit";
@@ -22,13 +23,18 @@ function isOauthCallback(pathname: string): boolean {
 }
 
 function base64UrlDecode(input: string): string {
-  // Edge runtime safe base64url decode
+  // base64url -> base64
   const pad = "=".repeat((4 - (input.length % 4)) % 4);
   const b64 = (input + pad).replace(/-/g, "+").replace(/_/g, "/");
-  // atob returns a binary string
-  const bin = atob(b64);
-  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
+
+  // Edge: atob exists. Node: use Buffer.
+  if (typeof atob === "function") {
+    const bin = atob(b64);
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }
+
+  return Buffer.from(b64, "base64").toString("utf-8");
 }
 
 function tryGetUserIdFromJwt(jwt?: string): string | null {
@@ -144,7 +150,7 @@ function pickLimit(pathname: string, method: string): LimitPlan {
     : { tokens: 120, windowSeconds: 60, name: "read" };
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // --- Light security hardening (safe defaults)
@@ -223,13 +229,13 @@ export async function middleware(req: NextRequest) {
       return applyApiHeaders(res);
     }
   } catch (err) {
-    // Edge runtime fallback.
+    // Fallback.
     if (lim.failClosed) {
       const out = NextResponse.json({ error: "Rate limiting unavailable" }, { status: 503 });
       out.headers.set("Retry-After", "5");
       return applyApiHeaders(out);
     }
-    console.warn("[rateLimit] middleware disabled (fail-open)", err);
+    console.warn("[rateLimit] proxy disabled (fail-open)", err);
   }
 
   const res = NextResponse.next({ request: { headers: requestHeaders } });

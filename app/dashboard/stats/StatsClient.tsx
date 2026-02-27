@@ -383,7 +383,7 @@ if (cubeKey === "site_inrcy") {
     if (!ok) {
       return {
         key: "connect",
-        title: "Activer le suivi",
+        title: "Activer",
         detail: "Active le suivi du site iNrCy (GA4 + Search Console) via iNrCy.",
         href: "/dashboard",
         pill: "Connexion",
