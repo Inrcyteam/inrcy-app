@@ -261,7 +261,7 @@ export default function PublishModal({
           Votre idée
         </div>
         <div className={styles.subtitle} style={{ marginBottom: 10 }}>
-          Une phrase. L’IA crée une publication unique.
+          Une phrase. Le générateur iNrCy crée une publication unique.
         </div>
 
         <textarea
@@ -277,7 +277,7 @@ export default function PublishModal({
 
         <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button type="button" className={styles.primaryBtn} onClick={onGenerate} disabled={generating}>
-            {generating ? "Génération..." : "Générer avec l’IA"}
+            {generating ? "Génération..." : "Générer avec iNrCy"}
           </button>
           <button type="button" className={styles.secondaryBtn} onClick={onReset}>
             Réinitialiser
@@ -334,7 +334,7 @@ export default function PublishModal({
             Publication (unique)
           </div>
           <div className={styles.subtitle} style={{ marginBottom: 10 }}>
-            Génère avec l’IA ou écris ton texte, puis publie sur 1+ canaux.
+            Génère avec iNrCy ou écris ton texte, puis publie sur 1+ canaux.
           </div>
 
           <div style={{ display: "grid", gap: 10 }}>

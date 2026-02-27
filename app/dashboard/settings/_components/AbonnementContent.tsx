@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
+import { useSearchParams } from "next/navigation";
 
 type Props = {
   mode?: "page" | "drawer";
@@ -9,10 +10,25 @@ type Props = {
 };
 
 type SubData = {
-  plan: "Essai 30j" | "Démarrage" | "Accélération" | "Pleine vitesse";
-  status: "actif" | "suspendu" | "résilié" | string;
+  plan: "Trial" | "Starter" | "Accel" | "Speed";
+  scheduled_plan?: "Trial" | "Starter" | "Accel" | "Speed" | null;
+  status:
+    | "incomplete"
+    | "incomplete_expired"
+    | "trialing"
+    | "active"
+    | "past_due"
+    | "unpaid"
+    | "canceled"
+    | "paused"
+    | string;
   monthly_price_eur: number;
   start_date: string; // YYYY-MM-DD
+  trial_start_at?: string | null;
+  trial_end_at?: string | null;
+  next_renewal_date?: string | null;
+  stripe_subscription_id?: string | null;
+  stripe_price_id?: string | null;
 };
 
 function frDate(d: Date) {
@@ -85,13 +101,43 @@ function addDays(date: Date, days: number) {
 }
 
 function statusLabel(raw: string) {
-  if (raw === "actif" || raw === "active") return "ACTIF";
-  if (raw === "suspendu" || raw === "paused" || raw === "past_due") return "SUSPENDU";
-  if (raw === "résilié" || raw === "canceled" || raw === "cancelled") return "RÉSILIÉ";
+  // Tolérance aux anciennes valeurs / fautes de frappe en base.
+  if (raw === "trialing" || raw === "trailing" || raw === "essai") return "ESSAI";
+  if (raw === "active") return "ACTIF";
+  if (raw === "past_due" || raw === "unpaid") return "IMPAYÉ";
+  if (raw === "paused") return "SUSPENDU";
+  if (raw === "canceled" || raw === "cancelled") return "RÉSILIÉ";
+  if (raw === "incomplete" || raw === "incomplete_expired") return "EN ATTENTE";
   return String(raw || "").toUpperCase() || "INCONNU";
 }
 
+function planLabel(plan: SubData["plan"]) {
+  // Sécurité: certains anciens labels (ou valeurs inattendues) peuvent encore
+  // arriver depuis des comptes / données historiques. On normalise.
+  const raw = String(plan || "").trim();
+  const normalized =
+    raw === "Trial" || /^essai/i.test(raw)
+      ? "Trial"
+      : raw === "Starter" || /^d[ée]marrage/i.test(raw)
+        ? "Starter"
+        : raw === "Accel" || /^acc[ée]l[ée]ration/i.test(raw)
+          ? "Accel"
+          : raw === "Speed" || /^pleine vitesse/i.test(raw)
+            ? "Speed"
+            : raw;
+
+  if (normalized === "Trial") return "Essai 30j";
+  if (normalized === "Starter") return "Pack Démarrage";
+  if (normalized === "Accel") return "Pack Accélération";
+  if (normalized === "Speed") return "Pack Pleine vitesse";
+
+  // Valeur inconnue: on évite d'afficher des trucs bizarres type "Procès".
+  return "Essai 30j";
+}
+
 export default function AbonnementContent({ mode: _mode = "page", onOpenContact }: Props) {
+  const searchParams = useSearchParams();
+  const checkoutState = searchParams.get("checkout"); // success | cancel | null
   const [loading, setLoading] = useState(true);
   const [sub, setSub] = useState<SubData | null>(null);
   const [err, setErr] = useState("");
@@ -114,7 +160,9 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
 
         const { data, error } = await supabase
           .from("subscriptions")
-          .select("plan,status,monthly_price_eur,start_date")
+          .select(
+            "plan,scheduled_plan,status,monthly_price_eur,start_date,trial_start_at,trial_end_at,next_renewal_date,stripe_subscription_id,stripe_price_id"
+          )
           .eq("user_id", user.id)
           .maybeSingle();
 
@@ -136,28 +184,89 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
     load();
   }, []);
 
+  // ✅ Après un checkout Stripe, on repoll quelques secondes pour laisser le webhook mettre à jour la DB.
+  useEffect(() => {
+    if (checkoutState !== "success") return;
+    let alive = true;
+    const supabase = createClient();
+    let tries = 0;
+    const timer = setInterval(async () => {
+      tries += 1;
+      if (!alive || tries > 8) {
+        clearInterval(timer);
+        return;
+      }
+      const { data: authData } = await supabase.auth.getUser();
+      const user = authData?.user;
+      if (!user) return;
+      const { data } = await supabase
+        .from("subscriptions")
+        .select(
+          "plan,scheduled_plan,status,monthly_price_eur,start_date,trial_start_at,trial_end_at,next_renewal_date,stripe_subscription_id,stripe_price_id"
+        )
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (data) setSub(data as SubData);
+    }, 1500);
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [checkoutState]);
+
   const computed = useMemo(() => {
     if (!sub) return null;
 
-    const isTrialPlan = sub.plan === "Essai 30j";
+    // Normalise plan pour la logique UI (compat anciennes valeurs).
+    const rawPlan = String(sub.plan || "").trim();
+    const planNormalized =
+      rawPlan === "Trial" || /^essai/i.test(rawPlan)
+        ? "Trial"
+        : rawPlan === "Starter" || /^d[ée]marrage/i.test(rawPlan)
+          ? "Starter"
+          : rawPlan === "Accel" || /^acc[ée]l[ée]ration/i.test(rawPlan)
+            ? "Accel"
+            : rawPlan === "Speed" || /^pleine vitesse/i.test(rawPlan)
+              ? "Speed"
+              : rawPlan;
+
+    const statusNorm = String(sub.status || "").toLowerCase();
+    const isTrialPlan = planNormalized === "Trial" || statusNorm === "trialing" || statusNorm === "trailing" || statusNorm === "essai";
 
     const start = parseYMD(sub.start_date);
     const now = new Date();
 
     const lastAnniv = now < start ? start : lastMonthlyAnniversary(start, now);
-    const renewal = addMonthsSafe(lastAnniv, 1);
+    const renewal = sub.next_renewal_date ? parseYMD(sub.next_renewal_date) : addMonthsSafe(lastAnniv, 1);
     const endEst = addMonthsSafe(lastAnniv, 2);
-    const trialEnd = addDays(start, 30);
+    const trialEnd = sub.trial_end_at ? new Date(sub.trial_end_at) : addDays(start, 30);
+
+    const hasStripeSub = !!sub.stripe_subscription_id;
+
+    // ✅ UX: au retour Stripe (?checkout=success), on considère l'abonnement comme "programmé" immédiatement,
+    // même si le webhook n'a pas encore eu le temps d'écrire stripe_subscription_id en DB.
+    const hasScheduledSubscription = hasStripeSub || checkoutState === "success";
+
+    // Si l'utilisateur a déjà saisi ses moyens de paiement pendant l'essai,
+    // on considère l'abonnement comme "programmé" (Stripe subscription existe mais statut = essai).
+    const scheduledStart = trialEnd;
+
+    const scheduledPlan = (sub.scheduled_plan || "Starter") as SubData["plan"];
 
     return {
       startLabel: frDate(start),
       trialEndLabel: frDate(trialEnd),
+      scheduledStartLabel: frDate(scheduledStart),
       renewalLabel: frDate(renewal),
       endEstLabel: frDate(endEst),
       priceLabel: `${sub.monthly_price_eur} €`,
-      statusText: isTrialPlan ? "ESSAI" : statusLabel(sub.status),
+      statusText: isTrialPlan ? "ESSAI" : statusLabel(statusNorm),
+      hasStripeSub: hasScheduledSubscription,
+      scheduledPlanLabel: planLabel(scheduledPlan).replace("Pack ", ""),
+      planNormalized,
     };
-  }, [sub]);
+  }, [sub, checkoutState]);
 
   const shell: React.CSSProperties = {
     borderRadius: 16,
@@ -244,7 +353,8 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
+        // Default plan is Starter. If you later add a pack picker UI, send { plan: 'Accel' } etc.
+        body: JSON.stringify({ plan: "Starter" }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.url) throw new Error(json?.error || "Impossible de démarrer le paiement.");
@@ -310,7 +420,7 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ opacity: 0.85, fontSize: 12, fontWeight: 900, letterSpacing: 0.4 }}>PACK</div>
-            <div style={{ fontSize: 22, fontWeight: 950, marginTop: 4, lineHeight: 1.15 }}>{sub.plan}</div>
+            <div style={{ fontSize: 22, fontWeight: 950, marginTop: 4, lineHeight: 1.15 }}>{planLabel(sub.plan)}</div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
               <span style={badge}>SANS ENGAGEMENT</span>
@@ -332,9 +442,9 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
 
         <div
           className="datesGrid"
-          style={sub.plan === "Essai 30j" ? ({ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" } as any) : undefined}
+          style={computed?.planNormalized === "Trial" ? ({ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" } as any) : undefined}
         >
-          {sub.plan === "Essai 30j" ? (
+          {computed?.planNormalized === "Trial" ? (
             <>
               <div style={miniBox}>
                 <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Inscription</div>
@@ -371,18 +481,74 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
       <div style={card}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Modifier / Résilier</h2>
 
-        {sub.plan === "Essai 30j" ? (
+        {checkoutState === "success" ? (
+          <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
+            ✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours.
+          </p>
+        ) : checkoutState === "cancel" ? (
+          <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
+            ℹ️ Paiement annulé.
+          </p>
+        ) : null}
+
+        {computed?.planNormalized === "Trial" ? (
           <>
             <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
-              Tu es en période d’essai 30 jours. Pour continuer après l’essai, abonne-toi.
+              Vous êtes en période d’essai 30 jours.
             </p>
-            <div style={{ marginTop: 12 }}>
-              <button type="button" onClick={doCheckout} style={primaryBtn} disabled={billingBusy}>
-                S’abonner
-              </button>
-            </div>
+
+            {computed?.hasStripeSub ? (
+              <>
+                {checkoutState !== "success" ? (
+                  <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
+                    ✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours.
+                  </p>
+                ) : null}
+
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  <button type="button" onClick={doCancel} style={dangerBtn} disabled={billingBusy}>
+                    Résilier (préavis 1 mois)
+                  </button>
+                  <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
+                    Voir nos packs
+                  </a>
+                  {onOpenContact ? (
+                    <button type="button" onClick={onOpenContact} style={ghostBtn}>
+                      Contactez-nous
+                    </button>
+                  ) : (
+                    <a href="https://inrcy.com/contact/" target="_blank" rel="noreferrer" style={ghostBtn}>
+                      Contactez-nous
+                    </a>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
+                  Pour continuer après l’essai, abonnez-vous. L’abonnement démarrera à la fin de l’essai.
+                </p>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  <button type="button" onClick={doCheckout} style={primaryBtn} disabled={billingBusy}>
+                    S’abonner
+                  </button>
+                  <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
+                    Voir nos packs
+                  </a>
+                  {onOpenContact ? (
+                    <button type="button" onClick={onOpenContact} style={ghostBtn}>
+                      Contactez-nous
+                    </button>
+                  ) : (
+                    <a href="https://inrcy.com/contact/" target="_blank" rel="noreferrer" style={ghostBtn}>
+                      Contactez-nous
+                    </a>
+                  )}
+                </div>
+              </>
+            )}
           </>
-        ) : sub.status === "actif" ? (
+        ) : sub.status === "active" ? (
           <>
             <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
               Gère ton abonnement directement ici.
@@ -405,21 +571,6 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
         {billingMsg ? (
           <p style={{ margin: "10px 0 0", opacity: 0.9, lineHeight: 1.35 }}>⚠️ {billingMsg}</p>
         ) : null}
-
-        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-          <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
-            Voir nos packs
-          </a>
-          {onOpenContact ? (
-            <button type="button" onClick={onOpenContact} style={ghostBtn}>
-              Contactez-nous
-            </button>
-          ) : (
-            <a href="https://inrcy.com/contact/" target="_blank" rel="noreferrer" style={ghostBtn}>
-              Contactez-nous
-            </a>
-          )}
-        </div>
       </div>
     </div>
   );

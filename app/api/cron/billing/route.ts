@@ -22,7 +22,9 @@ export async function GET(req: Request) {
   const { data: trials, error: tErr } = await supabaseAdmin
     .from("subscriptions")
     .select("user_id, contact_email, trial_start_at, trial_end_at, status, last_trial_reminder_day")
-    .eq("status", "essai");
+    // Reminder only for users still on Trial and not yet subscribed (no Stripe subscription scheduled)
+    .eq("plan", "Trial")
+    .is("stripe_subscription_id", null);
 
   if (tErr) return NextResponse.json({ error: tErr.message }, { status: 500 });
 
@@ -63,8 +65,10 @@ export async function GET(req: Request) {
   // 2) Auto delete after day 30 if not subscribed
   const { data: maybeExpired, error: eErr } = await supabaseAdmin
     .from("subscriptions")
-    .select("user_id, trial_end_at, status")
-    .in("status", ["essai", "suspendu", "résilié"]);
+    .select("user_id, trial_end_at")
+    // Delete ONLY if trial is over AND the user never subscribed during the trial.
+    .eq("plan", "Trial")
+    .is("stripe_subscription_id", null);
 
   if (eErr) return NextResponse.json({ error: eErr.message }, { status: 500 });
 

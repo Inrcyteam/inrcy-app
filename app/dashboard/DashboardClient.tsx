@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useCallback, type TouchEvent as ReactTouch
 import Link from "next/link";
 import SettingsDrawer from "./SettingsDrawer";
 import ProfilContent from "./settings/_components/ProfilContent";
+import AccountContent from "./settings/_components/AccountContent";
 import ActivityContent from "./settings/_components/ActivityContent";
 import AbonnementContent from "./settings/_components/AbonnementContent";
 import ContactContent from "./settings/_components/ContactContent";
@@ -196,6 +197,7 @@ export default function DashboardClient() {
     name:
       | "contact"
       | "profil"
+      | "compte"
       | "activite"
       | "abonnement"
       | "mails"
@@ -208,6 +210,12 @@ export default function DashboardClient() {
   ) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", name);
+    // ✅ Marqueur: panneau ouvert volontairement par l'utilisateur.
+    // Sert à éviter l'ouverture automatique en boucle lors d'un refresh/connexion.
+    try {
+      sessionStorage.setItem("inrcy_panel_explicit_open", "1");
+      sessionStorage.setItem("inrcy_last_panel", name);
+    } catch {}
     // ✅ En mobile, on garde la position de scroll (pas de jump en haut)
     try {
       sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
@@ -219,12 +227,33 @@ export default function DashboardClient() {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("panel");
     const qs = params.toString();
+    // ✅ Quand on ferme, on remet le marqueur à zéro.
+    // (Sinon un refresh pourrait relancer un panneau si une logique externe remet ?panel=...)
+    try {
+      sessionStorage.removeItem("inrcy_panel_explicit_open");
+    } catch {}
     // ✅ En mobile, on garde la position de scroll (pas de jump en haut)
     try {
       sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
     } catch {}
     router.push(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false });
   };
+
+  // ✅ Sécurité UX: si l'URL arrive avec ?panel=profil (ou compte) sans action explicite
+  // (cas observé: refresh/connexion + ancienne URL), on ferme automatiquement.
+  // ⚠️ On ne touche PAS aux panels utilisés comme retours OAuth/Stripe (abonnement, mails, etc.).
+  useEffect(() => {
+    if (panel !== "profil" && panel !== "compte") return;
+    try {
+      const explicit = sessionStorage.getItem("inrcy_panel_explicit_open");
+      if (explicit) return;
+    } catch {
+      // si sessionStorage indisponible, on ne force rien
+      return;
+    }
+    closePanel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Orientation: gérée globalement via <OrientationGuard />
 
@@ -1697,17 +1726,9 @@ const checkActivity = useCallback(async () => {
 
 
 
-// ✅ Onboarding bloquant (soft) : on pousse l’utilisateur à compléter Profil + Activité au démarrage
-useEffect(() => {
-  // priorité au profil, puis à l’activité
-  if (profileIncomplete) {
-    openPanel("profil");
-    return;
-  }
-  if (activityIncomplete) {
-    openPanel("activite");
-  }
-}, [profileIncomplete, activityIncomplete]);
+// ✅ Onboarding non-bloquant : on affiche des alertes (badges / dots) mais
+// on n'ouvre jamais un panneau automatiquement.
+// (Sinon impossible de fermer un modal si le profil est incomplet.)
 
   useEffect(() => {
     const isTouch =
@@ -2386,6 +2407,18 @@ useEffect(() => {
                   role="menuitem"
                   onClick={() => {
                     setUserMenuOpen(false);
+                    openPanel("compte");
+                  }}
+                >
+                  Mon compte
+                </button>
+
+                <button
+                  type="button"
+                  className={styles.userMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
                     openPanel("profil");
                   }}
                 >
@@ -2494,6 +2527,18 @@ useEffect(() => {
                 }}
               >
                 Nous contacter
+              </button>
+
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openPanel("compte");
+                }}
+              >
+                Mon compte
               </button>
 
               <button
@@ -2986,6 +3031,8 @@ useEffect(() => {
         title={
           panel === "contact"
             ? "Nous contacter"
+            : panel === "compte"
+            ? "Mon compte"
             : panel === "profil"
             ? "Mon profil"
             : panel === "activite"
@@ -3010,6 +3057,7 @@ useEffect(() => {
         }
         isOpen={
           panel === "contact" ||
+          panel === "compte" ||
           panel === "profil" ||
           panel === "activite" ||
           panel === "abonnement" ||
@@ -3029,6 +3077,7 @@ useEffect(() => {
         onClose={closePanel}
       >
         {panel === "contact" && <ContactContent mode="drawer" />}
+        {panel === "compte" && <AccountContent mode="drawer" />}
         {panel === "profil" && <ProfilContent mode="drawer" />}
         {panel === "activite" && <ActivityContent mode="drawer" />}
         {panel === "abonnement" && <AbonnementContent mode="drawer" />}

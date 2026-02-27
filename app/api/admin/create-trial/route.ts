@@ -17,7 +17,9 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const email = String(body?.email || "").trim().toLowerCase();
-    const plan = String(body?.plan || "Démarrage");
+    // Le trial est toujours un essai 30j côté app.
+    // Le plan payant est choisi plus tard via le checkout.
+    const _ignoredPlan = String(body?.plan || "Starter");
 
     if (!email) return NextResponse.json({ error: "Missing email" }, { status: 400 });
 
@@ -39,13 +41,16 @@ export async function POST(req: Request) {
       .from("subscriptions")
       .upsert({
         user_id: userId,
-        plan,
-        status: "essai",
-        monthly_price_eur: 69,
+        // ✅ Pendant l'essai, plan = Trial et prix = 0
+        plan: "Trial",
+        status: "trialing",
+        monthly_price_eur: 0,
         start_date: now.toISOString().slice(0, 10),
         contact_email: email,
         trial_start_at: now.toISOString(),
         trial_end_at: end.toISOString(),
+        // marqueur utile si tu veux pré-sélectionner un pack plus tard
+        scheduled_plan: null,
         updated_at: new Date().toISOString(),
       });
 

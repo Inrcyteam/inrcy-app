@@ -385,7 +385,7 @@ export default function ProfilContent({
     <div style={{ display: "grid", gap: 12 }}>
       {/* CARTE 1 — Compte */}
       <div style={cardStyle}>
-        <h2 style={titleAccent}>Compte</h2>
+        <h2 style={titleAccent}>Cordonnées</h2>
 
         <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
           <label style={labelStyle}>
