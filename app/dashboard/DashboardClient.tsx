@@ -11,6 +11,7 @@ import ActivityContent from "./settings/_components/ActivityContent";
 import AbonnementContent from "./settings/_components/AbonnementContent";
 import ContactContent from "./settings/_components/ContactContent";
 import MailsSettingsContent from "./settings/_components/MailsSettingsContent";
+import LegalContent from "./settings/_components/LegalContent";
 
 
 // ✅ IMPORTANT : même client que ta page login
@@ -207,6 +208,7 @@ export default function DashboardClient() {
       | "linkedin"
       | "gmb"
       | "facebook"
+      | "legal"
   ) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", name);
@@ -2449,6 +2451,18 @@ const checkActivity = useCallback(async () => {
                   Mon abonnement
                 </button>
 
+                <button
+                  type="button"
+                  className={styles.userMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    openPanel("legal");
+                  }}
+                >
+                  Informations légales
+                </button>
+
                 <div className={styles.userMenuDivider} />
 
                 <button
@@ -2575,6 +2589,18 @@ const checkActivity = useCallback(async () => {
                 }}
               >
                 Mon abonnement
+              </button>
+
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openPanel("legal");
+                }}
+              >
+                Informations légales
               </button>
 
               <div className={styles.mobileMenuDivider} />
@@ -3039,6 +3065,8 @@ const checkActivity = useCallback(async () => {
             ? "Mon activité"
             : panel === "abonnement"
             ? "Mon abonnement"
+            : panel === "legal"
+            ? "Informations légales"
             : panel === "mails"
             ? "Réglages iNr’Send"
             : panel === "site_inrcy"
@@ -3061,6 +3089,7 @@ const checkActivity = useCallback(async () => {
           panel === "profil" ||
           panel === "activite" ||
           panel === "abonnement" ||
+          panel === "legal" ||
           panel === "mails" ||
           panel === "site_inrcy"
         ||
@@ -3081,6 +3110,7 @@ const checkActivity = useCallback(async () => {
         {panel === "profil" && <ProfilContent mode="drawer" />}
         {panel === "activite" && <ActivityContent mode="drawer" />}
         {panel === "abonnement" && <AbonnementContent mode="drawer" />}
+        {panel === "legal" && <LegalContent mode="drawer" />}
         {panel === "mails" && <MailsSettingsContent />}
 
 

@@ -46,6 +46,66 @@ export const TEMPLATES: TemplateDef[] = [
     ctaLabel: "Laisser un avis",
   },
 
+  {
+    key: "booster_avis_trustpilot",
+    module: "booster",
+    action: "avis",
+    category: "trustpilot",
+    title: "Demande d’avis (Trustpilot)",
+    subject: "Votre avis compte (Trustpilot) — {{nom_entreprise}}",
+    body:
+      "Bonjour,\n\n" +
+      "Merci encore pour votre confiance. Votre retour nous aide énormément à améliorer notre service et à rassurer de nouveaux clients.\n\n" +
+      "🧩 Rappel de notre activité\n" +
+      "• Métier : {{secteur}}\n" +
+      "• Prestations : {{services}}\n" +
+      "• Zone d’intervention : {{zones}}\n\n" +
+      "👉 Laisser un avis Trustpilot (1 minute) : {{avis_url}}\n\n" +
+      "Un grand merci,\n" +
+      "{{prenom}} {{nom}}\n" +
+      "{{nom_entreprise}}\n" +
+      "Tél : {{telephone}}\n" +
+      "Site : {{site_url}}",
+    ctaLabel: "Laisser un avis",
+  },
+
+  {
+    key: "booster_avis_pages_jaunes",
+    module: "booster",
+    action: "avis",
+    category: "pages_jaunes",
+    title: "Demande d’avis (PagesJaunes)",
+    subject: "Pouvez-vous laisser un avis sur PagesJaunes ? — {{nom_entreprise}}",
+    body:
+      "Bonjour,\n\n" +
+      "Merci pour votre confiance. Un avis sur PagesJaunes nous aide à être plus visibles localement et à continuer d’offrir un service de qualité.\n\n" +
+      "✅ En 1 minute : {{avis_url}}\n\n" +
+      "Si vous préférez, répondez directement à ce mail avec votre ressenti : nous lisons tout.\n\n" +
+      "Merci d’avance,\n" +
+      "{{prenom}} {{nom}}\n" +
+      "{{nom_entreprise}} — {{telephone}}\n" +
+      "{{adresse}}, {{code_postal}} {{ville}}",
+    ctaLabel: "Laisser un avis",
+  },
+
+  {
+    key: "booster_avis_autres",
+    module: "booster",
+    action: "avis",
+    category: "autres",
+    title: "Demande d’avis (Autres plateformes)",
+    subject: "Un petit avis pour {{nom_entreprise}} ?",
+    body:
+      "Bonjour,\n\n" +
+      "Merci encore pour votre confiance. Si vous avez 1 minute, votre avis nous aide beaucoup (et aide d’autres personnes à nous choisir).\n\n" +
+      "👉 Lien pour laisser un avis : {{avis_url}}\n\n" +
+      "Quelques mots suffisent : ce que vous avez apprécié, et ce qu’on pourrait améliorer.\n\n" +
+      "Merci !\n" +
+      "{{prenom}} — {{nom_entreprise}}\n" +
+      "{{telephone}}",
+    ctaLabel: "Laisser un avis",
+  },
+
   // ---- OFFRES ----
   {
     key: "booster_offres_produit",
@@ -193,6 +253,32 @@ export const TEMPLATES: TemplateDef[] = [
       "📞 Réserver : {{telephone}}\n\n" +
       "À très bientôt,\n{{prenom}} — {{nom_entreprise}}",
     ctaLabel: "Réserver",
+  },
+
+  {
+    key: "booster_offres_cartes_cadeaux",
+    module: "booster",
+    action: "offres",
+    category: "cartes_cadeaux",
+    title: "Cartes cadeaux (à offrir)",
+    subject: "🎁 Cartes cadeaux — Offrez un service {{nom_entreprise}}",
+    body:
+      "Bonjour,\n\n" +
+      "Vous cherchez une idée utile et originale ? Nous proposons des cartes cadeaux à offrir, valables sur nos prestations.\n\n" +
+      "🎁 Cartes cadeaux {{nom_entreprise}}\n" +
+      "• Montant au choix : [montant]€ / [montant]€ / [autre]\n" +
+      "• Valable sur : {{services}}\n" +
+      "• Utilisable sur : {{zones}}\n" +
+      "• Durée de validité : [X mois]\n\n" +
+      "✅ Comment ça marche ?\n" +
+      "1) Vous choisissez le montant\n" +
+      "2) Nous préparons la carte (papier ou PDF)\n" +
+      "3) Le bénéficiaire nous contacte pour réserver\n\n" +
+      "👉 Commander une carte cadeau : {{cta_url}}\n" +
+      "Ou par téléphone : {{telephone}}\n\n" +
+      "À bientôt,\n" +
+      "{{prenom}} — {{nom_entreprise}}",
+    ctaLabel: "Commander",
   },
 
   // -------------------- FIDÉLISER --------------------
@@ -455,6 +541,24 @@ export const TEMPLATES: TemplateDef[] = [
       "📞 Un rapide échange : {{telephone}}\n" +
       "Ou répondez à ce mail avec vos disponibilités.\n\n" +
       "Cordialement,\n{{prenom}} — {{nom_entreprise}}",
+  },
+
+  {
+    key: "fideliser_suivis_relance_facture",
+    module: "fideliser",
+    action: "suivis",
+    category: "relance_facture",
+    title: "Relance facture",
+    subject: "Relance — facture {{nom_entreprise}}",
+    body:
+      "Bonjour,\n\n" +
+      "Je me permets une petite relance concernant la facture en attente.\n\n" +
+      "✅ Si le règlement a déjà été effectué, ignorez ce message (et merci).\n" +
+      "Sinon, pouvez-vous me dire quand vous prévoyez le paiement ?\n\n" +
+      "📩 Si besoin, je peux vous renvoyer la facture ou ajuster le mode de règlement.\n\n" +
+      "Merci d’avance,\n" +
+      "{{prenom}} — {{nom_entreprise}}\n" +
+      "{{telephone}}",
   },
 
   // ---- ENQUÊTES ----
