@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type Props = {
   mode?: "page" | "drawer";
@@ -27,9 +27,15 @@ type SubData = {
   trial_start_at?: string | null;
   trial_end_at?: string | null;
   next_renewal_date?: string | null;
+  // cancellation (synced by Stripe webhooks)
+  cancel_requested_at?: string | null;
+  end_date?: string | null; // YYYY-MM-DD
   stripe_subscription_id?: string | null;
   stripe_price_id?: string | null;
 };
+const SUB_SELECT =
+  "plan,scheduled_plan,status,monthly_price_eur,start_date,trial_start_at,trial_end_at,next_renewal_date,cancel_requested_at,end_date,stripe_subscription_id,stripe_price_id";
+
 
 function frDate(d: Date) {
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -137,6 +143,8 @@ function planLabel(plan: SubData["plan"]) {
 
 export default function AbonnementContent({ mode: _mode = "page", onOpenContact }: Props) {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const checkoutState = searchParams.get("checkout"); // success | cancel | null
   const [loading, setLoading] = useState(true);
   const [sub, setSub] = useState<SubData | null>(null);
@@ -144,7 +152,29 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingMsg, setBillingMsg] = useState<string>("");
 
-  useEffect(() => {
+// ✅ Refresh abonnement après actions Stripe (merge pour éviter d'écraser des champs)
+const fetchSubscription = async () => {
+  try {
+    const supabase = createClient();
+    const { data: authData } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("subscriptions")
+      .select(SUB_SELECT)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (data) {
+      setSub((prev) => ({ ...(prev ?? ({} as SubData)), ...(data as SubData) }));
+    }
+  } catch (e) {
+    console.error("fetchSubscription error", e);
+  }
+};
+
+useEffect(() => {
     const load = async () => {
       setErr("");
       setLoading(true);
@@ -160,9 +190,7 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
 
         const { data, error } = await supabase
           .from("subscriptions")
-          .select(
-            "plan,scheduled_plan,status,monthly_price_eur,start_date,trial_start_at,trial_end_at,next_renewal_date,stripe_subscription_id,stripe_price_id"
-          )
+          .select(SUB_SELECT)
           .eq("user_id", user.id)
           .maybeSingle();
 
@@ -201,18 +229,34 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
       if (!user) return;
       const { data } = await supabase
         .from("subscriptions")
-        .select(
-          "plan,scheduled_plan,status,monthly_price_eur,start_date,trial_start_at,trial_end_at,next_renewal_date,stripe_subscription_id,stripe_price_id"
-        )
+        .select(SUB_SELECT)
         .eq("user_id", user.id)
         .maybeSingle();
-      if (data) setSub(data as SubData);
+      if (data) setSub((prev) => ({ ...(prev ?? ({} as SubData)), ...(data as SubData) }));
     }, 1500);
 
     return () => {
       alive = false;
       clearInterval(timer);
     };
+
+// ✅ Nettoie l'URL après un retour Stripe (évite de garder ?checkout=success et de repoll inutilement)
+useEffect(() => {
+  if (!checkoutState) return;
+
+  const t = window.setTimeout(() => {
+    const current = new URLSearchParams(searchParams.toString());
+    if (!current.has("checkout")) return;
+    current.delete("checkout");
+
+    const qs = current.toString();
+    const nextUrl = qs ? `${pathname}?${qs}` : pathname;
+    router.replace(nextUrl);
+  }, 2500);
+
+  return () => window.clearTimeout(t);
+}, [checkoutState, pathname, router, searchParams]);
+
   }, [checkoutState]);
 
   const computed = useMemo(() => {
@@ -242,6 +286,9 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
     const endEst = addMonthsSafe(lastAnniv, 2);
     const trialEnd = sub.trial_end_at ? new Date(sub.trial_end_at) : addDays(start, 30);
 
+    const cancelEnd = sub.end_date ? parseYMD(sub.end_date) : null;
+    const cancellationScheduled = !!sub.cancel_requested_at && !!cancelEnd && cancelEnd.getTime() > now.getTime();
+
     const hasStripeSub = !!sub.stripe_subscription_id;
 
     // ✅ UX: au retour Stripe (?checkout=success), on considère l'abonnement comme "programmé" immédiatement,
@@ -260,6 +307,8 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
       scheduledStartLabel: frDate(scheduledStart),
       renewalLabel: frDate(renewal),
       endEstLabel: frDate(endEst),
+      cancelEndLabel: cancelEnd ? frDate(cancelEnd) : null,
+      cancellationScheduled,
       priceLabel: `${sub.monthly_price_eur} €`,
       statusText: isTrialPlan ? "ESSAI" : statusLabel(statusNorm),
       hasStripeSub: hasScheduledSubscription,
@@ -379,9 +428,32 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Impossible de résilier.");
       setBillingMsg("Résiliation programmée (préavis 1 mois).");
-      window.location.reload();
+      await fetchSubscription();
+      setBillingBusy(false);
     } catch (e: unknown) {
       setBillingMsg(e instanceof Error ? e.message : "Erreur résiliation.");
+      setBillingBusy(false);
+    }
+  };
+
+  const doUncancel = async () => {
+    const ok = window.confirm("Annuler la résiliation programmée ?");
+    if (!ok) return;
+    try {
+      setBillingMsg("");
+      setBillingBusy(true);
+      const res = await fetch("/api/billing/uncancel", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Impossible d'annuler la résiliation.");
+      setBillingMsg("Résiliation annulée.");
+      await fetchSubscription();
+      setBillingBusy(false);
+    } catch (e: unknown) {
+      setBillingMsg(e instanceof Error ? e.message : "Erreur.");
       setBillingBusy(false);
     }
   };
@@ -505,10 +577,36 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
                   </p>
                 ) : null}
 
+                {computed?.cancellationScheduled && computed?.cancelEndLabel ? (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      border: "1px solid rgba(251, 191, 36, 0.25)",
+                      background: "rgba(251, 191, 36, 0.10)",
+                      borderRadius: 12,
+                      padding: "10px 12px",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, marginBottom: 4 }}>Résiliation programmée</div>
+                    <div style={{ opacity: 0.95, lineHeight: 1.45 }}>
+                      Votre accès restera actif jusqu'au <strong>{computed.cancelEndLabel}</strong>.
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>
+                      Vous pouvez annuler la résiliation tant que la date n'est pas atteinte.
+                    </div>
+                  </div>
+                ) : null}
+
                 <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                  <button type="button" onClick={doCancel} style={dangerBtn} disabled={billingBusy}>
-                    Résilier (préavis 1 mois)
-                  </button>
+                  {!computed?.cancellationScheduled ? (
+                    <button type="button" onClick={doCancel} style={dangerBtn} disabled={billingBusy}>
+                      {billingBusy ? "Traitement…" : "Résilier (préavis 1 mois)"}
+                    </button>
+                  ) : (
+                    <button type="button" onClick={doUncancel} style={primaryBtn} disabled={billingBusy}>
+                      {billingBusy ? "Traitement…" : "Annuler ma résiliation"}
+                    </button>
+                  )}
                   <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
                     Voir nos packs
                   </a>

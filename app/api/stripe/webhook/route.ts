@@ -63,24 +63,38 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  // Helper: update a subscription row either by user_id (preferred) or by stripe_customer_id (fallback).
+  // This is important because some Stripe events (or CLI triggers) won't contain metadata.user_id.
+  const updateSubscriptionRow = async (
+    userId: string | null | undefined,
+    customerId: string | null | undefined,
+    patch: Record<string, any>
+  ) => {
+    if (userId) {
+      return supabaseAdmin.from("subscriptions").update(patch).eq("user_id", userId);
+    }
+    if (customerId) {
+      return supabaseAdmin.from("subscriptions").update(patch).eq("stripe_customer_id", customerId);
+    }
+    return null;
+  };
+
   try {
     const type = evt.type as string;
     const obj = evt.data?.object;
 
-    // 1) Checkout completed -> ensure active
+    // 1) Checkout completed -> persist customer + subscription id ASAP
     if (type === "checkout.session.completed") {
       const session = obj;
       const userId = session?.metadata?.user_id;
       const customerId = session?.customer;
+      // In subscription-mode checkout sessions, Stripe gives you the subscription id here.
+      const subId = session?.subscription;
 
-      if (userId) {
-        await supabaseAdmin
-          .from("subscriptions")
-          .update({
-            stripe_customer_id: customerId || null,
-          })
-          .eq("user_id", userId);
-      }
+      await updateSubscriptionRow(userId, customerId, {
+        stripe_customer_id: customerId || null,
+        stripe_subscription_id: subId || null,
+      });
     }
 
     // 2) Subscription upserts
@@ -104,58 +118,51 @@ export async function POST(req: Request) {
 
       // Trial end (if any)
       const trialEndAt = sub?.trial_end ? new Date(Number(sub.trial_end) * 1000).toISOString() : null;
+      const trialStartAt = sub?.trial_start ? new Date(Number(sub.trial_start) * 1000).toISOString() : null;
       const inrcyPlan = planFromPriceId(priceId);
       const monthlyPrice = monthlyPriceFromPlan(inrcyPlan);
 
-      if (userId) {
-        // ✅ IMPORTANT UX RULE
-        // Tant que Stripe est en "trialing", on garde le plan côté app sur "Trial".
-        // On conserve malgré tout les IDs Stripe + dates d'essai, pour pouvoir :
-        // - masquer le bouton "S'abonner" (abonnement déjà programmé)
-        // - afficher la date de démarrage prévue
-        // Dès que Stripe passe en "active", on applique le plan payant (Starter/Accel/Speed).
-        const shouldKeepTrialPlan = stripeStatus === "trialing";
+      // ✅ IMPORTANT UX RULE
+      // Tant que Stripe est en "trialing", on garde le plan côté app sur "Trial".
+      // On conserve malgré tout les IDs Stripe + dates d'essai, pour pouvoir :
+      // - masquer le bouton "S'abonner" (abonnement déjà programmé)
+      // - afficher la date de démarrage prévue
+      // Dès que Stripe passe en "active", on applique le plan payant (Starter/Accel/Speed).
+      const shouldKeepTrialPlan = stripeStatus === "trialing";
 
-        await supabaseAdmin
-          .from("subscriptions")
-          .update({
-            status: stripeStatus,
-            stripe_customer_id: customerId || null,
-            stripe_subscription_id: subId || null,
-            stripe_price_id: priceId,
-            // Always keep the selected paid plan for UI (even during trialing).
-            ...(inrcyPlan ? { scheduled_plan: inrcyPlan } : {}),
-            ...(shouldKeepTrialPlan
-              ? { plan: "Trial", monthly_price_eur: 0 }
-              : {
-                  ...(inrcyPlan ? { plan: inrcyPlan } : {}),
-                  ...(monthlyPrice != null ? { monthly_price_eur: monthlyPrice } : {}),
-                  // Once the paid plan is effectively running, we no longer need the scheduled marker.
-                  scheduled_plan: null,
-                }),
-            ...(trialEndAt ? { trial_end_at: trialEndAt } : {}),
-            next_renewal_date: currentPeriodEnd ? currentPeriodEnd.slice(0, 10) : null,
-            cancel_requested_at: cancelAtPeriodEnd ? new Date().toISOString() : null,
-            end_date: cancelAt ? cancelAt.slice(0, 10) : null,
-          })
-          .eq("user_id", userId);
-      }
+      await updateSubscriptionRow(userId, customerId, {
+        status: stripeStatus,
+        stripe_customer_id: customerId || null,
+        stripe_subscription_id: subId || null,
+        stripe_price_id: priceId,
+        // Always keep the selected paid plan for UI (even during trialing).
+        ...(inrcyPlan ? { scheduled_plan: inrcyPlan } : {}),
+        ...(shouldKeepTrialPlan
+          ? { plan: "Trial", monthly_price_eur: 0 }
+          : {
+              ...(inrcyPlan ? { plan: inrcyPlan } : {}),
+              ...(monthlyPrice != null ? { monthly_price_eur: monthlyPrice } : {}),
+              // Once the paid plan is effectively running, we no longer need the scheduled marker.
+              scheduled_plan: null,
+            }),
+        ...(trialEndAt ? { trial_end_at: trialEndAt } : {}),
+        ...(trialStartAt ? { trial_start_at: trialStartAt } : {}),
+        next_renewal_date: currentPeriodEnd ? currentPeriodEnd.slice(0, 10) : null,
+        cancel_requested_at: cancelAtPeriodEnd ? new Date().toISOString() : null,
+        end_date: cancelAt ? cancelAt.slice(0, 10) : null,
+      });
     }
 
     if (type === "customer.subscription.deleted") {
       const sub = obj;
       const userId = sub?.metadata?.user_id;
+      const customerId = sub?.customer;
       const endedAt = sub?.ended_at ? new Date(Number(sub.ended_at) * 1000).toISOString() : null;
 
-      if (userId) {
-        await supabaseAdmin
-          .from("subscriptions")
-          .update({
-            status: "canceled",
-            end_date: endedAt ? endedAt.slice(0, 10) : null,
-          })
-          .eq("user_id", userId);
-      }
+      await updateSubscriptionRow(userId, customerId, {
+        status: "canceled",
+        end_date: endedAt ? endedAt.slice(0, 10) : null,
+      });
     }
 
     // 3) Payment events (impayés)
@@ -163,10 +170,7 @@ export async function POST(req: Request) {
       const invoice = obj;
       const subId = invoice?.subscription;
       if (subId) {
-        await supabaseAdmin
-          .from("subscriptions")
-          .update({ status: "past_due" })
-          .eq("stripe_subscription_id", subId);
+        await supabaseAdmin.from("subscriptions").update({ status: "past_due" }).eq("stripe_subscription_id", subId);
       }
     }
 

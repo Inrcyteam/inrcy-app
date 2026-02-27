@@ -1,10 +1,16 @@
 "use client";
 
+import { useState } from "react";
+import type { LegalDocKey } from "../../../legal/_components/legalDocs";
+import LegalDocumentsModal from "./LegalDocumentsModal";
+
 type Props = {
   mode?: "page" | "drawer";
 };
 
 export default function LegalContent({ mode = "page" }: Props) {
+  const [openDoc, setOpenDoc] = useState<LegalDocKey | null>(null);
+
   const card: React.CSSProperties = {
     padding: 16,
     borderRadius: 16,
@@ -63,22 +69,20 @@ export default function LegalContent({ mode = "page" }: Props) {
       <div style={card}>
         <h3 style={{ margin: 0, fontSize: 15, fontWeight: 900 }}>Documents</h3>
         <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-          <a href="/legal/confidentialite" target="_blank" rel="noreferrer" style={primaryBtn}>
+          <button type="button" onClick={() => setOpenDoc("confidentialite")} style={primaryBtn}>
             Politique de confidentialité
-          </a>
-          <a href="/legal/mentions-legales" target="_blank" rel="noreferrer" style={btn}>
+          </button>
+          <button type="button" onClick={() => setOpenDoc("mentions-legales")} style={btn}>
             Mentions légales
-          </a>
-          <a href="/legal/cga" target="_blank" rel="noreferrer" style={btn}>
+          </button>
+          <button type="button" onClick={() => setOpenDoc("cga")} style={btn}>
             CGA (Conditions Générales d’Abonnement)
-          </a>
+          </button>
         </div>
-        {mode === "drawer" ? null : (
-          <p style={{ margin: "10px 0 0", opacity: 0.7, fontSize: 13, lineHeight: 1.5 }}>
-            Astuce : vous pouvez ouvrir ces pages dans un nouvel onglet pour les copier/coller ou les imprimer.
-          </p>
-        )}
+        {mode === "drawer" ? null : null}
       </div>
+
+      {openDoc ? <LegalDocumentsModal docKey={openDoc} onClose={() => setOpenDoc(null)} /> : null}
     </div>
   );
 }

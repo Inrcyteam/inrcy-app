@@ -10,6 +10,15 @@
   color: rgba(255, 255, 255, 0.92);
 }
 
+/* Quand la page est affichée dans une modale de l'app (iframe) */
+.pageEmbed {
+  min-height: 100%;
+  height: 100%;
+  padding: 16px 14px 24px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.92);
+}
+
 .wrap {
   max-width: 980px;
   margin: 0 auto;
