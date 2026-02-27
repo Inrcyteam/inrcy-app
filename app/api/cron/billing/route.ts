@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { optionalEnv, requireEnv } from "@/lib/env";
 import { sendTxMail } from "@/lib/txMailer";
+import { buildTrialReminderEmail } from "@/lib/txTemplates";
+import { getAppUrl } from "@/lib/stripeRest";
 
 export const runtime = "nodejs";
 
@@ -79,12 +81,16 @@ export async function GET(req: Request) {
         ? "iNrCy — Dernier jour d’essai"
         : "iNrCy — Ton essai se termine bientôt";
 
-    const text =
-      reminderDay === 30
-        ? `Hello !\n\nC’est le dernier jour de ton essai iNrCy (fin : ${frDate(end)}).\n\nPour continuer, connecte-toi et clique sur “S’abonner” avant ce soir.\n\nÀ très vite !`
-        : `Hello !\n\nTon essai iNrCy se termine le ${frDate(end)}.\n\nPour continuer après l’essai, connecte-toi et clique sur “S’abonner”.\n\nÀ très vite !`;
+    const appUrl = getAppUrl(req);
+    const ctaUrl = `${appUrl}/dashboard?panel=abonnement`;
 
-    await sendTxMail({ to, subject, text });
+    const { html, text } = buildTrialReminderEmail({
+      endDateFr: frDate(end),
+      ctaUrl,
+      reminderDay: reminderDay as 20 | 24 | 27 | 30,
+    });
+
+    await sendTxMail({ to, subject, text, html });
 
     await supabaseAdmin
       .from("subscriptions")
