@@ -334,7 +334,7 @@ export default function PublishModal({
             Publication (unique)
           </div>
           <div className={styles.subtitle} style={{ marginBottom: 10 }}>
-            Génère avec iNrCy ou écris ton texte, puis publie sur 1+ canaux.
+            Génèrez avec iNrCy ou écrivez votre texte, puis publiez sur 1+ canaux.
           </div>
 
           <div style={{ display: "grid", gap: 10 }}>
