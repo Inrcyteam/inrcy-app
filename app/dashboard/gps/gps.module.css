@@ -465,3 +465,33 @@
     right: 12px;
   }
 }
+
+
+/* UI rewards table (Mon inertie) */
+.uiTable{
+  width:100%;
+  border-collapse:collapse;
+  margin:10px 0 0;
+  overflow:hidden;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,0.12);
+  background:rgba(255,255,255,0.03);
+  font-size:13px;
+}
+.uiTable th, .uiTable td{
+  padding:10px 10px;
+  border-bottom:1px solid rgba(255,255,255,0.10);
+  vertical-align:top;
+}
+.uiTable thead th{
+  text-align:left;
+  color:rgba(255,255,255,0.85);
+  background:rgba(15,23,42,0.35);
+  font-weight:800;
+}
+.uiTable tbody td{
+  color:rgba(255,255,255,0.75);
+}
+.uiTable tbody tr:last-child td{
+  border-bottom:none;
+}

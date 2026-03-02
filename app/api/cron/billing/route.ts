@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { optionalEnv } from "@/lib/env";
 import { sendTxMail } from "@/lib/txMailer";
 import { buildTrialReminderEmail } from "@/lib/txTemplates";
-import { getAppUrl } from "@/lib/stripeRest";
+import { getAppUrl, stripeGet } from "@/lib/stripeRest";
 
 export const runtime = "nodejs";
 
@@ -24,6 +24,25 @@ function frDate(d: Date) {
     return d.toLocaleDateString("fr-FR");
   } catch {
     return ymd(d);
+  }
+}
+
+async function stripeCustomerHasAnySubscription(stripeCustomerId: string) {
+  // Guard-rail: if we can’t reach Stripe for any reason, we prefer NOT deleting the user.
+  try {
+    const qs = new URLSearchParams({
+      customer: stripeCustomerId,
+      status: "all",
+      limit: "10",
+    });
+
+    const json: any = await stripeGet(`/subscriptions?${qs.toString()}`);
+    const subs = Array.isArray(json?.data) ? json.data : [];
+
+    // Protect the user if ANY subscription exists that isn’t an expired incomplete attempt.
+    return subs.some((s: any) => s?.status && s.status !== "incomplete_expired");
+  } catch {
+    return true;
   }
 }
 
@@ -117,7 +136,7 @@ export async function GET(req: Request) {
   // This ensures the "J30" email can be delivered before deletion.
   const { data: maybeExpired, error: eErr } = await supabaseAdmin
     .from("subscriptions")
-    .select("user_id, trial_end_at, stripe_subscription_id, plan")
+    .select("user_id, trial_end_at, stripe_subscription_id, stripe_customer_id, scheduled_plan, stripe_price_id, plan")
     .eq("plan", "Trial")
     .is("stripe_subscription_id", null);
 
@@ -134,6 +153,22 @@ export async function GET(req: Request) {
     deleteAfter.setDate(deleteAfter.getDate() + (Number.isFinite(deleteAfterDays) ? deleteAfterDays : 1));
 
     if (now < deleteAfter) continue;
+
+    // Guard-rail #1: if a Stripe customer exists, verify Stripe before deleting.
+    // If Stripe is unreachable, we keep the user (fail-closed) to avoid accidental deletion.
+    if (s.stripe_customer_id) {
+      const hasAnySub = await stripeCustomerHasAnySubscription(s.stripe_customer_id);
+      if (hasAnySub) continue;
+    } else {
+      // Guard-rail #2: if checkout intent is recorded but we don’t have a Stripe customer yet,
+      // give a small extra grace window to avoid accidental deletion.
+      const graceDays = Number(optionalEnv("INRCY_TRIAL_DELETE_GRACE_DAYS", "2"));
+      if ((s.scheduled_plan || s.stripe_price_id) && Number.isFinite(graceDays) && graceDays > 0) {
+        const graceUntil = new Date(deleteAfter);
+        graceUntil.setDate(graceUntil.getDate() + graceDays);
+        if (now < graceUntil) continue;
+      }
+    }
 
     try {
       // Delete subscription row + auth user.

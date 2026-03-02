@@ -45,6 +45,34 @@ const trackEvent = async (
   type: "publish" | "review_mail" | "promo_mail",
   payload: Record<string, any>
 ) => {
+  const isoWeekId = () => {
+    const d = new Date();
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+  };
+
+  const award = async (actionKey: string, amount: number, sourceId: string, label?: string) => {
+    try {
+      await fetch("/api/loyalty/award", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actionKey,
+          amount,
+          sourceId,
+          label: label ?? null,
+          meta: { origin: "booster", type },
+        }),
+      });
+    } catch {
+      // ignore
+    }
+  };
+
   try {
     // Publish: on envoie directement vers l'API "publish-now" (création publication + queue + metrics)
     if (type === "publish") {
@@ -53,12 +81,18 @@ const trackEvent = async (
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
+      // ✅ 10 UI pour une actu (1 fois / semaine)
+      await award("create_actu", 10, `week-${isoWeekId()}`, "Actu créée");
     } else {
       await fetch("/api/booster/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, payload }),
       });
+
+      // ✅ 10 UI pour l'utilisation de Booster/Fidéliser (1 fois / semaine)
+      await award("weekly_feature_use", 10, `week-${isoWeekId()}`, "Utilisation Booster/Fidéliser");
     }
   } finally {
     // Refresh even if the call fails, to keep UI in sync

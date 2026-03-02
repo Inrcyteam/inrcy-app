@@ -82,7 +82,8 @@ type CubeModel = {
   };
 };
 
-const PERIODS: Period[] = [7, 14, 30, 60];
+const AVAILABLE_PERIODS: Period[] = [7, 14, 30, 60];
+const PERIODS: Period[] = [7, 30];
 
 function fmtInt(n: number) {
   return new Intl.NumberFormat("fr-FR").format(Math.round(Number.isFinite(n) ? n : 0));

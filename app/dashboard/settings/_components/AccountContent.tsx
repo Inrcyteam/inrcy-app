@@ -31,6 +31,7 @@ function Rule({ ok, label }: { ok: boolean; label: string }) {
 
 export default function AccountContent({ mode: _mode = "page" }: Props) {
   const [email, setEmail] = useState<string>("");
+  const [createdAt, setCreatedAt] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -50,6 +51,13 @@ export default function AccountContent({ mode: _mode = "page" }: Props) {
         const { data, error } = await supabase.auth.getUser();
         if (error) throw new Error(error.message);
         setEmail(data.user?.email || "");
+        const raw = (data.user as any)?.created_at as string | undefined;
+        if (raw) {
+          const d = new Date(raw);
+          setCreatedAt(
+            Number.isFinite(d.getTime()) ? d.toLocaleDateString("fr-FR", { year: "numeric", month: "long", day: "numeric" }) : ""
+          );
+        }
       } catch (e: unknown) {
         setMsg(e instanceof Error ? e.message : "Erreur inconnue");
       } finally {
@@ -144,6 +152,13 @@ export default function AccountContent({ mode: _mode = "page" }: Props) {
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={card}>
+        {createdAt ? (
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+            <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.85 }}>Date de création</div>
+            <div style={{ fontSize: 13, fontWeight: 900, opacity: 0.92 }}>{createdAt}</div>
+          </div>
+        ) : null}
+
         <h2 style={{ margin: 0, fontSize: 16 }}>Identifiants</h2>
         <p style={{ margin: "8px 0 0", opacity: 0.8 }}>
           Votre email de connexion est affiché ci-dessous. Vous pouvez modifier votre mot de passe.

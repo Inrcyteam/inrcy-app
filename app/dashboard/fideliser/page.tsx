@@ -45,12 +45,39 @@ const trackEvent = async (
   type: "newsletter_mail" | "thanks_mail" | "satisfaction_mail",
   payload: Record<string, any>
 ) => {
+  const isoWeekId = () => {
+    const d = new Date();
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+  };
+
   try {
     await fetch("/api/fideliser/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type, payload }),
     });
+
+    // ✅ 10 UI pour l'utilisation de Booster/Fidéliser (1 fois / semaine)
+    try {
+      await fetch("/api/loyalty/award", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actionKey: "weekly_feature_use",
+          amount: 10,
+          sourceId: `week-${isoWeekId()}`,
+          label: "Utilisation Booster/Fidéliser",
+          meta: { origin: "fideliser", type },
+        }),
+      });
+    } catch {
+      // ignore
+    }
   } finally {
     // Refresh even if the call fails, to keep UI in sync
     await refreshMetrics();

@@ -2,7 +2,7 @@
 
 import styles from "./dashboard.module.css";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, useCallback, type TouchEvent as ReactTouchEvent } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, type TouchEvent as ReactTouchEvent } from "react";
 import Link from "next/link";
 import SettingsDrawer from "./SettingsDrawer";
 import ProfilContent from "./settings/_components/ProfilContent";
@@ -12,10 +12,13 @@ import AbonnementContent from "./settings/_components/AbonnementContent";
 import ContactContent from "./settings/_components/ContactContent";
 import MailsSettingsContent from "./settings/_components/MailsSettingsContent";
 import LegalContent from "./settings/_components/LegalContent";
+import InertiaContent from "./settings/_components/InertiaContent";
+import BoutiqueContent from "./settings/_components/BoutiqueContent";
 
 
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
+import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 
 type ModuleStatus = "connected" | "available" | "coming";
 type Accent = "cyan" | "purple" | "pink" | "orange";
@@ -209,6 +212,8 @@ export default function DashboardClient() {
       | "gmb"
       | "facebook"
       | "legal"
+      | "inertie"
+      | "boutique"
   ) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", name);
@@ -419,6 +424,64 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
 	const [facebookPageConnected, setFacebookPageConnected] = useState<boolean>(false);
 	const [facebookAccountEmail, setFacebookAccountEmail] = useState<string>("");
 
+  // ✅ Unités d'Inertie : multiplicateur basé sur les 6 canaux connectés.
+  // Calculé ici (dans le composant) pour être réutilisé dans le KPI + le drawer.
+  const inertiaSnapshot = useMemo(
+    () =>
+      computeInertiaSnapshot(
+        {
+          site_inrcy: siteInrcyOwnership !== "none",
+          site_web: Boolean(siteWebUrl?.trim()),
+          // IMPORTANT: on ne compte les réseaux sociaux que si le compte est réellement connecté (OAuth),
+          // pas seulement si un lien est renseigné.
+          // Google Business : compte + fiche (location) configurée.
+          gmb: Boolean(gmbAccountConnected && gmbConfigured),
+          // Facebook : compte + page sélectionnée.
+          facebook: Boolean(facebookAccountConnected && facebookPageConnected),
+          // Instagram : compte + page/profil (resource) sélectionné.
+          instagram: Boolean(instagramAccountConnected && instagramConnected),
+          linkedin: Boolean(linkedinAccountConnected),
+        },
+        { maxMultiplier: 7 }
+      ),
+    [
+      siteInrcyOwnership,
+      siteWebUrl,
+      gmbAccountConnected,
+      gmbConfigured,
+      facebookAccountConnected,
+      facebookPageConnected,
+      instagramAccountConnected,
+      instagramConnected,
+      linkedinAccountConnected,
+    ]
+  );
+
+  // ✅ Solde UI (Unités d'Inertie) pour l'affichage dans le Générateur
+  const [uiBalance, setUiBalance] = useState<number>(0);
+
+  const refreshUiBalance = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const { data: auth } = await supabase.auth.getUser();
+      const user = auth?.user;
+      if (!user) {
+        setUiBalance(0);
+        return;
+      }
+      const res = await supabase
+        .from("loyalty_balance")
+        .select("balance")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const bal = Number((res.data as any)?.balance ?? 0);
+      setUiBalance(Number.isFinite(bal) ? bal : 0);
+    } catch {
+      // silence (ex: tables non activées)
+      setUiBalance(0);
+    }
+  }, []);
+
 // OAuth credentials must be stored server-side (env vars), not in the UI.
 
 
@@ -428,6 +491,55 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
       setUserEmail(data.user?.email ?? null);
     });
   }, []);
+
+  // =============================
+  // UI (Unités iNrCy) — récompenses auto
+  // - 10 UI à la 1ère ouverture du compte
+  // - 50 UI d'ancienneté / mois (accordé au 1er passage du mois)
+  // =============================
+  useEffect(() => {
+    let cancelled = false;
+
+    const monthId = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    };
+
+        const award = async (actionKey: string, amount: number, sourceId?: string, label?: string) => {
+      try {
+        await fetch("/api/loyalty/award", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            actionKey,
+            amount,
+            sourceId: sourceId ?? null,
+            label: label ?? null,
+            meta: { origin: "dashboard" },
+          }),
+        });
+      } catch {
+        // ignore
+      }
+    };
+
+    (async () => {
+      // On laisse la RPC gérer l'idempotence via sourceId
+      await award("account_open", 10, "once", "Ouverture du compte");
+      await award("monthly_seniority", 50, `month-${monthId()}`, "Ancienneté");
+      await refreshUiBalance();
+      if (cancelled) return;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // (re)charge le solde UI au chargement
+  useEffect(() => {
+    void refreshUiBalance();
+  }, [refreshUiBalance]);
 
   const fetchGoogleConnected = useCallback(async (source: GoogleSource, product: GoogleProduct) => {
     const url = `/api/integrations/google-stats/status?source=${encodeURIComponent(source)}&product=${encodeURIComponent(product)}`;
@@ -2456,10 +2568,22 @@ const checkActivity = useCallback(async () => {
                   role="menuitem"
                   onClick={() => {
                     setUserMenuOpen(false);
-                    openPanel("legal");
+                    openPanel("inertie");
                   }}
                 >
-                  Informations légales
+                  Mon inertie
+                </button>
+
+                <button
+                  type="button"
+                  className={styles.userMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    openPanel("boutique");
+                  }}
+                >
+                  Boutique
                 </button>
 
                 <button
@@ -2472,6 +2596,18 @@ const checkActivity = useCallback(async () => {
                   }}
                 >
                   GPS d’utilisation
+                </button>
+
+                <button
+                  type="button"
+                  className={styles.userMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    openPanel("legal");
+                  }}
+                >
+                  Informations légales
                 </button>
 
                 <div className={styles.userMenuDivider} />
@@ -2608,10 +2744,21 @@ const checkActivity = useCallback(async () => {
                 role="menuitem"
                 onClick={() => {
                   setMenuOpen(false);
-                  openPanel("legal");
+                  openPanel("inertie");
                 }}
               >
-                Informations légales
+                Mon inertie
+              </button>
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openPanel("boutique");
+                }}
+              >
+                Boutique
               </button>
 
               <button
@@ -2624,6 +2771,18 @@ const checkActivity = useCallback(async () => {
                 }}
               >
                 GPS d’utilisation
+              </button>
+
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openPanel("legal");
+                }}
+              >
+                Informations légales
               </button>
 
               <div className={styles.mobileMenuDivider} />
@@ -2728,10 +2887,13 @@ const checkActivity = useCallback(async () => {
 
           <div className={styles.generatorGrid}>
             <div className={styles.metricCard}>
-              <div className={styles.metricLabel}>Leads aujourd’hui</div>
-              <div className={styles.metricValue}>{leadsToday}</div>
-              <div className={styles.metricHint}>Opportunités en temps réel</div>
+              <div className={styles.metricLabel}>Unités d&apos;Inertie</div>
+              <div className={styles.metricValue}>{uiBalance}</div>
+              <div className={styles.metricHint}>
+                Turbo UI ×{inertiaSnapshot.multiplier} — {inertiaSnapshot.connectedCount}/{inertiaSnapshot.totalChannels} canaux
+              </div>
             </div>
+
 
             <div className={styles.generatorCoreCenter} aria-hidden>
               <div className={styles.miniCoreRing} />
@@ -3104,6 +3266,10 @@ const checkActivity = useCallback(async () => {
             ? "Configuration — Google Business"
             : panel === "facebook"
             ? "Configuration — Facebook"
+            : panel === "inertie"
+            ? "Mon inertie"
+            : panel === "boutique"
+            ? "Boutique"
             : ""
         }
         isOpen={
@@ -3125,6 +3291,10 @@ const checkActivity = useCallback(async () => {
           panel === "gmb"
         ||
           panel === "facebook"
+        ||
+          panel === "inertie"
+        ||
+          panel === "boutique"
         }
         onClose={closePanel}
       >
@@ -3135,6 +3305,20 @@ const checkActivity = useCallback(async () => {
         {panel === "abonnement" && <AbonnementContent mode="drawer" />}
         {panel === "legal" && <LegalContent mode="drawer" />}
         {panel === "mails" && <MailsSettingsContent />}
+        {panel === "inertie" && (
+          <InertiaContent
+            mode="drawer"
+            snapshot={inertiaSnapshot}
+            onOpenBoutique={() => openPanel("boutique")}
+          />
+        )}
+
+        {panel === "boutique" && (
+          <BoutiqueContent
+            mode="drawer"
+            onOpenInertia={() => openPanel("inertie")}
+          />
+        )}
 
 
         {panel === "site_inrcy" && (

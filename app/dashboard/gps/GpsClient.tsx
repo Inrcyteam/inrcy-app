@@ -31,7 +31,8 @@ export default function GpsClient() {
   }, []);
 
   const [query, setQuery] = useState("");
-  const [activeSection, setActiveSection] = useState(GPS_SECTIONS[0]?.id ?? "generateur");
+    // ✅ No auto-selected section on first load (prevents jumping / being mid-page on refresh)
+  const [activeSection, setActiveSection] = useState<string>("");
 
   // ✅ IMPORTANT: no auto-selected article on first load
   const [activeArticleId, setActiveArticleId] = useState<string>("");
@@ -93,6 +94,10 @@ export default function GpsClient() {
       hasMountedRef.current = true;
       return;
     }
+
+
+    // If no section selected, do nothing.
+    if (!activeSection) return;
 
     const section = GPS_SECTIONS.find((s) => s.id === activeSection);
     const first = section?.articles?.[0]?.id;
