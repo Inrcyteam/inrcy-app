@@ -2741,13 +2741,13 @@ const checkActivity = useCallback(async () => {
             </div>
 
             <div className={styles.metricCard}>
-              <div className={styles.metricLabel}>Cette semaine</div>
+              <div className={styles.metricLabel}>7 derniers jours</div>
               <div className={styles.metricValue}>{leadsWeek}</div>
               <div className={styles.metricHint}>Demandes captées</div>
             </div>
 
             <div className={styles.metricCard}>
-              <div className={styles.metricLabel}>Ce mois</div>
+              <div className={styles.metricLabel}>30 derniers jours</div>
               <div className={styles.metricValue}>{leadsMonth}</div>
               <div className={styles.metricHint}>Contacts de CA potentiel</div>
             </div>

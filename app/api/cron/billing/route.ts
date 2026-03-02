@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { optionalEnv, requireEnv } from "@/lib/env";
+import { optionalEnv } from "@/lib/env";
 import { sendTxMail } from "@/lib/txMailer";
 import { buildTrialReminderEmail } from "@/lib/txTemplates";
 import { getAppUrl } from "@/lib/stripeRest";
@@ -29,9 +29,22 @@ function frDate(d: Date) {
 
 export async function GET(req: Request) {
   // Simple auth for cron
-  const secret = requireEnv("CRON_SECRET");
-  const got = req.headers.get("x-cron-secret") || "";
-  if (got !== secret) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Vercel Cron sends: Authorization: Bearer <secret>
+  // We also keep x-cron-secret support for manual/dev calls.
+  const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";
+  if (!cronSecret) {
+    return NextResponse.json(
+      { error: "Missing cron secret env (VERCEL_CRON_SECRET or CRON_SECRET)" },
+      { status: 500 }
+    );
+  }
+
+  const auth = req.headers.get("authorization") || "";
+  const gotBearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  const gotHeader = req.headers.get("x-cron-secret") || "";
+  if (gotBearer !== cronSecret && gotHeader !== cronSecret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const now = new Date();
 
