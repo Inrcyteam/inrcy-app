@@ -180,6 +180,27 @@ async function _countGmailInbox(
     const refreshed = await refreshGmailAccessToken(refreshToken);
     accessToken = refreshed.accessToken;
     debug.gmail_refreshed = true;
+
+    // ✅ SAFE FIX: persist refreshed access token + expiry.
+    // Otherwise we refresh repeatedly (latency + flakiness) and some requests can fail
+    // depending on which token version is currently used.
+    try {
+      const { encryptToken } = await import("@/lib/oauthCrypto");
+      const id = asString(asRecord(account)["id"]);
+      if (id) {
+        await supabase
+          .from("mail_accounts")
+          .update({
+            access_token_enc: encryptToken(refreshed.accessToken),
+            expires_at: refreshed.expiresAt,
+            status: "connected",
+          })
+          .eq("id", id);
+      }
+    } catch (e: unknown) {
+      // non-fatal: KPIs should still load
+      debug.gmail_persist_refresh_error = e instanceof Error ? e.message : String(e);
+    }
   }
 
   const after = Math.floor(Date.now() / 1000) - days * 86400;

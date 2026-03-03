@@ -716,14 +716,8 @@ export default function StatsClient() {
     map[key].current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const [periodByCube, setPeriodByCube] = useState<Record<CubeKey, Period>>({
-    site_inrcy: 30,
-    site_web: 30,
-    gmb: 30,
-    facebook: 30,
-    instagram: 30,
-    linkedin: 30,
-  });
+  // ✅ Période globale (7j / 30j) pour éviter un mix incohérent entre blocs.
+  const [period, setPeriod] = useState<Period>(30);
 
   const [dataByCube, setDataByCube] = useState<Record<CubeKey, { ov: Overview | null; loading: boolean; error?: string }>>({
     site_inrcy: { ov: null, loading: true },
@@ -769,7 +763,7 @@ export default function StatsClient() {
       try {
         const res = await Promise.all(
           keys.map(async (k) => {
-            const ov = await fetchCube(k, periodByCube[k]);
+            const ov = await fetchCube(k, period);
             return [k, ov] as const;
           })
         );
@@ -795,23 +789,16 @@ export default function StatsClient() {
     return () => {
       cancelled = true;
     };
-  }, [
-    periodByCube.site_inrcy,
-    periodByCube.site_web,
-    periodByCube.gmb,
-    periodByCube.facebook,
-    periodByCube.instagram,
-    periodByCube.linkedin,
-  ]);
+  }, [period]);
 
   const models: CubeModel[] = useMemo(() => {
     const build = (key: CubeKey, title: string, subtitle: string): CubeModel => {
-      const period = periodByCube[key];
+      const periodForModel = period;
       const state = dataByCube[key];
       const hasRealOverview = !!state.ov;
       const ov = state.ov ||
         ({
-          days: period,
+          days: periodForModel,
           totals: { users: 0, sessions: 0, pageviews: 0, engagementRate: 0, avgSessionDuration: 0, clicks: 0, impressions: 0, ctr: 0 },
           topPages: [],
           channels: [],
@@ -870,7 +857,7 @@ const provenance = buildProvenance(key, ov);
         inrcyOwnership: key === "site_inrcy" ? (inrcyOwnership as any) : undefined,
         title,
         subtitle,
-        period,
+        period: periodForModel,
         loading: !!state.loading,
         error: state.error,
         connections,
@@ -893,7 +880,7 @@ const provenance = buildProvenance(key, ov);
       build("instagram", "Instagram", "Visibilité de marque"),
       build("linkedin", "LinkedIn", "Visibilité professionnelle"),
     ];
-  }, [dataByCube, periodByCube]);
+  }, [dataByCube, period]);
 
   const centralPotential30 = useMemo(() => models.reduce((s, m) => s + safeNum(m.opportunity30), 0), [models]);
   const centralByCube = useMemo(() => {
@@ -921,11 +908,16 @@ const provenance = buildProvenance(key, ov);
           </div>
         </div>
 
-        <ResponsiveActionButton
-          desktopLabel="Fermer"
-          mobileIcon="✕"
-          onClick={() => router.push("/dashboard")}
-        />
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* ✅ Sélecteur global 7j / 30j */}
+          <PeriodSelect value={period} onChange={setPeriod} />
+
+          <ResponsiveActionButton
+            desktopLabel="Fermer"
+            mobileIcon="✕"
+            onClick={() => router.push("/dashboard")}
+          />
+        </div>
       </div>
 
       {/* Summary bar (CRM-like) */}
@@ -973,7 +965,6 @@ const provenance = buildProvenance(key, ov);
         <div ref={inrcyRef}>
           <Cube
             model={models[0]}
-            onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, site_inrcy: p }))}
             onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
           />
         </div>
@@ -981,7 +972,6 @@ const provenance = buildProvenance(key, ov);
         <div ref={webRef}>
           <Cube
             model={models[1]}
-            onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, site_web: p }))}
             onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
           />
         </div>
@@ -989,7 +979,6 @@ const provenance = buildProvenance(key, ov);
         <div ref={gmbRef}>
           <Cube
             model={models[2]}
-            onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, gmb: p }))}
             onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
           />
         </div>
@@ -997,7 +986,6 @@ const provenance = buildProvenance(key, ov);
         <div ref={fbRef}>
           <Cube
             model={models[3]}
-            onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, facebook: p }))}
             onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
           />
         </div>
@@ -1005,7 +993,6 @@ const provenance = buildProvenance(key, ov);
         <div ref={igRef}>
           <Cube
             model={models[4]}
-            onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, instagram: p }))}
             onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
           />
         </div>
@@ -1013,7 +1000,6 @@ const provenance = buildProvenance(key, ov);
         <div ref={liRef}>
           <Cube
             model={models[5]}
-            onChangePeriod={(p) => setPeriodByCube((prev) => ({ ...prev, linkedin: p }))}
             onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
           />
         </div>
@@ -1024,11 +1010,9 @@ const provenance = buildProvenance(key, ov);
 
 function Cube({
   model,
-  onChangePeriod,
   onNavigate,
 }: {
   model: CubeModel;
-  onChangePeriod: (p: Period) => void;
   onNavigate: (href: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -1059,7 +1043,6 @@ function Cube({
         </div>
 
         <div className={styles.cubeBadges}>
-          <PeriodSelect value={model.period} onChange={onChangePeriod} />
           <div className={styles.pills}>
             {isSite ? (
               isRentedInrcy ? (

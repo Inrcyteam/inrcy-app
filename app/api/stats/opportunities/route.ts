@@ -1,0 +1,177 @@
+import { NextResponse } from "next/server";
+
+/**
+ * Lightweight endpoint to expose the global "opportunités activables" number
+ * (same logic as iNrStats) without loading the full iNrStats UI.
+ *
+ * Strategy (safe): call the existing overview endpoint per cube (same auth cookies)
+ * then compute the 30-day projection.
+ */
+
+type Period = 7 | 30 | 60 | 90;
+type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
+
+type Overview = {
+  days: number;
+  totals?: {
+    users?: number;
+    sessions?: number;
+    pageviews?: number;
+    engagementRate?: number;
+    avgSessionDuration?: number;
+    clicks?: number;
+    impressions?: number;
+    ctr?: number;
+  };
+  topPages?: Array<{ path: string; views: number }>;
+  topQueries?: Array<{ query: string; clicks: number }>;
+  // The overview endpoint returns GA4 channels as { channel, sessions }.
+  // Older experiments may return { key, value }. We support both to stay safe.
+  channels?: Array<{ channel?: string; sessions?: number; key?: string; value?: number }>;
+  sources?: any;
+};
+
+function safeNum(v: any): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function clamp(n: number, a: number, b: number) {
+  return Math.min(b, Math.max(a, n));
+}
+
+function pageKind(path: string) {
+  const p = (path || "").toLowerCase();
+  if (p.includes("contact") || p.includes("devis") || p.includes("rdv") || p.includes("rendez")) return "contact";
+  return "other";
+}
+
+function isIntentQuery(q: string) {
+  const s = (q || "").toLowerCase();
+  // simple intent words (same spirit as iNrStats)
+  return /\b(devis|tarif|prix|contact|telephone|t[ée]l|rdv|rendez|urgence|près|proche)\b/.test(s);
+}
+
+function directShareFromChannels(ov: Overview, sessionsTotal: number) {
+  const channels = Array.isArray(ov.channels) ? ov.channels : [];
+  // Prefer canonical shape used by iNrStats: { channel, sessions }
+  const directObj = channels.find((c) => (c?.channel || c?.key || "").toLowerCase().includes("direct"));
+  const directSessions = safeNum((directObj as any)?.sessions ?? (directObj as any)?.value);
+  if (sessionsTotal > 0) return clamp(directSessions / sessionsTotal, 0, 1);
+  return 0;
+}
+
+function computeOpportunityPerDayWeb(ov: Overview) {
+  const baseDays = Math.max(1, safeNum(ov.days) || 30);
+  const totals = ov.totals || {};
+  const sessions = safeNum(totals.sessions);
+  const clicks = safeNum(totals.clicks);
+  const engagementRate = clamp(safeNum(totals.engagementRate), 0, 1);
+  const avgSessionDurationSec = safeNum(totals.avgSessionDuration);
+
+  // Match iNrStats logic: Direct share = Direct sessions / total sessions
+  const directShare = directShareFromChannels(ov, sessions);
+
+  const topQueries = Array.isArray(ov.topQueries) ? ov.topQueries : [];
+  const intentClicks = topQueries.filter((q) => isIntentQuery(q.query)).reduce((s, q) => s + safeNum(q.clicks), 0);
+
+  const topPages = Array.isArray(ov.topPages) ? ov.topPages : [];
+  const contactViews = topPages.filter((p) => pageKind(p.path) === "contact").reduce((s, p) => s + safeNum(p.views), 0);
+
+  const trafficScore = clamp((sessions / baseDays) / 50, 0, 1);
+  const intentScore = clamp((intentClicks / baseDays) / 3, 0, 1);
+  const durationScore = clamp(avgSessionDurationSec / 180, 0, 1);
+
+  const baseIndex = 0.45 * trafficScore + 0.30 * intentScore + 0.15 * engagementRate + 0.10 * durationScore;
+
+  const rawPerDay =
+    ((sessions / baseDays) * 0.08 +
+      (clicks / baseDays) * 0.10 +
+      (intentClicks / baseDays) * 0.32 +
+      (contactViews / baseDays) * 0.05) *
+    (0.65 + baseIndex) *
+    (0.85 + clamp(directShare / 0.65, 0, 1) * 0.20);
+
+  return clamp(rawPerDay, 0, 999);
+}
+
+function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
+  if (cubeKey === "gmb") {
+    const connected = !!ov?.sources?.gmb?.connected;
+    if (!connected) return 0;
+    const m = ov?.sources?.gmb?.metrics;
+    const hasError = !!m?.error;
+    const base = hasError || !m ? 0.8 : 1.2;
+    const impressionsGuess = safeNum(m?.totals?.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) + safeNum(m?.totals?.BUSINESS_IMPRESSIONS_MOBILE_MAPS);
+    const interactionsGuess = safeNum(m?.totals?.WEBSITE_CLICKS) + safeNum(m?.totals?.CALL_CLICKS) + safeNum(m?.totals?.DIRECTION_REQUESTS);
+    const perDay = clamp(base + impressionsGuess / 800 + interactionsGuess / 30, 0, 50);
+    return Math.max(0, Math.round(perDay * 30));
+  }
+  if (cubeKey === "facebook") {
+    const connected = !!ov?.sources?.facebook?.connected;
+    if (!connected) return 0;
+    return 10;
+  }
+  if (cubeKey === "instagram") {
+    const connected = !!ov?.sources?.instagram?.connected;
+    if (!connected) return 0;
+    return 9;
+  }
+  if (cubeKey === "linkedin") {
+    const connected = !!ov?.sources?.linkedin?.connected;
+    if (!connected) return 0;
+    return 7;
+  }
+  const perDay = computeOpportunityPerDayWeb(ov);
+  return Math.max(0, Math.round(perDay * 30));
+}
+
+const INCLUDE_BY_CUBE: Record<CubeKey, string> = {
+  site_inrcy: "site_inrcy_ga4,site_inrcy_gsc",
+  site_web: "site_web_ga4,site_web_gsc",
+  gmb: "gmb",
+  facebook: "facebook",
+  instagram: "instagram",
+  linkedin: "linkedin",
+};
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const days = Math.min(Math.max(Number(searchParams.get("days") || 30), 7), 90) as Period;
+
+    const origin = new URL(request.url).origin;
+    const cookie = request.headers.get("cookie") || "";
+
+    const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"];
+    const results = await Promise.all(
+      keys.map(async (k) => {
+        const include = INCLUDE_BY_CUBE[k];
+        const url = `${origin}/api/stats/overview?days=${days}&include=${encodeURIComponent(include)}`;
+        const r = await fetch(url, { headers: { cookie }, cache: "no-store" });
+        if (!r.ok) {
+          const txt = await r.text().catch(() => "");
+          throw new Error(`overview_failed:${k}:${r.status}:${txt.slice(0, 120)}`);
+        }
+        const ov = (await r.json()) as Overview;
+        return [k, ov] as const;
+      })
+    );
+
+    const byCube: Record<CubeKey, number> = {
+      site_inrcy: 0,
+      site_web: 0,
+      gmb: 0,
+      facebook: 0,
+      instagram: 0,
+      linkedin: 0,
+    };
+    for (const [k, ov] of results) byCube[k] = computeOpportunity30(k, ov);
+
+    const total = Object.values(byCube).reduce((s, n) => s + safeNum(n), 0);
+
+    return NextResponse.json({ days, total, byCube });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "unknown_error" }, { status: 500 });
+  }
+}

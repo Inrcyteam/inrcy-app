@@ -5,6 +5,21 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
+function isExpired(expiresAt: unknown): boolean {
+  if (!expiresAt) return false; // unknown => don't block
+  const d =
+    expiresAt instanceof Date
+      ? expiresAt
+      : typeof expiresAt === "string" || typeof expiresAt === "number"
+        ? new Date(expiresAt)
+        : null;
+  if (!d) return false;
+  const t = d.getTime();
+  if (Number.isNaN(t)) return false;
+  // 60s safety margin
+  return t <= Date.now() + 60_000;
+}
+
 // NOTE: We lazy-import internal libs inside the handler to avoid returning an HTML error page
 // when a dependency throws at module-evaluation time (e.g. cookies()/headers() scope issues).
 
@@ -112,7 +127,7 @@ export async function GET(request: Request) {
       try {
         const { data } = await supabase
           .from("integrations")
-          .select("id,status")
+          .select("id,status,expires_at")
           .eq("user_id", userId)
           .eq("provider", "facebook")
           .eq("source", "facebook")
@@ -121,14 +136,15 @@ export async function GET(request: Request) {
           .order("updated_at", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(1);
-        out.facebook.connected = !!(data as unknown[])?.[0];
+        const fb0 = Array.isArray(data) ? (data as unknown[])[0] : null;
+        out.facebook.connected = !!fb0 && !isExpired(asRecord(fb0)["expires_at"]);
       } catch {}
 
       // Instagram (requires profile selection => resource_id)
       try {
         const { data } = await supabase
           .from("integrations")
-          .select("id,status,resource_id")
+          .select("id,status,resource_id,expires_at")
           .eq("user_id", userId)
           .eq("provider", "instagram")
           .eq("source", "instagram")
@@ -138,14 +154,14 @@ export async function GET(request: Request) {
           .order("created_at", { ascending: false })
           .limit(1);
         const ig0 = Array.isArray(data) ? (data as unknown[])[0] : null;
-        out.instagram.connected = !!asRecord(ig0)["resource_id"];
+        out.instagram.connected = !!asRecord(ig0)["resource_id"] && !isExpired(asRecord(ig0)["expires_at"]);
       } catch {}
 
       // LinkedIn
       try {
         const { data } = await supabase
           .from("integrations")
-          .select("id,status")
+          .select("id,status,expires_at")
           .eq("user_id", userId)
           .eq("provider", "linkedin")
           .eq("source", "linkedin")
@@ -154,14 +170,15 @@ export async function GET(request: Request) {
           .order("updated_at", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(1);
-        out.linkedin.connected = !!(data as unknown[])?.[0];
+        const li0 = Array.isArray(data) ? (data as unknown[])[0] : null;
+        out.linkedin.connected = !!li0 && !isExpired(asRecord(li0)["expires_at"]);
       } catch {}
 
       // GMB (connected flag only; metrics handled later)
       try {
         const { data } = await supabase
           .from("integrations")
-          .select("id,status,resource_id")
+          .select("id,status,resource_id,expires_at")
           .eq("user_id", userId)
           .eq("provider", "google")
           .eq("source", "gmb")
@@ -171,7 +188,7 @@ export async function GET(request: Request) {
           .order("created_at", { ascending: false })
           .limit(1);
         const gmb0 = Array.isArray(data) ? (data as unknown[])[0] : null;
-        out.gmb.connected = !!asRecord(gmb0)["resource_id"];
+        out.gmb.connected = !!asRecord(gmb0)["resource_id"] && !isExpired(asRecord(gmb0)["expires_at"]);
       } catch {}
 
       return out;
@@ -338,7 +355,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 ];
 
 
-    // Fetch each source
+    // Fetch each source (SAFE PERF): run site sources concurrently, and run GA4 calls in parallel.
     const perSource: Record<string, { ga4: unknown | null; gsc: unknown | null; connected: SiteConn }> = {};
     const pageAgg = new Map<string, number>();
     const channelAgg = new Map<string, number>();
@@ -354,68 +371,126 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     let totalClicks = 0;
     let totalImpressions = 0;
 
-    for (const s of sources) {
-      perSource[s.key] = { ga4: null, gsc: null, connected: { ga4: false, gsc: false } };
+    const siteResults = await Promise.all(
+      sources.map(async (s) => {
+        const entry: { ga4: unknown | null; gsc: unknown | null; connected: SiteConn } = {
+          ga4: null,
+          gsc: null,
+          connected: { ga4: false, gsc: false },
+        };
 
-      const includeGa4 =
-        includeAll || includeSet.has(`${s.key}_ga4`) || includeSet.has(`${s.key}-ga4`);
-      const includeGsc =
-        includeAll || includeSet.has(`${s.key}_gsc`) || includeSet.has(`${s.key}-gsc`);
+        const includeGa4 = includeAll || includeSet.has(`${s.key}_ga4`) || includeSet.has(`${s.key}-ga4`);
+        const includeGsc = includeAll || includeSet.has(`${s.key}_gsc`) || includeSet.has(`${s.key}-gsc`);
 
+        const localPages = new Map<string, number>();
+        const localChannels = new Map<string, number>();
+        const localQueries = new Map<string, { clicks: number; impressions: number; positionSum: number; rows: number }>();
 
-      // GA4
-      if (includeGa4 && s.ga4Property) {
-        const token = await getGoogleTokenFor(s.key, "ga4");
-        if (token?.accessToken) {
-          perSource[s.key].connected.ga4 = true;
+        let users = 0;
+        let sessions = 0;
+        let pageviews = 0;
+        let engagementW = 0;
+        let durationW = 0;
+        let clicksSum = 0;
+        let impressionsSum = 0;
 
-          const overview = await runGa4Report(token.accessToken, s.ga4Property, days);
-          const pages = await runGa4TopPages(token.accessToken, s.ga4Property, days);
-          const channels = await runGa4Channels(token.accessToken, s.ga4Property, days);
+        // GA4
+        if (includeGa4 && s.ga4Property) {
+          const token = await getGoogleTokenFor(s.key, "ga4");
+          if (token?.accessToken) {
+            entry.connected.ga4 = true;
 
-          perSource[s.key].ga4 = { propertyId: s.ga4Property, overview, pages, channels };
+            // ✅ parallel GA4 calls (was sequential)
+            const [overview, pages, channels] = await Promise.all([
+              runGa4Report(token.accessToken, s.ga4Property, days),
+              runGa4TopPages(token.accessToken, s.ga4Property, days),
+              runGa4Channels(token.accessToken, s.ga4Property, days),
+            ]);
 
-          if (includeGa4) totalUsers += overview.users;
-          if (includeGa4) totalSessions += overview.sessions;
-          if (includeGa4) totalPageviews += overview.pageviews;
+            entry.ga4 = { propertyId: s.ga4Property, overview, pages, channels };
 
-          if (includeGa4) engagementWeighted += overview.engagementRate * overview.sessions;
-          if (includeGa4) durationWeighted += overview.avgSessionDuration * overview.sessions;
+            users += overview.users;
+            sessions += overview.sessions;
+            pageviews += overview.pageviews;
+            engagementW += overview.engagementRate * overview.sessions;
+            durationW += overview.avgSessionDuration * overview.sessions;
 
-          if (includeGa4) for (const p of pages) pageAgg.set(p.path, (pageAgg.get(p.path) || 0) + p.views);
-          if (includeGa4) for (const c of channels) channelAgg.set(c.channel, (channelAgg.get(c.channel) || 0) + c.sessions);
-        }
-      }
-
-      // GSC
-      if (includeGsc && s.gscProperty) {
-        const token = await getGoogleTokenFor(s.key, "gsc");
-        if (token?.accessToken) {
-          perSource[s.key].connected.gsc = true;
-
-          const q = await runGscQuery(token.accessToken, s.gscProperty, days);
-          perSource[s.key].gsc = { property: s.gscProperty, queries: q.rows };
-
-          const rows = Array.isArray(asRecord(q)["rows"]) ? (asRecord(q)["rows"] as unknown[]) : [];
-          for (const r of rows) {
-            if (!includeGsc) continue;
-            const rr = asRecord(r);
-            const clicks = Number(rr["clicks"] ?? 0) || 0;
-            const impressions = Number(rr["impressions"] ?? 0) || 0;
-            const query = String(rr["query"] ?? "");
-            const position = Number(rr["position"] ?? 0) || 0;
-
-            totalClicks += clicks;
-            totalImpressions += impressions;
-
-            const cur = queryAgg.get(query) || { clicks: 0, impressions: 0, positionSum: 0, rows: 0 };
-            cur.clicks += clicks;
-            cur.impressions += impressions;
-            cur.positionSum += position;
-            cur.rows += 1;
-            queryAgg.set(query, cur);
+            for (const p of pages) localPages.set(p.path, (localPages.get(p.path) || 0) + p.views);
+            for (const c of channels) localChannels.set(c.channel, (localChannels.get(c.channel) || 0) + c.sessions);
           }
         }
+
+        // GSC
+        if (includeGsc && s.gscProperty) {
+          const token = await getGoogleTokenFor(s.key, "gsc");
+          if (token?.accessToken) {
+            entry.connected.gsc = true;
+            const q = await runGscQuery(token.accessToken, s.gscProperty, days);
+            entry.gsc = { property: s.gscProperty, queries: q.rows };
+
+            const rows = Array.isArray(asRecord(q)["rows"]) ? (asRecord(q)["rows"] as unknown[]) : [];
+            for (const r of rows) {
+              const rr = asRecord(r);
+              const clicks = Number(rr["clicks"] ?? 0) || 0;
+              const impressions = Number(rr["impressions"] ?? 0) || 0;
+              const query = String(rr["query"] ?? "");
+              const position = Number(rr["position"] ?? 0) || 0;
+
+              clicksSum += clicks;
+              impressionsSum += impressions;
+
+              const cur = localQueries.get(query) || { clicks: 0, impressions: 0, positionSum: 0, rows: 0 };
+              cur.clicks += clicks;
+              cur.impressions += impressions;
+              cur.positionSum += position;
+              cur.rows += 1;
+              localQueries.set(query, cur);
+            }
+          }
+        }
+
+        return {
+          key: s.key,
+          entry,
+          agg: {
+            users,
+            sessions,
+            pageviews,
+            engagementW,
+            durationW,
+            clicksSum,
+            impressionsSum,
+            localPages,
+            localChannels,
+            localQueries,
+          },
+        };
+      })
+    );
+
+    for (const r of siteResults) {
+      perSource[r.key] = r.entry;
+      totalUsers += r.agg.users;
+      totalSessions += r.agg.sessions;
+      totalPageviews += r.agg.pageviews;
+      engagementWeighted += r.agg.engagementW;
+      durationWeighted += r.agg.durationW;
+      totalClicks += r.agg.clicksSum;
+      totalImpressions += r.agg.impressionsSum;
+
+      for (const [path, views] of r.agg.localPages.entries()) {
+        pageAgg.set(path, (pageAgg.get(path) || 0) + views);
+      }
+      for (const [channel, sessions] of r.agg.localChannels.entries()) {
+        channelAgg.set(channel, (channelAgg.get(channel) || 0) + sessions);
+      }
+      for (const [query, v] of r.agg.localQueries.entries()) {
+        const cur = queryAgg.get(query) || { clicks: 0, impressions: 0, positionSum: 0, rows: 0 };
+        cur.clicks += v.clicks;
+        cur.impressions += v.impressions;
+        cur.positionSum += v.positionSum;
+        cur.rows += v.rows;
+        queryAgg.set(query, cur);
       }
     }
 
@@ -462,7 +537,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     try {
       const { data: fbRowRows } = await supabase
         .from("integrations")
-        .select("id,status,resource_id,access_token_enc")
+        .select("id,status,resource_id,access_token_enc,expires_at")
         .eq("user_id", userId)
         .eq("provider", "facebook")
         .eq("source", "facebook")
@@ -473,13 +548,13 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         .limit(1);
       const fbRow = asRecord(fbRowRows?.[0]);
 
-sourcesStatus.facebook.connected = !!fbRowRows?.[0];
+      sourcesStatus.facebook.connected = !!fbRowRows?.[0] && !isExpired(fbRow["expires_at"]);
 
       // Real Facebook Page metrics (only if included)
       const includeFb = includeAll || includeSet.has("facebook");
       if (!includeFb) {
         sourcesStatus.facebook.metrics = null;
-      } else if (fbRow["resource_id"] && fbRow["access_token_enc"]) {
+      } else if (fbRow["resource_id"] && fbRow["access_token_enc"] && !isExpired(fbRow["expires_at"])) {
         try {
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -520,7 +595,7 @@ sourcesStatus.facebook.connected = !!fbRowRows?.[0];
     try {
       const { data: igRowRows } = await supabase
         .from("integrations")
-        .select("id,status,resource_id,access_token_enc")
+        .select("id,status,resource_id,access_token_enc,expires_at")
         .eq("user_id", userId)
         .eq("provider", "instagram")
         .eq("source", "instagram")
@@ -531,13 +606,13 @@ sourcesStatus.facebook.connected = !!fbRowRows?.[0];
         .limit(1);
       const igRow = asRecord(igRowRows?.[0]);
 
-sourcesStatus.instagram.connected = !!asRecord(igRow)["resource_id"];
+      sourcesStatus.instagram.connected = !!asRecord(igRow)["resource_id"] && !isExpired(igRow["expires_at"]);
 
       // Real Instagram metrics (only if included)
       const includeIg = includeAll || includeSet.has("instagram");
       if (!includeIg) {
         sourcesStatus.instagram.metrics = null;
-      } else if (igRow["resource_id"] && igRow["access_token_enc"]) {
+      } else if (igRow["resource_id"] && igRow["access_token_enc"] && !isExpired(igRow["expires_at"])) {
         try {
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -578,7 +653,7 @@ sourcesStatus.instagram.connected = !!asRecord(igRow)["resource_id"];
     try {
       const { data: liRowRows } = await supabase
         .from("integrations")
-        .select("id,status,access_token_enc,meta")
+        .select("id,status,access_token_enc,meta,expires_at")
         .eq("user_id", userId)
         .eq("provider", "linkedin")
         .eq("source", "linkedin")
@@ -589,13 +664,13 @@ sourcesStatus.instagram.connected = !!asRecord(igRow)["resource_id"];
         .limit(1);
       const liRow = asRecord(liRowRows?.[0]);
 
-sourcesStatus.linkedin.connected = !!liRowRows?.[0];
+      sourcesStatus.linkedin.connected = !!liRowRows?.[0] && !isExpired(liRow["expires_at"]);
 
       // Real LinkedIn org share stats (only if included)
       const includeLi = includeAll || includeSet.has("linkedin");
       if (!includeLi) {
         sourcesStatus.linkedin.metrics = null;
-      } else if (liRow["access_token_enc"]) {
+      } else if (liRow["access_token_enc"] && !isExpired(liRow["expires_at"])) {
         try {
           const meta = asRecord(liRow["meta"]);
           const orgUrn = String(meta["org_urn"] || "");

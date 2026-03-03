@@ -4,6 +4,20 @@ import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { asRecord, asString } from "@/lib/tsSafe";
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
+async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
+  try {
+    await supabase.from("stats_cache").delete().eq("user_id", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
+  } catch {}
+}
+
 async function postForm(url: string, form: Record<string, string>) {
   const res = await fetch(url, {
     method: "POST",
@@ -104,6 +118,9 @@ export async function GET(req: Request) {
     const accessToken = String(token?.access_token || "");
     if (!accessToken) return NextResponse.json({ error: "No access_token from LinkedIn", token }, { status: 500 });
 
+    const expiresIn = Number(token?.expires_in);
+    const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
+
     // OpenID Connect userinfo (works when openid scope granted)
     let userinfo: Record<string, unknown> = {};
     try {
@@ -136,7 +153,7 @@ const payload: Record<string, unknown> = {
   scopes: "openid profile email w_member_social",
   access_token_enc: encryptToken(accessToken),
   refresh_token_enc: null,
-  expires_at: null,
+  expires_at: expiresAt,
   resource_id: authorUrn || null,
   resource_label: name || null,
   meta: { profile_url: profileUrl, org_urn: null },
@@ -145,6 +162,9 @@ const payload: Record<string, unknown> = {
 await supabase
   .from("integrations")
   .upsert(payload, { onConflict: "user_id,provider,source,product" });
+
+    // Invalidate stats cache so iNrStats + Generator reflect the new connection immediately.
+    await invalidateUserStatsCache(supabase, userId);
 
 // Mirror in pro_tools_configs
     try {

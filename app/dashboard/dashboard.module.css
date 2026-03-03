@@ -814,8 +814,8 @@ display: flex;
   display: grid;
   grid-template-columns: 1fr 1fr;
 
-  /* 3 lignes : haut / espace moteur / bas */
-  grid-template-rows: auto 10px auto;
+  /* 2 lignes : haut / bas */
+  grid-template-rows: auto auto;
 
   gap: 8px;
   position: relative;
@@ -864,6 +864,129 @@ display: flex;
 .metricLabel { font-size: 14px; color: rgba(255, 255, 255, 0.70); }
 .metricValue { margin-top: 6px; font-size: 22px; font-weight: 950; letter-spacing: -0.3px; }
 .metricHint  { margin-top: 4px; font-size: 14px; color: rgba(255, 255, 255, 0.60); }
+
+/* ✅ Carte KPI fusionnée (7j / 30j) */
+.metricSplit {
+  margin-top: 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 28px;
+}
+
+.metricSplitItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.metricSplitValue {
+  font-size: 20px;
+  font-weight: 950;
+  letter-spacing: -0.3px;
+}
+
+.metricSplitLabel {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.60);
+}
+
+/* ✅ Valeur + bouton GO dans une carte KPI */
+.metricValueRow {
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* Bouton "GO" aligné sur iNrStats */
+.generatorGoBtn {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(135deg, #5B5CFF 0%, #9F6BFF 100%);
+  border: none;
+  box-shadow: 0 8px 22px rgba(91, 92, 255, 0.35);
+  color: white;
+  font-weight: 950;
+  cursor: pointer;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  white-space: nowrap;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.generatorGoBtn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.32),
+    rgba(157, 78, 255, 0.30),
+    rgba(255, 60, 120, 0.20)
+  );
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.generatorGoBtn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.52);
+}
+
+.generatorGoBtn:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.60);
+  outline-offset: 2px;
+}
+
+.generatorGoBtnLabel {
+  display: inline;
+}
+
+/* ✅ GO discret en bas à droite (carte Opportunités) */
+.generatorGoBtnCorner {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 42px;
+  height: 30px;
+  border-radius: 999px;
+  /* ✅ Couleurs iNrCy */
+  border: 1px solid rgba(56, 189, 248, 0.38);
+  background: linear-gradient(
+    90deg,
+    rgba(56, 189, 248, 0.26),
+    rgba(167, 139, 250, 0.20),
+    rgba(244, 114, 182, 0.18),
+    rgba(251, 146, 60, 0.14)
+  );
+  color: rgba(255, 255, 255, 0.96);
+  font-weight: 950;
+  cursor: pointer;
+  opacity: 0.88;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+  transition: opacity 0.12s ease, transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.generatorGoBtnCorner:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+  border-color: rgba(56, 189, 248, 0.52);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.46);
+}
+
+.generatorGoBtnCorner:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.60);
+  outline-offset: 2px;
+  opacity: 1;
+}
 
 .generatorFooter {
   margin-top: 12px;
@@ -1448,17 +1571,11 @@ display: flex;
   z-index:2;
 }
 
-/* haut */
-.generatorGrid > :nth-child(1),
-.generatorGrid > :nth-child(2) {
-  grid-row: 1;
-}
-
-/* bas */
-.generatorGrid > :nth-child(3),
-.generatorGrid > :nth-child(4) {
-  grid-row: 3;
-}
+/* ✅ Placement explicite (robuste, ne dépend plus de l'ordre des enfants) */
+.metricInertia { grid-row: 1; grid-column: 1; }
+.metricCa { grid-row: 1; grid-column: 2; }
+.metricOpportunities { grid-row: 2; grid-column: 1; }
+.metricDemandes { grid-row: 2; grid-column: 2; }
 
 /* Mobile : on garde une grille 2x2 pour centrer la roue */
 @media (max-width: 768px) {
@@ -1486,14 +1603,6 @@ display: flex;
   }
 }
 
-@media (max-width: 768px) {
-  .generatorGrid > :nth-child(1),
-  .generatorGrid > :nth-child(2),
-  .generatorGrid > :nth-child(3),
-  .generatorGrid > :nth-child(4) {
-    grid-row: auto !important;
-  }
-}
 
 @media (max-width: 560px) {
   .pills {

@@ -3,6 +3,20 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
+async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
+  try {
+    await supabase.from("stats_cache").delete().eq("user_id", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
+  } catch {}
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServer();
@@ -77,6 +91,9 @@ export async function POST(req: Request) {
     } catch {
       // non-fatal
     }
+
+    // Invalidate stats cache so iNrStats + Generator reflect the new selection immediately.
+    await invalidateUserStatsCache(supabase, userId);
 
     return NextResponse.json({ ok: true, pageUrl });
   } catch (e: unknown) {

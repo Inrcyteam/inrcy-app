@@ -1930,6 +1930,30 @@ const checkActivity = useCallback(async () => {
 
   const estimatedValue = kpis?.estimatedValue ?? 0;
 
+  // ✅ Opportunités activables (iNrStats) — affichage direct sur le cockpit.
+  const [oppLoading, setOppLoading] = useState(false);
+  const [oppTotal, setOppTotal] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setOppLoading(true);
+        const r = await fetch("/api/stats/opportunities?days=30", { cache: "no-store" });
+        if (!r.ok) throw new Error(`opps:${r.status}`);
+        const j = (await r.json()) as { total?: number };
+        if (!cancelled) setOppTotal(typeof j?.total === "number" ? j.total : 0);
+      } catch {
+        if (!cancelled) setOppTotal(null);
+      } finally {
+        if (!cancelled) setOppLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // helper render action
   const renderAction = (a: ModuleAction) => {
     const className =
@@ -2886,7 +2910,7 @@ const checkActivity = useCallback(async () => {
           </div>
 
           <div className={styles.generatorGrid}>
-            <div className={styles.metricCard}>
+            <div className={`${styles.metricCard} ${styles.metricInertia}`}>
               <div className={styles.metricLabel}>Unités d&apos;Inertie</div>
               <div className={styles.metricValue}>{uiBalance}</div>
               <div className={styles.metricHint}>
@@ -2902,19 +2926,42 @@ const checkActivity = useCallback(async () => {
               <div className={styles.miniCoreGlow} />
             </div>
 
-            <div className={styles.metricCard}>
-              <div className={styles.metricLabel}>7 derniers jours</div>
-              <div className={styles.metricValue}>{leadsWeek}</div>
-              <div className={styles.metricHint}>Demandes captées</div>
+            {/* ✅ Carte libérée : Opportunités activables (futur possible) */}
+            <div className={`${styles.metricCard} ${styles.metricOpportunities}`}>
+              <div className={styles.metricLabel}>Opportunités activables</div>
+
+              <div className={styles.metricValue}>
+                {oppLoading ? <span className={styles.miniSpinner} aria-hidden /> : oppTotal === null ? "—" : `+${oppTotal}`}
+              </div>
+              <div className={styles.metricHint}>Projection 30 jours</div>
+
+              <button
+                type="button"
+                className={styles.generatorGoBtnCorner}
+                onClick={() => router.push("/dashboard/stats")}
+                aria-label="Voir iNrStats"
+                title="Voir iNrStats"
+              >
+                <span className={styles.generatorGoBtnLabel}>GO</span>
+              </button>
             </div>
 
-            <div className={styles.metricCard}>
-              <div className={styles.metricLabel}>30 derniers jours</div>
-              <div className={styles.metricValue}>{leadsMonth}</div>
-              <div className={styles.metricHint}>Contacts de CA potentiel</div>
+            {/* ✅ Fusion 7j + 30j dans une seule carte (lecture plus simple) */}
+            <div className={`${styles.metricCard} ${styles.metricDemandes}`}>
+              <div className={styles.metricLabel}>Demandes captées</div>
+              <div className={styles.metricSplit}>
+                <div className={styles.metricSplitItem}>
+                  <div className={styles.metricSplitValue}>{leadsWeek}</div>
+                  <div className={styles.metricSplitLabel}>7 derniers jours</div>
+                </div>
+                <div className={styles.metricSplitItem}>
+                  <div className={styles.metricSplitValue}>{leadsMonth}</div>
+                  <div className={styles.metricSplitLabel}>30 derniers jours</div>
+                </div>
+              </div>
             </div>
 
-            <div className={styles.metricCard}>
+            <div className={`${styles.metricCard} ${styles.metricCa}`}>
               <div className={styles.metricLabel}>CA GÉNÉRÉ</div>
               <div className={styles.metricValue}>
                 {estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "0 €"}

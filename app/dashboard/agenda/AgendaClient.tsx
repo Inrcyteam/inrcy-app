@@ -730,6 +730,10 @@ async function deleteEventById(id: string) {
     return out;
   }, [gridStart, gridEnd]);
 
+  // Certains mois s'affichent sur 6 semaines (42 cases). Dans ce cas, on compacte un peu les cases
+  // pour éviter que la dernière ligne soit coupée dans la card.
+  const isSixWeeks = days.length > 35;
+
   const normalized = useMemo<DayEvent[]>(() => {
     return events.map((e) => {
       const allDay = isDateOnly(e.start);
@@ -953,7 +957,7 @@ async function deleteEventById(id: string) {
                   ))}
                 </div>
 
-                <div className={styles.grid}>
+                <div className={`${styles.grid} ${isSixWeeks ? styles.gridCompact : ""}`}>
                   {days.map((d) => {
                     const k = keyOf(d);
                     const isOutside = d.getMonth() !== cursorMonth.getMonth();
@@ -966,7 +970,7 @@ async function deleteEventById(id: string) {
                     return (
                       <div
                         key={k}
-                        className={`${styles.day} ${isOutside ? styles.dayOutside : ""} ${isSelected ? styles.daySelected : ""}`}
+                        className={`${styles.day} ${isSixWeeks ? styles.dayCompact : ""} ${isOutside ? styles.dayOutside : ""} ${isSelected ? styles.daySelected : ""}`}
                         onClick={() => setSelectedDate(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0))}
                         role="button"
                         tabIndex={0}

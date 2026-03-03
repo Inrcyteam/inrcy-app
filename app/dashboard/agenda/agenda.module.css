@@ -302,6 +302,11 @@
   gap: 8px;
 }
 
+/* Mois à 6 semaines (42 cases) : on compacte un peu pour éviter que la dernière ligne soit coupée */
+.gridCompact{
+  gap: 6px;
+}
+
 .day {
   min-height: 112px;
   border-radius: 16px;
@@ -312,6 +317,21 @@
   cursor: pointer;
   position: relative;
   transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.dayCompact{
+  min-height: 92px;
+  padding: 8px;
+}
+
+.dayCompact .chips{
+  margin-top: 6px;
+  gap: 5px;
+}
+
+.dayCompact .chip{
+  font-size: 11px;
+  padding: 6px 7px;
 }
 
 .day:hover {

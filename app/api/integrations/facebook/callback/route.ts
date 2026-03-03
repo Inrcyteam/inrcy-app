@@ -139,8 +139,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "No access_token from Facebook", tokenData }, { status: 500 });
     }
 
+    const shortExpiresIn = typeof tokenData.expires_in === "number" ? tokenData.expires_in : null;
+
     // 2) Upgrade to long-lived user token
     let longUserToken = userAccessToken;
+    let longExpiresIn: number | null = null;
     try {
       const longTokenUrl = `https://graph.facebook.com/v20.0/oauth/access_token?${new URLSearchParams({
         grant_type: "fb_exchange_token",
@@ -150,9 +153,13 @@ export async function GET(req: Request) {
       }).toString()}`;
       const longToken = await fetchJson<TokenResponse>(longTokenUrl);
       if (longToken.access_token) longUserToken = longToken.access_token;
+      if (typeof longToken.expires_in === "number") longExpiresIn = longToken.expires_in;
     } catch {
       // If it fails, keep short-lived; still works in dev.
     }
+
+    const expiresIn = longExpiresIn ?? shortExpiresIn;
+    const expiresAt = typeof expiresIn === "number" ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
 
     // 3) Basic user profile (email may be empty depending on account)
     let me: FbMe = {};
@@ -214,7 +221,9 @@ export async function GET(req: Request) {
       scopes: "public_profile,email,pages_show_list,pages_manage_posts,pages_read_engagement,read_insights",
       access_token_enc: encryptToken(tokenToStore),
       refresh_token_enc: null,
-      expires_at: null,
+      // ✅ Keep track of expiration to avoid "silent" disconnects.
+      // Meta tokens are long-lived but still expire.
+      expires_at: expiresAt,
       resource_id: null,
       resource_label: null,
       meta: {

@@ -10,6 +10,20 @@ type TokenResponse = {
   error?: { message?: string };
 };
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
+async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
+  try {
+    await supabase.from("stats_cache").delete().eq("user_id", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
+  } catch {}
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   const data = (await res.json()) as unknown;
@@ -95,8 +109,11 @@ export async function GET(req: Request) {
     const userAccessToken = tokenData.access_token;
     if (!userAccessToken) return NextResponse.json({ error: "No access_token from Meta", tokenData }, { status: 500 });
 
+    const shortExpiresIn = typeof tokenData.expires_in === "number" ? tokenData.expires_in : null;
+
     // Long-lived token (best-effort)
     let longUserToken = userAccessToken;
+    let longExpiresIn: number | null = null;
     try {
       const longTokenUrl = `https://graph.facebook.com/v20.0/oauth/access_token?${new URLSearchParams({
         grant_type: "fb_exchange_token",
@@ -106,7 +123,11 @@ export async function GET(req: Request) {
       }).toString()}`;
       const longTok = await fetchJson<TokenResponse>(longTokenUrl);
       if (longTok.access_token) longUserToken = longTok.access_token;
+      if (typeof longTok.expires_in === "number") longExpiresIn = longTok.expires_in;
     } catch {}
+
+    const expiresIn = longExpiresIn ?? shortExpiresIn;
+    const expiresAt = typeof expiresIn === "number" ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
 
     // Store as "account_connected" (selection later)
     // Upsert (robuste même si l’utilisateur reconnecte plusieurs fois)
@@ -120,7 +141,7 @@ const payload: Record<string, unknown> = {
   status: "account_connected",
   access_token_enc: encryptToken(longUserToken),
   refresh_token_enc: null,
-  expires_at: null,
+  expires_at: expiresAt,
   resource_id: null,
   resource_label: null,
   meta: { picked: "none" },
@@ -131,6 +152,9 @@ const { error: upsertErr } = await supabase
   .upsert(payload, { onConflict: "user_id,provider,source,product" });
 
 if (upsertErr) return NextResponse.json({ error: "DB upsert failed", upsertErr }, { status: 500 });
+
+    // Invalidate stats cache so iNrStats + Generator reflect the new connection immediately.
+    await invalidateUserStatsCache(supabase, userId);
 
 // Mirror in pro_tools_configs
     try {

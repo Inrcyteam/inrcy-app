@@ -3,6 +3,20 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
+async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
+  try {
+    await supabase.from("stats_cache").delete().eq("user_id", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
+  } catch {}
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   const data = (await res.json()) as unknown;
@@ -80,6 +94,9 @@ export async function POST(req: Request) {
     .eq("provider", "instagram")
     .eq("source", "instagram")
     .eq("product", "instagram");
+
+  // Invalidate stats cache so iNrStats + Generator reflect the new selection immediately.
+  await invalidateUserStatsCache(supabase, user.id);
 
   const profileUrl = username ? `https://www.instagram.com/${username}/` : null;
 
