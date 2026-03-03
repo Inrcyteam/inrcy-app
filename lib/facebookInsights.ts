@@ -13,6 +13,17 @@ export type FacebookDailyMetrics = {
   daily: Array<{ date: string; values: Record<string, number> }>;
 };
 
+async function getPageAccessToken(userOrPageToken: string, pageId: string): Promise<string> {
+  // If the provided token is already a page token, this request still works.
+  // Requires pages_read_engagement/pages_show_list on the user token.
+  const url =
+    `${GRAPH}/${encodeURIComponent(pageId)}?` +
+    new URLSearchParams({ fields: "access_token", access_token: userOrPageToken }).toString();
+  const resp = await fetchJson(url);
+  const t = String(resp?.access_token || "");
+  return t || userOrPageToken;
+}
+
 // Facebook Page Insights. Requires a Page access token.
 export async function fbFetchDailyInsights(
   pageAccessToken: string,
@@ -36,17 +47,30 @@ export async function fbFetchDailyInsights(
     "page_website_clicks_logged_in_unique",
   ];
 
-  const url =
+  const buildUrl = (token: string) =>
     `${GRAPH}/${encodeURIComponent(pageId)}/insights?` +
     new URLSearchParams({
       metric: metrics.join(","),
       period: "day",
       since: String(since),
       until: String(until),
-      access_token: pageAccessToken,
+      access_token: token,
     }).toString();
 
-  const resp = await fetchJson(url);
+  // Some setups store a *user* token. Page insights often require a page token.
+  // We try direct first; on auth errors we retry with a resolved page token.
+  let resp: any;
+  try {
+    resp = await fetchJson(buildUrl(pageAccessToken));
+  } catch (e: any) {
+    const msg = String(e?.message || e);
+    if (/OAuth|access token|permissions|token/i.test(msg)) {
+      const pageToken = await getPageAccessToken(pageAccessToken, pageId);
+      resp = await fetchJson(buildUrl(pageToken));
+    } else {
+      throw e;
+    }
+  }
   const data = Array.isArray(resp?.data) ? resp.data : [];
 
   const byDay = new Map<string, Record<string, number>>();

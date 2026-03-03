@@ -157,6 +157,122 @@ export async function gmbFetchDailyMetrics(accessToken: string, locationName: st
   return j;
 }
 
+// --- Normalization helpers (stable shape for UI/opportunities) ---
+
+export type GmbDailyMetrics = {
+  range: { since: string; until: string };
+  totals: {
+    impressions: number;
+    websiteClicks: number;
+    callClicks: number;
+    directionRequests: number;
+  };
+  daily: Array<{
+    date: string; // YYYY-MM-DD
+    impressions: number;
+    websiteClicks: number;
+    callClicks: number;
+    directionRequests: number;
+  }>;
+  raw?: any;
+};
+
+function ymd(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+function addTo(
+  map: Map<string, { impressions: number; websiteClicks: number; callClicks: number; directionRequests: number }>,
+  date: string,
+  key: "impressions" | "websiteClicks" | "callClicks" | "directionRequests",
+  v: number
+) {
+  const row = map.get(date) || { impressions: 0, websiteClicks: 0, callClicks: 0, directionRequests: 0 };
+  row[key] = (row[key] || 0) + (Number.isFinite(v) ? v : 0);
+  map.set(date, row);
+}
+
+/**
+ * Performance API -> { totals, daily }
+ * The API returns a `multiDailyMetricTimeSeries` array with per-metric dated values.
+ */
+export function gmbNormalizePerformanceResponse(raw: any, start: Date, end: Date): GmbDailyMetrics {
+  const outByDay = new Map<string, { impressions: number; websiteClicks: number; callClicks: number; directionRequests: number }>();
+
+  const series = Array.isArray(raw?.multiDailyMetricTimeSeries) ? raw.multiDailyMetricTimeSeries : [];
+  for (const s of series) {
+    const metric = String(s?.dailyMetric || "");
+    const dated = Array.isArray(s?.timeSeries?.datedValues) ? s.timeSeries.datedValues : [];
+
+    const key:
+      | "impressions"
+      | "websiteClicks"
+      | "callClicks"
+      | "directionRequests"
+      | null =
+      metric === "WEBSITE_CLICKS"
+        ? "websiteClicks"
+        : metric === "CALL_CLICKS"
+          ? "callClicks"
+          : metric === "DIRECTION_REQUESTS"
+            ? "directionRequests"
+            : metric.startsWith("BUSINESS_IMPRESSIONS_")
+              ? "impressions"
+              : null;
+    if (!key) continue;
+
+    for (const dv of dated) {
+      const d = dv?.date;
+      const dateStr =
+        d && typeof d === "object"
+          ? `${String(d.year).padStart(4, "0")}-${String(d.month).padStart(2, "0")}-${String(d.day).padStart(2, "0")}`
+          : "";
+      if (!dateStr) continue;
+
+      // value can be { value: "123" } depending on backend
+      const vRaw = dv?.value?.value ?? dv?.value ?? 0;
+      const v = Number(vRaw);
+      addTo(outByDay, dateStr, key, Number.isFinite(v) ? v : 0);
+    }
+  }
+
+  // Fill missing days so the shape is consistent
+  const cur = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const endDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+  while (cur <= endDay) {
+    const d = ymd(cur);
+    if (!outByDay.has(d)) outByDay.set(d, { impressions: 0, websiteClicks: 0, callClicks: 0, directionRequests: 0 });
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+
+  const daily = Array.from(outByDay.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, v]) => ({ date, ...v }));
+
+  const totals = daily.reduce(
+    (acc, d) => {
+      acc.impressions += d.impressions;
+      acc.websiteClicks += d.websiteClicks;
+      acc.callClicks += d.callClicks;
+      acc.directionRequests += d.directionRequests;
+      return acc;
+    },
+    { impressions: 0, websiteClicks: 0, callClicks: 0, directionRequests: 0 }
+  );
+
+  return {
+    range: { since: start.toISOString(), until: end.toISOString() },
+    totals,
+    daily,
+    raw,
+  };
+}
+
+export async function gmbFetchDailyMetricsNormalized(accessToken: string, locationName: string, start: Date, end: Date) {
+  const raw = await gmbFetchDailyMetrics(accessToken, locationName, start, end);
+  return gmbNormalizePerformanceResponse(raw, start, end);
+}
+
 
 export async function gmbCreateLocalPost(args: {
   accessToken: string;

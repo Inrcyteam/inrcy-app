@@ -908,15 +908,19 @@ const provenance = buildProvenance(key, ov);
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className={styles.headerActions}>
           {/* ✅ Sélecteur global 7j / 30j */}
-          <PeriodSelect value={period} onChange={setPeriod} />
+          <div className={styles.headerPills}>
+            <PeriodSelect value={period} onChange={setPeriod} />
+          </div>
 
-          <ResponsiveActionButton
-            desktopLabel="Fermer"
-            mobileIcon="✕"
-            onClick={() => router.push("/dashboard")}
-          />
+          <div className={styles.headerClose}>
+            <ResponsiveActionButton
+              desktopLabel="Fermer"
+              mobileIcon="✕"
+              onClick={() => router.push("/dashboard")}
+            />
+          </div>
         </div>
       </div>
 

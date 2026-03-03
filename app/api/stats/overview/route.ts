@@ -78,10 +78,10 @@ export async function GET(request: Request) {
       runGscQuery,
       getGoogleTokenForAnyGoogle,
     } = await import("@/lib/googleStats");
-    const { gmbFetchDailyMetrics } = await import("@/lib/googleBusiness");
+    const { gmbFetchDailyMetricsNormalized } = await import("@/lib/googleBusiness");
     const { igFetchDailyInsights } = await import("@/lib/metaInsights");
     const { fbFetchDailyInsights } = await import("@/lib/facebookInsights");
-    const { liFetchOrgShareStats } = await import("@/lib/linkedinAnalytics");
+    const { liFetchOrgShareStats, liResolveFirstAdminOrgUrn } = await import("@/lib/linkedinAnalytics");
 
     const { searchParams } = new URL(request.url);
     const days = Math.min(Math.max(Number(searchParams.get("days") || 28), 7), 90);
@@ -673,18 +673,24 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       } else if (liRow["access_token_enc"] && !isExpired(liRow["expires_at"])) {
         try {
           const meta = asRecord(liRow["meta"]);
-          const orgUrn = String(meta["org_urn"] || "");
+          let orgUrn = String(meta["org_urn"] || "");
+          const accessToken = tryDecryptToken(String(liRow["access_token_enc"])) || "";
+
+          // Fallback: if org_urn wasn't persisted yet, try to resolve an admin org live.
+          if (!orgUrn && accessToken) {
+            try {
+              orgUrn = await liResolveFirstAdminOrgUrn(accessToken);
+            } catch {
+              // ignore; we'll surface a clear error below
+            }
+          }
+
           if (!orgUrn) {
-            sourcesStatus.linkedin.metrics = { error: "No organization selected (org_urn missing)" };
+            sourcesStatus.linkedin.metrics = { error: "No organization available (org_urn missing). Select a LinkedIn Page/Org in the integration." };
           } else {
             const end = new Date();
             const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-            sourcesStatus.linkedin.metrics = await liFetchOrgShareStats(
-              tryDecryptToken(String(liRow["access_token_enc"])) || "",
-              orgUrn,
-              start,
-              end
-            );
+            sourcesStatus.linkedin.metrics = await liFetchOrgShareStats(accessToken, orgUrn, start, end);
           }
         } catch (e: unknown) {
           sourcesStatus.linkedin.metrics = { error: (e instanceof Error ? e.message : String(e)) || "linkedin analytics fetch failed" };
@@ -771,7 +777,7 @@ sourcesStatus.gmb.connected = !!gmbRowRows?.[0] && !!gmbRow["resource_id"];
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           try {
-            sourcesStatus.gmb.metrics = await gmbFetchDailyMetrics(accessToken, loc, start, end);
+            sourcesStatus.gmb.metrics = await gmbFetchDailyMetricsNormalized(accessToken, loc, start, end);
           } catch (e: unknown) {
             sourcesStatus.gmb.metrics = { error: (e instanceof Error ? e.message : String(e)) || "performance fetch failed", location: loc };
           }

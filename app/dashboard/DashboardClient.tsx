@@ -2930,20 +2930,24 @@ const checkActivity = useCallback(async () => {
             <div className={`${styles.metricCard} ${styles.metricOpportunities}`}>
               <div className={styles.metricLabel}>Opportunités activables</div>
 
-              <div className={styles.metricValue}>
-                {oppLoading ? <span className={styles.miniSpinner} aria-hidden /> : oppTotal === null ? "—" : `+${oppTotal}`}
-              </div>
-              <div className={styles.metricHint}>Projection 30 jours</div>
+              {/* ✅ Responsive : GO sur la même ligne que la valeur (via CSS). Desktop inchangé (bouton en corner). */}
+              <div className={styles.metricValueRow}>
+                <div className={styles.metricValue}>
+                  {oppLoading ? <span className={styles.miniSpinner} aria-hidden /> : oppTotal === null ? "—" : `+${oppTotal}`}
+                </div>
 
-              <button
-                type="button"
-                className={styles.generatorGoBtnCorner}
-                onClick={() => router.push("/dashboard/stats")}
-                aria-label="Voir iNrStats"
-                title="Voir iNrStats"
-              >
-                <span className={styles.generatorGoBtnLabel}>GO</span>
-              </button>
+                <button
+                  type="button"
+                  className={styles.generatorGoBtnCorner}
+                  onClick={() => router.push("/dashboard/stats")}
+                  aria-label="Voir iNrStats"
+                  title="Voir iNrStats"
+                >
+                  <span className={styles.generatorGoBtnLabel}>GO</span>
+                </button>
+              </div>
+
+              <div className={styles.metricHint}>Projection 30 jours</div>
             </div>
 
             {/* ✅ Fusion 7j + 30j dans une seule carte (lecture plus simple) */}

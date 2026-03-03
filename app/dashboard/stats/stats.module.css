@@ -128,6 +128,27 @@
   line-height: 1;
 }
 
+
+/* Header right controls (period + close) */
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.headerPills {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.headerClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .closeBtn:hover {
   transform: translateY(-1px);
   border-color: rgba(255, 255, 255, 0.26);
@@ -442,6 +463,9 @@
   .header {
     align-items: flex-start;
     gap: 14px;
+    flex-wrap: wrap;
+    justify-content: center;
+    position: relative;
   }
 
   /* Logo + sous-titre en colonne (sous le logo) */
@@ -473,6 +497,42 @@
   .closeIcon {
     display: inline;
   }
+
+
+  /* Header controls: keep BOTH the period bubble and the close "X" visible in the top-right.
+     Requirement: period bubble must sit LEFT of the X, without pushing the X further right. */
+  .brand { width: 100%; }
+
+  .headerActions {
+    width: 100%;
+    /* Do not reserve layout space: we pin controls in the top-right. */
+    position: absolute;
+    top: 0;
+    right: 0;
+    justify-content: flex-end;
+    gap: 10px;
+    pointer-events: none; /* allow underlying header layout; re-enable on children */
+  }
+
+  .headerPills {
+    position: absolute;
+    top: 0;
+    /* space for the close button + small gap */
+    right: calc(44px + 10px);
+    justify-content: flex-end;
+    z-index: 2;
+    pointer-events: auto;
+  }
+
+  .headerClose {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 3;
+    pointer-events: auto;
+  }
+
+  .period { max-width: 160px; }
 
   /* Cube header: 1) titre 2) sous-texte 3) bulles centrées */
   .cubeTop {
@@ -520,6 +580,15 @@
   .summaryItem b {
     font-size: 12px;
   }
+
+  /* Perfect centering for GO bubble on mobile */
+  .actionBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
 }
 
 .period {
@@ -826,6 +895,10 @@
 }
 
 .actionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   padding: 10px 14px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.18);

@@ -975,6 +975,15 @@ display: flex;
   transition: opacity 0.12s ease, transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
+/* ✅ Responsive: dans la carte Opportunités, le GO doit rester inline (même ligne que +XX) */
+@media (max-width: 768px) {
+  .metricOpportunities .generatorGoBtnCorner {
+    position: static;
+    right: auto;
+    bottom: auto;
+  }
+}
+
 .generatorGoBtnCorner:hover {
   opacity: 1;
   transform: translateY(-1px);

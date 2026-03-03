@@ -17,6 +17,27 @@ export type LinkedInMetrics = {
   raw?: any;
 };
 
+export async function liResolveFirstAdminOrgUrn(accessToken: string): Promise<string> {
+  // Lists organizations where the member has ADMINISTRATOR role.
+  // This is a best-effort fallback when the app didn't persist org_urn yet.
+  const url =
+    "https://api.linkedin.com/v2/organizationalEntityAcls?" +
+    new URLSearchParams({
+      q: "roleAssignee",
+      role: "ADMINISTRATOR",
+      state: "APPROVED",
+      count: "10",
+    }).toString();
+
+  const resp = await fetchJson(url, accessToken);
+  const els = Array.isArray(resp?.elements) ? resp.elements : [];
+  for (const el of els) {
+    const urn = String(el?.organizationalTarget || "");
+    if (urn.startsWith("urn:li:organization:")) return urn;
+  }
+  return "";
+}
+
 // Uses organizationalEntityShareStatistics (works with many apps even without deeper page analytics).
 export async function liFetchOrgShareStats(
   accessToken: string,
