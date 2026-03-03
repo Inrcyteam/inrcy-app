@@ -38,7 +38,11 @@ export async function fbFetchDailyInsights(
   // Metric availability varies by Page/category and can change across API versions.
   // To avoid breaking the entire channel, we try a batched request first, then
   // (only on "valid insights metric" errors) retry metric-by-metric and keep the ones that work.
-  const coreMetrics = ["page_impressions", "page_engaged_users", "page_views_total"];
+  // NOTE: Many legacy Page insight metrics (ex: page_impressions, page_fans, etc.)
+  // are no longer accepted for some Pages/apps on newer Graph API versions.
+  // We only request metrics that are still commonly supported.
+  // For impressions/likes we enrich via other endpoints below.
+  const coreMetrics = ["page_engaged_users", "page_views_total"];
   const optionalMetrics = [
     "page_call_phone_clicks_logged_in_unique",
     "page_get_directions_clicks_logged_in_unique",
@@ -126,6 +130,68 @@ export async function fbFetchDailyInsights(
     for (const [k, val] of Object.entries(d.values)) {
       totals[k] = (totals[k] || 0) + (Number(val) || 0);
     }
+  }
+
+  // Enrich with Page fields (likes/followers). These are NOT insights metrics.
+  // Requires a Page access token.
+  try {
+    const pageInfo = await fetchJson(
+      `${GRAPH}/${encodeURIComponent(pageId)}?` +
+        new URLSearchParams({
+          fields: "fan_count,followers_count",
+          access_token: tokenToUse,
+        }).toString()
+    );
+    if (typeof pageInfo?.fan_count === "number") totals.fan_count = pageInfo.fan_count;
+    if (typeof pageInfo?.followers_count === "number") totals.followers_count = pageInfo.followers_count;
+  } catch {
+    // ignore
+  }
+
+  // Fallback impressions: sum post_impressions over published posts in the range.
+  // This is a practical replacement when Page-level impressions metrics are unavailable.
+  try {
+    const posts = await fetchJson(
+      `${GRAPH}/${encodeURIComponent(pageId)}/published_posts?` +
+        new URLSearchParams({
+          fields: "id,created_time",
+          limit: "50",
+          since: String(since),
+          until: String(until),
+          access_token: tokenToUse,
+        }).toString()
+    );
+    const arr = Array.isArray(posts?.data) ? posts.data : [];
+    let impressionsSum = 0;
+    let engagedSum = 0;
+    for (const p of arr) {
+      const postId = String(p?.id || "");
+      if (!postId) continue;
+      try {
+        const ins = await fetchJson(
+          `${GRAPH}/${encodeURIComponent(postId)}/insights?` +
+            new URLSearchParams({
+              metric: "post_impressions,post_engaged_users",
+              period: "lifetime",
+              access_token: tokenToUse,
+            }).toString()
+        );
+        const rows = Array.isArray(ins?.data) ? ins.data : [];
+        for (const r of rows) {
+          const name = String(r?.name || "");
+          const v = Array.isArray(r?.values) ? r.values[0]?.value : undefined;
+          const val = typeof v === "number" ? v : 0;
+          if (name === "post_impressions") impressionsSum += val;
+          if (name === "post_engaged_users") engagedSum += val;
+        }
+      } catch {
+        // ignore per-post failures
+      }
+    }
+    if (impressionsSum > 0) totals.post_impressions_sum = impressionsSum;
+    if (engagedSum > 0 && totals.page_engaged_users === undefined) totals.post_engaged_users_sum = engagedSum;
+  } catch {
+    // ignore
   }
 
   return {

@@ -22,30 +22,46 @@ export async function igFetchDailyInsights(
   const since = Math.floor(start.getTime() / 1000);
   const until = Math.floor(end.getTime() / 1000);
 
-  // Metrics oriented toward lead intent.
+  // Instagram account insights metric availability varies by account type.
+  // Also, some metric names changed (ex: get_directions_clicks).
+  // We fetch metrics one-by-one and skip unsupported ones so the whole
+  // dashboard does not break.
   const metrics = [
-    "impressions",
+    // Core
     "reach",
+    "follower_count",
     "profile_views",
-    // Optional / varies by account type & region
+    // Intent/CTA (optional)
     "website_clicks",
     "phone_call_clicks",
     "email_contacts",
-    "get_direction_clicks",
+    "text_message_clicks",
+    "get_directions_clicks",
   ];
 
-  const url =
-    `${GRAPH}/${encodeURIComponent(igUserId)}/insights?` +
-    new URLSearchParams({
-      metric: metrics.join(","),
-      period: "day",
-      since: String(since),
-      until: String(until),
-      access_token: accessToken,
-    }).toString();
+  const allRows: any[] = [];
+  for (const metric of metrics) {
+    try {
+      const url =
+        `${GRAPH}/${encodeURIComponent(igUserId)}/insights?` +
+        new URLSearchParams({
+          metric,
+          period: "day",
+          since: String(since),
+          until: String(until),
+          access_token: accessToken,
+        }).toString();
 
-  const resp = await fetchJson(url);
-  const data = Array.isArray(resp?.data) ? resp.data : [];
+      // eslint-disable-next-line no-await-in-loop
+      const resp = await fetchJson(url);
+      const rows = Array.isArray(resp?.data) ? resp.data : [];
+      allRows.push(...rows);
+    } catch {
+      // ignore unsupported metric
+    }
+  }
+
+  const data = allRows;
 
   const byDay = new Map<string, Record<string, number>>();
   for (const m of data) {
@@ -57,6 +73,10 @@ export async function igFetchDailyInsights(
       if (!endTime) continue;
       const row = byDay.get(endTime) || {};
       row[name] = (row[name] || 0) + value;
+      // Back-compat alias used in a few places in the app
+      if (name === "get_directions_clicks") {
+        row["get_direction_clicks"] = (row["get_direction_clicks"] || 0) + value;
+      }
       byDay.set(endTime, row);
     }
   }
