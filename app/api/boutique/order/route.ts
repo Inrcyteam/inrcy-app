@@ -4,6 +4,11 @@ import { sendTxMail } from "@/lib/txMailer";
 import { findBoutiqueProduct } from "@/lib/boutique/products";
 import { optionalEnv } from "@/lib/env";
 
+// Ensure this route runs on the Node.js runtime (SMTP requires TCP sockets).
+export const runtime = "nodejs";
+// Avoid any accidental caching of POST responses in some hosting setups.
+export const dynamic = "force-dynamic";
+
 type OrderBody = {
   productKey: string;
   method: "EUR" | "UI";
@@ -84,9 +89,18 @@ export async function POST(req: Request) {
       text: lines.join("\n"),
     });
   } catch (e: any) {
-    // Don't leak SMTP details
+    // Log server-side to help debugging.
+    console.error("[boutique/order] sendTxMail failed:", e?.message ?? e, e);
+
+    // In dev, return a slightly more informative error to speed up setup.
+    const isDev = process.env.NODE_ENV !== "production";
     return NextResponse.json(
-      { ok: false, error: "Impossible d'envoyer la commande pour le moment." },
+      {
+        ok: false,
+        error: isDev
+          ? `Impossible d'envoyer la commande (SMTP): ${e?.message ?? String(e)}`
+          : "Impossible d'envoyer la commande pour le moment.",
+      },
       { status: 500 }
     );
   }

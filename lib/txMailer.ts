@@ -20,11 +20,22 @@ export async function sendTxMail(mail: TxMail) {
   const secure = optionalEnv("TX_SMTP_SECURE", "");
   const from = optionalEnv("TX_MAIL_FROM", user);
 
+  // Some SMTP providers may require tweaking TLS verification depending on their cert chain.
+  // Default is the safe behavior (verification ON).
+  const tlsRejectUnauthorized = optionalEnv("TX_SMTP_TLS_REJECT_UNAUTHORIZED", "true") !== "false";
+
   const transporter = nodemailer.createTransport({
     host,
     port,
     secure: secure === "true" ? true : port === 465,
     auth: { user, pass },
+    // Timeouts help surface network issues quickly instead of hanging.
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 20_000,
+    tls: {
+      rejectUnauthorized: tlsRejectUnauthorized,
+    },
   });
 
   await transporter.sendMail({
