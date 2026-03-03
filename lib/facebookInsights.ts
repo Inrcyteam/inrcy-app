@@ -34,23 +34,22 @@ export async function fbFetchDailyInsights(
   const since = Math.floor(start.getTime() / 1000);
   const until = Math.floor(end.getTime() / 1000);
 
-  // Keep to "safe" metrics available on most Pages.
-  // If a metric is not available, the Graph API returns an error; we handle that upstream.
-  const metrics = [
-    "page_impressions",
-    "page_engaged_users",
-    "page_views_total",
-    "page_fans",
-    // Some pages have these (optional):
+  // Facebook Insights is strict: if you pass ONE invalid metric name, the whole request fails.
+  // Metric availability varies by Page/category and can change across API versions.
+  // To avoid breaking the entire channel, we try a batched request first, then
+  // (only on "valid insights metric" errors) retry metric-by-metric and keep the ones that work.
+  const coreMetrics = ["page_impressions", "page_engaged_users", "page_views_total"];
+  const optionalMetrics = [
     "page_call_phone_clicks_logged_in_unique",
     "page_get_directions_clicks_logged_in_unique",
     "page_website_clicks_logged_in_unique",
   ];
+  const metrics = [...coreMetrics, ...optionalMetrics];
 
-  const buildUrl = (token: string) =>
+  const buildUrl = (token: string, metricList: string[]) =>
     `${GRAPH}/${encodeURIComponent(pageId)}/insights?` +
     new URLSearchParams({
-      metric: metrics.join(","),
+      metric: metricList.join(","),
       period: "day",
       since: String(since),
       until: String(until),
@@ -60,18 +59,49 @@ export async function fbFetchDailyInsights(
   // Some setups store a *user* token. Page insights often require a page token.
   // We try direct first; on auth errors we retry with a resolved page token.
   let resp: any;
+  let tokenToUse = pageAccessToken;
+
+  const fetchWithToken = async (token: string, metricList: string[]) => fetchJson(buildUrl(token, metricList));
+
+  // First attempt: batched metrics
   try {
-    resp = await fetchJson(buildUrl(pageAccessToken));
+    resp = await fetchWithToken(tokenToUse, metrics);
   } catch (e: any) {
     const msg = String(e?.message || e);
+    // If auth/permissions, resolve a page token and retry.
     if (/OAuth|access token|permissions|token/i.test(msg)) {
-      const pageToken = await getPageAccessToken(pageAccessToken, pageId);
-      resp = await fetchJson(buildUrl(pageToken));
+      tokenToUse = await getPageAccessToken(pageAccessToken, pageId);
+      resp = await fetchWithToken(tokenToUse, metrics);
+    } else if (/valid insights metric/i.test(msg)) {
+      // One (or more) metrics are not supported for this Page/API version.
+      // Fall back to per-metric requests below.
+      resp = { data: [] };
     } else {
       throw e;
     }
   }
-  const data = Array.isArray(resp?.data) ? resp.data : [];
+
+  // In some cases, Graph can surface "valid insights metric" errors (or return no data)
+  // when one of the requested metrics is not supported for the Page.
+  // Fallback: request metrics one by one and keep the successes.
+  let data: any[] = Array.isArray(resp?.data) ? resp.data : [];
+  const embeddedErrMsg = String(resp?.error?.message || "");
+  if (/valid insights metric/i.test(embeddedErrMsg) || data.length === 0) {
+    const collected: any[] = [];
+    for (const m of metrics) {
+      try {
+        const r = await fetchWithToken(tokenToUse, [m]);
+        const arr = Array.isArray(r?.data) ? r.data : [];
+        collected.push(...arr);
+      } catch (err: any) {
+        const em = String(err?.message || err);
+        // Ignore unsupported metrics.
+        if (/valid insights metric/i.test(em)) continue;
+        throw err;
+      }
+    }
+    data = collected;
+  }
 
   const byDay = new Map<string, Record<string, number>>();
   for (const m of data) {
