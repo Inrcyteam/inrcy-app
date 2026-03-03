@@ -93,11 +93,11 @@ export default function InertiaContent({ snapshot, onOpenBoutique }: Props) {
 
   const boosts = useMemo(() => {
     const inWeek = (e: LoyaltyEvent) => new Date(e.created_at) >= weekStart;
-    const didActu = events.some((e) => inWeek(e) && e.action_key === "publish_post");
+    const didActu = events.some((e) => inWeek(e) && e.action_key === "create_actu");
     const didFeature = events.some((e) => inWeek(e) && e.action_key === "weekly_feature_use");
     return [
       {
-        key: "publish_post",
+        key: "create_actu",
         title: "Créer une actu",
         subtitle: "+10 UI — 1 fois par semaine",
         done: didActu,
@@ -110,6 +110,17 @@ export default function InertiaContent({ snapshot, onOpenBoutique }: Props) {
       },
     ];
   }, [events, weekStart]);
+
+  const labelFromAction = useMemo(() => {
+    return {
+      account_open: "Ouverture du compte",
+      profile_complete: "Profil complété",
+      activity_complete: "Activité complétée",
+      create_actu: "Actu créée",
+      weekly_feature_use: "Utilisation Booster/Fidéliser",
+      monthly_seniority: "Ancienneté",
+    } as Record<string, string>;
+  }, []);
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -222,7 +233,7 @@ export default function InertiaContent({ snapshot, onOpenBoutique }: Props) {
                 {b.label}
               </div>
               <div style={{ color: "rgba(255,255,255,0.72)", fontWeight: 750 }}>
-                {b.connected ? `+${b.bonus}` : "Non connecté"}
+                {b.connected ? `+${b.bonus}` : ""}
               </div>
             </div>
           ))}
@@ -321,7 +332,7 @@ export default function InertiaContent({ snapshot, onOpenBoutique }: Props) {
                 }}
               >
                 <div style={{ color: "rgba(255,255,255,0.82)" }}>
-                  <div style={{ fontWeight: 650 }}>{e.label ?? "Inertie"}</div>
+                  <div style={{ fontWeight: 650 }}>{e.label ?? labelFromAction[e.action_key] ?? "Inertie"}</div>
                   <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
                     {new Date(e.created_at).toLocaleString()}
                   </div>

@@ -3,26 +3,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
+import { BOUTIQUE_PRODUCTS, type BoutiqueProduct } from "@/lib/boutique/products";
 
 type Props = {
   mode?: "drawer" | "page";
   onOpenInertia?: () => void;
 };
 
-type Product = {
-  key: string;
-  title: string;
-  desc: string;
-  priceEur: number;
-  priceUi: number;
-  badge?: string;
-};
+type Method = "EUR" | "UI";
+
+const BOUTIQUE_TO = process.env.NEXT_PUBLIC_BOUTIQUE_EMAIL || "boutique@inrcy.com";
 
 export default function BoutiqueContent({ onOpenInertia }: Props) {
   const router = useRouter();
   const [uiBalance, setUiBalance] = useState<number | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [adminEmail, setAdminEmail] = useState<string | null>(null);
+  const [sendingKey, setSendingKey] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string>("");
 
   useEffect(() => {
     let mounted = true;
@@ -39,6 +38,15 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
         if (!mounted) return;
         setUserEmail(user.email ?? null);
         setUserId(user.id);
+
+        // email admin = contact_email du profil (si dispo)
+        const profileRes = await supabase
+          .from("profiles")
+          .select("contact_email")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const admin = String((profileRes.data as any)?.contact_email ?? "").trim();
+        setAdminEmail(admin || null);
 
         const balanceRes = await supabase
           .from("loyalty_balance")
@@ -59,114 +67,50 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
     };
   }, []);
 
-  const products: Product[] = useMemo(
-    () => [
-      {
-        key: "cartes_visite",
-        title: "Cartes de visite",
-        desc: "Design pro + fichiers prêts à imprimer.",
-        priceEur: 59,
-        priceUi: 590,
-        badge: "Print",
-      },
-      {
-        key: "flyers",
-        title: "Flyers",
-        desc: "Flyer A5/A6 : design + export HD.",
-        priceEur: 79,
-        priceUi: 790,
-        badge: "Print",
-      },
-      {
-        key: "logo",
-        title: "Logo",
-        desc: "Logo simple + déclinaisons (clair/sombre).",
-        priceEur: 149,
-        priceUi: 1490,
-        badge: "Branding",
-      },
-      {
-        key: "site_creation",
-        title: "Création site internet",
-        desc: "Site vitrine rapide, propre et optimisé (sur base iNrCy).",
-        priceEur: 2500,
-        priceUi: 25000,
-        badge: "Web",
-      },
-      {
-        key: "site_refonte",
-        title: "Refonte site internet",
-        desc: "Modernisation + structure SEO + performance.",
-        priceEur: 1500,
-        priceUi: 15000,
-        badge: "Web",
-      },
-      {
-        key: "ads",
-        title: "Campagnes Ads",
-        desc: "Set-up campagne + tracking + optimisation (budget pub non inclus).",
-        priceEur: 290,
-        priceUi: 2900,
-        badge: "Acquisition",
-      },
-      {
-        key: "facebook_page",
-        title: "Création page Facebook",
-        desc: "Page + visuels + réglages essentiels.",
-        priceEur: 89,
-        priceUi: 890,
-        badge: "Social",
-      },
-      {
-        key: "instagram_page",
-        title: "Création page Instagram",
-        desc: "Compte pro + bio + visuels + highlights.",
-        priceEur: 89,
-        priceUi: 890,
-        badge: "Social",
-      },
-      {
-        key: "linkedin_page",
-        title: "Création page LinkedIn",
-        desc: "Page entreprise + branding + sections.",
-        priceEur: 99,
-        priceUi: 990,
-        badge: "Social",
-      },
-      {
-        key: "gmb",
-        title: "Création Google Business",
-        desc: "Fiche optimisée : catégories, description, services, photos.",
-        priceEur: 129,
-        priceUi: 1290,
-        badge: "Local",
-      },
-    ]
-      // ✅ ordre croissant (prix €)
-      .slice()
-      .sort((a, b) => a.priceEur - b.priceEur),
-    []
-  );
+  const products: BoutiqueProduct[] = useMemo(() => BOUTIQUE_PRODUCTS, []);
 
-  const buildMailto = (p: Product, method: "EUR" | "UI") => {
-    const subject = `Commande Boutique iNrCy — ${p.title} (${method})`;
-    const lines = [
-      `Bonjour iNrCy,`,
-      ``,
-      `Je souhaite commander : ${p.title}`,
-      `Mode de paiement : ${method === "EUR" ? "€" : "UI"}`,
-      `Prix : ${method === "EUR" ? `${p.priceEur} €` : `${p.priceUi} UI`}`, 
-      ``,
-      `---`,
-      `Compte :`,
-      `Email : ${userEmail ?? "(non disponible)"}`,
-      `User ID : ${userId ?? "(non disponible)"}`,
-      `Solde UI (indicatif) : ${uiBalance ?? "…"}`,
-      ``,
-      `Merci,`,
-    ];
-    const body = lines.join("\n");
-    return `mailto:contact@inrcy.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const canOrderUi = (p: BoutiqueProduct) => {
+    if (uiBalance === null) return false;
+    return uiBalance >= p.priceUi;
+  };
+
+  const placeOrder = async (p: BoutiqueProduct, method: Method) => {
+    setNotice("");
+
+    const priceLabel = method === "EUR" ? `${p.priceEur} €` : `${p.priceUi} UI`;
+    const ok = window.confirm(`Confirmer la commande ?\n\nProduit : ${p.title}\nMode : ${method === "EUR" ? "€" : "UI"}\nPrix : ${priceLabel}`);
+    if (!ok) return;
+
+    const sendId = `${p.key}:${method}`;
+    setSendingKey(sendId);
+    try {
+      const res = await fetch("/api/boutique/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productKey: p.key, method }),
+      });
+      const json = (await res.json().catch(() => null)) as any;
+      if (!res.ok) {
+        setNotice(json?.error || "Erreur lors de l'envoi de la commande.");
+        return;
+      }
+      setNotice(`✅ Commande envoyée à ${BOUTIQUE_TO}`);
+      // refresh balance in case of server-side rules later
+      const supabase = createClient();
+      const { data: auth } = await supabase.auth.getUser();
+      const user = auth?.user;
+      if (user) {
+        const balanceRes = await supabase
+          .from("loyalty_balance")
+          .select("balance")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const bal = Number((balanceRes.data as any)?.balance ?? 0);
+        setUiBalance(Number.isFinite(bal) ? bal : 0);
+      }
+    } finally {
+      setSendingKey(null);
+    }
   };
 
   return (
@@ -183,7 +127,7 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <div style={{ color: "rgba(255,255,255,0.94)", fontWeight: 950, fontSize: 16 }}>
-              Boutique iNrCy
+              Solde UI
             </div>
             <div style={{ color: "rgba(255,255,255,0.70)", fontSize: 13, marginTop: 6 }}>
               Commandez en <b>€</b> ou échangez vos <b>UI</b>.
@@ -198,6 +142,39 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Message d'info (en haut) */}
+      <div
+        style={{
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(15,23,42,0.40)",
+          borderRadius: 18,
+          padding: 14,
+          color: "rgba(255,255,255,0.72)",
+          fontSize: 13,
+          lineHeight: 1.45,
+        }}
+      >
+        En cliquant sur <b>Commander</b>, une demande est envoyée automatiquement à <b>{BOUTIQUE_TO}</b>.
+        <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.58)" }}>
+          Compte : {userEmail ?? "…"} — Admin : {adminEmail ?? "…"} — ID : {userId ?? "…"}
+        </div>
+      </div>
+
+      {notice ? (
+        <div
+          style={{
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(34,197,94,0.08)",
+            borderRadius: 18,
+            padding: 12,
+            color: "rgba(255,255,255,0.9)",
+            fontWeight: 700,
+          }}
+        >
+          {notice}
+        </div>
+      ) : null}
 
       {/* Aller-retour vers Mon inertie */}
       <button
@@ -293,11 +270,12 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <a
-                href={buildMailto(p, "EUR")}
+              <button
+                type="button"
+                onClick={() => placeOrder(p, "EUR")}
+                disabled={sendingKey !== null}
                 style={{
                   flex: "1 1 160px",
-                  textDecoration: "none",
                   borderRadius: 14,
                   padding: "10px 12px",
                   border: "1px solid rgba(255,255,255,0.14)",
@@ -305,16 +283,19 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
                   color: "rgba(255,255,255,0.92)",
                   fontWeight: 850,
                   textAlign: "center",
+                  cursor: sendingKey !== null ? "not-allowed" : "pointer",
                 }}
               >
-                Commander en €
-              </a>
+                {sendingKey === `${p.key}:EUR` ? "Envoi…" : "Commander en €"}
+              </button>
 
-              <a
-                href={buildMailto(p, "UI")}
+              <button
+                type="button"
+                onClick={() => placeOrder(p, "UI")}
+                disabled={sendingKey !== null || !canOrderUi(p)}
+                title={!canOrderUi(p) ? "Solde UI insuffisant" : undefined}
                 style={{
                   flex: "1 1 160px",
-                  textDecoration: "none",
                   borderRadius: 14,
                   padding: "10px 12px",
                   border: "1px solid rgba(255,255,255,0.14)",
@@ -322,17 +303,15 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
                   color: "rgba(255,255,255,0.92)",
                   fontWeight: 850,
                   textAlign: "center",
+                  cursor: sendingKey !== null || !canOrderUi(p) ? "not-allowed" : "pointer",
+                  opacity: canOrderUi(p) ? 1 : 0.45,
                 }}
               >
-                Commander en UI
-              </a>
+                {sendingKey === `${p.key}:UI` ? "Envoi…" : "Commander en UI"}
+              </button>
             </div>
           </div>
         ))}
-      </div>
-
-      <div style={{ color: "rgba(255,255,255,0.60)", fontSize: 12, padding: "0 4px" }}>
-        Les commandes ouvrent un email pré-rempli vers <b>contact@inrcy.com</b>. On traite ça dans la foulée.
       </div>
     </div>
   );

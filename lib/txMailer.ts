@@ -11,7 +11,7 @@ export type TxMail = {
 };
 
 export async function sendTxMail(mail: TxMail) {
-  // Transactional SMTP (recommended: a dedicated SMTP provider)
+  // Transactional SMTP (uses your existing SMTP settings, e.g. the same as Supabase Auth SMTP)
   const host = requireEnv("TX_SMTP_HOST");
   const port = Number(requireEnv("TX_SMTP_PORT"));
   const user = requireEnv("TX_SMTP_USER");
