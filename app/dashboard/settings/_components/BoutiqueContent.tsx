@@ -12,16 +12,61 @@ type Props = {
 
 type Method = "EUR" | "UI";
 
+type OrderRow = {
+  id: string;
+  product_name: string;
+  product_key: string;
+  method: Method;
+  status: "pending" | "processed";
+  created_at: string;
+};
+
 const BOUTIQUE_TO = process.env.NEXT_PUBLIC_BOUTIQUE_EMAIL || "boutique@inrcy.com";
+
+function formatDate(d: string) {
+  try {
+    return new Date(d).toLocaleString();
+  } catch {
+    return d;
+  }
+}
+
+function statusLabel(s: OrderRow["status"]) {
+  return s === "processed" ? "Traitée" : "En cours";
+}
 
 export default function BoutiqueContent({ onOpenInertia }: Props) {
   const router = useRouter();
   const [uiBalance, setUiBalance] = useState<number | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [adminEmail, setAdminEmail] = useState<string | null>(null);
+  const [isStaff, setIsStaff] = useState<boolean>(false);
   const [sendingKey, setSendingKey] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("");
+
+  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState<boolean>(false);
+
+  const refreshOrders = async (uid?: string) => {
+    const supabase = createClient();
+    const userIdToUse = uid;
+    if (!userIdToUse) return;
+
+    setOrdersLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("boutique_orders")
+        .select("id, product_name, product_key, method, status, created_at")
+        .eq("user_id", userIdToUse)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (!error && Array.isArray(data)) {
+        setOrders(data as any);
+      }
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -36,17 +81,17 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
           return;
         }
         if (!mounted) return;
-        setUserEmail(user.email ?? null);
         setUserId(user.id);
 
-        // email admin = contact_email du profil (si dispo)
+        // role (si dispo)
         const profileRes = await supabase
           .from("profiles")
-          .select("contact_email")
+          .select("role")
           .eq("user_id", user.id)
           .maybeSingle();
-        const admin = String((profileRes.data as any)?.contact_email ?? "").trim();
-        setAdminEmail(admin || null);
+
+        const role = String((profileRes.data as any)?.role ?? "").trim();
+        setIsStaff(role === "staff" || role === "admin" || user.id === "670b527d-5e08-42b4-ba95-e58e812339eb");
 
         const balanceRes = await supabase
           .from("loyalty_balance")
@@ -57,6 +102,9 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
         const bal = Number((balanceRes.data as any)?.balance ?? 0);
         if (!mounted) return;
         setUiBalance(Number.isFinite(bal) ? bal : 0);
+
+        // Orders history
+        await refreshOrders(user.id);
       } catch {
         if (!mounted) return;
         setUiBalance(0);
@@ -78,24 +126,37 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
     setNotice("");
 
     const priceLabel = method === "EUR" ? `${p.priceEur} €` : `${p.priceUi} UI`;
-    const ok = window.confirm(`Confirmer la commande ?\n\nProduit : ${p.title}\nMode : ${method === "EUR" ? "€" : "UI"}\nPrix : ${priceLabel}`);
+    const ok = window.confirm(
+      `Confirmer la commande ?\n\nProduit : ${p.title}\nMode : ${method === "EUR" ? "€" : "UI"}\nPrix : ${priceLabel}`
+    );
     if (!ok) return;
 
     const sendId = `${p.key}:${method}`;
     setSendingKey(sendId);
+
+    // Anti double-clic (client) + idempotency (server)
+    const idempotencyKey =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? (crypto as any).randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
     try {
       const res = await fetch("/api/boutique/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productKey: p.key, method }),
+        body: JSON.stringify({ productKey: p.key, method, idempotencyKey }),
       });
+
       const json = (await res.json().catch(() => null)) as any;
       if (!res.ok) {
         setNotice(json?.error || "Erreur lors de l'envoi de la commande.");
         return;
       }
-      setNotice(`✅ Commande envoyée à ${BOUTIQUE_TO}`);
-      // refresh balance in case of server-side rules later
+
+      const shortId = String(json?.orderId ?? "").slice(0, 8);
+      setNotice(`✅ Commande envoyée à ${BOUTIQUE_TO}${shortId ? ` (réf. #${shortId})` : ""}. Un email de confirmation vous a été envoyé.`);
+
+      // Refresh balance (future: if UI gets debited)
       const supabase = createClient();
       const { data: auth } = await supabase.auth.getUser();
       const user = auth?.user;
@@ -107,6 +168,8 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
           .maybeSingle();
         const bal = Number((balanceRes.data as any)?.balance ?? 0);
         setUiBalance(Number.isFinite(bal) ? bal : 0);
+
+        await refreshOrders(user.id);
       }
     } finally {
       setSendingKey(null);
@@ -126,16 +189,13 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
-            <div style={{ color: "rgba(255,255,255,0.94)", fontWeight: 950, fontSize: 16 }}>
-              Solde UI
-            </div>
+            <div style={{ color: "rgba(255,255,255,0.94)", fontWeight: 950, fontSize: 16 }}>Solde UI</div>
             <div style={{ color: "rgba(255,255,255,0.70)", fontSize: 13, marginTop: 6 }}>
               Commandez en <b>€</b> ou échangez vos <b>UI</b>.
             </div>
           </div>
 
           <div style={{ textAlign: "right", minWidth: 140 }}>
-            <div style={{ color: "rgba(255,255,255,0.62)", fontSize: 12 }}>Solde UI</div>
             <div style={{ color: "rgba(255,255,255,0.96)", fontWeight: 950, fontSize: 22 }}>
               {uiBalance === null ? "…" : uiBalance}
             </div>
@@ -156,9 +216,6 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
         }}
       >
         En cliquant sur <b>Commander</b>, une demande est envoyée automatiquement à <b>{BOUTIQUE_TO}</b>.
-        <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.58)" }}>
-          Compte : {userEmail ?? "…"} — Admin : {adminEmail ?? "…"} — ID : {userId ?? "…"}
-        </div>
       </div>
 
       {notice ? (
@@ -191,9 +248,7 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 900, fontSize: 15 }}>
-              Voir mon inertie
-            </div>
+            <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 900, fontSize: 15 }}>Voir mon inertie</div>
             <div style={{ color: "rgba(255,255,255,0.66)", fontSize: 13, marginTop: 6 }}>
               Historique, Turbo UI et boosts de la semaine.
             </div>
@@ -219,12 +274,8 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
         </div>
       </button>
 
-      <div
-        style={{
-          display: "grid",
-          gap: 10,
-        }}
-      >
+      {/* Produits */}
+      <div style={{ display: "grid", gap: 10 }}>
         {products.map((p) => (
           <div
             key={p.key}
@@ -312,6 +363,132 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Historique des commandes */}
+      <div
+        style={{
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(15,23,42,0.45)",
+          borderRadius: 18,
+          padding: 14,
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 900, fontSize: 15 }}>Historique des commandes</div>
+            {isStaff ? (
+              <a
+                href="/dashboard/admin/commandes"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.16)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "rgba(255,255,255,0.92)",
+                  fontSize: 12,
+                  fontWeight: 850,
+                  textDecoration: "none",
+                }}
+              >
+                Admin commandes →
+              </a>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => refreshOrders(userId ?? undefined)}
+            disabled={ordersLoading || !userId}
+            style={{
+              borderRadius: 999,
+              padding: "8px 10px",
+              border: "1px solid rgba(255,255,255,0.16)",
+              background: "rgba(15,23,42,0.55)",
+              color: "rgba(255,255,255,0.9)",
+              fontWeight: 850,
+              fontSize: 12,
+              cursor: ordersLoading || !userId ? "not-allowed" : "pointer",
+              opacity: ordersLoading || !userId ? 0.6 : 1,
+            }}
+          >
+            {ordersLoading ? "Actualisation…" : "Rafraîchir"}
+          </button>
+        </div>
+
+        {!orders.length ? (
+          <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 13 }}>
+            Aucune commande pour le moment.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {orders.map((o) => (
+              <div
+                key={o.id}
+                style={{
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: 14,
+                  padding: 12,
+                  background: "rgba(2,6,23,0.35)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ minWidth: 220 }}>
+                  <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 850, fontSize: 13 }}>
+                    {o.product_name}
+                    <span style={{ color: "rgba(255,255,255,0.55)", fontWeight: 700 }}> — #{o.id.slice(0, 8)}</span>
+                  </div>
+                  <div style={{ color: "rgba(255,255,255,0.60)", fontSize: 12, marginTop: 6 }}>{formatDate(o.created_at)}</div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.06)",
+                      color: "rgba(255,255,255,0.80)",
+                      fontSize: 12,
+                      fontWeight: 850,
+                    }}
+                  >
+                    {o.method === "EUR" ? "€" : "UI"}
+                  </span>
+
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: o.status === "processed" ? "rgba(34,197,94,0.10)" : "rgba(251,191,36,0.10)",
+                      color: "rgba(255,255,255,0.90)",
+                      fontSize: 12,
+                      fontWeight: 900,
+                    }}
+                  >
+                    {statusLabel(o.status)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, lineHeight: 1.4 }}>
+          Les commandes passent en <b>Traitée</b> quand l'équipe iNrCy les valide.
+        </div>
       </div>
     </div>
   );

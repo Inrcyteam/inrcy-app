@@ -211,7 +211,12 @@ export default function InertiaContent({ snapshot, onOpenBoutique }: Props) {
         }}
       >
         <div style={{ color: "rgba(255,255,255,0.9)", fontWeight: 800, marginBottom: 10 }}>
-          Détail du multiplicateur
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <span>Détail du multiplicateur</span>
+            <span style={{ color: "rgba(255,255,255,0.60)", fontSize: 12, fontWeight: 650 }}>
+              Bulle verte quand outil connecté
+            </span>
+          </div>
         </div>
 
         <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
@@ -233,7 +238,7 @@ export default function InertiaContent({ snapshot, onOpenBoutique }: Props) {
                 {b.label}
               </div>
               <div style={{ color: "rgba(255,255,255,0.72)", fontWeight: 750 }}>
-                {b.connected ? `+${b.bonus}` : ""}
+                <span style={{ opacity: b.connected ? 1 : 0.5 }}>{`+${b.bonus}`}</span>
               </div>
             </div>
           ))}

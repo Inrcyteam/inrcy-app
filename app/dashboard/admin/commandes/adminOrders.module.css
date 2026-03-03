@@ -1,0 +1,224 @@
+.page {
+  min-height: 100vh;
+  padding: 28px 14px 40px;
+}
+
+.wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.kicker {
+  font-size: 12px;
+  opacity: 0.75;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 6px 0 0;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  opacity: 0.8;
+}
+
+.headerActions {
+  display: flex;
+  gap: 10px;
+}
+
+.back,
+.refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.12);
+  color: white;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.refresh:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.controls {
+  margin: 14px 0;
+}
+
+.filters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.select,
+.input {
+  width: 240px;
+  max-width: 78vw;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.2);
+  color: white;
+  padding: 10px 12px;
+}
+
+.apply {
+  border-radius: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+  cursor: pointer;
+}
+
+.error {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 80, 80, 0.22);
+}
+
+.card {
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.loading,
+.empty {
+  padding: 18px;
+  opacity: 0.8;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 980px;
+}
+
+.table th,
+.table td {
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  vertical-align: top;
+}
+
+.table th {
+  text-align: left;
+  font-size: 12px;
+  opacity: 0.75;
+  font-weight: 700;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+}
+
+.productName {
+  font-weight: 700;
+}
+
+.productKey {
+  opacity: 0.75;
+  font-size: 12px;
+}
+
+.email {
+  font-size: 13px;
+}
+
+.emailSub {
+  opacity: 0.75;
+  font-size: 12px;
+}
+
+.badgeEur,
+.badgeUi,
+.badgeOk,
+.badgePending {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.badgeEur {
+  background: rgba(80, 160, 255, 0.12);
+}
+
+.badgeUi {
+  background: rgba(200, 120, 255, 0.12);
+}
+
+.badgeOk {
+  background: rgba(80, 255, 160, 0.10);
+}
+
+.badgePending {
+  background: rgba(255, 200, 80, 0.12);
+}
+
+.actions {
+  width: 140px;
+}
+
+.process {
+  width: 100%;
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+  cursor: pointer;
+}
+
+.process:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.done {
+  opacity: 0.8;
+}
+
+.hint {
+  margin-top: 12px;
+  opacity: 0.85;
+  font-size: 13px;
+}

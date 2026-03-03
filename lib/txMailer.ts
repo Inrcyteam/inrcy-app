@@ -17,17 +17,24 @@ export async function sendTxMail(mail: TxMail) {
   const user = requireEnv("TX_SMTP_USER");
   const pass = requireEnv("TX_SMTP_PASS");
 
-  const secure = optionalEnv("TX_SMTP_SECURE", "");
+  const secureEnv = optionalEnv("TX_SMTP_SECURE", ""); // expects "true" or "false" if set
   const from = optionalEnv("TX_MAIL_FROM", user);
 
-  // Some SMTP providers may require tweaking TLS verification depending on their cert chain.
-  // Default is the safe behavior (verification ON).
-  const tlsRejectUnauthorized = optionalEnv("TX_SMTP_TLS_REJECT_UNAUTHORIZED", "true") !== "false";
+  // ✅ Local/dev often breaks on OVH chain because of TLS interception (AV/proxy) or cert chain quirks.
+  // - In production: default strict (true)
+  // - In dev/local: default relaxed (false)
+  const isProd = process.env.NODE_ENV === "production";
+  const tlsRejectUnauthorized =
+    optionalEnv("TX_SMTP_TLS_REJECT_UNAUTHORIZED", isProd ? "true" : "false") !== "false";
+
+  // If secure is explicitly set, honor it. Otherwise, default to port-based behavior (465 => true, else false).
+  const secure =
+    secureEnv === "true" ? true : secureEnv === "false" ? false : port === 465;
 
   const transporter = nodemailer.createTransport({
     host,
     port,
-    secure: secure === "true" ? true : port === 465,
+    secure,
     auth: { user, pass },
     // Timeouts help surface network issues quickly instead of hanging.
     connectionTimeout: 15_000,

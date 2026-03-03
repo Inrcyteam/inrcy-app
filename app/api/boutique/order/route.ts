@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { findBoutiqueProduct } from "@/lib/boutique/products";
 import { optionalEnv } from "@/lib/env";
@@ -12,10 +13,15 @@ export const dynamic = "force-dynamic";
 type OrderBody = {
   productKey: string;
   method: "EUR" | "UI";
+  idempotencyKey?: string;
 };
 
 function badRequest(message: string) {
   return NextResponse.json({ ok: false, error: message }, { status: 400 });
+}
+
+function asString(v: unknown) {
+  return typeof v === "string" ? v.trim() : "";
 }
 
 export async function POST(req: Request) {
@@ -26,8 +32,10 @@ export async function POST(req: Request) {
     return badRequest("Body JSON invalide.");
   }
 
-  const productKey = String(body?.productKey ?? "").trim();
+  const productKey = asString(body?.productKey);
   const method = body?.method;
+  const idempotencyKey = asString(body?.idempotencyKey) || asString(req.headers.get("x-idempotency-key"));
+
   if (!productKey) return badRequest("productKey manquant.");
   if (method !== "EUR" && method !== "UI") return badRequest("method invalide.");
 
@@ -48,62 +56,152 @@ export async function POST(req: Request) {
     supabase.from("loyalty_balance").select("balance").eq("user_id", user.id).maybeSingle(),
   ]);
 
-  const adminEmail = String((profileRes.data as any)?.contact_email ?? "").trim() || null;
-  const uiBalance = Number((balanceRes.data as any)?.balance ?? 0);
-  const safeBalance = Number.isFinite(uiBalance) ? uiBalance : 0;
+  const adminEmail = asString((profileRes.data as any)?.contact_email) || null;
+  const uiBalanceRaw = Number((balanceRes.data as any)?.balance ?? 0);
+  const uiBalance = Number.isFinite(uiBalanceRaw) ? uiBalanceRaw : 0;
 
   // UI orders must have sufficient balance (server-side guard)
-  if (method === "UI" && safeBalance < product.priceUi) {
+  if (method === "UI" && uiBalance < product.priceUi) {
     return NextResponse.json(
       { ok: false, error: "Solde UI insuffisant pour cette commande." },
       { status: 400 }
     );
   }
 
-  // Recipient for boutique orders (configurable via env)
-  const to = optionalEnv("BOUTIQUE_EMAIL", "boutique@inrcy.com");
-  const subject = `Commande Boutique iNrCy — ${product.title} (${method === "EUR" ? "€" : "UI"})`;
+  // Idempotency: prevent double-click duplicates.
+  if (idempotencyKey) {
+    const { data: existing, error: existErr } = await supabaseAdmin
+      .from("boutique_orders")
+      .select("id,status")
+      .eq("user_id", user.id)
+      .eq("idempotency_key", idempotencyKey)
+      .maybeSingle();
 
-  const lines = [
-    `Bonjour,`,
+    if (!existErr && existing?.id) {
+      return NextResponse.json({ ok: true, orderId: existing.id, status: existing.status, deduped: true });
+    }
+  }
+
+  // Insert order row first (safety/audit). Use service role to avoid any RLS friction.
+  const insertPayload: any = {
+    user_id: user.id,
+    account_email: user.email ?? null,
+    admin_email: adminEmail,
+    product_key: product.key,
+    product_name: product.title,
+    method,
+    amount_eur: method === "EUR" ? product.priceEur : null,
+    amount_ui: method === "UI" ? product.priceUi : null,
+    status: "pending",
+    idempotency_key: idempotencyKey || null,
+  };
+
+  const { data: inserted, error: insErr } = await supabaseAdmin
+    .from("boutique_orders")
+    .insert(insertPayload)
+    .select("id")
+    .single();
+
+  if (insErr || !inserted?.id) {
+    console.error("[boutique/order] insert failed:", insErr);
+    return NextResponse.json({ ok: false, error: "Impossible de créer la commande." }, { status: 500 });
+  }
+
+  const orderId = inserted.id as string;
+
+  // Recipient for boutique orders (configurable via env)
+  const boutiqueTo = optionalEnv("BOUTIQUE_EMAIL", "boutique@inrcy.com");
+
+  const subject = `Commande Boutique iNrCy #${orderId.slice(0, 8)} — ${product.title} (${method === "EUR" ? "€" : "UI"})`;
+
+  const commonLines = [
+    `Commande : #${orderId}`,
+    `Produit : ${product.title} (${product.key})`,
+    `Mode : ${method === "EUR" ? "€" : "UI"}`,
+    `Prix : ${method === "EUR" ? `${product.priceEur} €` : `${product.priceUi} UI`}`,
     ``,
-    `Nouvelle commande Boutique iNrCy :`,
-    `- Produit : ${product.title} (${product.key})`,
-    `- Mode : ${method === "EUR" ? "€" : "UI"}`,
-    `- Prix : ${method === "EUR" ? `${product.priceEur} €` : `${product.priceUi} UI`}`,
-    ``,
-    `---`,
     `Compte :`,
     `- Email compte (auth) : ${user.email ?? "(non disponible)"}`,
     `- Email admin (profil) : ${adminEmail ?? "(non disponible)"}`,
     `- User ID : ${user.id}`,
-    `- Solde UI (indicatif) : ${safeBalance}`,
+    `- Solde UI (indicatif) : ${uiBalance}`,
+  ];
+
+  const boutiqueText = [
+    `Bonjour,`,
+    ``,
+    `Nouvelle commande Boutique iNrCy :`,
+    ...commonLines,
+    ``,
+    `Merci de traiter la commande et de passer le statut à "Traitée" dans Supabase lorsque c'est fait.`,
     ``,
     `Envoyé automatiquement depuis l'application iNrCy.`,
-  ];
+  ].join("\n");
+
+  const clientText = [
+    `Bonjour,`,
+    ``,
+    `Nous avons bien reçu votre demande de commande iNrCy.`,
+    ``,
+    ...commonLines,
+    ``,
+    `Statut : En cours`,
+    ``,
+    `Vous recevrez un message lorsque la commande sera traitée.`,
+    ``,
+    `— L'équipe iNrCy`,
+  ].join("\n");
+
+  let boutiqueSent = false;
+  let clientSent = false;
+  let lastError: string | null = null;
 
   try {
     await sendTxMail({
-      to,
+      to: boutiqueTo,
       subject,
-      text: lines.join("\n"),
+      text: boutiqueText,
     });
-  } catch (e: any) {
-    // Log server-side to help debugging.
-    console.error("[boutique/order] sendTxMail failed:", e?.message ?? e, e);
+    boutiqueSent = true;
 
-    // In dev, return a slightly more informative error to speed up setup.
+    // Confirmation client (best effort)
+    if (user.email) {
+      await sendTxMail({
+        to: user.email,
+        subject: `Confirmation de commande iNrCy #${orderId.slice(0, 8)}`,
+        text: clientText,
+      });
+      clientSent = true;
+    }
+  } catch (e: any) {
+    lastError = e?.message ? String(e.message) : String(e);
+    console.error("[boutique/order] sendTxMail failed:", lastError, e);
+  }
+
+  // Update order row with mail status (never throws to client)
+  await supabaseAdmin
+    .from("boutique_orders")
+    .update({
+      boutique_email_sent: boutiqueSent,
+      client_email_sent: clientSent,
+      last_error: lastError,
+    })
+    .eq("id", orderId);
+
+  // If boutique mail failed, the order still exists (audit), but we tell the user.
+  if (!boutiqueSent) {
     const isDev = process.env.NODE_ENV !== "production";
     return NextResponse.json(
       {
         ok: false,
+        orderId,
         error: isDev
-          ? `Impossible d'envoyer la commande (SMTP): ${e?.message ?? String(e)}`
+          ? `Impossible d'envoyer la commande (SMTP): ${lastError ?? "Erreur inconnue"}`
           : "Impossible d'envoyer la commande pour le moment.",
       },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, orderId });
 }
