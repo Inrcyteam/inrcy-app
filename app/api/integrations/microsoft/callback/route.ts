@@ -143,8 +143,6 @@ export async function GET(req: Request) {
       account_email: email,
       provider_account_id: me.id ?? null,
       status: "connected",
-      access_token: null,
-      refresh_token: null,
       access_token_enc: tokenData.access_token ? encryptToken(tokenData.access_token) : null,
       refresh_token_enc: refreshTokenEncToStore,
       expires_at: computeExpiresAt(tokenData.expires_in ?? null),
