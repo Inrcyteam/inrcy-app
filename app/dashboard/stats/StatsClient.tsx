@@ -1023,6 +1023,7 @@ const provenance = buildProvenance(key, ov);
         <div className={styles.headerActions}>
           {/* ✅ Sélecteur global 7j / 30j */}
           <div className={styles.headerPills}>
+            <span className={styles.headerPeriodLabel}>Historique sur</span>
             <PeriodSelect value={period} onChange={setPeriod} />
           </div>
 

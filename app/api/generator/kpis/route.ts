@@ -291,6 +291,22 @@ async function getOpportunities(origin: string, req: Request): Promise<Opportuni
   };
 }
 
+
+
+type HistorySnapshot = { days: number; total: number; perTool?: Record<string, number> };
+
+async function getHistory(origin: string, req: Request, days: 7 | 30): Promise<HistorySnapshot> {
+  // ✅ Historique réel (demandes captées) - indépendant des opportunités
+  const url = `${origin}/api/stats/history?days=${days}`;
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers: { cookie: req.headers.get("cookie") || "" },
+  });
+  if (!res.ok) throw new Error(`Stats history failed (${res.status})`);
+  const json = (await res.json()) as any;
+  return { days, total: Number(json?.total) || 0, perTool: json?.perTool || undefined };
+}
+
 async function getProfile(
   supabase: Awaited<ReturnType<typeof createSupabaseServer>>,
   userId: string,
@@ -389,10 +405,14 @@ export async function GET(req: Request) {
       { baseDays: monthDays, today: 0, week: 0, month: 0, confidence: "low" }
     );
 
+    const history30 = await safe("history_30d", () => getHistory(origin, req, 30), { days: 30, total: 0 });
+    const history7 = await safe("history_7d", () => getHistory(origin, req, 7), { days: 7, total: 0 });
+
     const leads = {
-      month: Number(opp.month) || 0,
-      week: Number(opp.week) || 0,
-      today: Number(opp.today) || 0,
+      // Historique réel (demandes captées)
+      month: Number(history30.total) || 0, // 30 derniers jours
+      week: Number(history7.total) || 0,   // 7 derniers jours
+      today: 0,
     };
 
     const estimatedValue = Math.round(
