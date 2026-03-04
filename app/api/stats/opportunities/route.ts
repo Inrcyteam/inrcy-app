@@ -78,6 +78,8 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
       "impressions",
       "post_impressions",
       "postImpressions",
+      // Facebook fallback (published_posts -> post_impressions lifetime sum)
+      "post_impressions_sum",
       "IMPRESSIONS",
       "impressionCount",
       "viewerImpressions",
@@ -92,6 +94,9 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
       "postEngagements",
       "ENGAGEMENTS",
       "total_engagements",
+      // Facebook / Meta variants
+      "page_engaged_users",
+      "post_engaged_users_sum",
       "reactions",
       "comments",
       "shares",
@@ -110,6 +115,8 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
       "linkClicks",
       "website_clicks",
       "websiteClicks",
+      // Facebook Page clicks
+      "page_website_clicks_logged_in_unique",
       "WEBSITE_CLICKS",
       "CLICK_COUNT",
       "clickCount",
@@ -119,7 +126,17 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
     ]) || 0;
 
   const audienceTotal =
-    getTotalMetric(m, ["followers", "followerCount", "fans", "fanCount", "audience", "subscribers"]) || 0;
+    getTotalMetric(m, [
+      "followers",
+      "followerCount",
+      "follower_count",
+      "followers_count",
+      "fans",
+      "fanCount",
+      "fan_count",
+      "audience",
+      "subscribers",
+    ]) || 0;
 
   const impressionsPerDay = impressionsTotal / baseDays;
   const engagementsPerDay = engagementsTotal / baseDays;

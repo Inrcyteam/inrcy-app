@@ -35,6 +35,16 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 type AnyRec = Record<string, unknown>;
 
+type OpportunitiesSnapshot = {
+  baseDays: number;
+  today: number;
+  week: number;
+  month: number;
+  confidence: "low" | "medium" | "high";
+  byCube?: Record<string, number>;
+};
+
+
 function pickFirst<T>(...vals: Array<T | null | undefined>): T | null {
   for (const v of vals) if (v !== null && v !== undefined) return v;
   return null;
@@ -248,20 +258,34 @@ async function _getStats(origin: string, days: number, req: Request) {
   return { clicks, pageviews };
 }
 
-async function getOpportunities(origin: string, req: Request) {
-  // Générateur windows are fixed:
-  // - today: 48h (2 days)
-  // - week : 7 days
-  // - month: 28 days
-  const url = `${origin}/api/inrstats/opportunities?mode=generator`;
+async function getOpportunities(origin: string, req: Request): Promise<OpportunitiesSnapshot> {
+  // ✅ Single source of truth: iNrStats "opportunités activables" must match the Générateur.
+  // We reuse the same computation as the cockpit card: /api/stats/opportunities (30-day projection).
+  // Then we derive week/today from the same per-day rate to keep the generator windows coherent.
+  const url = `${origin}/api/stats/opportunities?days=30`;
   const res = await fetch(url, {
     cache: "no-store",
-    headers: {
-      cookie: req.headers.get("cookie") || "",
-    },
+    headers: { cookie: req.headers.get("cookie") || "" },
   });
-  if (!res.ok) throw new Error(`iNrStats opportunities failed (${res.status})`);
-  return res.json();
+  if (!res.ok) throw new Error(`Stats opportunities failed (${res.status})`);
+
+  const json = (await res.json()) as { days?: number; total?: number; byCube?: Record<string, number> };
+  const total30 = Number(json?.total) || 0;
+  const baseDays = 30;
+  const perDay = total30 / baseDays;
+
+  return {
+    baseDays,
+    // Générateur windows are fixed:
+    // - today: 48h (2 days)
+    // - week : 7 days
+    // - month: 30 days (same as iNrStats)
+    today: Math.max(0, Math.round(perDay * 2)),
+    week: Math.max(0, Math.round(perDay * 7)),
+    month: Math.max(0, Math.round(total30)),
+    confidence: "medium",
+    byCube: json?.byCube || undefined,
+  };
 }
 
 async function getProfile(
