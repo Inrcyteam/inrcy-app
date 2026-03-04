@@ -40,6 +40,108 @@ function clamp(n: number, a: number, b: number) {
   return Math.min(b, Math.max(a, n));
 }
 
+
+function logNorm(x: number, ref: number) {
+  // Smooth normalization 0..1 using log scale (robust to outliers).
+  const xx = Math.max(0, x);
+  const rr = Math.max(1, ref);
+  return clamp(Math.log1p(xx) / Math.log1p(rr), 0, 1);
+}
+
+function safeObj(v: any): Record<string, any> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, any>) : {};
+}
+
+function getTotalMetric(metrics: any, keys: string[]): number {
+  const m = safeObj(metrics);
+  const totals = safeObj(m.totals);
+  for (const k of keys) {
+    const n = safeNum((totals as any)[k]);
+    if (n) return n;
+  }
+  return 0;
+}
+
+function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number {
+  const baseDays = Math.max(1, safeNum(ov.days) || 30);
+  const src = safeObj(ov?.sources);
+  const node = safeObj((src as any)?.[cubeKey]);
+  const connected = !!(node as any).connected;
+  const m = (node as any).metrics;
+
+  // Disconnected or missing metrics => 0 (no ghost opportunities).
+  if (!connected) return 0;
+  if (!m || safeObj(m).error) return 0;
+
+  const impressionsTotal =
+    getTotalMetric(m, [
+      "impressions",
+      "post_impressions",
+      "postImpressions",
+      "IMPRESSIONS",
+      "impressionCount",
+      "viewerImpressions",
+      "reach",
+      "REACH",
+    ]) || 0;
+
+  const engagementsTotal =
+    getTotalMetric(m, [
+      "engagements",
+      "post_engagements",
+      "postEngagements",
+      "ENGAGEMENTS",
+      "total_engagements",
+      "reactions",
+      "comments",
+      "shares",
+      "likes",
+      "saves",
+      "replies",
+      "video_views",
+      "videoViews",
+    ]) || 0;
+
+  const ctaClicksTotal =
+    getTotalMetric(m, [
+      "cta_clicks",
+      "ctaClicks",
+      "link_clicks",
+      "linkClicks",
+      "website_clicks",
+      "websiteClicks",
+      "WEBSITE_CLICKS",
+      "CLICK_COUNT",
+      "clickCount",
+      "clicks",
+      "outbound_clicks",
+      "outboundClicks",
+    ]) || 0;
+
+  const audienceTotal =
+    getTotalMetric(m, ["followers", "followerCount", "fans", "fanCount", "audience", "subscribers"]) || 0;
+
+  const impressionsPerDay = impressionsTotal / baseDays;
+  const engagementsPerDay = engagementsTotal / baseDays;
+  const ctaClicksPerDay = ctaClicksTotal / baseDays;
+
+  const refs =
+    cubeKey === "instagram"
+      ? { imp: 2500, eng: 120, cta: 6, aud: 3000 }
+      : cubeKey === "linkedin"
+        ? { imp: 1200, eng: 45, cta: 3, aud: 2000 }
+        : { imp: 3000, eng: 90, cta: 5, aud: 5000 }; // facebook
+
+  const exposureN = logNorm(impressionsPerDay, refs.imp);
+  const engagementN = logNorm(engagementsPerDay, refs.eng);
+  const intentN = logNorm(ctaClicksPerDay, refs.cta);
+  const audienceN = logNorm(audienceTotal, refs.aud);
+
+  // Premium mix: intention (CTA) is the closest to "lead".
+  const perDay = 0.05 + 0.30 * exposureN + 0.45 * engagementN + 0.55 * intentN + 0.10 * audienceN;
+
+  return clamp(perDay, 0, 2.5); // 0..~75 opp / 30d
+}
 function pageKind(path: string) {
   const p = (path || "").toLowerCase();
   if (p.includes("contact") || p.includes("devis") || p.includes("rdv") || p.includes("rendez")) return "contact";
@@ -107,22 +209,12 @@ function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
     const perDay = clamp(base + impressionsGuess / 800 + interactionsGuess / 30, 0, 50);
     return Math.max(0, Math.round(perDay * 30));
   }
-  if (cubeKey === "facebook") {
-    const connected = !!ov?.sources?.facebook?.connected;
-    if (!connected) return 0;
-    return 10;
-  }
-  if (cubeKey === "instagram") {
-    const connected = !!ov?.sources?.instagram?.connected;
-    if (!connected) return 0;
-    return 9;
-  }
-  if (cubeKey === "linkedin") {
-    const connected = !!ov?.sources?.linkedin?.connected;
-    if (!connected) return 0;
-    return 7;
-  }
-  const perDay = computeOpportunityPerDayWeb(ov);
+  
+if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin") {
+  const perDay = computeOpportunityPerDaySocial(cubeKey, ov);
+  return Math.max(0, Math.round(perDay * 30));
+}
+const perDay = computeOpportunityPerDayWeb(ov);
   return Math.max(0, Math.round(perDay * 30));
 }
 
