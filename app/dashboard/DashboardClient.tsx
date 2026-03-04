@@ -910,9 +910,15 @@ const refreshKpis = useCallback(async () => {
       if (!res.ok) throw new Error(`KPIs fetch failed: ${res.status}`);
       const json = await res.json();
       setKpis(json);
+      try {
+        window.sessionStorage.setItem("inrcy_generator_kpis_v1", JSON.stringify(json));
+      } catch {
+        // ignore
+      }
     } catch (err) {
       console.error(err);
-      setKpis(null);
+      // Keep the last known KPIs to avoid a visual "blink".
+      // If nothing exists yet, we'll display 0.
     } finally {
       setKpisLoading(false);
     }
@@ -1916,7 +1922,19 @@ const checkActivity = useCallback(async () => {
   const [kpis, setKpis] = useState<null | {
     leads: { today: number; week: number; month: number };
     estimatedValue: number;
-  }>(null);
+  }>(() => {
+    // Avoid UI "blink" when navigating back to /dashboard.
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.sessionStorage.getItem("inrcy_generator_kpis_v1");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.leads) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  });
 
   
 
@@ -1932,7 +1950,16 @@ const checkActivity = useCallback(async () => {
 
   // ✅ Opportunités activables (iNrStats) — affichage direct sur le cockpit.
   const [oppLoading, setOppLoading] = useState(false);
-  const [oppTotal, setOppTotal] = useState<number | null>(null);
+  const [oppTotal, setOppTotal] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.sessionStorage.getItem("inrcy_opp30_total_v1");
+      const n = raw ? Number(raw) : NaN;
+      return Number.isFinite(n) ? n : null;
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -1942,9 +1969,17 @@ const checkActivity = useCallback(async () => {
         const r = await fetch("/api/stats/opportunities?days=30", { cache: "no-store" });
         if (!r.ok) throw new Error(`opps:${r.status}`);
         const j = (await r.json()) as { total?: number };
-        if (!cancelled) setOppTotal(typeof j?.total === "number" ? j.total : 0);
+        if (!cancelled) {
+          const val = typeof j?.total === "number" ? j.total : 0;
+          setOppTotal(val);
+          try {
+            window.sessionStorage.setItem("inrcy_opp30_total_v1", String(val));
+          } catch {
+            // ignore
+          }
+        }
       } catch {
-        if (!cancelled) setOppTotal(null);
+        // Keep the last known value to avoid UI flicker.
       } finally {
         if (!cancelled) setOppLoading(false);
       }

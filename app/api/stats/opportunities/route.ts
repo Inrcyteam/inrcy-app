@@ -69,9 +69,16 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
   const connected = !!(node as any).connected;
   const m = (node as any).metrics;
 
-  // Disconnected or missing metrics => 0 (no ghost opportunities).
+  // Disconnected => 0.
   if (!connected) return 0;
-  if (!m || safeObj(m).error) return 0;
+
+  // Cold start: connected but no metrics available yet (new account / API limitation).
+  // We return a small, honest baseline opportunity that represents "potential" once actions are executed,
+  // instead of showing 0 which is demotivating and misleading.
+  const coldStartBaseline =
+    cubeKey === "instagram" ? 0.18 : cubeKey === "linkedin" ? 0.12 : 0.20; // fb
+
+  if (!m || safeObj(m).error) return coldStartBaseline;
 
   const impressionsTotal =
     getTotalMetric(m, [
@@ -154,10 +161,29 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
   const intentN = logNorm(ctaClicksPerDay, refs.cta);
   const audienceN = logNorm(audienceTotal, refs.aud);
 
-  // Premium mix: intention (CTA) is the closest to "lead".
-  const perDay = 0.05 + 0.30 * exposureN + 0.45 * engagementN + 0.55 * intentN + 0.10 * audienceN;
+  // 1) Current "intent" proxy (historical) expressed in opportunity units.
+  const currentPerDay = clamp(
+    0.02 + 0.20 * intentN + 0.12 * engagementN + 0.06 * exposureN + 0.04 * audienceN,
+    0,
+    1.6
+  );
 
-  return clamp(perDay, 0, 2.5); // 0..~75 opp / 30d
+  // 2) Improvement room based on deficits.
+  // If CTA intent is low, there is more room for Booster actions.
+  // If exposure is low, there is more room for consistency/posting frequency.
+  const uplift = clamp(0.35 + 0.35 * (1 - intentN) + 0.20 * (1 - exposureN), 0.35, 0.90);
+
+  // 3) Potential per day (what the pro can unlock by executing actions).
+  // Blend cold-start baseline with history (so new/low-activity accounts still show potential).
+  const histWeight = clamp(exposureN * 0.7 + intentN * 0.3, 0, 1);
+  const base = histWeight * currentPerDay + (1 - histWeight) * coldStartBaseline;
+  const potentialPerDay = clamp(base * (1 + uplift), coldStartBaseline, 2.5);
+
+  // 4) "Opportunités activables" = additional opportunities the pro can generate (future),
+  // not the historical volume.
+  const additionalPerDay = Math.max(0, potentialPerDay - currentPerDay);
+
+  return clamp(additionalPerDay, 0, 2.5);
 }
 function pageKind(path: string) {
   const p = (path || "").toLowerCase();

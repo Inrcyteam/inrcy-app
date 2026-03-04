@@ -226,9 +226,13 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
   const connected = !!node.connected;
   const m = (node as any).metrics;
 
-  // Disconnected or missing metrics => 0 (no ghost opportunities).
+  // Disconnected => 0.
   if (!connected) return 0;
-  if (!m || safeObj(m).error) return 0;
+
+  // Cold start: connected but no metrics yet (new account / API limitation).
+  // We show a small baseline potential rather than 0.
+  const coldStartBaseline = cubeKey === "instagram" ? 0.18 : cubeKey === "linkedin" ? 0.12 : 0.2;
+  if (!m || safeObj(m).error) return coldStartBaseline;
 
   // Metrics are normalized by each connector lib (see lib/facebookInsights.ts, lib/metaInsights.ts, lib/linkedinAnalytics.ts)
   const impressionsTotal =
@@ -307,9 +311,20 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
   const intentN = logNorm(ctaClicksPerDay, refs.cta);
   const audienceN = logNorm(audienceTotal, refs.aud);
 
-  // Intention (CTA) is the closest proxy to a lead.
-  const perDay = 0.05 + 0.30 * exposureN + 0.45 * engagementN + 0.55 * intentN + 0.10 * audienceN;
-  return clamp(perDay, 0, 2.5); // 0..~75 opp / 30d
+  // Current (historical) intent proxy in "opportunity units"
+  const currentPerDay = clamp(0.02 + 0.2 * intentN + 0.12 * engagementN + 0.06 * exposureN + 0.04 * audienceN, 0, 1.6);
+
+  // Room for improvement based on deficits (Booster/Fidéliser actions)
+  const uplift = clamp(0.35 + 0.35 * (1 - intentN) + 0.2 * (1 - exposureN), 0.35, 0.9);
+
+  // Potential: blend history with baseline to avoid 0 on new/low accounts
+  const histWeight = clamp(exposureN * 0.7 + intentN * 0.3, 0, 1);
+  const base = histWeight * currentPerDay + (1 - histWeight) * coldStartBaseline;
+  const potentialPerDay = clamp(base * (1 + uplift), coldStartBaseline, 2.5);
+
+  // Additional opportunities (future), not historical volume
+  const additionalPerDay = Math.max(0, potentialPerDay - currentPerDay);
+  return clamp(additionalPerDay, 0, 2.5);
 }
 
 function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {

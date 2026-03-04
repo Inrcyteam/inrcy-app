@@ -203,6 +203,89 @@ export async function runGa4Report(accessToken: string, propertyId: string, days
   };
 }
 
+// "Demandes captées" (leads) on GA4.
+// 1) Prefer the native "conversions" metric (requires GA4 conversion configuration).
+// 2) Fallback: sum common lead intent events.
+export async function runGa4Leads(accessToken: string, propertyId: string, days: number) {
+  const end = new Date();
+  const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+  // Prefer conversions
+  try {
+    const res = await fetch(
+      `https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(propertyId)}:runReport`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          dateRanges: [{ startDate: fmt(start), endDate: fmt(end) }],
+          metrics: [{ name: "conversions" }],
+        }),
+      }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      const row = (data as any)?.rows?.[0];
+      const v = row?.metricValues?.[0]?.value;
+      const n = Number(v || 0);
+      if (Number.isFinite(n)) return Math.max(0, n);
+    }
+  } catch {
+    // ignore
+  }
+
+  // Fallback lead events
+  const leadEvents = [
+    "generate_lead",
+    "form_submit",
+    "contact",
+    "contact_submit",
+    "contact_form_submit",
+    "request_quote",
+    "phone_click",
+    "click_to_call",
+    "email_click",
+  ];
+
+  const res2 = await fetch(
+    `https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(propertyId)}:runReport`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        dateRanges: [{ startDate: fmt(start), endDate: fmt(end) }],
+        dimensions: [{ name: "eventName" }],
+        metrics: [{ name: "eventCount" }],
+        dimensionFilter: {
+          filter: {
+            fieldName: "eventName",
+            inListFilter: { values: leadEvents },
+          },
+        },
+        limit: 50,
+      }),
+    }
+  );
+
+  const data2 = await res2.json().catch(() => ({}));
+  if (!res2.ok) throw new Error((data2 as any)?.error?.message || "GA4 leads fallback failed");
+
+  const rows = Array.isArray((data2 as any)?.rows) ? (data2 as any).rows : [];
+  let sum = 0;
+  for (const r of rows) {
+    const v = Number(r?.metricValues?.[0]?.value || 0);
+    if (Number.isFinite(v)) sum += v;
+  }
+  return Math.max(0, sum);
+}
+
 export async function runGa4TopPages(accessToken: string, propertyId: string, days: number) {
   const end = new Date();
   const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);

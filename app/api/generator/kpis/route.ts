@@ -50,7 +50,10 @@ function pickFirst<T>(...vals: Array<T | null | undefined>): T | null {
   return null;
 }
 
-function num(v: unknown, fallback = 0) {
+// NOTE: do not name this helper `num` because some older branches of this file
+// already declared a `num()` helper further down, which makes Next/Turbopack fail
+// with: "the name 'num' is defined multiple times".
+function toNumber(v: unknown, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 }
@@ -252,8 +255,8 @@ async function _getStats(origin: string, days: number, req: Request) {
   // ✅ YOUR SHAPE: { totals: { clicks, pageviews, ... }, ... }
   const src = (json?.totals && typeof json.totals === "object") ? json.totals : json;
 
-  const clicks = num(src?.clicks ?? src?.seoClicks ?? src?.gscClicks ?? 0);
-  const pageviews = num(src?.pageviews ?? src?.pagesViews ?? src?.ga4Pageviews ?? 0);
+  const clicks = toNumber(src?.clicks ?? src?.seoClicks ?? src?.gscClicks ?? 0);
+  const pageviews = toNumber(src?.pageviews ?? src?.pagesViews ?? src?.ga4Pageviews ?? 0);
 
   return { clicks, pageviews };
 }
@@ -306,11 +309,11 @@ async function getProfile(
   debug.profile_fields = row ? Object.keys(row) : [];
 
   const r = asRecord(row);
-  const lead_conversion_rate = num(
+  const lead_conversion_rate = toNumber(
     pickFirst(r["lead_conversion_rate"], r["tx_conversion"], r["conversion_rate"], r["leadConversionRate"]),
     0
   );
-  const avg_basket = num(
+  const avg_basket = toNumber(
     pickFirst(r["avg_basket"], r["panier_moyen"], r["average_basket"], r["avgBasket"]),
     0
   );
