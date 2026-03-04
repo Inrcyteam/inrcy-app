@@ -651,13 +651,41 @@ useEffect(() => {
             <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
               Gère ton abonnement directement ici.
             </p>
+
+            {computed?.cancellationScheduled && computed?.cancelEndLabel ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  border: "1px solid rgba(251, 191, 36, 0.25)",
+                  background: "rgba(251, 191, 36, 0.10)",
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>Résiliation programmée</div>
+                <div style={{ opacity: 0.95, lineHeight: 1.45 }}>
+                  Votre accès restera actif jusqu'au <strong>{computed.cancelEndLabel}</strong>.
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>
+                  Vous pouvez annuler la résiliation tant que la date n'est pas atteinte.
+                </div>
+              </div>
+            ) : null}
+
             <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
               <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
                 Modifier mon pack
               </a>
-              <button type="button" onClick={doCancel} style={dangerBtn} disabled={billingBusy}>
-                Résilier (préavis 1 mois)
-              </button>
+
+              {!computed?.cancellationScheduled ? (
+                <button type="button" onClick={doCancel} style={dangerBtn} disabled={billingBusy}>
+                  {billingBusy ? "Traitement…" : "Résilier (préavis 1 mois)"}
+                </button>
+              ) : (
+                <button type="button" onClick={doUncancel} style={primaryBtn} disabled={billingBusy}>
+                  {billingBusy ? "Traitement…" : "Annuler ma résiliation"}
+                </button>
+              )}
             </div>
           </>
         ) : (
