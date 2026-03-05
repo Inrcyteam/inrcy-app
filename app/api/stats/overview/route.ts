@@ -124,18 +124,18 @@ export async function GET(request: Request) {
       .select("provider,source,product,status,resource_id,updated_at,created_at")
       .eq("user_id", userId);
 
-    function latestIntegration(provider: string, source: string, product: string) {
-      const rows = (Array.isArray(integrationsAll) ? integrationsAll : []).filter((r: any) => {
-        const rr = asRecord(r);
-        return rr["provider"] === provider && rr["source"] === source && rr["product"] === product && rr["status"] === "connected";
-      });
-      rows.sort((a: any, b: any) => {
-        const aa = new Date(String(asRecord(a)["updated_at"] ?? asRecord(a)["created_at"] ?? 0)).getTime();
-        const bb = new Date(String(asRecord(b)["updated_at"] ?? asRecord(b)["created_at"] ?? 0)).getTime();
-        return bb - aa;
-      });
-      return asRecord(rows[0]);
-    }
+    function latestIntegrationAny(provider: string, source: string, product: string) {
+  const rows = (Array.isArray(integrationsAll) ? integrationsAll : []).filter((r: any) => {
+    const rr = asRecord(r);
+    return rr["provider"] === provider && rr["source"] === source && rr["product"] === product;
+  });
+  rows.sort((a: any, b: any) => {
+    const aa = new Date(String(asRecord(a)["updated_at"] ?? asRecord(a)["created_at"] ?? 0)).getTime();
+    const bb = new Date(String(asRecord(b)["updated_at"] ?? asRecord(b)["created_at"] ?? 0)).getTime();
+    return bb - aa;
+  });
+  return asRecord(rows[0]);
+}
 
 
 
@@ -154,26 +154,26 @@ export async function GET(request: Request) {
 
       // Facebook
       try {
-        const fb0 = latestIntegration("facebook", "facebook", "facebook");
-        out.facebook.connected = !!fb0 && !isExpired(fb0["expires_at"]);
+        const fb0 = latestIntegrationAny("facebook", "facebook", "facebook");
+        out.facebook.connected = String(fb0["status"] ?? "") === "connected" && !!fb0["resource_id"] && !isExpired(fb0["expires_at"]);
       } catch {}
 
       // Instagram (requires profile selection => resource_id)
       try {
-        const ig0 = latestIntegration("instagram", "instagram", "instagram");
-        out.instagram.connected = !!ig0["resource_id"] && !isExpired(ig0["expires_at"]);
+        const ig0 = latestIntegrationAny("instagram", "instagram", "instagram");
+        out.instagram.connected = String(ig0["status"] ?? "") === "connected" && !!ig0["resource_id"] && !isExpired(ig0["expires_at"]);
       } catch {}
 
       // LinkedIn
       try {
-        const li0 = latestIntegration("linkedin", "linkedin", "linkedin");
-        out.linkedin.connected = !!li0 && !isExpired(li0["expires_at"]);
+        const li0 = latestIntegrationAny("linkedin", "linkedin", "linkedin");
+        out.linkedin.connected = String(li0["status"] ?? "") === "connected" && !!li0 && !isExpired(li0["expires_at"]);
       } catch {}
 
       // GMB
       try {
-        const gmb0 = latestIntegration("google", "gmb", "gmb");
-        out.gmb.connected = !!gmb0["resource_id"] && !isExpired(gmb0["expires_at"]);
+        const gmb0 = latestIntegrationAny("google", "gmb", "gmb");
+        out.gmb.connected = String(gmb0["status"] ?? "") === "connected" && !!gmb0["resource_id"] && !isExpired(gmb0["expires_at"]);
       } catch {}
 
       return out;
@@ -227,9 +227,8 @@ async function buildConnectionsKey() {
       const resource = String(rr["resource_id"] ?? "");
       const updated = String(rr["updated_at"] ?? rr["created_at"] ?? "");
       if (!provider || !source || !product) continue;
-      // Only include connected rows; disconnected rows should not keep old cache alive.
-      if (status !== "connected") continue;
-      keyParts.push(`${provider}:${source}:${product}:${resource}:${updated}`);
+      // Include BOTH connected and disconnected rows so a disconnect changes the cache key.
+      keyParts.push(`${provider}:${source}:${product}:${status}:${resource}:${updated}`);
     }
   } catch {}
 
@@ -245,8 +244,7 @@ async function buildConnectionsKey() {
       const resource = String(rr["resource_id"] ?? "");
       const updated = String(rr["updated_at"] ?? rr["created_at"] ?? "");
       if (!provider || !source || !product) continue;
-      if (status !== "connected") continue;
-      keyParts.push(`legacy:${provider}:${source}:${product}:${resource}:${updated}`);
+      keyParts.push(`legacy:${provider}:${source}:${product}:${status}:${resource}:${updated}`);
     }
   } catch {}
 
@@ -514,7 +512,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
         // Facebook: connected if a page has been selected (resource_id)
     try {
-      const fbRow = latestIntegration("facebook", "facebook", "facebook");
+      const fbRow = latestIntegrationAny("facebook", "facebook", "facebook");
       const expiredFb = isExpired(fbRow?.["expires_at"]); sourcesStatus.facebook.connected = !!fbRow && !expiredFb && String(fbRow?.["status"]) === "connected" && !!fbRow?.["resource_id"];
 
       // Real Facebook Page metrics (only if included)
@@ -542,7 +540,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     
     // Instagram: Meta family. Connected only once a profile is selected (resource_id).
     try {
-      const igRow = latestIntegration("instagram", "instagram", "instagram");
+      const igRow = latestIntegrationAny("instagram", "instagram", "instagram");
       sourcesStatus.instagram.connected = !!igRow["resource_id"] && !isExpired(igRow["expires_at"]);
 
       const includeIg = includeAll || includeSet.has("instagram");
@@ -564,7 +562,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
 // LinkedIn: connected if an OAuth row exists.
     try {
-      const liRow = latestIntegration("linkedin", "linkedin", "linkedin");
+      const liRow = latestIntegrationAny("linkedin", "linkedin", "linkedin");
       sourcesStatus.linkedin.connected = !!liRow && !isExpired(liRow["expires_at"]);
 
       const includeLi = includeAll || includeSet.has("linkedin");
@@ -591,7 +589,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     // We consider it connected if an OAuth row exists and a location (resource_id) has been selected.
     // (We still *try* to fetch metrics, but a missing API enablement should not flip the badge back to "off".)
     try {
-      const gmbRow = latestIntegration("google", "gmb", "gmb");
+      const gmbRow = latestIntegrationAny("google", "gmb", "gmb");
 
       // Legacy override (older table)
       let legacyResource = "";
