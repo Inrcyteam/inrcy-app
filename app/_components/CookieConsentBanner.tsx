@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 
 type Consent = {
   v: 1;
@@ -37,9 +38,16 @@ function writeConsent(next: Consent) {
 }
 
 export default function CookieConsentBanner() {
+  const pathname = usePathname();
   const initial = useMemo(() => readConsent(), []);
   const [consent, setConsent] = useState<Consent | null>(initial);
   const [open, setOpen] = useState(false);
+
+  // Sur les pages publiques (login + documents légaux), on évite d'afficher le bandeau.
+  // Les cookies non essentiels ne sont pas utilisés par défaut et le consentement peut être géré depuis l'app.
+  if (pathname?.startsWith("/login") || pathname?.startsWith("/legal")) {
+    return null;
+  }
 
   // Keep in sync if something else updates localStorage.
   useEffect(() => {
@@ -63,16 +71,16 @@ export default function CookieConsentBanner() {
     right: 12,
     bottom: 12,
     zIndex: 999999,
-    borderRadius: 16,
+    borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(16,16,16,0.92)",
+    background: "rgba(16,16,16,0.88)",
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
     color: "white",
-    padding: 14,
-    maxWidth: 980,
+    padding: 12,
+    maxWidth: 720,
     margin: "0 auto",
-    boxShadow: "0 16px 50px rgba(0,0,0,0.35)",
+    boxShadow: "0 14px 40px rgba(0,0,0,0.32)",
   };
 
   const btn: React.CSSProperties = {
@@ -80,7 +88,7 @@ export default function CookieConsentBanner() {
     background: "rgba(255,255,255,0.06)",
     color: "white",
     borderRadius: 12,
-    padding: "10px 12px",
+    padding: "8px 10px",
     cursor: "pointer",
     fontWeight: 900,
     textDecoration: "none",
@@ -112,10 +120,10 @@ export default function CookieConsentBanner() {
 
   return (
     <div style={card} role="dialog" aria-live="polite" aria-label="Consentement cookies">
-      <div style={{ display: "flex", gap: 12, alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap" }}>
-        <div style={{ minWidth: 240, flex: "1 1 420px" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div style={{ minWidth: 220, flex: "1 1 360px" }}>
           <div style={{ fontWeight: 1000, marginBottom: 6 }}>Cookies</div>
-          <div style={{ opacity: 0.85, lineHeight: 1.45, fontSize: 14 }}>
+          <div style={{ opacity: 0.86, lineHeight: 1.42, fontSize: 13 }}>
             iNrCy utilise des cookies <b>strictement nécessaires</b> au fonctionnement (connexion, sécurité). Les cookies de
             mesure d’audience / services tiers ne sont activés qu’avec votre accord.
           </div>
