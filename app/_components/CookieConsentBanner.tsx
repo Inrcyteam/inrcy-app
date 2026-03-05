@@ -39,18 +39,17 @@ function writeConsent(next: Consent) {
 
 export default function CookieConsentBanner() {
   const pathname = usePathname();
+  const shouldHideOnThisPage = pathname?.startsWith("/login") || pathname?.startsWith("/legal");
   const initial = useMemo(() => readConsent(), []);
   const [consent, setConsent] = useState<Consent | null>(initial);
   const [open, setOpen] = useState(false);
 
-  // Sur les pages publiques (login + documents légaux), on évite d'afficher le bandeau.
-  // Les cookies non essentiels ne sont pas utilisés par défaut et le consentement peut être géré depuis l'app.
-  if (pathname?.startsWith("/login") || pathname?.startsWith("/legal")) {
-    return null;
-  }
-
   // Keep in sync if something else updates localStorage.
   useEffect(() => {
+    // IMPORTANT: ne pas conditionner les hooks (React error #310).
+    // Même si le bandeau ne s'affiche pas sur certaines pages, on exécute les hooks
+    // et on conditionne uniquement le rendu en fin de composant.
+    if (typeof window === "undefined") return;
     const onStorage = () => setConsent(readConsent());
     window.addEventListener("storage", onStorage);
     const onCustom = () => setConsent(readConsent());
@@ -60,6 +59,10 @@ export default function CookieConsentBanner() {
       window.removeEventListener("inrcy:cookie-consent" as any, onCustom);
     };
   }, []);
+
+  // Sur les pages publiques (login + documents légaux), on évite d'afficher le bandeau.
+  // Les cookies non essentiels ne sont pas utilisés par défaut et le consentement peut être géré depuis l'app.
+  if (shouldHideOnThisPage) return null;
 
   // If not decided yet, show banner.
   const shouldShow = !consent;
