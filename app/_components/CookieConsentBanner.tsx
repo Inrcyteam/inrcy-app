@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { usePathname } from "next/navigation";
 
 type Consent = {
@@ -65,7 +65,7 @@ export default function CookieConsentBanner() {
   const shouldShow = !consent;
   if (!shouldShow && !open) return null;
 
-  const card: React.CSSProperties = {
+  const card: CSSProperties = {
     position: "fixed",
     left: 12,
     right: 12,
@@ -83,7 +83,7 @@ export default function CookieConsentBanner() {
     boxShadow: "0 14px 40px rgba(0,0,0,0.32)",
   };
 
-  const btn: React.CSSProperties = {
+  const btn: CSSProperties = {
     border: "1px solid rgba(255,255,255,0.16)",
     background: "rgba(255,255,255,0.06)",
     color: "white",
@@ -98,14 +98,14 @@ export default function CookieConsentBanner() {
     whiteSpace: "nowrap",
   };
 
-  const primaryBtn: React.CSSProperties = {
+  const primaryBtn: CSSProperties = {
     ...btn,
     background:
       "linear-gradient(135deg, rgba(0, 200, 255, 0.18), rgba(97, 87, 255, 0.18), rgba(255, 77, 166, 0.14))",
     border: "1px solid rgba(255,255,255,0.18)",
   };
 
-  const link: React.CSSProperties = {
+  const link: CSSProperties = {
     color: "rgba(255,255,255,0.85)",
     textDecoration: "underline",
     fontWeight: 700,
