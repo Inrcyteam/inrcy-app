@@ -924,6 +924,44 @@ const refreshKpis = useCallback(async () => {
     }
   }, []);
 
+  // ✅ Opportunités activables (iNrStats) — affichage direct sur le cockpit.
+  // NOTE: placé ici pour pouvoir être rafraîchi via le listener Supabase ci-dessous.
+  const [oppLoading, setOppLoading] = useState(false);
+  const [oppTotal, setOppTotal] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.sessionStorage.getItem("inrcy_opp30_total_v1");
+      const n = raw ? Number(raw) : NaN;
+      return Number.isFinite(n) ? n : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const refreshOppTotal = useCallback(async () => {
+    try {
+      setOppLoading(true);
+      const r = await fetch("/api/stats/opportunities?days=30", { cache: "no-store" });
+      if (!r.ok) throw new Error(`opps:${r.status}`);
+      const j = (await r.json()) as { total?: number };
+      const val = typeof j?.total === "number" ? j.total : 0;
+      setOppTotal(val);
+      try {
+        window.sessionStorage.setItem("inrcy_opp30_total_v1", String(val));
+      } catch {
+        // ignore
+      }
+    } catch {
+      // Keep last known value (avoid UI flicker)
+    } finally {
+      setOppLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshOppTotal();
+  }, [refreshOppTotal]);
+
   // ✅ Auto-refresh Générateur + statuts modules dès qu'un module se connecte / se déconnecte
   // On écoute les changements Postgres sur les tables qui impactent:
   // - integrations (OAuth/connecteurs)
@@ -940,6 +978,7 @@ const refreshKpis = useCallback(async () => {
         if (disposed) return;
         void loadSiteInrcy();
         void refreshKpis();
+        void refreshOppTotal();
       }, 350);
     };
 
@@ -974,7 +1013,7 @@ const refreshKpis = useCallback(async () => {
         supabase.removeChannel(ch);
       } catch {}
     };
-  }, [loadSiteInrcy, refreshKpis]);
+  }, [loadSiteInrcy, refreshKpis, refreshOppTotal]);
 
 const activateSiteInrcyTracking = useCallback(async () => {
   if (siteInrcyOwnership !== "rented") {
@@ -1026,7 +1065,8 @@ const activateSiteInrcyTracking = useCallback(async () => {
 
   // Rafraîchit le générateur sans recharger la page
   void refreshKpis();
-}, [siteInrcyOwnership, siteInrcyUrl, refreshKpis]);
+  void refreshOppTotal();
+}, [siteInrcyOwnership, siteInrcyUrl, refreshKpis, refreshOppTotal]);
 
 // ✅ Mode rented : désactive le suivi (GA4+GSC) et nettoie les settings.
 const deactivateSiteInrcyTracking = useCallback(async () => {
@@ -1070,7 +1110,8 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
 
   // Rafraîchit le générateur sans recharger la page
   void refreshKpis();
-}, [siteInrcyOwnership, refreshKpis]);
+  void refreshOppTotal();
+}, [siteInrcyOwnership, refreshKpis, refreshOppTotal]);
 
 
 const disconnectGoogleStats = useCallback(
@@ -1947,47 +1988,6 @@ const checkActivity = useCallback(async () => {
   const leadsMonth = kpis?.leads?.month ?? 0;
 
   const estimatedValue = kpis?.estimatedValue ?? 0;
-
-  // ✅ Opportunités activables (iNrStats) — affichage direct sur le cockpit.
-  const [oppLoading, setOppLoading] = useState(false);
-  const [oppTotal, setOppTotal] = useState<number | null>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const raw = window.sessionStorage.getItem("inrcy_opp30_total_v1");
-      const n = raw ? Number(raw) : NaN;
-      return Number.isFinite(n) ? n : null;
-    } catch {
-      return null;
-    }
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setOppLoading(true);
-        const r = await fetch("/api/stats/opportunities?days=30", { cache: "no-store" });
-        if (!r.ok) throw new Error(`opps:${r.status}`);
-        const j = (await r.json()) as { total?: number };
-        if (!cancelled) {
-          const val = typeof j?.total === "number" ? j.total : 0;
-          setOppTotal(val);
-          try {
-            window.sessionStorage.setItem("inrcy_opp30_total_v1", String(val));
-          } catch {
-            // ignore
-          }
-        }
-      } catch {
-        // Keep the last known value to avoid UI flicker.
-      } finally {
-        if (!cancelled) setOppLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // helper render action
   const renderAction = (a: ModuleAction) => {
@@ -2905,12 +2905,15 @@ const checkActivity = useCallback(async () => {
               <button
                 type="button"
                 className={styles.generatorRefreshBtn}
-                onClick={() => void refreshKpis()}
-                disabled={kpisLoading}
+                onClick={() => {
+                  void refreshKpis();
+                  void refreshOppTotal();
+                }}
+                disabled={kpisLoading || oppLoading}
                 aria-label="Actualiser le générateur"
                 title="Actualiser"
               >
-                {kpisLoading ? (
+                {kpisLoading || oppLoading ? (
                   <span className={styles.miniSpinner} aria-hidden />
                 ) : (
                   <svg

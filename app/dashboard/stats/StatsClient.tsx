@@ -840,6 +840,10 @@ export default function StatsClient() {
     linkedin: { ov: null, loading: true },
   });
 
+  // In-memory cache to avoid duplicate fetch bursts (React strict-mode/dev & quick navigations)
+  const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
+
+
   const fetchCube = async (key: CubeKey, period: Period) => {
     const include =
       key === "site_inrcy"
@@ -861,47 +865,73 @@ export default function StatsClient() {
     return (await r.json()) as Overview;
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"];
-      // Set loading state
+useEffect(() => {
+  let cancelled = false;
+
+  (async () => {
+    // Fast path: cached data for this period
+    const cached = periodCacheRef.current.get(period);
+    if (cached) {
       setDataByCube((prev) => {
         const next: any = { ...prev };
-          for (const k of keys) next[k] = { ...next[k], loading: true, error: undefined };
+        for (const k of Object.keys(cached) as CubeKey[]) {
+          next[k] = { ov: (cached as any)[k], loading: false, error: undefined };
+        }
         return next;
       });
+      return;
+    }
 
+    const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"];
+
+    // Set loading state
+    setDataByCube((prev) => {
+      const next: any = { ...prev };
+      for (const k of keys) next[k] = { ...next[k], loading: true, error: undefined };
+      return next;
+    });
+
+    try {
+      const res = await Promise.all(
+        keys.map(async (k) => {
+          const ov = await fetchCube(k, period);
+          return [k, ov] as const;
+        })
+      );
+
+      // Store period snapshot in cache (prevents repeated reads / 429 on Supabase)
       try {
-        const res = await Promise.all(
-          keys.map(async (k) => {
-            const ov = await fetchCube(k, period);
-            return [k, ov] as const;
-          })
-        );
-        if (cancelled) return;
-        setDataByCube((prev) => {
-          const next: any = { ...prev };
-          for (const [k, ov] of res) next[k] = { ov, loading: false };
-          return next;
-        });
-      } catch (e: any) {
-        if (cancelled) return;
-        const msg = e?.message || "Erreur inconnue";
-        setDataByCube((prev) => {
-          const next: any = { ...prev };
-          // Mark all cubes with the error only if they have no data yet.
-          for (const k of ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"] as CubeKey[]) {
-            next[k] = { ...next[k], loading: false, error: next[k]?.ov ? undefined : msg };
-          }
-          return next;
-        });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [period]);
+        const snap: any = {};
+        for (const [k, ov] of res) snap[k] = ov;
+        periodCacheRef.current.set(period, snap);
+      } catch {}
+
+      if (cancelled) return;
+
+      setDataByCube((prev) => {
+        const next: any = { ...prev };
+        for (const [k, ov] of res) next[k] = { ov, loading: false, error: undefined };
+        return next;
+      });
+    } catch (e: any) {
+      if (cancelled) return;
+
+      const msg = e?.message || "Erreur inconnue";
+      setDataByCube((prev) => {
+        const next: any = { ...prev };
+        // Mark all cubes with the error only if they have no data yet.
+        for (const k of keys) {
+          next[k] = { ...next[k], loading: false, error: next[k]?.ov ? undefined : msg };
+        }
+        return next;
+      });
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [period]);
 
   const models: CubeModel[] = useMemo(() => {
     const build = (key: CubeKey, title: string, subtitle: string): CubeModel => {

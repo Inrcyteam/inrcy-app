@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 
 /**
  * 📊 Historique "Demandes captées"
- * - Données RÉELLES (passé) sur une fenêtre (7j / 30j / ...), sans projection.
+ * - Données observées (passé) sur une fenêtre (7j / 30j / ...), sans projection.
+ * - "Demandes captées" est une **estimation bornée** à partir de signaux mesurés (actions) et de signaux d’intention (impressions, clics, sessions engagées).
  * - Total et détail par outil.
  *
  * IMPORTANT: Ce endpoint est volontairement distinct de /api/stats/opportunities
@@ -18,6 +19,9 @@ type Overview = {
     pageviews?: number;
     clicks?: number;
     sessions?: number;
+    impressions?: number;
+    engagementRate?: number; // 0..1
+    avgSessionDuration?: number; // seconds
   };
   sources?: Record<string, { connected?: boolean; metrics?: any }>;
 };
@@ -54,38 +58,107 @@ function getTotalMetric(metrics: any, keys: string[]): number {
   return 0;
 }
 
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
+}
+
+function estimateEngagedSessions(ov: Overview): number {
+  const sessions = safeNum(ov?.totals?.sessions);
+  const er = safeNum((ov?.totals as any)?.engagementRate);
+  if (sessions <= 0 || er <= 0) return 0;
+  // engagementRate is expected 0..1. Clamp to avoid bad provider payloads.
+  return sessions * clamp(er, 0, 1);
+}
+
+function roundNonNeg(n: number): number {
+  return Math.max(0, Math.round(n));
+}
+
+/**
+ * "Demandes captées" (historique) = estimation de demandes commerciales à partir
+ * de signaux à forte intention (conversions, appels, messages, itinéraires),
+ * complétés par des signaux moyens/faibles (clics, sessions engagées, impressions...).
+ *
+ * Objectif: rester MOTIVANT sans mentir :
+ * - On ne "fabrique" pas de leads : on estime un volume plausible.
+ * - Dès qu'on a des signaux forts, on borne l'estimation (cap) pour rester crédible.
+ */
+const CAP_MULTIPLIER_WHEN_STRONG_SIGNAL = 3; // max = signaux forts * 3
+const MODEL_VERSION = "captured_v2.0";
+
 function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
   const sources = safeObj(ov?.sources);
 
+  const clicks = safeNum(ov?.totals?.clicks);
+  const impressions = safeNum((ov?.totals as any)?.impressions);
+  const pageviews = safeNum(ov?.totals?.pageviews);
+  const sessions = safeNum(ov?.totals?.sessions);
+  const engagedSessions = estimateEngagedSessions(ov);
+
+  // --- Websites (GA4 + GSC) ---
   if (cube === "site_inrcy" || cube === "site_web") {
     const ga4Key = cube === "site_inrcy" ? "site_inrcy_ga4" : "site_web_ga4";
     const ga4 = safeObj(sources[ga4Key]);
-    const conv =
+
+    // Strong signal (tracked conversions/leads)
+    const convStrong =
       getTotalMetric(ga4.metrics, ["conversions", "conversionCount", "leads", "leadCount"]) || 0;
 
-    if (conv > 0) return Math.round(conv);
+    // Mid/low intent signals
+    const estimate =
+      clicks * 0.12 +
+      pageviews * 0.03 +
+      engagedSessions * 0.08 +
+      impressions * 0.003;
 
-    const clicks = safeNum(ov?.totals?.clicks);
-    const pageviews = safeNum(ov?.totals?.pageviews);
-    const proxy = clicks * 0.06 + pageviews * 0.01;
-    return Math.max(0, Math.round(proxy));
+    if (convStrong > 0) {
+      // If tracking is under-counting, allow a bounded uplift, otherwise keep real conversions.
+      const capped = Math.min(convStrong * CAP_MULTIPLIER_WHEN_STRONG_SIGNAL, Math.max(convStrong, estimate));
+      return roundNonNeg(capped);
+    }
+
+    return roundNonNeg(estimate);
   }
 
+  // --- Google Business Profile ---
   if (cube === "gmb") {
     const m = (sources as any)?.gmb?.metrics;
-    const calls = getTotalMetric(m, ["calls", "phone_calls", "phoneCalls", "call_clicks", "callClicks"]);
-    const website = getTotalMetric(m, ["website_clicks", "websiteClicks", "website_actions", "websiteActions"]);
-    const directions = getTotalMetric(m, ["directions", "direction_requests", "directionRequests", "driving_directions", "drivingDirections"]);
-    const total = calls + website + directions;
-    if (total > 0) return Math.round(total);
 
-    const clicks = safeNum(ov?.totals?.clicks);
-    return Math.max(0, Math.round(clicks * 0.08));
+    // Strong signals (actions)
+    const calls = getTotalMetric(m, ["calls", "phone_calls", "phoneCalls", "call_clicks", "callClicks", "CALL_CLICKS"]);
+    const website = getTotalMetric(m, ["website_clicks", "websiteClicks", "website_actions", "websiteActions", "WEBSITE_CLICKS"]);
+    const directions = getTotalMetric(m, ["directions", "direction_requests", "directionRequests", "driving_directions", "drivingDirections", "DIRECTION_REQUESTS"]);
+    const strong = calls + website + directions;
+
+    // Low intent: business impressions/views (when available)
+    const gmbImpr = getTotalMetric(m, [
+      "impressions",
+      "business_impressions",
+      "BUSINESS_IMPRESSIONS",
+      "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
+      "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
+      "BUSINESS_IMPRESSIONS_MOBILE_MAPS",
+      "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
+      "views",
+      "viewCount",
+    ]);
+
+    const estimate = strong + clicks * 0.08 + gmbImpr * 0.002;
+
+    if (strong > 0) {
+      const capped = Math.min(strong * CAP_MULTIPLIER_WHEN_STRONG_SIGNAL, estimate);
+      return roundNonNeg(capped);
+    }
+
+    return roundNonNeg(estimate);
   }
 
+  // --- Social (Facebook / Instagram / LinkedIn) ---
   if (cube === "facebook" || cube === "instagram" || cube === "linkedin") {
     const m = (sources as any)?.[cube]?.metrics;
 
+    // Strong signals
     const messages = getTotalMetric(m, [
       "messages",
       "message_count",
@@ -112,11 +185,31 @@ function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
       "page_get_directions_clicks",
     ]);
 
-    const total = messages + ctaClicks;
-    if (total > 0) return Math.round(total);
+    const strong = messages + ctaClicks;
 
-    const clicks = safeNum(ov?.totals?.clicks);
-    return Math.max(0, Math.round(clicks * 0.05));
+    // Medium/low intent
+    const engagements = getTotalMetric(m, [
+      "engagements",
+      "post_engaged_users",
+      "page_engaged_users",
+      "post_engaged_users_sum",
+      "likes",
+      "comments",
+      "shares",
+      "saves",
+    ]);
+
+    const reach = getTotalMetric(m, ["reach", "uniqueReach", "unique_reach"]);
+    const socialImpr = getTotalMetric(m, ["impressions", "post_impressions_sum", "post_impressions", "views", "video_views"]);
+
+    const estimate = strong + clicks * 0.05 + engagements * 0.03 + reach * 0.001 + socialImpr * 0.001;
+
+    if (strong > 0) {
+      const capped = Math.min(strong * CAP_MULTIPLIER_WHEN_STRONG_SIGNAL, estimate);
+      return roundNonNeg(capped);
+    }
+
+    return roundNonNeg(estimate);
   }
 
   return 0;
@@ -161,7 +254,7 @@ export async function GET(request: Request) {
 
     const total = Object.values(perTool).reduce((a, b) => a + b, 0);
 
-    return NextResponse.json({ days, total, perTool });
+    return NextResponse.json({ days, total, perTool, model: MODEL_VERSION });
   } catch (e: unknown) {
     return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
   }
