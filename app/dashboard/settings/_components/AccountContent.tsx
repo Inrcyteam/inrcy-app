@@ -41,6 +41,11 @@ export default function AccountContent({ mode: _mode = "page" }: Props) {
   const [msg, setMsg] = useState<string>("");
   const [ok, setOk] = useState<string>("");
 
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState<string>("");
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -103,6 +108,55 @@ export default function AccountContent({ mode: _mode = "page" }: Props) {
     width: "100%",
     opacity: busy ? 0.7 : 1,
   };
+
+  const dangerBtn: React.CSSProperties = {
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(255, 65, 105, 0.20)",
+    color: "white",
+    borderRadius: 14,
+    padding: "10px 12px",
+    cursor: "pointer",
+    fontWeight: 900,
+    width: "100%",
+    opacity: deleteBusy ? 0.7 : 1,
+  };
+
+  async function onDeleteAccount() {
+    setDeleteMsg("");
+    setOk("");
+
+    if (deleteConfirm.trim().toUpperCase() !== "SUPPRIMER") {
+      setDeleteMsg('Veuillez taper "SUPPRIMER" pour confirmer.');
+      return;
+    }
+
+    if (!window.confirm("Dernière confirmation : supprimer définitivement votre compte iNrCy ?")) return;
+
+    setDeleteBusy(true);
+    try {
+      const res = await fetch("/api/account", { method: "DELETE" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        const detail = json?.error || "La suppression n'a pas pu être terminée.";
+        setDeleteMsg(detail);
+        return;
+      }
+
+      // Best-effort sign out on client side.
+      try {
+        const supabase = createClient();
+        await supabase.auth.signOut();
+      } catch {
+        // no-op
+      }
+
+      window.location.href = "/?account_deleted=1";
+    } catch (e: unknown) {
+      setDeleteMsg(e instanceof Error ? e.message : "Erreur lors de la suppression du compte");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
 
   async function onChangePassword() {
     setMsg("");
@@ -222,6 +276,65 @@ export default function AccountContent({ mode: _mode = "page" }: Props) {
           {msg ? <div style={{ marginTop: 6, opacity: 0.9 }}>⚠️ {msg}</div> : null}
           {ok ? <div style={{ marginTop: 6, opacity: 0.95 }}>{ok}</div> : null}
         </div>
+      </div>
+
+      {/* Zone de suppression (RGPD) */}
+      <div style={{ ...card, border: "1px solid rgba(255, 65, 105, 0.30)" }}>
+        <h2 style={{ margin: 0, fontSize: 16 }}>Suppression du compte</h2>
+        <p style={{ margin: "8px 0 0", opacity: 0.8 }}>
+          Conformément au RGPD, vous pouvez supprimer définitivement votre compte et les données associées.
+        </p>
+
+        {!deleteOpen ? (
+          <button
+            type="button"
+            style={{ ...dangerBtn, marginTop: 12 }}
+            onClick={() => {
+              setDeleteOpen(true);
+              setDeleteConfirm("");
+              setDeleteMsg("");
+            }}
+          >
+            ⚠️ Supprimer mon compte
+          </button>
+        ) : (
+          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            <div style={{ opacity: 0.9, fontSize: 13 }}>
+              Cette action est <strong>irréversible</strong>. Tapez <strong>SUPPRIMER</strong> pour confirmer.
+            </div>
+            <input
+              style={input}
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              placeholder="SUPPRIMER"
+            />
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                type="button"
+                style={dangerBtn}
+                onClick={onDeleteAccount}
+                disabled={deleteBusy}
+              >
+                {deleteBusy ? "Suppression en cours…" : "Confirmer la suppression"}
+              </button>
+              <button
+                type="button"
+                style={{ ...primaryBtn, background: "rgba(255,255,255,0.06)" }}
+                onClick={() => {
+                  setDeleteOpen(false);
+                  setDeleteConfirm("");
+                  setDeleteMsg("");
+                }}
+                disabled={deleteBusy}
+              >
+                Annuler
+              </button>
+            </div>
+
+            {deleteMsg ? <div style={{ opacity: 0.92 }}>⚠️ {deleteMsg}</div> : null}
+          </div>
+        )}
       </div>
     </div>
   );

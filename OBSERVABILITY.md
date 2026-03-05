@@ -16,6 +16,11 @@ Fichier : `lib/observability/logger.ts`
 - Les logs sont au format JSON, parfait pour Vercel/Log drains.
 - Aucune donnée sensible ne doit être logguée (tokens, mots de passe, cookies).
 
+Recommandations RGPD (important) :
+- **Minimiser** les données : privilégier `user_id` plutôt que `email`.
+- **Éviter** de logguer des tokens OAuth / Stripe / etc.
+- **Durée de conservation** : garder les logs techniques le minimum nécessaire (ex: 30 jours), et limiter l’accès.
+
 ## 3) Wrapper d’API
 
 Fichier : `lib/observability/withApi.ts`

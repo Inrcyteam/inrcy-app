@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import styles from "./stats.module.css";
 import Image from "next/image";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
+import HelpButton from "../_components/HelpButton";
+import HelpModal from "../_components/HelpModal";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -798,7 +800,7 @@ function PeriodSelect({ value, onChange }: { value: Period; onChange: (p: Period
     <select className={styles.period} value={value} onChange={(e) => onChange(Number(e.target.value) as Period)}>
       {PERIODS.map((p) => (
         <option key={p} value={p}>
-          {p} j
+          Historique {p}j
         </option>
       ))}
     </select>
@@ -806,6 +808,7 @@ function PeriodSelect({ value, onChange }: { value: Period; onChange: (p: Period
 }
 
 export default function StatsClient() {
+  const [helpOpen, setHelpOpen] = useState(false);
   const router = useRouter();
 
   const inrcyRef = useRef<HTMLDivElement | null>(null);
@@ -1052,20 +1055,28 @@ const provenance = buildProvenance(key, ov);
 
         <div className={styles.headerActions}>
           {/* ✅ Sélecteur global 7j / 30j */}
-          <div className={styles.headerPills}>
-            <span className={styles.headerPeriodLabel}>Historique sur</span>
-            <PeriodSelect value={period} onChange={setPeriod} />
+          <div className={styles.headerPills}>            <PeriodSelect value={period} onChange={setPeriod} />
           </div>
 
           <div className={styles.headerClose}>
-            <ResponsiveActionButton
-              desktopLabel="Fermer"
-              mobileIcon="✕"
-              onClick={() => router.push("/dashboard")}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Stats" />
+              <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
+            </div>
           </div>
         </div>
       </div>
+
+      <HelpModal open={helpOpen} title="iNr’Stats" onClose={() => setHelpOpen(false)}>
+        <p style={{ marginTop: 0 }}>
+          iNr’Stats analyse les données récupérées sur vos canaux (site, Google, réseaux…) et les transforme en analyse business.
+        </p>
+        <ul style={{ margin: 0, paddingLeft: 18 }}>
+          <li>Comprenez votre potentiel d’opportunités sur les 30 jours à venir.</li>
+          <li>Identifiez les actions à mener pour capter ce potentiel.</li>
+          <li>Suivez l’évolution par canal et par période (7j / 30j).</li>
+        </ul>
+      </HelpModal>
 
       {/* Summary bar (CRM-like) */}
       <div className={styles.summaryBar} aria-label="Récapitulatif iNrStats">

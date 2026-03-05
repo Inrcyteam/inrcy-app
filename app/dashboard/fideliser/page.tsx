@@ -9,10 +9,13 @@ import InformModal from "./components/InformModal";
 import ThanksModal from "./components/ThanksModal";
 import SatisfactionModal from "./components/SatisfactionModal";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
+import HelpButton from "../_components/HelpButton";
+import HelpModal from "../_components/HelpModal";
 
 type ActiveModal = null | "inform" | "thanks" | "satisfaction";
 
 export default function FideliserPage() {
+  const [helpOpen, setHelpOpen] = useState(false);
   const [active, setActive] = useState<ActiveModal>(null);
 
   const searchParams = useSearchParams();
@@ -222,9 +225,23 @@ useEffect(() => {
             </div>
 
             <div className={b.closeWrap}>
-              <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" />
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <HelpButton onClick={() => setHelpOpen(true)} title="Aide Fidéliser" />
+                <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" />
+              </div>
             </div>
           </header>
+
+          <HelpModal open={helpOpen} title="Fidéliser" onClose={() => setHelpOpen(false)}>
+            <p style={{ marginTop: 0 }}>
+              Fidéliser vous aide à entretenir la relation avec vos clients.
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              <li>Relancez vos clients au bon moment.</li>
+              <li>Obtenez plus d’avis et de recommandations.</li>
+              <li>Créez des actions simples pour faire revenir vos clients.</li>
+            </ul>
+          </HelpModal>
 
 <div className={b.desktopOnly}>
   {/* Triangles (non cliquables) */}

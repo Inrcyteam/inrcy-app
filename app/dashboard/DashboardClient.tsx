@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useCallback, useMemo, type TouchEvent as ReactTouchEvent } from "react";
 import Link from "next/link";
 import SettingsDrawer from "./SettingsDrawer";
+import HelpButton from "./_components/HelpButton";
+import HelpModal from "./_components/HelpModal";
 import ProfilContent from "./settings/_components/ProfilContent";
 import AccountContent from "./settings/_components/AccountContent";
 import ActivityContent from "./settings/_components/ActivityContent";
@@ -12,6 +14,7 @@ import AbonnementContent from "./settings/_components/AbonnementContent";
 import ContactContent from "./settings/_components/ContactContent";
 import MailsSettingsContent from "./settings/_components/MailsSettingsContent";
 import LegalContent from "./settings/_components/LegalContent";
+import RgpdContent from "./settings/_components/RgpdContent";
 import InertiaContent from "./settings/_components/InertiaContent";
 import BoutiqueContent from "./settings/_components/BoutiqueContent";
 
@@ -192,6 +195,9 @@ const quickActions: Array<{ key: string; title: string; sub: string; disabled?: 
 ];
 
 export default function DashboardClient() {
+  const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
+  const [helpCanauxOpen, setHelpCanauxOpen] = useState(false);
+  const [helpInertieOpen, setHelpInertieOpen] = useState(false);
   const router = useRouter();
 
   const searchParams = useSearchParams();
@@ -212,6 +218,7 @@ export default function DashboardClient() {
       | "gmb"
       | "facebook"
       | "legal"
+      | "rgpd"
       | "inertie"
       | "boutique"
   ) => {
@@ -458,7 +465,18 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
   );
 
   // ✅ Solde UI (Unités d'Inertie) pour l'affichage dans le Générateur
-  const [uiBalance, setUiBalance] = useState<number>(0);
+  // Objectif: éviter un « blink » (0 → vraie valeur) au retour de navigation / pendant un refresh.
+  // On garde la dernière valeur connue en mémoire (sessionStorage) tant que la nouvelle n'est pas chargée.
+  const [uiBalance, setUiBalance] = useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    try {
+      const raw = window.sessionStorage.getItem("inrcy_ui_balance_v1");
+      const n = raw ? Number(raw) : NaN;
+      return Number.isFinite(n) ? n : 0;
+    } catch {
+      return 0;
+    }
+  });
 
   const refreshUiBalance = useCallback(async () => {
     try {
@@ -466,7 +484,7 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
       const { data: auth } = await supabase.auth.getUser();
       const user = auth?.user;
       if (!user) {
-        setUiBalance(0);
+        // Ne pas écraser l'affichage par 0 pendant un instant (retour navigation / auth async)
         return;
       }
       const res = await supabase
@@ -475,10 +493,16 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
         .eq("user_id", user.id)
         .maybeSingle();
       const bal = Number((res.data as any)?.balance ?? 0);
-      setUiBalance(Number.isFinite(bal) ? bal : 0);
+      const next = Number.isFinite(bal) ? bal : 0;
+      setUiBalance(next);
+      try {
+        window.sessionStorage.setItem("inrcy_ui_balance_v1", String(next));
+      } catch {
+        // ignore
+      }
     } catch {
       // silence (ex: tables non activées)
-      setUiBalance(0);
+      // Ne pas forcer à 0 pour éviter un flash; on garde la dernière valeur connue.
     }
   }, []);
 
@@ -2669,6 +2693,18 @@ const checkActivity = useCallback(async () => {
                   Informations légales
                 </button>
 
+                <button
+                  type="button"
+                  className={styles.userMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    openPanel("rgpd");
+                  }}
+                >
+                  Mes données (RGPD)
+                </button>
+
                 <div className={styles.userMenuDivider} />
 
                 <button
@@ -2844,6 +2880,18 @@ const checkActivity = useCallback(async () => {
                 Informations légales
               </button>
 
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openPanel("rgpd");
+                }}
+              >
+                Mes données (RGPD)
+              </button>
+
               <div className={styles.mobileMenuDivider} />
 
               <button
@@ -2897,7 +2945,10 @@ const checkActivity = useCallback(async () => {
 
           <div className={styles.generatorHeader}>
             <div>
-              <div className={styles.generatorTitle}>Générateur iNrCy</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div className={styles.generatorTitle}>Générateur iNrCy</div>
+                <HelpButton onClick={() => setHelpGeneratorOpen(true)} title="Aide : Générateur iNrCy" />
+              </div>
               <div className={styles.generatorDesc}>Production de prospects et de clients dès qu’un module est connecté</div>
             </div>
 
@@ -2971,7 +3022,10 @@ const checkActivity = useCallback(async () => {
               {/* ✅ Responsive : GO sur la même ligne que la valeur (via CSS). Desktop inchangé (bouton en corner). */}
               <div className={styles.metricValueRow}>
                 <div className={styles.metricValue}>
-                  {oppLoading ? <span className={styles.miniSpinner} aria-hidden /> : oppTotal === null ? "—" : `+${oppTotal}`}
+                  <span>{oppTotal === null ? "—" : `+${oppTotal}`}</span>
+                  {oppLoading ? (
+                    <span className={`${styles.miniSpinner} ${styles.miniSpinnerInline}`} aria-hidden />
+                  ) : null}
                 </div>
 
                 <button
@@ -3026,7 +3080,10 @@ const checkActivity = useCallback(async () => {
       <section className={styles.contentFull}>
         <div className={styles.sectionHead}>
           <div className={styles.sectionHeadTop}>
-            <h2 className={styles.h2}>Canaux</h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h2 className={styles.h2} style={{ margin: 0 }}>Canaux</h2>
+              <HelpButton onClick={() => setHelpCanauxOpen(true)} title="Aide : Canaux" />
+            </div>
 
             {/* Mobile only: choix Liste / Carrousel */}
             <div className={styles.mobileViewToggle} aria-label="Affichage des canaux">
@@ -3341,6 +3398,8 @@ const checkActivity = useCallback(async () => {
             ? "Mon abonnement"
             : panel === "legal"
             ? "Informations légales"
+            : panel === "rgpd"
+            ? "Mes données (RGPD)"
             : panel === "mails"
             ? "Réglages iNr’Send"
             : panel === "site_inrcy"
@@ -3368,6 +3427,7 @@ const checkActivity = useCallback(async () => {
           panel === "activite" ||
           panel === "abonnement" ||
           panel === "legal" ||
+          panel === "rgpd" ||
           panel === "mails" ||
           panel === "site_inrcy"
         ||
@@ -3386,6 +3446,9 @@ const checkActivity = useCallback(async () => {
           panel === "boutique"
         }
         onClose={closePanel}
+        headerActions={
+          panel === "inertie" ? <HelpButton onClick={() => setHelpInertieOpen(true)} title="Aide : Mon inertie" /> : null
+        }
       >
         {panel === "contact" && <ContactContent mode="drawer" />}
         {panel === "compte" && <AccountContent mode="drawer" />}
@@ -3393,6 +3456,7 @@ const checkActivity = useCallback(async () => {
         {panel === "activite" && <ActivityContent mode="drawer" />}
         {panel === "abonnement" && <AbonnementContent mode="drawer" />}
         {panel === "legal" && <LegalContent mode="drawer" />}
+        {panel === "rgpd" && <RgpdContent mode="drawer" />}
         {panel === "mails" && <MailsSettingsContent />}
         {panel === "inertie" && (
           <InertiaContent
@@ -4965,6 +5029,68 @@ const checkActivity = useCallback(async () => {
         )}
 
       </SettingsDrawer>
+
+      {/* ✅ Bulles d'aide globales (toujours au-dessus grâce à HelpModal) */}
+      <HelpModal open={helpGeneratorOpen} title="Générateur iNrCy" onClose={() => setHelpGeneratorOpen(false)}>
+        <p style={{ marginTop: 0 }}>
+          Le Générateur iNrCy est le moteur de votre activité. Il connecte vos canaux pour capter des prospects et générer des
+          opportunités.
+        </p>
+        <ol style={{ margin: 0, paddingLeft: 18 }}>
+          <li>Connectez vos canaux</li>
+          <li>Activez des actions (Booster / Fidéliser)</li>
+          <li>Suivez vos opportunités et vos contacts</li>
+        </ol>
+      </HelpModal>
+
+      <HelpModal open={helpCanauxOpen} title="Canaux" onClose={() => setHelpCanauxOpen(false)}>
+        <p style={{ marginTop: 0 }}>
+          Connectez chaque canal pour créer une synergie entre tous vos outils de communication et capter davantage de prospects
+          et de clients.
+        </p>
+        <p style={{ marginBottom: 0 }}>
+          Pour connecter un canal : ouvrez le panneau <strong>Configurer</strong>, cliquez sur les boutons indiqués, puis suivez les étapes
+          demandées.
+        </p>
+      </HelpModal>
+
+      <HelpModal open={helpInertieOpen} title="Mon inertie — Tableau des gains UI" onClose={() => setHelpInertieOpen(false)}>
+        <p style={{ marginTop: 0 }}>
+          Voici les actions qui rapportent des <strong>UI</strong> (Unités d’Inertie). Les limites hebdo/mensuelles évitent la triche.
+        </p>
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.10)" }}>Action</th>
+                <th style={{ textAlign: "left", padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.10)" }}>Gain</th>
+                <th style={{ textAlign: "left", padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.10)" }}>Fréquence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { a: "Ouverture du compte", g: "+10 UI", f: "1 fois" },
+                { a: "Compléter Mon profil", g: "+20 UI", f: "1 fois" },
+                { a: "Compléter Mon activité", g: "+20 UI", f: "1 fois" },
+                { a: "Créer une actu", g: "+10 UI", f: "1 fois / semaine" },
+                { a: "Utiliser Booster / Fidéliser", g: "+10 UI", f: "1 fois / semaine" },
+                { a: "Ancienneté", g: "+50 UI", f: "chaque mois" },
+              ].map((r) => (
+                <tr key={r.a}>
+                  <td style={{ padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{r.a}</td>
+                  <td style={{ padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{r.g}</td>
+                  <td style={{ padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{r.f}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <p style={{ marginBottom: 0, marginTop: 12, opacity: 0.9 }}>
+          Le Turbo UI multiplie certaines actions selon vos canaux connectés. Tout est visible dans l’Historique de Mon inertie.
+        </p>
+      </HelpModal>
 
       <footer className={styles.footer}>
         <div className={styles.footerLeft}>© {new Date().getFullYear()} iNrCy</div>

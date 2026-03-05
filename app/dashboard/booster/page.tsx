@@ -9,10 +9,13 @@ import PublishModal from "./components/PublishModal";
 import ReviewModal from "./components/ReviewModal";
 import PromoModal from "./components/PromoModal";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
+import HelpButton from "../_components/HelpButton";
+import HelpModal from "../_components/HelpModal";
 
 type ActiveModal = null | "publish" | "reviews" | "promo";
 
 export default function BoosterPage() {
+  const [helpOpen, setHelpOpen] = useState(false);
   const [active, setActive] = useState<ActiveModal>(null);
 
   const searchParams = useSearchParams();
@@ -243,9 +246,23 @@ useEffect(() => {
             </div>
 
             <div className={b.closeWrap}>
-              <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" />
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <HelpButton onClick={() => setHelpOpen(true)} title="Aide Booster" />
+                <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" />
+              </div>
             </div>
           </header>
+
+          <HelpModal open={helpOpen} title="Booster" onClose={() => setHelpOpen(false)}>
+            <p style={{ marginTop: 0 }}>
+              Booster est l’outil principal pour développer votre activité.
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              <li>Communiquez efficacement et rapidement sur vos canaux.</li>
+              <li>Lancez des actions en quelques minutes, sans vous disperser.</li>
+              <li>Objectif : générer plus d’opportunités et de clients.</li>
+            </ul>
+          </HelpModal>
 
 <div className={b.desktopOnly}>
   {/* Triangles (non cliquables) */}

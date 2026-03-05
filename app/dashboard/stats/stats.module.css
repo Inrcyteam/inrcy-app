@@ -144,13 +144,6 @@
 }
 
 
-.headerPeriodLabel {
-  font-size: 13px;
-  opacity: 0.85;
-  margin-right: 10px;
-  white-space: nowrap;
-}
-
 .headerClose {
   display: flex;
   align-items: center;

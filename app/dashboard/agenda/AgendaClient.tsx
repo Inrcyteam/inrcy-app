@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import styles from "./agenda.module.css";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
+import HelpButton from "../_components/HelpButton";
+import HelpModal from "../_components/HelpModal";
 
 // Reuse the exact same drawer + content as the Dashboard
 // Agenda iNrCy : calendrier natif (plus de connexion Google Agenda)
@@ -134,6 +136,7 @@ function parseCrmDisplayName(v: string) {
 }
 
 export default function AgendaClient() {
+  const [helpOpen, setHelpOpen] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const [events, setEvents] = useState<EventItem[]>([]);
@@ -863,11 +866,10 @@ async function deleteEventById(id: string) {
                 placeholder="Rechercher un évènement..."
               />
 
-              <ResponsiveActionButton
-                desktopLabel="Fermer"
-                mobileIcon="✕"
-                onClick={() => router.push("/dashboard")}
-              />
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Calendar" />
+                <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
+              </div>
             </div>
 
             {/* Mobile: icônes Loupe / Fermer */}
@@ -882,15 +884,25 @@ async function deleteEventById(id: string) {
                 <span aria-hidden>🔎</span>
               </button>
 
-              <ResponsiveActionButton
-                desktopLabel="Fermer"
-                mobileIcon="✕"
-                onClick={() => router.push("/dashboard")}
-              />
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Calendar" />
+                <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
+              </div>
             </div>
           </div>
 
 		</div>
+
+		<HelpModal open={helpOpen} title="iNr’Calendar" onClose={() => setHelpOpen(false)}>
+		  <p style={{ marginTop: 0 }}>
+		    iNr’Calendar vous permet d’enregistrer et organiser vos rendez-vous et interventions.
+		  </p>
+		  <ul style={{ margin: 0, paddingLeft: 18 }}>
+		    <li>Planifiez vos évènements (interventions, RDV, suivi client).</li>
+		    <li>Retrouvez rapidement un évènement via la recherche.</li>
+		    <li>Gardez une vision claire de votre planning terrain.</li>
+		  </ul>
+		</HelpModal>
 
 		{/* Mobile: barre de recherche globale */}
         {showMobileSearch && (

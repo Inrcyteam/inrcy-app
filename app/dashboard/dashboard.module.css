@@ -590,6 +590,16 @@ display: flex;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.04));
   box-shadow: 0 26px 90px rgba(0, 0, 0, 0.42);
   padding: 16px;
+
+  /*
+    ✅ Anti-flicker (retour de navigation / repaint aléatoire)
+    Le combo backdrop-filter + mix-blend-mode + animations peut provoquer
+    des micro « trous » de rendu sur certains navigateurs. On isole le stacking
+    context et on limite le repaint au conteneur.
+  */
+  isolation: isolate;
+  contain: paint;
+  -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
 }
 
@@ -858,6 +868,11 @@ display: flex;
 
   position: relative;
   z-index: 2;
+
+  /* ✅ garde la carte KPI stable côté compositor (anti flash / disappear 1-2 frames) */
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 
@@ -3735,6 +3750,12 @@ transform: scale(1.50);
   border-top-color: rgba(255,255,255,.85);
   display: inline-block;
   animation: inrcySpin 0.9s linear infinite;
+}
+
+/* Utilisé quand on veut garder la valeur visible et juste indiquer un refresh */
+.miniSpinnerInline{
+  margin-left: 10px;
+  transform: translateY(2px);
 }
 
 @keyframes inrcySpin{ to{ transform: rotate(360deg); } }

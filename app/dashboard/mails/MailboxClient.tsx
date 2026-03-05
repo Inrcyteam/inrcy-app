@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./mails.module.css";
 import Image from "next/image";
 import SettingsDrawer from "../SettingsDrawer";
+import HelpButton from "../_components/HelpButton";
+import HelpModal from "../_components/HelpModal";
 import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
 import { createClient } from "@/lib/supabaseClient";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
@@ -367,6 +369,7 @@ function pill(provider?: string | null) {
 }
 
 export default function MailboxClient() {
+  const [helpOpen, setHelpOpen] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -1342,6 +1345,8 @@ async function deleteDraftPermanently(id: string) {
               <MailsSettingsContent />
             </SettingsDrawer>
 
+            <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Send" />
+
             <ResponsiveActionButton
               desktopLabel="Fermer"
               mobileIcon="✕"
@@ -1350,6 +1355,17 @@ async function deleteDraftPermanently(id: string) {
             />
           </div>
 </div>
+
+        <HelpModal open={helpOpen} title="iNr’Send" onClose={() => setHelpOpen(false)}>
+          <p style={{ marginTop: 0 }}>
+            iNr’Send est le centre d’envoi de votre communication.
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            <li>Centralisez vos échanges et vos messages.</li>
+            <li>Gagnez du temps pour communiquer sur vos canaux.</li>
+            <li>Utilisez les réglages pour connecter/configurer les envois.</li>
+          </ul>
+        </HelpModal>
 
         {/* Mobile: menu dossiers (hamburger) */}
         {mobileFoldersOpen ? (

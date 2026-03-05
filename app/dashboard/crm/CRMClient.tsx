@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import styles from "./crm.module.css";
 import { getTemplates } from "@/lib/messageTemplates";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
+import HelpButton from "../_components/HelpButton";
+import HelpModal from "../_components/HelpModal";
 
 type Category = "" | "particulier" | "professionnel" | "collectivite_publique";
 type ContactType = "" | "client" | "prospect" | "fournisseur" | "partenaire" | "autre";
@@ -226,6 +228,7 @@ function categoryBadgeClass(c: Category) {
 }
 
 export default function CRMClient() {
+  const [helpOpen, setHelpOpen] = useState(false);
   const router = useRouter();
 
   // Toujours arriver en haut du module (évite de récupérer le scroll du dashboard)
@@ -935,10 +938,24 @@ const exportCsv = () => {
           </button>
 
           <div className={styles.closeWrap}>
-            <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’CRM" />
+              <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
+            </div>
           </div>
         </div>
       </header>
+
+      <HelpModal open={helpOpen} title="iNr’CRM" onClose={() => setHelpOpen(false)}>
+        <p style={{ marginTop: 0 }}>
+          iNr’CRM centralise tous vos contacts et prospects.
+        </p>
+        <ul style={{ margin: 0, paddingLeft: 18 }}>
+          <li>Ajoutez et enregistrez vos contacts (prospects / clients / partenaires…).</li>
+          <li>Classez et retrouvez rapidement vos informations (notes, catégorie, important).</li>
+          <li>Suivez vos opportunités et organisez vos actions de communication.</li>
+        </ul>
+      </HelpModal>
 
       <div className={styles.kpiRow}>
         <div className={styles.kpiCard}>
