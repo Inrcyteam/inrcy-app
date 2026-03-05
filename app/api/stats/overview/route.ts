@@ -515,7 +515,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         // Facebook: connected if a page has been selected (resource_id)
     try {
       const fbRow = latestIntegration("facebook", "facebook", "facebook");
-      sourcesStatus.facebook.connected = !!fbRow && !isExpired(fbRow["expires_at"]);
+      const expiredFb = isExpired(fbRow?.["expires_at"]); sourcesStatus.facebook.connected = !!fbRow && !expiredFb && String(fbRow?.["status"]) === "connected" && !!fbRow?.["resource_id"];
 
       // Real Facebook Page metrics (only if included)
       const includeFb = includeAll || includeSet.has("facebook");

@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { asRecord, asString } from "@/lib/tsSafe";
@@ -17,42 +18,34 @@ export async function GET() {
     return NextResponse.json({ connected: false }, { status: 200 });
   }
 
-  const { data, error } = await supabase
+  const { data: rows, error } = await supabase
     .from("integrations")
-    .select("id,status,resource_id,resource_label,meta,expires_at")
+    .select("id,status,resource_id,resource_label,meta,expires_at,updated_at,created_at")
     .eq("user_id", authData.user.id)
     .eq("provider", "facebook")
     .eq("source", "facebook")
     .eq("product", "facebook")
-    .maybeSingle();
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
 
   if (error) {
     return NextResponse.json({ connected: false, error: error.message }, { status: 200 });
   }
 
-  const rec = asRecord(data);
-  const meta = asRecord(rec["meta"]);
+  const rec = rows?.[0] ?? null;
+  const r = asRecord(rec);
+  const status = asString(r["status"]);
+  const expired = isExpired(r["expires_at"]);
 
-  const status = asString(rec["status"]) ?? null;
-  const accountConnectedRaw = status === "account_connected" || status === "connected";
-  const expired = isExpired(rec["expires_at"]);
-  const needs_reconnect = accountConnectedRaw && expired;
-
-  // Si expiré, on ne considère pas la page comme connectée (évite les appels API qui cassent).
-  const accountConnected = accountConnectedRaw;
-  const pageConnected = !expired && status === "connected" && !!asString(rec["resource_id"]);
+  const accountConnected = status === "account_connected" || status === "connected";
+  const pageConnected = !expired && status === "connected" && !!asString(r["resource_id"]);
 
   return NextResponse.json({
-    status,
     accountConnected,
     pageConnected,
-    // Compat (ancien)
-    connected: pageConnected,
-    needs_reconnect,
-    resource_id: asString(rec["resource_id"]) ?? null,
-    resource_label: asString(rec["resource_label"]) ?? null,
-    page_url: asString(meta["page_url"]) ?? null,
-    user_email: asString(meta["user_email"]) ?? null,
-    pages_found: meta["pages_found"] ?? null,
+    expired,
+    resource_id: asString(r["resource_id"]) || null,
+    resource_label: asString(r["resource_label"]) || null,
   });
 }
