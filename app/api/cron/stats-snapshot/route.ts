@@ -1,70 +1,84 @@
-import { NextResponse } from "next/server";
-import { getChannelConnectionStates, type ChannelStates } from "@/lib/channelConnectionState";
-import { saveSnapshot } from "@/lib/statsSnapshots";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { NextResponse } from 'next/server';
+import { getChannelConnectionStates, type ChannelStates } from '@/lib/channelConnectionState';
+import { saveSnapshot } from '@/lib/statsSnapshots';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { computeHistoryFromOverviews, computeOpportunitiesFromOverviews, fetchCubeOverviews, type CubeKey } from '@/lib/metrics/computeMetrics';
 
-export const runtime = "nodejs";
+export const runtime = 'nodejs';
 
 const SNAPSHOT_SOURCES: Array<keyof ChannelStates> = [
-  "site_inrcy",
-  "site_web",
-  "facebook",
-  "instagram",
-  "linkedin",
-  "gmb",
+  'site_inrcy',
+  'site_web',
+  'facebook',
+  'instagram',
+  'linkedin',
+  'gmb',
 ];
 
 function isAuthorizedCron(req: Request) {
-  const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";
+  const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || '';
   if (!cronSecret) return false;
 
-  const auth = req.headers.get("authorization") || "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-
-  const headerSecret = (req.headers.get("x-cron-secret") || "").trim();
-
+  const auth = req.headers.get('authorization') || '';
+  const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  const headerSecret = (req.headers.get('x-cron-secret') || '').trim();
   const url = new URL(req.url);
-  const querySecret = (url.searchParams.get("secret") || "").trim();
+  const querySecret = (url.searchParams.get('secret') || '').trim();
 
   return bearer === cronSecret || headerSecret === cronSecret || querySecret === cronSecret;
 }
 
 export async function GET(req: Request) {
   if (!isAuthorizedCron(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const { data: users, error: usersError } = await supabaseAdmin
-    .from("profiles")
-    .select("user_id")
-    .not("user_id", "is", null);
+    .from('profiles')
+    .select('user_id')
+    .not('user_id', 'is', null);
 
   if (usersError) {
     return NextResponse.json({ error: usersError.message }, { status: 500 });
   }
+
+  const origin = new URL(req.url).origin;
+  const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || '';
 
   let processedUsers = 0;
   let writtenSnapshots = 0;
   const errors: Array<{ user_id: string; message: string }> = [];
 
   for (const user of users || []) {
-    const userId = typeof user?.user_id === "string" ? user.user_id : "";
+    const userId = typeof user?.user_id === 'string' ? user.user_id : '';
     if (!userId) continue;
 
     try {
       const states = await getChannelConnectionStates(supabaseAdmin, userId);
+      const overviews = await fetchCubeOverviews({
+        origin,
+        days: 30,
+        extraParams: { secret: cronSecret, userId },
+      });
+      const history = computeHistoryFromOverviews(overviews, 30);
+      const opportunities = computeOpportunitiesFromOverviews(overviews, 30);
 
       for (const source of SNAPSHOT_SOURCES) {
         const state = states[source];
+        const cube = source as CubeKey;
 
         await saveSnapshot({
           supabase: supabaseAdmin,
           userId,
           source,
           connected: Boolean(state?.connected),
-          metrics: state ?? {},
-          demandesCaptees: 0,
-          opportunites: 0,
+          metrics: {
+            connection: state ?? {},
+            demandes_captees: history.perTool[cube] ?? 0,
+            opportunites_activables: opportunities.byCube[cube] ?? 0,
+          },
+          demandesCaptees: history.perTool[cube] ?? 0,
+          opportunites: opportunities.byCube[cube] ?? 0,
         });
 
         writtenSnapshots++;
@@ -74,7 +88,7 @@ export async function GET(req: Request) {
     } catch (error) {
       errors.push({
         user_id: userId,
-        message: error instanceof Error ? error.message : "Unknown snapshot error",
+        message: error instanceof Error ? error.message : 'Unknown snapshot error',
       });
     }
   }

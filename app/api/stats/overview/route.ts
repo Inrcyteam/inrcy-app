@@ -104,11 +104,20 @@ export async function GET(request: Request) {
     const includeAll = includeSet.size === 0;
 
     const supabase = await createSupabaseServer();
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";
+    const privilegedSecret = (searchParams.get("secret") || request.headers.get("x-cron-secret") || "").trim();
+    const privilegedUserId = (searchParams.get("userId") || "").trim();
+
+    let userId = "";
+    if (cronSecret && privilegedSecret === cronSecret && privilegedUserId) {
+      userId = privilegedUserId;
+    } else {
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !authData?.user) {
+        return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      }
+      userId = authData.user.id;
     }
-    const userId = authData.user.id;
 
 
     // --- Load all integration rows once (avoid Supabase rate-limits) ---

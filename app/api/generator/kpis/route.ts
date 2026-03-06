@@ -265,28 +265,21 @@ async function getOpportunities(origin: string, req: Request): Promise<Opportuni
   // ✅ Single source of truth: iNrStats "opportunités activables" must match the Générateur.
   // We reuse the same computation as the cockpit card: /api/stats/opportunities (30-day projection).
   // Then we derive week/today from the same per-day rate to keep the generator windows coherent.
-  const url = `${origin}/api/stats/opportunities?days=30`;
+  const url = `${origin}/api/inrstats/opportunities?days=30&mode=generator`; 
   const res = await fetch(url, {
     cache: "no-store",
     headers: { cookie: req.headers.get("cookie") || "" },
   });
-  if (!res.ok) throw new Error(`Stats opportunities failed (${res.status})`);
+  if (!res.ok) throw new Error(`iNrStats opportunities failed (${res.status})`);
 
-  const json = (await res.json()) as { days?: number; total?: number; byCube?: Record<string, number> };
-  const total30 = Number(json?.total) || 0;
-  const baseDays = 30;
-  const perDay = total30 / baseDays;
+    const json = (await res.json()) as { baseDays?: number; today?: number; week?: number; month?: number; total?: number; confidence?: 'low' | 'medium' | 'high'; byCube?: Record<string, number> };
 
   return {
-    baseDays,
-    // Générateur windows are fixed:
-    // - today: 48h (2 days)
-    // - week : 7 days
-    // - month: 30 days (same as iNrStats)
-    today: Math.max(0, Math.round(perDay * 2)),
-    week: Math.max(0, Math.round(perDay * 7)),
-    month: Math.max(0, Math.round(total30)),
-    confidence: "medium",
+    baseDays: Number(json?.baseDays) || 30,
+    today: Math.max(0, Number(json?.today) || 0),
+    week: Math.max(0, Number(json?.week) || 0),
+    month: Math.max(0, Number(json?.month ?? json?.total) || 0),
+    confidence: json?.confidence || 'medium',
     byCube: json?.byCube || undefined,
   };
 }
