@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { StatsSourceKey } from "@/lib/googleStats";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
+import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -159,38 +160,13 @@ export async function GET(request: Request) {
     // the UI can incorrectly show "Déconnecté" even when integrations are connected.
     // So we always (re)hydrate social connection flags from `integrations` before returning.
     async function fetchSocialStatus() {
-      const out: SocialSnapshot = {
-        gmb: { connected: false, metrics: null },
-        facebook: { connected: false },
-        instagram: { connected: false },
-        linkedin: { connected: false },
-      };
-
-      // Facebook
-      try {
-        const fb0 = latestIntegrationAny("facebook", "facebook", "facebook");
-        out.facebook.connected = String(fb0["status"] ?? "") === "connected" && !!fb0["resource_id"] && !isExpired(fb0["expires_at"]);
-      } catch {}
-
-      // Instagram (requires profile selection => resource_id)
-      try {
-        const ig0 = latestIntegrationAny("instagram", "instagram", "instagram");
-        out.instagram.connected = String(ig0["status"] ?? "") === "connected" && !!ig0["resource_id"] && !isExpired(ig0["expires_at"]);
-      } catch {}
-
-      // LinkedIn
-      try {
-        const li0 = latestIntegrationAny("linkedin", "linkedin", "linkedin");
-        out.linkedin.connected = String(li0["status"] ?? "") === "connected" && !!li0 && !isExpired(li0["expires_at"]);
-      } catch {}
-
-      // GMB
-      try {
-        const gmb0 = latestIntegrationAny("google", "gmb", "gmb");
-        out.gmb.connected = String(gmb0["status"] ?? "") === "connected" && !!gmb0["resource_id"] && !isExpired(gmb0["expires_at"]);
-      } catch {}
-
-      return out;
+      const states = await getChannelConnectionStates(supabase, userId);
+      return {
+        gmb: { connected: states.gmb.connected, metrics: null },
+        facebook: { connected: states.facebook.connected },
+        instagram: { connected: states.instagram.connected },
+        linkedin: { connected: states.linkedin.connected },
+      } satisfies SocialSnapshot;
     }
 
 // Ownership du site iNrCy : utile pour l'UI (rented => connexion globale "Suivi")
@@ -533,22 +509,26 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       linkedin: { connected: false, metrics: null },
     };
 
-    // copy site connections from perSource (built above)
-    sourcesStatus.site_inrcy.connected = hasInrcySite
-      ? ((asRecord(asRecord(perSource)["site_inrcy"])["connected"] as SiteConn) || { ga4: false, gsc: false })
+    const channelStates = await getChannelConnectionStates(supabase, userId);
+
+    // source commune des états de connexion
+    sourcesStatus.site_inrcy.connected = channelStates.site_inrcy.connected
+      ? { ga4: true, gsc: true }
       : { ga4: false, gsc: false };
-    sourcesStatus.site_web.connected = (asRecord(asRecord(perSource)["site_web"])["connected"] as SiteConn) || { ga4: false, gsc: false };
+    sourcesStatus.site_web.connected = channelStates.site_web.connected
+      ? { ga4: true, gsc: true }
+      : { ga4: false, gsc: false };
 
         // Facebook: connected if a page has been selected (resource_id)
     try {
       const fbRow = latestIntegrationAny("facebook", "facebook", "facebook");
-      const expiredFb = isExpired(fbRow?.["expires_at"]); sourcesStatus.facebook.connected = !!fbRow && !expiredFb && String(fbRow?.["status"]) === "connected" && !!fbRow?.["resource_id"];
+      sourcesStatus.facebook.connected = channelStates.facebook.connected;
 
       // Real Facebook Page metrics (only if included)
       const includeFb = includeAll || includeSet.has("facebook");
       if (!includeFb) {
         sourcesStatus.facebook.metrics = null;
-      } else if (fbRow["resource_id"] && fbRow["access_token_enc"] && !isExpired(fbRow["expires_at"])) {
+      } else if (sourcesStatus.facebook.connected && fbRow["resource_id"] && fbRow["access_token_enc"] && !isExpired(fbRow["expires_at"])) {
         try {
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -571,12 +551,12 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     // Instagram: Meta family. Connected only once a profile is selected (resource_id).
     try {
       const igRow = latestIntegrationAny("instagram", "instagram", "instagram");
-      sourcesStatus.instagram.connected = !!igRow["resource_id"] && !isExpired(igRow["expires_at"]);
+      sourcesStatus.instagram.connected = channelStates.instagram.connected;
 
       const includeIg = includeAll || includeSet.has("instagram");
       if (!includeIg) {
         sourcesStatus.instagram.metrics = null;
-      } else if (igRow["resource_id"] && igRow["access_token_enc"] && !isExpired(igRow["expires_at"])) {
+      } else if (sourcesStatus.instagram.connected && igRow["resource_id"] && igRow["access_token_enc"] && !isExpired(igRow["expires_at"])) {
         try {
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -594,12 +574,12 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 // LinkedIn: connected if an OAuth row exists.
     try {
       const liRow = latestIntegrationAny("linkedin", "linkedin", "linkedin");
-      sourcesStatus.linkedin.connected = !!liRow && !isExpired(liRow["expires_at"]);
+      sourcesStatus.linkedin.connected = channelStates.linkedin.connected;
 
       const includeLi = includeAll || includeSet.has("linkedin");
       if (!includeLi) {
         sourcesStatus.linkedin.metrics = null;
-      } else if (liRow["access_token_enc"] && !isExpired(liRow["expires_at"])) {
+      } else if (sourcesStatus.linkedin.connected && liRow["access_token_enc"] && !isExpired(liRow["expires_at"])) {
         try {
           const token = tryDecryptToken(String(liRow["access_token_enc"]));
           if (!token) throw new Error("LinkedIn access token manquant ou invalide.");
@@ -639,7 +619,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       } catch {}
 
       const resourceId = String(gmbRow["resource_id"] || legacyResource || "");
-      sourcesStatus.gmb.connected = !!resourceId && !isExpired(gmbRow["expires_at"]);
+      sourcesStatus.gmb.connected = channelStates.gmb.connected;
 
       const includeGmb = includeAll || includeSet.has("gmb");
       if (!includeGmb) {

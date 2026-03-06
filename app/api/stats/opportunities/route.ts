@@ -63,6 +63,15 @@ function safeObj(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
+function isCubeConnected(cube: CubeKey, ov: Overview): boolean {
+  const sources = safeObj(ov?.sources);
+  if (cube === "site_inrcy" || cube === "site_web") {
+    const conn = safeObj(safeObj(sources[cube])["connected"]);
+    return Boolean(conn["ga4"]) && Boolean(conn["gsc"]);
+  }
+  return Boolean(safeObj(sources[cube])["connected"]);
+}
+
 function getTotalMetric(metrics: unknown, keys: string[]): number {
   const m = safeObj(metrics);
   const totals = safeObj(m.totals);
@@ -253,6 +262,7 @@ function computeOpportunityPerDayWeb(ov: Overview) {
 }
 
 function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
+  if (!isCubeConnected(cubeKey, ov)) return 0;
   if (cubeKey === "gmb") {
     const gmb = ov.sources?.gmb;
     const connected = !!gmb?.connected;

@@ -75,6 +75,15 @@ function roundNonNeg(n: number): number {
   return Math.max(0, Math.round(n));
 }
 
+function isCubeConnected(cube: CubeKey, ov: Overview): boolean {
+  const sources = safeObj(ov?.sources);
+  if (cube === "site_inrcy" || cube === "site_web") {
+    const conn = safeObj(safeObj(sources[cube])["connected"]);
+    return Boolean(conn["ga4"]) && Boolean(conn["gsc"]);
+  }
+  return Boolean(safeObj(sources[cube])["connected"]);
+}
+
 /**
  * "Demandes captées" (historique) = estimation de demandes commerciales à partir
  * de signaux à forte intention (conversions, appels, messages, itinéraires),
@@ -88,6 +97,7 @@ const CAP_MULTIPLIER_WHEN_STRONG_SIGNAL = 3; // max = signaux forts * 3
 const MODEL_VERSION = "captured_v2.0";
 
 function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
+  if (!isCubeConnected(cube, ov)) return 0;
   const sources = safeObj(ov?.sources);
 
   const clicks = safeNum(ov?.totals?.clicks);

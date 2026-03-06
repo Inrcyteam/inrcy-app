@@ -1,14 +1,12 @@
-
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { clearAllToolCaches } from "@/lib/statsCache";
 
 export async function POST() {
   const supabase = await createSupabaseServer();
-  const { data: { user }, error } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { data: authData, error } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { error: updErr } = await supabase
     .from("integrations")
@@ -24,13 +22,7 @@ export async function POST() {
     .eq("source", "facebook")
     .eq("product", "facebook");
 
-  if (updErr) {
-    return NextResponse.json({ error: updErr.message }, { status: 500 });
-  }
-
-  try {
-    await supabase.from("cache_statistiques").delete().eq("user_id", user.id);
-  } catch {}
-
+  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
+  await clearAllToolCaches(supabase, user.id);
   return NextResponse.json({ ok: true });
 }

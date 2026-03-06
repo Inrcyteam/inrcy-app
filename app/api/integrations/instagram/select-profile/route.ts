@@ -1,20 +1,13 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { clearAllToolCaches } from "@/lib/statsCache";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
 async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
-  try {
-    await supabase.from("stats_cache").delete().eq("user_id", userId);
-  } catch {}
-  try {
-    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
-  } catch {}
-  try {
-    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
-  } catch {}
+  await clearAllToolCaches(supabase, userId);
 }
 
 async function fetchJson<T>(url: string): Promise<T> {

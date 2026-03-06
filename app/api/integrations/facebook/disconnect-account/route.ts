@@ -1,58 +1,15 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { clearAllToolCaches } from "@/lib/statsCache";
 
-// Déconnecte le COMPTE Facebook (supprime l'intégration et remet tout à zéro)
 export async function POST() {
   const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
+  const { data: authData, error: authErr } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (authErr || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  await supabase
-    .from("integrations")
-    .delete()
-    .eq("user_id", user.id)
-    .eq("provider", "facebook");
-
-  // Sync pro tools config
-  try {
-    const { data: cfg } = await supabase
-      .from("configurations_pro_tools")
-      .select("id, facebook")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (cfg?.id) {
-      await supabase
-        .from("configurations_pro_tools")
-        .update({
-          facebook: {
-            accountConnected: false,
-            pageConnected: false,
-            userEmail: null,
-            pageId: null,
-            pageName: null,
-            url: null,
-          },
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", cfg.id);
-    }
-  } catch {
-    // ignore
-  }
-
-  // Invalidate cache
-  try {
-    await supabase.from("cache_statistiques").delete().eq("user_id", user.id);
-  } catch {
-    // ignore
-  }
+  await supabase.from("integrations").delete().eq("user_id", user.id).eq("provider", "facebook");
+  await clearAllToolCaches(supabase, user.id);
 
   return NextResponse.json({ ok: true });
 }

@@ -690,47 +690,51 @@ const proSettingsObj =
   setFbSelectedPageId(fbObj?.pageId ?? "");
 	  setFbSelectedPageName(fbObj?.pageName ?? "");
 
-  // ✅ Connexions Google : la source de vérité est integrations
-  const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([
-    fetchGoogleConnected("site_inrcy", "ga4"),
-    fetchGoogleConnected("site_inrcy", "gsc"),
-    fetchGoogleConnected("site_web", "ga4"),
-    fetchGoogleConnected("site_web", "gsc"),
-  ]);
-  setSiteInrcyGa4Connected(inrcyGa4);
-  setSiteInrcyGscConnected(inrcyGsc);
-  setSiteWebGa4Connected(webGa4);
-  setSiteWebGscConnected(webGsc);
-
-  // ✅ Connexions Google Business & Facebook : source de vérité = integrations
+  // ✅ Source unique des états de connexion pour tous les outils
   try {
-    const [gmbStatus, fbStatus, igStatus, liStatus] = await Promise.all([
-      fetch("/api/integrations/google-business/status").then((r) => r.json()).catch(() => ({ connected: false })),
-      fetch("/api/integrations/facebook/status").then((r) => r.json()).catch(() => ({ connected: false })),
-      fetch("/api/integrations/instagram/status").then((r) => r.json()).catch(() => ({ connected: false })),
-      fetch("/api/integrations/linkedin/status").then((r) => r.json()).catch(() => ({ connected: false })),
-    ]);
-    setGmbConnected(!!gmbStatus?.connected); // true only when a location is selected
-    setGmbAccountConnected(!!gmbStatus?.accountConnected);
-    setGmbConfigured(!!gmbStatus?.configured);
-    if (gmbStatus?.email) setGmbAccountEmail(String(gmbStatus.email));
+    const states = await fetch("/api/integrations/channel-states", { cache: "no-store" })
+      .then((r) => r.json())
+      .catch(() => null) as any;
 
-    setFacebookAccountConnected(!!fbStatus?.accountConnected);
-    setFacebookPageConnected(!!fbStatus?.pageConnected);
-    if (fbStatus?.user_email) setFacebookAccountEmail(String(fbStatus.user_email));
-    if (fbStatus?.resource_id) setFbSelectedPageId(String(fbStatus.resource_id));
-    if (fbStatus?.resource_label) setFbSelectedPageName(String(fbStatus.resource_label));
-    if (fbStatus?.page_url) setFacebookUrl(String(fbStatus.page_url));
+    if (states) {
+      setSiteInrcyGa4Connected(!!states?.site_inrcy?.ga4);
+      setSiteInrcyGscConnected(!!states?.site_inrcy?.gsc);
+      setSiteWebGa4Connected(!!states?.site_web?.ga4);
+      setSiteWebGscConnected(!!states?.site_web?.gsc);
 
-    setInstagramAccountConnected(!!igStatus?.accountConnected);
-    setInstagramConnected(!!igStatus?.connected);
-    if (igStatus?.username) setInstagramUsername(String(igStatus.username));
-    if (igStatus?.profile_url) setInstagramUrl(String(igStatus.profile_url));
+      setGmbConnected(!!states?.gmb?.connected);
+      setGmbAccountConnected(!!states?.gmb?.accountConnected);
+      setGmbConfigured(!!states?.gmb?.configured);
+      if (states?.gmb?.email) setGmbAccountEmail(String(states.gmb.email));
 
-    setLinkedinAccountConnected(!!liStatus?.accountConnected);
-    setLinkedinConnected(!!liStatus?.connected);
-    if (liStatus?.display_name) setLinkedinDisplayName(String(liStatus.display_name));
-    if (liStatus?.profile_url) setLinkedinUrl(String(liStatus.profile_url));
+      setFacebookAccountConnected(!!states?.facebook?.accountConnected);
+      setFacebookPageConnected(!!states?.facebook?.pageConnected);
+      if (states?.facebook?.user_email) setFacebookAccountEmail(String(states.facebook.user_email));
+      if (states?.facebook?.resource_id) setFbSelectedPageId(String(states.facebook.resource_id));
+      if (states?.facebook?.resource_label) setFbSelectedPageName(String(states.facebook.resource_label));
+      if (states?.facebook?.page_url) setFacebookUrl(String(states.facebook.page_url));
+
+      setInstagramAccountConnected(!!states?.instagram?.accountConnected);
+      setInstagramConnected(!!states?.instagram?.connected);
+      if (states?.instagram?.username) setInstagramUsername(String(states.instagram.username));
+      if (states?.instagram?.profile_url) setInstagramUrl(String(states.instagram.profile_url));
+
+      setLinkedinAccountConnected(!!states?.linkedin?.accountConnected);
+      setLinkedinConnected(!!states?.linkedin?.connected);
+      if (states?.linkedin?.display_name) setLinkedinDisplayName(String(states.linkedin.display_name));
+      if (states?.linkedin?.profile_url) setLinkedinUrl(String(states.linkedin.profile_url));
+    } else {
+      const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([
+        fetchGoogleConnected("site_inrcy", "ga4"),
+        fetchGoogleConnected("site_inrcy", "gsc"),
+        fetchGoogleConnected("site_web", "ga4"),
+        fetchGoogleConnected("site_web", "gsc"),
+      ]);
+      setSiteInrcyGa4Connected(inrcyGa4);
+      setSiteInrcyGscConnected(inrcyGsc);
+      setSiteWebGa4Connected(webGa4);
+      setSiteWebGscConnected(webGsc);
+    }
   } catch {
     // fallback : on garde l'état stocké dans settings si l'appel échoue
   }

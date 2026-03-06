@@ -1,16 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
-
-type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
-
-async function purgeStatsCache(supabase: SupabaseServerClient, userId: string) {
-  try {
-    await supabase.from("stats_cache").delete().eq("user_id", userId);
-  } catch {}
-  try {
-    await supabase.from("cache_statistiques").delete().eq("id_utilisateur", userId);
-  } catch {}
-}
+import { clearAllToolCaches } from "@/lib/statsCache";
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseServer();
@@ -18,24 +8,19 @@ export async function POST(request: Request) {
   if (authErr || !authData?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const userId = authData.user.id;
-  const body = await request.json().catch(() => ({}));
+  const body = await request.json().catch(() => ({} as any));
   const source = body?.source;
   const product = body?.product;
-
   if (!source || !product) return NextResponse.json({ error: "Missing source/product" }, { status: 400 });
 
-  // Nouveau système
-  try {
-    await supabase
-      .from("integrations")
-      .update({ status: "disconnected", access_token_enc: null, expires_at: null })
-      .eq("user_id", userId)
-      .eq("provider", "google")
-      .eq("source", source)
-      .eq("product", product);
-  } catch {}
+  await supabase
+    .from("integrations")
+    .update({ status: "disconnected", access_token_enc: null, expires_at: null })
+    .eq("user_id", userId)
+    .eq("provider", "google")
+    .eq("source", source)
+    .eq("product", product);
 
-  // Legacy
   try {
     await supabase
       .from("integrations_statistiques")
@@ -46,7 +31,6 @@ export async function POST(request: Request) {
       .eq("produit", product);
   } catch {}
 
-  await purgeStatsCache(supabase, userId);
-
+  await clearAllToolCaches(supabase, userId);
   return NextResponse.json({ ok: true });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { clearAllToolCaches } from "@/lib/statsCache";
 import { encryptToken as _encryptToken } from "@/lib/oauthCrypto";
 import { gmbListAccounts } from "@/lib/googleBusiness";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
@@ -24,19 +25,7 @@ type GoogleUserInfo = {
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
 async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
-  // Best-effort cache invalidation (new + legacy). Never fail the OAuth flow on cache.
-  try {
-    await supabase.from("stats_cache").delete().eq("user_id", userId);
-  } catch {}
-
-  // Legacy cache table in your DB is `cache_statistiques`.
-  // Depending on migrations it may have `id_de_l_utilisateur` or `user_id`.
-  try {
-    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
-  } catch {}
-  try {
-    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
-  } catch {}
+  await clearAllToolCaches(supabase, userId);
 }
 
 function safeReturnTo(stateReturnTo: unknown, siteUrl: string) {
