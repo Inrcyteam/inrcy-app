@@ -6,6 +6,45 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+const SENSITIVE_KEY_RE =
+  /(^|_)(token|secret|password|cookie|authorization|api_key|apikey|private_key|client_secret|webhook_secret|signing_secret|smtp_pass|imap_pass|oauth)(_|$)/i;
+
+const SENSITIVE_EXACT_KEYS = new Set([
+  "access_token_enc",
+  "refresh_token_enc",
+  "id_token",
+  "id_token_enc",
+  "token_enc",
+  "password_enc",
+  "secret_enc",
+  "provider_account_id",
+  "resource_id",
+  "provider_page_id",
+  "provider_user_id",
+  "stripe_customer_id",
+  "stripe_subscription_id",
+  "stripe_price_id",
+  "template_key",
+  "provider_message_id",
+  "message_id",
+  "origin_action",
+  "idempotency_key",
+]);
+
+const SETTINGS_SAFE_KEYS = new Set([
+  "timezone",
+  "locale",
+  "signature_enabled",
+  "sender_name",
+  "from_name",
+  "reply_to",
+  "daily_digest",
+  "notifications",
+  "sync_enabled",
+  "imap",
+  "smtp",
+]);
+
 type ExportBlock = {
   table: string;
   rows: unknown[];
@@ -25,6 +64,98 @@ type ExportSupabaseLike = {
   };
 };
 
+function sanitizeScalar(key: string, value: unknown): unknown {
+  if (value == null) return value;
+  if (SENSITIVE_EXACT_KEYS.has(key) || SENSITIVE_KEY_RE.test(key)) return "[redacted]";
+  return value;
+}
+
+function sanitizeSettings(value: unknown): unknown {
+  const input = asRecord(value);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (!SETTINGS_SAFE_KEYS.has(k)) continue;
+    if (k === "imap" || k === "smtp") {
+      const cfg = asRecord(v);
+      out[k] = {
+        host: typeof cfg.host === "string" ? cfg.host : null,
+        port: typeof cfg.port === "number" ? cfg.port : null,
+        secure: typeof cfg.secure === "boolean" ? cfg.secure : null,
+        starttls: typeof cfg.starttls === "boolean" ? cfg.starttls : null,
+      };
+      continue;
+    }
+    out[k] = sanitizeDeep(v, k);
+  }
+  return out;
+}
+
+function sanitizeDeep(value: unknown, key = ""): unknown {
+  if (Array.isArray(value)) return value.map((item) => sanitizeDeep(item, key));
+  if (value && typeof value === "object") {
+    const input = asRecord(value);
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(input)) {
+      if (k === "settings") {
+        out[k] = sanitizeSettings(v);
+        continue;
+      }
+      if (k === "meta") {
+        out[k] = sanitizeDeep(v, k);
+        continue;
+      }
+      out[k] = sanitizeDeep(sanitizeScalar(k, v), k);
+    }
+    return out;
+  }
+  return sanitizeScalar(key, value);
+}
+
+function sanitizeRow(table: string, row: unknown): unknown {
+  const r = asRecord(row);
+  if (table === "integrations") {
+    return {
+      id: r.id ?? null,
+      user_id: r.user_id ?? null,
+      provider: r.provider ?? null,
+      category: r.category ?? null,
+      product: r.product ?? null,
+      account_email: r.account_email ?? null,
+      display_name: r.display_name ?? null,
+      status: r.status ?? null,
+      expires_at: r.expires_at ?? null,
+      scopes: Array.isArray(r.scopes) ? r.scopes : [],
+      settings: sanitizeSettings(r.settings),
+      meta: sanitizeDeep(r.meta),
+      created_at: r.created_at ?? null,
+      updated_at: r.updated_at ?? null,
+      source: r.source ?? null,
+      resource_label: r.resource_label ?? null,
+    };
+  }
+  if (table === "subscriptions") {
+    return {
+      user_id: r.user_id ?? null,
+      plan: r.plan ?? null,
+      status: r.status ?? null,
+      monthly_price_eur: r.monthly_price_eur ?? null,
+      start_date: r.start_date ?? null,
+      next_renewal_date: r.next_renewal_date ?? null,
+      cancel_requested_at: r.cancel_requested_at ?? null,
+      end_date: r.end_date ?? null,
+      requested_plan: r.requested_plan ?? null,
+      requested_at: r.requested_at ?? null,
+      scheduled_plan: r.scheduled_plan ?? null,
+      last_trial_reminder_d: r.last_trial_reminder_d ?? null,
+      last_reminder_at: r.last_reminder_at ?? null,
+      contact_email: r.contact_email ?? null,
+      updated_at: r.updated_at ?? null,
+      notes: r.notes ?? null,
+    };
+  }
+  return sanitizeDeep(row);
+}
+
 async function fetchUserTable(
   supabase: ExportSupabaseLike,
   table: string,
@@ -37,7 +168,7 @@ async function fetchUserTable(
     if (opts?.limit) q = q.limit(opts.limit);
     const { data, error } = await q;
     if (error) return { table, rows: [], error: error.message };
-    return { table, rows: data ?? [] };
+    return { table, rows: (data ?? []).map((row) => sanitizeRow(table, row)) };
   } catch (e: unknown) {
     return { table, rows: [], error: e instanceof Error ? e.message : "unknown" };
   }

@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/requireUser";
 import { withApi } from "@/lib/observability/withApi";
 import { fetchWithRetry } from "@/lib/observability/fetch";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
+import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 
 // Microsoft Graph mail send requires Node.js runtime in most deployments.
 export const runtime = "nodejs";
@@ -79,7 +80,7 @@ const handler = async (req: Request) => {
 
     const { data: account, error: accErr } = await supabase
       .from("integrations")
-      .select("id,user_id,provider,account_email,access_token,refresh_token,expires_at,status,settings")
+      .select("id,user_id,provider,account_email,access_token_enc,refresh_token_enc,expires_at,status,settings")
       .eq("id", accountId)
       .eq("user_id", userId)
       .eq("provider", "microsoft")
@@ -96,8 +97,10 @@ const handler = async (req: Request) => {
     const accRec = asRecord(account);
     const accountRowId = asString(accRec["id"]) || accountId;
     const expiresAt = asString(accRec["expires_at"]);
-    const refreshToken: string | null = asString(accRec["refresh_token"]) ?? null;
-    let accessToken: string | null = asString(accRec["access_token"]) ?? null;
+    const refreshTokenEnc = asString(accRec["refresh_token_enc"]);
+    const accessTokenEnc = asString(accRec["access_token_enc"]);
+    const refreshToken: string | null = refreshTokenEnc ? tryDecryptToken(refreshTokenEnc) : null;
+    let accessToken: string | null = accessTokenEnc ? tryDecryptToken(accessTokenEnc) : null;
 
     const settingsRec = asRecord(accRec["settings"]);
     const scopesRaw = asString(settingsRec["scopes_raw"]);
@@ -117,7 +120,7 @@ const handler = async (req: Request) => {
 
         await supabase
           .from("integrations")
-          .update({ access_token: accessToken, expires_at: newExpiresAt, status: "connected" })
+          .update({ access_token_enc: encryptToken(accessToken), expires_at: newExpiresAt, status: "connected" })
           .eq("id", accountRowId);
       }
     }
