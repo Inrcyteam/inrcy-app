@@ -147,7 +147,7 @@ const payload: Record<string, unknown> = {
   source: "linkedin",
   product: "linkedin",
   status: "connected",
-  email_address: email || null,
+  account_email: email || null,
   display_name: name || null,
   provider_account_id: sub || null,
   scopes: "openid profile email w_member_social",

@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   // 1) nouveau système
   const { data, error } = await supabase
     .from("integrations")
-    .select("status,email_address,expires_at")
+    .select("status,account_email,expires_at")
     .eq("user_id", userId)
     .eq("provider", "google")
     .eq("source", source)

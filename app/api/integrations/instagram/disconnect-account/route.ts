@@ -31,5 +31,17 @@ export async function POST() {
     await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
   } catch {}
 
+
+
+  try {
+    await supabase.from("stats_cache").delete().eq("user_id", user.id).eq("source", "overview");
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("id_utilisateur", user.id);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("user_id", user.id);
+  } catch {}
+
   return NextResponse.json({ ok: true });
 }

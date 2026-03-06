@@ -183,7 +183,7 @@ export async function GET(req: Request) {
       source: "gmb",
       product: "gmb",
       status: "connected",
-      email_address: userInfo.email,
+      account_email: userInfo.email,
       display_name: userInfo.name ?? null,
       provider_account_id: userInfo.id ?? null,
       scopes: tokenData.scope ?? null,

@@ -54,6 +54,17 @@ export async function POST(req: Request) {
       // non-fatal
     }
 
+
+  try {
+    await supabase.from("stats_cache").delete().eq("user_id", userId).eq("source", "overview");
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("id_utilisateur", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
+  } catch {}
+
     return NextResponse.json({ ok: true, url: gmbUrl });
   } catch (e: unknown) {
     return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Erreur" }, { status: 500 });

@@ -657,30 +657,28 @@ const proSettingsObj =
   // ✅ Instagram & LinkedIn (pro_tools_configs.settings.instagram / linkedin)
   const igObj = (((proSettingsObj as any)?.instagram ?? {}) as any);
   setInstagramUrl(igObj?.url ?? "");
-  setInstagramAccountConnected(!!igObj?.accountConnected);
-  setInstagramConnected(!!igObj?.connected);
+  setInstagramAccountConnected(false);
+  setInstagramConnected(false);
   setInstagramUsername(String(igObj?.username ?? ""));
 
   const liObj = (((proSettingsObj as any)?.linkedin ?? {}) as any);
   setLinkedinUrl(liObj?.url ?? "");
-  setLinkedinAccountConnected(!!liObj?.accountConnected);
-  setLinkedinConnected(!!liObj?.connected);
+  setLinkedinAccountConnected(false);
+  setLinkedinConnected(false);
   setLinkedinDisplayName(String(liObj?.displayName ?? ""));
 
   // ✅ Google Business & Facebook (pro_tools_configs.settings.gmb / facebook)
   const gmbObj = ((proSettingsObj as any)?.gmb ?? {}) as any;
   setGmbUrl(gmbObj?.url ?? "");
-  const _gmbAccountConnected = !!gmbObj?.connected;
-  const _gmbConfigured = !!gmbObj?.resource_id;
-  setGmbAccountConnected(_gmbAccountConnected);
-  setGmbConfigured(_gmbConfigured);
-  setGmbConnected(_gmbAccountConnected && _gmbConfigured);
+  setGmbAccountConnected(false);
+  setGmbConfigured(false);
+  setGmbConnected(false);
   setGmbAccountEmail(gmbObj?.accountEmail ?? "");
 
   const fbObj = ((proSettingsObj as any)?.facebook ?? {}) as any;
   setFacebookUrl(fbObj?.url ?? "");
-	  setFacebookAccountConnected(!!fbObj?.accountConnected);
-	  setFacebookPageConnected(!!fbObj?.pageConnected);
+	  setFacebookAccountConnected(false);
+	  setFacebookPageConnected(false);
 	  setFacebookAccountEmail(fbObj?.userEmail ?? "");
   // Also keep the selected page id if present in mirrored settings.
   setFbSelectedPageId(fbObj?.pageId ?? "");
