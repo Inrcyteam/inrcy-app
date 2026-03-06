@@ -940,7 +940,7 @@ const connectSiteInrcyGsc = useCallback(() => {
 const refreshKpis = useCallback(async () => {
     setKpisLoading(true);
     try {
-      const res = await fetch("/api/generator/kpis", { cache: "no-store" });
+      const res = await fetch("/api/metrics/summary", { cache: "no-store" });
       if (!res.ok) throw new Error(`KPIs fetch failed: ${res.status}`);
       const json = await res.json();
       setKpis(json);
@@ -967,7 +967,7 @@ const refreshKpis = useCallback(async () => {
     }
   }, []);
 
-  // ✅ Opportunités activables (iNrStats) — lues directement depuis /api/generator/kpis.
+  // ✅ Opportunités activables (iNrStats) — lues directement depuis /api/metrics/summary.
   const [oppTotal, setOppTotal] = useState<number | null>(null);
 
   useEffect(() => {
@@ -2993,9 +2993,7 @@ const checkActivity = useCallback(async () => {
               <div className={styles.metricValueRow}>
                 <div className={styles.metricValue}>
                   <span>{oppTotal === null ? "—" : `+${oppTotal}`}</span>
-                  {kpisLoading ? (
-                    <span className={`${styles.miniSpinner} ${styles.miniSpinnerInline}`} aria-hidden />
-                  ) : null}
+                  
                 </div>
 
                 <button

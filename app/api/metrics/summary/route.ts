@@ -6,10 +6,6 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 type AnyRec = Record<string, unknown>;
 
-/**
- * Compat route kept for the dashboard.
- * The real computation is now centralized in /api/metrics/summary via buildMetricsSummary().
- */
 export async function GET(req: Request) {
   const debug: AnyRec = {
     ok: false,
