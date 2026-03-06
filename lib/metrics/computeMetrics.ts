@@ -46,6 +46,15 @@ export type HistorySnapshot = {
 
 export const CUBES: CubeKey[] = ['site_inrcy', 'site_web', 'gmb', 'facebook', 'instagram', 'linkedin'];
 
+export const EMPTY_CUBE_RECORD: Record<CubeKey, number> = {
+  site_inrcy: 0,
+  site_web: 0,
+  gmb: 0,
+  facebook: 0,
+  instagram: 0,
+  linkedin: 0,
+};
+
 export const INCLUDE_BY_CUBE: Record<CubeKey, string> = {
   site_inrcy: 'site_inrcy_ga4,site_inrcy_gsc',
   site_web: 'site_web_ga4,site_web_gsc',
@@ -313,6 +322,37 @@ export function computeHistoryFromOverviews(overviews: Partial<Record<CubeKey, O
   return { days, total, perTool, model: CAPTURED_MODEL_VERSION };
 }
 
+
+const OVERVIEW_TTL_MS = 20_000;
+const overviewCache = new Map<string, { expiresAt: number; value?: Overview | null; promise?: Promise<Overview | null> }>();
+
+async function fetchOverviewWithCache(url: string, headers?: HeadersInit): Promise<Overview | null> {
+  const headerKey = headers ? JSON.stringify(headers) : '';
+  const key = `${url}::${headerKey}`;
+  const now = Date.now();
+  const cached = overviewCache.get(key);
+  if (cached) {
+    if (cached.value !== undefined && cached.expiresAt > now) return cached.value;
+    if (cached.promise) return cached.promise;
+  }
+
+  const promise = (async () => {
+    try {
+      const r = await fetch(url, { headers, cache: 'no-store' });
+      if (!r.ok) return null;
+      const json = (await r.json()) as Overview;
+      overviewCache.set(key, { value: json, expiresAt: Date.now() + OVERVIEW_TTL_MS });
+      return json;
+    } catch {
+      overviewCache.set(key, { value: null, expiresAt: Date.now() + 2_000 });
+      return null;
+    }
+  })();
+
+  overviewCache.set(key, { promise, expiresAt: now + OVERVIEW_TTL_MS });
+  return promise;
+}
+
 export function toInrstatsSnapshot(opportunities30: OpportunitiesSnapshot): InrstatsOpportunitiesSnapshot {
   const perDay = opportunities30.total / Math.max(1, opportunities30.days || 30);
   const confidence: InrstatsOpportunitiesSnapshot['confidence'] =
@@ -342,9 +382,9 @@ export async function fetchCubeOverviews(args: {
         if (v !== undefined && v !== null && `${v}` !== '') params.set(k, String(v));
       }
       const url = `${origin}/api/stats/overview?${params.toString()}`;
-      const r = await fetch(url, { headers: getHeaders?.(), cache: 'no-store' });
-      if (!r.ok) return [cube, null] as const;
-      return [cube, (await r.json()) as Overview] as const;
+      const headers = getHeaders?.();
+      const overview = await fetchOverviewWithCache(url, headers);
+      return [cube, overview] as const;
     })
   );
   const out: Partial<Record<CubeKey, Overview>> = {};

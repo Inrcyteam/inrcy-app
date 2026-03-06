@@ -944,6 +944,15 @@ const refreshKpis = useCallback(async () => {
       if (!res.ok) throw new Error(`KPIs fetch failed: ${res.status}`);
       const json = await res.json();
       setKpis(json);
+      const oppMonth = Number(json?.details?.opportunities?.month);
+      if (Number.isFinite(oppMonth)) {
+        setOppTotal(oppMonth);
+        try {
+          window.sessionStorage.setItem("inrcy_opp30_total_v1", String(oppMonth));
+        } catch {
+          // ignore
+        }
+      }
       try {
         window.sessionStorage.setItem("inrcy_generator_kpis_v1", JSON.stringify(json));
       } catch {
@@ -958,9 +967,7 @@ const refreshKpis = useCallback(async () => {
     }
   }, []);
 
-  // ✅ Opportunités activables (iNrStats) — affichage direct sur le cockpit.
-  // NOTE: placé ici pour pouvoir être rafraîchi via le listener Supabase ci-dessous.
-  const [oppLoading, setOppLoading] = useState(false);
+  // ✅ Opportunités activables (iNrStats) — lues directement depuis /api/generator/kpis.
   const [oppTotal, setOppTotal] = useState<number | null>(null);
 
   useEffect(() => {
@@ -973,29 +980,6 @@ const refreshKpis = useCallback(async () => {
     }
   }, []);
 
-  const refreshOppTotal = useCallback(async () => {
-    try {
-      setOppLoading(true);
-      const r = await fetch("/api/stats/opportunities?days=30", { cache: "no-store" });
-      if (!r.ok) throw new Error(`opps:${r.status}`);
-      const j = (await r.json()) as { total?: number };
-      const val = typeof j?.total === "number" ? j.total : 0;
-      setOppTotal(val);
-      try {
-        window.sessionStorage.setItem("inrcy_opp30_total_v1", String(val));
-      } catch {
-        // ignore
-      }
-    } catch {
-      // Keep last known value (avoid UI flicker)
-    } finally {
-      setOppLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshOppTotal();
-  }, [refreshOppTotal]);
 
   // ✅ Auto-refresh Générateur + statuts modules dès qu'un module se connecte / se déconnecte
   // On écoute les changements Postgres sur les tables qui impactent:
@@ -1013,7 +997,6 @@ const refreshKpis = useCallback(async () => {
         if (disposed) return;
         void loadSiteInrcy();
         void refreshKpis();
-        void refreshOppTotal();
       }, 350);
     };
 
@@ -1048,7 +1031,7 @@ const refreshKpis = useCallback(async () => {
         supabase.removeChannel(ch);
       } catch {}
     };
-  }, [loadSiteInrcy, refreshKpis, refreshOppTotal]);
+  }, [loadSiteInrcy, refreshKpis]);
 
 const activateSiteInrcyTracking = useCallback(async () => {
   if (siteInrcyOwnership !== "rented") {
@@ -1100,8 +1083,7 @@ const activateSiteInrcyTracking = useCallback(async () => {
 
   // Rafraîchit le générateur sans recharger la page
   void refreshKpis();
-  void refreshOppTotal();
-}, [siteInrcyOwnership, siteInrcyUrl, refreshKpis, refreshOppTotal]);
+}, [siteInrcyOwnership, siteInrcyUrl, refreshKpis]);
 
 // ✅ Mode rented : désactive le suivi (GA4+GSC) et nettoie les settings.
 const deactivateSiteInrcyTracking = useCallback(async () => {
@@ -1145,8 +1127,7 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
 
   // Rafraîchit le générateur sans recharger la page
   void refreshKpis();
-  void refreshOppTotal();
-}, [siteInrcyOwnership, refreshKpis, refreshOppTotal]);
+}, [siteInrcyOwnership, refreshKpis]);
 
 
 const disconnectGoogleStats = useCallback(
@@ -2948,13 +2929,12 @@ const checkActivity = useCallback(async () => {
                 className={styles.generatorRefreshBtn}
                 onClick={() => {
                   void refreshKpis();
-                  void refreshOppTotal();
                 }}
-                disabled={kpisLoading || oppLoading}
+                disabled={kpisLoading}
                 aria-label="Actualiser le générateur"
                 title="Actualiser"
               >
-                {kpisLoading || oppLoading ? (
+                {kpisLoading ? (
                   <span className={styles.miniSpinner} aria-hidden />
                 ) : (
                   <svg
@@ -3013,7 +2993,7 @@ const checkActivity = useCallback(async () => {
               <div className={styles.metricValueRow}>
                 <div className={styles.metricValue}>
                   <span>{oppTotal === null ? "—" : `+${oppTotal}`}</span>
-                  {oppLoading ? (
+                  {kpisLoading ? (
                     <span className={`${styles.miniSpinner} ${styles.miniSpinnerInline}`} aria-hidden />
                   ) : null}
                 </div>

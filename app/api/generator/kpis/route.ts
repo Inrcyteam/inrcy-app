@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
+import { EMPTY_CUBE_RECORD, computeHistoryFromOverviews, computeOpportunitiesFromOverviews, fetchCubeOverviews, toInrstatsSnapshot } from "@/lib/metrics/computeMetrics";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -34,15 +35,6 @@ function asString(v: unknown): string | null {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 type AnyRec = Record<string, unknown>;
-
-type OpportunitiesSnapshot = {
-  baseDays: number;
-  today: number;
-  week: number;
-  month: number;
-  confidence: "low" | "medium" | "high";
-  byCube?: Record<string, number>;
-};
 
 
 function pickFirst<T>(...vals: Array<T | null | undefined>): T | null {
@@ -237,70 +229,6 @@ async function _countGmailInbox(
   return json.resultSizeEstimate ?? 0;
 }
 
-async function _getStats(origin: string, days: number, req: Request) {
-  const cookie = req.headers.get("cookie") ?? "";
-
-  const res = await fetch(`${origin}/api/stats/overview?days=${days}`, {
-    headers: cookie ? { cookie } : undefined,
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`Stats overview failed: ${res.status} ${txt}`);
-  }
-
-  const json = await res.json();
-
-  // ✅ YOUR SHAPE: { totals: { clicks, pageviews, ... }, ... }
-  const src = (json?.totals && typeof json.totals === "object") ? json.totals : json;
-
-  const clicks = toNumber(src?.clicks ?? src?.seoClicks ?? src?.gscClicks ?? 0);
-  const pageviews = toNumber(src?.pageviews ?? src?.pagesViews ?? src?.ga4Pageviews ?? 0);
-
-  return { clicks, pageviews };
-}
-
-async function getOpportunities(origin: string, req: Request): Promise<OpportunitiesSnapshot> {
-  // ✅ Single source of truth: iNrStats "opportunités activables" must match the Générateur.
-  // We reuse the same computation as the cockpit card: /api/stats/opportunities (30-day projection).
-  // Then we derive week/today from the same per-day rate to keep the generator windows coherent.
-  const url = `${origin}/api/inrstats/opportunities?days=30&mode=generator`; 
-  const res = await fetch(url, {
-    cache: "no-store",
-    headers: { cookie: req.headers.get("cookie") || "" },
-  });
-  if (!res.ok) throw new Error(`iNrStats opportunities failed (${res.status})`);
-
-    const json = (await res.json()) as { baseDays?: number; today?: number; week?: number; month?: number; total?: number; confidence?: 'low' | 'medium' | 'high'; byCube?: Record<string, number> };
-
-  return {
-    baseDays: Number(json?.baseDays) || 30,
-    today: Math.max(0, Number(json?.today) || 0),
-    week: Math.max(0, Number(json?.week) || 0),
-    month: Math.max(0, Number(json?.month ?? json?.total) || 0),
-    confidence: json?.confidence || 'medium',
-    byCube: json?.byCube || undefined,
-  };
-}
-
-
-
-type HistorySnapshot = { days: number; total: number; perTool?: Record<string, number> };
-type HistoryResponse = { total?: number; perTool?: Record<string, number> };
-
-async function getHistory(origin: string, req: Request, days: 7 | 30): Promise<HistorySnapshot> {
-  // ✅ Historique réel (demandes captées) - indépendant des opportunités
-  const url = `${origin}/api/stats/history?days=${days}`;
-  const res = await fetch(url, {
-    cache: "no-store",
-    headers: { cookie: req.headers.get("cookie") || "" },
-  });
-  if (!res.ok) throw new Error(`Stats history failed (${res.status})`);
-  const json = (await res.json()) as HistoryResponse;
-  return { days, total: Number(json?.total) || 0, perTool: json?.perTool || undefined };
-}
-
 async function getProfile(
   supabase: Awaited<ReturnType<typeof createSupabaseServer>>,
   userId: string,
@@ -386,27 +314,78 @@ export async function GET(req: Request) {
       }
     };
 
-    const profile = await safe("profile", () => getProfile(supabase, user.id, debug), {
-      lead_conversion_rate: 0,
-      avg_basket: 0,
-    });
+    const cookie = req.headers.get("cookie") || "";
+    const getHeaders = () => (cookie ? { cookie } : undefined);
 
-    // The Générateur must reflect iNr'Stats opportunités.
-    // We take the snapshot from /api/inrstats/opportunities and only add the CA estimation here.
-    const opp = await safe(
-      "opportunities",
-      () => getOpportunities(origin, req),
-      { baseDays: monthDays, today: 0, week: 0, month: 0, confidence: "low" }
-    );
+    const [profile, monthOverviews, weekOverviews] = await Promise.all([
+      safe("profile", () => getProfile(supabase, user.id, debug), {
+        lead_conversion_rate: 0,
+        avg_basket: 0,
+      }),
+      safe(
+        "overviews_30d",
+        () => fetchCubeOverviews({ origin, days: 30, getHeaders }),
+        {}
+      ),
+      safe(
+        "overviews_7d",
+        () => fetchCubeOverviews({ origin, days: 7, getHeaders }),
+        {}
+      ),
+    ]);
 
-    const history30 = await safe("history_30d", () => getHistory(origin, req, 30), { days: 30, total: 0 });
-    const history7 = await safe("history_7d", () => getHistory(origin, req, 7), { days: 7, total: 0 });
+    const opp = safe(
+  "opportunities",
+  async () => {
+    const snapshot = toInrstatsSnapshot(computeOpportunitiesFromOverviews(monthOverviews, 30));
+    return {
+      ...snapshot,
+      today: Math.max(0, Math.round((snapshot.total / 30) * todayDays)),
+      week: Math.max(0, Math.round((snapshot.total / 30) * weekDays)),
+      month: snapshot.total,
+    };
+  },
+  {
+    baseDays: 30,
+    today: 0,
+    week: 0,
+    month: 0,
+    total: 0,
+    confidence: "low" as const,
+    byCube: { ...EMPTY_CUBE_RECORD },
+  }
+);
+
+   const history30 = safe(
+  "history_30d",
+  async () => computeHistoryFromOverviews(monthOverviews, 30),
+  {
+    days: 30,
+    total: 0,
+    perTool: { ...EMPTY_CUBE_RECORD },
+    model: "captured_v2.0",
+  }
+);
+
+const history7 = safe(
+  "history_7d",
+  async () => computeHistoryFromOverviews(weekOverviews, 7),
+  {
+    days: 7,
+    total: 0,
+    perTool: { ...EMPTY_CUBE_RECORD },
+    model: "captured_v2.0",
+  }
+);
+
+    const [oppResolved, history30Resolved, history7Resolved] = await Promise.all([opp, history30, history7]);
 
     const leads = {
       // Historique réel (demandes captées)
-      month: Number(history30.total) || 0, // 30 derniers jours
-      week: Number(history7.total) || 0,   // 7 derniers jours
+      month: Number(history30Resolved.total) || 0,
+      week: Number(history7Resolved.total) || 0,
       today: 0,
+      byTool: history30Resolved.perTool || { ...EMPTY_CUBE_RECORD },
     };
 
     const estimatedValue = Math.round(
@@ -423,7 +402,7 @@ export async function GET(req: Request) {
       leads,
       estimatedValue,
       details: {
-        opportunities: opp,
+        opportunities: oppResolved,
         profile,
       },
       ...(includeDebug ? { debug } : {}),
