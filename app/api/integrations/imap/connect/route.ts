@@ -85,8 +85,6 @@ const handler = async (req: Request) => {
         account_email: login,
         provider_account_id: null,
         status: "connected",
-        access_token: null,
-        refresh_token: null,
         access_token_enc: null,
         refresh_token_enc: password_enc,
         expires_at: null,

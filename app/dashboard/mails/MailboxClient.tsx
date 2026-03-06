@@ -529,10 +529,17 @@ export default function MailboxClient() {
   async function loadAccounts() {
     const res = await fetch("/api/integrations/status", { cache: "no-store" });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok || !j?.accounts) return;
+    if (!res.ok) return;
 
-    // Only keep mail accounts
-    const accounts = (j.accounts as any[]).filter((a) => a?.category === "mail");
+    // Backward/forward compatibility:
+    // - new API returns { mailAccounts }
+    // - older API could return { accounts }
+    const accounts = Array.isArray(j?.mailAccounts)
+      ? (j.mailAccounts as any[])
+      : Array.isArray(j?.accounts)
+        ? (j.accounts as any[]).filter((a) => a?.category === "mail")
+        : [];
+
     setMailAccounts(accounts as any);
 
     const connected = accounts.filter((a) => a.status === "connected");
