@@ -8,6 +8,8 @@ async function fetchJson(url: string, accessToken: string) {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "X-Restli-Protocol-Version": "2.0.0",
+      "Linkedin-Version": process.env.LINKEDIN_API_VERSION || "202602",
+      "Content-Type": "application/json",
     },
     cache: "no-store",
   });
@@ -46,7 +48,7 @@ export async function GET() {
   // Try to list organizations where the user is admin (best-effort; may require app review/scopes)
   try {
     const acl = await fetchJson(
-      "https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED",
+      "https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED",
       tok
     );
 
@@ -55,7 +57,7 @@ export async function GET() {
     const orgUrns = elements
       .map((e: unknown) => {
         const r = asRecord(e);
-        return String(r["organizationalTarget"] || "");
+        return String(r["organization"] || r["organizationalTarget"] || "");
       })
       .filter((u: string) => u.startsWith("urn:li:organization:"));
 

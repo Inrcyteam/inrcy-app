@@ -150,7 +150,7 @@ const payload: Record<string, unknown> = {
   email_address: email || null,
   display_name: name || null,
   provider_account_id: sub || null,
-  scopes: "openid profile email w_member_social",
+  scopes: process.env.LINKEDIN_SCOPE_OVERRIDES || "openid profile email w_member_social r_organization_admin rw_organization_admin r_organization_social w_organization_social",
   access_token_enc: encryptToken(accessToken),
   refresh_token_enc: null,
   expires_at: expiresAt,

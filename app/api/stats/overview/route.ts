@@ -81,7 +81,7 @@ export async function GET(request: Request) {
     const { gmbFetchDailyMetricsNormalized } = await import("@/lib/googleBusiness");
     const { igFetchDailyInsights } = await import("@/lib/metaInsights");
     const { fbFetchDailyInsights } = await import("@/lib/facebookInsights");
-    const { liFetchOrgShareStats, liResolveFirstAdminOrgUrn } = await import("@/lib/linkedinAnalytics");
+    const { liFetchOrgAnalytics, liResolveFirstAdminOrgUrn } = await import("@/lib/linkedinAnalytics");
 
     const { searchParams } = new URL(request.url);
     const days = Math.min(Math.max(Number(searchParams.get("days") || 28), 7), 90);
@@ -608,7 +608,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const resolvedOrgUrn = orgUrn || (await liResolveFirstAdminOrgUrn(token));
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-          sourcesStatus.linkedin.metrics = await liFetchOrgShareStats(token, resolvedOrgUrn, start, end);
+          sourcesStatus.linkedin.metrics = await liFetchOrgAnalytics(token, resolvedOrgUrn, start, end);
         } catch (e) {
           sourcesStatus.linkedin.metrics = { error: e instanceof Error ? e.message : String(e) };
         }

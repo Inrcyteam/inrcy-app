@@ -168,6 +168,7 @@ function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
       "conversations",
       "conversations_started",
       "conversationsStarted",
+      "text_message_clicks",
     ]);
 
     const ctaClicks = getTotalMetric(m, [
@@ -184,7 +185,14 @@ function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
       "page_website_clicks_logged_in_unique",
       "page_website_clicks",
       "page_call_phone_clicks",
+      "page_call_phone_clicks_logged_in_unique",
       "page_get_directions_clicks",
+      "page_get_directions_clicks_logged_in_unique",
+      "phone_call_clicks",
+      "email_contacts",
+      "text_message_clicks",
+      "get_directions_clicks",
+      "get_direction_clicks",
     ]);
 
     const strong = messages + ctaClicks;
@@ -202,9 +210,29 @@ function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
     ]);
 
     const reach = getTotalMetric(m, ["reach", "uniqueReach", "unique_reach"]);
-    const socialImpr = getTotalMetric(m, ["impressions", "post_impressions_sum", "post_impressions", "views", "video_views"]);
+    const socialImpr = getTotalMetric(m, ["impressions", "post_impressions_sum", "post_impressions", "views", "video_views", "impressionCount", "uniqueImpressionsCount"]);
+    const fbPageViews = cube === "facebook" ? getTotalMetric(m, ["page_views_total"]) : 0;
+    const igReach = cube === "instagram" ? getTotalMetric(m, ["reach", "uniqueReach", "unique_reach"]) : 0;
+    const liPageViews = cube === "linkedin" ? getTotalMetric(m, ["pageViews"]) : 0;
 
-    const estimate = strong + clicks * 0.05 + engagements * 0.03 + reach * 0.001 + socialImpr * 0.001;
+    const fallbackPresence =
+      (cube === "facebook" && fbPageViews > 0) ||
+      (cube === "instagram" && igReach > 0) ||
+      (cube === "linkedin" && (liPageViews > 0 || socialImpr > 0 || engagements > 0))
+        ? 1
+        : 0;
+
+    const estimate = Math.max(
+      fallbackPresence,
+      strong +
+        clicks * 0.05 +
+        engagements * 0.03 +
+        reach * 0.001 +
+        socialImpr * 0.001 +
+        fbPageViews * 0.04 +
+        igReach * 0.03 +
+        liPageViews * 0.04
+    );
 
     if (strong > 0) {
       const capped = Math.min(strong * CAP_MULTIPLIER_WHEN_STRONG_SIGNAL, estimate);

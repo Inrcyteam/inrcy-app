@@ -13,14 +13,26 @@ export async function GET(request: Request) {
   const returnTo = searchParams.get("returnTo") || "/dashboard?panel=linkedin";
   const state = Buffer.from(JSON.stringify({ returnTo })).toString("base64url");
 
+  const defaultScopes = [
+    "openid",
+    "profile",
+    "email",
+    "w_member_social",
+    // LinkedIn page analytics / org discovery
+    "r_organization_admin",
+    "rw_organization_admin",
+    "r_organization_social",
+    "w_organization_social",
+  ];
+
+  const scope = (process.env.LINKEDIN_SCOPE_OVERRIDES || defaultScopes.join(" ")).trim();
+
   const params = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
     redirect_uri: redirectUri,
     state,
-    // Only request scopes that are provisioned on the app.
-    // Organization/page scopes require additional LinkedIn approval.
-    scope: ["openid", "profile", "email", "w_member_social"].join(" "),
+    scope,
   });
 
   return NextResponse.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`);
