@@ -326,14 +326,23 @@ export function computeHistoryFromOverviews(overviews: Partial<Record<CubeKey, O
 const OVERVIEW_TTL_MS = 20_000;
 const overviewCache = new Map<string, { expiresAt: number; value?: Overview | null; promise?: Promise<Overview | null> }>();
 
-async function fetchOverviewWithCache(url: string, headers?: HeadersInit): Promise<Overview | null> {
+export function invalidateOverviewCache(): void {
+  overviewCache.clear();
+}
+
+async function fetchOverviewWithCache(url: string, headers?: HeadersInit, bypassCache = false): Promise<Overview | null> {
   const headerKey = headers ? JSON.stringify(headers) : '';
   const key = `${url}::${headerKey}`;
   const now = Date.now();
-  const cached = overviewCache.get(key);
-  if (cached) {
-    if (cached.value !== undefined && cached.expiresAt > now) return cached.value;
-    if (cached.promise) return cached.promise;
+
+  if (!bypassCache) {
+    const cached = overviewCache.get(key);
+    if (cached) {
+      if (cached.value !== undefined && cached.expiresAt > now) return cached.value;
+      if (cached.promise) return cached.promise;
+    }
+  } else {
+    overviewCache.delete(key);
   }
 
   const promise = (async () => {
@@ -373,8 +382,9 @@ export async function fetchCubeOverviews(args: {
   days: number;
   getHeaders?: () => HeadersInit | undefined;
   extraParams?: Record<string, string | number | undefined>;
+  bypassCache?: boolean;
 }): Promise<Partial<Record<CubeKey, Overview>>> {
-  const { origin, days, getHeaders, extraParams } = args;
+  const { origin, days, getHeaders, extraParams, bypassCache = false } = args;
   const entries = await Promise.all(
     CUBES.map(async (cube) => {
       const params = new URLSearchParams({ days: String(days), include: INCLUDE_BY_CUBE[cube] });
@@ -383,7 +393,7 @@ export async function fetchCubeOverviews(args: {
       }
       const url = `${origin}/api/stats/overview?${params.toString()}`;
       const headers = getHeaders?.();
-      const overview = await fetchOverviewWithCache(url, headers);
+      const overview = await fetchOverviewWithCache(url, headers, bypassCache);
       return [cube, overview] as const;
     })
   );

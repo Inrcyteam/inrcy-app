@@ -937,10 +937,12 @@ const connectSiteInrcyGsc = useCallback(() => {
 // ✅ Mode rented : déclenche une activation "serveur" (sans saisie d'IDs)
 // - Si un token Google existe déjà côté Supabase, l'API résout GA4 + GSC via le domaine et remplit les settings.
 // - Sinon, on bascule sur le flow OAuth "activate".
-const refreshKpis = useCallback(async () => {
+const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
+    const fresh = options?.fresh === true;
     setKpisLoading(true);
     try {
-      const res = await fetch("/api/metrics/summary", { cache: "no-store" });
+      const url = fresh ? "/api/metrics/summary?fresh=1" : "/api/metrics/summary";
+      const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error(`KPIs fetch failed: ${res.status}`);
       const json = await res.json();
       setKpis(json);
@@ -996,7 +998,11 @@ const refreshKpis = useCallback(async () => {
       t = window.setTimeout(() => {
         if (disposed) return;
         void loadSiteInrcy();
-        void refreshKpis();
+        void refreshKpis({ fresh: true });
+        window.setTimeout(() => {
+          if (disposed) return;
+          void refreshKpis({ fresh: true });
+        }, 1200);
       }, 350);
     };
 
@@ -1082,7 +1088,7 @@ const activateSiteInrcyTracking = useCallback(async () => {
   }, 2500);
 
   // Rafraîchit le générateur sans recharger la page
-  void refreshKpis();
+  void refreshKpis({ fresh: true });
 }, [siteInrcyOwnership, siteInrcyUrl, refreshKpis]);
 
 // ✅ Mode rented : désactive le suivi (GA4+GSC) et nettoie les settings.
@@ -1126,7 +1132,7 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
   setSiteInrcyTrackingBusy(false);
 
   // Rafraîchit le générateur sans recharger la page
-  void refreshKpis();
+  void refreshKpis({ fresh: true });
 }, [siteInrcyOwnership, refreshKpis]);
 
 
@@ -2928,7 +2934,7 @@ const checkActivity = useCallback(async () => {
                 type="button"
                 className={styles.generatorRefreshBtn}
                 onClick={() => {
-                  void refreshKpis();
+                  void refreshKpis({ fresh: true });
                 }}
                 disabled={kpisLoading}
                 aria-label="Actualiser le générateur"

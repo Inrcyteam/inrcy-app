@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { computeOpportunitiesFromOverviews, fetchCubeOverviews, toInrstatsSnapshot } from '@/lib/metrics/computeMetrics';
+import { computeOpportunitiesFromOverviews, fetchCubeOverviews, invalidateOverviewCache, toInrstatsSnapshot } from '@/lib/metrics/computeMetrics';
 
 function safeErrorMessage(e: unknown, fallback = 'Unknown error') {
   if (e instanceof Error && typeof e.message === 'string' && e.message.trim()) return e.message;
@@ -19,11 +19,15 @@ export async function GET(request: Request) {
     const weekDays = qWeek > 0 ? qWeek : 7;
     const monthDays = qMonth > 0 ? qMonth : qMode === 'generator' ? 28 : 30;
     const cookie = request.headers.get('cookie') || '';
+    const fresh = url.searchParams.get('fresh') === '1';
+
+    if (fresh) invalidateOverviewCache();
 
     const monthOverviews = await fetchCubeOverviews({
       origin: url.origin,
       days: monthDays,
       getHeaders: () => (cookie ? { cookie } : undefined),
+      bypassCache: fresh,
     });
 
     const monthOpps = computeOpportunitiesFromOverviews(monthOverviews, monthDays);

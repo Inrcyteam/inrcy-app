@@ -6,6 +6,7 @@ import {
   computeHistoryFromOverviews,
   computeOpportunitiesFromOverviews,
   fetchCubeOverviews,
+  invalidateOverviewCache,
   toInrstatsSnapshot,
   type CubeKey,
 } from '@/lib/metrics/computeMetrics';
@@ -90,6 +91,7 @@ export async function buildMetricsSummary(args: {
   weekDays?: number;
   todayDays?: number;
   debug?: AnyRec;
+  fresh?: boolean;
 }): Promise<MetricsSummary> {
   const {
     supabase,
@@ -100,6 +102,7 @@ export async function buildMetricsSummary(args: {
     weekDays = 7,
     todayDays = 2,
     debug,
+    fresh = false,
   } = args;
 
   const safe = async <T,>(key: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
@@ -115,7 +118,11 @@ export async function buildMetricsSummary(args: {
   };
 
   if (debug) {
-    debug.windows = { monthDays, weekDays, todayDays };
+    debug.windows = { monthDays, weekDays, todayDays, fresh };
+  }
+
+  if (fresh) {
+    invalidateOverviewCache();
   }
 
   const [profile, monthOverviews, weekOverviews] = await Promise.all([
@@ -123,24 +130,24 @@ export async function buildMetricsSummary(args: {
       lead_conversion_rate: 0,
       avg_basket: 0,
     }),
-    safe('overviews_30d', () => fetchCubeOverviews({ origin, days: 30, getHeaders }), {}),
-    safe('overviews_7d', () => fetchCubeOverviews({ origin, days: 7, getHeaders }), {}),
+    safe('overviews_30d', () => fetchCubeOverviews({ origin, days: monthDays, getHeaders, bypassCache: fresh }), {}),
+    safe('overviews_7d', () => fetchCubeOverviews({ origin, days: weekDays, getHeaders, bypassCache: fresh }), {}),
   ]);
 
   const [oppResolved, history30Resolved, history7Resolved] = await Promise.all([
     safe(
       'opportunities',
       async () => {
-        const snapshot = toInrstatsSnapshot(computeOpportunitiesFromOverviews(monthOverviews, 30));
+        const snapshot = toInrstatsSnapshot(computeOpportunitiesFromOverviews(monthOverviews, monthDays));
         return {
           ...snapshot,
-          today: Math.max(0, Math.round((snapshot.total / 30) * todayDays)),
-          week: Math.max(0, Math.round((snapshot.total / 30) * weekDays)),
+          today: Math.max(0, Math.round((snapshot.total / Math.max(1, monthDays)) * todayDays)),
+          week: Math.max(0, Math.round((snapshot.total / Math.max(1, monthDays)) * weekDays)),
           month: snapshot.total,
         };
       },
       {
-        baseDays: 30,
+        baseDays: monthDays,
         today: 0,
         week: 0,
         month: 0,
@@ -151,9 +158,9 @@ export async function buildMetricsSummary(args: {
     ),
     safe(
       'history_30d',
-      async () => computeHistoryFromOverviews(monthOverviews, 30),
+      async () => computeHistoryFromOverviews(monthOverviews, monthDays),
       {
-        days: 30,
+        days: monthDays,
         total: 0,
         perTool: { ...EMPTY_CUBE_RECORD },
         model: 'captured_v2.0',
@@ -161,9 +168,9 @@ export async function buildMetricsSummary(args: {
     ),
     safe(
       'history_7d',
-      async () => computeHistoryFromOverviews(weekOverviews, 7),
+      async () => computeHistoryFromOverviews(weekOverviews, weekDays),
       {
-        days: 7,
+        days: weekDays,
         total: 0,
         perTool: { ...EMPTY_CUBE_RECORD },
         model: 'captured_v2.0',
