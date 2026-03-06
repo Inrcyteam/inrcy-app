@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
 export async function POST() {
   const supabase = await createSupabaseServer();
   const { data: authData, error: authErr } = await supabase.auth.getUser();
@@ -17,6 +21,26 @@ export async function POST() {
     .eq("product", "gmb");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    const { data } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
+    const current = asRecord(asRecord(data)["settings"]);
+    await supabase.from("pro_tools_configs").upsert({
+      user_id: userId,
+      settings: {
+        ...current,
+        gmb: {
+          ...asRecord(current.gmb),
+          connected: false,
+          accountEmail: null,
+          accountDisplayName: null,
+          accountName: null,
+          locationName: null,
+          locationTitle: null,
+          url: null,
+        },
+      },
+    }, { onConflict: "user_id" });
+  } catch {}
   await clearAllToolCaches(supabase, userId);
   return NextResponse.json({ ok: true });
 }

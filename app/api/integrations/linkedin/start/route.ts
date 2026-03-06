@@ -18,11 +18,6 @@ export async function GET(request: Request) {
     "profile",
     "email",
     "w_member_social",
-    // LinkedIn page analytics / org discovery
-    "r_organization_admin",
-    "rw_organization_admin",
-    "r_organization_social",
-    "w_organization_social",
   ];
 
   const scope = (process.env.LINKEDIN_SCOPE_OVERRIDES || defaultScopes.join(" ")).trim();
