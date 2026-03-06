@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
-import { invalidateUserIntegrationCaches, mergeProToolSettings } from "@/lib/integrationSync";
+import { asRecord } from "@/lib/tsSafe";
 
 export async function POST() {
   const supabase = await createSupabaseServer();
@@ -11,35 +11,23 @@ export async function POST() {
 
   if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { error: updateErr } = await supabase
-    .from("integrations")
-    .update({
-      status: "disconnected",
-      access_token_enc: null,
-      refresh_token_enc: null,
-      expires_at: null,
-      resource_id: null,
-      resource_label: null,
-      meta: { profile_url: null, org_urn: null, org_id: null, org_name: null },
-      updated_at: new Date().toISOString(),
-    })
-    .eq("user_id", user.id)
-    .eq("provider", "linkedin")
-    .eq("source", "linkedin")
-    .eq("product", "linkedin");
-
-  if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  await supabase.from("integrations").delete().eq("user_id", user.id).eq("provider", "linkedin");
 
   try {
-    await mergeProToolSettings(supabase, user.id, "linkedin", {
-      accountConnected: false,
-      connected: false,
-      displayName: null,
-      url: null,
-      orgId: null,
-    });
+    const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
+    const current = asRecord(asRecord(scRow)["settings"]);
+    const merged = {
+      ...current,
+      linkedin: {
+        accountConnected: false,
+        connected: false,
+        displayName: null,
+        url: null,
+        orgId: null,
+      },
+    };
+    await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
   } catch {}
 
-  await invalidateUserIntegrationCaches(supabase, user.id);
   return NextResponse.json({ ok: true });
 }

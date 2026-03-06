@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
-import { invalidateUserIntegrationCaches, mergeProToolSettings } from "@/lib/integrationSync";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
@@ -25,6 +24,20 @@ type FbPage = {
   access_token?: string;
 };
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
+async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
+  try {
+    await supabase.from("stats_cache").delete().eq("user_id", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
+  } catch {}
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   const data = (await res.json()) as unknown;
@@ -42,8 +55,11 @@ export async function GET(req: Request) {
     const urlObj = new URL(req.url);
     const code = urlObj.searchParams.get("code");
     const stateRaw = urlObj.searchParams.get("state");
+
+    // Canonical base URL: never guess from req.url (can be vercel preview, localhost, etc.)
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
 
+    // If Facebook returns an OAuth error, surface it back to the dashboard instead of "Missing ?code".
     const fbErrorMsg = urlObj.searchParams.get("error_message") || urlObj.searchParams.get("error_description");
     const fbErrorCode = urlObj.searchParams.get("error_code") || urlObj.searchParams.get("error");
 
@@ -51,6 +67,7 @@ export async function GET(req: Request) {
       return NextResponse.redirect(new URL("/dashboard?panel=facebook&toast=oauth_state", siteUrl));
     }
 
+    // ✅ CSRF protection: verify state against HttpOnly cookie
     const st = verifyOAuthState(req, "facebook", stateRaw);
     const returnTo = safeInternalPath(st.returnTo || "/dashboard?panel=facebook", "/dashboard?panel=facebook");
 
@@ -63,6 +80,7 @@ export async function GET(req: Request) {
       return clearStateCookie(NextResponse.redirect(new URL("/dashboard?panel=facebook&toast=oauth_state", siteUrl)));
     }
 
+    // If Facebook returned an error, redirect back with a readable reason.
     if (!code) {
       const finalUrl = new URL(returnTo, siteUrl);
       finalUrl.searchParams.set("linked", "facebook");
@@ -75,6 +93,8 @@ export async function GET(req: Request) {
     const appId = process.env.FACEBOOK_APP_ID;
     const appSecret = process.env.FACEBOOK_APP_SECRET;
     const redirectFromEnv = process.env.FACEBOOK_REDIRECT_URI;
+
+    // redirect_uri MUST match the one used in the initial OAuth start step.
     const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/facebook/callback`;
 
     if (!appId || !appSecret) {
@@ -88,13 +108,24 @@ export async function GET(req: Request) {
     }
     const userId = authData.user.id;
 
-    const rlUser = await enforceRateLimit({ name: "oauth_facebook_cb", identifier: userId, limit: 10, window: "10 m" });
+    const rlUser = await enforceRateLimit({
+      name: "oauth_facebook_cb",
+      identifier: userId,
+      limit: 10,
+      window: "10 m",
+    });
     if (rlUser) return rlUser;
 
     const ip = getClientIp(req);
-    const rlIp = await enforceRateLimit({ name: "oauth_facebook_cb_ip", identifier: ip, limit: 20, window: "10 m" });
+    const rlIp = await enforceRateLimit({
+      name: "oauth_facebook_cb_ip",
+      identifier: ip,
+      limit: 20,
+      window: "10 m",
+    });
     if (rlIp) return rlIp;
 
+    // 1) Exchange code -> short-lived user access token
     const tokenUrl = `https://graph.facebook.com/v20.0/oauth/access_token?${new URLSearchParams({
       client_id: appId,
       redirect_uri: redirectUri,
@@ -110,6 +141,7 @@ export async function GET(req: Request) {
 
     const shortExpiresIn = typeof tokenData.expires_in === "number" ? tokenData.expires_in : null;
 
+    // 2) Upgrade to long-lived user token
     let longUserToken = userAccessToken;
     let longExpiresIn: number | null = null;
     try {
@@ -122,11 +154,14 @@ export async function GET(req: Request) {
       const longToken = await fetchJson<TokenResponse>(longTokenUrl);
       if (longToken.access_token) longUserToken = longToken.access_token;
       if (typeof longToken.expires_in === "number") longExpiresIn = longToken.expires_in;
-    } catch {}
+    } catch {
+      // If it fails, keep short-lived; still works in dev.
+    }
 
     const expiresIn = longExpiresIn ?? shortExpiresIn;
     const expiresAt = typeof expiresIn === "number" ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
 
+    // 3) Basic user profile (email may be empty depending on account)
     let me: FbMe = {};
     try {
       const meUrl = `https://graph.facebook.com/v20.0/me?${new URLSearchParams({
@@ -135,9 +170,13 @@ export async function GET(req: Request) {
       }).toString()}`;
       me = await fetchJson<FbMe>(meUrl);
     } catch {
+      // non-fatal
       me = {};
     }
 
+    // 4) Fetch managed pages (best-effort) JUST to know if pages can be listed.
+    // IMPORTANT: On ne sélectionne PAS automatiquement une page ici.
+    // Le callback OAuth ne connecte que le COMPTE Facebook.
     let pages: FbPage[] = [];
     try {
       const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
@@ -148,6 +187,25 @@ export async function GET(req: Request) {
       pages = pagesResp.data || [];
     } catch {
       pages = [];
+    }
+
+    const _pageId = null;
+    const _pageName = null;
+    const _pageUrl = null;
+    const tokenToStore = longUserToken; // token utilisateur uniquement (sélection page plus tard)
+
+    // 5) Upsert into integrations
+    const { data: existing, error: existingErr } = await supabase
+      .from("integrations")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("provider", "facebook")
+      .eq("source", "facebook")
+      .eq("product", "facebook")
+      .maybeSingle();
+
+    if (existingErr) {
+      return NextResponse.json({ error: "DB read existing failed", existingErr }, { status: 500 });
     }
 
     const payload: Record<string, unknown> = {
@@ -161,12 +219,13 @@ export async function GET(req: Request) {
       display_name: me.name ?? null,
       provider_account_id: me.id ?? null,
       scopes: "public_profile,email,pages_show_list,pages_manage_posts,pages_read_engagement,read_insights",
-      access_token_enc: encryptToken(longUserToken),
+      access_token_enc: encryptToken(tokenToStore),
       refresh_token_enc: null,
+      // ✅ Keep track of expiration to avoid "silent" disconnects.
+      // Meta tokens are long-lived but still expire.
       expires_at: expiresAt,
       resource_id: null,
       resource_label: null,
-      resource_url: null,
       meta: {
         picked: "none",
         pages_found: pages.length,
@@ -174,29 +233,45 @@ export async function GET(req: Request) {
         user_access_token_enc: encryptToken(longUserToken),
         page_url: null,
       },
-      updated_at: new Date().toISOString(),
     };
 
-    const { error: upsertErr } = await supabase
-      .from("integrations")
-      .upsert(payload, { onConflict: "user_id,provider,source,product" });
-
-    if (upsertErr) {
-      return NextResponse.json({ error: "DB upsert failed", upsertErr }, { status: 500 });
+    const existingRec = asRecord(existing);
+    const existingId = asString(existingRec["id"]);
+    if (existingId) {
+      const { error: upErr } = await supabase
+        .from("integrations")
+        .update(payload)
+        .eq("id", existingId);
+      if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
+    } else {
+      const { error: insErr } = await supabase.from("integrations").insert(payload);
+      if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
     }
 
+    // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
     try {
-      await mergeProToolSettings(supabase, userId, "facebook", {
-        accountConnected: true,
-        userEmail: me.email ?? null,
-        pageConnected: false,
-        pageId: null,
-        pageName: null,
-        url: null,
-      });
-    } catch {}
+      const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
+      const current = asRecord(asRecord(scRow)["settings"]);
+      const currentFacebook = asRecord(current["facebook"]);
+      const merged: Record<string, unknown> = {
+        ...current,
+        facebook: {
+          ...currentFacebook,
+          accountConnected: true,
+          userEmail: me.email ?? null,
+          pageConnected: false,
+          pageId: null,
+          pageName: null,
+          url: null,
+        },
+      };
+      await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
+    } catch {
+      // non-fatal
+    }
 
-    await invalidateUserIntegrationCaches(supabase, userId);
+    // Invalidate stats cache so iNrStats + Generator reflect the new connection immediately.
+    await invalidateUserStatsCache(supabase, userId);
 
     const finalUrl = new URL(returnTo, siteUrl);
     finalUrl.searchParams.set("linked", "facebook");

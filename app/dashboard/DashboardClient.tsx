@@ -697,14 +697,12 @@ const proSettingsObj =
 
   // ✅ Connexions Google Business & Facebook : source de vérité = integrations
   try {
-    const noStore = { cache: "no-store" as RequestCache };
-
-const [gmbStatus, fbStatus, igStatus, liStatus] = await Promise.all([
-  fetch("/api/integrations/google-business/status", noStore).then((r) => r.json()).catch(() => ({ connected: false })),
-  fetch("/api/integrations/facebook/status", noStore).then((r) => r.json()).catch(() => ({ connected: false })),
-  fetch("/api/integrations/instagram/status", noStore).then((r) => r.json()).catch(() => ({ connected: false })),
-  fetch("/api/integrations/linkedin/status", noStore).then((r) => r.json()).catch(() => ({ connected: false })),
-]);
+    const [gmbStatus, fbStatus, igStatus, liStatus] = await Promise.all([
+      fetch("/api/integrations/google-business/status").then((r) => r.json()).catch(() => ({ connected: false })),
+      fetch("/api/integrations/facebook/status").then((r) => r.json()).catch(() => ({ connected: false })),
+      fetch("/api/integrations/instagram/status").then((r) => r.json()).catch(() => ({ connected: false })),
+      fetch("/api/integrations/linkedin/status").then((r) => r.json()).catch(() => ({ connected: false })),
+    ]);
     setGmbConnected(!!gmbStatus?.connected); // true only when a location is selected
     setGmbAccountConnected(!!gmbStatus?.accountConnected);
     setGmbConfigured(!!gmbStatus?.configured);
@@ -1424,88 +1422,74 @@ const connectFacebookAccount = useCallback(async () => {
 }, []);
 
 const disconnectFacebookAccount = useCallback(async () => {
-		  try {
-		    const res = await fetch("/api/integrations/facebook/disconnect-account", { method: "POST" });
-		    const payload = await res.json().catch(() => ({}));
-		    if (!res.ok) {
-		      throw new Error(payload?.error || "Impossible de déconnecter Facebook.");
-		    }
-		    setFacebookAccountConnected(false);
-		    setFacebookPageConnected(false);
-		    setFacebookAccountEmail("");
-		    // Keep a lightweight mirror in pro_tools_configs for instant UI updates.
-		    await updateRootSettingsKey("facebook", {
-		      accountConnected: false,
-		      pageConnected: false,
-		      userEmail: "",
-		      url: "",
-		      pageId: "",
-		      pageName: "",
-		    });
-		    setFacebookUrl("");
-		    setFbPages([]);
-		    setFbSelectedPageId("");
-		    setFbSelectedPageName("");
-		    setFbPagesError(null);
-		    setFacebookUrlNotice(null);
-		  } catch (e: any) {
-		    const msg = e?.message || "Impossible de déconnecter Facebook.";
-		    setFbPagesError(msg);
-		    setFacebookUrlNotice(msg);
-		    window.setTimeout(() => setFacebookUrlNotice(null), 2500);
-		  }
-	}, [updateRootSettingsKey]);
+	  await fetch("/api/integrations/facebook/disconnect-account", { method: "POST" });
+	  setFacebookAccountConnected(false);
+	  setFacebookPageConnected(false);
+	  setFacebookAccountEmail("");
+	  // Keep a lightweight mirror in pro_tools_configs for instant UI updates.
+	  await updateRootSettingsKey("facebook", {
+	    accountConnected: false,
+	    pageConnected: false,
+	    userEmail: "",
+	    url: "",
+	    pageId: "",
+	    pageName: "",
+	  });
+	  setFacebookUrl("");
+	  setFbPages([]);
+	  setFbSelectedPageId("");
+	  setFbSelectedPageName("");
+}, [updateRootSettingsKey]);
 
 const disconnectFacebookPage = useCallback(async () => {
-		  try {
-		    const res = await fetch("/api/integrations/facebook/disconnect-page", { method: "POST" });
-		    const payload = await res.json().catch(() => ({}));
-		    if (!res.ok) {
-		      throw new Error(payload?.error || "Impossible de déconnecter la page Facebook.");
-		    }
-		    setFacebookPageConnected(false);
-		    await updateRootSettingsKey("facebook", {
-		      accountConnected: true,
-		      pageConnected: false,
-		      url: "",
-		      pageId: "",
-		      pageName: "",
-		    });
-		    setFacebookUrl("");
-		    setFbSelectedPageId("");
-		    setFbSelectedPageName("");
-		    setFbPagesError(null);
-		    setFacebookUrlNotice(null);
-		  } catch (e: any) {
-		    const msg = e?.message || "Impossible de déconnecter la page Facebook.";
-		    setFbPagesError(msg);
-		    setFacebookUrlNotice(msg);
-		    window.setTimeout(() => setFacebookUrlNotice(null), 2500);
-		  }
-	}, [updateRootSettingsKey]);
-
+	  await fetch("/api/integrations/facebook/disconnect-page", { method: "POST" });
+	  setFacebookPageConnected(false);
+	  await updateRootSettingsKey("facebook", {
+	    accountConnected: true,
+	    pageConnected: false,
+	    url: "",
+	    pageId: "",
+	    pageName: "",
+	  });
+	  setFacebookUrl("");
+	  setFbSelectedPageId("");
+	  setFbSelectedPageName("");
+}, [updateRootSettingsKey]);
 const loadFacebookPages = useCallback(async () => {
-		  if (!facebookAccountConnected) return;
-	  setFbPagesLoading(true);
-	  setFbPagesError(null);
-	  try {
-	    const r = await fetch("/api/integrations/facebook/pages", { cache: "no-store" });
-	    const j = await r.json().catch(() => ({}));
-	    if (!r.ok) throw new Error(j?.error || "Erreur");
-	    setFbPages(j.pages || []);
-	    // Preselect first page locally if none is selected yet.
-	    if (!fbSelectedPageId && j.pages?.[0]?.id) {
-	      setFbSelectedPageId(j.pages[0].id);
-	    }
-	    // Never auto-save the only page here.
-	    // Otherwise a manual disconnect can be immediately overwritten by a new
-	    // server-side selection, making the UI appear connected again.
-	  } catch (e: any) {
-	    setFbPagesError(e?.message || "Impossible de charger vos pages Facebook.");
-	  } finally {
-	    setFbPagesLoading(false);
-	  }
-		}, [facebookAccountConnected, fbSelectedPageId]);
+	  if (!facebookAccountConnected) return;
+  setFbPagesLoading(true);
+  setFbPagesError(null);
+  try {
+    const r = await fetch("/api/integrations/facebook/pages", { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j?.error || "Erreur");
+    setFbPages(j.pages || []);
+    // Preselect first if none
+    if (!fbSelectedPageId && j.pages?.[0]?.id) setFbSelectedPageId(j.pages[0].id);
+
+    // If there is exactly one page, auto-select & save it server-side (no extra "Enregistrer").
+    if ((j.pages || []).length === 1) {
+      const only = j.pages[0];
+      if (only?.id && only?.access_token) {
+        await fetch("/api/integrations/facebook/select-page", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pageId: only.id,
+            pageName: only.name || null,
+            pageAccessToken: only.access_token,
+          }),
+        });
+        setFbSelectedPageId(only.id);
+        setFacebookUrl(`https://www.facebook.com/${only.id}`);
+      }
+    }
+  } catch (e: any) {
+    setFbPagesError(e?.message || "Impossible de charger vos pages Facebook.");
+  } finally {
+    setFbPagesLoading(false);
+  }
+	}, [facebookAccountConnected, fbSelectedPageId]);
 
 const saveFacebookPage = useCallback(async () => {
   const picked = fbPages.find((p) => p.id === fbSelectedPageId);

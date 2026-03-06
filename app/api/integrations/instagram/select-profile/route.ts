@@ -1,8 +1,21 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
-import { invalidateUserIntegrationCaches, mergeProToolSettings } from "@/lib/integrationSync";
 import { asRecord, asString } from "@/lib/tsSafe";
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
+async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
+  try {
+    await supabase.from("stats_cache").delete().eq("user_id", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
+  } catch {}
+  try {
+    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
+  } catch {}
+}
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
@@ -31,7 +44,7 @@ export async function POST(req: Request) {
 
   const { data: rows } = await supabase
     .from("integrations")
-    .select("access_token_enc,id,meta")
+    .select("access_token_enc,id")
     .eq("user_id", user.id)
     .eq("provider", "instagram")
     .eq("source", "instagram")
@@ -40,12 +53,13 @@ export async function POST(req: Request) {
     .order("created_at", { ascending: false })
     .limit(1);
 
-  const rowRec = asRecord((rows?.[0] as unknown) ?? null);
-  const prevMeta = asRecord(rowRec["meta"]);
+  const row = (rows?.[0] as unknown) ?? null;
+  const rowRec = asRecord(row);
   const userTokenRaw = String(rowRec["access_token_enc"] || "");
   const userToken = tryDecryptToken(userTokenRaw) || "";
   if (!userToken) return NextResponse.json({ error: "Instagram account not connected" }, { status: 400 });
 
+  // Get pages + tokens
   const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
     fields: "id,name,access_token",
     access_token: userToken,
@@ -54,47 +68,57 @@ export async function POST(req: Request) {
   const page = (pagesResp.data || []).find((p) => p.id === pageId);
   if (!page?.access_token) return NextResponse.json({ error: "Page introuvable ou token manquant" }, { status: 400 });
 
+  // Get IG business account
   const infoUrl = `https://graph.facebook.com/v20.0/${encodeURIComponent(pageId)}?${new URLSearchParams({
     fields: "instagram_business_account{username,id}",
     access_token: userToken,
   }).toString()}`;
   const info = await fetchJson<unknown>(infoUrl);
-  const ig = asRecord(asRecord(info)["instagram_business_account"]);
+  const infoRec = asRecord(info);
+  const ig = asRecord(infoRec["instagram_business_account"]);
   const igId = String(asString(ig["id"]) || "");
   const username = String(asString(ig["username"]) || "");
   if (!igId) return NextResponse.json({ error: "Aucun Instagram Business relié à cette page" }, { status: 400 });
 
-  const nextMeta = { ...prevMeta, page_id: pageId, page_name: page.name || null, picked: "selected", user_access_token_enc: userTokenRaw };
-
-  const { error: updateErr } = await supabase
+  // Update integration: now connected + store page token for publishing
+  await supabase
     .from("integrations")
     .update({
       status: "connected",
       resource_id: igId,
       resource_label: username || null,
       access_token_enc: encryptToken(page.access_token),
-      meta: nextMeta,
-      updated_at: new Date().toISOString(),
+      meta: { page_id: pageId, page_name: page.name || null },
     })
     .eq("user_id", user.id)
     .eq("provider", "instagram")
     .eq("source", "instagram")
     .eq("product", "instagram");
 
-  if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  // Invalidate stats cache so iNrStats + Generator reflect the new selection immediately.
+  await invalidateUserStatsCache(supabase, user.id);
 
-  await invalidateUserIntegrationCaches(supabase, user.id);
   const profileUrl = username ? `https://www.instagram.com/${username}/` : null;
 
+  // Mirror in pro_tools_configs
   try {
-    await mergeProToolSettings(supabase, user.id, "instagram", {
-      accountConnected: true,
-      connected: true,
-      username: username || null,
-      url: profileUrl,
-      pageId,
-      igId,
-    });
+    const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
+    const scRec = asRecord(scRow);
+    const current = asRecord(scRec["settings"]);
+    const currentIg = asRecord(current["instagram"]);
+    const merged = {
+      ...current,
+      instagram: {
+        ...currentIg,
+        accountConnected: true,
+        connected: true,
+        username: username || null,
+        url: profileUrl,
+        pageId,
+        igId,
+      },
+    };
+    await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
   } catch {}
 
   return NextResponse.json({ ok: true, username: username || null, profileUrl });

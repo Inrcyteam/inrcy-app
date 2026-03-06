@@ -1,11 +1,27 @@
-import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import type { StatsSourceKey } from "@/lib/googleStats";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
-
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
+
+function isExpired(expiresAt: unknown): boolean {
+  if (!expiresAt) return false; // unknown => don't block
+  const d =
+    expiresAt instanceof Date
+      ? expiresAt
+      : typeof expiresAt === "string" || typeof expiresAt === "number"
+        ? new Date(expiresAt)
+        : null;
+  if (!d) return false;
+  const t = d.getTime();
+  if (Number.isNaN(t)) return false;
+  // 60s safety margin
+  return t <= Date.now() + 60_000;
+}
+
+// NOTE: We lazy-import internal libs inside the handler to avoid returning an HTML error page
+// when a dependency throws at module-evaluation time (e.g. cookies()/headers() scope issues).
 
 function safeJsonParse<T>(s: unknown, fallback: T): T {
   if (!s) return fallback;
@@ -17,39 +33,24 @@ function safeJsonParse<T>(s: unknown, fallback: T): T {
   }
 }
 
-function isExpired(expiresAt: unknown): boolean {
-  if (!expiresAt) return false;
-  const d =
-    expiresAt instanceof Date
-      ? expiresAt
-      : typeof expiresAt === "string" || typeof expiresAt === "number"
-        ? new Date(expiresAt)
-        : null;
-  if (!d) return false;
-  const t = d.getTime();
-  if (Number.isNaN(t)) return false;
-  return t <= Date.now() + 60_000;
-}
-
-function hashKey(input: string) {
-  return createHash("sha256").update(input).digest("hex");
-}
-
-async function withTimeout<T>(label: string, ms: number, task: () => Promise<T>): Promise<T> {
-  let timer: NodeJS.Timeout | null = null;
-  try {
-    return await Promise.race([
-      task(),
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
 type SiteConn = { ga4: boolean; gsc: boolean };
+
+type SourcesStatus = {
+  site_inrcy: { connected: SiteConn };
+  site_web: { connected: SiteConn };
+  gmb: { connected: boolean; metrics: unknown | null };
+  facebook: { connected: boolean; metrics: unknown | null };
+  instagram: { connected: boolean; metrics: unknown | null };
+  linkedin: { connected: boolean; metrics: unknown | null };
+};
+
+type SocialSnapshot = {
+  gmb: { connected: boolean; metrics: unknown | null };
+  facebook: { connected: boolean };
+  instagram: { connected: boolean };
+  linkedin: { connected: boolean };
+};
+
 type SiteSettings = {
   ga4?: { property_id?: string; measurement_id?: string };
   gsc?: { property?: string };
@@ -57,151 +58,17 @@ type SiteSettings = {
     ga4?: { property_id?: string; measurement_id?: string };
     gsc?: { property?: string };
   };
-  inrcy_tracking_enabled?: boolean;
 };
 
-type OverviewPayload = {
-  days: number;
-  selected: string[] | null;
-  inrcySiteOwnership: string;
-  totals: {
-    users: number;
-    sessions: number;
-    pageviews: number;
-    engagementRate: number;
-    avgSessionDuration: number;
-    clicks: number;
-    impressions: number;
-    ctr: number;
-  };
-  topPages: Array<{ path: string; views: number }>;
-  channels: Array<{ channel: string; sessions: number }>;
-  topQueries: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>;
-  sources: {
-    site_inrcy: { connected: SiteConn };
-    site_web: { connected: SiteConn };
-    gmb: { connected: boolean; metrics: unknown | null };
-    facebook: { connected: boolean; metrics: unknown | null };
-    instagram: { connected: boolean; metrics: unknown | null };
-    linkedin: { connected: boolean; metrics: unknown | null };
-  };
-  note: string;
-};
-
-type SiteSnapshotPayload = {
-  connected: SiteConn;
-  totals: {
-    users: number;
-    sessions: number;
-    pageviews: number;
-    engagementWeighted: number;
-    durationWeighted: number;
-    clicks: number;
-    impressions: number;
-  };
-  topPages: Array<{ path: string; views: number }>;
-  channels: Array<{ channel: string; sessions: number }>;
-  topQueries: Array<{ query: string; clicks: number; impressions: number; positionSum: number; rows: number }>;
-};
-
-type SocialSnapshotPayload = { metrics: unknown | null };
-type SnapshotPayload = SiteSnapshotPayload | SocialSnapshotPayload;
-type SnapshotSource = "site_inrcy" | "site_web" | "facebook" | "instagram" | "linkedin" | "gmb";
-
-type IntegrationRow = Record<string, unknown>;
-
-function getLatestIntegration(integrations: IntegrationRow[], provider: string, source: string, product: string) {
-  const rows = integrations.filter((r) => {
-    return r["provider"] === provider && r["source"] === source && r["product"] === product;
-  });
-  rows.sort((a, b) => {
-    const aa = new Date(String(a["updated_at"] ?? a["created_at"] ?? 0)).getTime();
-    const bb = new Date(String(b["updated_at"] ?? b["created_at"] ?? 0)).getTime();
-    return bb - aa;
-  });
-  return asRecord(rows[0]);
-}
-
-function buildSourceConnectionKey(args: { source: SnapshotSource; days: number; parts: Array<string | number | boolean | null | undefined> }) {
-  return hashKey(`${args.source}|days=${args.days}|${args.parts.map((x) => String(x ?? "")).join("|")}`);
-}
-
-async function readSnapshotMap(
-  supabase: any,
-  userId: string,
-  days: number,
-  sourceKeys: Partial<Record<SnapshotSource, string>>
-): Promise<Map<SnapshotSource, SnapshotPayload>> {
-  const sources = Object.keys(sourceKeys) as SnapshotSource[];
-  const out = new Map<SnapshotSource, SnapshotPayload>();
-  if (sources.length === 0) return out;
-
-  const { data } = await supabase
-    .from("stats_snapshot")
-    .select("source, connection_key, payload, expires_at, updated_at")
-    .eq("user_id", userId)
-    .eq("days", days)
-    .in("source", sources)
-    .gt("expires_at", new Date().toISOString())
-    .order("updated_at", { ascending: false });
-
-  const rows = Array.isArray(data) ? (data as unknown[]) : [];
-  for (const raw of rows) {
-    const row = asRecord(raw);
-    const source = String(row["source"] ?? "") as SnapshotSource;
-    if (!source || out.has(source)) continue;
-    if (String(row["connection_key"] ?? "") !== String(sourceKeys[source] ?? "")) continue;
-    const payload = row["payload"] as SnapshotPayload;
-    out.set(source, payload);
-  }
-
-  return out;
-}
-
-async function writeSnapshot(
-  supabase: any,
-  userId: string,
-  source: SnapshotSource,
-  days: number,
-  connectionKey: string,
-  payload: SnapshotPayload,
-  ttlMinutes: number
-) {
-  const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
-  await supabase.from("stats_snapshot").upsert(
-    {
-      user_id: userId,
-      source,
-      days,
-      connection_key: connectionKey,
-      payload,
-      expires_at: expiresAt,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id,source,days,connection_key" }
-  );
-}
-
-function emptySiteSnapshot(): SiteSnapshotPayload {
-  return {
-    connected: { ga4: false, gsc: false },
-    totals: {
-      users: 0,
-      sessions: 0,
-      pageviews: 0,
-      engagementWeighted: 0,
-      durationWeighted: 0,
-      clicks: 0,
-      impressions: 0,
-    },
-    topPages: [],
-    channels: [],
-    topQueries: [],
-  };
+function _sumMap<K extends string>(items: Array<{ key: K; value: number }>) {
+  const m = new Map<K, number>();
+  for (const it of items) m.set(it.key, (m.get(it.key) || 0) + it.value);
+  return m;
 }
 
 export async function GET(request: Request) {
   try {
+    // Lazy-import server helpers inside the request scope to avoid Next.js request-scope errors.
     const { createSupabaseServer } = await import("@/lib/supabaseServer");
     const {
       getGoogleTokenFor,
@@ -218,6 +85,12 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const days = Math.min(Math.max(Number(searchParams.get("days") || 28), 7), 90);
+
+    // Optional: filter which sources to aggregate.
+    // Comma-separated keys:
+    // - site_inrcy_ga4, site_inrcy_gsc
+    // - site_web_ga4,  site_web_gsc
+    // - gmb, facebook
     const includeRaw = (searchParams.get("include") || "").trim();
     const includeSet = new Set(
       includeRaw
@@ -236,203 +109,231 @@ export async function GET(request: Request) {
     }
     const userId = authData.user.id;
 
-    const [{ data: integrationsRaw = [] }, { data: profileRow }, inrcyCfgRes, proCfgRes] = await Promise.all([
-      supabase
-        .from("integrations")
-        .select("provider,source,product,status,resource_id,access_token_enc,expires_at,updated_at,created_at,meta")
-        .eq("user_id", userId),
-      supabase.from("profiles").select("inrcy_site_ownership").eq("user_id", userId).maybeSingle(),
-      supabase.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle(),
-      supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
-    ]);
 
-    const integrationsAll = (Array.isArray(integrationsRaw) ? integrationsRaw : []).map((r) => asRecord(r));
-    const inrcySiteOwnership = String(asRecord(profileRow)["inrcy_site_ownership"] ?? "none");
-    const inrcySettings = safeJsonParse<SiteSettings>(asRecord(inrcyCfgRes.data)["settings"], {});
-    const proSettings = safeJsonParse<Record<string, unknown>>(asRecord(proCfgRes.data)["settings"], {});
-    const inrcyTrackingEnabled = Boolean(asRecord(inrcySettings)["inrcy_tracking_enabled"] ?? true);
+    // --- Load all integration rows once (avoid Supabase rate-limits) ---
+    // iNrStats calls this endpoint several times; repeated per-provider selects can hit Supabase mw:read limits.
+    // We fetch the minimal integration snapshot once and reuse it for connection flags + metrics.
+    const { data: integrationsAll = [] } = await supabase
+      .from("integrations")
+      .select("provider,source,product,status,resource_id,access_token_enc,expires_at,updated_at,created_at")
+      .eq("user_id", userId);
 
-    const inrcyGa4 = asRecord(asRecord(inrcySettings)["ga4"]);
-    const inrcyGsc = asRecord(asRecord(inrcySettings)["gsc"]);
-    const proSiteWeb = asRecord(asRecord(proSettings)["site_web"]);
-    const webGa4 = asRecord(proSiteWeb["ga4"]);
-    const webGsc = asRecord(proSiteWeb["gsc"]);
+    // Legacy table (older installs) used by some utilities (keep best-effort).
+    const { data: integrationsLegacyAll = [] } = await supabase
+      .from("integrations_statistiques")
+      .select("provider,source,product,status,resource_id,updated_at,created_at")
+      .eq("user_id", userId);
 
-    const siteConfigs: Array<{
-      key: "site_inrcy" | "site_web";
-      ga4Property?: string;
-      gscProperty?: string;
-      enabled: boolean;
-    }> = [
-      {
-        key: "site_inrcy",
-        ga4Property: String(inrcyGa4["property_id"] ?? "").trim() || undefined,
-        gscProperty: String(inrcyGsc["property"] ?? "").trim() || undefined,
-        enabled: inrcyTrackingEnabled,
-      },
-      {
-        key: "site_web",
-        ga4Property: String(webGa4["property_id"] ?? "").trim() || undefined,
-        gscProperty: String(webGsc["property"] ?? "").trim() || undefined,
-        enabled: true,
-      },
-    ];
+    function latestIntegrationAny(provider: string, source: string, product: string) {
+  const rows = (Array.isArray(integrationsAll) ? integrationsAll : []).filter((r: any) => {
+    const rr = asRecord(r);
+    return rr["provider"] === provider && rr["source"] === source && rr["product"] === product;
+  });
+  rows.sort((a: any, b: any) => {
+    const aa = new Date(String(asRecord(a)["updated_at"] ?? asRecord(a)["created_at"] ?? 0)).getTime();
+    const bb = new Date(String(asRecord(b)["updated_at"] ?? asRecord(b)["created_at"] ?? 0)).getTime();
+    return bb - aa;
+  });
+  return asRecord(rows[0]);
+}
 
-    const fbRow = getLatestIntegration(integrationsAll, "facebook", "facebook", "facebook");
-    const igRow = getLatestIntegration(integrationsAll, "instagram", "instagram", "instagram");
-    const liRow = getLatestIntegration(integrationsAll, "linkedin", "linkedin", "linkedin");
-    const gmbRow = getLatestIntegration(integrationsAll, "google", "gmb", "gmb");
 
-    const socialConnected = {
-      facebook: String(fbRow["status"] ?? "") === "connected" && !!fbRow["resource_id"] && !isExpired(fbRow["expires_at"]),
-      instagram: String(igRow["status"] ?? "") === "connected" && !!igRow["resource_id"] && !isExpired(igRow["expires_at"]),
-      linkedin: String(liRow["status"] ?? "") === "connected" && !isExpired(liRow["expires_at"]),
-      gmb: String(gmbRow["status"] ?? "") === "connected" && !!gmbRow["resource_id"] && !isExpired(gmbRow["expires_at"]),
-    };
 
-    const sourceKeys: Partial<Record<SnapshotSource, string>> = {};
+    // --- Social connection snapshot (always computed live) ---
+    // IMPORTANT: iNrStats calls the same overview endpoint with different `include=` values.
+    // If we return a cached payload generated by an older version (or without social keys),
+    // the UI can incorrectly show "Déconnecté" even when integrations are connected.
+    // So we always (re)hydrate social connection flags from `integrations` before returning.
+    async function fetchSocialStatus() {
+      const out: SocialSnapshot = {
+        gmb: { connected: false, metrics: null },
+        facebook: { connected: false },
+        instagram: { connected: false },
+        linkedin: { connected: false },
+      };
 
-    for (const s of siteConfigs) {
-      sourceKeys[s.key] = buildSourceConnectionKey({
-        source: s.key,
-        days,
-        parts: [
-          s.enabled ? 1 : 0,
-          s.ga4Property || "",
-          s.gscProperty || "",
-          includeAll || includeSet.has(`${s.key}_ga4`) || includeSet.has(`${s.key}-ga4`) ? 1 : 0,
-          includeAll || includeSet.has(`${s.key}_gsc`) || includeSet.has(`${s.key}-gsc`) ? 1 : 0,
-          ...integrationsAll
-            .filter((r) => r["provider"] === "google" && (r["source"] === s.key || r["source"] === "gmb"))
-            .map((r) => `${r["provider"]}:${r["source"]}:${r["product"]}:${r["status"]}:${r["resource_id"]}:${r["updated_at"] ?? r["created_at"]}`),
-        ],
-      });
-    }
+      // Facebook
+      try {
+        const fb0 = latestIntegrationAny("facebook", "facebook", "facebook");
+        out.facebook.connected = String(fb0["status"] ?? "") === "connected" && !!fb0["resource_id"] && !isExpired(fb0["expires_at"]);
+      } catch {}
 
- sourceKeys.facebook = buildSourceConnectionKey({
-  source: "facebook",
-  days,
-  parts: [
-    String(fbRow["status"] ?? ""),
-    String(fbRow["resource_id"] ?? ""),
-    String(fbRow["expires_at"] ?? ""),
-    String(fbRow["updated_at"] ?? fbRow["created_at"] ?? ""),
-  ],
-});
+      // Instagram (requires profile selection => resource_id)
+      try {
+        const ig0 = latestIntegrationAny("instagram", "instagram", "instagram");
+        out.instagram.connected = String(ig0["status"] ?? "") === "connected" && !!ig0["resource_id"] && !isExpired(ig0["expires_at"]);
+      } catch {}
 
-sourceKeys.instagram = buildSourceConnectionKey({
-  source: "instagram",
-  days,
-  parts: [
-    String(igRow["status"] ?? ""),
-    String(igRow["resource_id"] ?? ""),
-    String(igRow["expires_at"] ?? ""),
-    String(igRow["updated_at"] ?? igRow["created_at"] ?? ""),
-  ],
-});
+      // LinkedIn
+      try {
+        const li0 = latestIntegrationAny("linkedin", "linkedin", "linkedin");
+        out.linkedin.connected = String(li0["status"] ?? "") === "connected" && !!li0 && !isExpired(li0["expires_at"]);
+      } catch {}
 
-sourceKeys.linkedin = buildSourceConnectionKey({
-  source: "linkedin",
-  days,
-  parts: [
-    String(liRow["status"] ?? ""),
-    String(liRow["expires_at"] ?? ""),
-    String(liRow["updated_at"] ?? liRow["created_at"] ?? ""),
-    String(asRecord(liRow["meta"])["org_urn"] ?? ""),
-  ],
-});
+      // GMB
+      try {
+        const gmb0 = latestIntegrationAny("google", "gmb", "gmb");
+        out.gmb.connected = String(gmb0["status"] ?? "") === "connected" && !!gmb0["resource_id"] && !isExpired(gmb0["expires_at"]);
+      } catch {}
 
-sourceKeys.gmb = buildSourceConnectionKey({
-  source: "gmb",
-  days,
-  parts: [
-    String(gmbRow["status"] ?? ""),
-    String(gmbRow["resource_id"] ?? ""),
-    String(gmbRow["expires_at"] ?? ""),
-    String(gmbRow["updated_at"] ?? gmbRow["created_at"] ?? ""),
-  ],
-});
-
-    const snapshotMap = await readSnapshotMap(supabase, userId, days, sourceKeys);
-
-    async function buildSiteSnapshot(sourceCfg: (typeof siteConfigs)[number]): Promise<SiteSnapshotPayload> {
-      const cached = snapshotMap.get(sourceCfg.key) as SiteSnapshotPayload | undefined;
-      if (cached) return cached;
-
-      const includeGa4 = sourceCfg.enabled && (includeAll || includeSet.has(`${sourceCfg.key}_ga4`) || includeSet.has(`${sourceCfg.key}-ga4`));
-      const includeGsc = sourceCfg.enabled && (includeAll || includeSet.has(`${sourceCfg.key}_gsc`) || includeSet.has(`${sourceCfg.key}-gsc`));
-      const out = emptySiteSnapshot();
-
-      if (!includeGa4 && !includeGsc) {
-        return out;
-      }
-
-      const [ga4Token, gscToken] = await Promise.all([
-        includeGa4 && sourceCfg.ga4Property
-          ? withTimeout(`${sourceCfg.key} ga4 token`, 7000, () => getGoogleTokenFor(sourceCfg.key as StatsSourceKey, "ga4")).catch(() => null)
-          : Promise.resolve(null),
-        includeGsc && sourceCfg.gscProperty
-          ? withTimeout(`${sourceCfg.key} gsc token`, 7000, () => getGoogleTokenFor(sourceCfg.key as StatsSourceKey, "gsc")).catch(() => null)
-          : Promise.resolve(null),
-      ]);
-
-      const ga4Task = ga4Token?.accessToken && sourceCfg.ga4Property
-        ? Promise.all([
-            withTimeout(`${sourceCfg.key} ga4 overview`, 9000, () => runGa4Report(ga4Token.accessToken, sourceCfg.ga4Property!, days)),
-            withTimeout(`${sourceCfg.key} ga4 pages`, 9000, () => runGa4TopPages(ga4Token.accessToken, sourceCfg.ga4Property!, days)),
-            withTimeout(`${sourceCfg.key} ga4 channels`, 9000, () => runGa4Channels(ga4Token.accessToken, sourceCfg.ga4Property!, days)),
-          ]).catch(() => null)
-        : Promise.resolve(null);
-
-      const gscTask = gscToken?.accessToken && sourceCfg.gscProperty
-        ? withTimeout(`${sourceCfg.key} gsc queries`, 10000, () => runGscQuery(gscToken.accessToken, sourceCfg.gscProperty!, days)).catch(() => null)
-        : Promise.resolve(null);
-
-      const [ga4Data, gscData] = await Promise.all([ga4Task, gscTask]);
-
-      if (ga4Data) {
-        const [overview, pages, channels] = ga4Data;
-        out.connected.ga4 = true;
-        out.totals.users += Number(overview.users || 0);
-        out.totals.sessions += Number(overview.sessions || 0);
-        out.totals.pageviews += Number(overview.pageviews || 0);
-        out.totals.engagementWeighted += Number(overview.engagementRate || 0) * Number(overview.sessions || 0);
-        out.totals.durationWeighted += Number(overview.avgSessionDuration || 0) * Number(overview.sessions || 0);
-        out.topPages = Array.isArray(pages)
-          ? pages.map((p: any) => ({ path: String(p.path || ""), views: Number(p.views || 0) }))
-          : [];
-        out.channels = Array.isArray(channels)
-          ? channels.map((c: any) => ({ channel: String(c.channel || ""), sessions: Number(c.sessions || 0) }))
-          : [];
-      }
-
-      if (gscData) {
-        out.connected.gsc = true;
-        const rows = Array.isArray(asRecord(gscData)["rows"]) ? (asRecord(gscData)["rows"] as unknown[]) : [];
-        for (const rawRow of rows) {
-          const row = asRecord(rawRow);
-          out.totals.clicks += Number(row["clicks"] || 0);
-          out.totals.impressions += Number(row["impressions"] || 0);
-          out.topQueries.push({
-            query: String(row["query"] || ""),
-            clicks: Number(row["clicks"] || 0),
-            impressions: Number(row["impressions"] || 0),
-            positionSum: Number(row["position"] || 0),
-            rows: 1,
-          });
-        }
-      }
-
-      await writeSnapshot(supabase, userId, sourceCfg.key, days, String(sourceKeys[sourceCfg.key]), out, 15).catch(() => {});
       return out;
     }
 
-    const [siteInrcySnap, siteWebSnap] = await Promise.all(siteConfigs.map((cfg) => buildSiteSnapshot(cfg)));
-    const siteSnapshots: Record<"site_inrcy" | "site_web", SiteSnapshotPayload> = {
-      site_inrcy: siteInrcySnap,
-      site_web: siteWebSnap,
-    };
+// Ownership du site iNrCy : utile pour l'UI (rented => connexion globale "Suivi")
+const { data: profileRow } = await supabase
+  .from("profiles")
+  .select("inrcy_site_ownership")
+  .eq("user_id", userId)
+  .maybeSingle();
 
+const inrcySiteOwnership = String(asRecord(profileRow)["inrcy_site_ownership"] ?? "none");
+
+    
+// Load settings from the new schema:
+// - site_inrcy -> inrcy_site_configs.settings
+// - site_web -> pro_tools_configs.settings.site_web
+const [inrcyCfgRes, proCfgRes] = await Promise.all([
+  supabase.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle(),
+  supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
+]);
+
+// NOTE: SiteSettings has only optional fields, so an empty object is a valid fallback.
+// Using `null` breaks TS in production builds (null not assignable to SiteSettings).
+const inrcySettings = safeJsonParse<SiteSettings>(asRecord(inrcyCfgRes.data)["settings"], {});
+const proSettings = safeJsonParse<Record<string, unknown>>(asRecord(proCfgRes.data)["settings"], {});
+
+// Flag: en mode rented, on peut couper uniquement la couche iNrCy (sans débrancher GA4/GSC)
+const inrcyTrackingEnabled = Boolean(asRecord(inrcySettings)["inrcy_tracking_enabled"] ?? true);
+
+// ---- Cache (anti-quota Google) ----
+// ⚠️ Correctif critique : la clé de cache DOIT dépendre de l'état des connexions.
+// Sinon, après une déconnexion, on peut resservir un ancien payload (ex: GMB +90) jusqu'à expiration.
+//
+// On fabrique donc un "snapshot" léger des statuts, en lisant :
+// - integrations (nouveau)
+// - integrations_statistiques (legacy) si présent
+async function buildConnectionsKey() {
+  const keyParts: string[] = [];
+
+  // 1) new system snapshot (integrations table)
+  try {
+    const rows = Array.isArray(integrationsAll) ? (integrationsAll as unknown[]) : [];
+    for (const r of rows) {
+      const rr = asRecord(r);
+      const provider = String(rr["provider"] ?? "");
+      const source = String(rr["source"] ?? "");
+      const product = String(rr["product"] ?? "");
+      const status = String(rr["status"] ?? "");
+      const resource = String(rr["resource_id"] ?? "");
+      const updated = String(rr["updated_at"] ?? rr["created_at"] ?? "");
+      if (!provider || !source || !product) continue;
+      // Include BOTH connected and disconnected rows so a disconnect changes the cache key.
+      keyParts.push(`${provider}:${source}:${product}:${status}:${resource}:${updated}`);
+    }
+  } catch {}
+
+  // 2) legacy snapshot (integrations_statistiques)
+  try {
+    const rows = Array.isArray(integrationsLegacyAll) ? (integrationsLegacyAll as unknown[]) : [];
+    for (const r of rows) {
+      const rr = asRecord(r);
+      const provider = String(rr["provider"] ?? "");
+      const source = String(rr["source"] ?? "");
+      const product = String(rr["product"] ?? "");
+      const status = String(rr["status"] ?? "");
+      const resource = String(rr["resource_id"] ?? "");
+      const updated = String(rr["updated_at"] ?? rr["created_at"] ?? "");
+      if (!provider || !source || !product) continue;
+      keyParts.push(`legacy:${provider}:${source}:${product}:${status}:${resource}:${updated}`);
+    }
+  } catch {}
+
+  // Tracking toggle impacts GA4/GSC visibility (avoid serving stale cached payload)
+  keyParts.push(`inrcyTrackingEnabled:${inrcyTrackingEnabled ? "1" : "0"}`);
+
+  return keyParts.join("|") || "none";
+}
+
+const connectionsKey = await buildConnectionsKey();
+const rangeKey = `days=${days}|include=${includeRaw || "all"}|inrcy=${inrcyTrackingEnabled ? 1 : 0}|conn=${connectionsKey}`;
+
+// Lecture cache (best-effort)
+try {
+  const nowIso = new Date().toISOString();
+  const { data: cacheHit } = await supabase
+    .from("stats_cache")
+    .select("payload, expires_at")
+    .eq("user_id", userId)
+    .eq("source", "overview")
+    .eq("range_key", rangeKey)
+    .gt("expires_at", nowIso)
+    .order("expires_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (asRecord(cacheHit)["payload"]) {
+      const payload = asRecord(asRecord(cacheHit)["payload"]);
+      // Rehydrate social connection flags to avoid stale/missing keys in cached payloads.
+      try {
+        const social = await fetchSocialStatus();
+        payload["sources"] = { ...asRecord(payload["sources"]), ...social };
+      } catch {}
+      return NextResponse.json(payload);
+  }
+} catch {
+  // Table stats_cache non présente ou non accessible : on ignore.
+}
+
+// Cache legacy (best-effort)
+try {
+  const { data: legacyHit } = await supabase
+    .from("cache_statistiques")
+    .select("charge_utile, cree_a")
+    .eq("id_utilisateur", userId)
+    .eq("source", "apercu")
+    .eq("plage_cle", rangeKey)
+    .order("cree_a", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (asRecord(legacyHit)["charge_utile"]) {
+    const payload = asRecord(asRecord(legacyHit)["charge_utile"]);
+    // Rehydrate social connection flags to avoid stale/missing keys in legacy cached payloads.
+    try {
+      const social = await fetchSocialStatus();
+      payload["sources"] = { ...asRecord(payload["sources"]), ...social };
+    } catch {}
+    return NextResponse.json(payload);
+  }
+} catch {
+  // ignore
+}
+
+// --- GA4/GSC properties ---
+// iNrCy site settings live in `inrcy_site_configs.settings` (root ga4/gsc)
+const inrcyGa4 = asRecord(asRecord(inrcySettings)["ga4"]);
+const inrcyGsc = asRecord(asRecord(inrcySettings)["gsc"]);
+
+// Pro "site web" settings live in `pro_tools_configs.settings.site_web`
+const proSiteWeb = asRecord(asRecord(proSettings)["site_web"]);
+const webGa4 = asRecord(proSiteWeb["ga4"]);
+const webGsc = asRecord(proSiteWeb["gsc"]);
+
+const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: string }> = [
+  {
+    key: "site_inrcy",
+    ga4Property: String(inrcyGa4["property_id"] ?? "").trim() || undefined,
+    gscProperty: String(inrcyGsc["property"] ?? "").trim() || undefined,
+  },
+  {
+    key: "site_web",
+    ga4Property: String(webGa4["property_id"] ?? "").trim() || undefined,
+    gscProperty: String(webGsc["property"] ?? "").trim() || undefined,
+  },
+];
+
+
+    // Fetch each source (SAFE PERF): run site sources concurrently, and run GA4 calls in parallel.
+    const perSource: Record<string, { ga4: unknown | null; gsc: unknown | null; connected: SiteConn }> = {};
     const pageAgg = new Map<string, number>();
     const channelAgg = new Map<string, number>();
     const queryAgg = new Map<string, { clicks: number; impressions: number; positionSum: number; rows: number }>();
@@ -440,29 +341,133 @@ sourceKeys.gmb = buildSourceConnectionKey({
     let totalUsers = 0;
     let totalSessions = 0;
     let totalPageviews = 0;
-    let engagementWeighted = 0;
-    let durationWeighted = 0;
+
+    let engagementWeighted = 0; // engagementRate * sessions
+    let durationWeighted = 0; // avgSessionDuration * sessions
+
     let totalClicks = 0;
     let totalImpressions = 0;
 
-    for (const snap of Object.values(siteSnapshots)) {
-      totalUsers += snap.totals.users;
-      totalSessions += snap.totals.sessions;
-      totalPageviews += snap.totals.pageviews;
-      engagementWeighted += snap.totals.engagementWeighted;
-      durationWeighted += snap.totals.durationWeighted;
-      totalClicks += snap.totals.clicks;
-      totalImpressions += snap.totals.impressions;
+    const siteResults = await Promise.all(
+      sources.map(async (s) => {
+        const entry: { ga4: unknown | null; gsc: unknown | null; connected: SiteConn } = {
+          ga4: null,
+          gsc: null,
+          connected: { ga4: false, gsc: false },
+        };
 
-      for (const p of snap.topPages) pageAgg.set(p.path, (pageAgg.get(p.path) || 0) + p.views);
-      for (const c of snap.channels) channelAgg.set(c.channel, (channelAgg.get(c.channel) || 0) + c.sessions);
-      for (const q of snap.topQueries) {
-        const cur = queryAgg.get(q.query) || { clicks: 0, impressions: 0, positionSum: 0, rows: 0 };
-        cur.clicks += q.clicks;
-        cur.impressions += q.impressions;
-        cur.positionSum += q.positionSum;
-        cur.rows += q.rows;
-        queryAgg.set(q.query, cur);
+        const includeGa4 = includeAll || includeSet.has(`${s.key}_ga4`) || includeSet.has(`${s.key}-ga4`);
+        const includeGsc = includeAll || includeSet.has(`${s.key}_gsc`) || includeSet.has(`${s.key}-gsc`);
+
+        const localPages = new Map<string, number>();
+        const localChannels = new Map<string, number>();
+        const localQueries = new Map<string, { clicks: number; impressions: number; positionSum: number; rows: number }>();
+
+        let users = 0;
+        let sessions = 0;
+        let pageviews = 0;
+        let engagementW = 0;
+        let durationW = 0;
+        let clicksSum = 0;
+        let impressionsSum = 0;
+
+        // GA4
+        if (includeGa4 && s.ga4Property) {
+          const token = await getGoogleTokenFor(s.key, "ga4");
+          if (token?.accessToken) {
+            entry.connected.ga4 = true;
+
+            // ✅ parallel GA4 calls (was sequential)
+            const [overview, pages, channels] = await Promise.all([
+              runGa4Report(token.accessToken, s.ga4Property, days),
+              runGa4TopPages(token.accessToken, s.ga4Property, days),
+              runGa4Channels(token.accessToken, s.ga4Property, days),
+            ]);
+
+            entry.ga4 = { propertyId: s.ga4Property, overview, pages, channels };
+
+            users += overview.users;
+            sessions += overview.sessions;
+            pageviews += overview.pageviews;
+            engagementW += overview.engagementRate * overview.sessions;
+            durationW += overview.avgSessionDuration * overview.sessions;
+
+            for (const p of pages) localPages.set(p.path, (localPages.get(p.path) || 0) + p.views);
+            for (const c of channels) localChannels.set(c.channel, (localChannels.get(c.channel) || 0) + c.sessions);
+          }
+        }
+
+        // GSC
+        if (includeGsc && s.gscProperty) {
+          const token = await getGoogleTokenFor(s.key, "gsc");
+          if (token?.accessToken) {
+            entry.connected.gsc = true;
+            const q = await runGscQuery(token.accessToken, s.gscProperty, days);
+            entry.gsc = { property: s.gscProperty, queries: q.rows };
+
+            const rows = Array.isArray(asRecord(q)["rows"]) ? (asRecord(q)["rows"] as unknown[]) : [];
+            for (const r of rows) {
+              const rr = asRecord(r);
+              const clicks = Number(rr["clicks"] ?? 0) || 0;
+              const impressions = Number(rr["impressions"] ?? 0) || 0;
+              const query = String(rr["query"] ?? "");
+              const position = Number(rr["position"] ?? 0) || 0;
+
+              clicksSum += clicks;
+              impressionsSum += impressions;
+
+              const cur = localQueries.get(query) || { clicks: 0, impressions: 0, positionSum: 0, rows: 0 };
+              cur.clicks += clicks;
+              cur.impressions += impressions;
+              cur.positionSum += position;
+              cur.rows += 1;
+              localQueries.set(query, cur);
+            }
+          }
+        }
+
+        return {
+          key: s.key,
+          entry,
+          agg: {
+            users,
+            sessions,
+            pageviews,
+            engagementW,
+            durationW,
+            clicksSum,
+            impressionsSum,
+            localPages,
+            localChannels,
+            localQueries,
+          },
+        };
+      })
+    );
+
+    for (const r of siteResults) {
+      perSource[r.key] = r.entry;
+      totalUsers += r.agg.users;
+      totalSessions += r.agg.sessions;
+      totalPageviews += r.agg.pageviews;
+      engagementWeighted += r.agg.engagementW;
+      durationWeighted += r.agg.durationW;
+      totalClicks += r.agg.clicksSum;
+      totalImpressions += r.agg.impressionsSum;
+
+      for (const [path, views] of r.agg.localPages.entries()) {
+        pageAgg.set(path, (pageAgg.get(path) || 0) + views);
+      }
+      for (const [channel, sessions] of r.agg.localChannels.entries()) {
+        channelAgg.set(channel, (channelAgg.get(channel) || 0) + sessions);
+      }
+      for (const [query, v] of r.agg.localQueries.entries()) {
+        const cur = queryAgg.get(query) || { clicks: 0, impressions: 0, positionSum: 0, rows: 0 };
+        cur.clicks += v.clicks;
+        cur.impressions += v.impressions;
+        cur.positionSum += v.positionSum;
+        cur.rows += v.rows;
+        queryAgg.set(query, cur);
       }
     }
 
@@ -491,114 +496,147 @@ sourceKeys.gmb = buildSourceConnectionKey({
       .sort((a, b) => b.clicks - a.clicks)
       .slice(0, 8);
 
-    const socialSources: Array<{
-      key: "facebook" | "instagram" | "linkedin" | "gmb";
-      connected: boolean;
-      include: boolean;
-      row: IntegrationRow;
-      ttlMinutes: number;
-      fetcher: () => Promise<SocialSnapshotPayload>;
-    }> = [
-      {
-        key: "facebook",
-        connected: socialConnected.facebook,
-        include: includeAll || includeSet.has("facebook"),
-        row: fbRow,
-        ttlMinutes: 15,
-        fetcher: async () => {
-          const token = tryDecryptToken(String(fbRow["access_token_enc"] ?? "")) || "";
-          const end = new Date();
-          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-          const metrics = await withTimeout("facebook metrics", 7000, () =>
-            fbFetchDailyInsights(token, String(fbRow["resource_id"] || ""), start, end)
-          );
-          return { metrics };
-        },
-      },
-      {
-        key: "instagram",
-        connected: socialConnected.instagram,
-        include: includeAll || includeSet.has("instagram"),
-        row: igRow,
-        ttlMinutes: 15,
-        fetcher: async () => {
-          const token = tryDecryptToken(String(igRow["access_token_enc"] ?? "")) || "";
-          const end = new Date();
-          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-          const metrics = await withTimeout("instagram metrics", 7000, () =>
-            igFetchDailyInsights(token, String(igRow["resource_id"] || ""), start, end)
-          );
-          return { metrics };
-        },
-      },
-      {
-        key: "linkedin",
-        connected: socialConnected.linkedin,
-        include: includeAll || includeSet.has("linkedin"),
-        row: liRow,
-        ttlMinutes: 15,
-        fetcher: async () => {
-          const token = tryDecryptToken(String(liRow["access_token_enc"] ?? "")) || "";
-          const meta = asRecord(liRow["meta"]);
-          const orgUrn = String(meta["org_urn"] ?? "") || (await withTimeout("linkedin org resolve", 5000, () => liResolveFirstAdminOrgUrn(token)));
-          const end = new Date();
-          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-          const metrics = orgUrn
-            ? await withTimeout("linkedin metrics", 7000, () => liFetchOrgShareStats(token, orgUrn, start, end))
-            : { totals: {}, raw: null, range: { since: start.toISOString(), until: end.toISOString() } };
-          return { metrics };
-        },
-      },
-      {
-        key: "gmb",
-        connected: socialConnected.gmb,
-        include: includeAll || includeSet.has("gmb"),
-        row: gmbRow,
-        ttlMinutes: 20,
-        fetcher: async () => {
-          const tok = await withTimeout("gmb token", 7000, () => getGoogleTokenForAnyGoogle("gmb", "gmb"));
-          const accessToken = tok?.accessToken || "";
-          const end = new Date();
-          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-          const metrics = await withTimeout("gmb metrics", 9000, () =>
-            gmbFetchDailyMetricsNormalized(accessToken, String(gmbRow["resource_id"] || ""), start, end)
-          );
-          return { metrics };
-        },
-      },
-    ];
-
-    const socialMetrics: Record<"facebook" | "instagram" | "linkedin" | "gmb", unknown | null> = {
-      facebook: null,
-      instagram: null,
-      linkedin: null,
-      gmb: null,
+    // --- Connections + channel metrics ---
+    const sourcesStatus: SourcesStatus = {
+      site_inrcy: { connected: { ga4: false, gsc: false } },
+      site_web: { connected: { ga4: false, gsc: false } },
+      gmb: { connected: false, metrics: null },
+      facebook: { connected: false, metrics: null },
+      instagram: { connected: false, metrics: null },
+      linkedin: { connected: false, metrics: null },
     };
 
-    await Promise.all(
-      socialSources.map(async (src) => {
-        if (!src.include || !src.connected) {
-          socialMetrics[src.key] = null;
-          return;
-        }
+    // copy site connections from perSource (built above)
+    sourcesStatus.site_inrcy.connected = (asRecord(asRecord(perSource)["site_inrcy"])["connected"] as SiteConn) || { ga4: false, gsc: false };
+    sourcesStatus.site_web.connected = (asRecord(asRecord(perSource)["site_web"])["connected"] as SiteConn) || { ga4: false, gsc: false };
 
-        const cached = snapshotMap.get(src.key) as SocialSnapshotPayload | undefined;
-        if (cached) {
-          socialMetrics[src.key] = cached.metrics;
-          return;
-        }
+        // Facebook: connected if a page has been selected (resource_id)
+    try {
+      const fbRow = latestIntegrationAny("facebook", "facebook", "facebook");
+      const expiredFb = isExpired(fbRow?.["expires_at"]); sourcesStatus.facebook.connected = !!fbRow && !expiredFb && String(fbRow?.["status"]) === "connected" && !!fbRow?.["resource_id"];
 
+      // Real Facebook Page metrics (only if included)
+      const includeFb = includeAll || includeSet.has("facebook");
+      if (!includeFb) {
+        sourcesStatus.facebook.metrics = null;
+      } else if (fbRow["resource_id"] && fbRow["access_token_enc"] && !isExpired(fbRow["expires_at"])) {
         try {
-          const payload = await src.fetcher();
-          socialMetrics[src.key] = payload.metrics;
-          await writeSnapshot(supabase, userId, src.key, days, String(sourceKeys[src.key]), payload, src.ttlMinutes).catch(() => {});
+          const end = new Date();
+          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          const token = tryDecryptToken(String(fbRow["access_token_enc"]));
+          sourcesStatus.facebook.metrics = await fbFetchDailyInsights(
+            token || "",
+            String(fbRow["resource_id"]),
+            start,
+            end
+          );
         } catch (e) {
-          socialMetrics[src.key] = { error: e instanceof Error ? e.message : String(e) };
+         sourcesStatus.facebook.metrics = { error: e instanceof Error ? e.message : String(e) };
         }
-      })
-    );
+      } else {
+        sourcesStatus.facebook.metrics = null;
+      }
+    } catch {}
+    
+    // Instagram: Meta family. Connected only once a profile is selected (resource_id).
+    try {
+      const igRow = latestIntegrationAny("instagram", "instagram", "instagram");
+      sourcesStatus.instagram.connected = !!igRow["resource_id"] && !isExpired(igRow["expires_at"]);
 
-    const payload: OverviewPayload = {
+      const includeIg = includeAll || includeSet.has("instagram");
+      if (!includeIg) {
+        sourcesStatus.instagram.metrics = null;
+      } else if (igRow["resource_id"] && igRow["access_token_enc"] && !isExpired(igRow["expires_at"])) {
+        try {
+          const end = new Date();
+          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          const token = tryDecryptToken(String(igRow["access_token_enc"]));
+          sourcesStatus.instagram.metrics = await igFetchDailyInsights(token || "", String(igRow["resource_id"]), start, end);
+        } catch (e) {
+          sourcesStatus.instagram.metrics = { error: e instanceof Error ? e.message : String(e) };
+        }
+      } else {
+        sourcesStatus.instagram.metrics = null;
+      }
+    } catch {}
+
+// LinkedIn: connected if an OAuth row exists.
+    try {
+      const liRow = latestIntegrationAny("linkedin", "linkedin", "linkedin");
+      sourcesStatus.linkedin.connected = !!liRow && !isExpired(liRow["expires_at"]);
+
+      const includeLi = includeAll || includeSet.has("linkedin");
+      if (!includeLi) {
+        sourcesStatus.linkedin.metrics = null;
+      } else if (liRow["access_token_enc"] && !isExpired(liRow["expires_at"])) {
+        try {
+          const token = tryDecryptToken(String(liRow["access_token_enc"]));
+          // Resolve first admin org if needed
+          const orgUrn = String(asRecord(liRow["meta"])["org_urn"] || "");
+          const resolvedOrgUrn = orgUrn || (await liResolveFirstAdminOrgUrn(token || ""));
+          const end = new Date();
+          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          sourcesStatus.linkedin.metrics = await liFetchOrgShareStats(token || "", resolvedOrgUrn, start, end);
+        } catch (e) {
+          sourcesStatus.linkedin.metrics = { error: e instanceof Error ? e.message : String(e) };
+        }
+      } else {
+        sourcesStatus.linkedin.metrics = null;
+      }
+    } catch {}
+
+// GMB: the UI needs a stable "connected" flag like GA4/GSC.
+    // We consider it connected if an OAuth row exists and a location (resource_id) has been selected.
+    // (We still *try* to fetch metrics, but a missing API enablement should not flip the badge back to "off".)
+    try {
+      const gmbRow = latestIntegrationAny("google", "gmb", "gmb");
+
+      // Legacy override (older table)
+      let legacyResource = "";
+      try {
+        const legacyRows = Array.isArray(integrationsLegacyAll) ? (integrationsLegacyAll as unknown[]) : [];
+        const legacy = legacyRows
+          .map((r) => asRecord(r))
+          .filter((r) => r["provider"] === "google" && r["source"] === "gmb" && r["product"] === "gmb" && r["status"] === "connected")
+          .sort((a, b) => {
+            const aa = new Date(String(a["updated_at"] ?? a["created_at"] ?? 0)).getTime();
+            const bb = new Date(String(b["updated_at"] ?? b["created_at"] ?? 0)).getTime();
+            return bb - aa;
+          })[0];
+        legacyResource = String(asRecord(legacy)["resource_id"] || "");
+      } catch {}
+
+      const resourceId = String(gmbRow["resource_id"] || legacyResource || "");
+      sourcesStatus.gmb.connected = !!resourceId && !isExpired(gmbRow["expires_at"]);
+
+      const includeGmb = includeAll || includeSet.has("gmb");
+      if (!includeGmb) {
+        sourcesStatus.gmb.metrics = null;
+      } else if (!sourcesStatus.gmb.connected) {
+        sourcesStatus.gmb.metrics = null;
+      } else {
+        const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb");
+        const accessToken = tok?.accessToken;
+
+        // IMPORTANT: GMB metrics are tied to a *location* (establishment page), not the Google account.
+        // We only fetch metrics once a location has been explicitly selected and saved.
+        const loc = resourceId;
+
+        if (accessToken && loc) {
+          const end = new Date();
+          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          try {
+            sourcesStatus.gmb.metrics = await gmbFetchDailyMetricsNormalized(accessToken, loc, start, end);
+          } catch (e) {
+            sourcesStatus.gmb.metrics = { error: (e instanceof Error ? e.message : String(e)) || "performance fetch failed", location: loc };
+          }
+        } else {
+          sourcesStatus.gmb.metrics = null;
+        }
+      }
+    } catch {}
+
+    const payload = {
       days,
       selected: includeAll ? null : Array.from(includeSet),
       inrcySiteOwnership,
@@ -615,22 +653,36 @@ sourceKeys.gmb = buildSourceConnectionKey({
       topPages,
       channels,
       topQueries,
-      sources: {
-        site_inrcy: { connected: siteSnapshots.site_inrcy.connected },
-        site_web: { connected: siteSnapshots.site_web.connected },
-        facebook: { connected: socialConnected.facebook, metrics: socialMetrics.facebook },
-        instagram: { connected: socialConnected.instagram, metrics: socialMetrics.instagram },
-        linkedin: { connected: socialConnected.linkedin, metrics: socialMetrics.linkedin },
-        gmb: { connected: socialConnected.gmb, metrics: socialMetrics.gmb },
-      },
+      sources: sourcesStatus,
       note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook, Instagram, LinkedIn.",
     };
 
+    // cache write (best-effort)
+    try {
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      await supabase.from("stats_cache").insert({
+        user_id: userId,
+        source: "overview",
+        range_key: rangeKey,
+        payload,
+        expires_at: expiresAt,
+      });
+    } catch {}
+
+    // cache legacy write (best-effort)
+    try {
+      await supabase.from("cache_statistiques").insert({
+        id_utilisateur: userId,
+        source: "apercu",
+        plage_cle: rangeKey,
+        charge_utile: payload,
+      });
+    } catch {}
+
     return NextResponse.json(payload);
+  // NOTE: Turbopack/SWC can be picky about type annotations in catch clauses.
+  // We keep the variable untyped (it is effectively `unknown`), then narrow.
   } catch (e) {
-    return NextResponse.json(
-      { error: (e instanceof Error ? e.message : String(e)) || "Unknown error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
   }
 }
