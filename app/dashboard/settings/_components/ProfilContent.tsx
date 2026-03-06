@@ -350,7 +350,7 @@ export default function ProfilContent({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             actionKey: "profile_complete",
-            amount: 20,
+            amount: 100,
             sourceId: "once",
             label: "Profil complété",
             meta: { origin: "profile" },

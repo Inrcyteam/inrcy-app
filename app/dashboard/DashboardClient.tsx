@@ -439,8 +439,8 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
     () =>
       computeInertiaSnapshot(
         {
-          site_inrcy: siteInrcyOwnership !== "none",
-          site_web: Boolean(siteWebUrl?.trim()),
+          site_inrcy: Boolean(siteInrcyOwnership !== "none" && siteInrcyGa4Connected && siteInrcyGscConnected),
+          site_web: Boolean(siteWebUrl?.trim() && siteWebGa4Connected && siteWebGscConnected),
           // IMPORTANT: on ne compte les réseaux sociaux que si le compte est réellement connecté (OAuth),
           // pas seulement si un lien est renseigné.
           // Google Business : compte + fiche (location) configurée.
@@ -455,7 +455,11 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
       ),
     [
       siteInrcyOwnership,
+      siteInrcyGa4Connected,
+      siteInrcyGscConnected,
       siteWebUrl,
+      siteWebGa4Connected,
+      siteWebGscConnected,
       gmbAccountConnected,
       gmbConfigured,
       facebookAccountConnected,
@@ -552,7 +556,7 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
 
     (async () => {
       // On laisse la RPC gérer l'idempotence via sourceId
-      await award("account_open", 10, "once", "Ouverture du compte");
+      await award("account_open", 50, "once", "Ouverture du compte");
       await award("monthly_seniority", 50, `month-${monthId()}`, "Ancienneté");
       await refreshUiBalance();
       if (cancelled) return;
@@ -5047,9 +5051,9 @@ const checkActivity = useCallback(async () => {
             </thead>
             <tbody>
               {[
-                { a: "Ouverture du compte", g: "+10 UI", f: "1 fois" },
-                { a: "Compléter Mon profil", g: "+20 UI", f: "1 fois" },
-                { a: "Compléter Mon activité", g: "+20 UI", f: "1 fois" },
+                { a: "Ouverture du compte", g: "+50 UI", f: "1 fois" },
+                { a: "Compléter Mon profil", g: "+100 UI", f: "1 fois" },
+                { a: "Compléter Mon activité", g: "+100 UI", f: "1 fois" },
                 { a: "Créer une actu", g: "+10 UI", f: "1 fois / semaine" },
                 { a: "Utiliser Booster / Fidéliser", g: "+10 UI", f: "1 fois / semaine" },
                 { a: "Ancienneté", g: "+50 UI", f: "chaque mois" },

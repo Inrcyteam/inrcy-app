@@ -114,9 +114,9 @@ export const GPS_SECTIONS: GpsSection[] = [
           `<table class="uiTable">
             <thead><tr><th>Action</th><th>Gain</th><th>Fréquence</th></tr></thead>
             <tbody>
-              <tr><td>Ouverture du compte</td><td><strong>+10 UI</strong></td><td>1 fois</td></tr>
-              <tr><td>Compléter Mon profil</td><td><strong>+20 UI</strong></td><td>1 fois</td></tr>
-              <tr><td>Compléter Mon activité</td><td><strong>+20 UI</strong></td><td>1 fois</td></tr>
+              <tr><td>Ouverture du compte</td><td><strong>+50 UI</strong></td><td>1 fois</td></tr>
+              <tr><td>Compléter Mon profil</td><td><strong>+100 UI</strong></td><td>1 fois</td></tr>
+              <tr><td>Compléter Mon activité</td><td><strong>+100 UI</strong></td><td>1 fois</td></tr>
               <tr><td>Créer une actu</td><td><strong>+10 UI</strong></td><td>1 fois / semaine</td></tr>
               <tr><td>Utiliser Booster / Fidéliser</td><td><strong>+10 UI</strong></td><td>1 fois / semaine</td></tr>
               <tr><td>Ancienneté</td><td><strong>+50 UI</strong></td><td>chaque mois</td></tr>

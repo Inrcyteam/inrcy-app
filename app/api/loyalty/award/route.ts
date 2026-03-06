@@ -69,7 +69,7 @@ async function getTurboMultiplier(supabase: TurboSupabaseLike, userId: string) {
     supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
     supabase
       .from("integrations")
-      .select("provider,status,resource_id")
+      .select("provider,status,resource_id,source,product")
       .eq("user_id", userId)
       .in("provider", ["google", "facebook", "instagram", "linkedin"]),
   ]);
@@ -84,11 +84,17 @@ async function getTurboMultiplier(supabase: TurboSupabaseLike, userId: string) {
   const ownership = String(profile.inrcy_site_ownership ?? "none");
   const inrcyUrl = String(profile.inrcy_site_url ?? inrcyCfg.site_url ?? "").trim();
 
-  const rows = (integRes.data ?? []) as Array<{ provider: string; status: string; resource_id: string | null }>;
+  const rows = (integRes.data ?? []) as Array<{ provider: string; status: string; resource_id: string | null; source?: string | null; product?: string | null }>;
+
+  const hasGoogleStats = (source: "site_inrcy" | "site_web") => {
+    const hasGa4 = rows.some((r) => r.provider === "google" && r.status === "connected" && r.source === source && r.product === "ga4");
+    const hasGsc = rows.some((r) => r.provider === "google" && r.status === "connected" && r.source === source && r.product === "gsc");
+    return hasGa4 && hasGsc;
+  };
 
   const channels = {
-    site_inrcy: ownership !== "none" && !!inrcyUrl,
-    site_web: !!siteWebUrl,
+    site_inrcy: ownership !== "none" && !!inrcyUrl && hasGoogleStats("site_inrcy"),
+    site_web: !!siteWebUrl && hasGoogleStats("site_web"),
     gmb: rows.some((r) => r.provider === "google" && r.status === "connected" && !!r.resource_id),
     facebook: rows.some((r) => r.provider === "facebook" && r.status === "connected" && !!r.resource_id),
     instagram: rows.some((r) => r.provider === "instagram" && r.status === "connected" && !!r.resource_id),

@@ -77,6 +77,11 @@ export default function ActivityContent({ mode = "page" }: Props) {
     lineHeight: 1.35,
   };
 
+  const selectOption: React.CSSProperties = {
+    color: "#0b1020",
+    background: "#ffffff",
+  };
+
   const primaryBtn: React.CSSProperties = {
     border: "1px solid rgba(255,255,255,0.18)",
     background:
@@ -198,7 +203,7 @@ export default function ActivityContent({ mode = "page" }: Props) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               actionKey: "activity_complete",
-              amount: 20,
+              amount: 100,
               sourceId: "once",
               label: "Activité complétée",
               meta: { origin: "activity" },
@@ -303,10 +308,10 @@ export default function ActivityContent({ mode = "page" }: Props) {
               <label style={label}>
                 <span style={labelTitle}>Ton</span>
                 <select style={input} value={form.tone} onChange={(e) => set("tone", e.target.value as BusinessActivityForm["tone"])}>
-                  <option value="pro">Professionnel</option>
-                  <option value="direct">Direct</option>
-                  <option value="friendly">Amical</option>
-                  <option value="premium">Premium</option>
+                  <option value="pro" style={selectOption}>Professionnel</option>
+                  <option value="direct" style={selectOption}>Direct</option>
+                  <option value="friendly" style={selectOption}>Amical</option>
+                  <option value="premium" style={selectOption}>Premium</option>
                 </select>
               </label>
 
@@ -317,9 +322,9 @@ export default function ActivityContent({ mode = "page" }: Props) {
                   value={form.preferredCta}
                   onChange={(e) => set("preferredCta", e.target.value as BusinessActivityForm["preferredCta"])}
                 >
-                  <option value="devis">Demander un devis</option>
-                  <option value="appeler">Appeler</option>
-                  <option value="message">Envoyer un message</option>
+                  <option value="devis" style={selectOption}>Demander un devis</option>
+                  <option value="appeler" style={selectOption}>Appeler</option>
+                  <option value="message" style={selectOption}>Envoyer un message</option>
                 </select>
               </label>
             </div>

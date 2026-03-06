@@ -201,6 +201,7 @@ const { data: profileRow } = await supabase
   .maybeSingle();
 
 const inrcySiteOwnership = String(asRecord(profileRow)["inrcy_site_ownership"] ?? "none");
+const hasInrcySite = inrcySiteOwnership !== "none";
 
     
 // Load settings from the new schema:
@@ -335,8 +336,11 @@ const webGsc = asRecord(proSiteWeb["gsc"]);
 const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: string }> = [
   {
     key: "site_inrcy",
-    ga4Property: String(inrcyGa4["property_id"] ?? "").trim() || undefined,
-    gscProperty: String(inrcyGsc["property"] ?? "").trim() || undefined,
+    // CRITICAL BUSINESS RULE:
+    // when profiles.inrcy_site_ownership = "none", the iNrCy site must be treated as non-existent.
+    // We therefore ignore any stale GA4/GSC configuration still present in inrcy_site_configs.
+    ga4Property: hasInrcySite ? (String(inrcyGa4["property_id"] ?? "").trim() || undefined) : undefined,
+    gscProperty: hasInrcySite ? (String(inrcyGsc["property"] ?? "").trim() || undefined) : undefined,
   },
   {
     key: "site_web",
@@ -530,7 +534,9 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     };
 
     // copy site connections from perSource (built above)
-    sourcesStatus.site_inrcy.connected = (asRecord(asRecord(perSource)["site_inrcy"])["connected"] as SiteConn) || { ga4: false, gsc: false };
+    sourcesStatus.site_inrcy.connected = hasInrcySite
+      ? ((asRecord(asRecord(perSource)["site_inrcy"])["connected"] as SiteConn) || { ga4: false, gsc: false })
+      : { ga4: false, gsc: false };
     sourcesStatus.site_web.connected = (asRecord(asRecord(perSource)["site_web"])["connected"] as SiteConn) || { ga4: false, gsc: false };
 
         // Facebook: connected if a page has been selected (resource_id)

@@ -492,6 +492,16 @@ if (cubeKey === "site_inrcy") {
   const ownership = ov?.inrcySiteOwnership;
   const c = ov?.sources?.site_inrcy?.connected;
 
+  if (ownership === "none") {
+    return {
+      key: "connect",
+      title: "Configurer",
+      detail: "Aucun site iNrCy associé pour le moment.",
+      href: "/dashboard",
+      pill: "Connexion",
+    };
+  }
+
   // En mode RENTED, la connexion est "globale" (Suivi) et passe par le compte admin iNrCy.
   if (ownership === "rented") {
     const ok = !!c?.ga4 && !!c?.gsc;
@@ -960,12 +970,15 @@ useEffect(() => {
 
       
 const inrcyOwnership = (ov as any)?.inrcySiteOwnership;
+const inrcyDisconnected = inrcyOwnership === "none";
 
 const connections =
   key === "site_inrcy"
-    ? inrcyOwnership === "rented"
-      ? { main: !!ov.sources?.site_inrcy?.connected?.ga4 && !!ov.sources?.site_inrcy?.connected?.gsc, ga4: !!ov.sources?.site_inrcy?.connected?.ga4, gsc: !!ov.sources?.site_inrcy?.connected?.gsc }
-      : { ga4: !!ov.sources?.site_inrcy?.connected?.ga4, gsc: !!ov.sources?.site_inrcy?.connected?.gsc }
+    ? inrcyDisconnected
+      ? { ga4: false, gsc: false }
+      : inrcyOwnership === "rented"
+        ? { main: !!ov.sources?.site_inrcy?.connected?.ga4 && !!ov.sources?.site_inrcy?.connected?.gsc, ga4: !!ov.sources?.site_inrcy?.connected?.ga4, gsc: !!ov.sources?.site_inrcy?.connected?.gsc }
+        : { ga4: !!ov.sources?.site_inrcy?.connected?.ga4, gsc: !!ov.sources?.site_inrcy?.connected?.gsc }
     : key === "site_web"
       ? { ga4: !!ov.sources?.site_web?.connected?.ga4, gsc: !!ov.sources?.site_web?.connected?.gsc }
       : key === "gmb"
