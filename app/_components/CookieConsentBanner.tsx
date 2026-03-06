@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { usePathname } from "next/navigation";
 
 type Consent = {
@@ -30,7 +30,6 @@ function readConsent(): Consent | null {
 function writeConsent(next: Consent) {
   try {
     window.localStorage.setItem(LS_KEY, JSON.stringify(next));
-    // Allow other parts of the app to react (optional).
     window.dispatchEvent(new CustomEvent("inrcy:cookie-consent", { detail: next }));
   } catch {
     // no-op
@@ -40,15 +39,16 @@ function writeConsent(next: Consent) {
 export default function CookieConsentBanner() {
   const pathname = usePathname();
   const shouldHideOnThisPage = pathname?.startsWith("/login") || pathname?.startsWith("/legal");
-  const initial = useMemo(() => readConsent(), []);
-  const [consent, setConsent] = useState<Consent | null>(initial);
+  const [mounted, setMounted] = useState(false);
+  const [consent, setConsent] = useState<Consent | null>(null);
   const [open, setOpen] = useState(false);
 
-  // Keep in sync if something else updates localStorage.
   useEffect(() => {
-    // IMPORTANT: ne pas conditionner les hooks (React error #310).
-    // Même si le bandeau ne s'affiche pas sur certaines pages, on exécute les hooks
-    // et on conditionne uniquement le rendu en fin de composant.
+    setMounted(true);
+    setConsent(readConsent());
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const onStorage = () => setConsent(readConsent());
     window.addEventListener("storage", onStorage);
@@ -60,11 +60,12 @@ export default function CookieConsentBanner() {
     };
   }, []);
 
-  // Sur les pages publiques (login + documents légaux), on évite d'afficher le bandeau.
-  // Les cookies non essentiels ne sont pas utilisés par défaut et le consentement peut être géré depuis l'app.
   if (shouldHideOnThisPage) return null;
 
-  // If not decided yet, show banner.
+  // Important: keep the server render and the first client render identical.
+  // We only decide whether to show the banner after mount, once localStorage is readable.
+  if (!mounted) return null;
+
   const shouldShow = !consent;
   if (!shouldShow && !open) return null;
 

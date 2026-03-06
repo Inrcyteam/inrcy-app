@@ -197,6 +197,8 @@ const quickActions: Array<{ key: string; title: string; sub: string; disabled?: 
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
   const [helpCanauxOpen, setHelpCanauxOpen] = useState(false);
+  const [helpSiteInrcyOpen, setHelpSiteInrcyOpen] = useState(false);
+  const [helpSiteWebOpen, setHelpSiteWebOpen] = useState(false);
   const [helpInertieOpen, setHelpInertieOpen] = useState(false);
   const router = useRouter();
 
@@ -467,16 +469,17 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
   // ✅ Solde UI (Unités d'Inertie) pour l'affichage dans le Générateur
   // Objectif: éviter un « blink » (0 → vraie valeur) au retour de navigation / pendant un refresh.
   // On garde la dernière valeur connue en mémoire (sessionStorage) tant que la nouvelle n'est pas chargée.
-  const [uiBalance, setUiBalance] = useState<number>(() => {
-    if (typeof window === "undefined") return 0;
+  const [uiBalance, setUiBalance] = useState<number>(0);
+
+  useEffect(() => {
     try {
       const raw = window.sessionStorage.getItem("inrcy_ui_balance_v1");
       const n = raw ? Number(raw) : NaN;
-      return Number.isFinite(n) ? n : 0;
+      if (Number.isFinite(n)) setUiBalance(n);
     } catch {
-      return 0;
+      // ignore
     }
-  });
+  }, []);
 
   const refreshUiBalance = useCallback(async () => {
     try {
@@ -951,16 +954,17 @@ const refreshKpis = useCallback(async () => {
   // ✅ Opportunités activables (iNrStats) — affichage direct sur le cockpit.
   // NOTE: placé ici pour pouvoir être rafraîchi via le listener Supabase ci-dessous.
   const [oppLoading, setOppLoading] = useState(false);
-  const [oppTotal, setOppTotal] = useState<number | null>(() => {
-    if (typeof window === "undefined") return null;
+  const [oppTotal, setOppTotal] = useState<number | null>(null);
+
+  useEffect(() => {
     try {
       const raw = window.sessionStorage.getItem("inrcy_opp30_total_v1");
       const n = raw ? Number(raw) : NaN;
-      return Number.isFinite(n) ? n : null;
+      if (Number.isFinite(n)) setOppTotal(n);
     } catch {
-      return null;
+      // ignore
     }
-  });
+  }, []);
 
   const refreshOppTotal = useCallback(async () => {
     try {
@@ -1987,21 +1991,19 @@ const checkActivity = useCallback(async () => {
   const [kpis, setKpis] = useState<null | {
     leads: { today: number; week: number; month: number };
     estimatedValue: number;
-  }>(() => {
-    // Avoid UI "blink" when navigating back to /dashboard.
-    if (typeof window === "undefined") return null;
+  }>(null);
+
+  useEffect(() => {
     try {
       const raw = window.sessionStorage.getItem("inrcy_generator_kpis_v1");
-      if (!raw) return null;
+      if (!raw) return;
       const parsed = JSON.parse(raw);
-      if (!parsed?.leads) return null;
-      return parsed;
+      if (!parsed?.leads) return;
+      setKpis(parsed);
     } catch {
-      return null;
+      // ignore
     }
-  });
-
-  
+  }, []);
 
   useEffect(() => {
     void refreshKpis();
@@ -2179,7 +2181,14 @@ const checkActivity = useCallback(async () => {
             <img className={styles.bubbleLogoImg} src={MODULE_ICONS[m.key]?.src} alt={MODULE_ICONS[m.key]?.alt} />
           </div>
 
-          <div className={styles.bubbleTitle}>{m.name}</div>
+          <div className={styles.bubbleTitleRow}>
+            <div className={styles.bubbleTitle}>{m.name}</div>
+            {m.key === "site_inrcy" ? (
+              <HelpButton onClick={() => setHelpSiteInrcyOpen(true)} title="Aide : Site iNrCy" size={22} />
+            ) : m.key === "site_web" ? (
+              <HelpButton onClick={() => setHelpSiteWebOpen(true)} title="Aide : Site web" size={22} />
+            ) : null}
+          </div>
 
           <div className={styles.bubbleStatusCompact}>
             <span
@@ -5054,6 +5063,30 @@ const checkActivity = useCallback(async () => {
         </p>
       </HelpModal>
 
+      <HelpModal open={helpSiteInrcyOpen} title="Site iNrCy" onClose={() => setHelpSiteInrcyOpen(false)}>
+        <p style={{ marginTop: 0 }}>
+          La bulle <strong>Site iNrCy</strong> est accessible uniquement si vous êtes détenteur d'un site internet chez nous.
+        </p>
+        <p>
+          Si c'est le cas, nous nous occupons directement de la performance du site et vous pouvez activer et désactiver le suivi des résultats. Vos publications via l'outil Booster remontent automatiquement sur le site en page d'accueil.
+        </p>
+              </HelpModal>
+
+      <HelpModal open={helpSiteWebOpen} title="Site web" onClose={() => setHelpSiteWebOpen(false)}>
+        <p style={{ marginTop: 0 }}>
+          La bulle <strong>Site web</strong> correspond à votre site existant. Une fois relié, il devient un canal supplémentaire dans votre générateur
+          iNrCy.
+        </p>
+        <p>
+          Cette connexion permet de centraliser vos informations et de vérifier que votre site travaille bien avec vos autres outils.
+        </p>
+        <ol style={{ margin: 0, paddingLeft: 18 }}>
+          <li>Ajoutez l&apos;URL de votre site web.</li>
+          <li>Cliquez sur les boutons de connexion pour relier automatiquement Google Analytics et Search Console pour remonter les statistiques. Ces outils doivent évidemment être enregistrés sur votre compte Google.</li>
+          <li>Ajouter le code du "widget iNrCy" fourni n'importe où sur votre site internet pour que les publications de l'outil Booster arrivent automatiquement dessus.</li>
+        </ol>
+      </HelpModal>
+
       <HelpModal open={helpInertieOpen} title="Mon inertie — Tableau des gains UI" onClose={() => setHelpInertieOpen(false)}>
         <p style={{ marginTop: 0 }}>
           Voici les actions qui rapportent des <strong>UI</strong> (Unités d’Inertie). Les limites hebdo/mensuelles évitent la triche.
@@ -5093,7 +5126,7 @@ const checkActivity = useCallback(async () => {
       </HelpModal>
 
       <footer className={styles.footer}>
-        <div className={styles.footerLeft}>© {new Date().getFullYear()} iNrCy</div>
+        <div className={styles.footerLeft}>© 2026 iNrCy</div>
       </footer>
     </main>
   );

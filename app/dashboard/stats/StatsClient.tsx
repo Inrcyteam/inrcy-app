@@ -800,7 +800,7 @@ function PeriodSelect({ value, onChange }: { value: Period; onChange: (p: Period
     <select className={styles.period} value={value} onChange={(e) => onChange(Number(e.target.value) as Period)}>
       {PERIODS.map((p) => (
         <option key={p} value={p}>
-          Historique {p}j
+          Passif {p}j
         </option>
       ))}
     </select>
@@ -1038,33 +1038,33 @@ const provenance = buildProvenance(key, ov);
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <div className={styles.brand}>
-          <Image
-  src="/inrstats-logo.png"
-  alt="iNrStats"
-  width={154}
-  height={64}
-  priority
-/>
-          <div className={styles.brandText}>
-            <div className={styles.brandRow}>
-                            <span className={styles.tagline}>Vos données analysées en mode business.</span>
+        <div className={styles.headerTop}>
+          <div className={styles.brand}>
+            <Image
+              src="/inrstats-logo.png"
+              alt="iNrStats"
+              width={154}
+              height={64}
+              priority
+            />
+          </div>
+
+          <div className={styles.headerActions}>
+            {/* ✅ Sélecteur global 7j / 30j */}
+            <div className={styles.headerPills}>
+              <PeriodSelect value={period} onChange={setPeriod} />
+            </div>
+
+            <div className={styles.headerClose}>
+              <div className={styles.headerCloseControls}>
+                <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Stats" />
+                <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
+              </div>
             </div>
           </div>
         </div>
 
-        <div className={styles.headerActions}>
-          {/* ✅ Sélecteur global 7j / 30j */}
-          <div className={styles.headerPills}>            <PeriodSelect value={period} onChange={setPeriod} />
-          </div>
-
-          <div className={styles.headerClose}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Stats" />
-              <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
-            </div>
-          </div>
-        </div>
+        <div className={styles.tagline}>Vos données analysées en mode business.</div>
       </div>
 
       <HelpModal open={helpOpen} title="iNr’Stats" onClose={() => setHelpOpen(false)}>

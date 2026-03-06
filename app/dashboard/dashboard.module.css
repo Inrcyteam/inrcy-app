@@ -1861,6 +1861,14 @@ aspect-ratio: 2.8 / 4;
   margin-top: 2px;
 }
 
+.bubbleTitleRow{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
 /* Statut */
 .bubbleStatusRow{
   display: flex;

@@ -55,10 +55,16 @@
 
 .header {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.headerTop {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 44px;
-  margin-bottom: 20px;
 }
 
 .h1 {
@@ -73,6 +79,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .logoMark {
@@ -102,6 +109,7 @@
   font-size: 13px;
   color: var(--muted);
   font-weight: 800;
+  line-height: 1.35;
 }
 
 .closeBtn {
@@ -148,6 +156,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.headerCloseControls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .closeBtn:hover {
@@ -462,31 +476,30 @@
 */
 @media (max-width: 900px) {
   .header {
-    align-items: flex-start;
-    gap: 14px;
-    flex-wrap: wrap;
-    justify-content: center;
-    position: relative;
+    gap: 10px;
   }
 
-  /* Logo + sous-titre en colonne (sous le logo) */
-  .brand {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
-  .brandRow {
-    gap: 6px;
-    /* Mobile: la phrase d'accroche doit rester sur une seule ligne */
+  .headerTop {
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
     flex-wrap: nowrap;
+  }
+
+  /* Le logo doit rester sur la même ligne que les actions */
+  .brand {
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
   }
 
   .tagline {
     font-size: 12px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
     max-width: 100%;
   }
 
@@ -499,41 +512,44 @@
     display: inline;
   }
 
-
-  /* Header controls: keep BOTH the period bubble and the close "X" visible in the top-right.
-     Requirement: period bubble must sit LEFT of the X, without pushing the X further right. */
-  .brand { width: 100%; }
-
+  /* Les actions restent dans le flux, sans positionnement absolu */
   .headerActions {
-    width: 100%;
-    /* Do not reserve layout space: we pin controls in the top-right. */
-    position: absolute;
-    top: 0;
-    right: 0;
-    justify-content: flex-end;
-    gap: 10px;
-    pointer-events: none; /* allow underlying header layout; re-enable on children */
+    flex: 0 0 auto;
+    width: auto;
+    position: static;
+    min-height: 0;
+    pointer-events: auto;
+    gap: 8px;
+    margin-left: auto;
   }
 
   .headerPills {
-    position: absolute;
-    top: 0;
-    /* space for the close button + small gap */
-    right: calc(44px + 10px);
+    position: static;
     justify-content: flex-end;
-    z-index: 2;
+    z-index: auto;
     pointer-events: auto;
+    flex: 0 1 auto;
   }
 
   .headerClose {
-    position: absolute;
-    top: 0;
-    right: 0;
-    z-index: 3;
+    position: static;
+    z-index: auto;
     pointer-events: auto;
+    flex: 0 0 auto;
   }
 
-  .period { max-width: 160px; }
+  .headerCloseControls {
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  .period {
+    width: 118px;
+    max-width: 118px;
+    min-width: 118px;
+    padding: 7px 28px 7px 12px;
+    font-size: 12px;
+  }
 
   /* Cube header: 1) titre 2) sous-texte 3) bulles centrées */
   .cubeTop {
@@ -590,6 +606,28 @@
     line-height: 1;
   }
 
+}
+
+@media (max-width: 420px) {
+  .header {
+    gap: 8px;
+  }
+
+  .headerTop {
+    gap: 8px;
+  }
+
+  .brand {
+    gap: 8px;
+  }
+
+  .period {
+    width: 112px;
+    max-width: 112px;
+    min-width: 112px;
+    padding-right: 26px;
+    font-size: 12px;
+  }
 }
 
 .period {
