@@ -17,10 +17,16 @@ const SNAPSHOT_SOURCES: Array<keyof ChannelStates> = [
 function isAuthorizedCron(req: Request) {
   const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";
   if (!cronSecret) return false;
+
   const auth = req.headers.get("authorization") || "";
-  const gotBearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  const gotHeader = req.headers.get("x-cron-secret") || "";
-  return gotBearer === cronSecret || gotHeader === cronSecret;
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+
+  const headerSecret = (req.headers.get("x-cron-secret") || "").trim();
+
+  const url = new URL(req.url);
+  const querySecret = (url.searchParams.get("secret") || "").trim();
+
+  return bearer === cronSecret || headerSecret === cronSecret || querySecret === cronSecret;
 }
 
 export async function GET(req: Request) {
@@ -50,6 +56,7 @@ export async function GET(req: Request) {
 
       for (const source of SNAPSHOT_SOURCES) {
         const state = states[source];
+
         await saveSnapshot({
           supabase: supabaseAdmin,
           userId,
@@ -59,6 +66,7 @@ export async function GET(req: Request) {
           demandesCaptees: 0,
           opportunites: 0,
         });
+
         writtenSnapshots++;
       }
 
