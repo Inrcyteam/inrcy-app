@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
-import { asRecord } from "@/lib/tsSafe";
 
 // Déconnecte le COMPTE Facebook (supprime l'intégration et remet tout à zéro)
 export async function POST() {
@@ -14,16 +13,24 @@ export async function POST() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await supabase.from("integrations").delete().eq("user_id", user.id).eq("provider", "facebook");
+  await supabase
+    .from("integrations")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("provider", "facebook");
 
+  // Sync pro tools config
   try {
-    const { data: cfg } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
-    const current = asRecord(asRecord(cfg)["settings"]);
-    await supabase.from("pro_tools_configs").upsert(
-      {
-        user_id: user.id,
-        settings: {
-          ...current,
+    const { data: cfg } = await supabase
+      .from("configurations_pro_tools")
+      .select("id, facebook")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (cfg?.id) {
+      await supabase
+        .from("configurations_pro_tools")
+        .update({
           facebook: {
             accountConnected: false,
             pageConnected: false,
@@ -32,23 +39,20 @@ export async function POST() {
             pageName: null,
             url: null,
           },
-        },
-      },
-      { onConflict: "user_id" }
-    );
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", cfg.id);
+    }
   } catch {
     // ignore
   }
 
-  try {
-    await supabase.from("stats_cache").delete().eq("user_id", user.id).eq("source", "overview");
-  } catch {}
-  try {
-    await supabase.from("cache_statistiques").delete().eq("id_utilisateur", user.id);
-  } catch {}
+  // Invalidate cache
   try {
     await supabase.from("cache_statistiques").delete().eq("user_id", user.id);
-  } catch {}
+  } catch {
+    // ignore
+  }
 
   return NextResponse.json({ ok: true });
 }

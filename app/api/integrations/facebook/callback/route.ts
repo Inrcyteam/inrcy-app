@@ -215,7 +215,7 @@ export async function GET(req: Request) {
       source: "facebook",
       product: "facebook",
       status: "account_connected",
-      account_email: me.email ?? null,
+      email_address: me.email ?? null,
       display_name: me.name ?? null,
       provider_account_id: me.id ?? null,
       scopes: "public_profile,email,pages_show_list,pages_manage_posts,pages_read_engagement,read_insights",
