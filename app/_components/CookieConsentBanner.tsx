@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, useState, type CSSProperties } from "react";
+import { useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { usePathname } from "next/navigation";
 
 type Consent = {
@@ -11,17 +11,31 @@ type Consent = {
 
 const LS_KEY = "inrcy_cookie_consent";
 
-function readConsent(): Consent | null {
+function parseConsent(raw: string | null): Consent | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+
+    const candidate = parsed as Partial<Consent>;
+    if (candidate.v !== 1) return null;
+    if (typeof candidate.ts !== "number") return null;
+    if (typeof candidate.analytics !== "boolean") return null;
+
+    return {
+      v: 1,
+      ts: candidate.ts,
+      analytics: candidate.analytics,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getConsentSnapshot(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(LS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    if (parsed.v !== 1) return null;
-    if (typeof parsed.ts !== "number") return null;
-    if (typeof parsed.analytics !== "boolean") return null;
-    return parsed as Consent;
+    return window.localStorage.getItem(LS_KEY);
   } catch {
     return null;
   }
@@ -30,7 +44,7 @@ function readConsent(): Consent | null {
 function writeConsent(next: Consent) {
   try {
     window.localStorage.setItem(LS_KEY, JSON.stringify(next));
-    window.dispatchEvent(new CustomEvent("inrcy:cookie-consent", { detail: next }));
+    window.dispatchEvent(new CustomEvent("inrcy:cookie-consent"));
   } catch {
     // no-op
   }
@@ -50,7 +64,8 @@ export default function CookieConsentBanner() {
   const pathname = usePathname();
   const shouldHideOnThisPage = pathname?.startsWith("/login") || pathname?.startsWith("/legal");
   const [open, setOpen] = useState(false);
-  const consent = useSyncExternalStore(subscribeToConsent, readConsent, () => null);
+  const consentRaw = useSyncExternalStore(subscribeToConsent, getConsentSnapshot, () => null);
+  const consent = useMemo(() => parseConsent(consentRaw), [consentRaw]);
 
   if (shouldHideOnThisPage) return null;
 

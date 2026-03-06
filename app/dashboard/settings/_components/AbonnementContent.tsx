@@ -4,6 +4,34 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+
+type InrcyPlan = "Trial" | "Starter" | "Accel" | "Speed";
+
+function normalizePlan(raw: unknown): InrcyPlan {
+  const value = String(raw || "").trim();
+  if (value === "Trial" || /^essai/i.test(value)) return "Trial";
+  if (value === "Starter" || /^d[ée]marrage/i.test(value)) return "Starter";
+  if (value === "Accel" || /^acc[ée]l[ée]ration/i.test(value)) return "Accel";
+  if (value === "Speed" || /^pleine vitesse/i.test(value)) return "Speed";
+  return "Trial";
+}
+
+function monthlyPriceTtcFromPlan(plan: unknown) {
+  const normalized = normalizePlan(plan);
+  if (normalized === "Starter") return 69;
+  if (normalized === "Accel") return 99;
+  if (normalized === "Speed") return 359;
+  return 0;
+}
+
+function planShortLabel(plan: unknown) {
+  const normalized = normalizePlan(plan);
+  if (normalized === "Starter") return "Démarrage";
+  if (normalized === "Accel") return "Accélération";
+  if (normalized === "Speed") return "Pleine vitesse";
+  return "Essai 30j";
+}
+
 type Props = {
   mode?: "page" | "drawer";
   onOpenContact?: () => void; // ✅ pour ouvrir la fenêtre contact depuis le drawer
@@ -118,26 +146,10 @@ function statusLabel(raw: string) {
 }
 
 function planLabel(plan: SubData["plan"]) {
-  // Sécurité: certains anciens labels (ou valeurs inattendues) peuvent encore
-  // arriver depuis des comptes / données historiques. On normalise.
-  const raw = String(plan || "").trim();
-  const normalized =
-    raw === "Trial" || /^essai/i.test(raw)
-      ? "Trial"
-      : raw === "Starter" || /^d[ée]marrage/i.test(raw)
-        ? "Starter"
-        : raw === "Accel" || /^acc[ée]l[ée]ration/i.test(raw)
-          ? "Accel"
-          : raw === "Speed" || /^pleine vitesse/i.test(raw)
-            ? "Speed"
-            : raw;
-
-  if (normalized === "Trial") return "Essai 30j";
+  const normalized = normalizePlan(plan);
   if (normalized === "Starter") return "Pack Démarrage";
   if (normalized === "Accel") return "Pack Accélération";
   if (normalized === "Speed") return "Pack Pleine vitesse";
-
-  // Valeur inconnue: on évite d'afficher des trucs bizarres type "Procès".
   return "Essai 30j";
 }
 
@@ -263,17 +275,7 @@ useEffect(() => {
     if (!sub) return null;
 
     // Normalise plan pour la logique UI (compat anciennes valeurs).
-    const rawPlan = String(sub.plan || "").trim();
-    const planNormalized =
-      rawPlan === "Trial" || /^essai/i.test(rawPlan)
-        ? "Trial"
-        : rawPlan === "Starter" || /^d[ée]marrage/i.test(rawPlan)
-          ? "Starter"
-          : rawPlan === "Accel" || /^acc[ée]l[ée]ration/i.test(rawPlan)
-            ? "Accel"
-            : rawPlan === "Speed" || /^pleine vitesse/i.test(rawPlan)
-              ? "Speed"
-              : rawPlan;
+    const planNormalized = normalizePlan(sub.plan);
 
     const statusNorm = String(sub.status || "").toLowerCase();
     const isTrialPlan = planNormalized === "Trial" || statusNorm === "trialing" || statusNorm === "trailing" || statusNorm === "essai";
@@ -299,7 +301,11 @@ useEffect(() => {
     // on considère l'abonnement comme "programmé" (Stripe subscription existe mais statut = essai).
     const scheduledStart = trialEnd;
 
-    const scheduledPlan = (sub.scheduled_plan || "Starter") as SubData["plan"];
+    const scheduledPlan = normalizePlan(sub.scheduled_plan || "Starter") as SubData["plan"];
+    const monthlyPriceTtc =
+      planNormalized === "Trial"
+        ? 0
+        : monthlyPriceTtcFromPlan(planNormalized) || Number(sub.monthly_price_eur) || 0;
 
     return {
       startLabel: frDate(start),
@@ -309,10 +315,10 @@ useEffect(() => {
       endEstLabel: frDate(endEst),
       cancelEndLabel: cancelEnd ? frDate(cancelEnd) : null,
       cancellationScheduled,
-      priceLabel: `${sub.monthly_price_eur} €`,
+      priceLabel: `${monthlyPriceTtc} €`,
       statusText: isTrialPlan ? "ESSAI" : statusLabel(statusNorm),
       hasStripeSub: hasScheduledSubscription,
-      scheduledPlanLabel: planLabel(scheduledPlan).replace("Pack ", ""),
+      scheduledPlanLabel: planShortLabel(scheduledPlan),
       planNormalized,
     };
   }, [sub, checkoutState]);
@@ -402,7 +408,7 @@ useEffect(() => {
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        // Default plan is Starter. If you later add a pack picker UI, send { plan: 'Accel' } etc.
+        // Default plan is Starter. If you later add a pack picker UI, send { plan: "Accel" } etc.
         body: JSON.stringify({ plan: "Starter" }),
       });
       const json = await res.json().catch(() => ({}));
@@ -504,7 +510,7 @@ useEffect(() => {
           <div style={{ textAlign: "right", flexShrink: 0 }}>
             <div style={{ opacity: 0.85, fontSize: 12, fontWeight: 900, letterSpacing: 0.4 }}>PRIX</div>
             <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4, lineHeight: 1 }}>{computed.priceLabel}</div>
-            <div style={{ opacity: 0.75, fontSize: 12, marginTop: 6 }}>HT par mois</div>
+            <div style={{ opacity: 0.75, fontSize: 12, marginTop: 6 }}>TTC par mois</div>
           </div>
         </div>
       </div>

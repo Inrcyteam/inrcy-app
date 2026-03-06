@@ -45,13 +45,9 @@ function planFromPriceId(priceId: string | null) {
 
 function monthlyPriceFromPlan(plan: string | null): number | null {
   if (!plan) return null;
-  // You can override via env if needed.
-  const starter = Number(optionalEnv("INRCY_PRICE_STARTER_EUR", "69"));
-  const accel = Number(optionalEnv("INRCY_PRICE_ACCEL_EUR", "0"));
-  const speed = Number(optionalEnv("INRCY_PRICE_SPEED_EUR", optionalEnv("INRCY_PRICE_FULL_EUR", "0")));
-  if (plan === "Starter") return Number.isFinite(starter) ? starter : 69;
-  if (plan === "Accel") return Number.isFinite(accel) ? accel : null;
-  if (plan === "Speed") return Number.isFinite(speed) ? speed : null;
+  if (plan === "Starter") return 69;
+  if (plan === "Accel") return 99;
+  if (plan === "Speed") return 359;
   return null;
 }
 
