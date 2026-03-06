@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { invalidateUserIntegrationCaches, mergeProToolSettings } from "@/lib/integrationSync";
 import { asRecord, asString } from "@/lib/tsSafe";
 
 type TokenResponse = {
@@ -9,20 +10,6 @@ type TokenResponse = {
   expires_in?: number;
   error?: { message?: string };
 };
-
-type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
-
-async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
-  try {
-    await supabase.from("stats_cache").delete().eq("user_id", userId);
-  } catch {}
-  try {
-    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
-  } catch {}
-  try {
-    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
-  } catch {}
-}
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
@@ -153,26 +140,17 @@ const { error: upsertErr } = await supabase
 
 if (upsertErr) return NextResponse.json({ error: "DB upsert failed", upsertErr }, { status: 500 });
 
-    // Invalidate stats cache so iNrStats + Generator reflect the new connection immediately.
-    await invalidateUserStatsCache(supabase, userId);
+    await invalidateUserIntegrationCaches(supabase, userId);
 
-// Mirror in pro_tools_configs
     try {
-      const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = asRecord(asRecord(scRow)["settings"]);
-      const merged = {
-        ...current,
-        instagram: {
-          ...asRecord(current["instagram"]),
-          accountConnected: true,
-          connected: false,
-          username: null,
-          url: null,
-          pageId: null,
-          igId: null,
-        },
-      };
-      await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
+      await mergeProToolSettings(supabase, userId, "instagram", {
+        accountConnected: true,
+        connected: false,
+        username: null,
+        url: null,
+        pageId: null,
+        igId: null,
+      });
     } catch {}
 
     const finalUrl = new URL(returnTo, siteUrl);

@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken as _encryptToken } from "@/lib/oauthCrypto";
 import { gmbListAccounts } from "@/lib/googleBusiness";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { invalidateUserIntegrationCaches, mergeProToolSettings } from "@/lib/integrationSync";
 import { asRecord, asString } from "@/lib/tsSafe";
 
 type TokenResponse = {
@@ -20,24 +21,6 @@ type GoogleUserInfo = {
   name?: string;
   picture?: string;
 };
-
-type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
-
-async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
-  // Best-effort cache invalidation (new + legacy). Never fail the OAuth flow on cache.
-  try {
-    await supabase.from("stats_cache").delete().eq("user_id", userId);
-  } catch {}
-
-  // Legacy cache table in your DB is `cache_statistiques`.
-  // Depending on migrations it may have `id_de_l_utilisateur` or `user_id`.
-  try {
-    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
-  } catch {}
-  try {
-    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
-  } catch {}
-}
 
 function safeReturnTo(stateReturnTo: unknown, siteUrl: string) {
   // Default panel
@@ -151,10 +134,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Userinfo fetch failed", userInfo }, { status: 500 });
     }
 
-    // Preserve refresh_token if Google doesn't return it
+    // Preserve refresh_token if Google does not return it
     const { data: existing, error: existingErr } = await supabase
       .from("integrations")
-      .select("id,refresh_token_enc")
+      .select("refresh_token_enc,meta,resource_id,resource_label")
       .eq("user_id", userId)
       .eq("provider", "google")
       .eq("source", "gmb")
@@ -167,7 +150,7 @@ export async function GET(req: Request) {
 
     const existingRec = asRecord(existing);
     const existingRefresh = asString(existingRec["refresh_token_enc"]);
-    const existingId = asString(existingRec["id"]);
+    const existingMeta = asRecord(existingRec["meta"]);
 
     const refreshTokenToStore = tokenData.refresh_token ?? existingRefresh ?? null;
 
@@ -190,38 +173,24 @@ export async function GET(req: Request) {
       access_token_enc: tokenData.access_token ?? null,
       refresh_token_enc: refreshTokenToStore,
       expires_at: expiresAt,
-      meta: { picture: userInfo.picture ?? null },
+      meta: { ...existingMeta, picture: userInfo.picture ?? null },
+      resource_id: existingRec["resource_id"] ?? null,
+      resource_label: existingRec["resource_label"] ?? null,
+      updated_at: new Date().toISOString(),
     };
 
-    if (existingId) {
-      const { error: upErr } = await supabase
-        .from("integrations")
-        .update(payload)
-        .eq("id", existingId);
-      if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
-    } else {
-      const { error: insErr } = await supabase.from("integrations").insert(payload);
-      if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
-    }
+    const { error: upsertErr } = await supabase
+      .from("integrations")
+      .upsert(payload, { onConflict: "user_id,provider,source,product" });
+    if (upsertErr) return NextResponse.json({ error: "DB upsert failed", upsertErr }, { status: 500 });
 
-    // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
     try {
-      const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = asRecord(asRecord(scRow)["settings"]);
-      const currentGmb = asRecord(current["gmb"]);
-      const merged = {
-        ...current,
-        gmb: {
-          ...currentGmb,
-          connected: true,
-          accountEmail: userInfo.email,
-          accountDisplayName: userInfo.name ?? null,
-        },
-      };
-      await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
-    } catch {
-      // non-fatal
-    }
+      await mergeProToolSettings(supabase, userId, "gmb", {
+        connected: !!payload.resource_id,
+        accountEmail: userInfo.email,
+        accountDisplayName: userInfo.name ?? null,
+      });
+    } catch {}
 
 
     // IMPORTANT:
@@ -253,7 +222,7 @@ export async function GET(req: Request) {
     }
 
     // Invalidate stats cache so iNrStats + Generator reflect the new connection immediately.
-    await invalidateUserStatsCache(supabase, userId);
+    await invalidateUserIntegrationCaches(supabase, userId);
 
     // Build final redirect URL safely and append params without breaking existing querystring
     const finalUrl = new URL(returnToPath, siteUrl);

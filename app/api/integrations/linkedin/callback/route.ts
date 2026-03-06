@@ -2,21 +2,8 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { invalidateUserIntegrationCaches, mergeProToolSettings } from "@/lib/integrationSync";
 import { asRecord, asString } from "@/lib/tsSafe";
-
-type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
-
-async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
-  try {
-    await supabase.from("stats_cache").delete().eq("user_id", userId);
-  } catch {}
-  try {
-    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
-  } catch {}
-  try {
-    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
-  } catch {}
-}
 
 async function postForm(url: string, form: Record<string, string>) {
   const res = await fetch(url, {
@@ -163,24 +150,15 @@ await supabase
   .from("integrations")
   .upsert(payload, { onConflict: "user_id,provider,source,product" });
 
-    // Invalidate stats cache so iNrStats + Generator reflect the new connection immediately.
-    await invalidateUserStatsCache(supabase, userId);
+    await invalidateUserIntegrationCaches(supabase, userId);
 
-// Mirror in pro_tools_configs
     try {
-      const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = asRecord(asRecord(scRow)["settings"]);
-      const merged = {
-        ...current,
-        linkedin: {
-          ...asRecord(current["linkedin"]),
-          accountConnected: true,
-          connected: true,
-          displayName: name || null,
-          url: profileUrl,
-        },
-      };
-      await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
+      await mergeProToolSettings(supabase, userId, "linkedin", {
+        accountConnected: true,
+        connected: true,
+        displayName: name || null,
+        url: profileUrl,
+      });
     } catch {}
 
     const finalUrl = new URL(returnTo, siteUrl);

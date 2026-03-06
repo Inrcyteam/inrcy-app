@@ -1,21 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken } from "@/lib/oauthCrypto";
+import { invalidateUserIntegrationCaches, mergeProToolSettings } from "@/lib/integrationSync";
 import { asRecord, asString } from "@/lib/tsSafe";
-
-type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
-
-async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
-  try {
-    await supabase.from("stats_cache").delete().eq("user_id", userId);
-  } catch {}
-  try {
-    await supabase.from("cache_statistiques").delete().eq("id_de_l_utilisateur", userId);
-  } catch {}
-  try {
-    await supabase.from("cache_statistiques").delete().eq("user_id", userId);
-  } catch {}
-}
 
 export async function POST(req: Request) {
   try {
@@ -36,7 +23,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing pageId/pageAccessToken" }, { status: 400 });
     }
 
-    // Read existing meta so we don't lose meta.user_access_token, page_url, etc.
     const { data: existing, error: readErr } = await supabase
       .from("integrations")
       .select("meta")
@@ -48,20 +34,20 @@ export async function POST(req: Request) {
 
     if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
 
-    const existingRec = asRecord(existing);
-    const prevMeta = asRecord(existingRec["meta"]);
+    const prevMeta = asRecord(asRecord(existing)["meta"]);
     const pageUrl = `https://www.facebook.com/${pageId}`;
     const nextMeta = { ...prevMeta, selected: true, page_url: pageUrl };
 
-    // Update integration with the selected page + PAGE token (required for posting).
     const { error: upErr } = await supabase
       .from("integrations")
       .update({
         resource_id: pageId,
         resource_label: pageName,
+        resource_url: pageUrl,
         access_token_enc: encryptToken(pageAccessToken),
         status: "connected",
         meta: nextMeta,
+        updated_at: new Date().toISOString(),
       })
       .eq("user_id", userId)
       .eq("provider", "facebook")
@@ -70,31 +56,17 @@ export async function POST(req: Request) {
 
     if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
-    // Also mirror to pro_tools_configs so UI updates instantly
     try {
-      const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const scRec = asRecord(scRow);
-      const current = asRecord(scRec["settings"]);
-      const currentFb = asRecord(current["facebook"]);
-      const merged = {
-        ...current,
-        facebook: {
-          ...currentFb,
-          accountConnected: true,
-          pageConnected: true,
-          pageId,
-          pageName,
-          url: pageUrl,
-        },
-      };
-      await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
-    } catch {
-      // non-fatal
-    }
+      await mergeProToolSettings(supabase, userId, "facebook", {
+        accountConnected: true,
+        pageConnected: true,
+        pageId,
+        pageName,
+        url: pageUrl,
+      });
+    } catch {}
 
-    // Invalidate stats cache so iNrStats + Generator reflect the new selection immediately.
-    await invalidateUserStatsCache(supabase, userId);
-
+    await invalidateUserIntegrationCaches(supabase, userId);
     return NextResponse.json({ ok: true, pageUrl });
   } catch (e: unknown) {
     return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Erreur" }, { status: 500 });

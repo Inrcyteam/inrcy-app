@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { invalidateUserIntegrationCaches, mergeProToolSettings } from "@/lib/integrationSync";
 
-// Déconnecte le COMPTE Facebook (supprime l'intégration et remet tout à zéro)
 export async function POST() {
   const supabase = await createSupabaseServer();
   const {
@@ -13,46 +13,37 @@ export async function POST() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await supabase
+  const { error: updateErr } = await supabase
     .from("integrations")
-    .delete()
+    .update({
+      status: "disconnected",
+      access_token_enc: null,
+      refresh_token_enc: null,
+      expires_at: null,
+      resource_id: null,
+      resource_label: null,
+      resource_url: null,
+      meta: { picked: "none", page_url: null, user_access_token: null, user_access_token_enc: null },
+      updated_at: new Date().toISOString(),
+    })
     .eq("user_id", user.id)
-    .eq("provider", "facebook");
+    .eq("provider", "facebook")
+    .eq("source", "facebook")
+    .eq("product", "facebook");
 
-  // Sync pro tools config
+  if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+
   try {
-    const { data: cfg } = await supabase
-      .from("configurations_pro_tools")
-      .select("id, facebook")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    await mergeProToolSettings(supabase, user.id, "facebook", {
+      accountConnected: false,
+      pageConnected: false,
+      userEmail: null,
+      pageId: null,
+      pageName: null,
+      url: null,
+    });
+  } catch {}
 
-    if (cfg?.id) {
-      await supabase
-        .from("configurations_pro_tools")
-        .update({
-          facebook: {
-            accountConnected: false,
-            pageConnected: false,
-            userEmail: null,
-            pageId: null,
-            pageName: null,
-            url: null,
-          },
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", cfg.id);
-    }
-  } catch {
-    // ignore
-  }
-
-  // Invalidate cache
-  try {
-    await supabase.from("cache_statistiques").delete().eq("user_id", user.id);
-  } catch {
-    // ignore
-  }
-
+  await invalidateUserIntegrationCaches(supabase, user.id);
   return NextResponse.json({ ok: true });
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
-import { asRecord } from "@/lib/tsSafe";
+import { invalidateUserIntegrationCaches, mergeProToolSettings } from "@/lib/integrationSync";
 
 export async function POST() {
   const supabase = await createSupabaseServer();
@@ -11,25 +11,36 @@ export async function POST() {
 
   if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await supabase.from("integrations").delete().eq("user_id", user.id).eq("provider", "instagram");
+  const { error: updateErr } = await supabase
+    .from("integrations")
+    .update({
+      status: "disconnected",
+      access_token_enc: null,
+      refresh_token_enc: null,
+      expires_at: null,
+      resource_id: null,
+      resource_label: null,
+      meta: { picked: "none", page_id: null, page_name: null, user_access_token_enc: null },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .eq("provider", "instagram")
+    .eq("source", "instagram")
+    .eq("product", "instagram");
 
-  // Keep pro_tools_configs in sync (best-effort)
+  if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+
   try {
-    const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
-    const current = asRecord(asRecord(scRow)["settings"]);
-    const merged = {
-      ...current,
-      instagram: {
-        accountConnected: false,
-        connected: false,
-        username: null,
-        url: null,
-        pageId: null,
-        igId: null,
-      },
-    };
-    await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
+    await mergeProToolSettings(supabase, user.id, "instagram", {
+      accountConnected: false,
+      connected: false,
+      username: null,
+      url: null,
+      pageId: null,
+      igId: null,
+    });
   } catch {}
 
+  await invalidateUserIntegrationCaches(supabase, user.id);
   return NextResponse.json({ ok: true });
 }
