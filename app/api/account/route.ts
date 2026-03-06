@@ -7,8 +7,8 @@ async function safeDeleteByUserId(table: string, userId: string) {
   try {
     const { error } = await supabaseAdmin.from(table).delete().eq("user_id", userId);
     return error ? error.message : null;
-  } catch (e: any) {
-    return e?.message || "unknown";
+  } catch (e: unknown) {
+    return e instanceof Error ? e.message : "unknown";
   }
 }
 
@@ -49,8 +49,8 @@ export const DELETE = withApi(async () => {
       return NextResponse.json({ ok: true }, { status: 200 });
     }
     errors["rpc_delete_user_rgpd"] = rpcErr.message;
-  } catch (e: any) {
-    errors["rpc_delete_user_rgpd"] = e?.message || "unknown";
+  } catch (e: unknown) {
+    errors["rpc_delete_user_rgpd"] = e instanceof Error ? e.message : "unknown";
   }
 
   // Best-effort deletion. Order reduces FK constraint issues.

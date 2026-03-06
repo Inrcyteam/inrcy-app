@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useSyncExternalStore, useState, type CSSProperties } from "react";
 import { usePathname } from "next/navigation";
 
 type Consent = {
@@ -36,35 +36,23 @@ function writeConsent(next: Consent) {
   }
 }
 
+function subscribeToConsent(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => undefined;
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener("inrcy:cookie-consent", onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener("inrcy:cookie-consent", onStoreChange);
+  };
+}
+
 export default function CookieConsentBanner() {
   const pathname = usePathname();
   const shouldHideOnThisPage = pathname?.startsWith("/login") || pathname?.startsWith("/legal");
-  const [mounted, setMounted] = useState(false);
-  const [consent, setConsent] = useState<Consent | null>(null);
   const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    setConsent(readConsent());
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onStorage = () => setConsent(readConsent());
-    window.addEventListener("storage", onStorage);
-    const onCustom = () => setConsent(readConsent());
-    window.addEventListener("inrcy:cookie-consent" as any, onCustom);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("inrcy:cookie-consent" as any, onCustom);
-    };
-  }, []);
+  const consent = useSyncExternalStore(subscribeToConsent, readConsent, () => null);
 
   if (shouldHideOnThisPage) return null;
-
-  // Important: keep the server render and the first client render identical.
-  // We only decide whether to show the banner after mount, once localStorage is readable.
-  if (!mounted) return null;
 
   const shouldShow = !consent;
   if (!shouldShow && !open) return null;
@@ -118,7 +106,6 @@ export default function CookieConsentBanner() {
   const setAll = (analytics: boolean) => {
     const next: Consent = { v: 1, ts: Date.now(), analytics };
     writeConsent(next);
-    setConsent(next);
     setOpen(false);
   };
 

@@ -2,14 +2,31 @@ import { NextResponse } from "next/server";
 import { withApi } from "@/lib/observability/withApi";
 import { requireUser } from "@/lib/requireUser";
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
 type ExportBlock = {
   table: string;
-  rows: any[];
+  rows: unknown[];
   error?: string;
 };
 
+type QueryResult = { data?: unknown[] | null; error?: { message: string } | null };
+type ExportQuery = PromiseLike<QueryResult> & {
+  order: (column: string, options: { ascending: boolean }) => ExportQuery;
+  limit: (value: number) => ExportQuery;
+};
+type ExportSupabaseLike = {
+  from: (table: string) => {
+    select: (query: string) => {
+      eq: (column: string, value: string) => ExportQuery;
+    };
+  };
+};
+
 async function fetchUserTable(
-  supabase: any,
+  supabase: ExportSupabaseLike,
   table: string,
   userId: string,
   opts?: { limit?: number; orderBy?: string; desc?: boolean }
@@ -21,8 +38,8 @@ async function fetchUserTable(
     const { data, error } = await q;
     if (error) return { table, rows: [], error: error.message };
     return { table, rows: data ?? [] };
-  } catch (e: any) {
-    return { table, rows: [], error: e?.message || "unknown" };
+  } catch (e: unknown) {
+    return { table, rows: [], error: e instanceof Error ? e.message : "unknown" };
   }
 }
 
@@ -60,7 +77,7 @@ export const GET = withApi(async () => {
     user: {
       id: user.id,
       email: user.email ?? null,
-      created_at: (user as any).created_at ?? null,
+      created_at: asRecord(user)["created_at"] ?? null,
     },
     data: blocks,
   };

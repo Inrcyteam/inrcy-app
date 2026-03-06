@@ -294,6 +294,7 @@ async function getOpportunities(origin: string, req: Request): Promise<Opportuni
 
 
 type HistorySnapshot = { days: number; total: number; perTool?: Record<string, number> };
+type HistoryResponse = { total?: number; perTool?: Record<string, number> };
 
 async function getHistory(origin: string, req: Request, days: 7 | 30): Promise<HistorySnapshot> {
   // ✅ Historique réel (demandes captées) - indépendant des opportunités
@@ -303,7 +304,7 @@ async function getHistory(origin: string, req: Request, days: 7 | 30): Promise<H
     headers: { cookie: req.headers.get("cookie") || "" },
   });
   if (!res.ok) throw new Error(`Stats history failed (${res.status})`);
-  const json = (await res.json()) as any;
+  const json = (await res.json()) as HistoryResponse;
   return { days, total: Number(json?.total) || 0, perTool: json?.perTool || undefined };
 }
 

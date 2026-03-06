@@ -19,6 +19,9 @@ function ymd(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+type StripeSubscriptionSummary = { status?: string | null };
+type StripeSubscriptionListResponse = { data?: StripeSubscriptionSummary[] };
+
 function frDate(d: Date) {
   try {
     return d.toLocaleDateString("fr-FR");
@@ -36,11 +39,11 @@ async function stripeCustomerHasAnySubscription(stripeCustomerId: string) {
       limit: "10",
     });
 
-    const json: any = await stripeGet(`/subscriptions?${qs.toString()}`);
+    const json = (await stripeGet(`/subscriptions?${qs.toString()}`)) as StripeSubscriptionListResponse;
     const subs = Array.isArray(json?.data) ? json.data : [];
 
     // Protect the user if ANY subscription exists that isn’t an expired incomplete attempt.
-    return subs.some((s: any) => s?.status && s.status !== "incomplete_expired");
+    return subs.some((subscription) => subscription?.status && subscription.status !== "incomplete_expired");
   } catch {
     return true;
   }

@@ -39,7 +39,7 @@ export async function igFetchDailyInsights(
     "get_directions_clicks",
   ];
 
-  const allRows: any[] = [];
+  const allRows: Array<Record<string, unknown>> = [];
   for (const metric of metrics) {
     try {
       const url =
@@ -52,7 +52,6 @@ export async function igFetchDailyInsights(
           access_token: accessToken,
         }).toString();
 
-      // eslint-disable-next-line no-await-in-loop
       const resp = await fetchJson(url);
       const rows = Array.isArray(resp?.data) ? resp.data : [];
       allRows.push(...rows);

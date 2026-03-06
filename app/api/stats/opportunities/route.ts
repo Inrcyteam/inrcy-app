@@ -11,6 +11,18 @@ import { NextResponse } from "next/server";
 type Period = 7 | 30 | 60 | 90;
 type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
+type MetricsTotals = Record<string, unknown>;
+
+type SourceMetrics = {
+  error?: unknown;
+  totals?: MetricsTotals;
+} & Record<string, unknown>;
+
+type SourceNode = {
+  connected?: boolean;
+  metrics?: SourceMetrics;
+} & Record<string, unknown>;
+
 type Overview = {
   days: number;
   totals?: {
@@ -28,10 +40,10 @@ type Overview = {
   // The overview endpoint returns GA4 channels as { channel, sessions }.
   // Older experiments may return { key, value }. We support both to stay safe.
   channels?: Array<{ channel?: string; sessions?: number; key?: string; value?: number }>;
-  sources?: any;
+  sources?: Partial<Record<CubeKey, SourceNode>>;
 };
 
-function safeNum(v: any): number {
+function safeNum(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : 0;
 }
@@ -40,7 +52,6 @@ function clamp(n: number, a: number, b: number) {
   return Math.min(b, Math.max(a, n));
 }
 
-
 function logNorm(x: number, ref: number) {
   // Smooth normalization 0..1 using log scale (robust to outliers).
   const xx = Math.max(0, x);
@@ -48,15 +59,15 @@ function logNorm(x: number, ref: number) {
   return clamp(Math.log1p(xx) / Math.log1p(rr), 0, 1);
 }
 
-function safeObj(v: any): Record<string, any> {
-  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, any>) : {};
+function safeObj(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
-function getTotalMetric(metrics: any, keys: string[]): number {
+function getTotalMetric(metrics: unknown, keys: string[]): number {
   const m = safeObj(metrics);
   const totals = safeObj(m.totals);
   for (const k of keys) {
-    const n = safeNum((totals as any)[k]);
+    const n = safeNum(totals[k]);
     if (n) return n;
   }
   return 0;
@@ -64,10 +75,10 @@ function getTotalMetric(metrics: any, keys: string[]): number {
 
 function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number {
   const baseDays = Math.max(1, safeNum(ov.days) || 30);
-  const src = safeObj(ov?.sources);
-  const node = safeObj((src as any)?.[cubeKey]);
-  const connected = !!(node as any).connected;
-  const m = (node as any).metrics;
+  const src = safeObj(ov.sources);
+  const node = safeObj(src[cubeKey]);
+  const connected = Boolean(node.connected);
+  const m = node.metrics;
 
   // Disconnected => 0.
   if (!connected) return 0;
@@ -185,6 +196,7 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
 
   return clamp(additionalPerDay, 0, 2.5);
 }
+
 function pageKind(path: string) {
   const p = (path || "").toLowerCase();
   if (p.includes("contact") || p.includes("devis") || p.includes("rdv") || p.includes("rendez")) return "contact";
@@ -201,7 +213,7 @@ function directShareFromChannels(ov: Overview, sessionsTotal: number) {
   const channels = Array.isArray(ov.channels) ? ov.channels : [];
   // Prefer canonical shape used by iNrStats: { channel, sessions }
   const directObj = channels.find((c) => (c?.channel || c?.key || "").toLowerCase().includes("direct"));
-  const directSessions = safeNum((directObj as any)?.sessions ?? (directObj as any)?.value);
+  const directSessions = safeNum(directObj?.sessions ?? directObj?.value);
   if (sessionsTotal > 0) return clamp(directSessions / sessionsTotal, 0, 1);
   return 0;
 }
@@ -242,22 +254,34 @@ function computeOpportunityPerDayWeb(ov: Overview) {
 
 function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
   if (cubeKey === "gmb") {
-    const connected = !!ov?.sources?.gmb?.connected;
+    const gmb = ov.sources?.gmb;
+    const connected = !!gmb?.connected;
     if (!connected) return 0;
-    const m = ov?.sources?.gmb?.metrics;
+
+    const m = gmb?.metrics;
+    const totals = m?.totals;
     const hasError = !!m?.error;
     const base = hasError || !m ? 0.8 : 1.2;
-    const impressionsGuess = safeNum(m?.totals?.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) + safeNum(m?.totals?.BUSINESS_IMPRESSIONS_MOBILE_MAPS);
-    const interactionsGuess = safeNum(m?.totals?.WEBSITE_CLICKS) + safeNum(m?.totals?.CALL_CLICKS) + safeNum(m?.totals?.DIRECTION_REQUESTS);
+
+    const impressionsGuess =
+      safeNum(totals?.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) +
+      safeNum(totals?.BUSINESS_IMPRESSIONS_MOBILE_MAPS);
+
+    const interactionsGuess =
+      safeNum(totals?.WEBSITE_CLICKS) +
+      safeNum(totals?.CALL_CLICKS) +
+      safeNum(totals?.DIRECTION_REQUESTS);
+
     const perDay = clamp(base + impressionsGuess / 800 + interactionsGuess / 30, 0, 50);
     return Math.max(0, Math.round(perDay * 30));
   }
-  
-if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin") {
-  const perDay = computeOpportunityPerDaySocial(cubeKey, ov);
-  return Math.max(0, Math.round(perDay * 30));
-}
-const perDay = computeOpportunityPerDayWeb(ov);
+
+  if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin") {
+    const perDay = computeOpportunityPerDaySocial(cubeKey, ov);
+    return Math.max(0, Math.round(perDay * 30));
+  }
+
+  const perDay = computeOpportunityPerDayWeb(ov);
   return Math.max(0, Math.round(perDay * 30));
 }
 
@@ -301,12 +325,15 @@ export async function GET(request: Request) {
       instagram: 0,
       linkedin: 0,
     };
-    for (const [k, ov] of results) byCube[k] = computeOpportunity30(k, ov);
+
+    for (const [k, ov] of results) {
+      byCube[k] = computeOpportunity30(k, ov);
+    }
 
     const total = Object.values(byCube).reduce((s, n) => s + safeNum(n), 0);
 
     return NextResponse.json({ days, total, byCube });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "unknown_error" }, { status: 500 });
+  } catch (e: unknown) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "unknown_error" }, { status: 500 });
   }
 }

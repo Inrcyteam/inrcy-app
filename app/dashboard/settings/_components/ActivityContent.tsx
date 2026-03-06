@@ -126,7 +126,7 @@ export default function ActivityContent({ mode = "page" }: Props) {
           tone: (data.tone ?? "pro") as BusinessActivityForm["tone"],
           preferredCta: (data.preferred_cta ?? "devis") as BusinessActivityForm["preferredCta"],
         });
-      } catch (e: any) {
+      } catch (e: unknown) {
         // Si la table n'existe pas encore, on laisse le formulaire vide.
         console.error(e);
       } finally {
@@ -206,7 +206,6 @@ export default function ActivityContent({ mode = "page" }: Props) {
           });
           // (debug soft) ignore errors but keep dev visibility
           if (!resAward.ok) {
-            // eslint-disable-next-line no-console
             console.warn("UI award failed (activity_complete)");
           }
         } catch {
@@ -215,8 +214,8 @@ export default function ActivityContent({ mode = "page" }: Props) {
       }
 
       setSaved(true);
-    } catch (e: any) {
-      setError(e?.message ?? "Erreur lors de l'enregistrement.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur lors de l'enregistrement.");
     } finally {
       setSaving(false);
     }
@@ -303,7 +302,7 @@ export default function ActivityContent({ mode = "page" }: Props) {
             <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
               <label style={label}>
                 <span style={labelTitle}>Ton</span>
-                <select style={input} value={form.tone} onChange={(e) => set("tone", e.target.value as any)}>
+                <select style={input} value={form.tone} onChange={(e) => set("tone", e.target.value as BusinessActivityForm["tone"])}>
                   <option value="pro">Professionnel</option>
                   <option value="direct">Direct</option>
                   <option value="friendly">Amical</option>
@@ -316,7 +315,7 @@ export default function ActivityContent({ mode = "page" }: Props) {
                 <select
                   style={input}
                   value={form.preferredCta}
-                  onChange={(e) => set("preferredCta", e.target.value as any)}
+                  onChange={(e) => set("preferredCta", e.target.value as BusinessActivityForm["preferredCta"])}
                 >
                   <option value="devis">Demander un devis</option>
                   <option value="appeler">Appeler</option>

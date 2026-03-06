@@ -23,7 +23,7 @@ type Overview = {
     engagementRate?: number; // 0..1
     avgSessionDuration?: number; // seconds
   };
-  sources?: Record<string, { connected?: boolean; metrics?: any }>;
+  sources?: Record<string, { connected?: boolean; metrics?: Record<string, unknown> | null }>;
 };
 
 const INCLUDE_BY_CUBE: Record<CubeKey, string> = {
@@ -40,19 +40,19 @@ function safeNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function safeObj(v: unknown): Record<string, any> {
-  return v && typeof v === "object" && !Array.isArray(v) ? (v as any) : {};
+function safeObj(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
-function getTotalMetric(metrics: any, keys: string[]): number {
+function getTotalMetric(metrics: unknown, keys: string[]): number {
   const m = safeObj(metrics);
   const totals = safeObj(m.totals);
   for (const k of keys) {
-    const n = safeNum((totals as any)[k]);
+    const n = safeNum(totals[k]);
     if (n) return n;
   }
   for (const k of keys) {
-    const n = safeNum((m as any)[k]);
+    const n = safeNum(m[k]);
     if (n) return n;
   }
   return 0;
@@ -65,7 +65,7 @@ function clamp(n: number, min: number, max: number): number {
 
 function estimateEngagedSessions(ov: Overview): number {
   const sessions = safeNum(ov?.totals?.sessions);
-  const er = safeNum((ov?.totals as any)?.engagementRate);
+  const er = safeNum(ov?.totals?.engagementRate);
   if (sessions <= 0 || er <= 0) return 0;
   // engagementRate is expected 0..1. Clamp to avoid bad provider payloads.
   return sessions * clamp(er, 0, 1);
@@ -91,7 +91,7 @@ function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
   const sources = safeObj(ov?.sources);
 
   const clicks = safeNum(ov?.totals?.clicks);
-  const impressions = safeNum((ov?.totals as any)?.impressions);
+  const impressions = safeNum(ov?.totals?.impressions);
   const pageviews = safeNum(ov?.totals?.pageviews);
   const sessions = safeNum(ov?.totals?.sessions);
   const engagedSessions = estimateEngagedSessions(ov);
@@ -123,7 +123,8 @@ function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
 
   // --- Google Business Profile ---
   if (cube === "gmb") {
-    const m = (sources as any)?.gmb?.metrics;
+    const gmbNode = safeObj(sources["gmb"]);
+    const m = gmbNode["metrics"];
 
     // Strong signals (actions)
     const calls = getTotalMetric(m, ["calls", "phone_calls", "phoneCalls", "call_clicks", "callClicks", "CALL_CLICKS"]);
@@ -156,7 +157,8 @@ function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
 
   // --- Social (Facebook / Instagram / LinkedIn) ---
   if (cube === "facebook" || cube === "instagram" || cube === "linkedin") {
-    const m = (sources as any)?.[cube]?.metrics;
+    const socialNode = safeObj(sources[cube]);
+    const m = socialNode["metrics"];
 
     // Strong signals
     const messages = getTotalMetric(m, [

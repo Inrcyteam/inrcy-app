@@ -10,6 +10,21 @@ export const runtime = "nodejs";
 // Avoid any accidental caching of POST responses in some hosting setups.
 export const dynamic = "force-dynamic";
 
+type ProfileContactRow = { contact_email?: string | null };
+type LoyaltyBalanceRow = { balance?: number | null };
+type BoutiqueOrderInsert = {
+  user_id: string;
+  account_email: string | null;
+  admin_email: string | null;
+  product_key: string;
+  product_name: string;
+  method: "EUR" | "UI";
+  amount_eur: number | null;
+  amount_ui: number | null;
+  status: string;
+  idempotency_key: string | null;
+};
+
 type OrderBody = {
   productKey: string;
   method: "EUR" | "UI";
@@ -56,8 +71,10 @@ export async function POST(req: Request) {
     supabase.from("loyalty_balance").select("balance").eq("user_id", user.id).maybeSingle(),
   ]);
 
-  const adminEmail = asString((profileRes.data as any)?.contact_email) || null;
-  const uiBalanceRaw = Number((balanceRes.data as any)?.balance ?? 0);
+  const profileData = (profileRes.data ?? null) as ProfileContactRow | null;
+  const balanceData = (balanceRes.data ?? null) as LoyaltyBalanceRow | null;
+  const adminEmail = asString(profileData?.contact_email) || null;
+  const uiBalanceRaw = Number(balanceData?.balance ?? 0);
   const uiBalance = Number.isFinite(uiBalanceRaw) ? uiBalanceRaw : 0;
 
   // UI orders must have sufficient balance (server-side guard)
@@ -83,7 +100,7 @@ export async function POST(req: Request) {
   }
 
   // Insert order row first (safety/audit). Use service role to avoid any RLS friction.
-  const insertPayload: any = {
+  const insertPayload: BoutiqueOrderInsert = {
     user_id: user.id,
     account_email: user.email ?? null,
     admin_email: adminEmail,
@@ -173,8 +190,8 @@ export async function POST(req: Request) {
       });
       clientSent = true;
     }
-  } catch (e: any) {
-    lastError = e?.message ? String(e.message) : String(e);
+  } catch (e: unknown) {
+    lastError = e instanceof Error ? e.message : String(e);
     console.error("[boutique/order] sendTxMail failed:", lastError, e);
   }
 

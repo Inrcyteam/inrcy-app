@@ -125,17 +125,19 @@ export async function GET(request: Request) {
       .eq("user_id", userId);
 
     function latestIntegrationAny(provider: string, source: string, product: string) {
-  const rows = (Array.isArray(integrationsAll) ? integrationsAll : []).filter((r: any) => {
-    const rr = asRecord(r);
-    return rr["provider"] === provider && rr["source"] === source && rr["product"] === product;
-  });
-  rows.sort((a: any, b: any) => {
-    const aa = new Date(String(asRecord(a)["updated_at"] ?? asRecord(a)["created_at"] ?? 0)).getTime();
-    const bb = new Date(String(asRecord(b)["updated_at"] ?? asRecord(b)["created_at"] ?? 0)).getTime();
-    return bb - aa;
-  });
-  return asRecord(rows[0]);
-}
+      const rows = (Array.isArray(integrationsAll) ? integrationsAll : []).filter((row) => {
+        const record = asRecord(row);
+        return record["provider"] === provider && record["source"] === source && record["product"] === product;
+      });
+      rows.sort((left, right) => {
+        const leftRecord = asRecord(left);
+        const rightRecord = asRecord(right);
+        const leftTime = new Date(String(leftRecord["updated_at"] ?? leftRecord["created_at"] ?? 0)).getTime();
+        const rightTime = new Date(String(rightRecord["updated_at"] ?? rightRecord["created_at"] ?? 0)).getTime();
+        return rightTime - leftTime;
+      });
+      return asRecord(rows[0]);
+    }
 
 
 

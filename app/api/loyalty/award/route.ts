@@ -37,12 +37,31 @@ const MULTIPLIED_ACTION_KEYS = new Set([
   // (ajouter ici les futures actions de gains récurrents)
 ]);
 
+type TurboSupabaseLike = {
+  from: (table: string) => {
+    select: (query: string) => {
+      eq: (column: string, value: string) => {
+        maybeSingle: () => Promise<{ data: unknown | null }>;
+        in: (column: string, values: string[]) => Promise<{ data: unknown[] | null }>;
+      };
+    };
+  };
+};
+
+type TurboProfileRow = { inrcy_site_ownership?: string | null; inrcy_site_url?: string | null };
+type TurboInrcyConfigRow = { site_url?: string | null };
+type TurboProConfigRow = { settings?: { site_web?: { url?: string | null } } | null };
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
 function badRequest(message: string) {
   return NextResponse.json({ ok: false, error: message }, { status: 400 });
 }
 
 
-async function getTurboMultiplier(supabase: any, userId: string) {
+async function getTurboMultiplier(supabase: TurboSupabaseLike, userId: string) {
   // Reprise de la logique de /api/booster/connected-channels (source of truth)
   const [profileRes, inrcyCfgRes, proCfgRes, integRes] = await Promise.all([
     supabase.from("profiles").select("inrcy_site_ownership,inrcy_site_url").eq("user_id", userId).maybeSingle(),
@@ -55,11 +74,12 @@ async function getTurboMultiplier(supabase: any, userId: string) {
       .in("provider", ["google", "facebook", "instagram", "linkedin"]),
   ]);
 
-  const profile = (profileRes.data ?? {}) as Record<string, any>;
-  const inrcyCfg = (inrcyCfgRes.data ?? {}) as Record<string, any>;
-  const proCfg = (proCfgRes.data ?? {}) as Record<string, any>;
-  const settings = (proCfg.settings ?? {}) as Record<string, any>;
-  const siteWebUrl = String((settings.site_web ?? {})?.url ?? "").trim();
+  const profile = (profileRes.data ?? {}) as TurboProfileRow;
+  const inrcyCfg = (inrcyCfgRes.data ?? {}) as TurboInrcyConfigRow;
+  const proCfg = (proCfgRes.data ?? {}) as TurboProConfigRow;
+  const settings = asRecord(proCfg.settings);
+  const siteWebSettings = asRecord(settings["site_web"]);
+  const siteWebUrl = String(siteWebSettings["url"] ?? "").trim();
 
   const ownership = String(profile.inrcy_site_ownership ?? "none");
   const inrcyUrl = String(profile.inrcy_site_url ?? inrcyCfg.site_url ?? "").trim();
@@ -127,7 +147,7 @@ export async function POST(req: Request) {
   let effectiveAmount = amount;
   let turbo = 1;
   try {
-    turbo = await getTurboMultiplier(supabase, userData.user.id);
+    turbo = await getTurboMultiplier(supabase as unknown as TurboSupabaseLike, userData.user.id);
   } catch {
     turbo = 1;
   }
