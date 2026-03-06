@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
-
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -31,7 +30,6 @@ type TokenRefreshResponse = {
 type SiteSettings = {
   ga4?: { property_id?: string; measurement_id?: string; verified_at?: string };
   gsc?: { property?: string; verified_at?: string };
-  inrcy_tracking_enabled?: boolean;
 };
 
 function safeJsonParse<T>(s: unknown, fallback: T): T {
@@ -160,6 +158,8 @@ function pickGa4Match(domain: string, candidates: Array<{ propertyId: string; me
 
 async function resolveGa4FromDomain(accessToken: string, domain: string) {
   const properties = await fetchAllGa4Properties(accessToken);
+  // Dédoublonnage: une propriété peut avoir plusieurs WEB streams.
+  // On ne veut pas qu'un même propertyId compte plusieurs fois (sinon faux "ambiguous").
   const byProperty = new Map<string, { propertyId: string; measurementId?: string }>();
 
   for (const p of properties) {
@@ -231,74 +231,6 @@ async function resolveGscFromDomain(accessToken: string, domain: string, siteUrl
   );
 }
 
-function scopesCoverGoogleStats(scopesRaw: string | null): boolean {
-  const scopes = (scopesRaw || "").toLowerCase();
-  if (!scopes) return false;
-
-  const hasAnalytics =
-    scopes.includes("https://www.googleapis.com/auth/analytics") ||
-    scopes.includes("https://www.googleapis.com/auth/analytics.readonly") ||
-    scopes.includes("https://www.googleapis.com/auth/analytics.edit");
-
-  const hasWebmasters =
-    scopes.includes("https://www.googleapis.com/auth/webmasters") ||
-    scopes.includes("https://www.googleapis.com/auth/webmasters.readonly");
-
-  return hasAnalytics && hasWebmasters;
-}
-
-async function getAdminGoogleRefreshToken(adminUserId: string, adminEmail: string): Promise<string> {
-  const baseQuery = supabaseAdmin
-    .from("integrations")
-    .select("refresh_token_enc, scopes, source, product, category, updated_at")
-    .eq("provider", "google")
-    .eq("status", "connected");
-
-  const scopedQuery = adminUserId
-    ? baseQuery.eq("user_id", adminUserId)
-    : baseQuery.ilike("email_address", adminEmail);
-
-  const preferredQuery = scopedQuery
-    .or("category.eq.stats,product.eq.ga4,product.eq.gsc")
-    .not("refresh_token_enc", "is", null)
-    .order("updated_at", { ascending: false })
-    .limit(20);
-
-  const { data: preferredRows, error: preferredErr } = await preferredQuery;
-  if (preferredErr) {
-    throw new Error(`Lecture token admin impossible: ${preferredErr.message}`);
-  }
-
-  const preferred = (preferredRows ?? []).find((row) => {
-    const rr = asRecord(row);
-    const raw = (asString(rr["refresh_token_enc"]) ?? "").trim();
-    const scopes = asString(rr["scopes"]);
-    return Boolean(raw) && scopesCoverGoogleStats(scopes);
-  });
-
-  const preferredToken = tryDecryptToken((asString(asRecord(preferred)["refresh_token_enc"]) ?? "").trim()) || "";
-  if (preferredToken) return preferredToken;
-
-  const fallbackQuery = scopedQuery
-    .not("refresh_token_enc", "is", null)
-    .order("updated_at", { ascending: false })
-    .limit(20);
-
-  const { data: fallbackRows, error: fallbackErr } = await fallbackQuery;
-  if (fallbackErr) {
-    throw new Error(`Lecture token admin impossible: ${fallbackErr.message}`);
-  }
-
-  const fallback = (fallbackRows ?? []).find((row) => {
-    const rr = asRecord(row);
-    const raw = (asString(rr["refresh_token_enc"]) ?? "").trim();
-    const scopes = asString(rr["scopes"]);
-    return Boolean(raw) && scopesCoverGoogleStats(scopes);
-  });
-
-  return tryDecryptToken((asString(asRecord(fallback)["refresh_token_enc"]) ?? "").trim()) || "";
-}
-
 export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServer();
@@ -311,6 +243,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid source" }, { status: 400 });
     }
 
+    // siteUrl peut être fourni par le front ; sinon on le prend en DB
     let siteUrl = String(asString(body["siteUrl"]) ?? "").trim();
     if (!siteUrl) {
       const { data: row } = await supabase
@@ -326,6 +259,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Site URL invalid or missing" }, { status: 400 });
     }
 
+    // ✅ Mode rented : on utilise le compte Google admin iNrCy (token global) pour activer le suivi.
+    // Le client ne doit jamais voir d'écran OAuth.
+    // Le token admin est identifié soit par INRCY_ADMIN_USER_ID (recommandé), soit par l'email du compte Google admin.
     const { data: prof } = await supabase
       .from("profiles")
       .select("inrcy_site_ownership")
@@ -341,12 +277,32 @@ export async function POST(req: Request) {
     const adminEmail = (process.env.INRCY_ADMIN_GOOGLE_EMAIL || "contact@admin-inrcy.com").trim().toLowerCase();
     const adminUserId = (process.env.INRCY_ADMIN_USER_ID || "").trim();
 
-    const adminRefreshToken = await getAdminGoogleRefreshToken(adminUserId, adminEmail);
+    // On cherche un refresh_token admin (n'importe quelle source/product) stocké dans integrations.
+    // ⚠️ On privilégie user_id si fourni, sinon on se rabat sur email_address.
+    
+let adminRefreshToken = "";
+{
+  const baseQuery = supabaseAdmin.from("integrations").select("refresh_token_enc").eq("provider", "google");
+  const q = adminUserId ? baseQuery.eq("user_id", adminUserId) : baseQuery.ilike("email_address", adminEmail);
+  const { data: rows } = await q
+    .not("refresh_token_enc", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(10);
+  const rowWithToken = Array.isArray(rows)
+    ? rows.find((r) => {
+        const rr = asRecord(r);
+        const t = asString(rr["refresh_token_enc"]);
+        return !!(t && t.trim());
+      })
+    : undefined;
+  const raw = (asString(asRecord(rowWithToken)["refresh_token_enc"]) ?? "").trim();
+  adminRefreshToken = tryDecryptToken(raw) || "";
+}
     if (!adminRefreshToken) {
       return NextResponse.json(
         {
           error:
-            "Aucun token Google admin iNrCy compatible GA4 + GSC n'est configuré. Connecte d'abord le compte admin avec les scopes Analytics et Search Console en OAuth offline.",
+            "Aucun token Google admin iNrCy n'est configuré. Connecte d'abord le compte contact@admin-inrcy.com (OAuth offline) pour générer un refresh_token.",
         },
         { status: 500 }
       );
@@ -358,6 +314,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET" }, { status: 500 });
     }
 
+    // Refresh token -> access token (admin iNrCy)
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -376,18 +333,25 @@ export async function POST(req: Request) {
     }
 
     const accessToken = tokenData.access_token;
+    const _expiresAt =
+      tokenData.expires_in != null ? new Date(Date.now() + Number(tokenData.expires_in) * 1000).toISOString() : null;
+
+    // Resolve GA4 + GSC
     const domain = parsed.domain.toLowerCase().replace(/^www\./, "");
     const [ga4Resolved, gscResolved] = await Promise.all([
       resolveGa4FromDomain(accessToken, domain),
       resolveGscFromDomain(accessToken, domain, parsed.normalizedUrl),
     ]);
 
+    // ✅ On marque l'intégration comme connectée pour CE client,
+    // sans jamais stocker le refresh_token admin sur son user_id.
     const nowIso = new Date().toISOString();
     const base: Record<string, unknown> = {
       user_id: authData.user.id,
       provider: "google",
       source: "site_inrcy",
       status: "connected",
+      // pas de tokens sur la ligne client
       access_token_enc: null,
       refresh_token_enc: null,
       expires_at: null,
@@ -395,8 +359,9 @@ export async function POST(req: Request) {
       meta: { uses_admin: true },
     };
 
+    // Upsert en deux temps (plus tolérant si la contrainte unique n'est pas présente)
     for (const product of ["ga4", "gsc"] as const) {
-      const { data: existing, error: existingErr } = await supabase
+      const { data: existing } = await supabase
         .from("integrations")
         .select("id")
         .eq("user_id", authData.user.id)
@@ -405,30 +370,19 @@ export async function POST(req: Request) {
         .eq("product", product)
         .maybeSingle();
 
-      if (existingErr) {
-        return NextResponse.json({ error: `DB integrations lookup failed: ${existingErr.message}` }, { status: 500 });
-      }
-
-      const payload: Record<string, unknown> = {
-        ...base,
-        product,
-        category: "stats",
-        updated_at: nowIso,
-      };
+      const payload: Record<string, unknown> = { ...base, product };
       const existingId = asString(asRecord(existing)["id"]);
-
-      const writeResult = existingId
-        ? await supabase.from("integrations").update(payload).eq("id", existingId)
-        : await supabase.from("integrations").insert(payload);
-
-      if (writeResult.error) {
-        return NextResponse.json(
-          { error: `DB integrations write failed (${product}): ${writeResult.error.message}` },
-          { status: 500 }
-        );
+      if (existingId) {
+        await supabase
+          .from("integrations")
+          .update(payload)
+          .eq("id", existingId);
+      } else {
+        await supabase.from("integrations").insert(payload);
       }
     }
 
+    // Persist binding in inrcy_site_configs.settings
     const { data: cfg } = await supabase
       .from("inrcy_site_configs")
       .select("settings")
@@ -444,15 +398,15 @@ export async function POST(req: Request) {
       verified_at: nowIso,
     };
     next.gsc = { ...(next.gsc ?? {}), property: gscResolved, verified_at: nowIso };
-    next.inrcy_tracking_enabled = true;
+    // En mode RENTED, on garde GA4/GSC branchés, mais on peut couper/réactiver la couche iNrCy.
+    asRecord(next)["inrcy_tracking_enabled"] = true;
 
     const { error: upErr } = await supabase
       .from("inrcy_site_configs")
       .upsert({ user_id: authData.user.id, site_url: parsed.normalizedUrl, settings: next }, { onConflict: "user_id" });
-    if (upErr) {
-      return NextResponse.json({ error: `DB update failed: ${upErr.message}` }, { status: 500 });
-    }
+    if (upErr) return NextResponse.json({ error: "DB update failed" }, { status: 500 });
 
+    // Invalider le cache stats pour rafraîchir immédiatement les KPI après activation.
     try {
       await supabase.from("stats_cache").delete().eq("user_id", authData.user.id).eq("source", "overview");
     } catch {}

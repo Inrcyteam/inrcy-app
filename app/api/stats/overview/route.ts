@@ -127,7 +127,11 @@ export async function GET(request: Request) {
     function latestIntegrationAny(provider: string, source: string, product: string) {
       const rows = (Array.isArray(integrationsAll) ? integrationsAll : []).filter((row) => {
         const record = asRecord(row);
-        return record["provider"] === provider && record["source"] === source && record["product"] === product;
+        return (
+          String(record["provider"] ?? "") === provider &&
+          String(record["source"] ?? "") === source &&
+          String(record["product"] ?? "") === product
+        );
       });
       rows.sort((left, right) => {
         const leftRecord = asRecord(left);
@@ -137,6 +141,14 @@ export async function GET(request: Request) {
         return rightTime - leftTime;
       });
       return asRecord(rows[0]);
+    }
+
+    async function safeGetGoogleTokenFor(source: StatsSourceKey, product: "ga4" | "gsc") {
+      try {
+        return await getGoogleTokenFor(source, product);
+      } catch {
+        return null;
+      }
     }
 
 
@@ -375,55 +387,64 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
         // GA4
         if (includeGa4 && s.ga4Property) {
-          const token = await getGoogleTokenFor(s.key, "ga4");
+          const token = await safeGetGoogleTokenFor(s.key, "ga4");
           if (token?.accessToken) {
-            entry.connected.ga4 = true;
+            try {
+              // ✅ parallel GA4 calls (was sequential)
+              const [overview, pages, channels] = await Promise.all([
+                runGa4Report(token.accessToken, s.ga4Property, days),
+                runGa4TopPages(token.accessToken, s.ga4Property, days),
+                runGa4Channels(token.accessToken, s.ga4Property, days),
+              ]);
 
-            // ✅ parallel GA4 calls (was sequential)
-            const [overview, pages, channels] = await Promise.all([
-              runGa4Report(token.accessToken, s.ga4Property, days),
-              runGa4TopPages(token.accessToken, s.ga4Property, days),
-              runGa4Channels(token.accessToken, s.ga4Property, days),
-            ]);
+              entry.connected.ga4 = true;
+              entry.ga4 = { propertyId: s.ga4Property, overview, pages, channels };
 
-            entry.ga4 = { propertyId: s.ga4Property, overview, pages, channels };
+              users += overview.users;
+              sessions += overview.sessions;
+              pageviews += overview.pageviews;
+              engagementW += overview.engagementRate * overview.sessions;
+              durationW += overview.avgSessionDuration * overview.sessions;
 
-            users += overview.users;
-            sessions += overview.sessions;
-            pageviews += overview.pageviews;
-            engagementW += overview.engagementRate * overview.sessions;
-            durationW += overview.avgSessionDuration * overview.sessions;
-
-            for (const p of pages) localPages.set(p.path, (localPages.get(p.path) || 0) + p.views);
-            for (const c of channels) localChannels.set(c.channel, (localChannels.get(c.channel) || 0) + c.sessions);
+              for (const p of pages) localPages.set(p.path, (localPages.get(p.path) || 0) + p.views);
+              for (const c of channels) localChannels.set(c.channel, (localChannels.get(c.channel) || 0) + c.sessions);
+            } catch (e) {
+              entry.connected.ga4 = false;
+              entry.ga4 = { propertyId: s.ga4Property, error: e instanceof Error ? e.message : String(e) };
+            }
           }
         }
 
         // GSC
         if (includeGsc && s.gscProperty) {
-          const token = await getGoogleTokenFor(s.key, "gsc");
+          const token = await safeGetGoogleTokenFor(s.key, "gsc");
           if (token?.accessToken) {
-            entry.connected.gsc = true;
-            const q = await runGscQuery(token.accessToken, s.gscProperty, days);
-            entry.gsc = { property: s.gscProperty, queries: q.rows };
+            try {
+              const q = await runGscQuery(token.accessToken, s.gscProperty, days);
+              entry.connected.gsc = true;
+              entry.gsc = { property: s.gscProperty, queries: q.rows };
 
-            const rows = Array.isArray(asRecord(q)["rows"]) ? (asRecord(q)["rows"] as unknown[]) : [];
-            for (const r of rows) {
-              const rr = asRecord(r);
-              const clicks = Number(rr["clicks"] ?? 0) || 0;
-              const impressions = Number(rr["impressions"] ?? 0) || 0;
-              const query = String(rr["query"] ?? "");
-              const position = Number(rr["position"] ?? 0) || 0;
+              const rows = Array.isArray(asRecord(q)["rows"]) ? (asRecord(q)["rows"] as unknown[]) : [];
+              for (const r of rows) {
+                const rr = asRecord(r);
+                const clicks = Number(rr["clicks"] ?? 0) || 0;
+                const impressions = Number(rr["impressions"] ?? 0) || 0;
+                const query = String(rr["query"] ?? "");
+                const position = Number(rr["position"] ?? 0) || 0;
 
-              clicksSum += clicks;
-              impressionsSum += impressions;
+                clicksSum += clicks;
+                impressionsSum += impressions;
 
-              const cur = localQueries.get(query) || { clicks: 0, impressions: 0, positionSum: 0, rows: 0 };
-              cur.clicks += clicks;
-              cur.impressions += impressions;
-              cur.positionSum += position;
-              cur.rows += 1;
-              localQueries.set(query, cur);
+                const cur = localQueries.get(query) || { clicks: 0, impressions: 0, positionSum: 0, rows: 0 };
+                cur.clicks += clicks;
+                cur.impressions += impressions;
+                cur.positionSum += position;
+                cur.rows += 1;
+                localQueries.set(query, cur);
+              }
+            } catch (e) {
+              entry.connected.gsc = false;
+              entry.gsc = { property: s.gscProperty, error: e instanceof Error ? e.message : String(e) };
             }
           }
         }
@@ -526,8 +547,9 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           const token = tryDecryptToken(String(fbRow["access_token_enc"]));
+          if (!token) throw new Error("Facebook access token manquant ou invalide.");
           sourcesStatus.facebook.metrics = await fbFetchDailyInsights(
-            token || "",
+            token,
             String(fbRow["resource_id"]),
             start,
             end
@@ -553,7 +575,8 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           const token = tryDecryptToken(String(igRow["access_token_enc"]));
-          sourcesStatus.instagram.metrics = await igFetchDailyInsights(token || "", String(igRow["resource_id"]), start, end);
+          if (!token) throw new Error("Instagram access token manquant ou invalide.");
+          sourcesStatus.instagram.metrics = await igFetchDailyInsights(token, String(igRow["resource_id"]), start, end);
         } catch (e) {
           sourcesStatus.instagram.metrics = { error: e instanceof Error ? e.message : String(e) };
         }
@@ -573,12 +596,13 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       } else if (liRow["access_token_enc"] && !isExpired(liRow["expires_at"])) {
         try {
           const token = tryDecryptToken(String(liRow["access_token_enc"]));
+          if (!token) throw new Error("LinkedIn access token manquant ou invalide.");
           // Resolve first admin org if needed
           const orgUrn = String(asRecord(liRow["meta"])["org_urn"] || "");
-          const resolvedOrgUrn = orgUrn || (await liResolveFirstAdminOrgUrn(token || ""));
+          const resolvedOrgUrn = orgUrn || (await liResolveFirstAdminOrgUrn(token));
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-          sourcesStatus.linkedin.metrics = await liFetchOrgShareStats(token || "", resolvedOrgUrn, start, end);
+          sourcesStatus.linkedin.metrics = await liFetchOrgShareStats(token, resolvedOrgUrn, start, end);
         } catch (e) {
           sourcesStatus.linkedin.metrics = { error: e instanceof Error ? e.message : String(e) };
         }

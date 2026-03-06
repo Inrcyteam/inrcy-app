@@ -617,7 +617,7 @@ const loadSiteInrcy = useCallback(async () => {
   const legacyCfg = null;
 
   // URL iNrCy : profile > inrcy table
-  const url = (profile?.inrcy_site_url ?? inrcyCfg?.site_url ?? "") as string;
+  const url = ((inrcyCfg?.site_url ?? profile?.inrcy_site_url ?? "") as string).trim();
   setSiteInrcyUrl(url);
 
   // Contact email iNrCy : inrcy table
@@ -736,10 +736,9 @@ useEffect(() => {
   loadSiteInrcy();
 }, [loadSiteInrcy]);
 
-const canViewSite = siteInrcyOwnership !== "none" && !!siteInrcyUrl;
-const canConfigureSite = siteInrcyOwnership === "sold";
-// En mode rented : le pro ne configure pas, mais peut déclencher l'activation du suivi (auto)
-const canActivateInrcyTracking = siteInrcyOwnership === "rented" && !!siteInrcyUrl?.trim();
+const canAccessSiteInrcy = siteInrcyOwnership !== "none";
+const canViewSite = canAccessSiteInrcy && !!siteInrcyUrl;
+const canConfigureSite = canAccessSiteInrcy;
 
 // ✅ UX : on grise les boutons de connexion tant que l'URL n'est pas renseignée
 const hasSiteInrcyUrl = !!siteInrcyUrl?.trim();
@@ -780,7 +779,7 @@ const ConnectionPill = ({ connected }: { connected: boolean }) => (
 );
 
 const saveSiteInrcySettings = useCallback(async () => {
-  if (siteInrcyOwnership !== "sold") return;
+  if (siteInrcyOwnership === "none") return;
 
   let parsed: any;
   try {
@@ -889,8 +888,8 @@ const attachGoogleSearchConsole = useCallback(async () => {
 
 
 const connectSiteInrcyGa4 = useCallback(() => {
-  if (siteInrcyOwnership !== "sold") {
-    setSiteInrcySettingsError("Connexion Google Analytics indisponible : mode rented ou aucun site iNrCy.");
+  if (siteInrcyOwnership === "none") {
+    setSiteInrcySettingsError("Connexion Google Analytics indisponible : aucun site iNrCy.");
     return;
   }
   const siteUrl = (siteInrcyUrl || "").trim();
@@ -909,8 +908,8 @@ const connectSiteInrcyGa4 = useCallback(() => {
 }, [siteInrcyOwnership, siteInrcyUrl]);
 
 const connectSiteInrcyGsc = useCallback(() => {
-  if (siteInrcyOwnership !== "sold") {
-    setSiteInrcySettingsError("Connexion Search Console indisponible : mode rented ou aucun site iNrCy.");
+  if (siteInrcyOwnership === "none") {
+    setSiteInrcySettingsError("Connexion Search Console indisponible : aucun site iNrCy.");
     return;
   }
   const siteUrl = (siteInrcyUrl || "").trim();
@@ -1181,16 +1180,16 @@ const disconnectGoogleStats = useCallback(
 
 const disconnectSiteInrcyGa4 = useCallback(() => {
   // En mode "rented" : la config iNrCy est grisée (OK), mais on garde le message explicite ici.
-  if (siteInrcyOwnership !== "sold") {
-    setSiteInrcySettingsError("Déconnexion Google Analytics indisponible : mode rented ou aucun site iNrCy.");
+  if (siteInrcyOwnership === "none") {
+    setSiteInrcySettingsError("Déconnexion Google Analytics indisponible : aucun site iNrCy.");
     return;
   }
   void disconnectGoogleStats("site_inrcy", "ga4");
 }, [disconnectGoogleStats, siteInrcyOwnership]);
 
 const disconnectSiteInrcyGsc = useCallback(() => {
-  if (siteInrcyOwnership !== "sold") {
-    setSiteInrcySettingsError("Déconnexion Search Console indisponible : mode rented ou aucun site iNrCy.");
+  if (siteInrcyOwnership === "none") {
+    setSiteInrcySettingsError("Déconnexion Search Console indisponible : aucun site iNrCy.");
     return;
   }
   void disconnectGoogleStats("site_inrcy", "gsc");
@@ -1206,10 +1205,17 @@ const saveSiteInrcyUrl = useCallback(async () => {
   const user = authData?.user;
   if (!user) return;
 
-  const { error } = await supabase
-    .from("inrcy_site_configs")
-    .upsert({ user_id: user.id, site_url: url }, { onConflict: "user_id" });
+  const [cfgRes, profileRes] = await Promise.all([
+    supabase
+      .from("inrcy_site_configs")
+      .upsert({ user_id: user.id, site_url: url }, { onConflict: "user_id" }),
+    supabase
+      .from("profiles")
+      .update({ inrcy_site_url: url })
+      .eq("user_id", user.id),
+  ]);
 
+  const error = cfgRes.error ?? profileRes.error;
   if (error) {
     setSiteInrcySettingsError(error.message);
     return;
@@ -1317,7 +1323,10 @@ const resetSiteInrcyAll = useCallback(async () => {
   const { data: authData } = await supabase.auth.getUser();
   const user = authData?.user;
   if (user) {
-    await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" });
+    await Promise.all([
+      supabase.from("inrcy_site_configs").upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" }),
+      supabase.from("profiles").update({ inrcy_site_url: "" }).eq("user_id", user.id),
+    ]);
   }
 
   setSiteInrcyUrl("");
@@ -2287,11 +2296,6 @@ const checkActivity = useCallback(async () => {
               type="button"
               onClick={() => {
                 if (m.key === "site_inrcy") {
-                  if (siteInrcyOwnership === "rented") {
-                    if (siteInrcyAllGreen) void deactivateSiteInrcyTracking();
-                    else void activateSiteInrcyTracking();
-                    return;
-                  }
                   if (!canConfigureSite) return;
                   openPanel("site_inrcy");
                   return;
@@ -2317,41 +2321,10 @@ const checkActivity = useCallback(async () => {
                   return;
                 }
               }}
-              disabled={
-                m.key === "site_inrcy"
-                  ? siteInrcyOwnership === "rented"
-                    ? siteInrcyAllGreen
-                      ? siteInrcyTrackingBusy
-                      : !canActivateInrcyTracking || siteInrcyTrackingBusy
-                    : !canConfigureSite
-                  : false
-              }
-              title={
-                m.key === "site_inrcy"
-                  ? siteInrcyOwnership === "rented"
-                    ? siteInrcyAllGreen
-                      ? "Désactiver (GA4 + Search Console)"
-                      : !canActivateInrcyTracking
-                        ? "Renseigne le lien du site pour activer le suivi"
-                        : "Activer (GA4 + Search Console)"
-                    : !canConfigureSite
-                      ? "Configuration disponible uniquement si le site est vendu"
-                      : undefined
-                  : undefined
-              }
+              disabled={m.key === "site_inrcy" ? !canConfigureSite : false}
+              title={m.key === "site_inrcy" && !canConfigureSite ? "Disponible uniquement si vous avez un site iNrCy" : undefined}
             >
-              {m.key === "site_inrcy" && siteInrcyOwnership === "rented"
-                ? siteInrcyTrackingBusy
-                  ? (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                        <span className={styles.miniSpinner} aria-hidden />
-                        {siteInrcyAllGreen ? "Déconnexion..." : "Connexion..."}
-                      </span>
-                    )
-                  : siteInrcyAllGreen
-                    ? "Désactiver"
-                    : "Activer"
-                : "Configurer"}
+              {"Configurer"}
             </button>
           </div>
         </div>
@@ -3514,10 +3487,7 @@ const checkActivity = useCallback(async () => {
                         : "rgba(59,130,246,0.95)",
                   }}
                 />
-                Statut :{" "}
-                <strong>
-                  {siteInrcyOwnership === "none" ? "Aucun site" : siteInrcyAllGreen ? "Connecté" : "À connecter"}
-                </strong>
+                Statut : <strong>{siteInrcyOwnership === "none" ? "Aucun site" : siteInrcyAllGreen ? "Connecté" : "À connecter"}</strong>
               </span>
 
               {!!siteInrcyContactEmail && (
@@ -3554,16 +3524,14 @@ const checkActivity = useCallback(async () => {
                 <ConnectionPill connected={siteInrcyOwnership !== "none" && !!siteInrcyUrl?.trim()} />
               </div>
               <div className={styles.blockSub}>
-                {siteInrcyOwnership === "sold"
-                  ? "Renseigne (ou corrige) l'URL du site iNrCy."
-                  : "Lien en lecture seule (configuration disponible uniquement si le site est vendu)."}
+                Le bouton <strong>Voir le site</strong> de la bulle utilisera ce lien.
               </div>
 
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <input
                   value={siteInrcyUrl}
                   onChange={(e) => setSiteInrcyUrl(e.target.value)}
-                  disabled={siteInrcyOwnership !== "sold"}
+                  disabled={siteInrcyOwnership === "none"}
                   placeholder="https://..."
                   style={{
                     flex: "1 1 280px",
@@ -3573,7 +3541,7 @@ const checkActivity = useCallback(async () => {
                     background: "rgba(15,23,42,0.65)",
                       colorScheme: "dark",
                     padding: "10px 12px",
-                    color: siteInrcyOwnership !== "sold" ? "rgba(255,255,255,0.75)" : "white",
+                    color: siteInrcyOwnership === "none" ? "rgba(255,255,255,0.75)" : "white",
                     outline: "none",
                   }}
                 />
@@ -3582,8 +3550,8 @@ const checkActivity = useCallback(async () => {
                   type="button"
                   className={`${styles.actionBtn} ${styles.iconBtn}`}
                   onClick={saveSiteInrcyUrl}
-                  disabled={siteInrcyOwnership !== "sold"}
-                  title={siteInrcyOwnership !== "sold" ? "Disponible uniquement si le site est vendu" : "Enregistrer le lien"}
+                  disabled={siteInrcyOwnership === "none"}
+                  title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Enregistrer le lien"}
                   aria-label="Enregistrer le lien"
                 >
                   <SaveIcon />
@@ -3735,8 +3703,8 @@ const checkActivity = useCallback(async () => {
                   type="button"
                   className={`${styles.actionBtn} ${styles.iconBtn}`}
                   onClick={attachGoogleAnalytics}
-                  disabled={siteInrcyOwnership !== "sold"}
-                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la configuration est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : "Enregistrer (GA4)"}
+                  disabled={siteInrcyOwnership === "none"}
+                  title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Enregistrer (GA4)"}
                   aria-label="Enregistrer (GA4)"
                 >
                   <SaveIcon />
@@ -3746,16 +3714,8 @@ const checkActivity = useCallback(async () => {
                     type="button"
                     className={`${styles.actionBtn} ${styles.disconnectBtn}`}
                     onClick={disconnectSiteInrcyGa4}
-                    disabled={siteInrcyOwnership !== "sold"}
-                    title={
-                      siteInrcyOwnership !== "sold"
-                        ? siteInrcyOwnership === "rented"
-                          ? "En mode rented, la déconnexion est gérée par iNrCy."
-                          : siteInrcyOwnership === "none"
-                            ? "Aucun site iNrCy associé"
-                            : undefined
-                        : "Déconnecter (GA4)"
-                    }
+                    disabled={siteInrcyOwnership === "none"}
+                    title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Déconnecter (GA4)"}
                   >
                     Déconnecter
                   </button>
@@ -3767,11 +3727,7 @@ const checkActivity = useCallback(async () => {
                     disabled={!canConnectSiteInrcyGoogle}
                     title={
                       !canConfigureSite
-                        ? siteInrcyOwnership === "rented"
-                          ? "En mode rented, la connexion Google est gérée par iNrCy."
-                          : siteInrcyOwnership === "none"
-                            ? "Aucun site iNrCy associé"
-                            : "Disponible uniquement si le site est vendu"
+                        ? "Aucun site iNrCy associé"
                         : !hasSiteInrcyUrl
                           ? "Renseigne le lien du site iNrCy avant de connecter Google Analytics."
                           : "Connecter Google Analytics"
@@ -3827,8 +3783,8 @@ const checkActivity = useCallback(async () => {
                   type="button"
                   className={`${styles.actionBtn} ${styles.iconBtn}`}
                   onClick={attachGoogleSearchConsole}
-                  disabled={siteInrcyOwnership !== "sold"}
-                  title={siteInrcyOwnership !== "sold" ? siteInrcyOwnership === "rented" ? "En mode rented, la configuration est gérée par iNrCy." : siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : undefined : "Enregistrer (GSC)"}
+                  disabled={siteInrcyOwnership === "none"}
+                  title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Enregistrer (GSC)"}
                   aria-label="Enregistrer (GSC)"
                 >
                   <SaveIcon />
@@ -3838,16 +3794,8 @@ const checkActivity = useCallback(async () => {
                     type="button"
                     className={`${styles.actionBtn} ${styles.disconnectBtn}`}
                     onClick={disconnectSiteInrcyGsc}
-                    disabled={siteInrcyOwnership !== "sold"}
-                    title={
-                      siteInrcyOwnership !== "sold"
-                        ? siteInrcyOwnership === "rented"
-                          ? "En mode rented, la déconnexion est gérée par iNrCy."
-                          : siteInrcyOwnership === "none"
-                            ? "Aucun site iNrCy associé"
-                            : undefined
-                        : "Déconnecter (GSC)"
-                    }
+                    disabled={siteInrcyOwnership === "none"}
+                    title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Déconnecter (GSC)"}
                   >
                     Déconnecter
                   </button>
@@ -3859,11 +3807,7 @@ const checkActivity = useCallback(async () => {
                     disabled={!canConnectSiteInrcyGoogle}
                     title={
                       !canConfigureSite
-                        ? siteInrcyOwnership === "rented"
-                          ? "En mode rented, la connexion Google est gérée par iNrCy."
-                          : siteInrcyOwnership === "none"
-                            ? "Aucun site iNrCy associé"
-                            : "Disponible uniquement si le site est vendu"
+                        ? "Aucun site iNrCy associé"
                         : !hasSiteInrcyUrl
                           ? "Renseigne le lien du site iNrCy avant de connecter Google Search Console."
                           : "Connecter Google Search Console"
