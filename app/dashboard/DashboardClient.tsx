@@ -697,12 +697,14 @@ const proSettingsObj =
 
   // ✅ Connexions Google Business & Facebook : source de vérité = integrations
   try {
-    const [gmbStatus, fbStatus, igStatus, liStatus] = await Promise.all([
-      fetch("/api/integrations/google-business/status").then((r) => r.json()).catch(() => ({ connected: false })),
-      fetch("/api/integrations/facebook/status").then((r) => r.json()).catch(() => ({ connected: false })),
-      fetch("/api/integrations/instagram/status").then((r) => r.json()).catch(() => ({ connected: false })),
-      fetch("/api/integrations/linkedin/status").then((r) => r.json()).catch(() => ({ connected: false })),
-    ]);
+    const noStore = { cache: "no-store" as RequestCache };
+
+const [gmbStatus, fbStatus, igStatus, liStatus] = await Promise.all([
+  fetch("/api/integrations/google-business/status", noStore).then((r) => r.json()).catch(() => ({ connected: false })),
+  fetch("/api/integrations/facebook/status", noStore).then((r) => r.json()).catch(() => ({ connected: false })),
+  fetch("/api/integrations/instagram/status", noStore).then((r) => r.json()).catch(() => ({ connected: false })),
+  fetch("/api/integrations/linkedin/status", noStore).then((r) => r.json()).catch(() => ({ connected: false })),
+]);
     setGmbConnected(!!gmbStatus?.connected); // true only when a location is selected
     setGmbAccountConnected(!!gmbStatus?.accountConnected);
     setGmbConfigured(!!gmbStatus?.configured);
