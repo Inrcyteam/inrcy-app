@@ -38,6 +38,15 @@ type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "l
 
 type Period = 7 | 14 | 30 | 60;
 
+type MetricsSummaryResponse = {
+  details?: {
+    opportunities?: {
+      total?: number;
+      byCube?: Partial<Record<CubeKey, number>>;
+    };
+  };
+};
+
 type ActionKey =
   | "booster_publier"
   | "booster_avis"
@@ -853,6 +862,12 @@ export default function StatsClient() {
     linkedin: { ov: null, loading: true },
   });
 
+  const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>({
+    loading: true,
+    total: 0,
+    byCube: { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0 },
+  });
+
   // In-memory cache to avoid duplicate fetch bursts (React strict-mode/dev & quick navigations)
   const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
 
@@ -876,6 +891,27 @@ export default function StatsClient() {
       throw new Error(`fetch_failed:${r.status}:${txt.slice(0, 160)}`);
     }
     return (await r.json()) as Overview;
+  };
+
+  const fetchSummaryOpportunities = async (period: Period) => {
+    const r = await fetch(`/api/metrics/summary?monthDays=${period}&weekDays=7&todayDays=2&fresh=1`, { cache: "no-store" });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => "");
+      throw new Error(`summary_failed:${r.status}:${txt.slice(0, 160)}`);
+    }
+    const json = (await r.json()) as MetricsSummaryResponse;
+    const byCubePartial = json?.details?.opportunities?.byCube || {};
+    return {
+      total: safeNum(json?.details?.opportunities?.total),
+      byCube: {
+        site_inrcy: safeNum(byCubePartial.site_inrcy),
+        site_web: safeNum(byCubePartial.site_web),
+        gmb: safeNum(byCubePartial.gmb),
+        facebook: safeNum(byCubePartial.facebook),
+        instagram: safeNum(byCubePartial.instagram),
+        linkedin: safeNum(byCubePartial.linkedin),
+      } as Record<CubeKey, number>,
+    };
   };
 
 useEffect(() => {
@@ -946,6 +982,27 @@ useEffect(() => {
   };
 }, [period]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    setSummaryOpp((prev) => ({ ...prev, loading: true }));
+
+    (async () => {
+      try {
+        const next = await fetchSummaryOpportunities(period);
+        if (cancelled) return;
+        setSummaryOpp({ loading: false, total: next.total, byCube: next.byCube });
+      } catch {
+        if (cancelled) return;
+        setSummaryOpp((prev) => ({ ...prev, loading: false }));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [period]);
+
   const models: CubeModel[] = useMemo(() => {
     const build = (key: CubeKey, title: string, subtitle: string): CubeModel => {
       const periodForModel = period;
@@ -990,7 +1047,7 @@ const connections =
             : { main: !!ov.sources?.linkedin?.connected };
 
 const provenance = buildProvenance(key, ov);
-      const opp30 = computeOpportunity30(key, ov);
+      const opp30 = summaryOpp.byCube[key] ?? computeOpportunity30(key, ov);
 
       const q = computeQuality(key, ov);
       const insights = buildInsights(key, ov, q.score);
@@ -1038,14 +1095,10 @@ const provenance = buildProvenance(key, ov);
       build("instagram", "Instagram", "Visibilité de marque"),
       build("linkedin", "LinkedIn", "Visibilité professionnelle"),
     ];
-  }, [dataByCube, period]);
+  }, [dataByCube, period, summaryOpp.byCube]);
 
-  const centralPotential30 = useMemo(() => models.reduce((s, m) => s + safeNum(m.opportunity30), 0), [models]);
-  const centralByCube = useMemo(() => {
-    const by: Record<CubeKey, number> = { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0 };
-    for (const m of models) by[m.key] = safeNum(m.opportunity30);
-    return by;
-  }, [models]);
+  const centralPotential30 = summaryOpp.total;
+  const centralByCube = summaryOpp.byCube;
 
 
   return (
