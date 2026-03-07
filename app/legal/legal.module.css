@@ -66,3 +66,53 @@
   opacity: 0.7;
   font-size: 13px;
 }
+
+
+/* close button */
+
+.card{
+  position: relative;
+}
+
+.closeBtn{
+  position:absolute;
+  top:14px;
+  right:14px;
+  border:none;
+  background:rgba(255,255,255,0.08);
+  color:white;
+  padding:8px 14px;
+  border-radius:10px;
+  cursor:pointer;
+  font-size:14px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+}
+
+.closeBtn:hover{
+  background:rgba(255,255,255,0.16);
+}
+
+.closeX{
+  display:none;
+  font-size:20px;
+  line-height:20px;
+}
+
+@media (max-width:768px){
+
+  .closeText{
+    display:none;
+  }
+
+  .closeX{
+    display:block;
+  }
+
+  .closeBtn{
+    padding:6px 10px;
+  }
+
+}

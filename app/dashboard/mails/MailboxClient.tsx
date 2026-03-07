@@ -1327,6 +1327,8 @@ async function deleteDraftPermanently(id: string) {
 
           {/* Actions (droite) */}
           <div className={styles.actions}>
+            <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Send" />
+
             <button
               className={`${styles.btnGhost} ${styles.iconOnlyBtn} ${styles.hamburgerBtn}`}
               onClick={() => setMobileFoldersOpen(true)}
@@ -1351,8 +1353,6 @@ async function deleteDraftPermanently(id: string) {
             >
               <MailsSettingsContent />
             </SettingsDrawer>
-
-            <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Send" />
 
             <ResponsiveActionButton
               desktopLabel="Fermer"

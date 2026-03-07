@@ -881,6 +881,8 @@ const exportCsv = () => {
         </div>
 
         <div className={styles.headerRight}>
+          <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’CRM" />
+
           <div className={styles.statsWrap} ref={statsRef}>
             <button
               type="button"
@@ -938,10 +940,7 @@ const exportCsv = () => {
           </button>
 
           <div className={styles.closeWrap}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’CRM" />
-              <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
-            </div>
+            <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
           </div>
         </div>
       </header>

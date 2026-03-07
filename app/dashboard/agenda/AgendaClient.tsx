@@ -859,6 +859,8 @@ async function deleteEventById(id: string) {
           <div className={styles.headerActions}>
             {/* Desktop: recherche globale + boutons texte */}
             <div className={`${styles.headerSearch} ${styles.desktopOnly}`}>
+              <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Calendar" />
+
               <input
                 className={styles.headerSearchInput}
                 value={query}
@@ -867,13 +869,14 @@ async function deleteEventById(id: string) {
               />
 
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Calendar" />
                 <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
               </div>
             </div>
 
             {/* Mobile: icônes Loupe / Fermer */}
             <div className={styles.mobileOnly}>
+              <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Calendar" />
+
               <button
                 className={`${styles.btnGhost} ${styles.iconOnlyBtn}`}
                 onClick={() => setShowMobileSearch((v) => !v)}
@@ -885,7 +888,6 @@ async function deleteEventById(id: string) {
               </button>
 
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Calendar" />
                 <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
               </div>
             </div>
