@@ -969,6 +969,18 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     }
   }, []);
 
+  const triggerGeneratorRefresh = useCallback((options?: { delayed?: boolean }) => {
+    const delayed = options?.delayed !== false;
+    void loadSiteInrcy();
+    void refreshKpis({ fresh: true });
+    if (delayed) {
+      window.setTimeout(() => {
+        void loadSiteInrcy();
+        void refreshKpis({ fresh: true });
+      }, 1200);
+    }
+  }, [loadSiteInrcy, refreshKpis]);
+
   // ✅ Opportunités activables (iNrStats) — lues directement depuis /api/metrics/summary.
   const [oppTotal, setOppTotal] = useState<number | null>(null);
 
@@ -997,12 +1009,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
       if (t) window.clearTimeout(t);
       t = window.setTimeout(() => {
         if (disposed) return;
-        void loadSiteInrcy();
-        void refreshKpis({ fresh: true });
-        window.setTimeout(() => {
-          if (disposed) return;
-          void refreshKpis({ fresh: true });
-        }, 1200);
+        triggerGeneratorRefresh();
       }, 350);
     };
 
@@ -1037,7 +1044,17 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
         supabase.removeChannel(ch);
       } catch {}
     };
-  }, [loadSiteInrcy, refreshKpis]);
+  }, [triggerGeneratorRefresh]);
+
+  useEffect(() => {
+    const linked = searchParams.get("linked");
+    const activated = searchParams.get("activated");
+    const ok = searchParams.get("ok");
+    const toast = searchParams.get("toast");
+    const warning = searchParams.get("warning");
+    if (!linked && !activated && !ok && !toast && !warning) return;
+    triggerGeneratorRefresh();
+  }, [searchParams, triggerGeneratorRefresh]);
 
 const activateSiteInrcyTracking = useCallback(async () => {
   if (siteInrcyOwnership !== "rented") {
@@ -1088,8 +1105,8 @@ const activateSiteInrcyTracking = useCallback(async () => {
   }, 2500);
 
   // Rafraîchit le générateur sans recharger la page
-  void refreshKpis({ fresh: true });
-}, [siteInrcyOwnership, siteInrcyUrl, refreshKpis]);
+  triggerGeneratorRefresh();
+}, [siteInrcyOwnership, siteInrcyUrl, triggerGeneratorRefresh]);
 
 // ✅ Mode rented : désactive le suivi (GA4+GSC) et nettoie les settings.
 const deactivateSiteInrcyTracking = useCallback(async () => {
@@ -1132,8 +1149,8 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
   setSiteInrcyTrackingBusy(false);
 
   // Rafraîchit le générateur sans recharger la page
-  void refreshKpis({ fresh: true });
-}, [siteInrcyOwnership, refreshKpis]);
+  triggerGeneratorRefresh();
+}, [siteInrcyOwnership, triggerGeneratorRefresh]);
 
 
 const disconnectGoogleStats = useCallback(
@@ -1169,8 +1186,10 @@ const disconnectGoogleStats = useCallback(
       if (product === "ga4") setSiteWebGa4Notice("Google Analytics déconnecté.");
       else setSiteWebGscNotice("Search Console déconnecté.");
     }
+
+    triggerGeneratorRefresh();
   },
-  []
+  [triggerGeneratorRefresh]
 );
 
 const disconnectSiteInrcyGa4 = useCallback(() => {
@@ -1217,6 +1236,7 @@ const saveSiteInrcyUrl = useCallback(async () => {
   }
 
   setSiteInrcySettingsError(null);
+  triggerGeneratorRefresh();
   setSiteInrcyUrlNotice("✅ Lien du site enregistré");
   window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
 }, [siteInrcyOwnership, siteInrcyUrl]);
@@ -1287,9 +1307,10 @@ const saveSiteWebUrl = useCallback(async () => {
   }
 
   await updateSiteWebSettings(parsed);
+  triggerGeneratorRefresh();
   setSiteWebUrlNotice("✅ Lien du site enregistré");
   window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
-}, [siteWebSettingsText, siteWebUrl, updateSiteWebSettings]);
+}, [siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
 
 // ✅ Réinitialisation globale (lien + GA4 + GSC)
 const resetGoogleStats = useCallback(async (source: GoogleSource) => {
@@ -1330,7 +1351,8 @@ const resetSiteInrcyAll = useCallback(async () => {
   setGscProperty("");
   setSiteInrcyGa4Connected(false);
   setSiteInrcyGscConnected(false);
-}, [resetGoogleStats, siteInrcyOwnership]);
+  triggerGeneratorRefresh();
+}, [resetGoogleStats, siteInrcyOwnership, triggerGeneratorRefresh]);
 
 const resetSiteWebAll = useCallback(async () => {
   if (!confirm("Réinitialiser la configuration (lien + GA4 + Search Console) ?")) return;
@@ -1346,7 +1368,8 @@ const resetSiteWebAll = useCallback(async () => {
   setSiteWebGscProperty("");
   setSiteWebGa4Connected(false);
   setSiteWebGscConnected(false);
-}, [resetGoogleStats, updateSiteWebSettings]);
+  triggerGeneratorRefresh();
+}, [resetGoogleStats, updateSiteWebSettings, triggerGeneratorRefresh]);
 
 // ✅ Houzz / Pages Jaunes (liens uniquement, stockés dans inrcy_site_configs.settings)
 const updateRootSettingsKey = useCallback(
@@ -1387,19 +1410,21 @@ const disconnectGmbAccount = useCallback(async () => {
   await fetch("/api/integrations/google-business/disconnect-account", { method: "POST" });
   setGmbConnected(false);
   setGmbAccountConnected(false);
+  triggerGeneratorRefresh();
   setGmbConfigured(false);
   setGmbAccountEmail("");
   setGmbUrl("");
   await updateRootSettingsKey("gmb", { url: "", connected: false, accountEmail: "", resource_id: "" });
-}, [updateRootSettingsKey]);
+}, [updateRootSettingsKey, triggerGeneratorRefresh]);
 
 const disconnectGmbBusiness = useCallback(async () => {
   // Disconnect Google Business ONLY (keeps Google account connected)
   await fetch("/api/integrations/google-business/disconnect-location", { method: "POST" });
   setGmbConfigured(false);
   setGmbUrl("");
+  triggerGeneratorRefresh();
   await updateRootSettingsKey("gmb", { url: "", resource_id: "" });
-}, [updateRootSettingsKey]);
+}, [updateRootSettingsKey, triggerGeneratorRefresh]);
 
 
   // Facebook pages (selection)
@@ -1433,6 +1458,7 @@ const disconnectFacebookAccount = useCallback(async () => {
 	  await fetch("/api/integrations/facebook/disconnect-account", { method: "POST" });
 	  setFacebookAccountConnected(false);
 	  setFacebookPageConnected(false);
+	  triggerGeneratorRefresh();
 	  setFacebookAccountEmail("");
 	  // Keep a lightweight mirror in pro_tools_configs for instant UI updates.
 	  await updateRootSettingsKey("facebook", {
@@ -1447,11 +1473,12 @@ const disconnectFacebookAccount = useCallback(async () => {
 	  setFbPages([]);
 	  setFbSelectedPageId("");
 	  setFbSelectedPageName("");
-}, [updateRootSettingsKey]);
+}, [updateRootSettingsKey, triggerGeneratorRefresh]);
 
 const disconnectFacebookPage = useCallback(async () => {
 	  await fetch("/api/integrations/facebook/disconnect-page", { method: "POST" });
 	  setFacebookPageConnected(false);
+	  triggerGeneratorRefresh();
 	  await updateRootSettingsKey("facebook", {
 	    accountConnected: true,
 	    pageConnected: false,
@@ -1462,7 +1489,7 @@ const disconnectFacebookPage = useCallback(async () => {
 	  setFacebookUrl("");
 	  setFbSelectedPageId("");
 	  setFbSelectedPageName("");
-}, [updateRootSettingsKey]);
+}, [updateRootSettingsKey, triggerGeneratorRefresh]);
 const loadFacebookPages = useCallback(async () => {
 	  if (!facebookAccountConnected) return;
   setFbPagesLoading(true);
@@ -1518,6 +1545,7 @@ const saveFacebookPage = useCallback(async () => {
     setFacebookUrl(String(j?.pageUrl || `https://www.facebook.com/${picked.id}`));
 	    setFacebookPageConnected(true);
 	    setFbSelectedPageName(picked.name || "");
+    triggerGeneratorRefresh();
     setFacebookUrlNotice("Enregistré ✓");
     window.setTimeout(() => setFacebookUrlNotice(null), 2200);
   } else {
@@ -1525,7 +1553,7 @@ const saveFacebookPage = useCallback(async () => {
     window.setTimeout(() => setFacebookUrlNotice(null), 2500);
   }
 
-}, [fbPages, fbSelectedPageId]);
+}, [fbPages, fbSelectedPageId, triggerGeneratorRefresh]);
 
 // ===== Instagram (Meta) =====
 const connectInstagramAccount = useCallback(async () => {
@@ -1537,6 +1565,7 @@ const disconnectInstagramAccount = useCallback(async () => {
   await fetch("/api/integrations/instagram/disconnect-account", { method: "POST" });
   setInstagramAccountConnected(false);
   setInstagramConnected(false);
+  triggerGeneratorRefresh();
   setInstagramUsername("");
   setInstagramUrl("");
   setIgAccounts([]);
@@ -1549,11 +1578,12 @@ const disconnectInstagramAccount = useCallback(async () => {
     pageId: "",
     igId: "",
   });
-}, [updateRootSettingsKey]);
+}, [updateRootSettingsKey, triggerGeneratorRefresh]);
 
 const disconnectInstagramProfile = useCallback(async () => {
   await fetch("/api/integrations/instagram/disconnect-profile", { method: "POST" });
   setInstagramConnected(false);
+  triggerGeneratorRefresh();
   setInstagramUsername("");
   setInstagramUrl("");
   setIgSelectedPageId("");
@@ -1565,7 +1595,7 @@ const disconnectInstagramProfile = useCallback(async () => {
     pageId: "",
     igId: "",
   });
-}, [updateRootSettingsKey]);
+}, [updateRootSettingsKey, triggerGeneratorRefresh]);
 
 const loadInstagramAccounts = useCallback(async () => {
   if (!instagramAccountConnected) return;
@@ -1589,6 +1619,7 @@ const loadInstagramAccounts = useCallback(async () => {
       setInstagramConnected(true);
       setInstagramUsername(String(only.username || ""));
       setInstagramUrl(only.username ? `https://www.instagram.com/${only.username}/` : "");
+      triggerGeneratorRefresh();
       setInstagramUrlNotice("Enregistré ✓");
       window.setTimeout(() => setInstagramUrlNotice(null), 2200);
     }
@@ -1597,7 +1628,7 @@ const loadInstagramAccounts = useCallback(async () => {
   } finally {
     setIgAccountsLoading(false);
   }
-}, [instagramAccountConnected, igSelectedPageId]);
+}, [instagramAccountConnected, igSelectedPageId, triggerGeneratorRefresh]);
 
 const saveInstagramProfile = useCallback(async () => {
   const picked = igAccounts.find((a) => a.page_id === igSelectedPageId);
@@ -1613,13 +1644,14 @@ const saveInstagramProfile = useCallback(async () => {
     setInstagramConnected(true);
     if (j?.username) setInstagramUsername(String(j.username));
     if (j?.profileUrl) setInstagramUrl(String(j.profileUrl));
+    triggerGeneratorRefresh();
     setInstagramUrlNotice("Enregistré ✓");
     window.setTimeout(() => setInstagramUrlNotice(null), 2200);
   } else {
     setInstagramUrlNotice(j?.error || "Impossible d'enregistrer Instagram.");
     window.setTimeout(() => setInstagramUrlNotice(null), 2500);
   }
-}, [igAccounts, igSelectedPageId]);
+}, [igAccounts, igSelectedPageId, triggerGeneratorRefresh]);
 
 // ===== LinkedIn =====
 const connectLinkedinAccount = useCallback(async () => {
@@ -1631,6 +1663,7 @@ const disconnectLinkedinAccount = useCallback(async () => {
   await fetch("/api/integrations/linkedin/disconnect-account", { method: "POST" });
   setLinkedinAccountConnected(false);
   setLinkedinConnected(false);
+  triggerGeneratorRefresh();
   setLinkedinDisplayName("");
   setLinkedinUrl("");
   await updateRootSettingsKey("linkedin", {
@@ -1639,7 +1672,7 @@ const disconnectLinkedinAccount = useCallback(async () => {
     displayName: "",
     url: "",
   });
-}, [updateRootSettingsKey]);
+}, [updateRootSettingsKey, triggerGeneratorRefresh]);
 
 
 const saveLinkedinProfileUrl = useCallback(async () => {
@@ -1666,9 +1699,10 @@ const saveLinkedinProfileUrl = useCallback(async () => {
     url: raw,
   });
 
+  triggerGeneratorRefresh();
   setLinkedinUrlNotice("Lien enregistré ✅");
   window.setTimeout(() => setLinkedinUrlNotice(null), 1800);
-}, [linkedinUrl, linkedinAccountConnected, linkedinConnected, linkedinDisplayName, updateRootSettingsKey]);
+}, [linkedinUrl, linkedinAccountConnected, linkedinConnected, linkedinDisplayName, updateRootSettingsKey, triggerGeneratorRefresh]);
 
 
 const loadGmbAccountsAndLocations = useCallback(async () => {
@@ -1708,9 +1742,10 @@ const saveGmbLocation = useCallback(async () => {
   if (!res.ok) throw new Error(js?.error || "Impossible d’enregistrer l’établissement");
 
   if (js?.url) setGmbUrl(String(js.url));
+  triggerGeneratorRefresh();
   setGmbUrlNotice("Établissement enregistré ✅");
   window.setTimeout(() => setGmbUrlNotice(null), 1800);
-}, [gmbAccountName, gmbLocationName, gmbLocations]);
+}, [gmbAccountName, gmbLocationName, gmbLocations, triggerGeneratorRefresh]);
 
 
 const saveSiteWebSettings = useCallback(async () => {
@@ -1726,6 +1761,7 @@ const saveSiteWebSettings = useCallback(async () => {
   parsed.url = siteWebUrl.trim();
 
   await updateSiteWebSettings(parsed);
+  triggerGeneratorRefresh();
   setSiteWebGa4Notice("✅ Enregistrement GA4 validé");
   window.setTimeout(() => setSiteWebGa4Notice(null), 2500);
 
@@ -1759,7 +1795,7 @@ const attachWebsiteGoogleAnalytics = useCallback(async () => {
   setSiteWebGa4Notice("✅ Enregistrement GA4 validé");
   window.setTimeout(() => setSiteWebGa4Notice(null), 2500);
 
-}, [siteWebGa4MeasurementId, siteWebGa4PropertyId, siteWebSettingsText, siteWebUrl, updateSiteWebSettings]);
+}, [siteWebGa4MeasurementId, siteWebGa4PropertyId, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
 
 const attachWebsiteGoogleSearchConsole = useCallback(async () => {
   const property = siteWebGscProperty.trim();
@@ -1780,7 +1816,8 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
   parsed.gsc = { ...(parsed.gsc ?? {}), property };
 
   await updateSiteWebSettings(parsed);
-}, [siteWebGscProperty, siteWebSettingsText, siteWebUrl, updateSiteWebSettings]);
+  triggerGeneratorRefresh();
+}, [siteWebGscProperty, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
 
 
 
