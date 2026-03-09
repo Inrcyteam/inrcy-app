@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { StatsSourceKey } from "@/lib/googleStats";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -103,15 +104,14 @@ export async function GET(request: Request) {
     );
     const includeAll = includeSet.size === 0;
 
-    const supabase = await createSupabaseServer();
     const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";
-    const privilegedSecret = (searchParams.get("secret") || request.headers.get("x-cron-secret") || "").trim();
-    const privilegedUserId = (searchParams.get("userId") || "").trim();
+    const suppliedSecret = (searchParams.get("secret") || request.headers.get("x-cron-secret") || "").trim();
+    const forcedUserId = (searchParams.get("userId") || "").trim();
+    const isCronMode = Boolean(cronSecret && suppliedSecret && suppliedSecret === cronSecret && forcedUserId);
 
-    let userId = "";
-    if (cronSecret && privilegedSecret === cronSecret && privilegedUserId) {
-      userId = privilegedUserId;
-    } else {
+    const supabase = isCronMode ? supabaseAdmin : await createSupabaseServer();
+    let userId = forcedUserId;
+    if (!isCronMode) {
       const { data: authData, error: authErr } = await supabase.auth.getUser();
       if (authErr || !authData?.user) {
         return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -155,7 +155,7 @@ export async function GET(request: Request) {
 
     async function safeGetGoogleTokenFor(source: StatsSourceKey, product: "ga4" | "gsc") {
       try {
-        return await getGoogleTokenFor(source, product);
+        return await getGoogleTokenFor(source, product, { supabase, userId });
       } catch {
         return null;
       }
@@ -636,7 +636,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       } else if (!sourcesStatus.gmb.connected) {
         sourcesStatus.gmb.metrics = null;
       } else {
-        const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb");
+        const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb", { supabase, userId });
         const accessToken = tok?.accessToken;
 
         // IMPORTANT: GMB metrics are tied to a *location* (establishment page), not the Google account.

@@ -105,22 +105,29 @@ async function legacyOverrideDisconnected(
   return false;
 }
 
-export async function getGoogleTokenFor(source: StatsSourceKey, product: "ga4" | "gsc") {
-  const supabase = await createSupabaseServer();
-  const { data: authData, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !authData?.user) throw new Error("Not authenticated");
-  const userId = authData.user.id;
+export async function getGoogleTokenFor(
+  source: StatsSourceKey,
+  product: "ga4" | "gsc",
+  ctx?: { supabase?: any; userId?: string }
+) {
+  const supabase = ctx?.supabase ?? (await createSupabaseServer());
+  let effectiveUserId = ctx?.userId || "";
+  if (!effectiveUserId) {
+    const { data: authData, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !authData?.user) throw new Error("Not authenticated");
+    effectiveUserId = authData.user.id;
+  }
 
   // Legacy override: si une ligne existe dans integrations_statistiques en "déconnecté",
   // on force OFF même si integrations contient encore un vieux token.
-  if (await legacyOverrideDisconnected(supabase, userId, "google", source, product)) {
+  if (await legacyOverrideDisconnected(supabase, effectiveUserId, "google", source, product)) {
     return null;
   }
 
   const { data, error } = await supabase
     .from("integrations")
     .select("*")
-    .eq("user_id", userId)
+    .eq("user_id", effectiveUserId)
     .eq("provider", "google")
     .eq("source", source)
     .eq("product", product)
@@ -394,11 +401,18 @@ export async function runGscQuery(accessToken: string, property: string, days: n
 
 
 // Generic helper for any Google-backed integration stored in integrations (GA4, GSC, GMB, ...).
-export async function getGoogleTokenForAnyGoogle(source: StatsSourceKey, product: StatsProductKey) {
-  const supabase = await createSupabaseServer();
-  const { data: authData, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !authData?.user) throw new Error("Not authenticated");
-  const userId = authData.user.id;
+export async function getGoogleTokenForAnyGoogle(
+  source: StatsSourceKey,
+  product: StatsProductKey,
+  ctx?: { supabase?: any; userId?: string }
+) {
+  const supabase = ctx?.supabase ?? (await createSupabaseServer());
+  let userId = ctx?.userId || "";
+  if (!userId) {
+    const { data: authData, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !authData?.user) throw new Error("Not authenticated");
+    userId = authData.user.id;
+  }
 
   if (await legacyOverrideDisconnected(supabase, userId, "google", source, product)) {
     return null;
@@ -419,14 +433,14 @@ export async function getGoogleTokenForAnyGoogle(source: StatsSourceKey, product
 
   const row = data as unknown as GoogleTokenRow;
 
-  // For any Google integration, refresh token is required to keep the connection alive.
-  if (!row.refresh_token_enc) return null;
+  const refreshToken = tryDecryptToken(row.refresh_token_enc);
+  if (!refreshToken) return null;
 
   let accessToken = tryDecryptToken(row.access_token_enc);
   let expiresAt = row.expires_at;
 
   if (!accessToken || isExpired(expiresAt)) {
-    const refreshed = await refreshGoogleAccessToken(row.refresh_token_enc);
+    const refreshed = await refreshGoogleAccessToken(refreshToken);
     accessToken = refreshed.accessToken;
     expiresAt = refreshed.expiresAtIso;
 
