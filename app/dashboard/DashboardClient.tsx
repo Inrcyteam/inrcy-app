@@ -5384,7 +5384,7 @@ const checkActivity = useCallback(async () => {
 
       <HelpModal open={helpInertieOpen} title="Mon inertie — Tableau des gains UI" onClose={() => setHelpInertieOpen(false)}>
         <p style={{ marginTop: 0 }}>
-          Voici les actions qui rapportent des <strong>UI</strong> (Unités d’Inertie). Les limites hebdo et par cycle de 30 jours évitent la triche.
+          Voici les actions qui rapportent des <strong>UI</strong> (Unités d’Inertie).
         </p>
 
         <div style={{ overflowX: "auto" }}>
