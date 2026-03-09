@@ -17,6 +17,7 @@ import LegalContent from "./settings/_components/LegalContent";
 import RgpdContent from "./settings/_components/RgpdContent";
 import InertiaContent from "./settings/_components/InertiaContent";
 import BoutiqueContent from "./settings/_components/BoutiqueContent";
+import NotificationsSettingsContent from "./settings/_components/NotificationsSettingsContent";
 
 
 // ✅ IMPORTANT : même client que ta page login
@@ -46,6 +47,18 @@ type Module = {
   status: ModuleStatus;
   accent: Accent;
   actions: ModuleAction[];
+};
+
+type NotificationItem = {
+  id: string;
+  category: "performance" | "action" | "information";
+  categoryLabel: string;
+  title: string;
+  body: string;
+  cta_label: string | null;
+  cta_url: string | null;
+  relativeDate: string;
+  unread: boolean;
 };
 
 function statusLabel(s: ModuleStatus) {
@@ -223,6 +236,7 @@ export default function DashboardClient() {
       | "rgpd"
       | "inertie"
       | "boutique"
+      | "notifications"
   ) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", name);
@@ -312,6 +326,50 @@ export default function DashboardClient() {
   // ✅ Menu utilisateur (desktop)
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
+  const notificationMenuRef = useRef<HTMLDivElement | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  const unreadNotificationsCount = useMemo(() => notifications.filter((item) => item.unread).length, [notifications]);
+
+  const refreshNotifications = useCallback(async () => {
+    try {
+      setNotificationsLoading(true);
+      const res = await fetch("/api/notifications/feed?limit=12", { credentials: "include" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || `Erreur ${res.status}`);
+      setNotifications(Array.isArray(json?.items) ? json.items : []);
+      setNotificationsError(null);
+    } catch (e: any) {
+      setNotificationsError(e?.message || "Notifications indisponibles");
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshNotifications();
+    const timer = window.setInterval(() => {
+      void refreshNotifications();
+    }, 120000);
+    return () => window.clearInterval(timer);
+  }, [refreshNotifications]);
+
+  const markNotificationRead = useCallback(async (id: string) => {
+    setNotifications((current) => current.map((item) => (item.id === id ? { ...item, unread: false } : item)));
+    try {
+      await fetch(`/api/notifications/${id}/read`, { method: "POST", credentials: "include" });
+    } catch {}
+  }, []);
+
+  const markAllNotificationsRead = useCallback(async () => {
+    setNotifications((current) => current.map((item) => ({ ...item, unread: false })));
+    try {
+      await fetch("/api/notifications/mark-all-read", { method: "POST", credentials: "include" });
+    } catch {}
+  }, []);
 
   const extractDomain = useCallback((input: string) => {
     const url = (input || "").trim();
@@ -1995,6 +2053,33 @@ const checkActivity = useCallback(async () => {
     };
   }, [userMenuOpen]);
 
+  useEffect(() => {
+    if (!notificationMenuOpen) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setNotificationMenuOpen(false);
+    };
+
+    const closeIfOutside = (target: EventTarget | null) => {
+      if (!notificationMenuRef.current) return;
+      if (!target) return;
+      if (!notificationMenuRef.current.contains(target as Node)) setNotificationMenuOpen(false);
+    };
+
+    const onPointerDownMouse = (e: MouseEvent) => closeIfOutside(e.target);
+    const onPointerDownTouch = (e: TouchEvent) => closeIfOutside(e.target);
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("mousedown", onPointerDownMouse);
+    window.addEventListener("touchstart", onPointerDownTouch, { passive: true });
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", onPointerDownMouse);
+      window.removeEventListener("touchstart", onPointerDownTouch);
+    };
+  }, [notificationMenuOpen]);
+
   const userFirstLetter = (userEmail?.trim()?.[0] ?? "U").toUpperCase();
 
   // ✅ Menu hamburger (mobile)
@@ -2530,6 +2615,101 @@ const checkActivity = useCallback(async () => {
 
         {/* Desktop actions */}
         <div className={styles.topbarActions}>
+          <div className={styles.notificationWrap} ref={notificationMenuRef}>
+            <button
+              type="button"
+              className={styles.notificationBellBtn}
+              aria-label="Ouvrir les notifications"
+              aria-expanded={notificationMenuOpen}
+              onClick={() => {
+                setNotificationMenuOpen((v) => !v);
+                if (!notificationMenuOpen) {
+                  void refreshNotifications();
+                }
+              }}
+            >
+              <span className={styles.notificationBellIcon} aria-hidden>🔔</span>
+              {unreadNotificationsCount > 0 && (
+                <span className={styles.notificationBellCount} aria-hidden>
+                  {Math.min(99, unreadNotificationsCount)}
+                </span>
+              )}
+            </button>
+
+            {notificationMenuOpen && (
+              <div className={styles.notificationPanel} role="dialog" aria-label="Notifications">
+                <div className={styles.notificationPanelHeader}>
+                  <div>
+                    <div className={styles.notificationPanelTitle}>Actions à mener</div>
+                    <div className={styles.notificationPanelSub}>Votre cockpit vous relance au bon moment.</div>
+                  </div>
+                  <div className={styles.notificationPanelHeaderActions}>
+                    <button type="button" className={styles.notificationGhostBtn} onClick={() => openPanel("notifications")}>
+                      Réglages
+                    </button>
+                    <button type="button" className={styles.notificationGhostBtn} onClick={() => { void markAllNotificationsRead(); }}>
+                      Tout lire
+                    </button>
+                  </div>
+                </div>
+
+                <div className={styles.notificationList}>
+                  {notificationsLoading && notifications.length === 0 ? (
+                    <div className={styles.notificationEmpty}>Chargement des notifications…</div>
+                  ) : notificationsError ? (
+                    <div className={styles.notificationEmpty}>{notificationsError}</div>
+                  ) : notifications.length === 0 ? (
+                    <div className={styles.notificationEmpty}>Votre cloche est vide pour l’instant. Les prochaines relances business arriveront ici.</div>
+                  ) : (
+                    notifications.slice(0, 6).map((item) => (
+                      <div key={item.id} className={styles.notificationCard}>
+                        <div className={styles.notificationMetaRow}>
+                          <span className={`${styles.notificationCategory} ${styles[`notificationCategory_${item.category}`]}`}>{item.categoryLabel}</span>
+                          <span className={styles.notificationDate}>{item.relativeDate}</span>
+                        </div>
+                        <div className={styles.notificationTitleRow}>
+                          <div className={styles.notificationTitle}>{item.title}</div>
+                          {item.unread && <span className={styles.notificationUnreadDot} aria-hidden />}
+                        </div>
+                        <div className={styles.notificationBody}>{item.body}</div>
+                        <div className={styles.notificationActions}>
+                          {item.cta_url && item.cta_label ? (
+                            <button
+                              type="button"
+                              className={styles.notificationActionBtn}
+                              onClick={() => {
+                                void markNotificationRead(item.id);
+                                setNotificationMenuOpen(false);
+                                const ctaUrl = item.cta_url;
+                                if (!ctaUrl) return;
+                                if (ctaUrl.startsWith('/')) {
+                                  router.push(ctaUrl);
+                                } else {
+                                  window.location.href = ctaUrl;
+                                }
+                              }}
+                            >
+                              {item.cta_label}
+                            </button>
+                          ) : null}
+                          {item.unread && (
+                            <button
+                              type="button"
+                              className={styles.notificationGhostBtn}
+                              onClick={() => { void markNotificationRead(item.id); }}
+                            >
+                              Marquer comme lu
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <button type="button" className={styles.ghostBtn} onClick={() => openPanel("contact")}>
             Nous contacter
           </button>
@@ -2645,6 +2825,18 @@ const checkActivity = useCallback(async () => {
                   }}
                 >
                   Mon activité
+                </button>
+
+                <button
+                  type="button"
+                  className={styles.userMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    openPanel("notifications");
+                  }}
+                >
+                  Notifications
                 </button>
 
                 <button
@@ -2833,6 +3025,18 @@ const checkActivity = useCallback(async () => {
                 }}
               >
                 Mon activité
+              </button>
+
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openPanel("notifications");
+                }}
+              >
+                Notifications
               </button>
 
               <button
@@ -3429,6 +3633,8 @@ const checkActivity = useCallback(async () => {
             ? "Mon inertie"
             : panel === "boutique"
             ? "Boutique"
+            : panel === "notifications"
+            ? "Notifications"
             : ""
         }
         isOpen={
@@ -3455,6 +3661,8 @@ const checkActivity = useCallback(async () => {
           panel === "inertie"
         ||
           panel === "boutique"
+        ||
+          panel === "notifications"
         }
         onClose={closePanel}
         headerActions={
@@ -3483,6 +3691,8 @@ const checkActivity = useCallback(async () => {
             onOpenInertia={() => openPanel("inertie")}
           />
         )}
+
+        {panel === "notifications" && <NotificationsSettingsContent />}
 
 
         {panel === "site_inrcy" && (
