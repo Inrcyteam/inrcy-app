@@ -8,6 +8,8 @@ export const runtime = "nodejs";
 
 type PrefRow = {
   user_id: string;
+  in_app_enabled: boolean;
+  email_enabled: boolean;
   performance_enabled: boolean;
   action_enabled: boolean;
   information_enabled: boolean;
@@ -369,7 +371,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("notification_preferences")
-    .select("user_id, performance_enabled, action_enabled, information_enabled, digest_every_hours");
+    .select("user_id, in_app_enabled, email_enabled, performance_enabled, action_enabled, information_enabled, digest_every_hours");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -403,7 +405,7 @@ export async function GET(req: Request) {
           createdItems.push(item);
         }
       }
-      const emailResult = await maybeSendDigestEmail(pref.user_id, createdItems);
+      const emailResult = pref.email_enabled !== false ? await maybeSendDigestEmail(pref.user_id, createdItems) : { sent: false, reason: "email_disabled" as const };
       if (emailResult.sent) emailed += 1;
     } catch (e: unknown) {
       errors.push({ user_id: pref.user_id, message: e instanceof Error ? e.message : String(e) });

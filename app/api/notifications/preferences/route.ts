@@ -13,7 +13,7 @@ export async function GET() {
   const { data, error } = await supabaseAdmin
     .from("notification_preferences")
     .upsert(defaults, { onConflict: "user_id", ignoreDuplicates: false })
-    .select("user_id, performance_enabled, action_enabled, information_enabled, digest_every_hours, updated_at")
+    .select("user_id, in_app_enabled, email_enabled, performance_enabled, action_enabled, information_enabled, digest_every_hours, updated_at")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -27,6 +27,8 @@ export async function PUT(req: Request) {
   const body = await req.json().catch(() => ({}));
   const payload = {
     user_id: user.id,
+    in_app_enabled: body?.in_app_enabled !== false,
+    email_enabled: body?.email_enabled !== false,
     performance_enabled: body?.performance_enabled !== false,
     action_enabled: body?.action_enabled !== false,
     information_enabled: body?.information_enabled !== false,
@@ -37,7 +39,7 @@ export async function PUT(req: Request) {
   const { data, error } = await supabaseAdmin
     .from("notification_preferences")
     .upsert(payload, { onConflict: "user_id" })
-    .select("user_id, performance_enabled, action_enabled, information_enabled, digest_every_hours, updated_at")
+    .select("user_id, in_app_enabled, email_enabled, performance_enabled, action_enabled, information_enabled, digest_every_hours, updated_at")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

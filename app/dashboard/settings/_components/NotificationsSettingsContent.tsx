@@ -3,6 +3,8 @@
 import React from "react";
 
 type Preferences = {
+  in_app_enabled: boolean;
+  email_enabled: boolean;
   performance_enabled: boolean;
   action_enabled: boolean;
   information_enabled: boolean;
@@ -156,6 +158,21 @@ export default function NotificationsSettingsContent() {
           <div>• <b>Information</b> : état du cockpit, conseils de progression, rappels utiles.</div>
         </div>
       </div>
+
+      <ToggleRow
+        title="Cloche dans l’application"
+        subtitle="Affiche vos relances et actions à mener dans le cockpit iNrCy, via la cloche visible en haut du dashboard."
+        checked={prefs.in_app_enabled}
+        onChange={(checked) => updatePrefs({ ...prefs, in_app_enabled: checked })}
+        accent="rgba(56,189,248,0.12)"
+      />
+      <ToggleRow
+        title="Email digest iNrCy"
+        subtitle="Reçoit un beau résumé iNrCy par email lorsqu’une nouvelle vague utile est générée. Désactivez-le ici si vous ne voulez garder que la cloche."
+        checked={prefs.email_enabled}
+        onChange={(checked) => updatePrefs({ ...prefs, email_enabled: checked })}
+        accent="rgba(167,139,250,0.12)"
+      />
 
       <ToggleRow
         title="Performance"

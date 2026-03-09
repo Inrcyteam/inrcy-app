@@ -12,6 +12,16 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const limit = Math.max(5, Math.min(50, Number(url.searchParams.get("limit") || 12)));
 
+  const { data: pref } = await supabaseAdmin
+    .from("notification_preferences")
+    .select("in_app_enabled")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (pref && pref.in_app_enabled === false) {
+    return NextResponse.json({ items: [], unreadCount: 0 });
+  }
+
   const { data, error } = await supabaseAdmin
     .from("notifications")
     .select("id, user_id, category, kind, title, body, cta_label, cta_url, read_at, meta, dedupe_key, created_at")

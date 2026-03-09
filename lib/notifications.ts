@@ -4,6 +4,8 @@ export type NotificationCategory = "performance" | "action" | "information";
 
 export type NotificationPreferenceRow = {
   user_id: string;
+  in_app_enabled: boolean;
+  email_enabled: boolean;
   performance_enabled: boolean;
   action_enabled: boolean;
   information_enabled: boolean;
@@ -30,6 +32,8 @@ export type NotificationRow = {
 export function defaultNotificationPreferences(userId: string): NotificationPreferenceRow {
   return {
     user_id: userId,
+    in_app_enabled: true,
+    email_enabled: true,
     performance_enabled: true,
     action_enabled: true,
     information_enabled: true,

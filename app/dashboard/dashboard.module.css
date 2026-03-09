@@ -320,6 +320,11 @@
 /* =========================
    Mobile hamburger menu
 ========================= */
+.mobileBellWrap {
+  display: none;
+  position: relative;
+}
+
 .mobileMenuWrap {
   display: none;
   position: relative;
@@ -1509,8 +1514,9 @@ display: flex;
   .titleLine2 { font-size: 22px; }
   .generatorGrid { grid-template-columns: 1fr; }
 
-  /* hide desktop actions / show hamburger */
+  /* hide desktop actions / show hamburger + bell */
   .topbarActions { display: none; }
+  .mobileBellWrap { display: block; }
   .mobileMenuWrap { display: block; }
 
   .logoImg { width: 64px; height: 64px; }
@@ -3989,9 +3995,23 @@ transform: scale(1.50);
   line-height: 1.55;
 }
 
+.notificationBellBtnMobile {
+  width: 44px;
+  height: 44px;
+}
+
+.notificationPanelMobile {
+  right: -56px;
+}
+
 @media (max-width: 820px) {
   .notificationPanel {
     right: -44px;
+    width: min(390px, 94vw);
+  }
+
+  .notificationPanelMobile {
+    right: -8px;
     width: min(390px, 94vw);
   }
 }
