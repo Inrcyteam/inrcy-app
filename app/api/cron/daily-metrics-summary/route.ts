@@ -34,6 +34,10 @@ const INCLUDE_BY_CUBE: Record<CubeKey, string> = {
   linkedin: "linkedin",
 };
 
+const DEFAULT_TOTAL_SHARDS = 4;
+const DEFAULT_CONCURRENCY = 4;
+const LOCK_BASE_KEY = 90421001;
+
 function safeNum(v: unknown): number {
   const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : Number.NaN;
   return Number.isFinite(n) ? n : 0;
@@ -107,7 +111,7 @@ function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
   return roundNonNeg(estimate);
 }
 function pageKind(path: string) { const p = (path || "").toLowerCase(); return (p.includes("contact") || p.includes("devis") || p.includes("rdv") || p.includes("rendez")) ? "contact" : "other"; }
-function isIntentQuery(q: string) { return /\b(devis|tarif|prix|contact|telephone|t[ée]l|rdv|rendez|urgence|près|proche)\b/.test((q || "").toLowerCase()); }
+function isIntentQuery(q: string) { return /(devis|tarif|prix|contact|telephone|t[ée]l|rdv|rendez|urgence|près|proche)/.test((q || "").toLowerCase()); }
 function directShareFromChannels(ov: Overview, sessionsTotal: number) {
   const channels = Array.isArray(ov.channels) ? ov.channels : [];
   const directObj = channels.find((c) => String(c?.channel || c?.key || "").toLowerCase().includes("direct"));
@@ -214,67 +218,138 @@ function isAuthorizedCron(req: Request) {
   return bearer === cronSecret || headerSecret === cronSecret || querySecret === cronSecret;
 }
 
+function parsePositiveInt(raw: string | null, fallback: number, opts?: { min?: number; max?: number }) {
+  const min = opts?.min ?? 0;
+  const max = opts?.max ?? Number.MAX_SAFE_INTEGER;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(n)));
+}
+
+async function processUser(req: Request, userId: string) {
+  const states = await getChannelConnectionStates(supabaseAdmin, userId);
+  const details: Partial<Record<CubeKey, SnapshotDetail>> = {};
+
+  for (const source of SNAPSHOT_SOURCES) {
+    const state = states[source];
+    const overview = await fetchOverviewForUser(req, userId, source);
+    const demandesCaptees = computeCapturedForCube(source as CubeKey, overview);
+    const opportunites = computeOpportunity30(source as CubeKey, overview);
+
+    details[source as CubeKey] = {
+      connected: Boolean(state?.connected),
+      metrics: overview?.sources?.[source] ? (overview.sources[source] as Record<string, unknown>) : ((state ?? {}) as Record<string, unknown>),
+      demandes_captees: demandesCaptees,
+      opportunites_activables: opportunites,
+    };
+  }
+
+  await saveDailyMetricsSummary({
+    supabase: supabaseAdmin,
+    userId,
+    details,
+  });
+}
+
+async function runWithConcurrency<T>(items: T[], concurrency: number, worker: (item: T) => Promise<void>) {
+  const queue = [...items];
+  const runners = Array.from({ length: Math.max(1, concurrency) }, async () => {
+    while (queue.length > 0) {
+      const item = queue.shift();
+      if (item === undefined) return;
+      await worker(item);
+    }
+  });
+  await Promise.all(runners);
+}
+
+async function tryAcquireShardLock(shard: number, totalShards: number): Promise<boolean> {
+  const lockKey = LOCK_BASE_KEY + shard + totalShards * 1000;
+  const { data, error } = await supabaseAdmin.rpc("try_advisory_job_lock", { lock_key: lockKey });
+  if (error) {
+    console.warn("daily-metrics-summary lock unavailable", error.message);
+    return true;
+  }
+  return Boolean(data);
+}
+
+async function releaseShardLock(shard: number, totalShards: number): Promise<void> {
+  const lockKey = LOCK_BASE_KEY + shard + totalShards * 1000;
+  const { error } = await supabaseAdmin.rpc("advisory_job_unlock", { lock_key: lockKey });
+  if (error) {
+    console.warn("daily-metrics-summary unlock failed", error.message);
+  }
+}
+
 export async function GET(req: Request) {
   if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: users, error: usersError } = await supabaseAdmin
-    .from("profiles")
-    .select("user_id")
-    .not("user_id", "is", null);
+  const url = new URL(req.url);
+  const totalShards = parsePositiveInt(url.searchParams.get("totalShards"), DEFAULT_TOTAL_SHARDS, { min: 1, max: 24 });
+  const shard = parsePositiveInt(url.searchParams.get("shard"), 0, { min: 0, max: totalShards - 1 });
+  const offset = parsePositiveInt(url.searchParams.get("offset"), 0, { min: 0 });
+  const limitRaw = url.searchParams.get("limit");
+  const concurrency = parsePositiveInt(url.searchParams.get("concurrency"), DEFAULT_CONCURRENCY, { min: 1, max: 8 });
 
-  if (usersError) {
-    return NextResponse.json({ error: usersError.message }, { status: 500 });
+  const lockAcquired = await tryAcquireShardLock(shard, totalShards);
+  if (!lockAcquired) {
+    return NextResponse.json({ ok: true, skipped: true, reason: "lock_not_acquired", shard, totalShards }, { status: 200 });
   }
 
-  let processedUsers = 0;
-  let writtenSnapshots = 0;
-  const errors: Array<{ user_id: string; message: string }> = [];
+  try {
+    const { data: users, error: usersError } = await supabaseAdmin
+      .from("profiles")
+      .select("user_id")
+      .not("user_id", "is", null)
+      .order("user_id", { ascending: true });
 
-  for (const user of users || []) {
-    const userId = typeof user?.user_id === "string" ? user.user_id : "";
-    if (!userId) continue;
-
-    try {
-      const states = await getChannelConnectionStates(supabaseAdmin, userId);
-
-      const details: Partial<Record<CubeKey, SnapshotDetail>> = {};
-
-      for (const source of SNAPSHOT_SOURCES) {
-        const state = states[source];
-        const overview = await fetchOverviewForUser(req, userId, source);
-        const demandesCaptees = computeCapturedForCube(source as CubeKey, overview);
-        const opportunites = computeOpportunity30(source as CubeKey, overview);
-
-        details[source as CubeKey] = {
-          connected: Boolean(state?.connected),
-          metrics: overview?.sources?.[source] ? (overview.sources[source] as Record<string, unknown>) : ((state ?? {}) as Record<string, unknown>),
-          demandes_captees: demandesCaptees,
-          opportunites_activables: opportunites,
-        };
-      }
-
-      await saveDailyMetricsSummary({
-        supabase: supabaseAdmin,
-        userId,
-        details,
-      });
-
-      writtenSnapshots++;
-      processedUsers++;
-    } catch (error) {
-      errors.push({
-        user_id: userId,
-        message: error instanceof Error ? error.message : "Unknown snapshot error",
-      });
+    if (usersError) {
+      return NextResponse.json({ error: usersError.message }, { status: 500 });
     }
-  }
 
-  return NextResponse.json({
-    ok: errors.length === 0,
-    processedUsers,
-    writtenSnapshots,
-    errors,
-  });
+    const allUserIds = (users || [])
+      .map((user) => (typeof user?.user_id === "string" ? user.user_id : ""))
+      .filter(Boolean);
+
+    const shardUserIds = allUserIds.filter((_, index) => index % totalShards === shard);
+    const limit = parsePositiveInt(limitRaw, shardUserIds.length, { min: 1, max: Math.max(1, shardUserIds.length || 1) });
+    const selectedUserIds = shardUserIds.slice(offset, offset + limit);
+
+    let processedUsers = 0;
+    let writtenSnapshots = 0;
+    const errors: Array<{ user_id: string; message: string }> = [];
+
+    await runWithConcurrency(selectedUserIds, concurrency, async (userId) => {
+      try {
+        await processUser(req, userId);
+        processedUsers += 1;
+        writtenSnapshots += 1;
+      } catch (error) {
+        errors.push({
+          user_id: userId,
+          message: error instanceof Error ? error.message : "Unknown snapshot error",
+        });
+      }
+    });
+
+    return NextResponse.json({
+      ok: errors.length === 0,
+      shard,
+      totalShards,
+      offset,
+      limit,
+      selectedUsers: selectedUserIds.length,
+      shardUsers: shardUserIds.length,
+      totalUsers: allUserIds.length,
+      processedUsers,
+      writtenSnapshots,
+      remainingInShard: Math.max(0, shardUserIds.length - (offset + selectedUserIds.length)),
+      concurrency,
+      errors,
+    });
+  } finally {
+    await releaseShardLock(shard, totalShards);
+  }
 }

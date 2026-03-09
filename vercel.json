@@ -5,8 +5,20 @@
       "schedule": "0 9 * * *"
     },
     {
-      "path": "/api/cron/daily-metrics-summary",
+      "path": "/api/cron/daily-metrics-summary?shard=0&totalShards=4&concurrency=4",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/daily-metrics-summary?shard=1&totalShards=4&concurrency=4",
+      "schedule": "5 3 * * *"
+    },
+    {
+      "path": "/api/cron/daily-metrics-summary?shard=2&totalShards=4&concurrency=4",
+      "schedule": "10 3 * * *"
+    },
+    {
+      "path": "/api/cron/daily-metrics-summary?shard=3&totalShards=4&concurrency=4",
+      "schedule": "15 3 * * *"
     }
   ]
 }
