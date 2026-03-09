@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getChannelConnectionStates, type ChannelStates } from "@/lib/channelConnectionState";
-import { saveSnapshot } from "@/lib/statsSnapshots";
+import { saveDailyMetricsSummary, type SnapshotDetail } from "@/lib/statsSnapshots";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAppUrl } from "@/lib/stripeRest";
 
@@ -239,25 +239,29 @@ export async function GET(req: Request) {
     try {
       const states = await getChannelConnectionStates(supabaseAdmin, userId);
 
+      const details: Partial<Record<CubeKey, SnapshotDetail>> = {};
+
       for (const source of SNAPSHOT_SOURCES) {
         const state = states[source];
         const overview = await fetchOverviewForUser(req, userId, source);
         const demandesCaptees = computeCapturedForCube(source as CubeKey, overview);
         const opportunites = computeOpportunity30(source as CubeKey, overview);
 
-        await saveSnapshot({
-          supabase: supabaseAdmin,
-          userId,
-          source,
+        details[source as CubeKey] = {
           connected: Boolean(state?.connected),
-          metrics: overview?.sources?.[source] ? (overview.sources[source] as Record<string, unknown>) : (state ?? {}),
-          demandesCaptees,
-          opportunites,
-        });
-
-        writtenSnapshots++;
+          metrics: overview?.sources?.[source] ? (overview.sources[source] as Record<string, unknown>) : ((state ?? {}) as Record<string, unknown>),
+          demandes_captees: demandesCaptees,
+          opportunites_activables: opportunites,
+        };
       }
 
+      await saveDailyMetricsSummary({
+        supabase: supabaseAdmin,
+        userId,
+        details,
+      });
+
+      writtenSnapshots++;
       processedUsers++;
     } catch (error) {
       errors.push({
