@@ -328,7 +328,8 @@ export default function DashboardClient() {
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
-  const notificationMenuRef = useRef<HTMLDivElement | null>(null);
+  const desktopNotificationMenuRef = useRef<HTMLDivElement | null>(null);
+  const mobileNotificationMenuRef = useRef<HTMLDivElement | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
@@ -2061,9 +2062,11 @@ const checkActivity = useCallback(async () => {
     };
 
     const closeIfOutside = (target: EventTarget | null) => {
-      if (!notificationMenuRef.current) return;
       if (!target) return;
-      if (!notificationMenuRef.current.contains(target as Node)) setNotificationMenuOpen(false);
+      const node = target as Node;
+      const inDesktop = !!desktopNotificationMenuRef.current?.contains(node);
+      const inMobile = !!mobileNotificationMenuRef.current?.contains(node);
+      if (!inDesktop && !inMobile) setNotificationMenuOpen(false);
     };
 
     const onPointerDownMouse = (e: MouseEvent) => closeIfOutside(e.target);
@@ -2615,7 +2618,7 @@ const checkActivity = useCallback(async () => {
 
         {/* Desktop actions */}
         <div className={styles.topbarActions}>
-          <div className={styles.notificationWrap} ref={notificationMenuRef}>
+          <div className={styles.notificationWrap} ref={desktopNotificationMenuRef}>
             <button
               type="button"
               className={styles.notificationBellBtn}
@@ -2644,7 +2647,7 @@ const checkActivity = useCallback(async () => {
                     <div className={styles.notificationPanelSub}>Votre cockpit vous relance au bon moment.</div>
                   </div>
                   <div className={styles.notificationPanelHeaderActions}>
-                    <button type="button" className={styles.notificationGhostBtn} onClick={() => openPanel("notifications")}>
+                    <button type="button" className={styles.notificationGhostBtn} onClick={() => { setNotificationMenuOpen(false); openPanel("notifications"); }}>
                       Réglages
                     </button>
                     <button type="button" className={styles.notificationGhostBtn} onClick={() => { void markAllNotificationsRead(); }}>
@@ -2931,7 +2934,7 @@ const checkActivity = useCallback(async () => {
 
         {/* Mobile notifications */}
         <div className={styles.mobileBellWrap}>
-          <div className={styles.notificationWrap} ref={notificationMenuRef}>
+          <div className={styles.notificationWrap} ref={mobileNotificationMenuRef}>
             <button
               type="button"
               className={`${styles.notificationBellBtn} ${styles.notificationBellBtnMobile}`}
