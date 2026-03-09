@@ -9,14 +9,13 @@ export async function POST() {
   const user = authData?.user;
   if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { error: updErr } = await supabase
+  const { error: updErr } = await supabaseAdmin
     .from("integrations")
     .update({
       status: "account_connected",
       resource_id: null,
       resource_label: null,
-      resource_url: null,
-      updated_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
     })
     .eq("user_id", user.id)
     .eq("provider", "facebook")

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type FbPage = { id: string; name?: string; access_token?: string };
 
@@ -24,7 +25,7 @@ export async function GET() {
 
     const userId = auth.user.id;
 
-    const { data: integ, error: integErr } = await supabase
+    const { data: integ, error: integErr } = await supabaseAdmin
       .from("integrations")
       .select("access_token_enc,status,meta")
       .eq("user_id", userId)

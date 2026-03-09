@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     }
 
     // Read existing meta so we don't lose meta.user_access_token, page_url, etc.
-    const { data: existing, error: readErr } = await supabase
+    const { data: existing, error: readErr } = await supabaseAdmin
       .from("integrations")
       .select("meta")
       .eq("user_id", userId)
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     const nextMeta = { ...prevMeta, selected: true, page_url: pageUrl };
 
     // Update integration with the selected page + PAGE token (required for posting).
-    const { error: upErr } = await supabase
+    const { error: upErr } = await supabaseAdmin
       .from("integrations")
       .update({
         resource_id: pageId,
