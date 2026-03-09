@@ -5,6 +5,7 @@ import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
+import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
 
 type TokenResponse = {
   access_token?: string;
@@ -57,24 +58,38 @@ export async function GET(req: Request) {
     const fbErrorCode = urlObj.searchParams.get("error_code") || urlObj.searchParams.get("error");
 
     if (!stateRaw) {
+      oauthCallbackEvent(req, { provider: "facebook", outcome: "state_invalid", error: "missing_state", return_to: "/dashboard?panel=facebook", capture_in_sentry: true });
       return NextResponse.redirect(new URL("/dashboard?panel=facebook&toast=oauth_state", siteUrl));
     }
 
     // ✅ CSRF protection: verify state against HttpOnly cookie
     const st = verifyOAuthState(req, "facebook", stateRaw);
     const returnTo = safeInternalPath(st.returnTo || "/dashboard?panel=facebook", "/dashboard?panel=facebook");
+    oauthCallbackEvent(req, { provider: "facebook", outcome: "started", return_to: returnTo });
 
     const clearStateCookie = (res: NextResponse) => {
       res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
       return res;
     };
 
+    const fail = (error: string, message?: string) => {
+      oauthCallbackEvent(req, { provider: "facebook", outcome: "failed", error, message, return_to: returnTo, capture_in_sentry: true });
+      const finalUrl = new URL(returnTo, siteUrl);
+      finalUrl.searchParams.set("linked", "facebook");
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", error);
+      if (message) finalUrl.searchParams.set("message", message.slice(0, 200));
+      return clearStateCookie(NextResponse.redirect(finalUrl));
+    };
+
     if (!st.ok) {
+      oauthCallbackEvent(req, { provider: "facebook", outcome: "state_invalid", error: st.reason, return_to: returnTo, capture_in_sentry: true });
       return clearStateCookie(NextResponse.redirect(new URL("/dashboard?panel=facebook&toast=oauth_state", siteUrl)));
     }
 
     // If Facebook returned an error, redirect back with a readable reason.
     if (!code) {
+      oauthCallbackEvent(req, { provider: "facebook", outcome: fbErrorCode === "access_denied" ? "cancelled" : "failed", error: fbErrorCode || "missing_code", message: fbErrorMsg || undefined, return_to: returnTo, capture_in_sentry: !!fbErrorCode && fbErrorCode !== "access_denied" });
       const finalUrl = new URL(returnTo, siteUrl);
       finalUrl.searchParams.set("linked", "facebook");
       finalUrl.searchParams.set("ok", "0");
@@ -91,13 +106,19 @@ export async function GET(req: Request) {
     const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/facebook/callback`;
 
     if (!appId || !appSecret) {
-      return NextResponse.json({ error: "Missing FACEBOOK_APP_ID/FACEBOOK_APP_SECRET" }, { status: 500 });
+      oauthCallbackEvent(req, { provider: "facebook", outcome: "config_error", error: "oauth_config_missing", return_to: returnTo, capture_in_sentry: true });
+      return NextResponse.redirect(new URL("/dashboard?panel=facebook&linked=facebook&ok=0&error=oauth_config_missing", siteUrl));
     }
 
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      oauthCallbackEvent(req, { provider: "facebook", outcome: "not_authenticated", error: "not_authenticated", return_to: returnTo });
+      const finalUrl = new URL(returnTo, siteUrl);
+      finalUrl.searchParams.set("linked", "facebook");
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", "not_authenticated");
+      return clearStateCookie(NextResponse.redirect(finalUrl));
     }
     const userId = authData.user.id;
 
@@ -129,7 +150,7 @@ export async function GET(req: Request) {
     const tokenData = await fetchJson<TokenResponse>(tokenUrl);
     const userAccessToken = tokenData.access_token;
     if (!userAccessToken) {
-      return NextResponse.json({ error: "No access_token from Facebook", tokenData }, { status: 500 });
+      return fail("missing_access_token", "No access_token from Facebook");
     }
 
     const shortExpiresIn = typeof tokenData.expires_in === "number" ? tokenData.expires_in : null;
@@ -198,7 +219,7 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     if (existingErr) {
-      return NextResponse.json({ error: "DB read existing failed", existingErr }, { status: 500 });
+      return fail("db_read_failed", "DB read existing failed");
     }
 
     const payload: Record<string, unknown> = {
@@ -235,10 +256,10 @@ export async function GET(req: Request) {
         .from("integrations")
         .update(payload)
         .eq("id", existingId);
-      if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
+      if (upErr) return fail("db_update_failed", "DB update failed");
     } else {
       const { error: insErr } = await supabase.from("integrations").insert(payload);
-      if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
+      if (insErr) return fail("db_insert_failed", "DB insert failed");
     }
 
     // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
@@ -270,8 +291,17 @@ export async function GET(req: Request) {
     finalUrl.searchParams.set("linked", "facebook");
     finalUrl.searchParams.set("ok", "1");
     if (!pages.length) finalUrl.searchParams.set("warning", "no_pages_or_no_permission");
+    oauthCallbackEvent(req, { provider: "facebook", outcome: "success", user_id: userId, return_to: returnTo });
     return clearStateCookie(NextResponse.redirect(finalUrl));
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
+    oauthCallbackException(req, "facebook", e, { error: "oauth_callback_failed", return_to: "/dashboard?panel=facebook" });
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+    const finalUrl = new URL("/dashboard?panel=facebook", siteUrl);
+    finalUrl.searchParams.set("linked", "facebook");
+    finalUrl.searchParams.set("ok", "0");
+    finalUrl.searchParams.set("error", "oauth_callback_failed");
+    const msg = ((e instanceof Error ? e.message : String(e)) || "Unknown error").slice(0, 200);
+    if (msg) finalUrl.searchParams.set("message", msg);
+    return NextResponse.redirect(finalUrl);
   }
 }

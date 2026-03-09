@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { safeInternalPath } from "@/lib/security";
+import { makeOAuthState, safeInternalPath } from "@/lib/security";
 
 export async function GET(request: Request) {
   const appId = process.env.FACEBOOK_APP_ID;
@@ -13,14 +13,14 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=instagram", "/dashboard?panel=instagram");
 
-  const state = Buffer.from(JSON.stringify({ returnTo })).toString("base64url");
+  const { stateB64, nonce, cookieName } = makeOAuthState("instagram", returnTo);
 
   // Instagram Graph API uses Meta OAuth (Facebook dialog) + specific scopes.
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
     response_type: "code",
-    state,
+    state: stateB64,
     scope: [
       "public_profile",
       "email",
@@ -33,5 +33,13 @@ export async function GET(request: Request) {
   });
 
   const url = `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
-  return NextResponse.redirect(url);
+  const res = NextResponse.redirect(url);
+  res.cookies.set(cookieName, nonce, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 10,
+  });
+  return res;
 }

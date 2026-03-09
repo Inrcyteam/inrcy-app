@@ -4,6 +4,7 @@ import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
+import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
 
 type TokenResponse = {
   token_type?: string;
@@ -40,16 +41,29 @@ export async function GET(req: Request) {
 
     const st = verifyOAuthState(req, "microsoft", stateRaw);
     const returnTo = safeInternalPath(st.returnTo || "/dashboard?panel=mails", "/dashboard?panel=mails");
+    oauthCallbackEvent(req, { provider: "microsoft", outcome: "started", return_to: returnTo });
     const clearStateCookie = (res: NextResponse) => {
       res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
       return res;
     };
 
+    const fail = (error: string, message?: string) => {
+      oauthCallbackEvent(req, { provider: "microsoft", outcome: "failed", error, message, return_to: returnTo, capture_in_sentry: true });
+      const finalUrl = new URL(returnTo, origin);
+      finalUrl.searchParams.set("linked", "microsoft");
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", error);
+      if (message) finalUrl.searchParams.set("message", message.slice(0, 200));
+      return clearStateCookie(NextResponse.redirect(finalUrl));
+    };
+
     if (!st.ok) {
+      oauthCallbackEvent(req, { provider: "microsoft", outcome: "state_invalid", error: st.reason, return_to: returnTo, capture_in_sentry: true });
       return clearStateCookie(NextResponse.redirect(new URL("/dashboard?panel=mails&toast=oauth_state", origin)));
     }
 
     if (oauthError || !code) {
+      oauthCallbackEvent(req, { provider: "microsoft", outcome: oauthError === "access_denied" ? "cancelled" : "failed", error: oauthError || "missing_code", message: oauthErrorDescription || undefined, return_to: returnTo, capture_in_sentry: oauthError !== "access_denied" });
       const finalUrl = new URL(returnTo, origin);
       finalUrl.searchParams.set("linked", "microsoft");
       finalUrl.searchParams.set("ok", "0");
@@ -63,16 +77,19 @@ export async function GET(req: Request) {
     const redirectUri = process.env.MICROSOFT_REDIRECT_URI;
 
     if (!clientId || !clientSecret || !redirectUri) {
-      return NextResponse.json(
-        { error: "Missing MICROSOFT_CLIENT_ID/SECRET/REDIRECT_URI" },
-        { status: 500 }
-      );
+      oauthCallbackEvent(req, { provider: "microsoft", outcome: "config_error", error: "oauth_config_missing", return_to: returnTo, capture_in_sentry: true });
+      return NextResponse.redirect(new URL("/dashboard?panel=mails&linked=microsoft&ok=0&error=oauth_config_missing", origin));
     }
 
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      oauthCallbackEvent(req, { provider: "microsoft", outcome: "not_authenticated", error: "not_authenticated", return_to: returnTo });
+      const finalUrl = new URL(returnTo, origin);
+      finalUrl.searchParams.set("linked", "microsoft");
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", "not_authenticated");
+      return clearStateCookie(NextResponse.redirect(finalUrl));
     }
     const userId = authData.user.id;
 
@@ -111,10 +128,7 @@ export async function GET(req: Request) {
 
     const tokenData = (await tokenRes.json().catch(() => ({}))) as TokenResponse;
     if (!tokenRes.ok || !tokenData.access_token) {
-      return NextResponse.json(
-        { error: "Token exchange failed", tokenData },
-        { status: 500 }
-      );
+      return fail("token_exchange_failed", asString(asRecord(tokenData)["error_description"]) || asString(asRecord(tokenData)["error"]) || "Token exchange failed");
     }
 
     // Fetch /me
@@ -123,12 +137,12 @@ export async function GET(req: Request) {
     });
     const me = (await meRes.json().catch(() => ({}))) as GraphMe;
     if (!meRes.ok) {
-      return NextResponse.json({ error: "Graph /me failed", me }, { status: 500 });
+      return fail("graph_me_failed", "Graph /me failed");
     }
 
     const email = (me.mail || me.userPrincipalName || "").toLowerCase();
     if (!email) {
-      return NextResponse.json({ error: "Unable to resolve email for Microsoft account", me }, { status: 500 });
+      return fail("email_resolution_failed", "Unable to resolve email for Microsoft account");
     }
 
     // Preserve refresh token if not returned (rare but possible)
@@ -142,7 +156,7 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     if (existingErr) {
-      return NextResponse.json({ error: "DB read existing failed", existingErr }, { status: 500 });
+      return fail("db_read_failed", "DB read existing failed");
     }
 
     const existingRefreshEnc = asString(asRecord(existing)["refresh_token_enc"]) ?? null;
@@ -174,21 +188,27 @@ export async function GET(req: Request) {
         .update(payload)
         .eq("id", String(asRecord(existing)["id"]));
 
-      if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
+      if (upErr) return fail("db_update_failed", "DB update failed");
     } else {
       const { error: insErr } = await supabase.from("integrations").insert(payload);
-      if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
+      if (insErr) return fail("db_insert_failed", "DB insert failed");
     }
 
 
     const finalUrl = new URL(returnTo, origin);
     finalUrl.searchParams.set("linked", "microsoft");
     finalUrl.searchParams.set("ok", "1");
+    oauthCallbackEvent(req, { provider: "microsoft", outcome: "success", user_id: userId, return_to: returnTo });
     return clearStateCookie(NextResponse.redirect(finalUrl));
   } catch (e: unknown) {
-    return NextResponse.json(
-      { error: "Unhandled exception", message: (e instanceof Error ? e.message : String(e)) },
-      { status: 500 }
-    );
+    oauthCallbackException(req, "microsoft", e, { error: "oauth_callback_failed", return_to: "/dashboard?panel=mails" });
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+    const finalUrl = new URL("/dashboard?panel=mails", origin);
+    finalUrl.searchParams.set("linked", "microsoft");
+    finalUrl.searchParams.set("ok", "0");
+    finalUrl.searchParams.set("error", "oauth_callback_failed");
+    const msg = ((e instanceof Error ? e.message : String(e)) || "Unhandled exception").slice(0, 200);
+    if (msg) finalUrl.searchParams.set("message", msg);
+    return NextResponse.redirect(finalUrl);
   }
 }

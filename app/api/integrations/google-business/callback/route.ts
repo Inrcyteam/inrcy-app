@@ -6,6 +6,7 @@ import { gmbListAccounts } from "@/lib/googleBusiness";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
+import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
 
 type TokenResponse = {
   access_token?: string;
@@ -60,27 +61,43 @@ export async function GET(req: Request) {
     const oauthError = urlObj.searchParams.get("error");
     const oauthErrorDescription = urlObj.searchParams.get("error_description");
 
-    if (!stateRaw) return NextResponse.json({ error: "Missing ?state" }, { status: 400 });
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+    if (!stateRaw) {
+      oauthCallbackEvent(req, { provider: "google_business", outcome: "state_invalid", error: "missing_state", return_to: "/dashboard?panel=gmb", capture_in_sentry: true });
+      return NextResponse.redirect(new URL("/dashboard?panel=gmb&toast=oauth_state", siteUrl));
+    }
 
     // IMPORTANT:
     // - In dev you often hit this route via Cloudflare tunnel (https://xxxx.trycloudflare.com)
     // - But your app UI might be on http://localhost:3000 (no TLS)
     // So we MUST NOT guess the final redirect origin from req.url.
     // We use NEXT_PUBLIC_SITE_URL as the canonical base URL to redirect back to.
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
 
     const st = verifyOAuthState(req, "google_business", stateRaw);
     const returnToPath = safeInternalPath(st.returnTo || "/dashboard?panel=gmb", "/dashboard?panel=gmb");
+    oauthCallbackEvent(req, { provider: "google_business", outcome: "started", return_to: returnToPath });
     const clearStateCookie = (res: NextResponse) => {
       res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
       return res;
     };
 
+    const fail = (error: string, message?: string) => {
+      oauthCallbackEvent(req, { provider: "google_business", outcome: "failed", error, message, return_to: returnToPath, capture_in_sentry: true });
+      const finalUrl = new URL(returnToPath, siteUrl);
+      finalUrl.searchParams.set("linked", "gmb");
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", error);
+      if (message) finalUrl.searchParams.set("message", message.slice(0, 200));
+      return clearStateCookie(NextResponse.redirect(finalUrl));
+    };
+
     if (!st.ok) {
+      oauthCallbackEvent(req, { provider: "google_business", outcome: "state_invalid", error: st.reason, return_to: returnToPath, capture_in_sentry: true });
       return clearStateCookie(NextResponse.redirect(new URL("/dashboard?panel=gmb&toast=oauth_state", siteUrl)));
     }
 
     if (oauthError || !code) {
+      oauthCallbackEvent(req, { provider: "google_business", outcome: oauthError === "access_denied" ? "cancelled" : "failed", error: oauthError || "missing_code", message: oauthErrorDescription || undefined, return_to: returnToPath, capture_in_sentry: oauthError !== "access_denied" });
       const finalUrl = new URL(returnToPath, siteUrl);
       finalUrl.searchParams.set("linked", "gmb");
       finalUrl.searchParams.set("ok", "0");
@@ -100,13 +117,19 @@ export async function GET(req: Request) {
     const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/google-business/callback`;
 
     if (!clientId || !clientSecret) {
-      return NextResponse.json({ error: "Missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET" }, { status: 500 });
+      oauthCallbackEvent(req, { provider: "google_business", outcome: "config_error", error: "oauth_config_missing", return_to: returnToPath, capture_in_sentry: true });
+      return NextResponse.redirect(new URL("/dashboard?panel=gmb&linked=gmb&ok=0&error=oauth_config_missing", siteUrl));
     }
 
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      oauthCallbackEvent(req, { provider: "google_business", outcome: "not_authenticated", error: "not_authenticated", return_to: returnToPath });
+      const finalUrl = new URL(returnToPath, siteUrl);
+      finalUrl.searchParams.set("linked", "gmb");
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", "not_authenticated");
+      return clearStateCookie(NextResponse.redirect(finalUrl));
     }
     const userId = authData.user.id;
 
@@ -141,7 +164,7 @@ export async function GET(req: Request) {
 
     const tokenData = (await tokenRes.json()) as TokenResponse;
     if (!tokenRes.ok) {
-      return NextResponse.json({ error: "Token exchange failed", tokenData }, { status: 500 });
+      return fail("token_exchange_failed", "Token exchange failed");
     }
 
     const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
@@ -149,7 +172,7 @@ export async function GET(req: Request) {
     });
     const userInfo = (await userRes.json()) as GoogleUserInfo;
     if (!userRes.ok || !userInfo?.email) {
-      return NextResponse.json({ error: "Userinfo fetch failed", userInfo }, { status: 500 });
+      return fail("userinfo_failed", "Userinfo fetch failed");
     }
 
     // Preserve refresh_token if Google doesn't return it
@@ -163,7 +186,7 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     if (existingErr) {
-      return NextResponse.json({ error: "DB read existing failed", existingErr }, { status: 500 });
+      return fail("db_read_failed", "DB read existing failed");
     }
 
     const existingRec = asRecord(existing);
@@ -199,10 +222,10 @@ export async function GET(req: Request) {
         .from("integrations")
         .update(payload)
         .eq("id", existingId);
-      if (upErr) return NextResponse.json({ error: "DB update failed", upErr }, { status: 500 });
+      if (upErr) return fail("db_update_failed", "DB update failed");
     } else {
       const { error: insErr } = await supabase.from("integrations").insert(payload);
-      if (insErr) return NextResponse.json({ error: "DB insert failed", insErr }, { status: 500 });
+      if (insErr) return fail("db_insert_failed", "DB insert failed");
     }
 
     // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
@@ -261,8 +284,17 @@ export async function GET(req: Request) {
     finalUrl.searchParams.set("linked", "gmb");
     finalUrl.searchParams.set("ok", "1");
 
+    oauthCallbackEvent(req, { provider: "google_business", outcome: "success", user_id: userId, return_to: returnToPath });
     return clearStateCookie(NextResponse.redirect(finalUrl));
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
+    oauthCallbackException(req, "google_business", e, { error: "oauth_callback_failed", return_to: "/dashboard?panel=gmb" });
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+    const finalUrl = new URL("/dashboard?panel=gmb", siteUrl);
+    finalUrl.searchParams.set("linked", "gmb");
+    finalUrl.searchParams.set("ok", "0");
+    finalUrl.searchParams.set("error", "oauth_callback_failed");
+    const msg = ((e instanceof Error ? e.message : String(e)) || "Unknown error").slice(0, 200);
+    if (msg) finalUrl.searchParams.set("message", msg);
+    return NextResponse.redirect(finalUrl);
   }
 }

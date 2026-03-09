@@ -4,6 +4,7 @@ import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
+import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
 
 type TokenResponse = {
   access_token?: string;
@@ -38,23 +39,35 @@ export async function GET(req: Request) {
     const redirectUri = redirectFromEnv || `${origin}/api/integrations/google/callback`;
 
     if (!clientId || !clientSecret) {
-      return NextResponse.json(
-        { error: "Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET" },
-        { status: 500 }
-      );
+      oauthCallbackEvent(req, { provider: "google", outcome: "config_error", error: "oauth_config_missing", return_to: "/dashboard?panel=mails", capture_in_sentry: true });
+      return NextResponse.redirect(new URL("/dashboard?panel=mails&ok=0&error=oauth_config_missing", origin));
     }
 
     // ✅ CSRF protection: verify state against HttpOnly cookie
     const st = verifyOAuthState(req, "google", searchParams.get("state"));
     const returnTo = safeInternalPath(st.returnTo || "/dashboard?panel=mails&toast=connected", "/dashboard?panel=mails&toast=connected");
+    oauthCallbackEvent(req, { provider: "google", outcome: "started", return_to: returnTo });
+    const fail = (error: string, message?: string) => {
+      oauthCallbackEvent(req, { provider: "google", outcome: "failed", error, message, return_to: returnTo, capture_in_sentry: true });
+      const finalUrl = new URL(returnTo, origin);
+      finalUrl.searchParams.set("linked", "google");
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", error);
+      if (message) finalUrl.searchParams.set("message", message.slice(0, 200));
+      const res = NextResponse.redirect(finalUrl);
+      res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+      return res;
+    };
 
     if (!st.ok) {
+      oauthCallbackEvent(req, { provider: "google", outcome: "state_invalid", error: "invalid_state", return_to: returnTo, capture_in_sentry: true });
       const res = NextResponse.redirect(new URL(`/dashboard?panel=mails&toast=oauth_state`, origin));
       res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
       return res;
     }
 
     if (oauthError || !code) {
+      oauthCallbackEvent(req, { provider: "google", outcome: oauthError === "access_denied" ? "cancelled" : "failed", error: oauthError || "missing_code", message: oauthErrorDescription || undefined, return_to: returnTo, capture_in_sentry: oauthError !== "access_denied" });
       const resUrl = new URL(returnTo, origin);
       resUrl.searchParams.set("linked", "google");
       resUrl.searchParams.set("ok", "0");
@@ -66,7 +79,10 @@ export async function GET(req: Request) {
     }
 
     const { supabase, user, errorResponse } = await requireUser();
-    if (errorResponse) return errorResponse;
+    if (errorResponse) {
+      oauthCallbackEvent(req, { provider: "google", outcome: "not_authenticated", error: "not_authenticated", return_to: returnTo });
+      return fail("not_authenticated");
+    }
     const userId = user.id;
 
     // Clear state cookie once used
@@ -109,10 +125,7 @@ export async function GET(req: Request) {
     if (!tokenRes.ok || !tokenData.access_token) {
       // Avoid leaking provider response details in prod
       const detail = process.env.NODE_ENV === "production" ? undefined : tokenData;
-      return NextResponse.json(
-        { error: "Token exchange failed", detail },
-        { status: 500 }
-      );
+      return fail("token_exchange_failed", asString(asRecord(detail)["error_description"]) || asString(asRecord(detail)["error"]) || "Token exchange failed");
     }
 
     // 2) Get user email
@@ -124,10 +137,7 @@ export async function GET(req: Request) {
 
     if (!userRes.ok || !userInfo?.email) {
       const detail = process.env.NODE_ENV === "production" ? undefined : userInfo;
-      return NextResponse.json(
-        { error: "Userinfo fetch failed", detail },
-        { status: 500 }
-      );
+      return fail("userinfo_failed", "Userinfo fetch failed");
     }
 
     // 3) Read existing row (to preserve refresh_token if not returned)
@@ -142,7 +152,7 @@ export async function GET(req: Request) {
 
     if (existingErr) {
       const detail = process.env.NODE_ENV === "production" ? undefined : existingErr;
-      return NextResponse.json({ error: "DB read existing failed", detail }, { status: 500 });
+      return fail("db_read_failed", "DB read existing failed");
     }
 
     const refreshTokenEncToStore = tokenData.refresh_token
@@ -181,13 +191,13 @@ export async function GET(req: Request) {
 
       if (upErr) {
         const detail = process.env.NODE_ENV === "production" ? undefined : upErr;
-        return NextResponse.json({ error: "DB update failed", detail }, { status: 500 });
+        return fail("db_update_failed", "DB update failed");
       }
     } else {
       const { error: insErr } = await supabase.from("integrations").insert(payload);
       if (insErr) {
         const detail = process.env.NODE_ENV === "production" ? undefined : insErr;
-        return NextResponse.json({ error: "DB insert failed", detail }, { status: 500 });
+        return fail("db_insert_failed", "DB insert failed");
       }
     }
 
@@ -199,11 +209,12 @@ export async function GET(req: Request) {
       path: "/",
       maxAge: 0,
     });
+    oauthCallbackEvent(req, { provider: "google", outcome: "success", user_id: userId, return_to: returnTo });
     return res;
   } catch (e: unknown) {
     // No stack traces to clients in production.
+    oauthCallbackException(req, "google", e, { error: "oauth_callback_failed", return_to: "/dashboard?panel=mails" });
     const message = (e instanceof Error ? e.message : String(e)) || "Server error";
-    const body = process.env.NODE_ENV === "production" ? { error: "Server error" } : { error: "Unhandled exception", message };
-    return NextResponse.json(body, { status: 500 });
+    return NextResponse.redirect(new URL(`/dashboard?panel=mails&linked=google&ok=0&error=oauth_callback_failed&message=${encodeURIComponent(message.slice(0, 200))}`, origin));
   }
 }

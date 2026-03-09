@@ -3,8 +3,9 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
-import { safeInternalPath } from "@/lib/security";
+import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
+import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
 
 type TokenResponse = {
   access_token?: string;
@@ -38,26 +39,38 @@ export async function GET(req: Request) {
     const fbErrorMsg = urlObj.searchParams.get("error_message") || urlObj.searchParams.get("error_description");
     const fbErrorCode = urlObj.searchParams.get("error_code") || urlObj.searchParams.get("error");
 
-    if (!stateRaw) return NextResponse.json({ error: "Missing ?state" }, { status: 400 });
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+    const st = verifyOAuthState(req, "instagram", stateRaw);
+    const returnTo = safeInternalPath(st.returnTo || "/dashboard?panel=instagram", "/dashboard?panel=instagram");
+    oauthCallbackEvent(req, { provider: "instagram", outcome: "started", return_to: returnTo });
+    const clearStateCookie = (res: NextResponse) => {
+      res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+      return res;
+    };
 
-    let state: unknown;
-    try {
-      state = JSON.parse(Buffer.from(stateRaw, "base64url").toString("utf-8"));
-    } catch {
-      return NextResponse.json({ error: "Invalid state" }, { status: 400 });
+    const fail = (error: string, message?: string) => {
+      oauthCallbackEvent(req, { provider: "instagram", outcome: "failed", error, message, return_to: returnTo, capture_in_sentry: true });
+      const finalUrl = new URL(returnTo, siteUrl);
+      finalUrl.searchParams.set("linked", "instagram");
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", error);
+      if (message) finalUrl.searchParams.set("message", message.slice(0, 200));
+      return clearStateCookie(NextResponse.redirect(finalUrl));
+    };
+
+    if (!st.ok) {
+      oauthCallbackEvent(req, { provider: "instagram", outcome: "state_invalid", error: st.reason, return_to: returnTo, capture_in_sentry: true });
+      return clearStateCookie(NextResponse.redirect(new URL("/dashboard?panel=instagram&toast=oauth_state", siteUrl)));
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
-    const st = asRecord(state);
-    const returnTo = safeInternalPath(asString(st["returnTo"]) || "/dashboard?panel=instagram", "/dashboard?panel=instagram");
-
     if (!code) {
+      oauthCallbackEvent(req, { provider: "instagram", outcome: fbErrorCode === "access_denied" || fbErrorCode === "user_denied" ? "cancelled" : "failed", error: fbErrorCode || "missing_code", message: fbErrorMsg || undefined, return_to: returnTo, capture_in_sentry: !!fbErrorCode && fbErrorCode !== "access_denied" && fbErrorCode !== "user_denied" });
       const finalUrl = new URL(returnTo, siteUrl);
       finalUrl.searchParams.set("linked", "instagram");
       finalUrl.searchParams.set("ok", "0");
       if (fbErrorCode) finalUrl.searchParams.set("reason", String(fbErrorCode));
       if (fbErrorMsg) finalUrl.searchParams.set("message", String(fbErrorMsg).slice(0, 200));
-      return NextResponse.redirect(finalUrl);
+      return clearStateCookie(NextResponse.redirect(finalUrl));
     }
 
     const appId = process.env.FACEBOOK_APP_ID;
@@ -66,12 +79,13 @@ export async function GET(req: Request) {
     const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/instagram/callback`;
 
     if (!appId || !appSecret) {
-      return NextResponse.json({ error: "Missing FACEBOOK_APP_ID/FACEBOOK_APP_SECRET" }, { status: 500 });
+      oauthCallbackEvent(req, { provider: "instagram", outcome: "config_error", error: "oauth_config_missing", return_to: returnTo, capture_in_sentry: true });
+      return NextResponse.redirect(new URL("/dashboard?panel=instagram&linked=instagram&ok=0&error=oauth_config_missing", siteUrl));
     }
 
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    if (authErr || !authData?.user) { oauthCallbackEvent(req, { provider: "instagram", outcome: "not_authenticated", error: "not_authenticated", return_to: returnTo }); const finalUrl = new URL(returnTo, siteUrl); finalUrl.searchParams.set("linked", "instagram"); finalUrl.searchParams.set("ok", "0"); finalUrl.searchParams.set("error", "not_authenticated"); return clearStateCookie(NextResponse.redirect(finalUrl)); }
     const userId = authData.user.id;
 
     const rlUser = await enforceRateLimit({
@@ -101,7 +115,7 @@ export async function GET(req: Request) {
 
     const tokenData = await fetchJson<TokenResponse>(tokenUrl);
     const userAccessToken = tokenData.access_token;
-    if (!userAccessToken) return NextResponse.json({ error: "No access_token from Meta", tokenData }, { status: 500 });
+    if (!userAccessToken) return fail("missing_access_token", "No access_token from Meta");
 
     const shortExpiresIn = typeof tokenData.expires_in === "number" ? tokenData.expires_in : null;
 
@@ -145,7 +159,7 @@ const { error: upsertErr } = await supabase
   .from("integrations")
   .upsert(payload, { onConflict: "user_id,provider,source,product" });
 
-if (upsertErr) return NextResponse.json({ error: "DB upsert failed", upsertErr }, { status: 500 });
+if (upsertErr) return fail("db_upsert_failed", "DB upsert failed");
 
     // Invalidate stats cache so iNrStats + Generator reflect the new connection immediately.
     await invalidateUserStatsCache(supabase, userId);
@@ -172,8 +186,17 @@ if (upsertErr) return NextResponse.json({ error: "DB upsert failed", upsertErr }
     const finalUrl = new URL(returnTo, siteUrl);
     finalUrl.searchParams.set("linked", "instagram");
     finalUrl.searchParams.set("ok", "1");
-    return NextResponse.redirect(finalUrl);
+    oauthCallbackEvent(req, { provider: "instagram", outcome: "success", user_id: userId, return_to: returnTo });
+    return clearStateCookie(NextResponse.redirect(finalUrl));
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
+    oauthCallbackException(req, "instagram", e, { error: "oauth_callback_failed", return_to: "/dashboard?panel=instagram" });
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+    const finalUrl = new URL("/dashboard?panel=instagram", siteUrl);
+    finalUrl.searchParams.set("linked", "instagram");
+    finalUrl.searchParams.set("ok", "0");
+    finalUrl.searchParams.set("error", "oauth_callback_failed");
+    const msg = ((e instanceof Error ? e.message : String(e)) || "Unknown error").slice(0, 200);
+    if (msg) finalUrl.searchParams.set("message", msg);
+    return NextResponse.redirect(finalUrl);
   }
 }

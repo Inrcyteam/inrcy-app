@@ -57,9 +57,13 @@ export type OAuthStateV1 = {
   returnTo: string;
 };
 
-export function makeOAuthState(provider: string, returnTo: string) {
+export function makeOAuthState<T extends Record<string, unknown> = Record<string, never>>(
+  provider: string,
+  returnTo: string,
+  extra?: T,
+) {
   const nonce = newOAuthNonce();
-  const state: OAuthStateV1 = { v: 1, nonce, returnTo };
+  const state = { ...(extra ?? ({} as T)), v: 1 as const, nonce, returnTo };
   return {
     stateB64: b64urlJsonEncode(state),
     nonce,
@@ -67,10 +71,14 @@ export function makeOAuthState(provider: string, returnTo: string) {
   };
 }
 
-export function verifyOAuthState(req: Request, provider: string, stateB64: string | null) {
+export function verifyOAuthState<T extends Record<string, unknown> = Record<string, unknown>>(
+  req: Request,
+  provider: string,
+  stateB64: string | null,
+) {
   const cookieName = oauthStateCookieName(provider);
   const cookieNonce = getCookie(req, cookieName);
-  const decoded = stateB64 ? b64urlJsonDecode<OAuthStateV1>(stateB64) : null;
+  const decoded = stateB64 ? b64urlJsonDecode<OAuthStateV1 & T>(stateB64) : null;
 
   if (!decoded || decoded.v !== 1 || !decoded.nonce) {
     return { ok: false as const, cookieName, returnTo: "/dashboard", reason: "invalid_state" };
@@ -80,5 +88,5 @@ export function verifyOAuthState(req: Request, provider: string, stateB64: strin
     return { ok: false as const, cookieName, returnTo: "/dashboard", reason: "state_mismatch" };
   }
 
-  return { ok: true as const, cookieName, returnTo: decoded.returnTo };
+  return { ok: true as const, cookieName, returnTo: decoded.returnTo, state: decoded };
 }

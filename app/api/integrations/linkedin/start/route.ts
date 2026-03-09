@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { safeInternalPath } from "@/lib/security";
+import { makeOAuthState, safeInternalPath } from "@/lib/security";
 
 export async function GET(request: Request) {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=linkedin", "/dashboard?panel=linkedin");
-  const state = Buffer.from(JSON.stringify({ returnTo })).toString("base64url");
+  const { stateB64, nonce, cookieName } = makeOAuthState("linkedin", returnTo);
 
   const defaultScopes = [
     "openid",
@@ -27,9 +27,17 @@ export async function GET(request: Request) {
     response_type: "code",
     client_id: clientId,
     redirect_uri: redirectUri,
-    state,
+    state: stateB64,
     scope,
   });
 
-  return NextResponse.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`);
+  const res = NextResponse.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`);
+  res.cookies.set(cookieName, nonce, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 10,
+  });
+  return res;
 }

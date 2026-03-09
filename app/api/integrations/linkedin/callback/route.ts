@@ -3,8 +3,9 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
-import { safeInternalPath } from "@/lib/security";
+import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
+import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
@@ -48,26 +49,38 @@ export async function GET(req: Request) {
     const err = urlObj.searchParams.get("error");
     const errDesc = urlObj.searchParams.get("error_description");
 
-    if (!stateRaw) return NextResponse.json({ error: "Missing ?state" }, { status: 400 });
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+    const st = verifyOAuthState(req, "linkedin", stateRaw);
+    const returnTo = safeInternalPath(st.returnTo || "/dashboard?panel=linkedin", "/dashboard?panel=linkedin");
+    oauthCallbackEvent(req, { provider: "linkedin", outcome: "started", return_to: returnTo });
+    const clearStateCookie = (res: NextResponse) => {
+      res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+      return res;
+    };
 
-    let state: unknown;
-    try {
-      state = JSON.parse(Buffer.from(stateRaw, "base64url").toString("utf-8"));
-    } catch {
-      return NextResponse.json({ error: "Invalid state" }, { status: 400 });
+    const fail = (error: string, message?: string) => {
+      oauthCallbackEvent(req, { provider: "linkedin", outcome: "failed", error, message, return_to: returnTo, capture_in_sentry: true });
+      const finalUrl = new URL(returnTo, siteUrl);
+      finalUrl.searchParams.set("linked", "linkedin");
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", error);
+      if (message) finalUrl.searchParams.set("message", message.slice(0, 200));
+      return clearStateCookie(NextResponse.redirect(finalUrl));
+    };
+
+    if (!st.ok) {
+      oauthCallbackEvent(req, { provider: "linkedin", outcome: "state_invalid", error: st.reason, return_to: returnTo, capture_in_sentry: true });
+      return clearStateCookie(NextResponse.redirect(new URL("/dashboard?panel=linkedin&toast=oauth_state", siteUrl)));
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
-    const st = asRecord(state);
-    const returnTo = safeInternalPath(asString(st["returnTo"]) || "/dashboard?panel=linkedin", "/dashboard?panel=linkedin");
-
-    if (!code) {
+    if (err || !code) {
+      oauthCallbackEvent(req, { provider: "linkedin", outcome: err === "access_denied" ? "cancelled" : "failed", error: err || "missing_code", message: errDesc || undefined, return_to: returnTo, capture_in_sentry: err !== "access_denied" });
       const finalUrl = new URL(returnTo, siteUrl);
       finalUrl.searchParams.set("linked", "linkedin");
       finalUrl.searchParams.set("ok", "0");
       if (err) finalUrl.searchParams.set("reason", String(err));
       if (errDesc) finalUrl.searchParams.set("message", String(errDesc).slice(0, 200));
-      return NextResponse.redirect(finalUrl);
+      return clearStateCookie(NextResponse.redirect(finalUrl));
     }
 
     const clientId = process.env.LINKEDIN_CLIENT_ID;
@@ -76,12 +89,13 @@ export async function GET(req: Request) {
     const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/linkedin/callback`;
 
     if (!clientId || !clientSecret) {
-      return NextResponse.json({ error: "Missing LINKEDIN_CLIENT_ID/LINKEDIN_CLIENT_SECRET" }, { status: 500 });
+      oauthCallbackEvent(req, { provider: "linkedin", outcome: "config_error", error: "oauth_config_missing", return_to: returnTo, capture_in_sentry: true });
+      return NextResponse.redirect(new URL("/dashboard?panel=linkedin&linked=linkedin&ok=0&error=oauth_config_missing", siteUrl));
     }
 
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    if (authErr || !authData?.user) { oauthCallbackEvent(req, { provider: "linkedin", outcome: "not_authenticated", error: "not_authenticated", return_to: returnTo }); const finalUrl = new URL(returnTo, siteUrl); finalUrl.searchParams.set("linked", "linkedin"); finalUrl.searchParams.set("ok", "0"); finalUrl.searchParams.set("error", "not_authenticated"); return clearStateCookie(NextResponse.redirect(finalUrl)); }
     const userId = authData.user.id;
 
     const rlUser = await enforceRateLimit({
@@ -110,7 +124,7 @@ export async function GET(req: Request) {
     });
 
     const accessToken = String(token?.access_token || "");
-    if (!accessToken) return NextResponse.json({ error: "No access_token from LinkedIn", token }, { status: 500 });
+    if (!accessToken) return fail("missing_access_token", "No access_token from LinkedIn");
 
     const expiresIn = Number(token?.expires_in);
     const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
@@ -180,8 +194,17 @@ await supabase
     const finalUrl = new URL(returnTo, siteUrl);
     finalUrl.searchParams.set("linked", "linkedin");
     finalUrl.searchParams.set("ok", "1");
-    return NextResponse.redirect(finalUrl);
+    oauthCallbackEvent(req, { provider: "linkedin", outcome: "success", user_id: userId, return_to: returnTo });
+    return clearStateCookie(NextResponse.redirect(finalUrl));
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
+    oauthCallbackException(req, "linkedin", e, { error: "oauth_callback_failed", return_to: "/dashboard?panel=linkedin" });
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+    const finalUrl = new URL("/dashboard?panel=linkedin", siteUrl);
+    finalUrl.searchParams.set("linked", "linkedin");
+    finalUrl.searchParams.set("ok", "0");
+    finalUrl.searchParams.set("error", "oauth_callback_failed");
+    const msg = ((e instanceof Error ? e.message : String(e)) || "Unknown error").slice(0, 200);
+    if (msg) finalUrl.searchParams.set("message", msg);
+    return NextResponse.redirect(finalUrl);
   }
 }

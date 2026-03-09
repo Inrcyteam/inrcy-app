@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { safeInternalPath } from "@/lib/security";
+import { makeOAuthState, safeInternalPath } from "@/lib/security";
 import { asRecord } from "@/lib/tsSafe";
 
 const ALLOWED_SOURCES = ["site_inrcy", "site_web"] as const;
@@ -38,8 +38,8 @@ export async function GET(request: Request) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const redirectFromEnv = process.env.GOOGLE_STATS_REDIRECT_URI;
 
-  const origin = new URL(request.url).origin;
-  const redirectUri = redirectFromEnv || `${origin}/api/integrations/google-stats/callback`;
+  const appOrigin = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+  const redirectUri = redirectFromEnv || `${appOrigin}/api/integrations/google-stats/callback`;
 
   if (!clientId) {
     return NextResponse.json({ error: "Missing GOOGLE_CLIENT_ID" }, { status: 500 });
@@ -120,7 +120,7 @@ const rawUrl =
     siteUrl = parsed.normalizedUrl;
   }
 
-  const state = Buffer.from(JSON.stringify({ source, product, returnTo, mode, domain, siteUrl })).toString("base64url");
+  const { stateB64, nonce, cookieName } = makeOAuthState("google_stats", returnTo, { source, product, mode, domain, siteUrl });
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -128,7 +128,7 @@ const rawUrl =
     response_type: "code",
     access_type: "offline",
     prompt: "consent",
-    state,
+    state: stateB64,
     scope: [
       "https://www.googleapis.com/auth/analytics.readonly",
       "https://www.googleapis.com/auth/webmasters.readonly",
@@ -137,5 +137,13 @@ const rawUrl =
   });
 
   const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  return NextResponse.redirect(url);
+  const res = NextResponse.redirect(url);
+  res.cookies.set(cookieName, nonce, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 10,
+  });
+  return res;
 }

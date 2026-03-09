@@ -3,8 +3,9 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken as _encryptToken } from "@/lib/oauthCrypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
-import { safeInternalPath } from "@/lib/security";
+import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
+import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
 
 type TokenResponse = {
   access_token?: string;
@@ -364,57 +365,79 @@ export async function GET(req: Request) {
     const oauthError = urlObj.searchParams.get("error");
     const oauthErrorDescription = urlObj.searchParams.get("error_description");
 
-    if (!stateRaw) return NextResponse.json({ error: "Missing ?state" }, { status: 400 });
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+    const invalidStateUrl = new URL("/dashboard/stats?ok=0&error=oauth_state", origin);
 
-    let state: unknown = null;
-    try {
-      state = JSON.parse(Buffer.from(stateRaw, "base64url").toString("utf-8"));
-    } catch {
-      return NextResponse.json({ error: "Invalid state" }, { status: 400 });
+    const st = verifyOAuthState<{ source?: string; product?: string; mode?: string; domain?: string; siteUrl?: string }>(req, "google_stats", stateRaw);
+    const clearStateCookie = (res: NextResponse) => {
+      res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+      return res;
+    };
+
+    const fail = (error: string, message?: string) => {
+      oauthCallbackEvent(req, { provider: "google_stats", outcome: "failed", error, message, return_to: returnTo, capture_in_sentry: true });
+      const finalUrl = new URL(returnTo, origin);
+      finalUrl.searchParams.set("linked", "stats");
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", error);
+      if (message) finalUrl.searchParams.set("message", message.slice(0, 200));
+      return clearStateCookie(NextResponse.redirect(finalUrl));
+    };
+
+    if (!st.ok) {
+      oauthCallbackEvent(req, { provider: "google_stats", outcome: "state_invalid", error: st.reason, return_to: "/dashboard/stats", capture_in_sentry: true });
+      return clearStateCookie(NextResponse.redirect(invalidStateUrl));
     }
 
-    const st = asRecord(state);
-	    const sourceRaw = asString(st["source"]) ?? "";
-	    const productRaw = asString(st["product"]) ?? "";
-    const returnTo = safeInternalPath(asString(st["returnTo"]) || "/dashboard", "/dashboard");
-    const mode = asString(st["mode"]);
-    const domainFromState = asString(st["domain"]);
-    const siteUrlFromState = asString(st["siteUrl"]);
+    const state = st.state;
+    const sourceRaw = asString(state["source"]) ?? "";
+    const productRaw = asString(state["product"]) ?? "";
+    const returnTo = safeInternalPath(st.returnTo || "/dashboard/stats", "/dashboard/stats");
+    oauthCallbackEvent(req, { provider: "google_stats", outcome: "started", return_to: returnTo });
+    const mode = asString(state["mode"]);
+    const domainFromState = asString(state["domain"]);
+    const siteUrlFromState = asString(state["siteUrl"]);
 
-	    if (!sourceRaw || !isAllowedSource(sourceRaw)) {
-      return NextResponse.json({ error: "Invalid state.source" }, { status: 400 });
-    }
-	    if (!productRaw || !isAllowedProduct(productRaw)) {
-      return NextResponse.json({ error: "Invalid state.product" }, { status: 400 });
+    if (!sourceRaw || !isAllowedSource(sourceRaw) || !productRaw || !isAllowedProduct(productRaw)) {
+      oauthCallbackEvent(req, { provider: "google_stats", outcome: "failed", error: "invalid_state", return_to: returnTo, capture_in_sentry: true });
+      const finalUrl = new URL(returnTo, origin);
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", "invalid_state");
+      return clearStateCookie(NextResponse.redirect(finalUrl));
     }
 
-	    const source: AllowedSource = sourceRaw;
-	    const product: AllowedProduct = productRaw;
+    const source: AllowedSource = sourceRaw;
+    const product: AllowedProduct = productRaw;
 
     const clientId = process.env.GOOGLE_CLIENT_ID!;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
     const redirectFromEnv = process.env.GOOGLE_STATS_REDIRECT_URI;
-    const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
     const redirectUri = redirectFromEnv || `${origin}/api/integrations/google-stats/callback`;
 
     if (oauthError || !code) {
+      oauthCallbackEvent(req, { provider: "google_stats", outcome: oauthError === "access_denied" ? "cancelled" : "failed", error: oauthError || "missing_code", message: oauthErrorDescription || undefined, return_to: returnTo, capture_in_sentry: oauthError !== "access_denied" });
       const finalUrl = new URL(returnTo, origin);
       finalUrl.searchParams.set("ok", "0");
       finalUrl.searchParams.set("error", oauthError || "missing_code");
       finalUrl.searchParams.set("linked", product);
       if (oauthErrorDescription) finalUrl.searchParams.set("message", oauthErrorDescription.slice(0, 200));
-      return NextResponse.redirect(finalUrl);
+      return clearStateCookie(NextResponse.redirect(finalUrl));
     }
 
     if (!clientId || !clientSecret) {
-      return NextResponse.json({ error: "Missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET" }, { status: 500 });
+      oauthCallbackEvent(req, { provider: "google_stats", outcome: "config_error", error: "oauth_config_missing", return_to: returnTo, capture_in_sentry: true });
+      return NextResponse.redirect(new URL("/dashboard/stats?panel=stats&linked=stats&ok=0&error=oauth_config_missing", origin));
     }
 
     // Use session client only to read the current user (auth cookies).
     const sessionSupabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await sessionSupabase.auth.getUser();
     if (authErr || !authData?.user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      oauthCallbackEvent(req, { provider: "google_stats", outcome: "not_authenticated", error: "not_authenticated", return_to: returnTo });
+      const finalUrl = new URL(returnTo, origin);
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", "not_authenticated");
+      return clearStateCookie(NextResponse.redirect(finalUrl));
     }
     const userId = authData.user.id;
 
@@ -454,7 +477,7 @@ export async function GET(req: Request) {
 
     const tokenData = (await tokenRes.json()) as TokenResponse;
     if (!tokenRes.ok) {
-      return NextResponse.json({ error: "Token exchange failed", tokenData }, { status: 500 });
+      return fail("token_exchange_failed", "Token exchange failed");
     }
 
     // Userinfo
@@ -464,7 +487,7 @@ export async function GET(req: Request) {
     const userInfo = (await userRes.json()) as GoogleUserInfo;
 
     if (!userRes.ok || !userInfo?.email) {
-      return NextResponse.json({ error: "Userinfo fetch failed", userInfo }, { status: 500 });
+      return fail("userinfo_failed", "Userinfo fetch failed");
     }
 
     // Default behavior: connect the requested product only.
@@ -550,7 +573,8 @@ if (source === "site_inrcy") {
   }
 }
 
-return NextResponse.redirect(new URL(`${returnTo}&activated=1&ok=1`, origin));
+oauthCallbackEvent(req, { provider: "google_stats", outcome: "success", user_id: userId, return_to: returnTo, product, mode: "activate" });
+return clearStateCookie(NextResponse.redirect(new URL(`${returnTo}&activated=1&ok=1`, origin)));
     }
 
     // Non-activate: connect one product, but enforce / auto-resolve bindings for the configured site when possible.
@@ -686,9 +710,17 @@ if (domain && tokenData.access_token) {
       }
     }
 
-    return NextResponse.redirect(new URL(`${returnTo}&linked=${product}&ok=1`, origin));
+    oauthCallbackEvent(req, { provider: "google_stats", outcome: "success", user_id: userId, return_to: returnTo, product });
+    return clearStateCookie(NextResponse.redirect(new URL(`${returnTo}&linked=${product}&ok=1`, origin)));
 
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
+    oauthCallbackException(req, "google_stats", e, { error: "oauth_callback_failed", return_to: "/dashboard/stats" });
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+    const fallbackUrl = new URL("/dashboard/stats", origin);
+    fallbackUrl.searchParams.set("ok", "0");
+    fallbackUrl.searchParams.set("error", "oauth_callback_failed");
+    const msg = ((e instanceof Error ? e.message : String(e)) || "Unknown error").slice(0, 200);
+    if (msg) fallbackUrl.searchParams.set("message", msg);
+    return NextResponse.redirect(fallbackUrl);
   }
 }
