@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { makeOAuthState, safeInternalPath } from "@/lib/security";
 
 /**
  * Démarre l'OAuth Microsoft (Outlook/Hotmail/Office365) via Microsoft Identity Platform v2.
  * On utilise /common pour supporter comptes perso + org.
  */
-export async function GET(_req: Request) {
+export async function GET(req: Request) {
   const clientId = process.env.MICROSOFT_CLIENT_ID;
   const redirectUri = process.env.MICROSOFT_REDIRECT_URI;
 
@@ -34,9 +35,18 @@ export async function GET(_req: Request) {
     ].join(" ")
   );
 
-  // petit state anti-CSRF (non persistant) : suffisant ici car on stocke côté serveur par session supabase.
-  const state = Math.random().toString(36).slice(2);
-  url.searchParams.set("state", state);
+  const { searchParams } = new URL(req.url);
+  const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=mails", "/dashboard?panel=mails");
+  const { stateB64, nonce, cookieName } = makeOAuthState("microsoft", returnTo);
+  url.searchParams.set("state", stateB64);
 
-  return NextResponse.redirect(url);
+  const res = NextResponse.redirect(url);
+  res.cookies.set(cookieName, nonce, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 10,
+  });
+  return res;
 }

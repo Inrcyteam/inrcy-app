@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { safeInternalPath } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 
 type TokenResponse = {
@@ -48,7 +49,7 @@ export async function GET(req: Request) {
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
     const st = asRecord(state);
-    const returnTo = asString(st["returnTo"]) || "/dashboard?panel=instagram";
+    const returnTo = safeInternalPath(asString(st["returnTo"]) || "/dashboard?panel=instagram", "/dashboard?panel=instagram");
 
     if (!code) {
       const finalUrl = new URL(returnTo, siteUrl);

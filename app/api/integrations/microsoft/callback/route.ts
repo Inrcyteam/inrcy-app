@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 
 type TokenResponse = {
@@ -33,14 +34,28 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const code = searchParams.get("code");
     const oauthError = searchParams.get("error");
+    const oauthErrorDescription = searchParams.get("error_description");
+    const stateRaw = searchParams.get("state");
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
 
-    if (oauthError) {
-      const desc = searchParams.get("error_description") || oauthError;
-      return NextResponse.redirect(new URL(`/dashboard?panel=mails&toast=${encodeURIComponent(desc)}`, req.url));
+    const st = verifyOAuthState(req, "microsoft", stateRaw);
+    const returnTo = safeInternalPath(st.returnTo || "/dashboard?panel=mails", "/dashboard?panel=mails");
+    const clearStateCookie = (res: NextResponse) => {
+      res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+      return res;
+    };
+
+    if (!st.ok) {
+      return clearStateCookie(NextResponse.redirect(new URL("/dashboard?panel=mails&toast=oauth_state", origin)));
     }
 
-    if (!code) {
-      return NextResponse.json({ error: "Missing ?code" }, { status: 400 });
+    if (oauthError || !code) {
+      const finalUrl = new URL(returnTo, origin);
+      finalUrl.searchParams.set("linked", "microsoft");
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", oauthError || "missing_code");
+      if (oauthErrorDescription) finalUrl.searchParams.set("message", oauthErrorDescription.slice(0, 200));
+      return clearStateCookie(NextResponse.redirect(finalUrl));
     }
 
     const clientId = process.env.MICROSOFT_CLIENT_ID;
@@ -166,7 +181,10 @@ export async function GET(req: Request) {
     }
 
 
-    return NextResponse.redirect(new URL("/dashboard?panel=mails&toast=connected", req.url));
+    const finalUrl = new URL(returnTo, origin);
+    finalUrl.searchParams.set("linked", "microsoft");
+    finalUrl.searchParams.set("ok", "1");
+    return clearStateCookie(NextResponse.redirect(finalUrl));
   } catch (e: unknown) {
     return NextResponse.json(
       { error: "Unhandled exception", message: (e instanceof Error ? e.message : String(e)) },

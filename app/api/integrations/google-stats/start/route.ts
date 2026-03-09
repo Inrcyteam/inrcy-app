@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { safeInternalPath } from "@/lib/security";
 import { asRecord } from "@/lib/tsSafe";
 
 const ALLOWED_SOURCES = ["site_inrcy", "site_web"] as const;
@@ -49,7 +50,7 @@ export async function GET(request: Request) {
   const product = searchParams.get("product") || "";
   const force = searchParams.get("force") || "";
   const mode = searchParams.get("mode") || (force === "1" ? "activate" : "");
-  const returnTo = searchParams.get("returnTo") || `/dashboard?panel=${encodeURIComponent(source)}`;
+  const returnTo = safeInternalPath(searchParams.get("returnTo") || `/dashboard?panel=${encodeURIComponent(source)}`, `/dashboard?panel=${encodeURIComponent(source)}`);
 
   // Optional: if the UI passes a siteUrl (user just typed it), embed domain in OAuth state
   // so the callback can auto-resolve GA4/GSC for THAT site without requiring manual IDs.

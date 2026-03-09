@@ -27,10 +27,8 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const code = searchParams.get("code");
-
-    if (!code) {
-      return NextResponse.json({ error: "Missing ?code" }, { status: 400 });
-    }
+    const oauthError = searchParams.get("error");
+    const oauthErrorDescription = searchParams.get("error_description");
 
     const clientId = process.env.GOOGLE_CLIENT_ID!;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
@@ -52,7 +50,17 @@ export async function GET(req: Request) {
 
     if (!st.ok) {
       const res = NextResponse.redirect(new URL(`/dashboard?panel=mails&toast=oauth_state`, origin));
-      // Clear cookie anyway
+      res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+      return res;
+    }
+
+    if (oauthError || !code) {
+      const resUrl = new URL(returnTo, origin);
+      resUrl.searchParams.set("linked", "google");
+      resUrl.searchParams.set("ok", "0");
+      resUrl.searchParams.set("error", oauthError || "missing_code");
+      if (oauthErrorDescription) resUrl.searchParams.set("message", oauthErrorDescription.slice(0, 200));
+      const res = NextResponse.redirect(resUrl);
       res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
       return res;
     }

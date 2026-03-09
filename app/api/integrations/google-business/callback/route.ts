@@ -4,6 +4,7 @@ import { clearAllToolCaches } from "@/lib/statsCache";
 import { encryptToken as _encryptToken } from "@/lib/oauthCrypto";
 import { gmbListAccounts } from "@/lib/googleBusiness";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 
 type TokenResponse = {
@@ -56,16 +57,10 @@ export async function GET(req: Request) {
     const urlObj = new URL(req.url);
     const code = urlObj.searchParams.get("code");
     const stateRaw = urlObj.searchParams.get("state");
+    const oauthError = urlObj.searchParams.get("error");
+    const oauthErrorDescription = urlObj.searchParams.get("error_description");
 
-    if (!code) return NextResponse.json({ error: "Missing ?code" }, { status: 400 });
     if (!stateRaw) return NextResponse.json({ error: "Missing ?state" }, { status: 400 });
-
-    let state: unknown = null;
-    try {
-      state = JSON.parse(Buffer.from(stateRaw, "base64url").toString("utf-8"));
-    } catch {
-      return NextResponse.json({ error: "Invalid state" }, { status: 400 });
-    }
 
     // IMPORTANT:
     // - In dev you often hit this route via Cloudflare tunnel (https://xxxx.trycloudflare.com)
@@ -74,8 +69,25 @@ export async function GET(req: Request) {
     // We use NEXT_PUBLIC_SITE_URL as the canonical base URL to redirect back to.
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
 
-    const st = asRecord(state);
-    const returnToPath = safeReturnTo(st["returnTo"], siteUrl);
+    const st = verifyOAuthState(req, "google_business", stateRaw);
+    const returnToPath = safeInternalPath(st.returnTo || "/dashboard?panel=gmb", "/dashboard?panel=gmb");
+    const clearStateCookie = (res: NextResponse) => {
+      res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+      return res;
+    };
+
+    if (!st.ok) {
+      return clearStateCookie(NextResponse.redirect(new URL("/dashboard?panel=gmb&toast=oauth_state", siteUrl)));
+    }
+
+    if (oauthError || !code) {
+      const finalUrl = new URL(returnToPath, siteUrl);
+      finalUrl.searchParams.set("linked", "gmb");
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", oauthError || "missing_code");
+      if (oauthErrorDescription) finalUrl.searchParams.set("message", oauthErrorDescription.slice(0, 200));
+      return clearStateCookie(NextResponse.redirect(finalUrl));
+    }
 
     const clientId = process.env.GOOGLE_CLIENT_ID!;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
@@ -249,7 +261,7 @@ export async function GET(req: Request) {
     finalUrl.searchParams.set("linked", "gmb");
     finalUrl.searchParams.set("ok", "1");
 
-    return NextResponse.redirect(finalUrl);
+    return clearStateCookie(NextResponse.redirect(finalUrl));
   } catch (e: unknown) {
     return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
   }

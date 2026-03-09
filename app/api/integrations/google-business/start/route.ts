@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { makeOAuthState, safeInternalPath } from "@/lib/security";
 
 export async function GET(request: Request) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -13,9 +14,8 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const returnTo = searchParams.get("returnTo") || "/dashboard?panel=gmb";
-
-  const state = Buffer.from(JSON.stringify({ returnTo })).toString("base64url");
+  const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=gmb", "/dashboard?panel=gmb");
+  const { stateB64, nonce, cookieName } = makeOAuthState("google_business", returnTo);
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     response_type: "code",
     access_type: "offline",
     prompt: "consent",
-    state,
+    state: stateB64,
     scope: [
       "https://www.googleapis.com/auth/business.manage",
       "https://www.googleapis.com/auth/userinfo.email",
@@ -31,5 +31,13 @@ export async function GET(request: Request) {
   });
 
   const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  return NextResponse.redirect(url);
+  const res = NextResponse.redirect(url);
+  res.cookies.set(cookieName, nonce, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 10,
+  });
+  return res;
 }

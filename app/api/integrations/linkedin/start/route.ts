@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { safeInternalPath } from "@/lib/security";
 
 export async function GET(request: Request) {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
@@ -10,7 +11,7 @@ export async function GET(request: Request) {
   if (!clientId) return NextResponse.json({ error: "Missing LINKEDIN_CLIENT_ID" }, { status: 500 });
 
   const { searchParams } = new URL(request.url);
-  const returnTo = searchParams.get("returnTo") || "/dashboard?panel=linkedin";
+  const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=linkedin", "/dashboard?panel=linkedin");
   const state = Buffer.from(JSON.stringify({ returnTo })).toString("base64url");
 
   const defaultScopes = [

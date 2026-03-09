@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { safeInternalPath } from "@/lib/security";
 
 export async function GET(request: Request) {
   const appId = process.env.FACEBOOK_APP_ID;
@@ -10,7 +11,7 @@ export async function GET(request: Request) {
   if (!appId) return NextResponse.json({ error: "Missing FACEBOOK_APP_ID" }, { status: 500 });
 
   const { searchParams } = new URL(request.url);
-  const returnTo = searchParams.get("returnTo") || "/dashboard?panel=instagram";
+  const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=instagram", "/dashboard?panel=instagram");
 
   const state = Buffer.from(JSON.stringify({ returnTo })).toString("base64url");
 

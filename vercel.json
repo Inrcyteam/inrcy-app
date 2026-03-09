@@ -19,6 +19,10 @@
     {
       "path": "/api/cron/daily-metrics-summary?shard=3&totalShards=4&concurrency=4",
       "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-stats-cache",
+      "schedule": "0 */6 * * *"
     }
   ]
 }

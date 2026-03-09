@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken as _encryptToken } from "@/lib/oauthCrypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { safeInternalPath } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 
 type TokenResponse = {
@@ -360,8 +361,9 @@ export async function GET(req: Request) {
     const urlObj = new URL(req.url);
     const code = urlObj.searchParams.get("code");
     const stateRaw = urlObj.searchParams.get("state");
+    const oauthError = urlObj.searchParams.get("error");
+    const oauthErrorDescription = urlObj.searchParams.get("error_description");
 
-    if (!code) return NextResponse.json({ error: "Missing ?code" }, { status: 400 });
     if (!stateRaw) return NextResponse.json({ error: "Missing ?state" }, { status: 400 });
 
     let state: unknown = null;
@@ -374,7 +376,7 @@ export async function GET(req: Request) {
     const st = asRecord(state);
 	    const sourceRaw = asString(st["source"]) ?? "";
 	    const productRaw = asString(st["product"]) ?? "";
-    const returnTo = asString(st["returnTo"]) || "/dashboard";
+    const returnTo = safeInternalPath(asString(st["returnTo"]) || "/dashboard", "/dashboard");
     const mode = asString(st["mode"]);
     const domainFromState = asString(st["domain"]);
     const siteUrlFromState = asString(st["siteUrl"]);
@@ -392,8 +394,17 @@ export async function GET(req: Request) {
     const clientId = process.env.GOOGLE_CLIENT_ID!;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
     const redirectFromEnv = process.env.GOOGLE_STATS_REDIRECT_URI;
-    const origin = new URL(req.url).origin;
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
     const redirectUri = redirectFromEnv || `${origin}/api/integrations/google-stats/callback`;
+
+    if (oauthError || !code) {
+      const finalUrl = new URL(returnTo, origin);
+      finalUrl.searchParams.set("ok", "0");
+      finalUrl.searchParams.set("error", oauthError || "missing_code");
+      finalUrl.searchParams.set("linked", product);
+      if (oauthErrorDescription) finalUrl.searchParams.set("message", oauthErrorDescription.slice(0, 200));
+      return NextResponse.redirect(finalUrl);
+    }
 
     if (!clientId || !clientSecret) {
       return NextResponse.json({ error: "Missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET" }, { status: 500 });
