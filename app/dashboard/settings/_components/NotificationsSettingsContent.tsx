@@ -144,11 +144,16 @@ export default function NotificationsSettingsContent() {
       <div style={{ ...CARD_STYLE, background: "linear-gradient(90deg, rgba(56,189,248,0.16), rgba(167,139,250,0.12), rgba(244,114,182,0.10))" }}>
         <div style={{ fontSize: 16, fontWeight: 950, color: "rgba(255,255,255,0.95)" }}>Notifications iNrCy</div>
         <div style={{ marginTop: 6, color: "rgba(255,255,255,0.72)", fontSize: 13, lineHeight: 1.6 }}>
-          Votre cloche vous pousse les bonnes actions au bon moment. Nous regroupons les relances par catégorie et nous limitons le rythme à <b>une vague toutes les 48 h</b> pour garder un cockpit vivant sans vous saturer.
+          Votre cloche vous pousse les bonnes actions au bon moment. Nous regroupons les relances par catégorie et nous limitons le rythme à <b>une vague toutes les 48 h</b> pour garder un cockpit vivant sans vous saturer. Les mêmes signaux utiles vous sont aussi envoyés par email dans un format digest iNrCy, dès qu'une nouvelle vague est générée.
         </div>
         <div style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 8, borderRadius: 999, padding: "8px 12px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", fontSize: 12, color: "rgba(255,255,255,0.88)" }}>
           <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: "rgba(34,197,94,0.95)" }} />
           Rythme actuel : toutes les {prefs.digest_every_hours} h
+        </div>
+        <div style={{ marginTop: 12, display: "grid", gap: 8, color: "rgba(255,255,255,0.8)", fontSize: 13, lineHeight: 1.6 }}>
+          <div>• <b>Performance</b> : traction, demandes générées, opportunités activables.</div>
+          <div>• <b>Action</b> : canaux à brancher, boosters à lancer, dernier pas à faire.</div>
+          <div>• <b>Information</b> : état du cockpit, conseils de progression, rappels utiles.</div>
         </div>
       </div>
 
