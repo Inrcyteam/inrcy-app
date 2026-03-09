@@ -343,7 +343,7 @@ export default function ProfilContent({
       const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
       if (error) throw new Error(error.message);
 
-      // ✅ Récompense : profil complet (20 UI) — idempotent via sourceId
+      // ✅ Récompense : profil complet (100 UI) — idempotent via sourceId
       try {
         await fetch("/api/loyalty/award", {
           method: "POST",

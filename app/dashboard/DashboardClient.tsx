@@ -584,18 +584,15 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
 
   // =============================
   // UI (Unités iNrCy) — récompenses auto
-  // - 10 UI à la 1ère ouverture du compte
-  // - 50 UI d'ancienneté / mois (accordé au 1er passage du mois)
+  // - 50 UI à la 1ère ouverture du compte
+  // - 50 UI d'ancienneté tous les 30 jours (1ère fois au 30e jour après création du compte)
   // =============================
   useEffect(() => {
     let cancelled = false;
 
-    const monthId = () => {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    };
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
-        const award = async (actionKey: string, amount: number, sourceId?: string, label?: string) => {
+    const award = async (actionKey: string, amount: number, sourceId?: string, label?: string) => {
       try {
         await fetch("/api/loyalty/award", {
           method: "POST",
@@ -615,8 +612,22 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
 
     (async () => {
       // On laisse la RPC gérer l'idempotence via sourceId
+      const supabase = createClient();
+      const { data: authRes } = await supabase.auth.getUser();
+      const userCreatedAt = authRes.user?.created_at ? new Date(authRes.user.created_at) : null;
+
       await award("account_open", 50, "once", "Ouverture du compte");
-      await award("monthly_seniority", 50, `month-${monthId()}`, "Ancienneté");
+
+      if (userCreatedAt && !Number.isNaN(userCreatedAt.getTime())) {
+        const elapsedMs = Date.now() - userCreatedAt.getTime();
+        const seniorityCycles = Math.floor(elapsedMs / THIRTY_DAYS_MS);
+
+        for (let cycle = 1; cycle <= seniorityCycles; cycle += 1) {
+          if (cancelled) return;
+          await award("monthly_seniority", 50, `seniority-${cycle}`, "Ancienneté");
+        }
+      }
+
       await refreshUiBalance();
       if (cancelled) return;
     })();
@@ -5373,7 +5384,7 @@ const checkActivity = useCallback(async () => {
 
       <HelpModal open={helpInertieOpen} title="Mon inertie — Tableau des gains UI" onClose={() => setHelpInertieOpen(false)}>
         <p style={{ marginTop: 0 }}>
-          Voici les actions qui rapportent des <strong>UI</strong> (Unités d’Inertie). Les limites hebdo/mensuelles évitent la triche.
+          Voici les actions qui rapportent des <strong>UI</strong> (Unités d’Inertie). Les limites hebdo et par cycle de 30 jours évitent la triche.
         </p>
 
         <div style={{ overflowX: "auto" }}>
@@ -5392,7 +5403,7 @@ const checkActivity = useCallback(async () => {
                 { a: "Compléter Mon activité", g: "+100 UI", f: "1 fois" },
                 { a: "Créer une actu", g: "+10 UI", f: "1 fois / semaine" },
                 { a: "Utiliser Booster / Fidéliser", g: "+10 UI", f: "1 fois / semaine" },
-                { a: "Ancienneté", g: "+50 UI", f: "chaque mois" },
+                { a: "Ancienneté", g: "+50 UI", f: "1re fois au 30e jour, puis tous les 30 jours" },
               ].map((r) => (
                 <tr key={r.a}>
                   <td style={{ padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{r.a}</td>

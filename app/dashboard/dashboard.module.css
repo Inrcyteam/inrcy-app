@@ -4001,13 +4001,14 @@ transform: scale(1.50);
 }
 
 .notificationPanelMobile {
+  --notification-mobile-offset: max(88px, calc(env(safe-area-inset-top, 0px) + 76px));
   position: fixed;
-  top: 72px;
+  top: var(--notification-mobile-offset);
   left: 12px;
   right: 12px;
   width: auto;
   max-width: none;
-  max-height: min(72vh, calc(100dvh - 96px));
+  max-height: min(72vh, calc(100dvh - var(--notification-mobile-offset) - 24px));
   transform: none;
   margin: 0;
   box-sizing: border-box;
@@ -4021,16 +4022,7 @@ transform: scale(1.50);
   }
 
   .notificationPanelMobile {
-    position: fixed;
-    top: max(72px, calc(env(safe-area-inset-top, 0px) + 60px));
-    left: 12px;
-    right: 12px;
-    width: auto;
-    max-width: none;
-    max-height: min(72vh, calc(100dvh - 96px));
-    transform: none;
-    margin: 0;
-    box-sizing: border-box;
+    --notification-mobile-offset: max(88px, calc(env(safe-area-inset-top, 0px) + 76px));
   }
 
   .notificationPanelHeader {

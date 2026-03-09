@@ -187,7 +187,7 @@ export default function ActivityContent({ mode = "page" }: Props) {
       const { error: upErr } = await supabase.from(TABLE).upsert(payload, { onConflict: "user_id" });
       if (upErr) throw new Error(upErr.message);
 
-      // ✅ Récompense : activité complète (20 UI) — seulement si le formulaire est bien rempli
+      // ✅ Récompense : activité complète (100 UI) — seulement si le formulaire est bien rempli
       const isComplete =
         form.sector.trim().length > 0 &&
         normalizeLines(form.services).length > 0 &&

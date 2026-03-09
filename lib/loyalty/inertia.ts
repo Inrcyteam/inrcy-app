@@ -34,8 +34,8 @@ const BONUS: Record<keyof InertiaChannels, number> = {
   instagram: 0.5,
   linkedin: 0.5,
   gmb: 1,
-  site_web: 1.5,
-  site_inrcy: 3,
+  site_web: 1,
+  site_inrcy: 2.5,
 };
 
 const LABELS: Record<keyof InertiaChannels, string> = {
