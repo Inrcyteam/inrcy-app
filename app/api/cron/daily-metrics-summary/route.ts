@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getChannelConnectionStates, type ChannelStates } from "@/lib/channelConnectionState";
-import { saveDailyMetricsSummary, type SnapshotDetail } from "@/lib/statsSnapshots";
+import { saveDailyMetricsSummary, type SnapshotDetail } from "@/lib/dailyMetricsSummary";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAppUrl } from "@/lib/stripeRest";
 

@@ -5,7 +5,7 @@
       "schedule": "0 9 * * *"
     },
     {
-      "path": "/api/cron/stats-snapshot",
+      "path": "/api/cron/daily-metrics-summary",
       "schedule": "0 3 * * *"
     }
   ]
