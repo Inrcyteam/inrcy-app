@@ -6,6 +6,7 @@ import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
@@ -167,7 +168,7 @@ const payload: Record<string, unknown> = {
   meta: { profile_url: profileUrl, org_urn: null },
 };
 
-await supabase
+await supabaseAdmin
   .from("integrations")
   .upsert(payload, { onConflict: "user_id,provider,source,product" });
 
@@ -176,7 +177,7 @@ await supabase
 
 // Mirror in pro_tools_configs
     try {
-      const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
+      const { data: scRow } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = asRecord(asRecord(scRow)["settings"]);
       const merged = {
         ...current,
@@ -188,7 +189,7 @@ await supabase
           url: profileUrl,
         },
       };
-      await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
+      await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
     } catch {}
 
     const finalUrl = new URL(returnTo, siteUrl);

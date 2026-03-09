@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { asRecord } from "@/lib/tsSafe";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function POST(req: Request) {
   const supabase = await createSupabaseServer();
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
     .eq("product", "linkedin");
 
   try {
-    const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
+    const { data: scRow } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
     const current = asRecord(asRecord(scRow)["settings"]);
     const merged = {
       ...current,
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
         orgId,
       },
     };
-    await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
+    await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
   } catch {}
 
   return NextResponse.json({ ok: true, profileUrl: null });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -22,9 +23,9 @@ export async function POST() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   try {
-    const { data } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
+    const { data } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
     const current = asRecord(asRecord(data)["settings"]);
-    await supabase.from("pro_tools_configs").upsert({
+    await supabaseAdmin.from("pro_tools_configs").upsert({
       user_id: userId,
       settings: {
         ...current,

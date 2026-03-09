@@ -5,6 +5,7 @@ import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type TokenResponse = {
   access_token?: string;
@@ -78,7 +79,7 @@ export async function GET(req: Request) {
       return res;
     }
 
-    const { supabase, user, errorResponse } = await requireUser();
+    const { user, errorResponse } = await requireUser();
     if (errorResponse) {
       oauthCallbackEvent(req, { provider: "google", outcome: "not_authenticated", error: "not_authenticated", return_to: returnTo });
       return fail("not_authenticated");
@@ -141,7 +142,7 @@ export async function GET(req: Request) {
     }
 
     // 3) Read existing row (to preserve refresh_token if not returned)
-    const { data: existing, error: existingErr } = await supabase
+    const { data: existing, error: existingErr } = await supabaseAdmin
       .from("integrations")
       .select("id, refresh_token_enc")
       .eq("user_id", userId)
@@ -184,7 +185,7 @@ export async function GET(req: Request) {
 
     // 4) Update or insert
     if (asRecord(existing)["id"]) {
-      const { error: upErr } = await supabase
+      const { error: upErr } = await supabaseAdmin
         .from("integrations")
         .update(payload)
         .eq("id", String(asRecord(existing)["id"]));
@@ -194,7 +195,7 @@ export async function GET(req: Request) {
         return fail("db_update_failed", "DB update failed");
       }
     } else {
-      const { error: insErr } = await supabase.from("integrations").insert(payload);
+      const { error: insErr } = await supabaseAdmin.from("integrations").insert(payload);
       if (insErr) {
         const detail = process.env.NODE_ENV === "production" ? undefined : insErr;
         return fail("db_insert_failed", "DB insert failed");

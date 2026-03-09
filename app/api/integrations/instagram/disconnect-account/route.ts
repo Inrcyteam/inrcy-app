@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -12,11 +13,11 @@ export async function POST() {
   const user = authData?.user;
   if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await supabase.from("integrations").delete().eq("user_id", user.id).eq("provider", "instagram");
+  await supabaseAdmin.from("integrations").delete().eq("user_id", user.id).eq("provider", "instagram");
   try {
-    const { data } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
+    const { data } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
     const current = asRecord(asRecord(data)["settings"]);
-    await supabase.from("pro_tools_configs").upsert({
+    await supabaseAdmin.from("pro_tools_configs").upsert({
       user_id: user.id,
       settings: {
         ...current,

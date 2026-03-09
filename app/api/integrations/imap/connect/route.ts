@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptSecret } from "@/lib/imapCrypto";
 import net from "net";
 import { withApi } from "@/lib/observability/withApi";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function isPrivateIp(ip: string): boolean {
   // IPv4 private ranges
@@ -70,12 +71,12 @@ const handler = async (req: Request) => {
     const userId = userData.user.id;
 
     // Only 1 IMAP account per user
-    await supabase.from("integrations").delete().eq("user_id", userId).eq("category", "mail").eq("provider", "imap");
+    await supabaseAdmin.from("integrations").delete().eq("user_id", userId).eq("category", "mail").eq("provider", "imap");
 
     // Store the encrypted password in refresh_token_enc (NOT inside settings)
     const password_enc = encryptSecret(password);
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("integrations")
       .insert({
         user_id: userId,

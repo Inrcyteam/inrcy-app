@@ -379,7 +379,7 @@ let adminRefreshToken = "";
           .update(payload)
           .eq("id", existingId);
       } else {
-        await supabase.from("integrations").insert(payload);
+        await supabaseAdmin.from("integrations").insert(payload);
       }
     }
 

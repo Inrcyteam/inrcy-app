@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
     const source = asString(body["source"]) ?? "site_inrcy";
     if (source !== "site_inrcy") return NextResponse.json({ error: "Invalid source" }, { status: 400 });
 
-    await supabase.from("integrations").update({ status: "disconnected", access_token_enc: null, refresh_token_enc: null, expires_at: null }).eq("user_id", userId).eq("provider", "google").eq("source", "site_inrcy").in("product", ["ga4", "gsc"]);
+    await supabaseAdmin.from("integrations").update({ status: "disconnected", access_token_enc: null, refresh_token_enc: null, expires_at: null }).eq("user_id", userId).eq("provider", "google").eq("source", "site_inrcy").in("product", ["ga4", "gsc"]);
     try {
       await supabase.from("integrations_statistiques").update({ statut: "déconnecté" }).eq("id_utilisateur", userId).eq("fournisseur", "Google").eq("source", "site_inrcy").in("produit", ["ga4", "gsc"]);
     } catch {}

@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
 
     // Also mirror to pro_tools_configs so UI updates instantly
     try {
-      const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
+      const { data: scRow } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const scRec = asRecord(scRow);
       const current = asRecord(scRec["settings"]);
       const currentFb = asRecord(current["facebook"]);
@@ -80,7 +81,7 @@ export async function POST(req: Request) {
           url: pageUrl,
         },
       };
-      await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
+      await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
     } catch {
       // non-fatal
     }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -37,12 +38,12 @@ export async function POST(request: Request) {
 
   try {
     if (source === "site_web") {
-      const { data } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
+      const { data } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = asRecord(asRecord(data)["settings"]);
       const siteWeb = asRecord(current.site_web);
       const nextSiteWeb = { ...siteWeb } as Record<string, unknown>;
       delete nextSiteWeb[product];
-      await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: { ...current, site_web: nextSiteWeb } }, { onConflict: "user_id" });
+      await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: userId, settings: { ...current, site_web: nextSiteWeb } }, { onConflict: "user_id" });
     }
     if (source === "site_inrcy") {
       const { data } = await supabase.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle();

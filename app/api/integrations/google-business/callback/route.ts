@@ -7,6 +7,7 @@ import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type TokenResponse = {
   access_token?: string;
@@ -176,7 +177,7 @@ export async function GET(req: Request) {
     }
 
     // Preserve refresh_token if Google doesn't return it
-    const { data: existing, error: existingErr } = await supabase
+    const { data: existing, error: existingErr } = await supabaseAdmin
       .from("integrations")
       .select("id,refresh_token_enc")
       .eq("user_id", userId)
@@ -218,19 +219,19 @@ export async function GET(req: Request) {
     };
 
     if (existingId) {
-      const { error: upErr } = await supabase
+      const { error: upErr } = await supabaseAdmin
         .from("integrations")
         .update(payload)
         .eq("id", existingId);
       if (upErr) return fail("db_update_failed", "DB update failed");
     } else {
-      const { error: insErr } = await supabase.from("integrations").insert(payload);
+      const { error: insErr } = await supabaseAdmin.from("integrations").insert(payload);
       if (insErr) return fail("db_insert_failed", "DB insert failed");
     }
 
     // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
     try {
-      const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
+      const { data: scRow } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = asRecord(asRecord(scRow)["settings"]);
       const currentGmb = asRecord(current["gmb"]);
       const merged = {
@@ -242,7 +243,7 @@ export async function GET(req: Request) {
           accountDisplayName: userInfo.name ?? null,
         },
       };
-      await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
+      await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
     } catch {
       // non-fatal
     }
@@ -263,7 +264,7 @@ export async function GET(req: Request) {
         const firstAcc = accounts?.[0]?.name; // e.g. "accounts/123"
         if (firstAcc) {
           const metaToMerge = asRecord(payload["meta"]);
-          await supabase
+          await supabaseAdmin
             .from("integrations")
             .update({ meta: { ...metaToMerge, account: firstAcc }, resource_id: null, resource_label: null })
             .eq("user_id", userId)

@@ -6,6 +6,7 @@ import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type TokenResponse = {
   access_token?: string;
@@ -209,7 +210,7 @@ export async function GET(req: Request) {
     const tokenToStore = longUserToken; // token utilisateur uniquement (sélection page plus tard)
 
     // 5) Upsert into integrations
-    const { data: existing, error: existingErr } = await supabase
+    const { data: existing, error: existingErr } = await supabaseAdmin
       .from("integrations")
       .select("id")
       .eq("user_id", userId)
@@ -252,19 +253,19 @@ export async function GET(req: Request) {
     const existingRec = asRecord(existing);
     const existingId = asString(existingRec["id"]);
     if (existingId) {
-      const { error: upErr } = await supabase
+      const { error: upErr } = await supabaseAdmin
         .from("integrations")
         .update(payload)
         .eq("id", existingId);
       if (upErr) return fail("db_update_failed", "DB update failed");
     } else {
-      const { error: insErr } = await supabase.from("integrations").insert(payload);
+      const { error: insErr } = await supabaseAdmin.from("integrations").insert(payload);
       if (insErr) return fail("db_insert_failed", "DB insert failed");
     }
 
     // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
     try {
-      const { data: scRow } = await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
+      const { data: scRow } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = asRecord(asRecord(scRow)["settings"]);
       const currentFacebook = asRecord(current["facebook"]);
       const merged: Record<string, unknown> = {
@@ -279,7 +280,7 @@ export async function GET(req: Request) {
           url: null,
         },
       };
-      await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
+      await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
     } catch {
       // non-fatal
     }
