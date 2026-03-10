@@ -148,7 +148,7 @@ const fluxModules: Module[] = [
     accent: "orange",
     actions: [
       { key: "view", label: "Voir la page", variant: "view", href: "#" },
-      { key: "connect", label: "🔒 Avril 2026", variant: "connect", onClick: () => {}, disabled: true },
+      { key: "connect", label: "Configurer", variant: "connect", onClick: () => {}, disabled: true },
     ],
   },
   {
