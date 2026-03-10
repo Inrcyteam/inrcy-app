@@ -42,6 +42,7 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
   const [isStaff, setIsStaff] = useState<boolean>(false);
   const [sendingKey, setSendingKey] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("");
+  const [showUiHelp, setShowUiHelp] = useState<boolean>(false);
 
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [ordersLoading, setOrdersLoading] = useState<boolean>(false);
@@ -125,7 +126,7 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
   const placeOrder = async (p: BoutiqueProduct, method: Method) => {
     setNotice("");
 
-    const priceLabel = method === "EUR" ? `${p.priceEur} €` : `${p.priceUi} UI`;
+    const priceLabel = method === "EUR" ? `${p.priceEur} €` : `${p.comboEur} € + ${p.priceUi} UI`;
     const ok = window.confirm(
       `Confirmer la commande ?\n\nProduit : ${p.title}\nMode : ${method === "EUR" ? "€" : "UI"}\nPrix : ${priceLabel}`
     );
@@ -188,11 +189,55 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ color: "rgba(255,255,255,0.94)", fontWeight: 950, fontSize: 16 }}>Solde UI</div>
-            <div style={{ color: "rgba(255,255,255,0.70)", fontSize: 13, marginTop: 6 }}>
-              Commandez en <b>€</b> ou échangez vos <b>UI</b>.
+          <div style={{ position: "relative" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ color: "rgba(255,255,255,0.94)", fontWeight: 950, fontSize: 16 }}>Solde UI</div>
+              <button
+                type="button"
+                onClick={() => setShowUiHelp((v) => !v)}
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.16)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "rgba(255,255,255,0.92)",
+                  fontWeight: 900,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                aria-label="Comprendre les UI"
+              >
+                ?
+              </button>
             </div>
+            <div style={{ color: "rgba(255,255,255,0.70)", fontSize: 13, marginTop: 6 }}>
+              Commandez en <b>€</b> ou utilisez vos <b>UI</b> pour réduire le prix.
+            </div>
+            {showUiHelp ? (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 34,
+                  left: 0,
+                  zIndex: 3,
+                  width: "min(320px, calc(100vw - 80px))",
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(9,15,34,0.96)",
+                  boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
+                  padding: 12,
+                  color: "rgba(255,255,255,0.86)",
+                  fontSize: 12.5,
+                  lineHeight: 1.5,
+                }}
+              >
+                Plus votre générateur iNrCy est actif, plus vous cumulez d’UI. Connectez davantage d’outils, gardez votre machine en mouvement et transformez cette inertie en économies sur des prestations premium.
+              </div>
+            ) : null}
           </div>
 
           <div style={{ textAlign: "right", minWidth: 140 }}>
@@ -215,7 +260,7 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
           lineHeight: 1.45,
         }}
       >
-        En cliquant sur <b>Commander</b>, une demande est envoyée automatiquement à <b>{BOUTIQUE_TO}</b>.
+        En cliquant sur un bouton, une demande est envoyée automatiquement à <b>{BOUTIQUE_TO}</b>.
       </div>
 
       {notice ? (
@@ -313,10 +358,10 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
                 <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 13, marginTop: 6 }}>{p.desc}</div>
               </div>
 
-              <div style={{ textAlign: "right" }}>
-                <div style={{ color: "rgba(255,255,255,0.60)", fontSize: 12 }}>Prix</div>
-                <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 900 }}>{p.priceEur} €</div>
-                <div style={{ color: "rgba(255,255,255,0.72)", fontWeight: 800, fontSize: 13 }}>{p.priceUi} UI</div>
+              <div style={{ textAlign: "right", maxWidth: 180 }}>
+                <div style={{ color: "rgba(255,255,255,0.58)", fontSize: 12, lineHeight: 1.35 }}>
+                  Utilisez vos UI pour économiser jusqu’à {p.priceEur - p.comboEur} €.
+                </div>
               </div>
             </div>
 
@@ -337,7 +382,7 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
                   cursor: sendingKey !== null ? "not-allowed" : "pointer",
                 }}
               >
-                {sendingKey === `${p.key}:EUR` ? "Envoi…" : "Commander en €"}
+                {sendingKey === `${p.key}:EUR` ? "Envoi…" : `${p.priceEur} €`}
               </button>
 
               <button
@@ -358,7 +403,7 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
                   opacity: canOrderUi(p) ? 1 : 0.45,
                 }}
               >
-                {sendingKey === `${p.key}:UI` ? "Envoi…" : "Commander en UI"}
+                {sendingKey === `${p.key}:UI` ? "Envoi…" : `${p.comboEur} € + ${p.priceUi} UI`}
               </button>
             </div>
           </div>
