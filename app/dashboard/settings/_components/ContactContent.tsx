@@ -110,7 +110,7 @@ export default function ContactContent({ mode = "page" }: Props) {
           <span style={badge}>MAIL & TÉLÉPHONE</span>
         </div>
         <p style={{ margin: "10px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
-          Besoin d’aide, d’une information ou d’un ajustement ? Écrivez-nous ou appelez-nous, on s’occupe de vous rapidement.
+          Besoin d’aide, d'une démo, d’une information ou d’un ajustement ? Écrivez-nous ou appelez-nous, on s’occupe de vous rapidement.
         </p>
       </div>
 
