@@ -144,7 +144,7 @@ const fluxModules: Module[] = [
     key: "gmb",
     name: "Google Business",
     description: "Augmente les appels 📞",
-    status: "available",
+    status: "coming",
     accent: "orange",
     actions: [
       { key: "view", label: "Voir la page", variant: "view", href: "#" },
@@ -2299,8 +2299,14 @@ const checkActivity = useCallback(async () => {
 	      // Google Business + Facebook: “Connecté” = établissement/page sélectionné(e)
       if (m.key === "gmb") {
         if (gmbConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
-        return { status: "available" as ModuleStatus, text: "A connecter" };
+        return { status: "available" as ModuleStatus, text: "🔒 Prévu Avril 2026" };
       }
+
+{/* 
+TEMPORAIRE — Google Business désactivé
+Quota API Google Business disponible après 60 jours.
+Réactiver fin mars 2026.
+*/}
 
       if (m.key === "facebook") {
 	        if (facebookPageConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
@@ -2452,7 +2458,13 @@ const checkActivity = useCallback(async () => {
                   return;
                 }
               }}
-              disabled={m.key === "site_inrcy" ? !canConfigureSite : false}
+              disabled={
+  m.key === "site_inrcy"
+    ? !canConfigureSite
+    : m.key === "gmb"
+    ? true // TEMPORAIRE: Google Business désactivé jusqu'à avril 2026 (quota API)
+    : false
+}
               title={m.key === "site_inrcy" && !canConfigureSite ? "Disponible uniquement si vous avez un site iNrCy" : undefined}
             >
               {"Configurer"}

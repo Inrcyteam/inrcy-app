@@ -215,7 +215,7 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
               </button>
             </div>
             <div style={{ color: "rgba(255,255,255,0.70)", fontSize: 13, marginTop: 6 }}>
-              Commandez en <b>€</b> ou utilisez vos <b>UI</b> pour réduire le prix.
+              Commandez en <b>€</b> (TTC) ou utilisez vos <b>UI</b> pour réduire le prix. 
             </div>
             {showUiHelp ? (
               <div

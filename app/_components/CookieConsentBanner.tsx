@@ -126,14 +126,14 @@ export default function CookieConsentBanner() {
 
   return (
     <div style={card} role="dialog" aria-live="polite" aria-label="Consentement cookies">
-      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "nowrap" }}>
         <div style={{ minWidth: 220, flex: "1 1 360px" }}>
           <div style={{ fontWeight: 1000, marginBottom: 6 }}>Cookies</div>
           <div style={{ opacity: 0.86, lineHeight: 1.42, fontSize: 13 }}>
             iNrCy utilise des cookies <b>strictement nécessaires</b> au fonctionnement (connexion, sécurité). Les cookies de
             mesure d’audience / services tiers ne sont activés qu’avec votre accord.
           </div>
-          <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "nowrap" }}>
             <a href="/legal/confidentialite" style={link}>
               Politique de confidentialité
             </a>
@@ -143,7 +143,7 @@ export default function CookieConsentBanner() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "nowrap", alignItems: "center" }}>
           <button type="button" onClick={() => setAll(false)} style={btn}>
             Refuser
           </button>

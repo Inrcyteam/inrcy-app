@@ -13,7 +13,7 @@ export const BOUTIQUE_PRODUCTS: BoutiqueProduct[] = [
   {
     key: "cartes_visite",
     title: "Cartes de visite premium",
-    desc: "Création design pro + impression sur papier de qualité + livraison.",
+    desc: "Création design pro + impression sur papier de qualité + livraison pour 500 cartes.",
     priceEur: 359,
     comboEur: 215,
     priceUi: 7200,
