@@ -144,11 +144,11 @@ const fluxModules: Module[] = [
     key: "gmb",
     name: "Google Business",
     description: "Augmente les appels 📞",
-    status: "available",
+    status: "coming", // TEMPORAIRE — Google Business disponible à partir d’avril 2026
     accent: "orange",
     actions: [
       { key: "view", label: "Voir la page", variant: "view", href: "#" },
-      { key: "connect", label: "Connecter Google", variant: "connect", onClick: () => {} },
+      { key: "connect", label: "🔒 Avril 2026", variant: "connect", onClick: () => {}, disabled: true },
     ],
   },
   {
@@ -2347,7 +2347,7 @@ const checkActivity = useCallback(async () => {
 	      // Google Business + Facebook: “Connecté” = établissement/page sélectionné(e)
       if (m.key === "gmb") {
         if (gmbConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
-        return { status: "available" as ModuleStatus, text: "A connecter" };
+        return { status: "coming" as ModuleStatus, text: "🔒 Avril 2026" };
       }
 
       if (m.key === "facebook") {
@@ -2500,10 +2500,22 @@ const checkActivity = useCallback(async () => {
                   return;
                 }
               }}
-              disabled={m.key === "site_inrcy" ? !canConfigureSite : false}
-              title={m.key === "site_inrcy" && !canConfigureSite ? "Disponible uniquement si vous avez un site iNrCy" : undefined}
+              disabled={
+                m.key === "site_inrcy"
+                  ? !canConfigureSite
+                  : m.key === "gmb"
+                  ? true // TEMPORAIRE — Google Business désactivé jusqu’en avril 2026
+                  : false
+              }
+              title={
+                m.key === "site_inrcy" && !canConfigureSite
+                  ? "Disponible uniquement si vous avez un site iNrCy"
+                  : m.key === "gmb"
+                  ? "Canal disponible à partir d’avril 2026"
+                  : undefined
+              }
             >
-              {"Configurer"}
+              {"gmb" === m.key ? "🔒 Avril 2026" : "Configurer"}
             </button>
           </div>
         </div>

@@ -433,7 +433,7 @@ useEffect(() => {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Impossible de résilier.");
-      setBillingMsg("Résiliation programmée (préavis 1 mois).");
+      setBillingMsg(json?.warning || "Résiliation programmée (préavis 1 mois). Un email a été envoyé à iNrCy.");
       await fetchSubscription();
       setBillingBusy(false);
     } catch (e: unknown) {
@@ -655,12 +655,21 @@ useEffect(() => {
         ) : sub.status === "active" ? (
           <>
             <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
-              Gère ton abonnement directement ici.
+              Les changements de pack se font uniquement sur demande auprès d’iNrCy.
             </p>
             <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
               <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
-                Modifier mon pack
+                Voir les packs
               </a>
+              {onOpenContact ? (
+                <button type="button" onClick={onOpenContact} style={ghostBtn}>
+                  Contacter iNrCy
+                </button>
+              ) : (
+                <a href="https://inrcy.com/contact/" target="_blank" rel="noreferrer" style={ghostBtn}>
+                  Contacter iNrCy
+                </a>
+              )}
               <button type="button" onClick={doCancel} style={dangerBtn} disabled={billingBusy}>
                 Résilier (préavis 1 mois)
               </button>
