@@ -144,7 +144,7 @@ const fluxModules: Module[] = [
     key: "gmb",
     name: "Google Business",
     description: "Augmente les appels 📞",
-    status: "coming",
+    status: "available",
     accent: "orange",
     actions: [
       { key: "view", label: "Voir la page", variant: "view", href: "#" },
@@ -237,6 +237,7 @@ export default function DashboardClient() {
       | "inertie"
       | "boutique"
       | "notifications"
+      | "parrainage"
   ) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", name);
@@ -399,6 +400,14 @@ export default function DashboardClient() {
   }, []);
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
+
+const [referralName, setReferralName] = useState("");
+const [referralPhone, setReferralPhone] = useState("");
+const [referralEmail, setReferralEmail] = useState("");
+const [referralFrom, setReferralFrom] = useState("");
+const [referralSubmitting, setReferralSubmitting] = useState(false);
+const [referralNotice, setReferralNotice] = useState<string | null>(null);
+const [referralError, setReferralError] = useState<string | null>(null);
 // ✅ Site iNrCy (ownership + url + config)
 const [siteInrcyOwnership, setSiteInrcyOwnership] = useState<Ownership>("none");
 const [siteInrcyUrl, setSiteInrcyUrl] = useState<string>("");
@@ -581,6 +590,45 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
       setUserEmail(data.user?.email ?? null);
     });
   }, []);
+
+
+const submitReferral = useCallback(async () => {
+  const name = referralName.trim();
+  const phone = referralPhone.trim();
+  const email = referralEmail.trim();
+  const from = referralFrom.trim();
+
+  if (!name || !phone || !email || !from) {
+    setReferralError("Merci de remplir tous les champs.");
+    return;
+  }
+
+  setReferralSubmitting(true);
+  setReferralError(null);
+  setReferralNotice(null);
+
+  try {
+    const res = await fetch("/api/referrals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ name, phone, email, from }),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.error || `Erreur ${res.status}`);
+    }
+    setReferralNotice("Merci, votre recommandation a bien été envoyée à l’équipe iNrCy.");
+    setReferralName("");
+    setReferralPhone("");
+    setReferralEmail("");
+    setReferralFrom("");
+  } catch (e: any) {
+    setReferralError(e?.message || "Impossible d’envoyer la recommandation pour le moment.");
+  } finally {
+    setReferralSubmitting(false);
+  }
+}, [referralEmail, referralFrom, referralName, referralPhone]);
 
   // =============================
   // UI (Unités iNrCy) — récompenses auto
@@ -2299,14 +2347,8 @@ const checkActivity = useCallback(async () => {
 	      // Google Business + Facebook: “Connecté” = établissement/page sélectionné(e)
       if (m.key === "gmb") {
         if (gmbConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
-        return { status: "available" as ModuleStatus, text: "🔒 Prévu Avril 2026" };
+        return { status: "available" as ModuleStatus, text: "A connecter" };
       }
-
-{/* 
-TEMPORAIRE — Google Business désactivé
-Quota API Google Business disponible après 60 jours.
-Réactiver fin mars 2026.
-*/}
 
       if (m.key === "facebook") {
 	        if (facebookPageConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
@@ -2458,13 +2500,7 @@ Réactiver fin mars 2026.
                   return;
                 }
               }}
-              disabled={
-  m.key === "site_inrcy"
-    ? !canConfigureSite
-    : m.key === "gmb"
-    ? true // TEMPORAIRE: Google Business désactivé jusqu'à avril 2026 (quota API)
-    : false
-}
+              disabled={m.key === "site_inrcy" ? !canConfigureSite : false}
               title={m.key === "site_inrcy" && !canConfigureSite ? "Disponible uniquement si vous avez un site iNrCy" : undefined}
             >
               {"Configurer"}
@@ -2907,6 +2943,18 @@ Réactiver fin mars 2026.
                   role="menuitem"
                   onClick={() => {
                     setUserMenuOpen(false);
+                    openPanel("parrainage");
+                  }}
+                >
+                  Parrainer avec iNrCy
+                </button>
+
+                <button
+                  type="button"
+                  className={styles.userMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
                     router.push("/dashboard/gps");
                   }}
                 >
@@ -3196,6 +3244,18 @@ Réactiver fin mars 2026.
                 }}
               >
                 Boutique
+              </button>
+
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openPanel("parrainage");
+                }}
+              >
+                Parrainer avec iNrCy
               </button>
 
               <button
@@ -3757,6 +3817,8 @@ Réactiver fin mars 2026.
             ? "Mon inertie"
             : panel === "boutique"
             ? "Boutique"
+            : panel === "parrainage"
+            ? "Parrainer avec iNrCy"
             : panel === "notifications"
             ? "Notifications"
             : ""
@@ -3786,6 +3848,8 @@ Réactiver fin mars 2026.
         ||
           panel === "boutique"
         ||
+          panel === "parrainage"
+        ||
           panel === "notifications"
         }
         onClose={closePanel}
@@ -3809,14 +3873,218 @@ Réactiver fin mars 2026.
           />
         )}
 
-        {panel === "boutique" && (
-          <BoutiqueContent
-            mode="drawer"
-            onOpenInertia={() => openPanel("inertie")}
-          />
-        )}
 
-        {panel === "notifications" && <NotificationsSettingsContent />}
+{panel === "boutique" && (
+  <BoutiqueContent
+    mode="drawer"
+    onOpenInertia={() => openPanel("inertie")}
+  />
+)}
+
+{panel === "parrainage" && (
+  <div style={{ display: "grid", gap: 14 }}>
+    <div
+      style={{
+        border: "1px solid rgba(96,165,250,0.22)",
+        background:
+          "linear-gradient(135deg, rgba(14,25,56,0.96) 0%, rgba(33,16,66,0.92) 52%, rgba(10,21,53,0.96) 100%)",
+        borderRadius: 20,
+        padding: 18,
+        display: "grid",
+        gap: 16,
+        boxShadow: "0 20px 60px rgba(2,6,23,0.32), inset 0 1px 0 rgba(255,255,255,0.06)",
+        overflow: "hidden",
+        position: "relative",
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          right: -36,
+          top: -36,
+          width: 140,
+          height: 140,
+          borderRadius: 999,
+          background: "radial-gradient(circle, rgba(236,72,153,0.26) 0%, rgba(236,72,153,0.04) 55%, transparent 72%)",
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: -50,
+          bottom: -56,
+          width: 170,
+          height: 170,
+          borderRadius: 999,
+          background: "radial-gradient(circle, rgba(59,130,246,0.24) 0%, rgba(59,130,246,0.04) 58%, transparent 76%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", position: "relative", zIndex: 1 }}>
+        <div style={{ display: "grid", gap: 8, maxWidth: 560 }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              width: "fit-content",
+              padding: "8px 12px",
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(255,255,255,0.06)",
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: 0.3,
+              color: "rgba(255,255,255,0.92)",
+            }}
+          >
+            🎁 Programme de parrainage iNrCy
+          </div>
+          <div style={{ fontSize: 26, lineHeight: 1.08, fontWeight: 800, color: "white" }}>
+            Recommandez un professionnel et débloquez <span style={{ color: "#f9a8d4" }}>50 €</span> de chèque cadeau.
+          </div>
+          <div style={{ color: "rgba(226,232,240,0.9)", fontSize: 14, lineHeight: 1.65 }}>
+            Dès qu’un client recommandé rejoint iNrCy et reste engagé au minimum <strong>6 mois</strong>,
+            nous validons votre récompense. Remplissez le formulaire ci-dessous : l’équipe contacte directement votre recommandation.
+          </div>
+        </div>
+
+        <div
+          style={{
+            minWidth: 220,
+            flex: "0 1 250px",
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(255,255,255,0.06)",
+            borderRadius: 18,
+            padding: 14,
+            display: "grid",
+            gap: 10,
+            alignSelf: "start",
+          }}
+        >
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.68)", textTransform: "uppercase", letterSpacing: 0.5 }}>
+            Conditions
+          </div>
+          <div style={{ display: "grid", gap: 8, color: "white", fontSize: 14, lineHeight: 1.45 }}>
+            <div>• 1 contact recommandé qualifié</div>
+            <div>• 50 € de chèque cadeau après validation</div>
+            <div>• Client engagé au minimum 6 mois</div>
+            <div>• Envoi direct à l’équipe iNrCy</div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          position: "relative",
+          zIndex: 1,
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(8,15,32,0.48)",
+          borderRadius: 18,
+          padding: 16,
+          display: "grid",
+          gap: 14,
+        }}
+      >
+        <div style={{ display: "grid", gap: 6 }}>
+          <div className={styles.blockTitle}>Coordonnées à transmettre</div>
+          <div className={styles.blockSub}>Les informations seront envoyées automatiquement à <strong>parrainage@inrcy.com</strong>.</div>
+        </div>
+
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))" }}>
+          <input
+            value={referralName}
+            onChange={(e) => setReferralName(e.target.value)}
+            placeholder="Nom Prénom ou raison sociale"
+            style={{
+              width: "100%",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(15,23,42,0.72)",
+              colorScheme: "dark",
+              padding: "12px 14px",
+              color: "white",
+              outline: "none",
+            }}
+          />
+
+          <input
+            value={referralPhone}
+            onChange={(e) => setReferralPhone(e.target.value)}
+            placeholder="Téléphone"
+            inputMode="tel"
+            style={{
+              width: "100%",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(15,23,42,0.72)",
+              colorScheme: "dark",
+              padding: "12px 14px",
+              color: "white",
+              outline: "none",
+            }}
+          />
+
+          <input
+            value={referralEmail}
+            onChange={(e) => setReferralEmail(e.target.value)}
+            placeholder="Mail"
+            inputMode="email"
+            style={{
+              width: "100%",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(15,23,42,0.72)",
+              colorScheme: "dark",
+              padding: "12px 14px",
+              color: "white",
+              outline: "none",
+            }}
+          />
+
+          <input
+            value={referralFrom}
+            onChange={(e) => setReferralFrom(e.target.value)}
+            placeholder="Parrain / de la part de"
+            style={{
+              width: "100%",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(15,23,42,0.72)",
+              colorScheme: "dark",
+              padding: "12px 14px",
+              color: "white",
+              outline: "none",
+            }}
+          />
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ color: "rgba(255,255,255,0.66)", fontSize: 12, lineHeight: 1.5 }}>
+            Votre recommandation est transmise à l’équipe iNrCy pour prise de contact manuelle.
+          </div>
+          <button
+            type="button"
+            className={`${styles.actionBtn} ${styles.connectBtn}`}
+            onClick={submitReferral}
+            disabled={referralSubmitting}
+          >
+            {referralSubmitting ? "Envoi..." : "Envoyer la recommandation"}
+          </button>
+        </div>
+
+        {referralNotice && <div className={styles.successNote}>{referralNotice}</div>}
+        {referralError && <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 13 }}>{referralError}</div>}
+      </div>
+    </div>
+  </div>
+)}
+
+{panel === "notifications" && <NotificationsSettingsContent />}
 
 
         {panel === "site_inrcy" && (
