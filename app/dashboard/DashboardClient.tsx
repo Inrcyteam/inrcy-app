@@ -2515,7 +2515,7 @@ const checkActivity = useCallback(async () => {
                   : undefined
               }
             >
-              {"gmb" === m.key ? "🔒 Avril 2026" : "Configurer"}
+              {"Configurer"}
             </button>
           </div>
         </div>
