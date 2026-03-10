@@ -88,7 +88,7 @@ export const BOUTIQUE_PRODUCTS: BoutiqueProduct[] = [
     desc: "Refonte premium pour moderniser votre présence en ligne.",
     priceEur: 1799,
     comboEur: 1079,
-    priceUi: 36000,
+    priceUi: 26000,
     badge: "Web",
   },
   {
@@ -97,7 +97,7 @@ export const BOUTIQUE_PRODUCTS: BoutiqueProduct[] = [
     desc: "Site professionnel haut de gamme conçu pour convertir.",
     priceEur: 2990,
     comboEur: 1794,
-    priceUi: 59800,
+    priceUi: 33000,
     badge: "Web",
   },
 ]

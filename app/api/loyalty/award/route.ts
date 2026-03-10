@@ -38,11 +38,11 @@ const MULTIPLIED_ACTION_KEYS = new Set([
 ]);
 
 type TurboSupabaseLike = {
-  from: (table: string) => {
-    select: (query: string) => {
-      eq: (column: string, value: string) => {
+  from: (_table: string) => {
+    select: (_query: string) => {
+      eq: (_column: string, _value: string) => {
         maybeSingle: () => Promise<{ data: unknown | null }>;
-        in: (column: string, values: string[]) => Promise<{ data: unknown[] | null }>;
+        in: (_column: string, _values: string[]) => Promise<{ data: unknown[] | null }>;
       };
     };
   };

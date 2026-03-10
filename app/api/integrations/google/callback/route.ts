@@ -121,13 +121,14 @@ export async function GET(req: Request) {
       }),
     });
 
-    const tokenData = (await tokenRes.json()) as TokenResponse;
+   const tokenData = (await tokenRes.json()) as TokenResponse;
 
-    if (!tokenRes.ok || !tokenData.access_token) {
-      // Avoid leaking provider response details in prod
-      const detail = process.env.NODE_ENV === "production" ? undefined : tokenData;
-      return fail("token_exchange_failed", asString(asRecord(detail)["error_description"]) || asString(asRecord(detail)["error"]) || "Token exchange failed");
-    }
+if (!tokenRes.ok || !tokenData.access_token) {
+  return fail(
+    "token_exchange_failed",
+    tokenData.error_description || tokenData.error || "Token exchange failed"
+  );
+}
 
     // 2) Get user email
     const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
@@ -137,7 +138,6 @@ export async function GET(req: Request) {
     const userInfo = (await userRes.json()) as GoogleUserInfo;
 
     if (!userRes.ok || !userInfo?.email) {
-      const detail = process.env.NODE_ENV === "production" ? undefined : userInfo;
       return fail("userinfo_failed", "Userinfo fetch failed");
     }
 
@@ -152,7 +152,6 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     if (existingErr) {
-      const detail = process.env.NODE_ENV === "production" ? undefined : existingErr;
       return fail("db_read_failed", "DB read existing failed");
     }
 
@@ -191,13 +190,11 @@ export async function GET(req: Request) {
         .eq("id", String(asRecord(existing)["id"]));
 
       if (upErr) {
-        const detail = process.env.NODE_ENV === "production" ? undefined : upErr;
         return fail("db_update_failed", "DB update failed");
       }
     } else {
       const { error: insErr } = await supabaseAdmin.from("integrations").insert(payload);
       if (insErr) {
-        const detail = process.env.NODE_ENV === "production" ? undefined : insErr;
         return fail("db_insert_failed", "DB insert failed");
       }
     }

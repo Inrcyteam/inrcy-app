@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function POST() {
   const supabase = await createSupabaseServer();

@@ -251,7 +251,7 @@ async function processUser(req: Request, userId: string) {
   });
 }
 
-async function runWithConcurrency<T>(items: T[], concurrency: number, worker: (item: T) => Promise<void>) {
+async function runWithConcurrency<T>(items: T[], concurrency: number, worker: (_arg: T) => Promise<void>) {
   const queue = [...items];
   const runners = Array.from({ length: Math.max(1, concurrency) }, async () => {
     while (queue.length > 0) {

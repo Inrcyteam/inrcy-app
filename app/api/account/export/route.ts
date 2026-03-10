@@ -53,13 +53,13 @@ type ExportBlock = {
 
 type QueryResult = { data?: unknown[] | null; error?: { message: string } | null };
 type ExportQuery = PromiseLike<QueryResult> & {
-  order: (column: string, options: { ascending: boolean }) => ExportQuery;
-  limit: (value: number) => ExportQuery;
+  order: (_column: string, _options: { ascending: boolean }) => ExportQuery;
+  limit: (_value: number) => ExportQuery;
 };
 type ExportSupabaseLike = {
-  from: (table: string) => {
-    select: (query: string) => {
-      eq: (column: string, value: string) => ExportQuery;
+  from: (_table: string) => {
+    select: (_query: string) => {
+      eq: (_column: string, _value: string) => ExportQuery;
     };
   };
 };

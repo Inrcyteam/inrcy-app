@@ -13,9 +13,9 @@ export async function POST(request: Request) {
   if (authErr || !authData?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const userId = authData.user.id;
-  const body = await request.json().catch(() => ({} as any));
-  const source = body?.source;
-  const product = body?.product;
+  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const source = typeof body.source === "string" ? body.source : "";
+  const product = typeof body.product === "string" ? body.product : "";
   if (!source || !product) return NextResponse.json({ error: "Missing source/product" }, { status: 400 });
 
   await supabase

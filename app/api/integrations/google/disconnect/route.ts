@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 /**
  * Déconnecte un compte Gmail (supprime la ligne mail_accounts).
  * Le front passe { accountId }.

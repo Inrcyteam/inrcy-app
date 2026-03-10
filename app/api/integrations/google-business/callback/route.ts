@@ -31,29 +31,6 @@ async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: 
   await clearAllToolCaches(supabase, userId);
 }
 
-function safeReturnTo(stateReturnTo: unknown, siteUrl: string) {
-  // Default panel
-  const fallbackPath = "/dashboard?panel=gmb";
-
-  if (typeof stateReturnTo !== "string" || stateReturnTo.trim() === "") return fallbackPath;
-
-  // If it's an absolute URL, only allow it if it matches our site origin
-  if (/^https?:\/\//i.test(stateReturnTo)) {
-    try {
-      const u = new URL(stateReturnTo);
-      const allowedOrigin = new URL(siteUrl).origin;
-      if (u.origin !== allowedOrigin) return fallbackPath;
-      return `${u.pathname}${u.search}${u.hash}`;
-    } catch {
-      return fallbackPath;
-    }
-  }
-
-  // If it's a relative path, keep it (must start with /)
-  if (!stateReturnTo.startsWith("/")) return fallbackPath;
-  return stateReturnTo;
-}
-
 export async function GET(req: Request) {
   try {
     const urlObj = new URL(req.url);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { toNotificationPayload } from "@/lib/notifications";
+import { toNotificationPayload, type NotificationRow } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 
@@ -55,7 +55,7 @@ export async function GET(req: Request) {
     rows = seeded.data ?? [];
   }
 
-  const items = rows.map((row) => toNotificationPayload(row as any));
+  const items = rows.map((row) => toNotificationPayload(row as NotificationRow));
   const unreadCount = items.filter((item) => item.unread).length;
 
   return NextResponse.json({ items, unreadCount });
