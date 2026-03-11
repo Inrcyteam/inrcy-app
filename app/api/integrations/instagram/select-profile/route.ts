@@ -74,8 +74,10 @@ export async function POST(req: Request) {
   const username = String(asString(ig["username"]) || "");
   if (!igId) return NextResponse.json({ error: "Aucun Instagram Business relié à cette page" }, { status: 400 });
 
-  // Update integration: now connected + store page token for publishing
-  await supabase
+  // Update integration: now connected + store page token for publishing.
+  // Use supabaseAdmin here because this route must persist the selected Instagram profile
+  // even if RLS blocks the regular server client update. Also fail loudly if no row was updated.
+  const { data: updatedRows, error: updateErr } = await supabaseAdmin
     .from("integrations")
     .update({
       status: "connected",
@@ -84,11 +86,21 @@ export async function POST(req: Request) {
       access_token_enc: encryptToken(page.access_token),
       expires_at: null,
       meta: { page_id: pageId, page_name: page.name || null },
+      updated_at: new Date().toISOString(),
     })
     .eq("user_id", user.id)
     .eq("provider", "instagram")
     .eq("source", "instagram")
-    .eq("product", "instagram");
+    .eq("product", "instagram")
+    .select("id,status,resource_id,resource_label");
+
+  if (updateErr) {
+    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  }
+
+  if (!updatedRows || updatedRows.length === 0) {
+    return NextResponse.json({ error: "Aucune ligne Instagram mise à jour." }, { status: 500 });
+  }
 
   // Invalidate stats cache so iNrStats + Generator reflect the new selection immediately.
   await invalidateUserStatsCache(supabase, user.id);
