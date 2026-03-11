@@ -27,6 +27,7 @@ export async function GET(request: Request) {
       "pages_show_list",
       "pages_read_engagement",
       "instagram_basic",
+      "instagram_manage_insights",
       "instagram_content_publish",
       "business_management",
     ].join(","),
