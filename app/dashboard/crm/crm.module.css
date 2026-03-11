@@ -1961,12 +1961,17 @@
    ========================= */
 
 @media (min-width: 980px){
-  /* 0) Page sans scroll (desktop) */
+  /* 0) Desktop: keep the CRM usable at browser zoom and on shorter screens.
+     We no longer hard-lock the module to 100vh, otherwise the bottom gets cut off
+     and the page cannot scroll. The contacts table still keeps its own inner scroll
+     once there is enough room. */
   .shell{
-    height: 100vh !important;     /* force plein écran */
-    min-height: 0 !important;
-    overflow: hidden !important;  /* empêche la scroll-bar navigateur */
-    padding-bottom: 18px !important; /* réduit la hauteur globale */
+    height: auto !important;
+    min-height: 100vh !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    padding-bottom: 18px !important;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* 1) La card du bas doit laisser déborder le menu */
@@ -1979,7 +1984,7 @@
   /* 3) Tableau: hauteur adaptative + scroll interne (pas de scroll page) */
   .tableWrap{
     min-height: 390px !important;
-    max-height: calc(100vh - 560px) !important; /* ajuste la place en fonction du haut (KPI + form + toolbar) */
+    max-height: min(960px, calc(100vh - 560px)) !important; /* garde un scroll interne sans écraser le tableau */
     overflow-y: auto !important;
     overflow-x: hidden !important; /* pas de scroll horizontal */
   }

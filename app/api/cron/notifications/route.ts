@@ -230,7 +230,7 @@ async function buildActionNotification(userId: string, digestHours: number) {
 
   if (missingChannels.length > 0) {
     const topMissing = missingChannels.slice(0, 2).join(" + ");
-    title = `${missingChannels.length} canal${missingChannels.length > 1 ? "x" : ""} encore activable${missingChannels.length > 1 ? "s" : ""}`;
+    title = `${missingChannels.length} ${missingChannels.length > 1 ? "canaux" : "canal"} encore activable${missingChannels.length > 1 ? "s" : ""}`;
     body = `Votre générateur peut encore monter en puissance. Commencez par ${topMissing} pour capter plus d’opportunités dans les 48 prochaines heures.`;
     ctaLabel = "Configurer mes canaux";
     ctaUrl = "/dashboard";
@@ -290,10 +290,10 @@ async function buildInformationNotification(userId: string, digestHours: number)
   const hasStats = connectedRows.some((row) => row.category === "stats");
 
   let title = connectedTools > 0
-    ? `Votre cockpit iNrCy suit ${connectedTools} canal${connectedTools > 1 ? "x" : ""}`
+    ? `Votre cockpit iNrCy suit ${connectedTools} ${connectedTools > 1 ? "canaux" : "canal"}`
     : `Votre espace iNrCy est prêt à être animé`;
   let body = connectedTools > 0
-    ? `Petit point de passage : ${demandes} demandes captees récemment, ${opportunities} opportunités activables, et un GPS d’utilisation à consulter pour garder le rythme.`
+    ? `Petit point de passage : ${demandes} demandes captées récemment, ${opportunities} opportunités activables, et un GPS d’utilisation à consulter pour garder le rythme.`
     : `Activez quelques canaux puis laissez iNrCy vous guider. Vos prochaines actions clés apparaîtront ensuite dans votre cloche.`;
   let ctaLabel = connectedTools > 0 ? "Ouvrir le GPS" : "Ouvrir le dashboard";
   let ctaUrl = connectedTools > 0 ? "/dashboard/gps" : "/dashboard";
@@ -301,8 +301,8 @@ async function buildInformationNotification(userId: string, digestHours: number)
 
   if (hasSocial && !hasMail) {
     title = "Votre visibilité tourne déjà, branchez maintenant la relance mail";
-    body = `Vos canaux sociaux sont connectés. Ajouter une boîte mail dans Inr'Send vous permettra de relancer les opportunités entrantes sans quitter iNrCy.`;
-    ctaLabel = "Ouvrir Inr'Send";
+    body = `Vos canaux sociaux sont connectés. Ajouter une boîte mail dans iNr'Send vous permettra de relancer les opportunités entrantes sans quitter iNrCy.`;
+    ctaLabel = "Ouvrir iNr'Send";
     ctaUrl = "/dashboard?panel=mails";
     kind = "cross_sell_mail";
   } else if (hasMail && !hasStats) {

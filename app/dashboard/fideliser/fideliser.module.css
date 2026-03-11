@@ -326,8 +326,10 @@
 
 @media (min-width: 981px){
   .page{
-    height: 100vh;
-    overflow: hidden;
+    min-height: 100vh;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding-top: 16px !important;
     padding-bottom: 16px !important;
   }

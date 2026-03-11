@@ -6,10 +6,11 @@
 }
 
 .page {
-  height: 100vh;
+  height: auto;
+  min-height: 100vh;
   padding: 18px 18px 40px;
-  overflow: hidden;
   overflow-x: hidden;
+  overflow-y: auto;
   background:
     radial-gradient(900px 520px at 12% 8%, rgba(56, 189, 248, 0.18), transparent 62%),
     radial-gradient(900px 520px at 90% 12%, rgba(167, 139, 250, 0.18), transparent 62%),
@@ -345,6 +346,19 @@
   /* Détails en modal : la grille n'affiche plus qu'un seul bloc (liste) */
   grid-template-rows: minmax(0, 1fr);
   gap: 14px;
+}
+
+
+/* Desktop: allow page scrolling when browser zoom or smaller screens reduce the viewport.
+   This prevents the bottom of iNr'Send from being clipped while preserving the module layout. */
+@media (min-width: 981px) {
+  .page {
+    height: auto;
+    min-height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 /* =========================

@@ -47,7 +47,7 @@ function buildCard(item: NotificationDigestItem) {
   return `
     <tr>
       <td style="padding:0 0 14px 0;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:rgba(255,255,255,0.92);border:1px solid ${colors.border};border-radius:18px;overflow:hidden;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;background-color:#ffffff;border:1px solid ${colors.border};border-radius:18px;overflow:hidden;">
           <tr>
             <td style="padding:18px 18px 16px 18px;">
               <div style="display:inline-block;padding:7px 12px;border-radius:999px;background:${colors.pillBg};color:${colors.pillText};font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;letter-spacing:.02em;">${categoryLabel(item.category)}</div>
@@ -80,17 +80,17 @@ export function buildNotificationDigestEmail(args: {
 
   const html = `<!doctype html>
 <html lang="fr">
-  <body style="margin:0;padding:0;background:#f5f7fb;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f5f7fb;">
+  <body style="margin:0;padding:0;background:#f5f7fb;background-color:#f5f7fb;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f5f7fb;background-color:#f5f7fb;">
       <tr>
         <td align="center" style="padding:28px 16px 40px 16px;">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:680px;border-collapse:separate;border-spacing:0;">
             <tr>
               <td style="padding:0 0 16px 0;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;border-radius:26px;overflow:hidden;background:radial-gradient(circle at top left, rgba(14,165,233,.22), transparent 30%), radial-gradient(circle at top right, rgba(236,72,153,.18), transparent 28%), linear-gradient(135deg,#06122b 0%, #0a1c44 48%, #0d1240 100%);box-shadow:0 28px 70px rgba(2,8,23,.18);">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0b1734" style="width:100%;border-collapse:separate;border-spacing:0;border-radius:26px;overflow:hidden;background-color:#0b1734;background-image:radial-gradient(circle at top left, rgba(14,165,233,.22), transparent 30%), radial-gradient(circle at top right, rgba(236,72,153,.18), transparent 28%), linear-gradient(135deg,#06122b 0%, #0a1c44 48%, #0d1240 100%);box-shadow:0 28px 70px rgba(2,8,23,.18);">
                   <tr>
                     <td style="padding:28px 28px 30px 28px;">
-                      <img src="https://app.inrcy.com/logo-appli-inrcy.png" alt="iNrCy" width="118" style="display:block;width:118px;height:auto;border:0;outline:none;" />
+                      <img src="https://app.inrcy.com/logo-inrcy.png" alt="iNrCy" width="118" style="display:block;width:118px;height:auto;border:0;outline:none;color:#ffffff;" />
                       <div style="height:18px;line-height:18px;font-size:0;">&nbsp;</div>
                       <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:rgba(255,255,255,.78);">${escapeHtml(greeting(args.firstName, args.companyName))}</div>
                       <div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>
@@ -109,7 +109,7 @@ export function buildNotificationDigestEmail(args: {
             </tr>
             <tr>
               <td style="padding:12px 0 0 0;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid rgba(15,23,42,.08);border-radius:22px;overflow:hidden;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;background-color:#ffffff;border:1px solid rgba(15,23,42,.08);border-radius:22px;overflow:hidden;">
                   <tr>
                     <td style="padding:22px 24px 24px 24px;">
                       <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:1.35;color:#0f172a;font-weight:800;">Passez à l’action depuis votre cockpit</div>

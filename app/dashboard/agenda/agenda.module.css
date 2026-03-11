@@ -896,8 +896,10 @@
 /* Desktop: prevent page scroll (tout visible, pas de scroll global) */
 @media (min-width: 900px){
   .page{
-    height: 100vh;
-    overflow: hidden;
+    min-height: 100vh;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding-bottom: 18px;
   }
 
