@@ -9,6 +9,7 @@ import { facebookPublishToPage } from "@/lib/facebookPublish";
 import { instagramPublishPhoto } from "@/lib/instagramPublish";
 import { linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
+import { optimizeForInstagram } from "@/lib/imageOptimizer";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
@@ -56,6 +57,28 @@ function buildCanonMessage(title: string, content: string, cta: string) {
   return parts.join("\n\n").trim();
 }
 
+function normalizeHashtag(input: string): string {
+  return String(input || "")
+    .trim()
+    .replace(/^#+/, "")
+    .replace(/[^\p{L}\p{N}_]/gu, "")
+    .slice(0, 40);
+}
+
+function buildInstagramCaption(title: string, content: string, cta: string, hashtags: string[] = []) {
+  const base = buildCanonMessage(title, content, cta);
+  const cleanTags = hashtags
+    .map(normalizeHashtag)
+    .filter(Boolean)
+    .slice(0, 8)
+    .map((tag) => `#${tag}`);
+
+  const full = cleanTags.length ? `${base}
+
+${cleanTags.join(" ")}`.trim() : base;
+  return full.slice(0, 2200);
+}
+
 export async function POST(req: Request) {
   try {
     const { user, errorResponse } = await requireUser();
@@ -91,10 +114,11 @@ const body = await req.json().catch(() => null);
     // 1) Upload images to Supabase Storage (bucket: booster) + collect diagnostics
     const uploadedUrls: string[] = []; // stored for UI
     const publishableUrls: string[] = []; // used for external platforms
+    const instagramPublishableUrls: string[] = []; // optimized JPEGs for Instagram
     const uploadErrors: Array<{
       name: string;
       reason: string;
-      stage: "parse" | "upload" | "publicUrl" | "signedUrl";
+      stage: "parse" | "upload" | "publicUrl" | "signedUrl" | "instagramOptimize" | "instagramUpload";
     }> = [];
 
     for (const img of images.slice(0, 5)) {
@@ -133,6 +157,35 @@ const body = await req.json().catch(() => null);
         uploadErrors.push({ name: img?.name || "image", reason: "createSignedUrl failed, fell back to publicUrl", stage: "signedUrl" });
       } else {
         uploadErrors.push({ name: img?.name || "image", reason: "createSignedUrl failed and no publicUrl available", stage: "signedUrl" });
+      }
+
+      try {
+        const optimized = await optimizeForInstagram(parsed.buffer);
+        const igPath = `${userId}/instagram/${randomUUID()}.${optimized.extension}`;
+        const igUpload = await supabaseAdmin.storage.from("booster").upload(igPath, optimized.buffer, {
+          contentType: optimized.mime,
+          upsert: false,
+        });
+
+        if (igUpload.error) {
+          uploadErrors.push({ name: img?.name || "image", reason: igUpload.error.message, stage: "instagramUpload" });
+        } else {
+          const igSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(igPath, 60 * 60 * 24);
+          const igPublic = supabaseAdmin.storage.from("booster").getPublicUrl(igPath);
+          if (igSigned?.data?.signedUrl) {
+            instagramPublishableUrls.push(igSigned.data.signedUrl);
+          } else if (igPublic?.data?.publicUrl) {
+            instagramPublishableUrls.push(igPublic.data.publicUrl);
+          } else {
+            uploadErrors.push({ name: img?.name || "image", reason: "Instagram optimized image URL unavailable", stage: "instagramUpload" });
+          }
+        }
+      } catch (optErr) {
+        uploadErrors.push({
+          name: img?.name || "image",
+          reason: errMessage(optErr, "Instagram image optimization failed"),
+          stage: "instagramOptimize",
+        });
       }
     }
 
@@ -230,6 +283,7 @@ const body = await req.json().catch(() => null);
 
     const canonMessage = buildCanonMessage(title, content, cta);
     const externalImageUrls = (publishableUrls.length ? publishableUrls : uploadedUrls).slice(0, 5);
+    const instagramImageUrls = (instagramPublishableUrls.length ? instagramPublishableUrls : externalImageUrls).slice(0, 5);
 
     async function setDelivery(channel: ChannelKey, patch: JsonRecord) {
       await supabaseAdmin
@@ -341,17 +395,19 @@ const body = await req.json().catch(() => null);
             continue;
           }
 
-          const img = externalImageUrls[0];
+          const img = instagramImageUrls[0];
           if (!img) {
             await setDelivery(ch, { status: "failed", last_error: "Instagram nécessite au moins 1 image" });
             results[ch] = { ok: false, error: "missing_image" };
             continue;
           }
 
+          const instagramCaption = buildInstagramCaption(title, content, cta, hashtags);
+
           const resp = await instagramPublishPhoto({
             igUserId,
             accessToken: igToken,
-            caption: canonMessage,
+            caption: instagramCaption,
             imageUrl: img,
           });
 
@@ -461,6 +517,7 @@ const body = await req.json().catch(() => null);
         post: { title, content, cta, hashtags },
         images: uploadedUrls,
         publishableUrls,
+        instagramPublishableUrls,
         uploadErrors,
         publication_id: publicationId,
         results,
@@ -472,6 +529,7 @@ const body = await req.json().catch(() => null);
       publication_id: publicationId,
       images: uploadedUrls,
       publishableUrls,
+      instagramPublishableUrls,
       uploadErrors,
       results,
     });

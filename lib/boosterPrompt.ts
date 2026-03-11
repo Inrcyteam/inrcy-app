@@ -48,7 +48,9 @@ Tu DOIS répondre en JSON strict, avec exactement ces clés :
 }
 
 Notes :
-- Hashtags : 0 à 6, sans spam.
+- Hashtags : génère toujours 3 à 8 hashtags utiles, naturels et directement liés au contenu, au métier et à la zone géographique si pertinente.
+- Les hashtags doivent être sans spam, sans # dans le JSON, et réutilisables plus tard uniquement si Instagram est sélectionné au moment de publier.
+- Évite les hashtags génériques de faible qualité du type follow, like4like, viral, insta, france, business.
 - Si une info est inconnue, ne l'invente pas.`;
 }
 
@@ -79,7 +81,7 @@ export function boosterUserPrompt(args: {
   return `Phrase du pro (chantier / actu) :
 ${args.idea}
 
-Canaux sélectionnés (pour info, même contenu partout) : ${args.channels.join(", ")}
+Canaux sélectionnés (pour info, même contenu partout, les hashtags doivent rester réutilisables même si Instagram n'est pas encore choisi) : ${args.channels.join(", ")}
 
 Infos profil :
 - Entreprise : ${company}
@@ -100,5 +102,6 @@ Infos activité (Mon activité) :
 Consigne :
 - Génère une publication canon claire et utile, centrée sur le bénéfice client.
 - Utilise les infos "Mon activité" quand elles existent.
-- Une seule publication (pas de version par canal).`;
+- Une seule publication (pas de version par canal).
+- Génère aussi des hashtags réutilisables même si les canaux définitifs seront choisis plus tard.`;
 }
