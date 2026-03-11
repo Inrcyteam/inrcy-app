@@ -29,8 +29,7 @@ export async function GET(request: Request) {
       "instagram_basic",
       "instagram_manage_insights",
       "instagram_content_publish",
-      "business_management",
-    ].join(","),
+         ].join(","),
   });
 
   const url = `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
