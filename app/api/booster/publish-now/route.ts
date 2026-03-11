@@ -79,6 +79,30 @@ ${cleanTags.join(" ")}`.trim() : base;
   return full.slice(0, 2200);
 }
 
+function isExpired(expiresAt: unknown, skewSeconds = 60) {
+  const iso = String(expiresAt || "").trim();
+  if (!iso) return false;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return false;
+  return t <= Date.now() + skewSeconds * 1000;
+}
+
+async function getLatestIntegrationRow(userId: string, provider: string, source: string, product: string, columns: string) {
+  const { data, error } = await supabaseAdmin
+    .from("integrations")
+    .select(columns)
+    .eq("user_id", userId)
+    .eq("provider", provider)
+    .eq("source", source)
+    .eq("product", product)
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] ?? null : null;
+}
+
 export async function POST(req: Request) {
   try {
     const { user, errorResponse } = await requireUser();
@@ -104,7 +128,7 @@ const body = await req.json().catch(() => null);
     const content = String(post.content || "").trim();
     const cta = String(post.cta || "").trim();
     const hashtags = Array.isArray(post.hashtags)
-      ? post.hashtags.map((h) => String(h || "").trim()).filter(Boolean).slice(0, 6)
+      ? post.hashtags.map((h) => normalizeHashtag(String(h || ""))).filter(Boolean).slice(0, 20)
       : [];
 
     if (!content) {
@@ -229,41 +253,12 @@ const body = await req.json().catch(() => null);
     // 4) Publish now
     const results: Record<string, unknown> = {};
 
-    const { data: fbRow } = await supabaseAdmin
-      .from("integrations")
-      .select("status,resource_id,access_token_enc")
-      .eq("user_id", userId)
-      .eq("provider", "facebook")
-      .eq("source", "facebook")
-      .eq("product", "facebook")
-      .maybeSingle();
-
-    const { data: gmbRow } = await supabaseAdmin
-      .from("integrations")
-      .select("status,resource_id,meta")
-      .eq("user_id", userId)
-      .eq("provider", "google")
-      .eq("source", "gmb")
-      .eq("product", "gmb")
-      .maybeSingle();
-
-    const { data: igRow } = await supabaseAdmin
-      .from("integrations")
-      .select("status,resource_id,access_token_enc,resource_label,meta")
-      .eq("user_id", userId)
-      .eq("provider", "instagram")
-      .eq("source", "instagram")
-      .eq("product", "instagram")
-      .maybeSingle();
-
-    const { data: liRow } = await supabaseAdmin
-      .from("integrations")
-      .select("status,resource_id,access_token_enc,meta")
-      .eq("user_id", userId)
-      .eq("provider", "linkedin")
-      .eq("source", "linkedin")
-      .eq("product", "linkedin")
-      .maybeSingle();
+    const [fbRow, gmbRow, igRow, liRow] = await Promise.all([
+      getLatestIntegrationRow(userId, "facebook", "facebook", "facebook", "status,resource_id,access_token_enc,expires_at"),
+      getLatestIntegrationRow(userId, "google", "gmb", "gmb", "status,resource_id,meta,expires_at"),
+      getLatestIntegrationRow(userId, "instagram", "instagram", "instagram", "status,resource_id,access_token_enc,resource_label,meta,expires_at"),
+      getLatestIntegrationRow(userId, "linkedin", "linkedin", "linkedin", "status,resource_id,access_token_enc,meta,expires_at"),
+    ]);
 
     // Internal channel configuration (URLs)
     const [profileRes, inrcyCfgRes, proCfgRes] = await Promise.all([
@@ -286,12 +281,22 @@ const body = await req.json().catch(() => null);
     const instagramImageUrls = (instagramPublishableUrls.length ? instagramPublishableUrls : externalImageUrls).slice(0, 5);
 
     async function setDelivery(channel: ChannelKey, patch: JsonRecord) {
-      await supabaseAdmin
+      const nextStatus = String(patch.status ?? "").trim();
+      const nextError = String(patch.error ?? patch.last_error ?? "").trim();
+      const payload: JsonRecord = {};
+      if (nextStatus) payload.status = nextStatus;
+      payload.error = nextError || null;
+
+      const { error } = await supabaseAdmin
         .from("publication_deliveries")
-        .update(patch)
+        .update(payload)
         .eq("publication_id", publicationId)
         .eq("user_id", userId)
         .eq("channel", channel);
+
+      if (error) {
+        console.error("[Booster] publication_deliveries update failed", { channel, payload, error: error.message });
+      }
     }
 
     for (const ch of selected) {
@@ -302,12 +307,12 @@ const body = await req.json().catch(() => null);
           // can consume to display the article.
           const targetUrl = ch === "inrcy_site" ? inrcySiteUrl : siteWebUrl;
           if (ch === "inrcy_site" && (ownership === "none" || !targetUrl)) {
-            await setDelivery(ch, { status: "failed", last_error: "Site iNrCy non connecté (ownership/url manquants)" });
+            await setDelivery(ch, { status: "failed", error: "Site iNrCy non connecté (ownership/url manquants)" });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
           }
           if (ch === "site_web" && !targetUrl) {
-            await setDelivery(ch, { status: "failed", last_error: "Site web non connecté (url manquante)" });
+            await setDelivery(ch, { status: "failed", error: "Site web non connecté (url manquante)" });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
           }
@@ -335,16 +340,14 @@ const body = await req.json().catch(() => null);
           });
 
           if (artErr) {
-            await setDelivery(ch, { status: "failed", last_error: `Impossible de créer l'article (${artErr.message})` });
+            await setDelivery(ch, { status: "failed", error: `Impossible de créer l'article (${artErr.message})` });
             results[ch] = { ok: false, error: artErr.message };
             continue;
           }
 
           await setDelivery(ch, {
             status: "delivered",
-            delivered_at: new Date().toISOString(),
-            external_id: articleId,
-            external_url: externalUrl,
+            error: null,
           });
           results[ch] = { ok: true, external_id: articleId, external_url: externalUrl };
           continue;
@@ -355,8 +358,10 @@ const body = await req.json().catch(() => null);
           const pageId = String(fb["resource_id"] ?? "");
           const pageTokenRaw = String(fb["access_token_enc"] ?? "");
           const pageToken = tryDecryptToken(pageTokenRaw) || "";
-          if (String(fb["status"] ?? "") !== "connected" || !pageId || !pageToken) {
-            await setDelivery(ch, { status: "failed", last_error: "Facebook non configuré (page/token manquant)" });
+          const fbMeta = asRecord(fb["meta"]);
+          const fbExpired = isExpired(fb["expires_at"]) && !String(fbMeta["selected"] ?? "") && !pageId;
+          if (String(fb["status"] ?? "") !== "connected" || !pageId || !pageToken || fbExpired) {
+            await setDelivery(ch, { status: "failed", error: fbExpired ? "Facebook expiré : reconnectez le compte." : "Facebook non configuré (page/token manquant)" });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
           }
@@ -369,16 +374,12 @@ const body = await req.json().catch(() => null);
           });
 
           if (!resp.ok) {
-            await setDelivery(ch, { status: "failed", last_error: resp.error });
+            await setDelivery(ch, { status: "failed", error: resp.error });
             results[ch] = { ok: false, error: resp.error, diagnostics: resp };
             continue;
           }
 
-          await setDelivery(ch, {
-            status: "delivered",
-            delivered_at: new Date().toISOString(),
-            external_id: resp.postId,
-          });
+          await setDelivery(ch, { status: "delivered", error: null });
 
           results[ch] = { ok: true, external_id: resp.postId, diagnostics: resp };
           continue;
@@ -389,15 +390,17 @@ const body = await req.json().catch(() => null);
           const igUserId = String(ig["resource_id"] ?? "");
           const igTokenRaw = String(ig["access_token_enc"] ?? "");
           const igToken = tryDecryptToken(igTokenRaw) || "";
-          if (String(ig["status"] ?? "") !== "connected" || !igUserId || !igToken) {
-            await setDelivery(ch, { status: "failed", last_error: "Instagram non configuré (compte/token manquant)" });
+          const igMeta = asRecord(ig["meta"]);
+          const igExpired = isExpired(ig["expires_at"]) && !String(igMeta["page_id"] ?? "") && !igUserId;
+          if (String(ig["status"] ?? "") !== "connected" || !igUserId || !igToken || igExpired) {
+            await setDelivery(ch, { status: "failed", error: igExpired ? "Instagram expiré : reconnectez le compte puis re-sélectionnez le profil Instagram." : "Instagram non configuré (compte/token manquant)" });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
           }
 
           const img = instagramImageUrls[0];
           if (!img) {
-            await setDelivery(ch, { status: "failed", last_error: "Instagram nécessite au moins 1 image" });
+            await setDelivery(ch, { status: "failed", error: "Instagram nécessite au moins 1 image" });
             results[ch] = { ok: false, error: "missing_image" };
             continue;
           }
@@ -412,16 +415,12 @@ const body = await req.json().catch(() => null);
           });
 
           if (!resp.ok) {
-            await setDelivery(ch, { status: "failed", last_error: resp.error });
+            await setDelivery(ch, { status: "failed", error: resp.error });
             results[ch] = { ok: false, error: resp.error, diagnostics: resp };
             continue;
           }
 
-          await setDelivery(ch, {
-            status: "delivered",
-            delivered_at: new Date().toISOString(),
-            external_id: resp.mediaId,
-          });
+          await setDelivery(ch, { status: "delivered", error: null });
 
           results[ch] = { ok: true, external_id: resp.mediaId, diagnostics: resp };
           continue;
@@ -432,8 +431,9 @@ const body = await req.json().catch(() => null);
           const accessTokenRaw = String(li["access_token_enc"] ?? "");
           const accessToken = tryDecryptToken(accessTokenRaw) || "";
           const authorUrn = String(li["resource_id"] ?? "");
-          if (String(li["status"] ?? "") !== "connected" || !accessToken || !authorUrn) {
-            await setDelivery(ch, { status: "failed", last_error: "LinkedIn non configuré (token/auteur manquant)" });
+          const liExpired = isExpired(li["expires_at"]);
+          if (String(li["status"] ?? "") !== "connected" || !accessToken || !authorUrn || liExpired) {
+            await setDelivery(ch, { status: "failed", error: liExpired ? "LinkedIn expiré : reconnectez le compte." : "LinkedIn non configuré (token/auteur manquant)" });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
           }
@@ -448,16 +448,12 @@ const body = await req.json().catch(() => null);
           });
 
           if (!resp.ok) {
-            await setDelivery(ch, { status: "failed", last_error: resp.error });
+            await setDelivery(ch, { status: "failed", error: resp.error });
             results[ch] = { ok: false, error: resp.error, diagnostics: resp };
             continue;
           }
 
-          await setDelivery(ch, {
-            status: "delivered",
-            delivered_at: new Date().toISOString(),
-            external_id: resp.postUrn || null,
-          });
+          await setDelivery(ch, { status: "delivered", error: null });
 
           results[ch] = { ok: true, external_id: resp.postUrn || null, diagnostics: resp };
           continue;
@@ -468,15 +464,16 @@ const body = await req.json().catch(() => null);
           const locationName = String(gmb["resource_id"] ?? "");
           const gmbMeta = asRecord(gmb["meta"]);
           const accountName = String(gmbMeta["account"] ?? "");
-          if (String(gmb["status"] ?? "") !== "connected" || !locationName || !accountName) {
-            await setDelivery(ch, { status: "failed", last_error: "Google Business non configuré (compte/location manquant)" });
+          const gmbExpired = isExpired(gmb["expires_at"]);
+          if (String(gmb["status"] ?? "") !== "connected" || !locationName || !accountName || gmbExpired) {
+            await setDelivery(ch, { status: "failed", error: gmbExpired ? "Google Business expiré : reconnectez le compte." : "Google Business non configuré (compte/location manquant)" });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
           }
 
           const tok = await getGmbToken();
           if (!tok?.accessToken) {
-            await setDelivery(ch, { status: "failed", last_error: "Token Google invalide/expiré" });
+            await setDelivery(ch, { status: "failed", error: "Token Google invalide/expiré" });
             results[ch] = { ok: false, error: "token" };
             continue;
           }
@@ -492,7 +489,7 @@ const body = await req.json().catch(() => null);
 
           const gmbRespRec = asRecord(gmbResp);
           const externalId = String(gmbRespRec["name"] ?? "");
-          await setDelivery(ch, { status: "delivered", delivered_at: new Date().toISOString(), external_id: externalId || null });
+          await setDelivery(ch, { status: "delivered", error: null });
           results[ch] = { ok: true, external_id: externalId || null };
           continue;
         }
@@ -500,7 +497,7 @@ const body = await req.json().catch(() => null);
         results[ch] = { ok: false, error: "unsupported_channel" };
       } catch (e: unknown) {
         const msg = errMessage(e, "Erreur");
-        await setDelivery(ch, { status: "failed", last_error: msg });
+        await setDelivery(ch, { status: "failed", error: msg });
         results[ch] = { ok: false, error: msg };
       }
     }

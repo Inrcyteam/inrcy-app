@@ -136,7 +136,9 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
 
   const fb = latestIntegration(rows, "facebook", "facebook", "facebook");
   const fbSettings = asRecord(settings.facebook);
-  const fbExpired = isExpired(fb.expires_at);
+  const fbMeta = asRecord(fb.meta);
+  const fbHasSelectedPageToken = hasTruthyString(fbMeta.selected) || hasTruthyString(fb.resource_id);
+  const fbExpired = isExpired(fb.expires_at) && !fbHasSelectedPageToken;
   const fbStatus = asString(fb.status);
   const fbHasToken = hasTruthyString(fb.access_token_enc);
   const fbAccountConnected = Boolean(((fbStatus === "account_connected" || fbStatus === "connected") && !fbExpired && fbHasToken) || fbSettings.accountConnected);
@@ -147,14 +149,16 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
 
   const ig = latestIntegration(rows, "instagram", "instagram", "instagram");
   const igSettings = asRecord(settings.instagram);
-  const igExpired = isExpired(ig.expires_at);
+  const igMeta = asRecord(ig.meta);
+  const igHasSelectedProfileToken = hasTruthyString(igMeta.page_id) || hasTruthyString(ig.resource_id);
+  const igExpired = isExpired(ig.expires_at) && !igHasSelectedProfileToken;
   const igStatus = asString(ig.status);
   const igHasToken = hasTruthyString(ig.access_token_enc);
   const igAccountConnected = Boolean(((igStatus === "account_connected" || igStatus === "connected") && !igExpired && igHasToken) || igSettings.accountConnected);
   const igResourceId = asString(ig.resource_id) || asString(igSettings.igId) || asString(igSettings.pageId) || null;
   const igUsername = asString(ig.resource_label) || asString(igSettings.username) || null;
   const igProfileUrl = asString(igSettings.url) || (igUsername ? `https://www.instagram.com/${igUsername}/` : null);
-  const igConnected = Boolean((igAccountConnected && igResourceId) || igSettings.connected);
+  const igConnected = Boolean(igAccountConnected && igResourceId);
 
   const li = latestIntegration(rows, "linkedin", "linkedin", "linkedin");
   const liSettings = asRecord(settings.linkedin);

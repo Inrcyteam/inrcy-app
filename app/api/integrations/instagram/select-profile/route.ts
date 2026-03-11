@@ -82,6 +82,7 @@ export async function POST(req: Request) {
       resource_id: igId,
       resource_label: username || null,
       access_token_enc: encryptToken(page.access_token),
+      expires_at: null,
       meta: { page_id: pageId, page_name: page.name || null },
     })
     .eq("user_id", user.id)

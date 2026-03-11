@@ -54,6 +54,7 @@ export async function POST(req: Request) {
         resource_id: pageId,
         resource_label: pageName,
         access_token_enc: encryptToken(pageAccessToken),
+        expires_at: null,
         status: "connected",
         meta: nextMeta,
       })

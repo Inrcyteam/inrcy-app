@@ -79,14 +79,25 @@ const trackEvent = async (
   try {
     // Publish: on envoie directement vers l'API "publish-now" (création publication + queue + metrics)
     if (type === "publish") {
-      await fetch("/api/booster/publish-now", {
+      const res = await fetch("/api/booster/publish-now", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || "La publication a échoué.");
+      }
+
+      const failed = Object.entries((json?.results || {}) as Record<string, any>).filter(([, value]) => value && value.ok === false);
+      if (failed.length) {
+        const detail = failed.map(([channel, value]) => `${channel}: ${String((value as any)?.error || "erreur")}`).join(" | ");
+        throw new Error(detail);
+      }
 
       // ✅ 10 UI pour une actu (1 fois / semaine)
       await award("create_actu", 10, `week-${isoWeekId()}`, "Actu créée");
+      return json;
     } else {
       await fetch("/api/booster/events", {
         method: "POST",
