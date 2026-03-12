@@ -62,6 +62,29 @@ function tryGetUserIdFromJwt(jwt?: string): string | null {
   return typeof payload?.sub === "string" ? payload.sub : null;
 }
 
+function decodeCookieValue(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function tryGetAccessTokenFromCookieValue(value: string): string | null {
+  const raw = decodeCookieValue(value);
+
+  const directSub = tryGetUserIdFromJwt(raw);
+  if (directSub) return raw;
+
+  try {
+    const parsed = JSON.parse(raw);
+    const token = parsed?.access_token;
+    return typeof token === "string" ? token : null;
+  } catch {
+    return null;
+  }
+}
+
 function getUserId(req: NextRequest): string | null {
   // 1) Authorization header (best for API calls)
   const auth = req.headers.get("authorization") || "";
@@ -74,22 +97,21 @@ function getUserId(req: NextRequest): string | null {
   // 2) Common Supabase SSR cookies
   const sbAccess = req.cookies.get("sb-access-token")?.value;
   if (sbAccess) {
-    const sub = tryGetUserIdFromJwt(sbAccess);
+    const token = tryGetAccessTokenFromCookieValue(sbAccess);
+    const sub = tryGetUserIdFromJwt(token ?? undefined);
     if (sub) return sub;
   }
 
-  // 3) Supabase cookie that may contain JSON with access_token
-  // Example: sb-<project-ref>-auth-token={"access_token":"..."}
-  for (const c of req.cookies.getAll()) {
-    if (!c.name.startsWith("sb-") || !c.name.endsWith("-auth-token")) continue;
-    try {
-      const parsed = JSON.parse(c.value);
-      const token = parsed?.access_token;
-      const sub = tryGetUserIdFromJwt(typeof token === "string" ? token : undefined);
-      if (sub) return sub;
-    } catch {
-      // ignore
-    }
+  // 3) Supabase cookies (including chunked cookies such as ...-auth-token.0)
+  const authCookies = req.cookies
+    .getAll()
+    .filter((c) => c.name.startsWith("sb-") && c.name.includes("-auth-token"))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const c of authCookies) {
+    const token = tryGetAccessTokenFromCookieValue(c.value);
+    const sub = tryGetUserIdFromJwt(token ?? undefined);
+    if (sub) return sub;
   }
 
   return null;
@@ -300,8 +322,8 @@ export async function proxy(req: NextRequest) {
     const maintenance = await getMaintenanceRow();
     const maintenanceEnabled = Boolean(maintenance?.maintenance_mode);
 
-    if (maintenanceEnabled && userId) {
-      const admin = await isAdminUser(userId);
+    if (maintenanceEnabled) {
+      const admin = userId ? await isAdminUser(userId) : false;
 
       if (!admin) {
         if (pathname.startsWith("/api/")) {
