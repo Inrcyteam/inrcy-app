@@ -1,6 +1,11 @@
 (function () {
   "use strict";
 
+  var MOUNT_ATTR = "data-inrcy-actus-mounted";
+  var RETRY_ATTR = "data-inrcy-actus-retries";
+  var MAX_RETRIES = 40;
+  var RETRY_DELAY_MS = 250;
+
   function normalizeDomain(input) {
     if (!input) return "";
     var raw = String(input).trim();
@@ -45,6 +50,11 @@
       '<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#c0392b;font-size:14px;">' +
       message +
       "</div>";
+  }
+
+  function showLoading(container) {
+    container.innerHTML =
+      '<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:rgba(0,0,0,.65);font-size:14px;">Chargement des actualités…</div>';
   }
 
   function escapeHtml(s) {
@@ -141,54 +151,125 @@
     container.innerHTML = html;
   }
 
-  var containers = document.querySelectorAll("[data-inrcy-actus]");
-  if (!containers || !containers.length) return;
-
   var appOrigin = inferAppOrigin();
+  var observerStarted = false;
 
-  for (var i = 0; i < containers.length; i++) {
-    (function (container) {
-      try {
-        var domain = normalizeDomain(container.getAttribute("data-domain") || "");
-        var source = (container.getAttribute("data-source") || "").trim();
-        var limit = parseInt(container.getAttribute("data-limit") || "5", 10);
-        var title = container.getAttribute("data-title") || "";
-        var token = (container.getAttribute("data-token") || "").trim();
-
-        var endpoint = (container.getAttribute("data-endpoint") || "").trim();
-        if (endpoint && endpoint.indexOf("http") !== 0) endpoint = "";
-
-        if (!domain) return showError(container, "Widget iNrCy : domaine manquant (data-domain).");
-        if (!source) return showError(container, "Widget iNrCy : source manquante (data-source).");
-        if (!isFinite(limit) || limit <= 0) limit = 5;
-
-        var url =
-          (endpoint || appOrigin + "/api/widgets/actus") +
-          "?domain=" +
-          encodeURIComponent(domain) +
-          "&source=" +
-          encodeURIComponent(source) +
-          "&limit=" +
-          encodeURIComponent(String(limit));
-        if (token) {
-          url += "&token=" + encodeURIComponent(token);
-        }
-
-        fetch(url, { method: "GET", mode: "cors" })
-          .then(function (r) {
-            if (!r.ok) throw new Error("HTTP " + r.status);
-            return r.json();
-          })
-          .then(function (data) {
-            if (!data || data.ok !== true) throw new Error((data && data.error) || "Réponse invalide");
-            render(container, title, data.articles || []);
-          })
-          .catch(function (err) {
-            showError(container, "Widget iNrCy : impossible de charger les actus (" + escapeHtml(String(err && err.message ? err.message : err)) + ").");
-          });
-      } catch (_e) {
-        showError(container, "Widget iNrCy : erreur d'initialisation.");
-      }
-    })(containers[i]);
+  function isReadyContainer(container) {
+    if (!container || container.nodeType !== 1) return false;
+    if (!container.hasAttribute("data-inrcy-actus")) return false;
+    if (container.getAttribute(MOUNT_ATTR) === "1") return false;
+    return true;
   }
+
+  function mountContainer(container) {
+    if (!isReadyContainer(container)) return;
+
+    container.setAttribute(MOUNT_ATTR, "1");
+    showLoading(container);
+
+    try {
+      var domain = normalizeDomain(container.getAttribute("data-domain") || "");
+      var source = (container.getAttribute("data-source") || "").trim();
+      var limit = parseInt(container.getAttribute("data-limit") || "5", 10);
+      var title = container.getAttribute("data-title") || "";
+      var token = (container.getAttribute("data-token") || "").trim();
+
+      var endpoint = (container.getAttribute("data-endpoint") || "").trim();
+      if (endpoint && endpoint.indexOf("http") !== 0) endpoint = "";
+
+      if (!domain) return showError(container, "Widget iNrCy : domaine manquant (data-domain).");
+      if (!source) return showError(container, "Widget iNrCy : source manquante (data-source).");
+      if (!isFinite(limit) || limit <= 0) limit = 5;
+
+      var url =
+        (endpoint || appOrigin + "/api/widgets/actus") +
+        "?domain=" +
+        encodeURIComponent(domain) +
+        "&source=" +
+        encodeURIComponent(source) +
+        "&limit=" +
+        encodeURIComponent(String(limit));
+      if (token) {
+        url += "&token=" + encodeURIComponent(token);
+      }
+
+      fetch(url, { method: "GET", mode: "cors", credentials: "omit" })
+        .then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then(function (data) {
+          if (!data || data.ok !== true) throw new Error((data && data.error) || "Réponse invalide");
+          render(container, title, data.articles || []);
+        })
+        .catch(function (err) {
+          container.removeAttribute(MOUNT_ATTR);
+          showError(container, "Widget iNrCy : impossible de charger les actus (" + escapeHtml(String(err && err.message ? err.message : err)) + ").");
+        });
+    } catch (_e) {
+      container.removeAttribute(MOUNT_ATTR);
+      showError(container, "Widget iNrCy : erreur d'initialisation.");
+    }
+  }
+
+  function scan(root) {
+    var scope = root && root.querySelectorAll ? root : document;
+
+    if (root && isReadyContainer(root)) {
+      mountContainer(root);
+    }
+
+    var containers = scope.querySelectorAll ? scope.querySelectorAll("[data-inrcy-actus]") : [];
+    for (var i = 0; i < containers.length; i++) {
+      mountContainer(containers[i]);
+    }
+  }
+
+  function scheduleRetry() {
+    var retries = Number(document.documentElement.getAttribute(RETRY_ATTR) || "0");
+    if (retries >= MAX_RETRIES) return;
+    document.documentElement.setAttribute(RETRY_ATTR, String(retries + 1));
+    setTimeout(function () {
+      scan(document);
+    }, RETRY_DELAY_MS);
+  }
+
+  function startObserver() {
+    if (observerStarted || typeof MutationObserver === "undefined") return;
+    observerStarted = true;
+
+    var observer = new MutationObserver(function (mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        var mutation = mutations[i];
+        if (!mutation.addedNodes || !mutation.addedNodes.length) continue;
+        for (var j = 0; j < mutation.addedNodes.length; j++) {
+          var node = mutation.addedNodes[j];
+          if (!node || node.nodeType !== 1) continue;
+          if (isReadyContainer(node) || (node.querySelector && node.querySelector("[data-inrcy-actus]"))) {
+            scan(node);
+          }
+        }
+      }
+    });
+
+    var root = document.body || document.documentElement;
+    if (!root) return;
+    observer.observe(root, { childList: true, subtree: true });
+  }
+
+  function boot() {
+    scan(document);
+    scheduleRetry();
+    startObserver();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+
+  window.addEventListener("load", function () {
+    scan(document);
+  });
 })();
