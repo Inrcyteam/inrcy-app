@@ -1,7 +1,9 @@
 import Image from "next/image";
+import { redirect } from "next/navigation";
 
 import styles from "./maintenance.module.css";
-import { getMaintenanceState } from "@/lib/maintenance";
+import { getMaintenanceState, isAdminUser } from "@/lib/maintenance";
+import { createSupabaseServer } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,21 @@ function formatUpdatedAt(value: string | null): string {
 
 export default async function MaintenancePage() {
   const maintenance = await getMaintenanceState();
+
+  if (!maintenance.enabled) {
+    redirect("/dashboard");
+  }
+
+  const supabase = await createSupabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const admin = await isAdminUser(user?.id);
+
+  if (admin) {
+    redirect("/dashboard");
+  }
 
   return (
     <main className={styles.page}>
@@ -59,7 +76,7 @@ export default async function MaintenancePage() {
               </p>
 
               <div className={styles.actions}>
-                <a href="/maintenance" className={styles.primaryBtn}>
+                <a href="/dashboard" className={styles.primaryBtn}>
                   Réessayer
                 </a>
                 <a href="mailto:contact@inrcy.com" className={styles.secondaryBtn}>
