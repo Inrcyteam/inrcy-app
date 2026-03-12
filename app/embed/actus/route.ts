@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { asRecord } from "@/lib/tsSafe";
-import { renderEmbedHtml, type FontMode, type LayoutMode } from "./_lib/render";
+import { renderEmbedHtml, type FontMode, type LayoutMode, type ThemeMode } from "./_lib/render";
 
 export const runtime = "nodejs";
 
@@ -121,6 +121,11 @@ function clampFont(value: string | null): FontMode {
   return v === "inter" || v === "poppins" || v === "montserrat" || v === "lora" ? v : "site";
 }
 
+function clampTheme(value: string | null): ThemeMode {
+  const v = (value || "nature").trim().toLowerCase();
+  return v === "white" || v === "dark" || v === "gray" || v === "nature" || v === "sand" ? v : "nature";
+}
+
 function htmlResponse(html: string, status = 200) {
   return new NextResponse(html, {
     status,
@@ -141,11 +146,13 @@ export async function GET(req: Request) {
     const limit = clampLimit(searchParams.get("limit"));
     const layout = (searchParams.get("layout") === "carousel" ? "carousel" : "list") as LayoutMode;
     const font = clampFont(searchParams.get("font"));
+    const theme = clampTheme(searchParams.get("theme"));
+    const frameId = (searchParams.get("frameId") || "inrcy-embed").trim().slice(0, 120);
     const token = searchParams.get("token") || "";
 
-    if (!domain) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font }), 400);
-    if (source !== "inrcy_site" && source !== "site_web") return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font }), 400);
-    if (!token) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font }), 401);
+    if (!domain) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 400);
+    if (source !== "inrcy_site" && source !== "site_web") return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 400);
+    if (!token) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 401);
 
     const signingSecret = process.env.INRCY_WIDGETS_SIGNING_SECRET;
     if (!signingSecret) throw new Error("Missing INRCY_WIDGETS_SIGNING_SECRET");
@@ -153,14 +160,14 @@ export async function GET(req: Request) {
     const tok = verifyWidgetToken(token, signingSecret);
     const tokDomain = normalizeDomain(tok.domain);
     const tokSource = String(tok.source || "").trim();
-    if (tokDomain !== domain || tokSource !== source) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font }), 403);
+    if (tokDomain !== domain || tokSource !== source) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 403);
 
     const refHost = getRefererHost(req);
-    if (refHost && refHost !== tokDomain) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font }), 403);
+    if (refHost && refHost !== tokDomain) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 403);
 
     const articles = await fetchArticles(domain, source, limit);
-    return htmlResponse(renderEmbedHtml({ title, articles, layout, font }), 200);
+    return htmlResponse(renderEmbedHtml({ title, articles, layout, font, theme, frameId }), 200);
   } catch {
-    return htmlResponse(renderEmbedHtml({ title: "Actualités", articles: [], layout: "list", font: "site" }), 500);
+    return htmlResponse(renderEmbedHtml({ title: "Actualités", articles: [], layout: "list", font: "site", theme: "nature", frameId: "inrcy-embed" }), 500);
   }
 }
