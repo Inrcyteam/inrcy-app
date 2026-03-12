@@ -4273,7 +4273,8 @@ const checkActivity = useCallback(async () => {
                   // ignore
                 }
                 const widgetV = process.env.NEXT_PUBLIC_WIDGET_VERSION || "1";
-                const scriptUrl = typeof window !== "undefined" ? `${window.location.origin}/widgets/inrcy-actus.js?v=${widgetV}` : `/widgets/inrcy-actus.js?v=${widgetV}`;
+                const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
+                const scriptUrl = `${publicAppOrigin}/widgets/inrcy-actus.js?v=${widgetV}`;
                 const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-source=\"inrcy_site\" data-limit=\"5\" data-title=\"Actualités\" data-token=\"${widgetTokenInrcySite}\"></div>
 <script async src=\"${scriptUrl}\"></script>`;
                 return (
@@ -4621,7 +4622,8 @@ const checkActivity = useCallback(async () => {
                   // ignore
                 }
                 const widgetV = process.env.NEXT_PUBLIC_WIDGET_VERSION || "1";
-                const scriptUrl = typeof window !== "undefined" ? `${window.location.origin}/widgets/inrcy-actus.js?v=${widgetV}` : `/widgets/inrcy-actus.js?v=${widgetV}`;
+                const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
+                const scriptUrl = `${publicAppOrigin}/widgets/inrcy-actus.js?v=${widgetV}`;
                 const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-source=\"site_web\" data-limit=\"5\" data-title=\"Actualités\" data-token=\"${widgetTokenSiteWeb}\"></div>
 <script async src=\"${scriptUrl}\"></script>`;
                 return (

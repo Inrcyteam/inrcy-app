@@ -20,6 +20,20 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/widgets/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+          { key: "Access-Control-Allow-Origin", value: "*" },
+          { key: "Cache-Control", value: "public, max-age=3600, s-maxage=3600" },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=15552000; includeSubDomains; preload",
+          },
+        ],
+      },
+      {
         source: "/:path*",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
