@@ -448,6 +448,10 @@ const [siteInrcyTrackingBusy, setSiteInrcyTrackingBusy] = useState(false);
   // ✅ Tokens widget actus (signés + liés au domaine, anti-copie)
   const [widgetTokenInrcySite, setWidgetTokenInrcySite] = useState<string>("");
   const [widgetTokenSiteWeb, setWidgetTokenSiteWeb] = useState<string>("");
+  const [siteInrcyActusLayout, setSiteInrcyActusLayout] = useState<"list" | "carousel">("list");
+  const [siteInrcyActusLimit, setSiteInrcyActusLimit] = useState<number>(5);
+  const [siteWebActusLayout, setSiteWebActusLayout] = useState<"list" | "carousel">("list");
+  const [siteWebActusLimit, setSiteWebActusLimit] = useState<number>(5);
 
   // ✅ Connexions Google (viennent de integrations, pas des IDs)
   const [siteInrcyGa4Connected, setSiteInrcyGa4Connected] = useState(false);
@@ -4260,7 +4264,49 @@ const checkActivity = useCallback(async () => {
                 <div className={styles.blockTitle}>Widget « Actus »</div>
               </div>
               <div className={styles.blockSub}>
-                Colle ce code iframe dans ton site iNrCy (Elementor → widget HTML) pour afficher les <strong>5 dernières actus</strong> publiées depuis Booster.
+                Colle ce code iframe dans ton site iNrCy (Elementor → widget HTML) pour afficher automatiquement tes dernières actus publiées depuis Booster.
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(180px, 1fr))", gap: 10 }}>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className={styles.blockSub}><strong>Affichage</strong></span>
+                  <select
+                    value={siteInrcyActusLayout}
+                    onChange={(e) => setSiteInrcyActusLayout(e.target.value === "carousel" ? "carousel" : "list")}
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
+                      padding: "10px 12px",
+                      color: "rgba(255,255,255,0.92)",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="list">Liste</option>
+                    <option value="carousel">Carousel</option>
+                  </select>
+                </label>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className={styles.blockSub}><strong>Nombre d'actus</strong></span>
+                  <select
+                    value={String(siteInrcyActusLimit)}
+                    onChange={(e) => setSiteInrcyActusLimit(Math.min(7, Math.max(3, Number(e.target.value) || 5)))}
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
+                      padding: "10px 12px",
+                      color: "rgba(255,255,255,0.92)",
+                      outline: "none",
+                    }}
+                  >
+                    {[3, 4, 5, 6, 7].map((n) => (
+                      <option key={n} value={n}>{n} dernières actus</option>
+                    ))}
+                  </select>
+                </label>
               </div>
 
               {(() => {
@@ -4273,8 +4319,27 @@ const checkActivity = useCallback(async () => {
                   // ignore
                 }
                 const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
-                const embedUrl = `${publicAppOrigin}/embed/actus?domain=${encodeURIComponent(domain || "votre-site.fr")}&source=inrcy_site&limit=5&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenInrcySite)}`;
-                const snippet = `<iframe src=\"${embedUrl}\" width=\"100%\" height=\"760\" style=\"border:0;width:100%;max-width:100%;overflow:hidden;border-radius:20px;background:transparent;\" loading=\"lazy\" referrerpolicy=\"strict-origin-when-cross-origin\" title=\"Actualités iNrCy\"></iframe>`;
+                const iframeId = `inrcy-actus-${domain || "site"}-${siteInrcyActusLayout}`.replace(/[^a-z0-9_-]/gi, "-");
+                const initialHeight = siteInrcyActusLayout === "carousel" ? 560 : 760;
+                const embedUrl = `${publicAppOrigin}/embed/actus?domain=${encodeURIComponent(domain || "votre-site.fr")}&source=inrcy_site&layout=${encodeURIComponent(siteInrcyActusLayout)}&limit=${encodeURIComponent(String(siteInrcyActusLimit))}&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenInrcySite)}`;
+                const snippet = `<iframe id="${iframeId}" src="${embedUrl}" width="100%" height="${initialHeight}" style="border:0;width:100%;max-width:100%;overflow:hidden;border-radius:24px;background:transparent;display:block;" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" title="Actualités iNrCy"></iframe>
+<script>
+(function(){
+  var iframe=document.currentScript&&document.currentScript.previousElementSibling;
+  if(!iframe)return;
+  function onMessage(event){
+    if(event.origin!=="${publicAppOrigin}")return;
+    if(event.source!==iframe.contentWindow)return;
+    var data=event.data||{};
+    if(data.type!=="inrcy:embed-resize")return;
+    var h=parseInt(data.height,10);
+    if(!h||h<240)return;
+    iframe.style.height=h+"px";
+    iframe.setAttribute("height",String(h));
+  }
+  window.addEventListener("message",onMessage,false);
+})();
+<\/script>`;
                 return (
                   <>
                     <textarea
@@ -4282,7 +4347,7 @@ const checkActivity = useCallback(async () => {
                       value={snippet}
                       style={{
                         width: "100%",
-                        minHeight: 86,
+                        minHeight: 170,
                         borderRadius: 12,
                         border: "1px solid rgba(255,255,255,0.14)",
                         background: "rgba(15,23,42,0.65)",
@@ -4296,7 +4361,8 @@ const checkActivity = useCallback(async () => {
                       }}
                     />
 
-                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+                      <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
                       <button
                         type="button"
                         className={styles.actionBtn}
@@ -4607,7 +4673,49 @@ const checkActivity = useCallback(async () => {
                 <div className={styles.blockTitle}>Widget « Actus »</div>
               </div>
               <div className={styles.blockSub}>
-                Colle ce code iframe dans ton site (WordPress, Wix, Webflow, HTML…) pour afficher les <strong>5 dernières actus</strong> publiées depuis Booster.
+                Colle ce code iframe dans ton site (WordPress, Wix, Webflow, HTML…) pour afficher automatiquement tes dernières actus publiées depuis Booster.
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(180px, 1fr))", gap: 10 }}>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className={styles.blockSub}><strong>Affichage</strong></span>
+                  <select
+                    value={siteWebActusLayout}
+                    onChange={(e) => setSiteWebActusLayout(e.target.value === "carousel" ? "carousel" : "list")}
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
+                      padding: "10px 12px",
+                      color: "rgba(255,255,255,0.92)",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="list">Liste</option>
+                    <option value="carousel">Carousel</option>
+                  </select>
+                </label>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className={styles.blockSub}><strong>Nombre d'actus</strong></span>
+                  <select
+                    value={String(siteWebActusLimit)}
+                    onChange={(e) => setSiteWebActusLimit(Math.min(7, Math.max(3, Number(e.target.value) || 5)))}
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
+                      padding: "10px 12px",
+                      color: "rgba(255,255,255,0.92)",
+                      outline: "none",
+                    }}
+                  >
+                    {[3, 4, 5, 6, 7].map((n) => (
+                      <option key={n} value={n}>{n} dernières actus</option>
+                    ))}
+                  </select>
+                </label>
               </div>
 
               {(() => {
@@ -4620,8 +4728,27 @@ const checkActivity = useCallback(async () => {
                   // ignore
                 }
                 const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
-                const embedUrl = `${publicAppOrigin}/embed/actus?domain=${encodeURIComponent(domain || "votre-site.fr")}&source=site_web&limit=5&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenSiteWeb)}`;
-                const snippet = `<iframe src=\"${embedUrl}\" width=\"100%\" height=\"760\" style=\"border:0;width:100%;max-width:100%;overflow:hidden;border-radius:20px;background:transparent;\" loading=\"lazy\" referrerpolicy=\"strict-origin-when-cross-origin\" title=\"Actualités iNrCy\"></iframe>`;
+                const iframeId = `inrcy-actus-${domain || "site"}-${siteWebActusLayout}`.replace(/[^a-z0-9_-]/gi, "-");
+                const initialHeight = siteWebActusLayout === "carousel" ? 560 : 760;
+                const embedUrl = `${publicAppOrigin}/embed/actus?domain=${encodeURIComponent(domain || "votre-site.fr")}&source=site_web&layout=${encodeURIComponent(siteWebActusLayout)}&limit=${encodeURIComponent(String(siteWebActusLimit))}&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenSiteWeb)}`;
+                const snippet = `<iframe id="${iframeId}" src="${embedUrl}" width="100%" height="${initialHeight}" style="border:0;width:100%;max-width:100%;overflow:hidden;border-radius:24px;background:transparent;display:block;" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" title="Actualités iNrCy"></iframe>
+<script>
+(function(){
+  var iframe=document.currentScript&&document.currentScript.previousElementSibling;
+  if(!iframe)return;
+  function onMessage(event){
+    if(event.origin!=="${publicAppOrigin}")return;
+    if(event.source!==iframe.contentWindow)return;
+    var data=event.data||{};
+    if(data.type!=="inrcy:embed-resize")return;
+    var h=parseInt(data.height,10);
+    if(!h||h<240)return;
+    iframe.style.height=h+"px";
+    iframe.setAttribute("height",String(h));
+  }
+  window.addEventListener("message",onMessage,false);
+})();
+<\/script>`;
                 return (
                   <>
                     <textarea
@@ -4629,7 +4756,7 @@ const checkActivity = useCallback(async () => {
                       value={snippet}
                       style={{
                         width: "100%",
-                        minHeight: 86,
+                        minHeight: 170,
                         borderRadius: 12,
                         border: "1px solid rgba(255,255,255,0.14)",
                         background: "rgba(15,23,42,0.65)",
@@ -4642,7 +4769,8 @@ const checkActivity = useCallback(async () => {
                       }}
                     />
 
-                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+                      <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
                       <button
                         type="button"
                         className={styles.actionBtn}
