@@ -4,19 +4,31 @@ import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { getMaintenanceState, isAdminUser } from "@/lib/maintenance";
 
-export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.auth.getUser();
 
-  if (error || !data?.user) {
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
     redirect("/login");
   }
 
+  // Vérifie l'état maintenance
   const maintenance = await getMaintenanceState();
-  const isAdmin = await isAdminUser(data.user.id);
 
-  if (maintenance.enabled && !isAdmin) {
-    redirect("/maintenance");
+  if (maintenance.enabled) {
+    const admin = await isAdminUser(user.id);
+
+    if (!admin) {
+      redirect("/maintenance");
+    }
   }
 
   return (
@@ -28,7 +40,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
     </div>
   );
 }
-
 
 
 
