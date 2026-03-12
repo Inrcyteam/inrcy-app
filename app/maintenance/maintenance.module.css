@@ -1,303 +1,150 @@
 .page {
   min-height: 100vh;
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  background-image:
-    radial-gradient(circle at 15% 12%, rgba(120, 90, 255, 0.42), transparent 35%),
-    radial-gradient(circle at 82% 18%, rgba(0, 180, 255, 0.34), transparent 28%),
-    radial-gradient(circle at 50% 85%, rgba(255, 55, 140, 0.28), transparent 32%),
-    linear-gradient(180deg, #f7faff 0%, #edf2ff 100%);
+  background:
+    radial-gradient(circle at top left, rgba(139, 92, 246, 0.10), transparent 34%),
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.10), transparent 30%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
 }
 
-.noise {
-  position: absolute;
+.bgGlow {
+  position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.08;
-  background-image: repeating-linear-gradient(
-    135deg,
-    rgba(0, 0, 0, 0.06) 0px,
-    rgba(0, 0, 0, 0.06) 1px,
-    transparent 1px,
-    transparent 6px
-  );
-  mix-blend-mode: soft-light;
-}
-
-.grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255,255,255,0.28) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.22) 1px, transparent 1px);
-  background-size: 34px 34px;
-  mask-image: radial-gradient(circle at center, black 45%, transparent 88%);
-  opacity: 0.25;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(168, 85, 247, 0.08), transparent 28%),
+    radial-gradient(circle at 82% 18%, rgba(59, 130, 246, 0.08), transparent 24%);
 }
 
 .shell {
-  position: relative;
-  z-index: 2;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 32px 20px;
 }
 
 .card {
-  width: min(1120px, 100%);
-  border-radius: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background: rgba(255, 255, 255, 0.58);
-  box-shadow: 0 24px 80px rgba(8, 15, 40, 0.18);
-  backdrop-filter: blur(18px);
-  overflow: hidden;
+  width: min(920px, 100%);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 28px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.10);
+  backdrop-filter: blur(14px);
+  padding: 36px;
 }
 
-.inner {
-  display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-}
-
-.hero {
-  position: relative;
-  padding: 56px 48px;
-  min-height: 640px;
+.header {
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.hero::after {
-  content: "";
-  position: absolute;
-  right: -120px;
-  top: 50%;
-  width: 320px;
-  height: 320px;
-  border-radius: 999px;
-  transform: translateY(-50%);
-  background: radial-gradient(circle, rgba(120, 90, 255, 0.16), rgba(120, 90, 255, 0));
-}
-
-.topBlock {
-  display: grid;
-  gap: 20px;
-  position: relative;
-  z-index: 1;
-}
-
-.logoRow {
-  display: inline-flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
+  margin-bottom: 22px;
 }
 
-.logoWrap {
-  width: 64px;
-  height: 64px;
-  border-radius: 20px;
-  display: grid;
-  place-items: center;
-  background: rgba(255,255,255,0.66);
-  border: 1px solid rgba(255,255,255,0.72);
-  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+.logo {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  flex: 0 0 auto;
 }
 
-.brand {
+.brandBlock {
   display: grid;
   gap: 2px;
 }
 
 .brandName {
-  font-size: 1.35rem;
-  font-weight: 900;
+  font-size: 1.5rem;
+  font-weight: 800;
   letter-spacing: -0.03em;
-  color: #0b1020;
+  color: #0f172a;
 }
 
 .brandSub {
   font-size: 0.95rem;
-  color: rgba(15, 23, 42, 0.64);
+  color: #64748b;
 }
 
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  width: fit-content;
   padding: 10px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.82);
-  background: rgba(255,255,255,0.72);
-  color: #16213a;
-  font-size: 0.88rem;
-  font-weight: 700;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  color: #334155;
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin-bottom: 28px;
 }
 
 .badgeDot {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
-  background: linear-gradient(135deg, #00b4ff, #ff378c);
-  box-shadow: 0 0 0 8px rgba(0, 180, 255, 0.10);
+  background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+  flex: 0 0 auto;
+}
+
+.content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 24px;
+  align-items: start;
+}
+
+.main {
+  padding-right: 8px;
 }
 
 .title {
-  margin: 0;
-  max-width: 11ch;
-  font-size: clamp(2.5rem, 4.5vw, 4.7rem);
-  line-height: 0.96;
-  letter-spacing: -0.06em;
-  color: #07111f;
-  font-weight: 950;
+  margin: 0 0 16px;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.02;
+  letter-spacing: -0.05em;
+  font-weight: 800;
+  color: #0f172a;
+  max-width: 10ch;
 }
 
 .text {
-  max-width: 640px;
   margin: 0;
-  font-size: 1.08rem;
-  line-height: 1.8;
-  color: rgba(15, 23, 42, 0.76);
-}
-
-.highlights {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  position: relative;
-  z-index: 1;
-}
-
-.tile {
-  padding: 18px;
-  border-radius: 22px;
-  background: rgba(255,255,255,0.52);
-  border: 1px solid rgba(255,255,255,0.74);
-}
-
-.tileLabel {
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(15, 23, 42, 0.48);
-}
-
-.tileValue {
-  margin-top: 10px;
-  font-weight: 800;
-  color: #111827;
-  font-size: 1rem;
-  line-height: 1.45;
-}
-
-.side {
-  position: relative;
-  padding: 42px 36px;
-  background: linear-gradient(180deg, rgba(9, 15, 36, 0.95), rgba(7, 11, 24, 0.97));
-  color: white;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 28px;
-}
-
-.side::before,
-.side::after {
-  content: "";
-  position: absolute;
-  border-radius: 999px;
-  filter: blur(10px);
-}
-
-.side::before {
-  width: 220px;
-  height: 220px;
-  top: -40px;
-  right: -30px;
-  background: radial-gradient(circle, rgba(0, 180, 255, 0.24), transparent 65%);
-}
-
-.side::after {
-  width: 260px;
-  height: 260px;
-  bottom: -80px;
-  left: -50px;
-  background: radial-gradient(circle, rgba(255, 55, 140, 0.2), transparent 70%);
-}
-
-.sideTop,
-.sideBottom {
-  position: relative;
-  z-index: 1;
-}
-
-.sideTitle {
-  margin: 0 0 14px;
-  font-size: 1.4rem;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
-
-.sideText {
-  margin: 0;
-  color: rgba(226, 232, 240, 0.82);
+  max-width: 58ch;
+  font-size: 1.02rem;
   line-height: 1.75;
+  color: #475569;
 }
 
-.statusBox {
-  margin-top: 22px;
-  padding: 20px;
-  border-radius: 24px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
-}
-
-.statusLabel {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: rgba(226, 232, 240, 0.52);
-}
-
-.statusValue {
-  margin-top: 10px;
-  font-size: 1.05rem;
-  font-weight: 700;
-}
-
-.ctaRow {
+.actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin-top: 24px;
+  margin-top: 28px;
 }
 
 .primaryBtn,
 .secondaryBtn {
-  min-height: 48px;
-  border-radius: 14px;
+  min-height: 46px;
   padding: 0 18px;
+  border-radius: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
   text-decoration: none;
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  font-weight: 700;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
 }
 
 .primaryBtn {
+  background: linear-gradient(90deg, #6366f1, #3b82f6);
   color: white;
-  background: linear-gradient(90deg, #00b4ff, #ff378c);
-  box-shadow: 0 14px 38px rgba(0, 180, 255, 0.22);
+  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.20);
 }
 
 .secondaryBtn {
-  color: white;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.65);
+  color: #0f172a;
+  border: 1px solid rgba(203, 213, 225, 0.9);
 }
 
 .primaryBtn:hover,
@@ -305,100 +152,100 @@
   transform: translateY(-1px);
 }
 
-.timeline {
+.infoCard {
+  background: rgba(248, 250, 252, 0.88);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 20px;
+  padding: 18px;
   display: grid;
   gap: 14px;
 }
 
-.timelineItem {
+.infoRow {
   display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: 12px;
-  align-items: start;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
 }
 
-.timelineDot {
-  width: 34px;
-  height: 34px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.14);
-  display: grid;
-  place-items: center;
-  font-weight: 800;
+.infoRow:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
-.timelineTitle {
+.infoLabel {
+  font-size: 0.8rem;
   font-weight: 700;
-  color: white;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
 }
 
-.timelineText {
-  margin-top: 4px;
-  color: rgba(226, 232, 240, 0.76);
-  line-height: 1.65;
+.infoValue {
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: #0f172a;
+  font-weight: 600;
 }
 
-.footerNote {
-  color: rgba(226, 232, 240, 0.58);
-  font-size: 0.92rem;
-  line-height: 1.7;
-}
+@media (max-width: 840px) {
+  .card {
+    padding: 28px 20px;
+  }
 
-@media (max-width: 980px) {
-  .inner {
+  .content {
     grid-template-columns: 1fr;
   }
 
-  .hero {
-    min-height: auto;
-    padding: 40px 24px 28px;
-  }
-
-  .side {
-    padding: 28px 24px 32px;
+  .main {
+    padding-right: 0;
   }
 
   .title {
-    max-width: 14ch;
-  }
-
-  .highlights {
-    grid-template-columns: 1fr;
+    max-width: 12ch;
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 560px) {
   .shell {
-    padding: 14px;
+    padding: 16px;
   }
 
   .card {
-    border-radius: 24px;
+    border-radius: 22px;
+    padding: 22px 16px;
   }
 
-  .hero,
-  .side {
-    padding-left: 18px;
-    padding-right: 18px;
+  .header {
+    align-items: center;
+    gap: 12px;
   }
 
-  .logoWrap {
-    width: 54px;
-    height: 54px;
-    border-radius: 16px;
+  .logo {
+    width: 44px;
+    height: 44px;
   }
 
   .brandName {
-    font-size: 1.15rem;
+    font-size: 1.2rem;
+  }
+
+  .brandSub {
+    font-size: 0.88rem;
   }
 
   .badge {
     width: 100%;
     justify-content: center;
+    text-align: center;
   }
 
-  .ctaRow {
+  .title {
+    font-size: clamp(1.85rem, 9vw, 2.5rem);
+    max-width: none;
+  }
+
+  .actions {
     display: grid;
     grid-template-columns: 1fr;
   }

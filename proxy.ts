@@ -70,19 +70,100 @@ function decodeCookieValue(value: string): string {
   }
 }
 
-function tryGetAccessTokenFromCookieValue(value: string): string | null {
-  const raw = decodeCookieValue(value);
+function stripWrappingQuotes(value: string): string {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
 
-  const directSub = tryGetUserIdFromJwt(raw);
-  if (directSub) return raw;
-
+function tryParseJson(value: string): unknown {
   try {
-    const parsed = JSON.parse(raw);
-    const token = parsed?.access_token;
-    return typeof token === "string" ? token : null;
+    return JSON.parse(value);
   } catch {
     return null;
   }
+}
+
+function tryDecodeBase64Utf8(value: string): string | null {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = "=".repeat((4 - (normalized.length % 4)) % 4);
+
+  try {
+    if (typeof atob === "function") {
+      const bin = atob(normalized + pad);
+      const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    }
+
+    return Buffer.from(normalized + pad, "base64").toString("utf-8");
+  } catch {
+    return null;
+  }
+}
+
+function collectJwtCandidates(value: string): string[] {
+  const raw = stripWrappingQuotes(decodeCookieValue(value).trim());
+  const candidates = new Set<string>();
+
+  const push = (candidate: unknown) => {
+    if (typeof candidate !== "string") return;
+    const cleaned = stripWrappingQuotes(candidate.trim());
+    if (!cleaned) return;
+
+    if (tryGetUserIdFromJwt(cleaned)) {
+      candidates.add(cleaned);
+      return;
+    }
+
+    if (cleaned.startsWith("base64-")) {
+      const decoded = tryDecodeBase64Utf8(cleaned.slice(7));
+      if (decoded) {
+        for (const nested of collectJwtCandidates(decoded)) candidates.add(nested);
+      }
+      return;
+    }
+
+    const decoded = tryDecodeBase64Utf8(cleaned);
+    if (decoded && decoded !== cleaned) {
+      for (const nested of collectJwtCandidates(decoded)) candidates.add(nested);
+      return;
+    }
+
+    const parsed = tryParseJson(cleaned);
+    if (Array.isArray(parsed)) {
+      const arr = parsed as unknown[];
+      push(arr[0]);
+      for (const item of arr) {
+        if (item && typeof item === "object") {
+          push((item as Record<string, unknown>).access_token);
+        }
+      }
+      return;
+    }
+
+    if (parsed && typeof parsed === "object") {
+      const obj = parsed as Record<string, unknown>;
+      push(obj.access_token);
+      push(
+        obj.currentSession && typeof obj.currentSession === "object"
+          ? (obj.currentSession as Record<string, unknown>).access_token
+          : null
+      );
+      push(
+        obj.session && typeof obj.session === "object"
+          ? (obj.session as Record<string, unknown>).access_token
+          : null
+      );
+      return;
+    }
+  };
+
+  push(raw);
+  return [...candidates];
 }
 
 function getUserId(req: NextRequest): string | null {
@@ -94,24 +175,49 @@ function getUserId(req: NextRequest): string | null {
     if (sub) return sub;
   }
 
-  // 2) Common Supabase SSR cookies
-  const sbAccess = req.cookies.get("sb-access-token")?.value;
-  if (sbAccess) {
-    const token = tryGetAccessTokenFromCookieValue(sbAccess);
-    const sub = tryGetUserIdFromJwt(token ?? undefined);
-    if (sub) return sub;
+  // 2) Common direct cookies
+  const directCookieNames = [
+    "sb-access-token",
+    "supabase-auth-token",
+  ] as const;
+
+  for (const name of directCookieNames) {
+    const value = req.cookies.get(name)?.value;
+    if (!value) continue;
+    for (const candidate of collectJwtCandidates(value)) {
+      const sub = tryGetUserIdFromJwt(candidate);
+      if (sub) return sub;
+    }
   }
 
-  // 3) Supabase cookies (including chunked cookies such as ...-auth-token.0)
-  const authCookies = req.cookies
-    .getAll()
-    .filter((c) => c.name.startsWith("sb-") && c.name.includes("-auth-token"))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // 3) Supabase SSR cookies, including chunked cookies such as:
+  //    sb-<project>-auth-token
+  //    sb-<project>-auth-token.0 / .1 / .2 ...
+  const grouped = new Map<string, Array<{ index: number; value: string }>>();
 
-  for (const c of authCookies) {
-    const token = tryGetAccessTokenFromCookieValue(c.value);
-    const sub = tryGetUserIdFromJwt(token ?? undefined);
-    if (sub) return sub;
+  for (const cookie of req.cookies.getAll()) {
+    if (!cookie.name.startsWith("sb-") || !cookie.name.includes("-auth-token")) continue;
+
+    const match = cookie.name.match(/^(.*-auth-token)(?:\.(\d+))?$/);
+    if (!match) continue;
+
+    const baseName = match[1];
+    const index = Number(match[2] ?? 0);
+    const current = grouped.get(baseName) ?? [];
+    current.push({ index, value: cookie.value });
+    grouped.set(baseName, current);
+  }
+
+  for (const parts of grouped.values()) {
+    const combined = parts
+      .sort((a, b) => a.index - b.index)
+      .map((part) => part.value)
+      .join("");
+
+    for (const candidate of collectJwtCandidates(combined)) {
+      const sub = tryGetUserIdFromJwt(candidate);
+      if (sub) return sub;
+    }
   }
 
   return null;
