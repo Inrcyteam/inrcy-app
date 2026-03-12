@@ -452,6 +452,8 @@ const [siteInrcyTrackingBusy, setSiteInrcyTrackingBusy] = useState(false);
   const [siteInrcyActusLimit, setSiteInrcyActusLimit] = useState<number>(5);
   const [siteWebActusLayout, setSiteWebActusLayout] = useState<"list" | "carousel">("list");
   const [siteWebActusLimit, setSiteWebActusLimit] = useState<number>(5);
+  const [siteInrcyActusFont, setSiteInrcyActusFont] = useState<"site" | "inter" | "poppins" | "montserrat" | "lora">("site");
+  const [siteWebActusFont, setSiteWebActusFont] = useState<"site" | "inter" | "poppins" | "montserrat" | "lora">("site");
 
   // ✅ Connexions Google (viennent de integrations, pas des IDs)
   const [siteInrcyGa4Connected, setSiteInrcyGa4Connected] = useState(false);
@@ -4188,7 +4190,6 @@ const checkActivity = useCallback(async () => {
                 </span>
               )}
             </div>
-
             <div
               style={{
                 border: "1px solid rgba(255,255,255,0.12)",
@@ -4249,139 +4250,6 @@ const checkActivity = useCallback(async () => {
               </div>
               {siteInrcyUrlNotice && <div className={styles.successNote}>{siteInrcyUrlNotice}</div>}
             </div>
-
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div className={styles.blockHeaderRow}>
-                <div className={styles.blockTitle}>Widget « Actus »</div>
-              </div>
-              <div className={styles.blockSub}>
-                Colle ce code iframe dans ton site iNrCy (Elementor → widget HTML) pour afficher automatiquement tes dernières actus publiées depuis Booster.
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(180px, 1fr))", gap: 10 }}>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Affichage</strong></span>
-                  <select
-                    value={siteInrcyActusLayout}
-                    onChange={(e) => setSiteInrcyActusLayout(e.target.value === "carousel" ? "carousel" : "list")}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="list">Liste</option>
-                    <option value="carousel">Carousel</option>
-                  </select>
-                </label>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Nombre d'actus</strong></span>
-                  <select
-                    value={String(siteInrcyActusLimit)}
-                    onChange={(e) => setSiteInrcyActusLimit(Math.min(7, Math.max(3, Number(e.target.value) || 5)))}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    {[3, 4, 5, 6, 7].map((n) => (
-                      <option key={n} value={n}>{n} dernières actus</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              {(() => {
-                const url = (siteInrcySavedUrl || "").trim();
-                let domain = "";
-                try {
-                  const withProto = /^https?:\/\//i.test(url) ? url : url ? `https://${url}` : "";
-                  if (withProto) domain = new URL(withProto).hostname.toLowerCase().replace(/^www\./, "");
-                } catch {
-                  // ignore
-                }
-                const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
-                const iframeId = `inrcy-actus-${domain || "site"}-${siteInrcyActusLayout}`.replace(/[^a-z0-9_-]/gi, "-");
-                const initialHeight = siteInrcyActusLayout === "carousel" ? 760 : 1100;
-                const embedUrl = `${publicAppOrigin}/embed/actus?domain=${encodeURIComponent(domain || "votre-site.fr")}&source=inrcy_site&layout=${encodeURIComponent(siteInrcyActusLayout)}&limit=${encodeURIComponent(String(siteInrcyActusLimit))}&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenInrcySite)}`;
-                const snippet = `<iframe id="${iframeId}" src="${embedUrl}" width="100%" height="${initialHeight}" style="border:0;width:100%;max-width:100%;overflow:hidden;border-radius:24px;background:transparent;display:block;" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" scrolling="no" title="Actualités iNrCy"></iframe>
-<script>
-(function(){
-  var iframe=document.currentScript&&document.currentScript.previousElementSibling;
-  if(!iframe)return;
-  function onMessage(event){
-    if(event.origin!=="${publicAppOrigin}")return;
-    if(event.source!==iframe.contentWindow)return;
-    var data=event.data||{};
-    if(data.type!=="inrcy:embed-resize")return;
-    var h=parseInt(data.height,10);
-    if(!h||h<320)return;
-    iframe.style.height=h+"px";
-    iframe.setAttribute("height",String(h));
-  }
-  window.addEventListener("message",onMessage,false);
-})();
-<\/script>`;
-                return (
-                  <>
-                    <textarea
-                      readOnly
-                      value={snippet}
-                      style={{
-                        width: "100%",
-                        minHeight: 170,
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: "rgba(15,23,42,0.65)",
-                        colorScheme: "dark",
-                        padding: "10px 12px",
-                        color: "rgba(255,255,255,0.92)",
-                        outline: "none",
-                        fontFamily:
-                          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-                        fontSize: 12,
-                      }}
-                    />
-
-                    <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
-                      <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
-                      <button
-                        type="button"
-                        className={styles.actionBtn}
-                        onClick={() => {
-                          void navigator.clipboard?.writeText(snippet);
-                        }}
-                      >
-                        Copier le code
-                      </button>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-
-            {siteInrcySettingsError && (
-              <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 12 }}>{siteInrcySettingsError}</div>
-            )}
-
             <div
               style={{
                 border: "1px solid rgba(255,255,255,0.12)",
@@ -4473,8 +4341,6 @@ const checkActivity = useCallback(async () => {
               </div>
             </div>
             {siteInrcyGa4Notice && <div className={styles.successNote}>{siteInrcyGa4Notice}</div>}
-
-
             <div
               style={{
                 border: "1px solid rgba(255,255,255,0.12)",
@@ -4545,6 +4411,160 @@ const checkActivity = useCallback(async () => {
               </div>
             </div>
             {siteInrcyGscNotice && <div className={styles.successNote}>{siteInrcyGscNotice}</div>}
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: 14,
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div className={styles.blockHeaderRow}>
+                <div className={styles.blockTitle}>Widget « Actus »</div>
+              </div>
+              <div className={styles.blockSub}>
+                Colle ce code iframe dans ton site iNrCy (Elementor → widget HTML) pour afficher automatiquement tes dernières actus publiées depuis Booster.
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(180px, 1fr))", gap: 10 }}>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className={styles.blockSub}><strong>Affichage</strong></span>
+                  <select
+                    value={siteInrcyActusLayout}
+                    onChange={(e) => setSiteInrcyActusLayout(e.target.value === "carousel" ? "carousel" : "list")}
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
+                      padding: "10px 12px",
+                      color: "rgba(255,255,255,0.92)",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="list">Liste</option>
+                    <option value="carousel">Carousel</option>
+                  </select>
+                </label>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className={styles.blockSub}><strong>Nombre d'actus</strong></span>
+                  <select
+                    value={String(siteInrcyActusLimit)}
+                    onChange={(e) => setSiteInrcyActusLimit(Math.min(7, Math.max(3, Number(e.target.value) || 5)))}
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
+                      padding: "10px 12px",
+                      color: "rgba(255,255,255,0.92)",
+                      outline: "none",
+                    }}
+                  >
+                    {[3, 4, 5, 6, 7].map((n) => (
+                      <option key={n} value={n}>{n} dernières actus</option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className={styles.blockSub}><strong>Police</strong></span>
+                  <select
+                    value={siteInrcyActusFont}
+                    onChange={(e) => setSiteInrcyActusFont(((["site", "inter", "poppins", "montserrat", "lora"] as const).includes(e.target.value as never) ? e.target.value : "site") as "site" | "inter" | "poppins" | "montserrat" | "lora")}
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
+                      padding: "10px 12px",
+                      color: "rgba(255,255,255,0.92)",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="site">Adaptative site</option>
+                    <option value="inter">Inter</option>
+                    <option value="poppins">Poppins</option>
+                    <option value="montserrat">Montserrat</option>
+                    <option value="lora">Lora</option>
+                  </select>
+                </label>
+              </div>
+
+              {(() => {
+                const url = (siteInrcySavedUrl || "").trim();
+                let domain = "";
+                try {
+                  const withProto = /^https?:\/\//i.test(url) ? url : url ? `https://${url}` : "";
+                  if (withProto) domain = new URL(withProto).hostname.toLowerCase().replace(/^www\./, "");
+                } catch {
+                  // ignore
+                }
+                const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
+                const iframeId = `inrcy-actus-${domain || "site"}-${siteInrcyActusLayout}`.replace(/[^a-z0-9_-]/gi, "-");
+                const initialHeight = siteInrcyActusLayout === "carousel" ? 420 : 260;
+                const embedUrl = `${publicAppOrigin}/embed/actus?domain=${encodeURIComponent(domain || "votre-site.fr")}&source=inrcy_site&layout=${encodeURIComponent(siteInrcyActusLayout)}&limit=${encodeURIComponent(String(siteInrcyActusLimit))}&font=${encodeURIComponent(siteInrcyActusFont)}&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenInrcySite)}`;
+                const snippet = `<iframe id="${iframeId}" src="${embedUrl}" width="100%" height="${initialHeight}" style="border:0;width:100%;max-width:100%;overflow:hidden;border-radius:24px;background:transparent;display:block;" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" scrolling="no" title="Actualités iNrCy"></iframe>
+<script>
+(function(){
+  var iframe=document.currentScript&&document.currentScript.previousElementSibling;
+  if(!iframe)return;
+  function onMessage(event){
+    if(event.origin!=="${publicAppOrigin}")return;
+    if(event.source!==iframe.contentWindow)return;
+    var data=event.data||{};
+    if(data.type!=="inrcy:embed-resize")return;
+    var h=parseInt(data.height,10);
+    if(!h||h<120)return;
+    iframe.style.height=h+"px";
+    iframe.setAttribute("height",String(h));
+  }
+  window.addEventListener("message",onMessage,false);
+})();
+<\/script>`;
+                return (
+                  <>
+                    <textarea
+                      readOnly
+                      value={snippet}
+                      style={{
+                        width: "100%",
+                        minHeight: 170,
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(15,23,42,0.65)",
+                        colorScheme: "dark",
+                        padding: "10px 12px",
+                        color: "rgba(255,255,255,0.92)",
+                        outline: "none",
+                        fontFamily:
+                          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+                        fontSize: 12,
+                      }}
+                    />
+
+                    <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+                      <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
+                      <button
+                        type="button"
+                        className={styles.actionBtn}
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(snippet);
+                        }}
+                      >
+                        Copier le code
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {siteInrcySettingsError && (
+              <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 12 }}>{siteInrcySettingsError}</div>
+            )}
+
 
 
 
@@ -4657,142 +4677,6 @@ const checkActivity = useCallback(async () => {
               </div>
               {siteWebUrlNotice && <div className={styles.successNote}>{siteWebUrlNotice}</div>}
             </div>
-
-            {/* ✅ Widget actus (pour afficher les 5 dernières publications Booster sur le site du client) */}
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div className={styles.blockHeaderRow}>
-                <div className={styles.blockTitle}>Widget « Actus »</div>
-              </div>
-              <div className={styles.blockSub}>
-                Colle ce code iframe dans ton site (WordPress, Wix, Webflow, HTML…) pour afficher automatiquement tes dernières actus publiées depuis Booster.
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(180px, 1fr))", gap: 10 }}>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Affichage</strong></span>
-                  <select
-                    value={siteWebActusLayout}
-                    onChange={(e) => setSiteWebActusLayout(e.target.value === "carousel" ? "carousel" : "list")}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="list">Liste</option>
-                    <option value="carousel">Carousel</option>
-                  </select>
-                </label>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Nombre d'actus</strong></span>
-                  <select
-                    value={String(siteWebActusLimit)}
-                    onChange={(e) => setSiteWebActusLimit(Math.min(7, Math.max(3, Number(e.target.value) || 5)))}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    {[3, 4, 5, 6, 7].map((n) => (
-                      <option key={n} value={n}>{n} dernières actus</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              {(() => {
-                const url = (siteWebSavedUrl || "").trim();
-                let domain = "";
-                try {
-                  const withProto = /^https?:\/\//i.test(url) ? url : url ? `https://${url}` : "";
-                  if (withProto) domain = new URL(withProto).hostname.toLowerCase().replace(/^www\./, "");
-                } catch {
-                  // ignore
-                }
-                const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
-                const iframeId = `inrcy-actus-${domain || "site"}-${siteWebActusLayout}`.replace(/[^a-z0-9_-]/gi, "-");
-                const initialHeight = siteWebActusLayout === "carousel" ? 760 : 1100;
-                const embedUrl = `${publicAppOrigin}/embed/actus?domain=${encodeURIComponent(domain || "votre-site.fr")}&source=site_web&layout=${encodeURIComponent(siteWebActusLayout)}&limit=${encodeURIComponent(String(siteWebActusLimit))}&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenSiteWeb)}`;
-                const snippet = `<iframe id="${iframeId}" src="${embedUrl}" width="100%" height="${initialHeight}" style="border:0;width:100%;max-width:100%;overflow:hidden;border-radius:24px;background:transparent;display:block;" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" scrolling="no" title="Actualités iNrCy"></iframe>
-<script>
-(function(){
-  var iframe=document.currentScript&&document.currentScript.previousElementSibling;
-  if(!iframe)return;
-  function onMessage(event){
-    if(event.origin!=="${publicAppOrigin}")return;
-    if(event.source!==iframe.contentWindow)return;
-    var data=event.data||{};
-    if(data.type!=="inrcy:embed-resize")return;
-    var h=parseInt(data.height,10);
-    if(!h||h<320)return;
-    iframe.style.height=h+"px";
-    iframe.setAttribute("height",String(h));
-  }
-  window.addEventListener("message",onMessage,false);
-})();
-<\/script>`;
-                return (
-                  <>
-                    <textarea
-                      readOnly
-                      value={snippet}
-                      style={{
-                        width: "100%",
-                        minHeight: 170,
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: "rgba(15,23,42,0.65)",
-                        colorScheme: "dark",
-                        padding: "10px 12px",
-                        color: "rgba(255,255,255,0.92)",
-                        outline: "none",
-                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-                        fontSize: 12,
-                      }}
-                    />
-
-                    <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
-                      <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
-                      <button
-                        type="button"
-                        className={styles.actionBtn}
-                        onClick={() => {
-                          void navigator.clipboard?.writeText(snippet);
-                        }}
-                      >
-                        Copier le code
-                      </button>
-                    </div>
-                    <div className={styles.blockSub}>
-                      <strong>Où le coller ?</strong> Sur WordPress : un bloc <em>HTML personnalisé</em> (Elementor → widget HTML). Sur Wix : <em>Embed Code</em>. Sur Webflow : <em>Embed</em>.
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-
-            {siteWebSettingsError && (
-              <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 12 }}>{siteWebSettingsError}</div>
-            )}
-
             <div
               style={{
                 border: "1px solid rgba(255,255,255,0.12)",
@@ -4942,6 +4826,164 @@ const checkActivity = useCallback(async () => {
               </div>
             </div>
             {siteWebGscNotice && <div className={styles.successNote}>{siteWebGscNotice}</div>}
+
+            {/* ✅ Widget actus (pour afficher les 5 dernières publications Booster sur le site du client) */}
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: 14,
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div className={styles.blockHeaderRow}>
+                <div className={styles.blockTitle}>Widget « Actus »</div>
+              </div>
+              <div className={styles.blockSub}>
+                Colle ce code iframe dans ton site (WordPress, Wix, Webflow, HTML…) pour afficher automatiquement tes dernières actus publiées depuis Booster.
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(180px, 1fr))", gap: 10 }}>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className={styles.blockSub}><strong>Affichage</strong></span>
+                  <select
+                    value={siteWebActusLayout}
+                    onChange={(e) => setSiteWebActusLayout(e.target.value === "carousel" ? "carousel" : "list")}
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
+                      padding: "10px 12px",
+                      color: "rgba(255,255,255,0.92)",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="list">Liste</option>
+                    <option value="carousel">Carousel</option>
+                  </select>
+                </label>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className={styles.blockSub}><strong>Nombre d'actus</strong></span>
+                  <select
+                    value={String(siteWebActusLimit)}
+                    onChange={(e) => setSiteWebActusLimit(Math.min(7, Math.max(3, Number(e.target.value) || 5)))}
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
+                      padding: "10px 12px",
+                      color: "rgba(255,255,255,0.92)",
+                      outline: "none",
+                    }}
+                  >
+                    {[3, 4, 5, 6, 7].map((n) => (
+                      <option key={n} value={n}>{n} dernières actus</option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className={styles.blockSub}><strong>Police</strong></span>
+                  <select
+                    value={siteWebActusFont}
+                    onChange={(e) => setSiteWebActusFont(((["site", "inter", "poppins", "montserrat", "lora"] as const).includes(e.target.value as never) ? e.target.value : "site") as "site" | "inter" | "poppins" | "montserrat" | "lora")}
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(15,23,42,0.65)",
+                      colorScheme: "dark",
+                      padding: "10px 12px",
+                      color: "rgba(255,255,255,0.92)",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="site">Adaptative site</option>
+                    <option value="inter">Inter</option>
+                    <option value="poppins">Poppins</option>
+                    <option value="montserrat">Montserrat</option>
+                    <option value="lora">Lora</option>
+                  </select>
+                </label>
+              </div>
+
+              {(() => {
+                const url = (siteWebSavedUrl || "").trim();
+                let domain = "";
+                try {
+                  const withProto = /^https?:\/\//i.test(url) ? url : url ? `https://${url}` : "";
+                  if (withProto) domain = new URL(withProto).hostname.toLowerCase().replace(/^www\./, "");
+                } catch {
+                  // ignore
+                }
+                const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
+                const iframeId = `inrcy-actus-${domain || "site"}-${siteWebActusLayout}`.replace(/[^a-z0-9_-]/gi, "-");
+                const initialHeight = siteWebActusLayout === "carousel" ? 420 : 260;
+                const embedUrl = `${publicAppOrigin}/embed/actus?domain=${encodeURIComponent(domain || "votre-site.fr")}&source=site_web&layout=${encodeURIComponent(siteWebActusLayout)}&limit=${encodeURIComponent(String(siteWebActusLimit))}&font=${encodeURIComponent(siteWebActusFont)}&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenSiteWeb)}`;
+                const snippet = `<iframe id="${iframeId}" src="${embedUrl}" width="100%" height="${initialHeight}" style="border:0;width:100%;max-width:100%;overflow:hidden;border-radius:24px;background:transparent;display:block;" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" scrolling="no" title="Actualités iNrCy"></iframe>
+<script>
+(function(){
+  var iframe=document.currentScript&&document.currentScript.previousElementSibling;
+  if(!iframe)return;
+  function onMessage(event){
+    if(event.origin!=="${publicAppOrigin}")return;
+    if(event.source!==iframe.contentWindow)return;
+    var data=event.data||{};
+    if(data.type!=="inrcy:embed-resize")return;
+    var h=parseInt(data.height,10);
+    if(!h||h<120)return;
+    iframe.style.height=h+"px";
+    iframe.setAttribute("height",String(h));
+  }
+  window.addEventListener("message",onMessage,false);
+})();
+<\/script>`;
+                return (
+                  <>
+                    <textarea
+                      readOnly
+                      value={snippet}
+                      style={{
+                        width: "100%",
+                        minHeight: 170,
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(15,23,42,0.65)",
+                        colorScheme: "dark",
+                        padding: "10px 12px",
+                        color: "rgba(255,255,255,0.92)",
+                        outline: "none",
+                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+                        fontSize: 12,
+                      }}
+                    />
+
+                    <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+                      <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
+                      <button
+                        type="button"
+                        className={styles.actionBtn}
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(snippet);
+                        }}
+                      >
+                        Copier le code
+                      </button>
+                    </div>
+                    <div className={styles.blockSub}>
+                      <strong>Où le coller ?</strong> Sur WordPress : un bloc <em>HTML personnalisé</em> (Elementor → widget HTML). Sur Wix : <em>Embed Code</em>. Sur Webflow : <em>Embed</em>.
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {siteWebSettingsError && (
+              <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 12 }}>{siteWebSettingsError}</div>
+            )}
+
 
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>

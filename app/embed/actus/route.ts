@@ -14,6 +14,7 @@ type WidgetTokenPayload = {
 };
 
 type LayoutMode = "list" | "carousel";
+type FontMode = "site" | "inter" | "poppins" | "montserrat" | "lora";
 
 function b64urlEncode(buf: Buffer) {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
@@ -185,6 +186,26 @@ function clampLimit(value: string | null) {
   return Math.min(7, Math.max(3, parsed));
 }
 
+function clampFont(value: string | null): FontMode {
+  const v = (value || "site").trim().toLowerCase();
+  return v === "inter" || v === "poppins" || v === "montserrat" || v === "lora" ? v : "site";
+}
+
+function fontStack(mode: FontMode) {
+  switch (mode) {
+    case "inter":
+      return "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
+    case "poppins":
+      return "Poppins, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
+    case "montserrat":
+      return "Montserrat, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
+    case "lora":
+      return "Lora, Georgia, Cambria, 'Times New Roman', serif";
+    default:
+      return "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif";
+  }
+}
+
 function renderListItem(article: Record<string, unknown>, index: number) {
   const img = parseArrayLike(article.images)[0] || "";
   const date = formatDate(article.created_at);
@@ -230,8 +251,10 @@ function renderHtml(params: {
   articles: Array<Record<string, unknown>>;
   layout: LayoutMode;
   limit: number;
+  font: FontMode;
 }) {
-  const { title, articles, layout } = params;
+  const { title, articles, layout, font } = params;
+  const fontFamily = fontStack(font);
 
   const listItems = articles
     .map((article, index) => {
@@ -240,9 +263,9 @@ function renderHtml(params: {
       const articleTitle = String(article.title ?? "Actualité").trim() || "Actualité";
       const content = renderRichText(article.content);
       return `
-        <article class="newsCard reveal ${img ? "hasMedia" : "noMedia"}" style="animation-delay:${Math.min(index * 70, 350)}ms">
-          ${img ? `<div class="newsMediaWrap"><img class="newsMedia" src="${safeAttr(img)}" alt="" loading="lazy" /></div>` : ""}
-          <div class="newsBody">
+        <article class="newsCard reveal ${img ? "hasMedia" : "noMedia"}" style="animation-delay:${Math.min(index * 70, 320)}ms">
+          ${img ? `<div class="mediaCol"><img class="media" src="${safeAttr(img)}" alt="" loading="lazy" /></div>` : ""}
+          <div class="copyCol">
             ${date ? `<div class="newsDate">${escapeHtml(date)}</div>` : ""}
             <h2 class="newsTitle">${escapeHtml(articleTitle)}</h2>
             ${content ? `<div class="newsContent">${content}</div>` : ""}
@@ -259,12 +282,12 @@ function renderHtml(params: {
       const articleTitle = String(article.title ?? "Actualité").trim() || "Actualité";
       const content = renderRichText(article.content);
       return `
-        <article class="slide ${img ? "hasMedia" : "noMedia"}" data-slide>
-          ${img ? `<div class="slideMediaWrap"><img class="slideMedia" src="${safeAttr(img)}" alt="" loading="lazy" /></div>` : ""}
-          <div class="slideBody">
+        <article class="slide ${img ? "hasMedia" : "noMedia"}" data-slide style="animation-delay:${Math.min(index * 80, 320)}ms">
+          ${img ? `<div class="mediaCol"><img class="media" src="${safeAttr(img)}" alt="" loading="lazy" /></div>` : ""}
+          <div class="copyCol">
             ${date ? `<div class="newsDate">${escapeHtml(date)}</div>` : ""}
-            <h2 class="newsTitle newsTitle--slide">${escapeHtml(articleTitle)}</h2>
-            ${content ? `<div class="newsContent newsContent--slide">${content}</div>` : ""}
+            <h2 class="newsTitle">${escapeHtml(articleTitle)}</h2>
+            ${content ? `<div class="newsContent">${content}</div>` : ""}
           </div>
         </article>
       `;
@@ -288,88 +311,75 @@ function renderHtml(params: {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>${escapeHtml(title)}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Lora:wght@400;500;600;700&family=Montserrat:wght@500;600;700;800&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root{
       color-scheme: light;
-      --bg:#f7fbf4;
+      --font:${fontFamily};
+      --bg:#f5f8f0;
       --surface:#ffffff;
-      --surface-soft:#fbfdf9;
-      --line:rgba(30,70,21,.10);
-      --line-strong:rgba(30,70,21,.16);
-      --text:#142114;
-      --muted:rgba(20,33,20,.68);
-      --brand:#5bc54b;
-      --brand-deep:#2c7a28;
-      --shadow:0 22px 56px rgba(44,75,27,.08);
-      --shadow-soft:0 10px 26px rgba(44,75,27,.06);
+      --surface-2:#fbfdf8;
+      --line:rgba(27,66,24,.10);
+      --line-strong:rgba(27,66,24,.16);
+      --text:#122313;
+      --muted:#4f6550;
+      --brand:#6bd05f;
+      --brand-deep:#245126;
       --radius-xl:28px;
       --radius-lg:22px;
-      --radius-md:18px;
+      --shadow:0 22px 54px rgba(16,28,18,.10);
+      --shadow-soft:0 14px 34px rgba(16,28,18,.07);
     }
     *{box-sizing:border-box}
-    html,body{margin:0;padding:0;background:transparent;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--text);overflow:hidden}
-    img{max-width:100%;display:block}
+    html,body{margin:0;padding:0;background:transparent;color:var(--text);font-family:var(--font);overflow:hidden}
     body{width:100%}
-    .shell{width:100%;padding:14px}
-    .frame{
-      width:100%;
-      border-radius:var(--radius-xl);
-      border:1px solid var(--line);
-      background:linear-gradient(180deg, rgba(247,251,244,.96), rgba(244,249,239,.96));
-      box-shadow:var(--shadow);
-      overflow:hidden;
-    }
-    .header{padding:28px 30px 10px}
-    .title{margin:0;font-size:clamp(30px,4vw,42px);line-height:1;letter-spacing:-.045em;font-weight:900}
-    .section{padding:6px 18px 22px}
-    .stack{display:grid;gap:18px}
-    .newsCard,.slide{
-      width:100%;
-      border:1px solid var(--line);
-      border-radius:var(--radius-lg);
-      background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.88));
-      box-shadow:var(--shadow-soft);
-      overflow:hidden;
-    }
-    .newsCard.hasMedia,.slide.hasMedia{display:grid;grid-template-columns:minmax(220px, 34%) minmax(0,1fr)}
+    img{display:block;max-width:100%}
+    .shell{width:100%;padding:0}
+    .frame{width:100%;display:grid;gap:18px;background:linear-gradient(180deg,rgba(247,251,244,.98),rgba(244,249,239,.98));border:1px solid var(--line);border-radius:var(--radius-xl);box-shadow:var(--shadow);padding:28px 28px 26px}
+    .header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px}
+    .title{margin:0;font-size:clamp(28px,3vw,40px);line-height:1.02;letter-spacing:-.045em;font-weight:800}
+    .stack{display:grid;gap:16px}
+    .newsCard,.slide{width:100%;background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(255,255,255,.92));border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-soft);overflow:hidden}
+    .newsCard.hasMedia,.slide.hasMedia{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);align-items:stretch}
     .newsCard.noMedia,.slide.noMedia{display:block}
-    .newsMediaWrap,.slideMediaWrap{height:100%;min-height:240px;background:#eef5e7}
-    .newsMedia,.slideMedia{width:100%;height:100%;object-fit:cover}
-    .newsBody,.slideBody{padding:24px 26px}
-    .newsDate{margin:0 0 12px;font-size:12px;line-height:1;color:var(--brand-deep);font-weight:800;letter-spacing:.08em;text-transform:uppercase}
-    .newsTitle{margin:0 0 14px;font-size:clamp(28px,3.6vw,40px);line-height:1.08;letter-spacing:-.045em;font-weight:900;text-wrap:balance}
-    .newsTitle--slide{font-size:clamp(26px,3.3vw,38px)}
-    .newsContent{display:grid;gap:14px;color:var(--muted);font-size:18px;line-height:1.75}
+    .mediaCol{background:#edf6e6;min-height:180px}
+    .media{width:100%;height:100%;object-fit:cover}
+    .copyCol{padding:24px 26px}
+    .newsDate{margin:0 0 10px;font-size:12px;line-height:1;color:var(--brand-deep);font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+    .newsTitle{margin:0 0 12px;font-size:clamp(26px,2.6vw,38px);line-height:1.06;letter-spacing:-.04em;font-weight:800;text-wrap:balance}
+    .newsContent{display:grid;gap:12px;color:var(--muted);font-size:18px;line-height:1.72}
     .newsContent p{margin:0}
-    .newsContent--slide{font-size:17px}
-    .carousel{display:grid;gap:16px}
-    .carouselTop{display:flex;justify-content:flex-end;align-items:center;gap:14px;flex-wrap:wrap;padding:0 4px}
-    .dots{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .dot{width:9px;height:9px;border-radius:999px;border:0;background:rgba(44,122,40,.16);padding:0;cursor:pointer;transition:all .22s ease}
-    .dot.is-active{width:28px;background:linear-gradient(90deg,var(--brand),#8ddc7f)}
+    .carouselWrap{display:grid;gap:14px}
+    .carouselHead{display:flex;justify-content:flex-end;align-items:center;gap:14px;flex-wrap:wrap}
     .nav{display:flex;gap:10px}
-    .navBtn{width:46px;height:46px;border-radius:999px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:20px;font-weight:900;color:var(--text);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
-    .navBtn:hover{transform:translateY(-1px);border-color:var(--line-strong);box-shadow:var(--shadow-soft)}
-    .navBtn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+    .navBtn{width:44px;height:44px;border-radius:999px;border:1px solid var(--line-strong);background:#fff;color:var(--text);cursor:pointer;font-size:20px;font-weight:800;transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease}
+    .navBtn:hover{transform:translateY(-1px);box-shadow:var(--shadow-soft);border-color:rgba(27,66,24,.24)}
+    .navBtn:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none}
+    .dots{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .dot{width:10px;height:10px;border:0;border-radius:999px;background:rgba(36,81,38,.15);padding:0;cursor:pointer;transition:all .2s ease}
+    .dot.is-active{width:30px;background:linear-gradient(90deg,#5fcf66,#8fdd82)}
     .viewport{overflow:hidden}
-    .track{display:flex;gap:16px;transition:transform .45s cubic-bezier(.22,.61,.36,1);will-change:transform}
+    .track{display:flex;gap:16px;will-change:transform;transition:transform .45s cubic-bezier(.22,.61,.36,1)}
     .slide{min-width:100%}
-    .empty{padding:34px 22px;border-radius:var(--radius-lg);border:1px dashed var(--line-strong);background:rgba(255,255,255,.75);text-align:center}
+    .empty{padding:34px 22px;border-radius:var(--radius-lg);border:1px dashed var(--line-strong);background:rgba(255,255,255,.72);text-align:center}
     .empty h2{margin:0 0 10px;font-size:24px;line-height:1.1;letter-spacing:-.03em}
     .empty p{margin:0;color:var(--muted);font-size:15px;line-height:1.7}
-    .reveal{opacity:0;transform:translateY(14px);animation:fadeUp .6s ease forwards}
+    .reveal{opacity:0;transform:translateY(12px);animation:fadeUp .55s ease forwards}
     @keyframes fadeUp{to{opacity:1;transform:translateY(0)}}
-    @media (max-width: 960px){
+    @media (max-width: 880px){
+      .frame{padding:22px 18px 20px;border-radius:24px}
       .newsCard.hasMedia,.slide.hasMedia{grid-template-columns:1fr}
-      .newsMediaWrap,.slideMediaWrap{min-height:220px}
+      .mediaCol{min-height:220px}
+      .copyCol{padding:20px 18px}
     }
     @media (max-width: 640px){
-      .shell{padding:10px}
-      .header{padding:22px 18px 8px}
-      .section{padding:6px 10px 14px}
-      .newsBody,.slideBody{padding:18px 18px 20px}
-      .newsTitle,.newsTitle--slide{font-size:clamp(24px,8vw,32px)}
-      .newsContent,.newsContent--slide{font-size:16px;line-height:1.68}
+      .frame{padding:18px 14px 16px;border-radius:22px}
+      .title{font-size:clamp(24px,8vw,32px)}
+      .newsTitle{font-size:clamp(22px,7vw,30px)}
+      .newsContent{font-size:16px;line-height:1.68}
+      .mediaCol{min-height:190px}
     }
     @media (prefers-reduced-motion: reduce){
       .reveal,.track,.dot,.navBtn{animation:none;transition:none}
@@ -382,57 +392,61 @@ function renderHtml(params: {
       <header class="header reveal">
         <h1 class="title">${escapeHtml(title)}</h1>
       </header>
-      <main class="section">
-        ${articles.length === 0 ? empty : layout === "carousel" ? `
-          <section class="carousel reveal" id="carousel-shell">
-            <div class="carouselTop">
-              <div class="dots" aria-label="Navigation des actualités">${dots}</div>
-              <div class="nav">
-                <button class="navBtn" type="button" data-prev aria-label="Actualité précédente">‹</button>
-                <button class="navBtn" type="button" data-next aria-label="Actualité suivante">›</button>
-              </div>
+      ${articles.length === 0 ? empty : layout === "carousel" ? `
+        <section class="carouselWrap">
+          <div class="carouselHead reveal">
+            <div class="dots" aria-label="Navigation des actualités">${dots}</div>
+            <div class="nav">
+              <button class="navBtn" type="button" data-prev aria-label="Actualité précédente">‹</button>
+              <button class="navBtn" type="button" data-next aria-label="Actualité suivante">›</button>
             </div>
-            <div class="viewport"><div class="track" id="track">${carouselItems}</div></div>
-          </section>
-        ` : `<section class="stack">${listItems}</section>`}
-      </main>
+          </div>
+          <div class="viewport"><div class="track" id="track">${carouselItems}</div></div>
+        </section>
+      ` : `<section class="stack">${listItems}</section>`}
     </section>
   </div>
   <script>
     (function(){
       var root = document.getElementById('root');
-      function heightValue(){
-        var heights = [
-          document.documentElement ? document.documentElement.scrollHeight : 0,
-          document.documentElement ? document.documentElement.offsetHeight : 0,
-          document.body ? document.body.scrollHeight : 0,
-          document.body ? document.body.offsetHeight : 0,
-          root ? root.scrollHeight + 28 : 0,
-          root ? Math.ceil(root.getBoundingClientRect().height) + 28 : 0
+      function computeHeight(){
+        var body = document.body;
+        var doc = document.documentElement;
+        var vals = [
+          root ? Math.ceil(root.getBoundingClientRect().height) : 0,
+          root ? root.scrollHeight : 0,
+          body ? body.scrollHeight : 0,
+          doc ? doc.scrollHeight : 0,
+          body ? body.offsetHeight : 0,
+          doc ? doc.offsetHeight : 0
         ];
-        return Math.max.apply(Math, heights.concat([320]));
+        return Math.max.apply(Math, vals.concat([160]));
       }
       function postHeight(){
-        try { window.parent.postMessage({ type:'inrcy:embed-resize', height: Math.ceil(heightValue()) }, '*'); } catch {}
+        var h = computeHeight();
+        try { window.parent.postMessage({ type:'inrcy:embed-resize', height:h }, '*'); } catch {}
+      }
+      function schedule(){
+        requestAnimationFrame(function(){ requestAnimationFrame(postHeight); });
       }
       if (typeof ResizeObserver !== 'undefined' && root) {
-        var ro = new ResizeObserver(postHeight);
+        var ro = new ResizeObserver(schedule);
         ro.observe(root);
       }
       if (typeof MutationObserver !== 'undefined' && root) {
-        var mo = new MutationObserver(function(){ requestAnimationFrame(postHeight); });
+        var mo = new MutationObserver(schedule);
         mo.observe(root, { childList:true, subtree:true, characterData:true, attributes:true });
       }
-      window.addEventListener('DOMContentLoaded', postHeight);
-      window.addEventListener('load', postHeight);
-      window.addEventListener('resize', postHeight);
-      setTimeout(postHeight, 30);
-      setTimeout(postHeight, 160);
-      setTimeout(postHeight, 400);
-      setTimeout(postHeight, 1000);
-      Array.prototype.forEach.call(document.images || [], function(img){ if (!img.complete) img.addEventListener('load', postHeight, { once:true }); });
+      window.addEventListener('load', schedule);
+      window.addEventListener('resize', schedule);
+      document.addEventListener('DOMContentLoaded', schedule);
+      Array.prototype.forEach.call(document.images || [], function(img){ if (!img.complete) img.addEventListener('load', schedule, { once:true }); });
+      setTimeout(schedule, 20);
+      setTimeout(schedule, 120);
+      setTimeout(schedule, 320);
+      setTimeout(schedule, 900);
 
-      var shell = document.getElementById('carousel-shell');
+      var shell = document.querySelector('.carouselWrap');
       if (!shell) return;
       var track = document.getElementById('track');
       var slides = shell.querySelectorAll('[data-slide]');
@@ -446,7 +460,7 @@ function renderHtml(params: {
         dots.forEach(function(dot, i){ dot.classList.toggle('is-active', i === index); });
         if (prev) prev.disabled = index === 0;
         if (next) next.disabled = index === slides.length - 1;
-        setTimeout(postHeight, 60);
+        schedule();
       }
       if (prev) prev.addEventListener('click', function(){ if (index > 0) { index -= 1; update(); }});
       if (next) next.addEventListener('click', function(){ if (index < slides.length - 1) { index += 1; update(); }});
@@ -480,14 +494,15 @@ export async function GET(req: Request) {
     const title = (searchParams.get("title") || "Actualités").trim();
     const limit = clampLimit(searchParams.get("limit"));
     const layout = (searchParams.get("layout") === "carousel" ? "carousel" : "list") as LayoutMode;
+    const font = clampFont(searchParams.get("font"));
     const token = searchParams.get("token") || "";
 
-    if (!domain) return htmlResponse(renderHtml({ title, domain: "site inconnu", articles: [], layout, limit }), 400);
+    if (!domain) return htmlResponse(renderHtml({ title, domain: "site inconnu", articles: [], layout, limit , font }), 400);
     if (source !== "inrcy_site" && source !== "site_web") {
-      return htmlResponse(renderHtml({ title, domain, articles: [], layout, limit }), 400);
+      return htmlResponse(renderHtml({ title, domain, articles: [], layout, limit , font }), 400);
     }
     if (!token) {
-      return htmlResponse(renderHtml({ title, domain, articles: [], layout, limit }), 401);
+      return htmlResponse(renderHtml({ title, domain, articles: [], layout, limit , font }), 401);
     }
 
     const signingSecret = process.env.INRCY_WIDGETS_SIGNING_SECRET;
@@ -498,17 +513,17 @@ export async function GET(req: Request) {
     const tokSource = String(tok.source || "").trim();
 
     if (tokDomain !== domain || tokSource !== source) {
-      return htmlResponse(renderHtml({ title, domain, articles: [], layout, limit }), 403);
+      return htmlResponse(renderHtml({ title, domain, articles: [], layout, limit , font }), 403);
     }
 
     const refHost = getRefererHost(req);
     if (refHost && refHost !== tokDomain) {
-      return htmlResponse(renderHtml({ title, domain, articles: [], layout, limit }), 403);
+      return htmlResponse(renderHtml({ title, domain, articles: [], layout, limit , font }), 403);
     }
 
     const articles = await fetchArticles(domain, source, limit);
-    return htmlResponse(renderHtml({ title, domain, articles, layout, limit }), 200);
+    return htmlResponse(renderHtml({ title, domain, articles, layout, limit , font }), 200);
   } catch {
-    return htmlResponse(renderHtml({ title: "Actualités", domain: "iNrCy", articles: [], layout: "list", limit: 5 }), 500);
+    return htmlResponse(renderHtml({ title: "Actualités", domain: "iNrCy", articles: [], layout: "list", limit: 5, font: "site" }), 500);
   }
 }
