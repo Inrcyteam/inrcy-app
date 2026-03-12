@@ -404,27 +404,40 @@ export async function proxy(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-request-id", requestId);
 
-  const applyApiHeaders = (res: NextResponse) => {
+  const applyResponseHeaders = (res: NextResponse) => {
     // Correlate request/response across Vercel logs + Sentry
     res.headers.set("x-request-id", requestId);
-    // Avoid caching API responses at the edge/browser by default
-    res.headers.set("cache-control", "no-store");
-    // Prevent API endpoints from being indexed
+
+    // Avoid serving stale documents from browser/edge cache.
+    // This is important for maintenance mode toggles to take effect on a simple refresh.
+    const isDocumentRequest =
+      !pathname.startsWith("/api/") &&
+      (req.headers.get("sec-fetch-dest") === "document" ||
+        req.headers.get("accept")?.includes("text/html"));
+
     if (pathname.startsWith("/api/")) {
+      res.headers.set("cache-control", "no-store");
       res.headers.set("x-robots-tag", "noindex, nofollow");
+    } else if (isDocumentRequest) {
+      res.headers.set("cache-control", "private, no-store, no-cache, max-age=0, must-revalidate");
+      res.headers.set("pragma", "no-cache");
+      res.headers.set("expires", "0");
     }
+
     return res;
   };
 
   // Skip callback routes (already protected at route-level)
   if (isOauthCallback(pathname)) {
     const res = NextResponse.next({ request: { headers: requestHeaders } });
-    return applyApiHeaders(res);
+    return applyResponseHeaders(res);
   }
 
   const userId = getUserId(req);
 
-  if (!isPublicBypassPath(pathname)) {
+  const isDashboardPath = pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+
+  if (isDashboardPath && !isPublicBypassPath(pathname)) {
     const maintenance = await getMaintenanceRow();
     const maintenanceEnabled = Boolean(maintenance?.maintenance_mode);
 
@@ -432,33 +445,18 @@ export async function proxy(req: NextRequest) {
       const admin = userId ? await isAdminUser(userId) : false;
 
       if (!admin) {
-        if (pathname.startsWith("/api/")) {
-          const out = NextResponse.json(
-            {
-              ok: false,
-              error: "Maintenance in progress",
-              maintenance: true,
-              title: maintenance?.maintenance_title ?? null,
-              message: maintenance?.maintenance_message ?? null,
-            },
-            { status: 503 }
-          );
-          out.headers.set("Retry-After", "300");
-          return applyApiHeaders(out);
-        }
-
         const url = req.nextUrl.clone();
         url.pathname = "/maintenance";
         url.search = "";
         const out = NextResponse.redirect(url, 307);
-        return applyApiHeaders(out);
+        return applyResponseHeaders(out);
       }
     }
   }
 
   if (!pathname.startsWith("/api/")) {
     const res = NextResponse.next({ request: { headers: requestHeaders } });
-    return applyApiHeaders(res);
+    return applyResponseHeaders(res);
   }
 
   const ip = getIp(req);
@@ -474,7 +472,7 @@ export async function proxy(req: NextRequest) {
       periodSeconds: 60 * 60 * 24,
       failClosed: !!lim.failClosed,
     });
-    if (q) return applyApiHeaders(q);
+    if (q) return applyResponseHeaders(q);
   }
 
   // NOTE: enforceRateLimit() takes a single config object.
@@ -488,20 +486,20 @@ export async function proxy(req: NextRequest) {
       failClosed: !!lim.failClosed,
     });
     if (res) {
-      return applyApiHeaders(res);
+      return applyResponseHeaders(res);
     }
   } catch (err) {
     // Fallback.
     if (lim.failClosed) {
       const out = NextResponse.json({ error: "Rate limiting unavailable" }, { status: 503 });
       out.headers.set("Retry-After", "5");
-      return applyApiHeaders(out);
+      return applyResponseHeaders(out);
     }
     console.warn("[rateLimit] proxy disabled (fail-open)", err);
   }
 
   const res = NextResponse.next({ request: { headers: requestHeaders } });
-  return applyApiHeaders(res);
+  return applyResponseHeaders(res);
 }
 
 export const config = {

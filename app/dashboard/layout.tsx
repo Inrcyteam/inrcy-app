@@ -1,4 +1,8 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import React from "react";
+import { unstable_noStore as noStore } from "next/cache";
 import styles from "./dashboard.module.css";
 import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabaseServer";
@@ -9,6 +13,8 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  noStore();
+
   const supabase = await createSupabaseServer();
 
   const {
@@ -40,6 +46,3 @@ export default async function DashboardLayout({
     </div>
   );
 }
-
-
-

@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { redirect } from "next/navigation";
+import Script from "next/script";
 
 import styles from "./maintenance.module.css";
 import { getMaintenanceState, isAdminUser } from "@/lib/maintenance";
@@ -54,7 +55,6 @@ export default async function MaintenancePage() {
             />
 
             <div className={styles.brandBlock}>
-              <div className={styles.brandName}>iNrCy</div>
               <div className={styles.brandSub}>Plateforme temporairement indisponible</div>
             </div>
           </div>
@@ -106,6 +106,14 @@ export default async function MaintenancePage() {
           </div>
         </div>
       </section>
+
+      <Script id="maintenance-auto-refresh" strategy="afterInteractive">
+        {`
+          setInterval(() => {
+            window.location.reload();
+          }, 60000);
+        `}
+      </Script>
     </main>
   );
 }
