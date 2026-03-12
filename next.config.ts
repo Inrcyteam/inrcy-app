@@ -20,6 +20,24 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/embed/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+          {
+            key: "Content-Security-Policy",
+            value:
+              "default-src 'none'; img-src https: data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src https: data:; base-uri 'none'; form-action 'none'; frame-ancestors *",
+          },
+          { key: "Cache-Control", value: "no-store" },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=15552000; includeSubDomains; preload",
+          },
+        ],
+      },
+      {
         source: "/widgets/:path*",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
@@ -34,7 +52,7 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: "/:path*",
+        source: "/((?!widgets/|embed/).*)",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-DNS-Prefetch-Control", value: "off" },

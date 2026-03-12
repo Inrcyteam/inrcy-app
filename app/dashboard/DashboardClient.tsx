@@ -4260,7 +4260,7 @@ const checkActivity = useCallback(async () => {
                 <div className={styles.blockTitle}>Widget « Actus »</div>
               </div>
               <div className={styles.blockSub}>
-                Colle ce code dans ton site iNrCy (Elementor → widget HTML) pour afficher les <strong>5 dernières actus</strong> publiées depuis Booster.
+                Colle ce code iframe dans ton site iNrCy (Elementor → widget HTML) pour afficher les <strong>5 dernières actus</strong> publiées depuis Booster.
               </div>
 
               {(() => {
@@ -4272,11 +4272,9 @@ const checkActivity = useCallback(async () => {
                 } catch {
                   // ignore
                 }
-                const widgetV = process.env.NEXT_PUBLIC_WIDGET_VERSION || "1";
                 const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
-                const scriptUrl = `${publicAppOrigin}/widgets/inrcy-actus.js?v=${widgetV}`;
-                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-source=\"inrcy_site\" data-limit=\"5\" data-title=\"Actualités\" data-token=\"${widgetTokenInrcySite}\"></div>
-<script async src=\"${scriptUrl}\"></script>`;
+                const embedUrl = `${publicAppOrigin}/embed/actus?domain=${encodeURIComponent(domain || "votre-site.fr")}&source=inrcy_site&limit=5&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenInrcySite)}`;
+                const snippet = `<iframe src=\"${embedUrl}\" width=\"100%\" height=\"760\" style=\"border:0;width:100%;max-width:100%;overflow:hidden;border-radius:20px;background:transparent;\" loading=\"lazy\" referrerpolicy=\"strict-origin-when-cross-origin\" title=\"Actualités iNrCy\"></iframe>`;
                 return (
                   <>
                     <textarea
@@ -4609,7 +4607,7 @@ const checkActivity = useCallback(async () => {
                 <div className={styles.blockTitle}>Widget « Actus »</div>
               </div>
               <div className={styles.blockSub}>
-                Colle ce code dans ton site (WordPress, Wix, Webflow, HTML…) pour afficher les <strong>5 dernières actus</strong> publiées depuis Booster.
+                Colle ce code iframe dans ton site (WordPress, Wix, Webflow, HTML…) pour afficher les <strong>5 dernières actus</strong> publiées depuis Booster.
               </div>
 
               {(() => {
@@ -4621,11 +4619,9 @@ const checkActivity = useCallback(async () => {
                 } catch {
                   // ignore
                 }
-                const widgetV = process.env.NEXT_PUBLIC_WIDGET_VERSION || "1";
                 const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
-                const scriptUrl = `${publicAppOrigin}/widgets/inrcy-actus.js?v=${widgetV}`;
-                const snippet = `<div data-inrcy-actus data-domain=\"${domain || "votre-site.fr"}\" data-source=\"site_web\" data-limit=\"5\" data-title=\"Actualités\" data-token=\"${widgetTokenSiteWeb}\"></div>
-<script async src=\"${scriptUrl}\"></script>`;
+                const embedUrl = `${publicAppOrigin}/embed/actus?domain=${encodeURIComponent(domain || "votre-site.fr")}&source=site_web&limit=5&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenSiteWeb)}`;
+                const snippet = `<iframe src=\"${embedUrl}\" width=\"100%\" height=\"760\" style=\"border:0;width:100%;max-width:100%;overflow:hidden;border-radius:20px;background:transparent;\" loading=\"lazy\" referrerpolicy=\"strict-origin-when-cross-origin\" title=\"Actualités iNrCy\"></iframe>`;
                 return (
                   <>
                     <textarea
