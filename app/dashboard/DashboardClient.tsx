@@ -388,6 +388,24 @@ export default function DashboardClient() {
     }
   }, []);
 
+  const normalizeSiteUrl = useCallback((input: string) => {
+    const raw = (input || "").trim();
+    if (!raw) return null;
+    try {
+      const withProto = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      const parsed = new URL(withProto);
+      const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
+      if (!hostname || !hostname.includes(".")) return null;
+      if (!["http:", "https:"].includes(parsed.protocol)) return null;
+      return {
+        normalizedUrl: withProto,
+        hostname,
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
   const fetchWidgetToken = useCallback(async (domain: string, source: "inrcy_site" | "site_web") => {
     if (!domain) return "";
     const res = await fetch(
@@ -411,6 +429,7 @@ const [referralError, setReferralError] = useState<string | null>(null);
 // ✅ Site iNrCy (ownership + url + config)
 const [siteInrcyOwnership, setSiteInrcyOwnership] = useState<Ownership>("none");
 const [siteInrcyUrl, setSiteInrcyUrl] = useState<string>("");
+const [siteInrcySavedUrl, setSiteInrcySavedUrl] = useState<string>("");
 const [siteInrcyContactEmail, setSiteInrcyContactEmail] = useState<string>("");
 const [siteInrcySettingsText, setSiteInrcySettingsText] = useState<string>("{}");
 const [siteInrcySettingsError, setSiteInrcySettingsError] = useState<string | null>(null);
@@ -444,6 +463,7 @@ const [gscProperty, setGscProperty] = useState<string>("");
 
 // ✅ Site web (indépendant)
 const [siteWebUrl, setSiteWebUrl] = useState<string>("");
+const [siteWebSavedUrl, setSiteWebSavedUrl] = useState<string>("");
 const [siteWebSettingsText, setSiteWebSettingsText] = useState<string>("{}");
 const [siteWebSettingsError, setSiteWebSettingsError] = useState<string | null>(null);
 const [siteWebGa4MeasurementId, setSiteWebGa4MeasurementId] = useState<string>("");
@@ -741,6 +761,7 @@ const loadSiteInrcy = useCallback(async () => {
   // URL iNrCy : profile > inrcy table
   const url = ((inrcyCfg?.site_url ?? profile?.inrcy_site_url ?? "") as string).trim();
   setSiteInrcyUrl(url);
+  setSiteInrcySavedUrl(url);
 
   // Contact email iNrCy : inrcy table
   const email = (inrcyCfg?.contact_email ?? "") as string;
@@ -772,6 +793,7 @@ const proSettingsObj =
   }
   setSiteWebSettingsError(null);
   setSiteWebUrl((siteWebObj as any)?.url ?? "");
+  setSiteWebSavedUrl((siteWebObj as any)?.url ?? "");
   setSiteWebGa4MeasurementId((siteWebObj as any)?.ga4?.measurement_id ?? "");
   setSiteWebGa4PropertyId(String((siteWebObj as any)?.ga4?.property_id ?? ""));
   setSiteWebGscProperty((siteWebObj as any)?.gsc?.property ?? "");
@@ -863,17 +885,22 @@ useEffect(() => {
 }, [loadSiteInrcy]);
 
 const canAccessSiteInrcy = siteInrcyOwnership !== "none";
-const canViewSite = canAccessSiteInrcy && !!siteInrcyUrl;
+const savedSiteInrcyUrlMeta = normalizeSiteUrl(siteInrcySavedUrl);
+const savedSiteWebUrlMeta = normalizeSiteUrl(siteWebSavedUrl);
+const draftSiteInrcyUrlMeta = normalizeSiteUrl(siteInrcyUrl);
+const draftSiteWebUrlMeta = normalizeSiteUrl(siteWebUrl);
+
+const canViewSite = canAccessSiteInrcy && !!draftSiteInrcyUrlMeta;
 const canConfigureSite = canAccessSiteInrcy;
 
-// ✅ UX : on grise les boutons de connexion tant que l'URL n'est pas renseignée
-const hasSiteInrcyUrl = !!siteInrcyUrl?.trim();
-const hasSiteWebUrl = !!siteWebUrl?.trim();
+// ✅ UX : Google ne devient connectable qu'une fois un vrai lien enregistré
+const hasSiteInrcyUrl = !!savedSiteInrcyUrlMeta;
+const hasSiteWebUrl = !!savedSiteWebUrlMeta;
 const canConnectSiteInrcyGoogle = canConfigureSite && hasSiteInrcyUrl;
 const canConnectSiteWebGoogle = hasSiteWebUrl;
 
-const siteInrcyAllGreen = siteInrcyOwnership !== "none" && !!siteInrcyUrl?.trim() && siteInrcyGa4Connected && siteInrcyGscConnected;
-const siteWebAllGreen = !!siteWebUrl?.trim() && siteWebGa4Connected && siteWebGscConnected;
+const siteInrcyAllGreen = siteInrcyOwnership !== "none" && hasSiteInrcyUrl && siteInrcyGa4Connected && siteInrcyGscConnected;
+const siteWebAllGreen = hasSiteWebUrl && siteWebGa4Connected && siteWebGscConnected;
 
 const ConnectionPill = ({ connected }: { connected: boolean }) => (
   <span
@@ -1031,7 +1058,7 @@ const connectSiteInrcyGa4 = useCallback(() => {
   });
   // L'OAuth stats est séparé de l'OAuth Gmail (mails).
   window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
-}, [siteInrcyOwnership, siteInrcyUrl]);
+}, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl]);
 
 const connectSiteInrcyGsc = useCallback(() => {
   if (siteInrcyOwnership === "none") {
@@ -1050,7 +1077,7 @@ const connectSiteInrcyGsc = useCallback(() => {
     siteUrl,
   });
   window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
-}, [siteInrcyOwnership, siteInrcyUrl]);
+}, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl]);
 
 // ✅ Mode rented : déclenche une activation "serveur" (sans saisie d'IDs)
 // - Si un token Google existe déjà côté Supabase, l'API résout GA4 + GSC via le domaine et remplit les settings.
@@ -1331,6 +1358,11 @@ const disconnectSiteInrcyGsc = useCallback(() => {
 const saveSiteInrcyUrl = useCallback(async () => {
   if (siteInrcyOwnership === "none") return;
   const url = siteInrcyUrl.trim();
+  const normalized = normalizeSiteUrl(url);
+  if (!normalized) {
+    setSiteInrcySettingsError("Renseigne un vrai lien de site (ex: https://monsite.fr) avant d'enregistrer.");
+    return;
+  }
 
   const supabase = createClient();
   const { data: authData } = await supabase.auth.getUser();
@@ -1354,10 +1386,11 @@ const saveSiteInrcyUrl = useCallback(async () => {
   }
 
   setSiteInrcySettingsError(null);
+  setSiteInrcySavedUrl(url);
   triggerGeneratorRefresh();
   setSiteInrcyUrlNotice("✅ Lien du site enregistré");
   window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
-}, [siteInrcyOwnership, siteInrcyUrl]);
+}, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl]);
 
 // =========================
 // ✅ Site web (indépendant)
@@ -1412,23 +1445,21 @@ const saveSiteWebUrl = useCallback(async () => {
   }
 
   const url = siteWebUrl.trim();
-  parsed.url = url;
-
-  // Store a normalized domain to make the public widget lookup fast.
-  // (Used by /api/widgets/actus?domain=...)
-  try {
-    const withProto = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-    const host = new URL(withProto).hostname.toLowerCase().replace(/^www\./, "");
-    parsed.domain = host;
-  } catch {
-    // ignore parse errors – url may be partial while typing
+  const normalized = normalizeSiteUrl(url);
+  if (!normalized) {
+    setSiteWebSettingsError("Renseigne un vrai lien de site (ex: https://monsite.fr) avant d'enregistrer.");
+    return;
   }
 
+  parsed.url = url;
+  parsed.domain = normalized.hostname;
+
   await updateSiteWebSettings(parsed);
+  setSiteWebSavedUrl(url);
   triggerGeneratorRefresh();
   setSiteWebUrlNotice("✅ Lien du site enregistré");
   window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
-}, [siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
+}, [normalizeSiteUrl, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
 
 // ✅ Réinitialisation globale (lien + GA4 + GSC)
 const resetGoogleStats = useCallback(async (source: GoogleSource) => {
@@ -1464,6 +1495,7 @@ const resetSiteInrcyAll = useCallback(async () => {
   }
 
   setSiteInrcyUrl("");
+  setSiteInrcySavedUrl("");
   setGa4MeasurementId("");
   setGa4PropertyId("");
   setGscProperty("");
@@ -1481,6 +1513,7 @@ const resetSiteWebAll = useCallback(async () => {
   await updateSiteWebSettings({});
 
   setSiteWebUrl("");
+  setSiteWebSavedUrl("");
   setSiteWebGa4MeasurementId("");
   setSiteWebGa4PropertyId("");
   setSiteWebGscProperty("");
@@ -4164,7 +4197,7 @@ const checkActivity = useCallback(async () => {
             >
               <div className={styles.blockHeaderRow}>
                 <div className={styles.blockTitle}>Lien du site</div>
-                <ConnectionPill connected={siteInrcyOwnership !== "none" && !!siteInrcyUrl?.trim()} />
+                <ConnectionPill connected={siteInrcyOwnership !== "none" && hasSiteInrcyUrl} />
               </div>
               <div className={styles.blockSub}>
                 Le bouton <strong>Voir le site</strong> de la bulle utilisera ce lien.
@@ -4201,11 +4234,11 @@ const checkActivity = useCallback(async () => {
                 </button>
 
                 <a
-                  href={siteInrcyUrl || "#"}
+                  href={draftSiteInrcyUrlMeta?.normalizedUrl || "#"}
                   target="_blank"
                   rel="noreferrer"
                   className={`${styles.actionBtn} ${styles.viewBtn}`}
-                  style={{ pointerEvents: siteInrcyUrl ? "auto" : "none", opacity: siteInrcyUrl ? 1 : 0.5 }}
+                  style={{ pointerEvents: draftSiteInrcyUrlMeta ? "auto" : "none", opacity: draftSiteInrcyUrlMeta ? 1 : 0.5 }}
                 >
                   Voir le site
                 </a>
@@ -4225,14 +4258,13 @@ const checkActivity = useCallback(async () => {
             >
               <div className={styles.blockHeaderRow}>
                 <div className={styles.blockTitle}>Widget « Actus »</div>
-                <ConnectionPill connected={siteInrcyOwnership !== "none" && !!siteInrcyUrl?.trim()} />
               </div>
               <div className={styles.blockSub}>
                 Colle ce code dans ton site iNrCy (Elementor → widget HTML) pour afficher les <strong>5 dernières actus</strong> publiées depuis Booster.
               </div>
 
               {(() => {
-                const url = (siteInrcyUrl || "").trim();
+                const url = (siteInrcySavedUrl || "").trim();
                 let domain = "";
                 try {
                   const withProto = /^https?:\/\//i.test(url) ? url : url ? `https://${url}` : "";
@@ -4299,23 +4331,25 @@ const checkActivity = useCallback(async () => {
                 <div className={styles.blockTitle}>Google Analytics (GA4)</div>
                 <ConnectionPill connected={siteInrcyGa4Connected} />
               </div>
-              <div className={styles.blockSub}>Rattache le tracking à ton site iNrCy</div>
+              <div className={styles.blockSub}>Connexion automatique : les identifiants GA4 se remplissent après OAuth</div>
 
               <label style={{ display: "grid", gap: 8 }}>
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>ID de mesure (ex: G-XXXXXXXXXX)</span>
                 <input
                   value={ga4MeasurementId}
-                  onChange={(e) => setGa4MeasurementId(e.target.value)}
-                  placeholder="G-XXXXXXXXXX"
+                  readOnly
+                  aria-readonly="true"
+                  placeholder="Remplissage automatique après connexion"
                   style={{
                     width: "100%",
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
+                    background: "rgba(15,23,42,0.4)",
+                    colorScheme: "dark",
                     padding: "10px 12px",
-                    color: "white",
+                    color: "rgba(255,255,255,0.88)",
                     outline: "none",
+                    cursor: "not-allowed",
                   }}
                 />
               </label>
@@ -4325,33 +4359,25 @@ const checkActivity = useCallback(async () => {
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Property ID (numérique, ex: 123456789)</span>
                 <input
                   value={ga4PropertyId}
-                  onChange={(e) => setGa4PropertyId(e.target.value)}
+                  readOnly
+                  aria-readonly="true"
                   inputMode="numeric"
-                  placeholder="123456789"
+                  placeholder="Remplissage automatique après connexion"
                   style={{
                     width: "100%",
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
+                    background: "rgba(15,23,42,0.4)",
+                    colorScheme: "dark",
                     padding: "10px 12px",
-                    color: "white",
+                    color: "rgba(255,255,255,0.88)",
                     outline: "none",
+                    cursor: "not-allowed",
                   }}
                 />
               </label>
 
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.iconBtn}`}
-                  onClick={attachGoogleAnalytics}
-                  disabled={siteInrcyOwnership === "none"}
-                  title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Enregistrer (GA4)"}
-                  aria-label="Enregistrer (GA4)"
-                >
-                  <SaveIcon />
-                </button>
                 {siteInrcyGa4Connected ? (
                   <button
                     type="button"
@@ -4398,7 +4424,7 @@ const checkActivity = useCallback(async () => {
                 <div className={styles.blockTitle}>Google Search Console</div>
                 <ConnectionPill connected={siteInrcyGscConnected} />
               </div>
-              <div className={styles.blockSub}>Active le suivi SEO (requêtes, impressions, clics)</div>
+              <div className={styles.blockSub}>Connexion automatique : la propriété GSC se remplit après OAuth</div>
 
               <label style={{ display: "grid", gap: 8 }}>
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
@@ -4406,32 +4432,24 @@ const checkActivity = useCallback(async () => {
                 </span>
                 <input
                   value={gscProperty}
-                  onChange={(e) => setGscProperty(e.target.value)}
-                  placeholder="sc-domain:monsite.fr"
+                  readOnly
+                  aria-readonly="true"
+                  placeholder="Remplissage automatique après connexion"
                   style={{
                     width: "100%",
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
+                    background: "rgba(15,23,42,0.4)",
+                    colorScheme: "dark",
                     padding: "10px 12px",
-                    color: "white",
+                    color: "rgba(255,255,255,0.88)",
                     outline: "none",
+                    cursor: "not-allowed",
                   }}
                 />
               </label>
 
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.iconBtn}`}
-                  onClick={attachGoogleSearchConsole}
-                  disabled={siteInrcyOwnership === "none"}
-                  title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Enregistrer (GSC)"}
-                  aria-label="Enregistrer (GSC)"
-                >
-                  <SaveIcon />
-                </button>
                 {siteInrcyGscConnected ? (
                   <button
                     type="button"
@@ -4507,12 +4525,12 @@ const checkActivity = useCallback(async () => {
                     borderRadius: 999,
                     background: siteWebAllGreen
                       ? "rgba(34,197,94,0.95)"
-                      : siteWebUrl?.trim()
+                      : hasSiteWebUrl
                       ? "rgba(59,130,246,0.95)"
                       : "rgba(148,163,184,0.9)",
                   }}
                 />
-                Statut : <strong>{siteWebUrl?.trim() ? (siteWebAllGreen ? "Connecté" : "À connecter") : "À configurer"}</strong>
+                Statut : <strong>{hasSiteWebUrl ? (siteWebAllGreen ? "Connecté" : "À connecter") : "À configurer"}</strong>
               </span>
             </div>
 
@@ -4528,7 +4546,7 @@ const checkActivity = useCallback(async () => {
             >
               <div className={styles.blockHeaderRow}>
                 <div className={styles.blockTitle}>Lien du site</div>
-                <ConnectionPill connected={!!siteWebUrl?.trim()} />
+                <ConnectionPill connected={hasSiteWebUrl} />
               </div>
               <div className={styles.blockSub}>
                 Le bouton <strong>Voir le site</strong> de la bulle utilisera ce lien.
@@ -4563,11 +4581,11 @@ const checkActivity = useCallback(async () => {
                 </button>
 
                 <a
-                  href={siteWebUrl || "#"}
+                  href={draftSiteWebUrlMeta?.normalizedUrl || "#"}
                   target="_blank"
                   rel="noreferrer"
                   className={`${styles.actionBtn} ${styles.viewBtn}`}
-                  style={{ pointerEvents: siteWebUrl ? "auto" : "none", opacity: siteWebUrl ? 1 : 0.5 }}
+                  style={{ pointerEvents: draftSiteWebUrlMeta ? "auto" : "none", opacity: draftSiteWebUrlMeta ? 1 : 0.5 }}
                 >
                   Voir le site
                 </a>
@@ -4588,14 +4606,13 @@ const checkActivity = useCallback(async () => {
             >
               <div className={styles.blockHeaderRow}>
                 <div className={styles.blockTitle}>Widget « Actus »</div>
-                <ConnectionPill connected={!!siteWebUrl?.trim()} />
               </div>
               <div className={styles.blockSub}>
                 Colle ce code dans ton site (WordPress, Wix, Webflow, HTML…) pour afficher les <strong>5 dernières actus</strong> publiées depuis Booster.
               </div>
 
               {(() => {
-                const url = (siteWebUrl || "").trim();
+                const url = (siteWebSavedUrl || "").trim();
                 let domain = "";
                 try {
                   const withProto = /^https?:\/\//i.test(url) ? url : url ? `https://${url}` : "";
@@ -4664,23 +4681,25 @@ const checkActivity = useCallback(async () => {
                 <div className={styles.blockTitle}>Google Analytics (GA4)</div>
                 <ConnectionPill connected={siteWebGa4Connected} />
               </div>
-              <div className={styles.blockSub}>Rattache le tracking à ton site web</div>
+              <div className={styles.blockSub}>Connexion automatique : les identifiants GA4 se remplissent après OAuth</div>
 
               <label style={{ display: "grid", gap: 8 }}>
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>ID de mesure (ex: G-XXXXXXXXXX)</span>
                 <input
                   value={siteWebGa4MeasurementId}
-                  onChange={(e) => setSiteWebGa4MeasurementId(e.target.value)}
-                  placeholder="G-XXXXXXXXXX"
+                  readOnly
+                  aria-readonly="true"
+                  placeholder="Remplissage automatique après connexion"
                   style={{
                     width: "100%",
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
+                    background: "rgba(15,23,42,0.4)",
+                    colorScheme: "dark",
                     padding: "10px 12px",
-                    color: "white",
+                    color: "rgba(255,255,255,0.88)",
                     outline: "none",
+                    cursor: "not-allowed",
                   }}
                 />
               </label>
@@ -4690,32 +4709,25 @@ const checkActivity = useCallback(async () => {
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Property ID (numérique, ex: 123456789)</span>
                 <input
                   value={siteWebGa4PropertyId}
-                  onChange={(e) => setSiteWebGa4PropertyId(e.target.value)}
+                  readOnly
+                  aria-readonly="true"
                   inputMode="numeric"
-                  placeholder="123456789"
+                  placeholder="Remplissage automatique après connexion"
                   style={{
                     width: "100%",
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
+                    background: "rgba(15,23,42,0.4)",
+                    colorScheme: "dark",
                     padding: "10px 12px",
-                    color: "white",
+                    color: "rgba(255,255,255,0.88)",
                     outline: "none",
+                    cursor: "not-allowed",
                   }}
                 />
               </label>
 
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.iconBtn}`}
-                  onClick={attachWebsiteGoogleAnalytics}
-                  title="Enregistrer (GA4)"
-                  aria-label="Enregistrer (GA4)"
-                >
-                  <SaveIcon />
-                </button>
                 {siteWebGa4Connected ? (
                   <button
                     type="button"
@@ -4755,7 +4767,7 @@ const checkActivity = useCallback(async () => {
                 <div className={styles.blockTitle}>Google Search Console</div>
                 <ConnectionPill connected={siteWebGscConnected} />
               </div>
-              <div className={styles.blockSub}>Active le suivi SEO (requêtes, impressions, clics)</div>
+              <div className={styles.blockSub}>Connexion automatique : la propriété GSC se remplit après OAuth</div>
 
               <label style={{ display: "grid", gap: 8 }}>
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
@@ -4763,31 +4775,24 @@ const checkActivity = useCallback(async () => {
                 </span>
                 <input
                   value={siteWebGscProperty}
-                  onChange={(e) => setSiteWebGscProperty(e.target.value)}
-                  placeholder="sc-domain:monsite.fr"
+                  readOnly
+                  aria-readonly="true"
+                  placeholder="Remplissage automatique après connexion"
                   style={{
                     width: "100%",
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
+                    background: "rgba(15,23,42,0.4)",
+                    colorScheme: "dark",
                     padding: "10px 12px",
-                    color: "white",
+                    color: "rgba(255,255,255,0.88)",
                     outline: "none",
+                    cursor: "not-allowed",
                   }}
                 />
               </label>
 
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.iconBtn}`}
-                  onClick={attachWebsiteGoogleSearchConsole}
-                  title="Enregistrer (GSC)"
-                  aria-label="Enregistrer (GSC)"
-                >
-                  <SaveIcon />
-                </button>
                 {siteWebGscConnected ? (
                   <button
                     type="button"
