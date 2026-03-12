@@ -3,6 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { enforceQuota, enforceRateLimit } from "./lib/rateLimit";
 
+const ADMIN_USER_IDS = ["670b527d-5e08-42b4-ba95-e58e812339eb"] as const;
+
+type MaintenanceRow = {
+  maintenance_mode?: boolean;
+  maintenance_title?: string | null;
+  maintenance_message?: string | null;
+  updated_at?: string | null;
+};
+
 function getIp(req: NextRequest): string {
   // Vercel provides req.ip, but keep fallbacks for local/dev/proxies.
   const direct = (req as unknown as { ip?: string }).ip;
@@ -37,16 +46,20 @@ function base64UrlDecode(input: string): string {
   return Buffer.from(b64, "base64").toString("utf-8");
 }
 
-function tryGetUserIdFromJwt(jwt?: string): string | null {
+function tryGetJwtPayload(jwt?: string): Record<string, unknown> | null {
   if (!jwt) return null;
   const parts = jwt.split(".");
   if (parts.length < 2) return null;
   try {
-    const payload = JSON.parse(base64UrlDecode(parts[1]));
-    return typeof payload?.sub === "string" ? payload.sub : null;
+    return JSON.parse(base64UrlDecode(parts[1]));
   } catch {
     return null;
   }
+}
+
+function tryGetUserIdFromJwt(jwt?: string): string | null {
+  const payload = tryGetJwtPayload(jwt);
+  return typeof payload?.sub === "string" ? payload.sub : null;
 }
 
 function getUserId(req: NextRequest): string | null {
@@ -80,6 +93,87 @@ function getUserId(req: NextRequest): string | null {
   }
 
   return null;
+}
+
+function getSupabaseHeaders(): HeadersInit | null {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const token = serviceRoleKey || anonKey;
+
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !token) return null;
+
+  return {
+    apikey: token,
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+}
+
+async function getMaintenanceRow(): Promise<MaintenanceRow | null> {
+  try {
+    const headers = getSupabaseHeaders();
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!headers || !supabaseUrl) return null;
+
+    const url = new URL(`${supabaseUrl}/rest/v1/app_settings`);
+    url.searchParams.set(
+      "select",
+      "maintenance_mode,maintenance_title,maintenance_message,updated_at"
+    );
+    url.searchParams.set("id", "eq.1");
+    url.searchParams.set("limit", "1");
+
+    const res = await fetch(url.toString(), {
+      headers,
+      cache: "no-store",
+    });
+
+    if (!res.ok) return null;
+    const rows = (await res.json()) as MaintenanceRow[];
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function isAdminUser(userId: string | null): Promise<boolean> {
+  if (!userId) return false;
+  if (ADMIN_USER_IDS.includes(userId as (typeof ADMIN_USER_IDS)[number])) return true;
+
+  try {
+    const headers = getSupabaseHeaders();
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!headers || !supabaseUrl) return false;
+
+    const url = new URL(`${supabaseUrl}/rest/v1/profiles`);
+    url.searchParams.set("select", "role");
+    url.searchParams.set("user_id", `eq.${userId}`);
+    url.searchParams.set("limit", "1");
+
+    const res = await fetch(url.toString(), {
+      headers,
+      cache: "no-store",
+    });
+
+    if (!res.ok) return false;
+    const rows = (await res.json()) as Array<{ role?: string | null }>;
+    const role = rows[0]?.role;
+    return role === "admin" || role === "staff";
+  } catch {
+    return false;
+  }
+}
+
+function isPublicBypassPath(pathname: string): boolean {
+  return (
+    pathname === "/maintenance" ||
+    pathname === "/favicon.ico" ||
+    pathname === "/site.webmanifest" ||
+    pathname.startsWith("/_next/") ||
+    pathname.startsWith("/icons/") ||
+    pathname.startsWith("/widgets/") ||
+    pathname.startsWith("/api/health")
+  );
 }
 
 type LimitPlan = {
@@ -188,7 +282,9 @@ export async function proxy(req: NextRequest) {
     // Avoid caching API responses at the edge/browser by default
     res.headers.set("cache-control", "no-store");
     // Prevent API endpoints from being indexed
-    res.headers.set("x-robots-tag", "noindex, nofollow");
+    if (pathname.startsWith("/api/")) {
+      res.headers.set("x-robots-tag", "noindex, nofollow");
+    }
     return res;
   };
 
@@ -198,8 +294,46 @@ export async function proxy(req: NextRequest) {
     return applyApiHeaders(res);
   }
 
-  const ip = getIp(req);
   const userId = getUserId(req);
+
+  if (!isPublicBypassPath(pathname)) {
+    const maintenance = await getMaintenanceRow();
+    const maintenanceEnabled = Boolean(maintenance?.maintenance_mode);
+
+    if (maintenanceEnabled && userId) {
+      const admin = await isAdminUser(userId);
+
+      if (!admin) {
+        if (pathname.startsWith("/api/")) {
+          const out = NextResponse.json(
+            {
+              ok: false,
+              error: "Maintenance in progress",
+              maintenance: true,
+              title: maintenance?.maintenance_title ?? null,
+              message: maintenance?.maintenance_message ?? null,
+            },
+            { status: 503 }
+          );
+          out.headers.set("Retry-After", "300");
+          return applyApiHeaders(out);
+        }
+
+        const url = req.nextUrl.clone();
+        url.pathname = "/maintenance";
+        url.search = "";
+        const out = NextResponse.redirect(url, 307);
+        return applyApiHeaders(out);
+      }
+    }
+  }
+
+  if (!pathname.startsWith("/api/")) {
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    return applyApiHeaders(res);
+  }
+
+  const ip = getIp(req);
   const lim = pickLimit(pathname, req.method);
   const identifier = userId ? `u:${userId}` : `ip:${ip}`;
 
@@ -243,5 +377,7 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+  ],
 };

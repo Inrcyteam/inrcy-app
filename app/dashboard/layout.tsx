@@ -2,6 +2,7 @@ import React from "react";
 import styles from "./dashboard.module.css";
 import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { getMaintenanceState, isAdminUser } from "@/lib/maintenance";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServer();
@@ -9,6 +10,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (error || !data?.user) {
     redirect("/login");
+  }
+
+  const maintenance = await getMaintenanceState();
+  const isAdmin = await isAdminUser(data.user.id);
+
+  if (maintenance.enabled && !isAdmin) {
+    redirect("/maintenance");
   }
 
   return (
