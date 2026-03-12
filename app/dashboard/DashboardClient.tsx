@@ -454,8 +454,10 @@ const [siteInrcyTrackingBusy, setSiteInrcyTrackingBusy] = useState(false);
   const [siteWebActusLimit, setSiteWebActusLimit] = useState<number>(5);
   const [siteInrcyActusFont, setSiteInrcyActusFont] = useState<"site" | "inter" | "poppins" | "montserrat" | "lora">("site");
   const [siteWebActusFont, setSiteWebActusFont] = useState<"site" | "inter" | "poppins" | "montserrat" | "lora">("site");
-  const [siteInrcyActusTheme, setSiteInrcyActusTheme] = useState<"white" | "dark" | "gray" | "nature" | "sand">("nature");
-  const [siteWebActusTheme, setSiteWebActusTheme] = useState<"white" | "dark" | "gray" | "nature" | "sand">("nature");
+  const [showSiteInrcyActusCode, setShowSiteInrcyActusCode] = useState(false);
+  const [showSiteWebActusCode, setShowSiteWebActusCode] = useState(false);
+  const [siteInrcyCodeCopied, setSiteInrcyCodeCopied] = useState(false);
+  const [siteWebCodeCopied, setSiteWebCodeCopied] = useState(false);
 
   // ✅ Connexions Google (viennent de integrations, pas des IDs)
   const [siteInrcyGa4Connected, setSiteInrcyGa4Connected] = useState(false);
@@ -4474,7 +4476,7 @@ const checkActivity = useCallback(async () => {
                   <span className={styles.blockSub}><strong>Police</strong></span>
                   <select
                     value={siteInrcyActusFont}
-                    onChange={(e) => setSiteInrcyActusFont((( ["site", "inter", "poppins", "montserrat", "lora"] as const).includes(e.target.value as never) ? e.target.value : "site") as "site" | "inter" | "poppins" | "montserrat" | "lora")}
+                    onChange={(e) => setSiteInrcyActusFont(((["site", "inter", "poppins", "montserrat", "lora"] as const).includes(e.target.value as never) ? e.target.value : "site") as "site" | "inter" | "poppins" | "montserrat" | "lora")}
                     style={{
                       borderRadius: 12,
                       border: "1px solid rgba(255,255,255,0.14)",
@@ -4492,28 +4494,6 @@ const checkActivity = useCallback(async () => {
                     <option value="lora">Lora</option>
                   </select>
                 </label>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Couleur de fond</strong></span>
-                  <select
-                    value={siteInrcyActusTheme}
-                    onChange={(e) => setSiteInrcyActusTheme((( ["white", "dark", "gray", "nature", "sand"] as const).includes(e.target.value as never) ? e.target.value : "nature") as "white" | "dark" | "gray" | "nature" | "sand")}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="white">Blanc</option>
-                    <option value="dark">Noir</option>
-                    <option value="gray">Gris</option>
-                    <option value="nature">Vert doux</option>
-                    <option value="sand">Sable</option>
-                  </select>
-                </label>
               </div>
 
               {(() => {
@@ -4527,81 +4507,62 @@ const checkActivity = useCallback(async () => {
                 }
                 const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
                 const iframeId = `inrcy-actus-${domain || "site"}-${siteInrcyActusLayout}`.replace(/[^a-z0-9_-]/gi, "-");
-                const initialHeight = siteInrcyActusLayout === "carousel" ? 560 : 260;
-                const embedUrl = `${publicAppOrigin}/embed/actus?frameId=${encodeURIComponent(iframeId)}&domain=${encodeURIComponent(domain || "votre-site.fr")}&source=inrcy_site&layout=${encodeURIComponent(siteInrcyActusLayout)}&limit=${encodeURIComponent(String(siteInrcyActusLimit))}&font=${encodeURIComponent(siteInrcyActusFont)}&theme=${encodeURIComponent(siteInrcyActusTheme)}&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenInrcySite)}`;
+                const initialHeight = siteInrcyActusLayout === "carousel" ? 420 : 260;
+                const embedUrl = `${publicAppOrigin}/embed/actus?domain=${encodeURIComponent(domain || "votre-site.fr")}&source=inrcy_site&layout=${encodeURIComponent(siteInrcyActusLayout)}&limit=${encodeURIComponent(String(siteInrcyActusLimit))}&font=${encodeURIComponent(siteInrcyActusFont)}&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenInrcySite)}`;
                 const snippet = `<iframe id="${iframeId}" src="${embedUrl}" width="100%" height="${initialHeight}" style="border:0;width:100%;max-width:100%;overflow:hidden;border-radius:24px;background:transparent;display:block;" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" scrolling="no" title="Actualités iNrCy"></iframe>
 <script>
 (function(){
-  var iframe=document.getElementById("${iframeId}");
+  var iframe=document.currentScript&&document.currentScript.previousElementSibling;
   if(!iframe)return;
-  var lastHeight=${initialHeight};
-  var ready=false;
-  function applyHeight(value){
-    var h=parseInt(value,10);
-    if(!h||h<140)return;
-    if(Math.abs(h-lastHeight)<2)return;
-    lastHeight=h;
-    iframe.style.height=h+"px";
-    iframe.setAttribute("height",String(h));
-  }
-  function send(type){
-    if(!iframe.contentWindow)return;
-    iframe.contentWindow.postMessage({source:"inrcy-host",type:type,frameId:"${iframeId}"},"${publicAppOrigin}");
-  }
   function onMessage(event){
     if(event.origin!=="${publicAppOrigin}")return;
     if(event.source!==iframe.contentWindow)return;
     var data=event.data||{};
-    if(data.frameId!=="${iframeId}")return;
-    if(data.type==="inrcy:embed-ready"){
-      ready=true;
-      applyHeight(data.height);
-      send("inrcy:embed-init");
-      return;
-    }
     if(data.type!=="inrcy:embed-resize")return;
-    applyHeight(data.height);
+    var h=parseInt(data.height,10);
+    if(!h||h<120)return;
+    iframe.style.height=h+"px";
+    iframe.setAttribute("height",String(h));
   }
   window.addEventListener("message",onMessage,false);
-  iframe.addEventListener("load",function(){ send("inrcy:embed-init"); });
-  setTimeout(function(){ send("inrcy:embed-ping"); },120);
-  setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },500);
-  setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },1200);
-  setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },2600);
 })();
 <\/script>`;
                 return (
                   <>
-                    <textarea
-                      readOnly
-                      value={snippet}
-                      style={{
-                        width: "100%",
-                        minHeight: 170,
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: "rgba(15,23,42,0.65)",
-                        colorScheme: "dark",
-                        padding: "10px 12px",
-                        color: "rgba(255,255,255,0.92)",
-                        outline: "none",
-                        fontFamily:
-                          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-                        fontSize: 12,
-                      }}
-                    />
+                    {showSiteInrcyActusCode && (
+                      <div className={styles.codePreviewShell} aria-hidden="true" title="Aperçu verrouillé : utilisez le bouton “Copier le code”.">
+                        <div className={styles.codePreviewHint}>Aperçu verrouillé · utilisez “Copier le code” pour l’intégration.</div>
+                        <pre className={styles.codePreviewLocked}>
+                          <code>{snippet}</code>
+                        </pre>
+                      </div>
+                    )}
 
                     <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
-                      <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
-                      <button
-                        type="button"
-                        className={styles.actionBtn}
-                        onClick={() => {
-                          void navigator.clipboard?.writeText(snippet);
-                        }}
-                      >
-                        Copier le code
-                      </button>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
+                        {siteInrcyCodeCopied && <div className={styles.successNote}>Code copié. Colle-le dans un widget HTML.</div>}
+                      </div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          className={styles.secondaryBtn}
+                          onClick={() => setShowSiteInrcyActusCode((v) => !v)}
+                        >
+                          {showSiteInrcyActusCode ? "Masquer le code" : "Afficher le code"}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.actionBtn}
+                          onClick={async () => {
+                            await navigator.clipboard?.writeText(snippet);
+                            setSiteInrcyCodeCopied(true);
+                            window.setTimeout(() => setSiteInrcyCodeCopied(false), 2200);
+                          }}
+                        >
+                          Copier le code
+                        </button>
+                      </div>
                     </div>
                   </>
                 );
@@ -4936,7 +4897,7 @@ const checkActivity = useCallback(async () => {
                   <span className={styles.blockSub}><strong>Police</strong></span>
                   <select
                     value={siteWebActusFont}
-                    onChange={(e) => setSiteWebActusFont((( ["site", "inter", "poppins", "montserrat", "lora"] as const).includes(e.target.value as never) ? e.target.value : "site") as "site" | "inter" | "poppins" | "montserrat" | "lora")}
+                    onChange={(e) => setSiteWebActusFont(((["site", "inter", "poppins", "montserrat", "lora"] as const).includes(e.target.value as never) ? e.target.value : "site") as "site" | "inter" | "poppins" | "montserrat" | "lora")}
                     style={{
                       borderRadius: 12,
                       border: "1px solid rgba(255,255,255,0.14)",
@@ -4954,28 +4915,6 @@ const checkActivity = useCallback(async () => {
                     <option value="lora">Lora</option>
                   </select>
                 </label>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Couleur de fond</strong></span>
-                  <select
-                    value={siteWebActusTheme}
-                    onChange={(e) => setSiteWebActusTheme((( ["white", "dark", "gray", "nature", "sand"] as const).includes(e.target.value as never) ? e.target.value : "nature") as "white" | "dark" | "gray" | "nature" | "sand")}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="white">Blanc</option>
-                    <option value="dark">Noir</option>
-                    <option value="gray">Gris</option>
-                    <option value="nature">Vert doux</option>
-                    <option value="sand">Sable</option>
-                  </select>
-                </label>
               </div>
 
               {(() => {
@@ -4989,80 +4928,62 @@ const checkActivity = useCallback(async () => {
                 }
                 const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
                 const iframeId = `inrcy-actus-${domain || "site"}-${siteWebActusLayout}`.replace(/[^a-z0-9_-]/gi, "-");
-                const initialHeight = siteWebActusLayout === "carousel" ? 560 : 260;
-                const embedUrl = `${publicAppOrigin}/embed/actus?frameId=${encodeURIComponent(iframeId)}&domain=${encodeURIComponent(domain || "votre-site.fr")}&source=site_web&layout=${encodeURIComponent(siteWebActusLayout)}&limit=${encodeURIComponent(String(siteWebActusLimit))}&font=${encodeURIComponent(siteWebActusFont)}&theme=${encodeURIComponent(siteWebActusTheme)}&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenSiteWeb)}`;
+                const initialHeight = siteWebActusLayout === "carousel" ? 420 : 260;
+                const embedUrl = `${publicAppOrigin}/embed/actus?domain=${encodeURIComponent(domain || "votre-site.fr")}&source=site_web&layout=${encodeURIComponent(siteWebActusLayout)}&limit=${encodeURIComponent(String(siteWebActusLimit))}&font=${encodeURIComponent(siteWebActusFont)}&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenSiteWeb)}`;
                 const snippet = `<iframe id="${iframeId}" src="${embedUrl}" width="100%" height="${initialHeight}" style="border:0;width:100%;max-width:100%;overflow:hidden;border-radius:24px;background:transparent;display:block;" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" scrolling="no" title="Actualités iNrCy"></iframe>
 <script>
 (function(){
-  var iframe=document.getElementById("${iframeId}");
+  var iframe=document.currentScript&&document.currentScript.previousElementSibling;
   if(!iframe)return;
-  var lastHeight=${initialHeight};
-  var ready=false;
-  function applyHeight(value){
-    var h=parseInt(value,10);
-    if(!h||h<140)return;
-    if(Math.abs(h-lastHeight)<2)return;
-    lastHeight=h;
-    iframe.style.height=h+"px";
-    iframe.setAttribute("height",String(h));
-  }
-  function send(type){
-    if(!iframe.contentWindow)return;
-    iframe.contentWindow.postMessage({source:"inrcy-host",type:type,frameId:"${iframeId}"},"${publicAppOrigin}");
-  }
   function onMessage(event){
     if(event.origin!=="${publicAppOrigin}")return;
     if(event.source!==iframe.contentWindow)return;
     var data=event.data||{};
-    if(data.frameId!=="${iframeId}")return;
-    if(data.type==="inrcy:embed-ready"){
-      ready=true;
-      applyHeight(data.height);
-      send("inrcy:embed-init");
-      return;
-    }
     if(data.type!=="inrcy:embed-resize")return;
-    applyHeight(data.height);
+    var h=parseInt(data.height,10);
+    if(!h||h<120)return;
+    iframe.style.height=h+"px";
+    iframe.setAttribute("height",String(h));
   }
   window.addEventListener("message",onMessage,false);
-  iframe.addEventListener("load",function(){ send("inrcy:embed-init"); });
-  setTimeout(function(){ send("inrcy:embed-ping"); },120);
-  setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },500);
-  setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },1200);
-  setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },2600);
 })();
 <\/script>`;
                 return (
                   <>
-                    <textarea
-                      readOnly
-                      value={snippet}
-                      style={{
-                        width: "100%",
-                        minHeight: 170,
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: "rgba(15,23,42,0.65)",
-                        colorScheme: "dark",
-                        padding: "10px 12px",
-                        color: "rgba(255,255,255,0.92)",
-                        outline: "none",
-                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-                        fontSize: 12,
-                      }}
-                    />
+                    {showSiteWebActusCode && (
+                      <div className={styles.codePreviewShell} aria-hidden="true" title="Aperçu verrouillé : utilisez le bouton “Copier le code”.">
+                        <div className={styles.codePreviewHint}>Aperçu verrouillé · utilisez “Copier le code” pour l’intégration.</div>
+                        <pre className={styles.codePreviewLocked}>
+                          <code>{snippet}</code>
+                        </pre>
+                      </div>
+                    )}
 
                     <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
-                      <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
-                      <button
-                        type="button"
-                        className={styles.actionBtn}
-                        onClick={() => {
-                          void navigator.clipboard?.writeText(snippet);
-                        }}
-                      >
-                        Copier le code
-                      </button>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
+                        {siteWebCodeCopied && <div className={styles.successNote}>Code copié. Colle-le dans un widget HTML.</div>}
+                      </div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          className={styles.secondaryBtn}
+                          onClick={() => setShowSiteWebActusCode((v) => !v)}
+                        >
+                          {showSiteWebActusCode ? "Masquer le code" : "Afficher le code"}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.actionBtn}
+                          onClick={async () => {
+                            await navigator.clipboard?.writeText(snippet);
+                            setSiteWebCodeCopied(true);
+                            window.setTimeout(() => setSiteWebCodeCopied(false), 2200);
+                          }}
+                        >
+                          Copier le code
+                        </button>
+                      </div>
                     </div>
                     <div className={styles.blockSub}>
                       <strong>Où le coller ?</strong> Sur WordPress : un bloc <em>HTML personnalisé</em> (Elementor → widget HTML). Sur Wix : <em>Embed Code</em>. Sur Webflow : <em>Embed</em>.
