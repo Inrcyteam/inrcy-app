@@ -1,0 +1,192 @@
+
+.userMenuWrap {
+  position: relative;
+}
+
+.userBubbleBtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.userBubble {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 950;
+  font-size: 22px;
+  letter-spacing: -0.2px;
+  color: #fff;
+  position: relative;
+  z-index: 1;
+  background: linear-gradient(120deg, #38bdf8, #a78bfa, #f472b6, #fb923c);
+  background-size: 300% 300%;
+  animation: bubbleShift 8s ease infinite;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.25), 0 12px 40px rgba(0,0,0,0.55), 0 0 22px rgba(120,90,255,0.45);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.userBubbleBtn:hover .userBubble {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.35), 0 18px 60px rgba(0,0,0,0.6), 0 0 30px rgba(120,90,255,0.7);
+}
+
+@keyframes bubbleShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.userMenuPanel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: 240px;
+  border-radius: 16px;
+  padding: 8px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(18, 26, 56, 0.92);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(12px);
+}
+
+.userMenuItem {
+  width: 100%;
+  text-align: left;
+  padding: 10px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.90);
+  font-weight: 850;
+  font-size: 14px;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.userMenuItem:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.userMenuDivider {
+  height: 1px;
+  margin: 8px 4px;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.userMenuDanger {
+  border-color: rgba(244, 114, 182, 0.22);
+  background: rgba(244, 114, 182, 0.10);
+}
+
+.profileIndicatorWrap{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.profileWarnBtn{
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profileWarnBtn:hover{
+  transform: scale(1.06);
+}
+
+.profileWarnDot{
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #fb7185;
+  box-shadow: 0 0 0 2px rgba(8,11,28,0.9), 0 0 12px rgba(251,113,133,0.45);
+}
+
+.profileTooltip{
+  position: absolute;
+  top: calc(100% + 10px);
+  right: -8px;
+  min-width: 240px;
+  max-width: 280px;
+  z-index: 80;
+  padding: 12px 12px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(16,22,46,0.96);
+  color: rgba(255,255,255,0.92);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.42);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity .16s ease, transform .16s ease;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.profileTooltip::before{
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: 14px;
+  width: 12px;
+  height: 12px;
+  transform: rotate(45deg);
+  background: rgba(16,22,46,0.96);
+  border-left: 1px solid rgba(255,255,255,0.14);
+  border-top: 1px solid rgba(255,255,255,0.14);
+}
+
+.profileIndicatorWrap:hover .profileTooltip,
+.profileTooltip:hover{
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.profileTooltip strong{
+  color: #fff;
+}
+
+.profileTooltipBtn{
+  margin-top: 10px;
+  width: 100%;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  padding: 9px 10px;
+  font-weight: 800;
+  font-size: 12px;
+  color: rgba(255,255,255,0.94);
+  background: rgba(255,255,255,0.06);
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, transform .15s ease;
+}
+
+.profileTooltipBtn:hover{
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.22);
+  transform: translateY(-1px);
+}

@@ -7,6 +7,13 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
+function stripGoogleProduct(settingsNode: unknown, product: string) {
+  const next = { ...asRecord(settingsNode) };
+  if (product === "ga4") delete next.ga4;
+  if (product === "gsc") delete next.gsc;
+  return next;
+}
+
 export async function POST(request: Request) {
   const supabase = await createSupabaseServer();
   const { data: authData, error: authErr } = await supabase.auth.getUser();
@@ -41,16 +48,13 @@ export async function POST(request: Request) {
       const { data } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = asRecord(asRecord(data)["settings"]);
       const siteWeb = asRecord(current.site_web);
-      const nextSiteWeb = { ...siteWeb } as Record<string, unknown>;
-      delete nextSiteWeb[product];
+      const nextSiteWeb = stripGoogleProduct(siteWeb, product);
       await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: userId, settings: { ...current, site_web: nextSiteWeb } }, { onConflict: "user_id" });
     }
     if (source === "site_inrcy") {
       const { data } = await supabase.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle();
-      const current = asRecord(asRecord(data)["settings"]);
-      const next = { ...current } as Record<string, unknown>;
-      delete next[product];
-      await supabase.from("inrcy_site_configs").upsert({ user_id: userId, settings: next }, { onConflict: "user_id" });
+      const current = stripGoogleProduct(asRecord(asRecord(data)["settings"]), product);
+      await supabase.from("inrcy_site_configs").upsert({ user_id: userId, settings: current }, { onConflict: "user_id" });
     }
   } catch {}
 

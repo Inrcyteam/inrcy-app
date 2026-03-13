@@ -7,6 +7,15 @@ import Link from "next/link";
 import SettingsDrawer from "./SettingsDrawer";
 import HelpButton from "./_components/HelpButton";
 import HelpModal from "./_components/HelpModal";
+import ConnectionPill from "./_components/ConnectionPill";
+import SiteInrcyPanel from "./_components/SiteInrcyPanel";
+import SiteWebPanel from "./_components/SiteWebPanel";
+import InstagramPanel from "./_components/InstagramPanel";
+import LinkedinPanel from "./_components/LinkedinPanel";
+import GoogleBusinessPanel from "./_components/GoogleBusinessPanel";
+import FacebookPanel from "./_components/FacebookPanel";
+import NotificationMenu from "./_components/NotificationMenu";
+import UserMenu from "./_components/UserMenu";
 import ProfilContent from "./settings/_components/ProfilContent";
 import AccountContent from "./settings/_components/AccountContent";
 import ActivityContent from "./settings/_components/ActivityContent";
@@ -23,189 +32,9 @@ import NotificationsSettingsContent from "./settings/_components/NotificationsSe
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
-
-type ModuleStatus = "connected" | "available" | "coming";
-type Accent = "cyan" | "purple" | "pink" | "orange";
-type Ownership = "none" | "rented" | "sold";
-
-type GoogleProduct = "ga4" | "gsc";
-type GoogleSource = "site_inrcy" | "site_web";
-
-type ModuleAction = {
-  key: string;
-  label: string;
-  variant: "view" | "connect" | "danger";
-  href?: string; // si action "voir"
-  onClick?: () => void; // si action "connecter" (plus tard)
-  disabled?: boolean;
-};
-
-type Module = {
-  key: string;
-  name: string;
-  description: string;
-  status: ModuleStatus;
-  accent: Accent;
-  actions: ModuleAction[];
-};
-
-type NotificationItem = {
-  id: string;
-  category: "performance" | "action" | "information";
-  categoryLabel: string;
-  title: string;
-  body: string;
-  cta_label: string | null;
-  cta_url: string | null;
-  relativeDate: string;
-  unread: boolean;
-};
-
-function statusLabel(s: ModuleStatus) {
-  if (s === "connected") return "Connecté";
-  if (s === "available") return "À connecter";
-  return "Bientôt";
-}
-
-function statusClass(s: ModuleStatus) {
-  if (s === "connected") return styles.badgeOk;
-  if (s === "available") return styles.badgeWarn;
-  return styles.badgeSoon;
-}
-
-function SaveIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M7 3h10l3 3v15a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M7 3v6h10V3"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 21v-8h6v8"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-
-const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
-  site_inrcy: { src: "/icons/inrcy.png", alt: "iNrCy" },
-  site_web: { src: "/icons/site-web.jpg", alt: "Site web" },
-  facebook: { src: "/icons/facebook.png", alt: "Facebook" },
-  gmb: { src: "/icons/google.jpg", alt: "Google Business" },
-  instagram: { src: "/icons/instagram.jpg", alt: "Instagram" },
-  linkedin: { src: "/icons/linkedin.png", alt: "LinkedIn" },
-};
-
-// ✅ Tes 6 blocs avec tes actions (Voir + Connecter…)
-const fluxModules: Module[] = [
-  {
-    key: "site_inrcy",
-    name: "Site iNrCy",
-    description: "Votre machine à leads ⚡",
-    status: "available",
-    accent: "purple",
-    actions: [
-      { key: "view", label: "Voir le site", variant: "view", href: "#" },
-      { key: "ga4", label: "Connecter Analytics", variant: "connect", onClick: () => {} },
-      { key: "gsc", label: "Connecter Search Console", variant: "connect", onClick: () => {} },
-    ],
-  },
-  {
-    key: "site_web",
-    name: "Site web",
-    description: "Convertit vos visiteurs 💡",
-    status: "available",
-    accent: "pink",
-    actions: [
-      { key: "view", label: "Voir le site", variant: "view", href: "#" },
-      { key: "ga4", label: "Connecter Analytics", variant: "connect", onClick: () => {} },
-      { key: "gsc", label: "Connecter Search Console", variant: "connect", onClick: () => {} },
-    ],
-  },
-  {
-    key: "gmb",
-    name: "Google Business",
-    description: "Augmente les appels 📞",
-    status: "coming", // TEMPORAIRE — Google Business disponible à partir d’avril 2026
-    accent: "orange",
-    actions: [
-      { key: "view", label: "Voir la page", variant: "view", href: "#" },
-      { key: "connect", label: "Configurer", variant: "connect", onClick: () => {}, disabled: true },
-    ],
-  },
-  {
-    key: "facebook",
-    name: "Facebook",
-    description: "Crée de la demande 📈",
-    status: "available",
-    accent: "cyan",
-    actions: [
-      { key: "view", label: "Voir le compte", variant: "view", href: "#" },
-      { key: "connect", label: "Connecter Facebook", variant: "connect", onClick: () => {} },
-    ],
-  },
-  {
-  key: "instagram",
-  name: "Instagram",
-  description: "Développe votre marque 📸",
-  status: "available",
-  accent: "pink",
-  actions: [
-    { key: "view", label: "Voir le compte", variant: "view", href: "#" },
-    { key: "connect", label: "Connecter Instagram", variant: "connect", onClick: () => {} },
-  ],
-},
-{
-  key: "linkedin",
-  name: "LinkedIn",
-  description: "Crédibilise votre expertise 💼",
-  status: "available",
-  accent: "cyan",
-  actions: [
-    { key: "view", label: "Voir le compte", variant: "view", href: "#" },
-    { key: "connect", label: "Connecter LinkedIn", variant: "connect", onClick: () => {} },
-  ],
-},
-
-];
-
-const adminModules: Array<{
-  key: string;
-  name: string;
-  description: string;
-  status: ModuleStatus;
-  accent: Accent;
-}> = [
-  { key: "mails", name: "Mails", description: "Relances, notifications, nurturing.", status: "available", accent: "purple" },
-  { key: "stats", name: "Stats", description: "ROI, performance et suivi des canaux.", status: "available", accent: "cyan" },
-  { key: "agenda", name: "Interventions", description: "Planning d'interventions + agenda classique", status: "available", accent: "purple" },
-  { key: "crm", name: "CRM", description: "Fichier clients et propects", status: "available", accent: "cyan" },
-];
-
-const quickActions: Array<{ key: string; title: string; sub: string; disabled?: boolean; accent: Accent }> = [
-  { key: "facturer", title: "Facturer", sub: "Factures & paiements", disabled: false, accent: "orange" },
-  { key: "devis", title: "Faire devis", sub: "Devis en 30 sec", disabled: false, accent: "pink" },
-  { key: "booster", title: "Booster", sub: "Visibilité & communication", disabled: false, accent: "purple" },
-  { key: "fideliser", title: "Fidéliser", sub: "Informations & suivi client", disabled: false, accent: "cyan" },
-];
+import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants";
+import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
+import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, Module, ModuleAction, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
 
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
@@ -335,19 +164,28 @@ export default function DashboardClient() {
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const unreadNotificationsCount = useMemo(() => notifications.filter((item) => item.unread).length, [notifications]);
+  const notificationsRequestSeqRef = useRef(0);
+  const kpisRequestSeqRef = useRef(0);
+  const siteConfigRequestSeqRef = useRef(0);
+  const lastConnectionSignatureRef = useRef<string | null>(null);
 
   const refreshNotifications = useCallback(async () => {
+    const requestSeq = ++notificationsRequestSeqRef.current;
     try {
       setNotificationsLoading(true);
       const res = await fetch("/api/notifications/feed?limit=12", { credentials: "include" });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || `Erreur ${res.status}`);
+      if (requestSeq !== notificationsRequestSeqRef.current) return;
       setNotifications(Array.isArray(json?.items) ? json.items : []);
       setNotificationsError(null);
     } catch (e: any) {
+      if (requestSeq !== notificationsRequestSeqRef.current) return;
       setNotificationsError(e?.message || "Notifications indisponibles");
     } finally {
-      setNotificationsLoading(false);
+      if (requestSeq === notificationsRequestSeqRef.current) {
+        setNotificationsLoading(false);
+      }
     }
   }, []);
 
@@ -452,10 +290,10 @@ const [siteInrcyTrackingBusy, setSiteInrcyTrackingBusy] = useState(false);
   const [siteInrcyActusLimit, setSiteInrcyActusLimit] = useState<number>(5);
   const [siteWebActusLayout, setSiteWebActusLayout] = useState<"list" | "carousel">("list");
   const [siteWebActusLimit, setSiteWebActusLimit] = useState<number>(5);
-  const [siteInrcyActusFont, setSiteInrcyActusFont] = useState<"site" | "inter" | "poppins" | "montserrat" | "lora">("site");
-  const [siteWebActusFont, setSiteWebActusFont] = useState<"site" | "inter" | "poppins" | "montserrat" | "lora">("site");
-  const [siteInrcyActusTheme, setSiteInrcyActusTheme] = useState<"white" | "dark" | "gray" | "nature" | "sand">("nature");
-  const [siteWebActusTheme, setSiteWebActusTheme] = useState<"white" | "dark" | "gray" | "nature" | "sand">("nature");
+  const [siteInrcyActusFont, setSiteInrcyActusFont] = useState<ActusFont>("site");
+  const [siteWebActusFont, setSiteWebActusFont] = useState<ActusFont>("site");
+  const [siteInrcyActusTheme, setSiteInrcyActusTheme] = useState<ActusTheme>("nature");
+  const [siteWebActusTheme, setSiteWebActusTheme] = useState<ActusTheme>("nature");
   const [showSiteInrcyWidgetCode, setShowSiteInrcyWidgetCode] = useState(false);
   const [showSiteWebWidgetCode, setShowSiteWebWidgetCode] = useState(false);
 
@@ -728,29 +566,35 @@ const submitReferral = useCallback(async () => {
     return !!json?.connected;
   }, []);
 
+const removeGoogleProductFromSettings = useCallback((settingsObj: any, product: GoogleProduct) => {
+  const next = settingsObj && typeof settingsObj === "object" ? { ...settingsObj } : {};
+  if (product === "ga4") delete next.ga4;
+  if (product === "gsc") delete next.gsc;
+  return next;
+}, []);
+
 // ✅ Charge infos Site iNrCy + outils du pro depuis Supabase
 // - ownership + url iNrCy : profiles
 // - config iNrCy : inrcy_site_configs
 // - outils du pro (site_web, gmb, facebook, houzz, pages_jaunes, ...) : pro_tools_configs
 // (ancienne table site_configs supprimée)
 const loadSiteInrcy = useCallback(async () => {
+  const requestSeq = ++siteConfigRequestSeqRef.current;
   const supabase = createClient();
   const { data: authData } = await supabase.auth.getUser();
   const user = authData?.user;
-  if (!user) return;
+  if (!user || requestSeq !== siteConfigRequestSeqRef.current) return;
 
-  // 1) Profile (source de vérité pour ownership)
   const profileRes = await supabase
     .from("profiles")
     .select("inrcy_site_ownership,inrcy_site_url")
     .eq("user_id", user.id)
     .maybeSingle();
+  if (requestSeq !== siteConfigRequestSeqRef.current) return;
 
   const profile = profileRes.data as any | null;
   const ownership = (profile?.inrcy_site_ownership ?? "none") as Ownership;
-  setSiteInrcyOwnership(ownership);
 
-  // 2) Lecture configs (nouveaux schémas)
   const [inrcyRes, proRes] = await Promise.all([
     supabase
       .from("inrcy_site_configs")
@@ -763,116 +607,113 @@ const loadSiteInrcy = useCallback(async () => {
       .eq("user_id", user.id)
       .maybeSingle(),
   ]);
+  if (requestSeq !== siteConfigRequestSeqRef.current) return;
 
   const inrcyCfg = (inrcyRes.data as any | null) ?? null;
   const proCfg = (proRes.data as any | null) ?? null;
-  const legacyCfg = null;
+  type SettingsRow = { settings?: any | null } | null;
+  const proSettingsObj = (proCfg as SettingsRow)?.settings ?? {};
 
-  // URL iNrCy : profile > inrcy table
-  const url = ((inrcyCfg?.site_url ?? profile?.inrcy_site_url ?? "") as string).trim();
-  setSiteInrcyUrl(url);
-  setSiteInrcySavedUrl(url);
-
-  // Contact email iNrCy : inrcy table
-  const email = (inrcyCfg?.contact_email ?? "") as string;
-  setSiteInrcyContactEmail(email);
-
-  // Settings iNrCy : inrcy table
+  const siteInrcyUrlValue = ((inrcyCfg?.site_url ?? profile?.inrcy_site_url ?? "") as string).trim();
+  const siteInrcyContactEmailValue = (inrcyCfg?.contact_email ?? "") as string;
   const inrcySettingsObj = inrcyCfg?.settings ?? {};
+  let siteInrcySettingsTextValue = "{}";
   try {
-    setSiteInrcySettingsText(JSON.stringify(inrcySettingsObj, null, 2));
+    siteInrcySettingsTextValue = JSON.stringify(inrcySettingsObj, null, 2);
   } catch {
-    setSiteInrcySettingsText("{}");
+    siteInrcySettingsTextValue = "{}";
   }
-  setSiteInrcySettingsError(null);
-  setGa4MeasurementId((inrcySettingsObj as any)?.ga4?.measurement_id ?? "");
-  setGa4PropertyId(String((inrcySettingsObj as any)?.ga4?.property_id ?? ""));
-  setGscProperty((inrcySettingsObj as any)?.gsc?.property ?? "");
 
-  // Settings pro : pro_tools_configs > legacy.settings
-type SettingsRow = { settings?: any | null } | null;  
-const proSettingsObj =
-  (proCfg as SettingsRow)?.settings ?? (legacyCfg as SettingsRow)?.settings ?? {};
+  const ga4MeasurementIdValue = (inrcySettingsObj as any)?.ga4?.measurement_id ?? "";
+  const ga4PropertyIdValue = String((inrcySettingsObj as any)?.ga4?.property_id ?? "");
+  const gscPropertyValue = (inrcySettingsObj as any)?.gsc?.property ?? "";
 
-  // ✅ Site web (stocké dans pro_tools_configs.settings.site_web)
   const siteWebObj = (proSettingsObj as any)?.site_web ?? {};
+  let siteWebSettingsTextValue = "{}";
   try {
-    setSiteWebSettingsText(JSON.stringify(siteWebObj, null, 2));
+    siteWebSettingsTextValue = JSON.stringify(siteWebObj, null, 2);
   } catch {
-    setSiteWebSettingsText("{}");
+    siteWebSettingsTextValue = "{}";
   }
-  setSiteWebSettingsError(null);
-  setSiteWebUrl((siteWebObj as any)?.url ?? "");
-  setSiteWebSavedUrl((siteWebObj as any)?.url ?? "");
-  setSiteWebGa4MeasurementId((siteWebObj as any)?.ga4?.measurement_id ?? "");
-  setSiteWebGa4PropertyId(String((siteWebObj as any)?.ga4?.property_id ?? ""));
-  setSiteWebGscProperty((siteWebObj as any)?.gsc?.property ?? "");
 
-  // ✅ Instagram & LinkedIn (pro_tools_configs.settings.instagram / linkedin)
-  const igObj = (((proSettingsObj as any)?.instagram ?? {}) as any);
-  setInstagramUrl(igObj?.url ?? "");
-  setInstagramAccountConnected(!!igObj?.accountConnected);
-  setInstagramConnected(!!igObj?.connected);
-  setInstagramUsername(String(igObj?.username ?? ""));
-
-  const liObj = (((proSettingsObj as any)?.linkedin ?? {}) as any);
-  setLinkedinUrl(liObj?.url ?? "");
-  setLinkedinAccountConnected(!!liObj?.accountConnected);
-  setLinkedinConnected(!!liObj?.connected);
-  setLinkedinDisplayName(String(liObj?.displayName ?? ""));
-
-  // ✅ Google Business & Facebook (pro_tools_configs.settings.gmb / facebook)
+  const igObj = ((proSettingsObj as any)?.instagram ?? {}) as any;
+  const liObj = ((proSettingsObj as any)?.linkedin ?? {}) as any;
   const gmbObj = ((proSettingsObj as any)?.gmb ?? {}) as any;
-  setGmbUrl(gmbObj?.url ?? "");
-  const _gmbAccountConnected = !!gmbObj?.connected;
-  const _gmbConfigured = !!gmbObj?.resource_id;
-  setGmbAccountConnected(_gmbAccountConnected);
-  setGmbConfigured(_gmbConfigured);
-  setGmbConnected(_gmbAccountConnected && _gmbConfigured);
-  setGmbAccountEmail(gmbObj?.accountEmail ?? "");
-
   const fbObj = ((proSettingsObj as any)?.facebook ?? {}) as any;
-  setFacebookUrl(fbObj?.url ?? "");
-	  setFacebookAccountConnected(!!fbObj?.accountConnected);
-	  setFacebookPageConnected(!!fbObj?.pageConnected);
-	  setFacebookAccountEmail(fbObj?.userEmail ?? "");
-  // Also keep the selected page id if present in mirrored settings.
-  setFbSelectedPageId(fbObj?.pageId ?? "");
-	  setFbSelectedPageName(fbObj?.pageName ?? "");
 
-  // ✅ Source unique des états de connexion pour tous les outils
+  const nextState = {
+    siteInrcyOwnership: ownership,
+    siteInrcyUrl: siteInrcyUrlValue,
+    siteInrcySavedUrl: siteInrcyUrlValue,
+    siteInrcyContactEmail: siteInrcyContactEmailValue,
+    siteInrcySettingsText: siteInrcySettingsTextValue,
+    ga4MeasurementId: ga4MeasurementIdValue,
+    ga4PropertyId: ga4PropertyIdValue,
+    gscProperty: gscPropertyValue,
+    siteWebSettingsText: siteWebSettingsTextValue,
+    siteWebUrl: (siteWebObj as any)?.url ?? "",
+    siteWebSavedUrl: (siteWebObj as any)?.url ?? "",
+    siteWebGa4MeasurementId: (siteWebObj as any)?.ga4?.measurement_id ?? "",
+    siteWebGa4PropertyId: String((siteWebObj as any)?.ga4?.property_id ?? ""),
+    siteWebGscProperty: (siteWebObj as any)?.gsc?.property ?? "",
+    instagramUrl: igObj?.url ?? "",
+    instagramAccountConnected: !!igObj?.accountConnected,
+    instagramConnected: !!igObj?.connected,
+    instagramUsername: String(igObj?.username ?? ""),
+    linkedinUrl: liObj?.url ?? "",
+    linkedinAccountConnected: !!liObj?.accountConnected,
+    linkedinConnected: !!liObj?.connected,
+    linkedinDisplayName: String(liObj?.displayName ?? ""),
+    gmbUrl: gmbObj?.url ?? "",
+    gmbAccountConnected: !!gmbObj?.connected,
+    gmbConfigured: !!gmbObj?.resource_id,
+    gmbConnected: !!gmbObj?.connected && !!gmbObj?.resource_id,
+    gmbAccountEmail: gmbObj?.accountEmail ?? "",
+    facebookUrl: fbObj?.url ?? "",
+    facebookAccountConnected: !!fbObj?.accountConnected,
+    facebookPageConnected: !!fbObj?.pageConnected,
+    facebookAccountEmail: fbObj?.userEmail ?? "",
+    fbSelectedPageId: fbObj?.pageId ?? "",
+    fbSelectedPageName: fbObj?.pageName ?? "",
+    siteInrcyGa4Connected: false,
+    siteInrcyGscConnected: false,
+    siteWebGa4Connected: false,
+    siteWebGscConnected: false,
+  };
+
   try {
     const states = await fetch("/api/integrations/channel-states", { cache: "no-store" })
       .then((r) => r.json())
       .catch(() => null) as any;
+    if (requestSeq !== siteConfigRequestSeqRef.current) return;
 
     if (states) {
-      setSiteInrcyGa4Connected(!!states?.site_inrcy?.ga4);
-      setSiteInrcyGscConnected(!!states?.site_inrcy?.gsc);
-      setSiteWebGa4Connected(!!states?.site_web?.ga4);
-      setSiteWebGscConnected(!!states?.site_web?.gsc);
+      nextState.siteInrcyGa4Connected = !!states?.site_inrcy?.ga4;
+      nextState.siteInrcyGscConnected = !!states?.site_inrcy?.gsc;
+      nextState.siteWebGa4Connected = !!states?.site_web?.ga4;
+      nextState.siteWebGscConnected = !!states?.site_web?.gsc;
 
-      setGmbConnected(!!states?.gmb?.connected);
-      setGmbAccountConnected(!!states?.gmb?.accountConnected);
-      setGmbConfigured(!!states?.gmb?.configured);
-      if (states?.gmb?.email) setGmbAccountEmail(String(states.gmb.email));
+      nextState.gmbConnected = !!states?.gmb?.connected;
+      nextState.gmbAccountConnected = !!states?.gmb?.accountConnected;
+      nextState.gmbConfigured = !!states?.gmb?.configured;
+      if (states?.gmb?.email) nextState.gmbAccountEmail = String(states.gmb.email);
 
-      setFacebookAccountConnected(!!states?.facebook?.accountConnected);
-      setFacebookPageConnected(!!states?.facebook?.pageConnected);
-      if (states?.facebook?.user_email) setFacebookAccountEmail(String(states.facebook.user_email));
-      if (states?.facebook?.resource_id) setFbSelectedPageId(String(states.facebook.resource_id));
-      if (states?.facebook?.resource_label) setFbSelectedPageName(String(states.facebook.resource_label));
-      if (states?.facebook?.page_url) setFacebookUrl(String(states.facebook.page_url));
+      nextState.facebookAccountConnected = !!states?.facebook?.accountConnected;
+      nextState.facebookPageConnected = !!states?.facebook?.pageConnected;
+      if (states?.facebook?.user_email) nextState.facebookAccountEmail = String(states.facebook.user_email);
+      if (states?.facebook?.resource_id) nextState.fbSelectedPageId = String(states.facebook.resource_id);
+      if (states?.facebook?.resource_label) nextState.fbSelectedPageName = String(states.facebook.resource_label);
+      if (states?.facebook?.page_url) nextState.facebookUrl = String(states.facebook.page_url);
 
-      setInstagramAccountConnected(!!states?.instagram?.accountConnected);
-      setInstagramConnected(!!states?.instagram?.connected);
-      if (states?.instagram?.username) setInstagramUsername(String(states.instagram.username));
-      if (states?.instagram?.profile_url) setInstagramUrl(String(states.instagram.profile_url));
+      nextState.instagramAccountConnected = !!states?.instagram?.accountConnected;
+      nextState.instagramConnected = !!states?.instagram?.connected;
+      if (states?.instagram?.username) nextState.instagramUsername = String(states.instagram.username);
+      if (states?.instagram?.profile_url) nextState.instagramUrl = String(states.instagram.profile_url);
 
-      setLinkedinAccountConnected(!!states?.linkedin?.accountConnected);
-      setLinkedinConnected(!!states?.linkedin?.connected);
-      if (states?.linkedin?.display_name) setLinkedinDisplayName(String(states.linkedin.display_name));
-      if (states?.linkedin?.profile_url) setLinkedinUrl(String(states.linkedin.profile_url));
+      nextState.linkedinAccountConnected = !!states?.linkedin?.accountConnected;
+      nextState.linkedinConnected = !!states?.linkedin?.connected;
+      if (states?.linkedin?.display_name) nextState.linkedinDisplayName = String(states.linkedin.display_name);
+      if (states?.linkedin?.profile_url) nextState.linkedinUrl = String(states.linkedin.profile_url);
     } else {
       const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([
         fetchGoogleConnected("site_inrcy", "ga4"),
@@ -880,14 +721,56 @@ const proSettingsObj =
         fetchGoogleConnected("site_web", "ga4"),
         fetchGoogleConnected("site_web", "gsc"),
       ]);
-      setSiteInrcyGa4Connected(inrcyGa4);
-      setSiteInrcyGscConnected(inrcyGsc);
-      setSiteWebGa4Connected(webGa4);
-      setSiteWebGscConnected(webGsc);
+      if (requestSeq !== siteConfigRequestSeqRef.current) return;
+      nextState.siteInrcyGa4Connected = inrcyGa4;
+      nextState.siteInrcyGscConnected = inrcyGsc;
+      nextState.siteWebGa4Connected = webGa4;
+      nextState.siteWebGscConnected = webGsc;
     }
   } catch {
-    // fallback : on garde l'état stocké dans settings si l'appel échoue
+    if (requestSeq !== siteConfigRequestSeqRef.current) return;
   }
+
+  if (requestSeq !== siteConfigRequestSeqRef.current) return;
+  setSiteInrcyOwnership(nextState.siteInrcyOwnership);
+  setSiteInrcyUrl(nextState.siteInrcyUrl);
+  setSiteInrcySavedUrl(nextState.siteInrcySavedUrl);
+  setSiteInrcyContactEmail(nextState.siteInrcyContactEmail);
+  setSiteInrcySettingsText(nextState.siteInrcySettingsText);
+  setSiteInrcySettingsError(null);
+  setGa4MeasurementId(nextState.ga4MeasurementId);
+  setGa4PropertyId(nextState.ga4PropertyId);
+  setGscProperty(nextState.gscProperty);
+  setSiteWebSettingsText(nextState.siteWebSettingsText);
+  setSiteWebSettingsError(null);
+  setSiteWebUrl(nextState.siteWebUrl);
+  setSiteWebSavedUrl(nextState.siteWebSavedUrl);
+  setSiteWebGa4MeasurementId(nextState.siteWebGa4MeasurementId);
+  setSiteWebGa4PropertyId(nextState.siteWebGa4PropertyId);
+  setSiteWebGscProperty(nextState.siteWebGscProperty);
+  setInstagramUrl(nextState.instagramUrl);
+  setInstagramAccountConnected(nextState.instagramAccountConnected);
+  setInstagramConnected(nextState.instagramConnected);
+  setInstagramUsername(nextState.instagramUsername);
+  setLinkedinUrl(nextState.linkedinUrl);
+  setLinkedinAccountConnected(nextState.linkedinAccountConnected);
+  setLinkedinConnected(nextState.linkedinConnected);
+  setLinkedinDisplayName(nextState.linkedinDisplayName);
+  setGmbUrl(nextState.gmbUrl);
+  setGmbAccountConnected(nextState.gmbAccountConnected);
+  setGmbConfigured(nextState.gmbConfigured);
+  setGmbConnected(nextState.gmbConnected);
+  setGmbAccountEmail(nextState.gmbAccountEmail);
+  setFacebookUrl(nextState.facebookUrl);
+  setFacebookAccountConnected(nextState.facebookAccountConnected);
+  setFacebookPageConnected(nextState.facebookPageConnected);
+  setFacebookAccountEmail(nextState.facebookAccountEmail);
+  setFbSelectedPageId(nextState.fbSelectedPageId);
+  setFbSelectedPageName(nextState.fbSelectedPageName);
+  setSiteInrcyGa4Connected(nextState.siteInrcyGa4Connected);
+  setSiteInrcyGscConnected(nextState.siteInrcyGscConnected);
+  setSiteWebGa4Connected(nextState.siteWebGa4Connected);
+  setSiteWebGscConnected(nextState.siteWebGscConnected);
 }, [fetchGoogleConnected]);
 
 useEffect(() => {
@@ -912,34 +795,30 @@ const canConnectSiteWebGoogle = hasSiteWebUrl;
 const siteInrcyAllGreen = siteInrcyOwnership !== "none" && hasSiteInrcyUrl && siteInrcyGa4Connected && siteInrcyGscConnected;
 const siteWebAllGreen = hasSiteWebUrl && siteWebGa4Connected && siteWebGscConnected;
 
-const ConnectionPill = ({ connected }: { connected: boolean }) => (
-  <span
-    style={{
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 8,
-      border: "1px solid rgba(255,255,255,0.12)",
-      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-      padding: "6px 10px",
-      borderRadius: 999,
-      color: "rgba(255,255,255,0.92)",
-      fontSize: 12,
-      whiteSpace: "nowrap",
-    }}
-  >
-    <span
-      aria-hidden
-      style={{
-        width: 8,
-        height: 8,
-        borderRadius: 999,
-        background: connected ? "rgba(34,197,94,0.95)" : "rgba(59,130,246,0.95)",
-      }}
-    />
-    <strong>{connected ? "Connecté" : "À connecter"}</strong>
-  </span>
-);
+const updateSiteInrcySettings = useCallback(async (nextSettings: any) => {
+  if (siteInrcyOwnership === "none") return;
+
+  const supabase = createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (!user) return;
+
+  const { error } = await supabase
+    .from("inrcy_site_configs")
+    .upsert({ user_id: user.id, settings: nextSettings ?? {} }, { onConflict: "user_id" });
+
+  if (error) {
+    setSiteInrcySettingsError(error.message);
+    return;
+  }
+
+  setSiteInrcySettingsError(null);
+  try {
+    setSiteInrcySettingsText(JSON.stringify(nextSettings ?? {}, null, 2));
+  } catch {
+    setSiteInrcySettingsText("{}");
+  }
+}, [siteInrcyOwnership]);
 
 const saveSiteInrcySettings = useCallback(async () => {
   if (siteInrcyOwnership === "none") return;
@@ -1093,13 +972,21 @@ const connectSiteInrcyGsc = useCallback(() => {
 // - Si un token Google existe déjà côté Supabase, l'API résout GA4 + GSC via le domaine et remplit les settings.
 // - Sinon, on bascule sur le flow OAuth "activate".
 const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
+    const requestSeq = ++kpisRequestSeqRef.current;
     const fresh = options?.fresh === true;
     setKpisLoading(true);
     try {
       const url = fresh ? "/api/metrics/summary?fresh=1" : "/api/metrics/summary";
       const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(`KPIs fetch failed: ${res.status}`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          if (requestSeq !== kpisRequestSeqRef.current) return;
+          return;
+        }
+        throw new Error(`KPIs fetch failed: ${res.status}`);
+      }
       const json = await res.json();
+      if (requestSeq !== kpisRequestSeqRef.current) return;
       setKpis(json);
       const oppMonth = Number(json?.details?.opportunities?.month);
       if (Number.isFinite(oppMonth)) {
@@ -1116,11 +1003,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
         // ignore
       }
     } catch (err) {
+      if (requestSeq !== kpisRequestSeqRef.current) return;
       console.error(err);
       // Keep the last known KPIs to avoid a visual "blink".
       // If nothing exists yet, we'll display 0.
     } finally {
-      setKpisLoading(false);
+      if (requestSeq === kpisRequestSeqRef.current) {
+        setKpisLoading(false);
+      }
     }
   }, []);
 
@@ -1210,6 +1100,29 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     if (!linked && !activated && !ok && !toast && !warning) return;
     triggerGeneratorRefresh();
   }, [searchParams, triggerGeneratorRefresh]);
+
+  const connectionRefreshSignature = [
+    Boolean(siteInrcySavedUrl?.trim()) ? 1 : 0,
+    siteInrcyGa4Connected ? 1 : 0,
+    siteInrcyGscConnected ? 1 : 0,
+    Boolean(siteWebSavedUrl?.trim()) ? 1 : 0,
+    siteWebGa4Connected ? 1 : 0,
+    siteWebGscConnected ? 1 : 0,
+    gmbConnected ? 1 : 0,
+    facebookPageConnected ? 1 : 0,
+    instagramConnected ? 1 : 0,
+    linkedinConnected ? 1 : 0,
+  ].join(":");
+
+  useEffect(() => {
+    if (lastConnectionSignatureRef.current === null) {
+      lastConnectionSignatureRef.current = connectionRefreshSignature;
+      return;
+    }
+    if (lastConnectionSignatureRef.current === connectionRefreshSignature) return;
+    lastConnectionSignatureRef.current = connectionRefreshSignature;
+    void refreshKpis({ fresh: true });
+  }, [connectionRefreshSignature, refreshKpis]);
 
 const activateSiteInrcyTracking = useCallback(async () => {
   if (siteInrcyOwnership !== "rented") {
@@ -1310,8 +1223,6 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
 
 const disconnectGoogleStats = useCallback(
   async (source: "site_inrcy" | "site_web", product: "ga4" | "gsc") => {
-    // L'API /api/integrations/google-stats/disconnect est en POST.
-    // Avant, on naviguait en GET (window.location.href), ce qui rendait le bouton inactif (405).
     const res = await fetch("/api/integrations/google-stats/disconnect", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1327,24 +1238,56 @@ const disconnectGoogleStats = useCallback(
       return;
     }
 
-    // Petites confirmations UX
     if (source === "site_inrcy") {
+      let nextSettings: any = {};
+      try {
+        const parsed = siteInrcySettingsText?.trim() ? JSON.parse(siteInrcySettingsText) : {};
+        nextSettings = removeGoogleProductFromSettings(parsed, product);
+      } catch {
+        nextSettings = removeGoogleProductFromSettings({}, product);
+      }
+      await updateSiteInrcySettings(nextSettings);
       setSiteInrcySettingsError(null);
-      if (product === "ga4") setSiteInrcyGa4Connected(false);
-      else setSiteInrcyGscConnected(false);
-      if (product === "ga4") setSiteInrcyGa4Notice("Google Analytics déconnecté.");
-      else setSiteInrcyGscNotice("Search Console déconnecté.");
+      if (product === "ga4") {
+        setGa4MeasurementId("");
+        setGa4PropertyId("");
+        setSiteInrcyGa4Connected(false);
+        setSiteInrcyGa4Notice("Google Analytics déconnecté.");
+      } else {
+        setGscProperty("");
+        setSiteInrcyGscConnected(false);
+        setSiteInrcyGscNotice("Search Console déconnecté.");
+      }
     } else {
+      let nextSettings: any = {};
+      try {
+        const parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
+        nextSettings = removeGoogleProductFromSettings(parsed, product);
+      } catch {
+        nextSettings = removeGoogleProductFromSettings({}, product);
+      }
+      await updateSiteWebSettings(nextSettings);
       setSiteWebSettingsError(null);
-      if (product === "ga4") setSiteWebGa4Connected(false);
-      else setSiteWebGscConnected(false);
-      if (product === "ga4") setSiteWebGa4Notice("Google Analytics déconnecté.");
-      else setSiteWebGscNotice("Search Console déconnecté.");
+      if (product === "ga4") {
+        setSiteWebGa4MeasurementId("");
+        setSiteWebGa4PropertyId("");
+        setSiteWebGa4Connected(false);
+        setSiteWebGa4Notice("Google Analytics déconnecté.");
+      } else {
+        setSiteWebGscProperty("");
+        setSiteWebGscConnected(false);
+        setSiteWebGscNotice("Search Console déconnecté.");
+      }
     }
 
     triggerGeneratorRefresh();
   },
-  [triggerGeneratorRefresh]
+  [
+    removeGoogleProductFromSettings,
+    siteInrcySettingsText,
+    siteWebSettingsText,
+    triggerGeneratorRefresh,
+  ]
 );
 
 const disconnectSiteInrcyGa4 = useCallback(() => {
@@ -1492,6 +1435,7 @@ const resetSiteInrcyAll = useCallback(async () => {
   if (siteInrcyOwnership === "none") return;
 
   await resetGoogleStats("site_inrcy");
+  await updateSiteInrcySettings({});
 
   // Clear url in DB
   const supabase = createClient();
@@ -1506,13 +1450,14 @@ const resetSiteInrcyAll = useCallback(async () => {
 
   setSiteInrcyUrl("");
   setSiteInrcySavedUrl("");
+  setSiteInrcySettingsText("{}");
   setGa4MeasurementId("");
   setGa4PropertyId("");
   setGscProperty("");
   setSiteInrcyGa4Connected(false);
   setSiteInrcyGscConnected(false);
   triggerGeneratorRefresh();
-}, [resetGoogleStats, siteInrcyOwnership, triggerGeneratorRefresh]);
+}, [resetGoogleStats, siteInrcyOwnership, triggerGeneratorRefresh, updateSiteInrcySettings]);
 
 const resetSiteWebAll = useCallback(async () => {
   if (!confirm("Réinitialiser la configuration (lien + GA4 + Search Console) ?")) return;
@@ -1524,6 +1469,7 @@ const resetSiteWebAll = useCallback(async () => {
 
   setSiteWebUrl("");
   setSiteWebSavedUrl("");
+  setSiteWebSettingsText("{}");
   setSiteWebGa4MeasurementId("");
   setSiteWebGa4PropertyId("");
   setSiteWebGscProperty("");
@@ -2733,98 +2679,25 @@ const checkActivity = useCallback(async () => {
         {/* Desktop actions */}
         <div className={styles.topbarActions}>
           <div className={styles.notificationWrap} ref={desktopNotificationMenuRef}>
-            <button
-              type="button"
-              className={styles.notificationBellBtn}
-              aria-label="Ouvrir les notifications"
-              aria-expanded={notificationMenuOpen}
-              onClick={() => {
-                setNotificationMenuOpen((v) => !v);
-                if (!notificationMenuOpen) {
-                  void refreshNotifications();
+            <NotificationMenu
+              notificationMenuOpen={notificationMenuOpen}
+              setNotificationMenuOpen={setNotificationMenuOpen}
+              unreadNotificationsCount={unreadNotificationsCount}
+              refreshNotifications={refreshNotifications}
+              notificationsLoading={notificationsLoading}
+              notifications={notifications}
+              notificationsError={notificationsError}
+              openPanel={() => openPanel("notifications")}
+              markAllNotificationsRead={markAllNotificationsRead}
+              markNotificationRead={markNotificationRead}
+              onNavigate={(ctaUrl) => {
+                if (ctaUrl.startsWith('/')) {
+                  router.push(ctaUrl);
+                } else {
+                  window.location.href = ctaUrl;
                 }
               }}
-            >
-              <span className={styles.notificationBellIcon} aria-hidden>🔔</span>
-              {unreadNotificationsCount > 0 && (
-                <span className={styles.notificationBellCount} aria-hidden>
-                  {Math.min(99, unreadNotificationsCount)}
-                </span>
-              )}
-            </button>
-
-            {notificationMenuOpen && (
-              <div className={styles.notificationPanel} role="dialog" aria-label="Notifications">
-                <div className={styles.notificationPanelHeader}>
-                  <div>
-                    <div className={styles.notificationPanelTitle}>Actions à mener</div>
-                    <div className={styles.notificationPanelSub}>Votre cockpit vous relance au bon moment.</div>
-                  </div>
-                  <div className={styles.notificationPanelHeaderActions}>
-                    <button type="button" className={styles.notificationGhostBtn} onClick={() => { setNotificationMenuOpen(false); openPanel("notifications"); }}>
-                      Réglages
-                    </button>
-                    <button type="button" className={styles.notificationGhostBtn} onClick={() => { void markAllNotificationsRead(); }}>
-                      Tout lire
-                    </button>
-                  </div>
-                </div>
-
-                <div className={styles.notificationList}>
-                  {notificationsLoading && notifications.length === 0 ? (
-                    <div className={styles.notificationEmpty}>Chargement des notifications…</div>
-                  ) : notificationsError ? (
-                    <div className={styles.notificationEmpty}>{notificationsError}</div>
-                  ) : notifications.length === 0 ? (
-                    <div className={styles.notificationEmpty}>Votre cloche est vide pour l’instant. Les prochaines relances business arriveront ici.</div>
-                  ) : (
-                    notifications.slice(0, 6).map((item) => (
-                      <div key={item.id} className={styles.notificationCard}>
-                        <div className={styles.notificationMetaRow}>
-                          <span className={`${styles.notificationCategory} ${styles[`notificationCategory_${item.category}`]}`}>{item.categoryLabel}</span>
-                          <span className={styles.notificationDate}>{item.relativeDate}</span>
-                        </div>
-                        <div className={styles.notificationTitleRow}>
-                          <div className={styles.notificationTitle}>{item.title}</div>
-                          {item.unread && <span className={styles.notificationUnreadDot} aria-hidden />}
-                        </div>
-                        <div className={styles.notificationBody}>{item.body}</div>
-                        <div className={styles.notificationActions}>
-                          {item.cta_url && item.cta_label ? (
-                            <button
-                              type="button"
-                              className={styles.notificationActionBtn}
-                              onClick={() => {
-                                void markNotificationRead(item.id);
-                                setNotificationMenuOpen(false);
-                                const ctaUrl = item.cta_url;
-                                if (!ctaUrl) return;
-                                if (ctaUrl.startsWith('/')) {
-                                  router.push(ctaUrl);
-                                } else {
-                                  window.location.href = ctaUrl;
-                                }
-                              }}
-                            >
-                              {item.cta_label}
-                            </button>
-                          ) : null}
-                          {item.unread && (
-                            <button
-                              type="button"
-                              className={styles.notificationGhostBtn}
-                              onClick={() => { void markNotificationRead(item.id); }}
-                            >
-                              Marquer comme lu
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
+            />
           </div>
 
           <button type="button" className={styles.ghostBtn} onClick={() => openPanel("contact")}>
@@ -2832,327 +2705,44 @@ const checkActivity = useCallback(async () => {
           </button>
 
           {/* ✅ Menu utilisateur (remplace OUT) */}
-          <div className={styles.userMenuWrap} ref={userMenuRef}>
-            <button
-              className={styles.userBubbleBtn}
-              type="button"
-              aria-haspopup="menu"
-              aria-expanded={userMenuOpen}
-              onClick={() => setUserMenuOpen((v) => !v)}
-              title={userEmail ?? "Utilisateur"}
-            >
-              <span className={styles.userBubble} aria-hidden>
-                {userFirstLetter}
-              </span>
-            </button>
-
-            {/* ✅ AJOUT : mini pastille + tooltip */}
-            {(profileIncomplete || activityIncomplete) && (
-              <div className={styles.profileIndicatorWrap} style={{ marginLeft: 6 }}>
-                <button
-                  type="button"
-                  className={styles.profileWarnBtn}
-                  aria-label="Profil incomplet"
-                  onClick={() => openPanel("profil")}
-                >
-                  <span className={styles.profileWarnDot} aria-hidden />
-                </button>
-
-                <div className={styles.profileTooltip} role="tooltip">
-                  <div>
-                    ⚠️ <strong>Profil incomplet</strong>
-                    <br />
-                    Complétez votre profil pour activer pleinement iNrCy.
-                  </div>
-
-                  <button
-                    type="button"
-                    className={styles.profileTooltipBtn}
-                    onClick={() => openPanel("profil")}
-                  >
-                    Compléter mon profil
-                  </button>
-                </div>
-              </div>
-
-            )}
-
-            {activityIncomplete && (
-              <div className={styles.profileIndicatorWrap} style={{ marginLeft: 6 }}>
-                <button
-                  type="button"
-                  className={styles.profileWarnBtn}
-                  aria-label="Activité incomplète"
-                  onClick={() => openPanel("activite")}
-                >
-                  <span className={styles.profileWarnDot} aria-hidden />
-                </button>
-
-                <div className={styles.profileTooltip} role="tooltip">
-                  <div>
-                    ⚠️ <strong>Activité incomplète</strong>
-                    <br />
-                    Complétez « Mon activité » pour générer des contenus pertinents.
-                  </div>
-
-                  <button
-                    type="button"
-                    className={styles.profileTooltipBtn}
-                    onClick={() => openPanel("activite")}
-                  >
-                    Compléter mon activité
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {userMenuOpen && (
-              <div className={styles.userMenuPanel} role="menu" aria-label="Menu utilisateur">
-                <button
-                  type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    openPanel("compte");
-                  }}
-                >
-                  Mon compte
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    openPanel("profil");
-                  }}
-                >
-                  Mon profil
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    openPanel("activite");
-                  }}
-                >
-                  Mon activité
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    openPanel("notifications");
-                  }}
-                >
-                  Notifications
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    openPanel("abonnement");
-                  }}
-                >
-                  Mon abonnement
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    openPanel("inertie");
-                  }}
-                >
-                  Mon inertie
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    openPanel("boutique");
-                  }}
-                >
-                  Boutique
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    openPanel("parrainage");
-                  }}
-                >
-                  Parrainer avec iNrCy
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    router.push("/dashboard/gps");
-                  }}
-                >
-                  GPS d’utilisation
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    openPanel("legal");
-                  }}
-                >
-                  Informations légales
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    openPanel("rgpd");
-                  }}
-                >
-                  Mes données (RGPD)
-                </button>
-
-                <div className={styles.userMenuDivider} />
-
-                <button
-                  className={`${styles.userMenuItem} ${styles.userMenuDanger}`}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    handleLogout();
-                  }}
-                >
-                  Déconnexion
-                </button>
-              </div>
-            )}
+          <div ref={userMenuRef}>
+            <UserMenu
+              userEmail={userEmail}
+              userFirstLetter={userFirstLetter}
+              profileIncomplete={profileIncomplete}
+              activityIncomplete={activityIncomplete}
+              userMenuOpen={userMenuOpen}
+              setUserMenuOpen={setUserMenuOpen}
+              openPanel={openPanel}
+              goToGps={() => router.push("/dashboard/gps")}
+              handleLogout={handleLogout}
+            />
           </div>
         </div>
 
         {/* Mobile notifications */}
         <div className={styles.mobileBellWrap}>
           <div className={styles.notificationWrap} ref={mobileNotificationMenuRef}>
-            <button
-              type="button"
-              className={`${styles.notificationBellBtn} ${styles.notificationBellBtnMobile}`}
-              aria-label="Ouvrir les notifications"
-              aria-expanded={notificationMenuOpen}
-              onClick={() => {
-                setNotificationMenuOpen((v) => !v);
-                if (!notificationMenuOpen) {
-                  void refreshNotifications();
+            <NotificationMenu
+              notificationMenuOpen={notificationMenuOpen}
+              setNotificationMenuOpen={setNotificationMenuOpen}
+              unreadNotificationsCount={unreadNotificationsCount}
+              refreshNotifications={refreshNotifications}
+              notificationsLoading={notificationsLoading}
+              notifications={notifications}
+              notificationsError={notificationsError}
+              openPanel={() => openPanel("notifications")}
+              markAllNotificationsRead={markAllNotificationsRead}
+              markNotificationRead={markNotificationRead}
+              onNavigate={(ctaUrl) => {
+                if (ctaUrl.startsWith('/')) {
+                  router.push(ctaUrl);
+                } else {
+                  window.location.href = ctaUrl;
                 }
               }}
-            >
-              <span className={styles.notificationBellIcon} aria-hidden>🔔</span>
-              {unreadNotificationsCount > 0 && (
-                <span className={styles.notificationBellCount} aria-hidden>
-                  {Math.min(99, unreadNotificationsCount)}
-                </span>
-              )}
-            </button>
-
-            {notificationMenuOpen && (
-              <div className={`${styles.notificationPanel} ${styles.notificationPanelMobile}`} role="dialog" aria-label="Notifications">
-                <div className={styles.notificationPanelHeader}>
-                  <div>
-                    <div className={styles.notificationPanelTitle}>Actions à mener</div>
-                    <div className={styles.notificationPanelSub}>Votre cockpit vous relance au bon moment.</div>
-                  </div>
-                  <div className={styles.notificationPanelHeaderActions}>
-                    <button type="button" className={styles.notificationGhostBtn} onClick={() => { setNotificationMenuOpen(false); openPanel("notifications"); }}>
-                      Réglages
-                    </button>
-                    <button type="button" className={styles.notificationGhostBtn} onClick={() => { void markAllNotificationsRead(); }}>
-                      Tout lire
-                    </button>
-                  </div>
-                </div>
-
-                <div className={styles.notificationList}>
-                  {notificationsLoading && notifications.length === 0 ? (
-                    <div className={styles.notificationEmpty}>Chargement des notifications…</div>
-                  ) : notificationsError ? (
-                    <div className={styles.notificationEmpty}>{notificationsError}</div>
-                  ) : notifications.length === 0 ? (
-                    <div className={styles.notificationEmpty}>Votre cloche est vide pour l’instant. Les prochaines relances business arriveront ici.</div>
-                  ) : (
-                    notifications.slice(0, 6).map((item) => (
-                      <div key={item.id} className={styles.notificationCard}>
-                        <div className={styles.notificationMetaRow}>
-                          <span className={`${styles.notificationCategory} ${styles[`notificationCategory_${item.category}`]}`}>{item.categoryLabel}</span>
-                          <span className={styles.notificationDate}>{item.relativeDate}</span>
-                        </div>
-                        <div className={styles.notificationTitleRow}>
-                          <div className={styles.notificationTitle}>{item.title}</div>
-                          {item.unread && <span className={styles.notificationUnreadDot} aria-hidden />}
-                        </div>
-                        <div className={styles.notificationBody}>{item.body}</div>
-                        <div className={styles.notificationActions}>
-                          {item.cta_url && item.cta_label ? (
-                            <button
-                              type="button"
-                              className={styles.notificationActionBtn}
-                              onClick={() => {
-                                void markNotificationRead(item.id);
-                                setNotificationMenuOpen(false);
-                                const ctaUrl = item.cta_url;
-                                if (!ctaUrl) return;
-                                if (ctaUrl.startsWith('/')) {
-                                  router.push(ctaUrl);
-                                } else {
-                                  window.location.href = ctaUrl;
-                                }
-                              }}
-                            >
-                              {item.cta_label}
-                            </button>
-                          ) : null}
-                          {item.unread && (
-                            <button
-                              type="button"
-                              className={styles.notificationGhostBtn}
-                              onClick={() => { void markNotificationRead(item.id); }}
-                            >
-                              Marquer comme lu
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
+              mobile
+            />
           </div>
         </div>
 
@@ -3839,74 +3429,8 @@ const checkActivity = useCallback(async () => {
       </section>
 
       <SettingsDrawer
-        title={
-          panel === "contact"
-            ? "Nous contacter"
-            : panel === "compte"
-            ? "Mon compte"
-            : panel === "profil"
-            ? "Mon profil"
-            : panel === "activite"
-            ? "Mon activité"
-            : panel === "abonnement"
-            ? "Mon abonnement"
-            : panel === "legal"
-            ? "Informations légales"
-            : panel === "rgpd"
-            ? "Mes données (RGPD)"
-            : panel === "mails"
-            ? "Réglages iNr’Send"
-            : panel === "site_inrcy"
-            ? "Configuration — Site iNrCy"
-            : panel === "site_web"
-            ? "Configuration — Site web"
-            : panel === "instagram"
-            ? "Configuration — Instagram"
-            : panel === "linkedin"
-            ? "Configuration — LinkedIn"
-            : panel === "gmb"
-            ? "Configuration — Google Business"
-            : panel === "facebook"
-            ? "Configuration — Facebook"
-            : panel === "inertie"
-            ? "Mon inertie"
-            : panel === "boutique"
-            ? "Boutique"
-            : panel === "parrainage"
-            ? "Parrainer avec iNrCy"
-            : panel === "notifications"
-            ? "Notifications"
-            : ""
-        }
-        isOpen={
-          panel === "contact" ||
-          panel === "compte" ||
-          panel === "profil" ||
-          panel === "activite" ||
-          panel === "abonnement" ||
-          panel === "legal" ||
-          panel === "rgpd" ||
-          panel === "mails" ||
-          panel === "site_inrcy"
-        ||
-          panel === "site_web"
-        ||
-          panel === "instagram"
-        ||
-          panel === "linkedin"
-        ||
-          panel === "gmb"
-        ||
-          panel === "facebook"
-        ||
-          panel === "inertie"
-        ||
-          panel === "boutique"
-        ||
-          panel === "parrainage"
-        ||
-          panel === "notifications"
-        }
+        title={getDrawerTitle(panel)}
+        isOpen={isDrawerPanel(panel)}
         onClose={closePanel}
         headerActions={
           panel === "inertie" ? <HelpButton onClick={() => setHelpInertieOpen(true)} title="Aide : Mon inertie" /> : null
@@ -4143,1793 +3667,171 @@ const checkActivity = useCallback(async () => {
 
 
         {panel === "site_inrcy" && (
-          <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                  padding: "8px 10px",
-                  borderRadius: 999,
-                  color: "rgba(255,255,255,0.92)",
-                  fontSize: 13,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 999,
-                    background:
-                      siteInrcyOwnership === "none"
-                        ? "rgba(148,163,184,0.9)"
-                        : siteInrcyAllGreen
-                        ? "rgba(34,197,94,0.95)"
-                        : "rgba(59,130,246,0.95)",
-                  }}
-                />
-                Statut : <strong>{siteInrcyOwnership === "none" ? "Aucun site" : siteInrcyAllGreen ? "Connecté" : "À connecter"}</strong>
-              </span>
-
-              {!!siteInrcyContactEmail && (
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                    padding: "8px 10px",
-                    borderRadius: 999,
-                    color: "rgba(255,255,255,0.85)",
-                    fontSize: 13,
-                  }}
-                >
-                  Email : <strong style={{ marginLeft: 6 }}>{siteInrcyContactEmail}</strong>
-                </span>
-              )}
-            </div>
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div className={styles.blockHeaderRow}>
-                <div className={styles.blockTitle}>Lien du site</div>
-                <ConnectionPill connected={siteInrcyOwnership !== "none" && hasSiteInrcyUrl} />
-              </div>
-              <div className={styles.blockSub}>
-                Le bouton <strong>Voir le site</strong> de la bulle utilisera ce lien.
-              </div>
-
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <input
-                  value={siteInrcyUrl}
-                  onChange={(e) => setSiteInrcyUrl(e.target.value)}
-                  disabled={siteInrcyOwnership === "none"}
-                  placeholder="https://..."
-                  style={{
-                    flex: "1 1 280px",
-                    minWidth: 220,
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                    padding: "10px 12px",
-                    color: siteInrcyOwnership === "none" ? "rgba(255,255,255,0.75)" : "white",
-                    outline: "none",
-                  }}
-                />
-
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.iconBtn}`}
-                  onClick={saveSiteInrcyUrl}
-                  disabled={siteInrcyOwnership === "none"}
-                  title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Enregistrer le lien"}
-                  aria-label="Enregistrer le lien"
-                >
-                  <SaveIcon />
-                </button>
-
-                <a
-                  href={draftSiteInrcyUrlMeta?.normalizedUrl || "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`${styles.actionBtn} ${styles.viewBtn}`}
-                  style={{ pointerEvents: draftSiteInrcyUrlMeta ? "auto" : "none", opacity: draftSiteInrcyUrlMeta ? 1 : 0.5 }}
-                >
-                  Voir le site
-                </a>
-              </div>
-              {siteInrcyUrlNotice && <div className={styles.successNote}>{siteInrcyUrlNotice}</div>}
-            </div>
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div className={styles.blockHeaderRow}>
-                <div className={styles.blockTitle}>Google Analytics (GA4)</div>
-                <ConnectionPill connected={siteInrcyGa4Connected} />
-              </div>
-              <div className={styles.blockSub}>Connexion automatique : les identifiants GA4 se remplissent après OAuth</div>
-
-              <label style={{ display: "grid", gap: 8 }}>
-                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>ID de mesure (ex: G-XXXXXXXXXX)</span>
-                <input
-                  value={ga4MeasurementId}
-                  readOnly
-                  aria-readonly="true"
-                  placeholder="Remplissage automatique après connexion"
-                  style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.4)",
-                    colorScheme: "dark",
-                    padding: "10px 12px",
-                    color: "rgba(255,255,255,0.88)",
-                    outline: "none",
-                    cursor: "not-allowed",
-                  }}
-                />
-              </label>
-
-
-              <label style={{ display: "grid", gap: 8 }}>
-                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Property ID (numérique, ex: 123456789)</span>
-                <input
-                  value={ga4PropertyId}
-                  readOnly
-                  aria-readonly="true"
-                  inputMode="numeric"
-                  placeholder="Remplissage automatique après connexion"
-                  style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.4)",
-                    colorScheme: "dark",
-                    padding: "10px 12px",
-                    color: "rgba(255,255,255,0.88)",
-                    outline: "none",
-                    cursor: "not-allowed",
-                  }}
-                />
-              </label>
-
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                {siteInrcyGa4Connected ? (
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-                    onClick={disconnectSiteInrcyGa4}
-                    disabled={siteInrcyOwnership === "none"}
-                    title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Déconnecter (GA4)"}
-                  >
-                    Déconnecter
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.connectBtn}`}
-                    onClick={connectSiteInrcyGa4}
-                    disabled={!canConnectSiteInrcyGoogle}
-                    title={
-                      !canConfigureSite
-                        ? "Aucun site iNrCy associé"
-                        : !hasSiteInrcyUrl
-                          ? "Renseigne le lien du site iNrCy avant de connecter Google Analytics."
-                          : "Connecter Google Analytics"
-                    }
-                  >
-                    Connecter Google Analytics
-                  </button>
-                )}
-              </div>
-            </div>
-            {siteInrcyGa4Notice && <div className={styles.successNote}>{siteInrcyGa4Notice}</div>}
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div className={styles.blockHeaderRow}>
-                <div className={styles.blockTitle}>Google Search Console</div>
-                <ConnectionPill connected={siteInrcyGscConnected} />
-              </div>
-              <div className={styles.blockSub}>Connexion automatique : la propriété GSC se remplit après OAuth</div>
-
-              <label style={{ display: "grid", gap: 8 }}>
-                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
-                  Propriété (ex: <code>sc-domain:monsite.fr</code> ou <code>https://monsite.fr/</code>)
-                </span>
-                <input
-                  value={gscProperty}
-                  readOnly
-                  aria-readonly="true"
-                  placeholder="Remplissage automatique après connexion"
-                  style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.4)",
-                    colorScheme: "dark",
-                    padding: "10px 12px",
-                    color: "rgba(255,255,255,0.88)",
-                    outline: "none",
-                    cursor: "not-allowed",
-                  }}
-                />
-              </label>
-
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                {siteInrcyGscConnected ? (
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-                    onClick={disconnectSiteInrcyGsc}
-                    disabled={siteInrcyOwnership === "none"}
-                    title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Déconnecter (GSC)"}
-                  >
-                    Déconnecter
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.connectBtn}`}
-                    onClick={connectSiteInrcyGsc}
-                    disabled={!canConnectSiteInrcyGoogle}
-                    title={
-                      !canConfigureSite
-                        ? "Aucun site iNrCy associé"
-                        : !hasSiteInrcyUrl
-                          ? "Renseigne le lien du site iNrCy avant de connecter Google Search Console."
-                          : "Connecter Google Search Console"
-                    }
-                  >
-                    Connecter Google Search Console
-                  </button>
-                )}
-              </div>
-            </div>
-            {siteInrcyGscNotice && <div className={styles.successNote}>{siteInrcyGscNotice}</div>}
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div className={styles.blockHeaderRow}>
-                <div className={styles.blockTitle}>Widget « Actus »</div>
-              </div>
-              <div className={styles.blockSub}>
-                Colle ce code iframe dans ton site iNrCy (Elementor → widget HTML) pour afficher automatiquement tes dernières actus publiées depuis Booster.
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Affichage</strong></span>
-                  <select
-                    value={siteInrcyActusLayout}
-                    onChange={(e) => setSiteInrcyActusLayout(e.target.value === "carousel" ? "carousel" : "list")}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="list">Liste</option>
-                    <option value="carousel">Carousel</option>
-                  </select>
-                </label>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Nombre d'actus</strong></span>
-                  <select
-                    value={String(siteInrcyActusLimit)}
-                    onChange={(e) => setSiteInrcyActusLimit(Math.min(7, Math.max(3, Number(e.target.value) || 5)))}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    {[3, 4, 5, 6, 7].map((n) => (
-                      <option key={n} value={n}>{n} dernières actus</option>
-                    ))}
-                  </select>
-                </label>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Police</strong></span>
-                  <select
-                    value={siteInrcyActusFont}
-                    onChange={(e) => setSiteInrcyActusFont((( ["site", "inter", "poppins", "montserrat", "lora"] as const).includes(e.target.value as never) ? e.target.value : "site") as "site" | "inter" | "poppins" | "montserrat" | "lora")}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="site">Adaptative site</option>
-                    <option value="inter">Inter</option>
-                    <option value="poppins">Poppins</option>
-                    <option value="montserrat">Montserrat</option>
-                    <option value="lora">Lora</option>
-                  </select>
-                </label>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Couleur de fond</strong></span>
-                  <select
-                    value={siteInrcyActusTheme}
-                    onChange={(e) => setSiteInrcyActusTheme((( ["white", "dark", "gray", "nature", "sand"] as const).includes(e.target.value as never) ? e.target.value : "nature") as "white" | "dark" | "gray" | "nature" | "sand")}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="white">Blanc</option>
-                    <option value="dark">Noir</option>
-                    <option value="gray">Gris</option>
-                    <option value="nature">Vert doux</option>
-                    <option value="sand">Sable</option>
-                  </select>
-                </label>
-              </div>
-
-              {(() => {
-                const url = (siteInrcySavedUrl || "").trim();
-                let domain = "";
-                try {
-                  const withProto = /^https?:\/\//i.test(url) ? url : url ? `https://${url}` : "";
-                  if (withProto) domain = new URL(withProto).hostname.toLowerCase().replace(/^www\./, "");
-                } catch {
-                  // ignore
-                }
-                const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
-                const iframeId = `inrcy-actus-${domain || "site"}-${siteInrcyActusLayout}`.replace(/[^a-z0-9_-]/gi, "-");
-                const initialHeight = siteInrcyActusLayout === "carousel" ? 560 : 260;
-                const embedUrl = `${publicAppOrigin}/embed/actus?frameId=${encodeURIComponent(iframeId)}&domain=${encodeURIComponent(domain || "votre-site.fr")}&source=inrcy_site&layout=${encodeURIComponent(siteInrcyActusLayout)}&limit=${encodeURIComponent(String(siteInrcyActusLimit))}&font=${encodeURIComponent(siteInrcyActusFont)}&theme=${encodeURIComponent(siteInrcyActusTheme)}&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenInrcySite)}`;
-                const snippet = `<iframe id="${iframeId}" src="${embedUrl}" width="100%" height="${initialHeight}" style="border:0;width:100%;max-width:100%;overflow:hidden;border-radius:24px;background:transparent;display:block;" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" scrolling="no" title="Actualités iNrCy"></iframe>
-<script>
-(function(){
-  var iframe=document.getElementById("${iframeId}");
-  if(!iframe)return;
-  var lastHeight=${initialHeight};
-  var ready=false;
-  function applyHeight(value){
-    var h=parseInt(value,10);
-    if(!h||h<140)return;
-    if(Math.abs(h-lastHeight)<2)return;
-    lastHeight=h;
-    iframe.style.height=h+"px";
-    iframe.setAttribute("height",String(h));
-  }
-  function send(type){
-    if(!iframe.contentWindow)return;
-    iframe.contentWindow.postMessage({source:"inrcy-host",type:type,frameId:"${iframeId}"},"${publicAppOrigin}");
-  }
-  function onMessage(event){
-    if(event.origin!=="${publicAppOrigin}")return;
-    if(event.source!==iframe.contentWindow)return;
-    var data=event.data||{};
-    if(data.frameId!=="${iframeId}")return;
-    if(data.type==="inrcy:embed-ready"){
-      ready=true;
-      applyHeight(data.height);
-      send("inrcy:embed-init");
-      return;
-    }
-    if(data.type!=="inrcy:embed-resize")return;
-    applyHeight(data.height);
-  }
-  window.addEventListener("message",onMessage,false);
-  iframe.addEventListener("load",function(){ send("inrcy:embed-init"); });
-  setTimeout(function(){ send("inrcy:embed-ping"); },120);
-  setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },500);
-  setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },1200);
-  setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },2600);
-})();
-<\/script>`;
-                return (
-                  <>
-                    {showSiteInrcyWidgetCode && (
-                      <div
-                        aria-label="Code du widget"
-                        onCopy={(e) => e.preventDefault()}
-                        onCut={(e) => e.preventDefault()}
-                        style={{
-                          width: "100%",
-                          minHeight: 170,
-                          borderRadius: 12,
-                          border: "1px solid rgba(255,255,255,0.14)",
-                          background: "rgba(15,23,42,0.65)",
-                          padding: "10px 12px",
-                          color: "rgba(255,255,255,0.92)",
-                          fontFamily:
-                            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-                          fontSize: 12,
-                          lineHeight: 1.5,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-all",
-                          userSelect: "none",
-                          WebkitUserSelect: "none",
-                          MozUserSelect: "none",
-                          msUserSelect: "none",
-                          pointerEvents: "none",
-                        }}
-                      >
-                        {snippet}
-                      </div>
-                    )}
-
-                    <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
-                      <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          className={styles.actionBtn}
-                          onClick={() => setShowSiteInrcyWidgetCode((prev) => !prev)}
-                        >
-                          {showSiteInrcyWidgetCode ? "Masquer le code" : "Afficher le code"}
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.actionBtn}
-                          onClick={() => {
-                            void navigator.clipboard?.writeText(snippet);
-                          }}
-                        >
-                          Copier le code
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-
-            {siteInrcySettingsError && (
-              <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 12 }}>{siteInrcySettingsError}</div>
-            )}
-
-
-
-
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                className={`${styles.actionBtn} ${styles.resetBtn}`}
-                onClick={resetSiteInrcyAll}
-                disabled={siteInrcyOwnership === "none"}
-                title={siteInrcyOwnership === "none" ? "Aucun site iNrCy" : "Réinitialiser (lien + GA4 + Search Console)"}
-              >
-                Réinitialiser
-              </button>
-            </div>
-          </div>
-
-
-
-                )}
+          <SiteInrcyPanel
+            siteInrcyOwnership={siteInrcyOwnership}
+            siteInrcyAllGreen={siteInrcyAllGreen}
+            siteInrcyContactEmail={siteInrcyContactEmail}
+            hasSiteInrcyUrl={hasSiteInrcyUrl}
+            siteInrcyUrl={siteInrcyUrl}
+            setSiteInrcyUrl={setSiteInrcyUrl}
+            saveSiteInrcyUrl={saveSiteInrcyUrl}
+            draftSiteInrcyUrlMeta={draftSiteInrcyUrlMeta}
+            siteInrcyUrlNotice={siteInrcyUrlNotice}
+            siteInrcyGa4Connected={siteInrcyGa4Connected}
+            ga4MeasurementId={ga4MeasurementId}
+            ga4PropertyId={ga4PropertyId}
+            disconnectSiteInrcyGa4={disconnectSiteInrcyGa4}
+            connectSiteInrcyGa4={connectSiteInrcyGa4}
+            canConnectSiteInrcyGoogle={canConnectSiteInrcyGoogle}
+            canConfigureSite={canConfigureSite}
+            siteInrcyGa4Notice={siteInrcyGa4Notice}
+            siteInrcyGscConnected={siteInrcyGscConnected}
+            gscProperty={gscProperty}
+            disconnectSiteInrcyGsc={disconnectSiteInrcyGsc}
+            connectSiteInrcyGsc={connectSiteInrcyGsc}
+            siteInrcyGscNotice={siteInrcyGscNotice}
+            siteInrcyActusLayout={siteInrcyActusLayout}
+            setSiteInrcyActusLayout={setSiteInrcyActusLayout}
+            siteInrcyActusLimit={siteInrcyActusLimit}
+            setSiteInrcyActusLimit={setSiteInrcyActusLimit}
+            siteInrcyActusFont={siteInrcyActusFont}
+            setSiteInrcyActusFont={setSiteInrcyActusFont}
+            siteInrcyActusTheme={siteInrcyActusTheme}
+            setSiteInrcyActusTheme={setSiteInrcyActusTheme}
+            siteInrcySavedUrl={siteInrcySavedUrl}
+            widgetTokenInrcySite={widgetTokenInrcySite}
+            showSiteInrcyWidgetCode={showSiteInrcyWidgetCode}
+            setShowSiteInrcyWidgetCode={setShowSiteInrcyWidgetCode}
+            siteInrcySettingsError={siteInrcySettingsError}
+            resetSiteInrcyAll={resetSiteInrcyAll}
+          />
+        )}
 
 {panel === "site_web" && (
-          <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                  padding: "8px 10px",
-                  borderRadius: 999,
-                  color: "rgba(255,255,255,0.92)",
-                  fontSize: 13,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 999,
-                    background: siteWebAllGreen
-                      ? "rgba(34,197,94,0.95)"
-                      : hasSiteWebUrl
-                      ? "rgba(59,130,246,0.95)"
-                      : "rgba(148,163,184,0.9)",
-                  }}
-                />
-                Statut : <strong>{hasSiteWebUrl ? (siteWebAllGreen ? "Connecté" : "À connecter") : "À configurer"}</strong>
-              </span>
-            </div>
-
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div className={styles.blockHeaderRow}>
-                <div className={styles.blockTitle}>Lien du site</div>
-                <ConnectionPill connected={hasSiteWebUrl} />
-              </div>
-              <div className={styles.blockSub}>
-                Le bouton <strong>Voir le site</strong> de la bulle utilisera ce lien.
-              </div>
-
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <input
-                  value={siteWebUrl}
-                  onChange={(e) => setSiteWebUrl(e.target.value)}
-                  placeholder="https://votre-site.fr"
-                  style={{
-                    flex: "1 1 280px",
-                    minWidth: 220,
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                    padding: "10px 12px",
-                    color: "white",
-                    outline: "none",
-                  }}
-                />
-
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.iconBtn}`}
-                  onClick={saveSiteWebUrl}
-                  title="Enregistrer le lien"
-                  aria-label="Enregistrer le lien"
-                >
-                  <SaveIcon />
-                </button>
-
-                <a
-                  href={draftSiteWebUrlMeta?.normalizedUrl || "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`${styles.actionBtn} ${styles.viewBtn}`}
-                  style={{ pointerEvents: draftSiteWebUrlMeta ? "auto" : "none", opacity: draftSiteWebUrlMeta ? 1 : 0.5 }}
-                >
-                  Voir le site
-                </a>
-              </div>
-              {siteWebUrlNotice && <div className={styles.successNote}>{siteWebUrlNotice}</div>}
-            </div>
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div className={styles.blockHeaderRow}>
-                <div className={styles.blockTitle}>Google Analytics (GA4)</div>
-                <ConnectionPill connected={siteWebGa4Connected} />
-              </div>
-              <div className={styles.blockSub}>Connexion automatique : les identifiants GA4 se remplissent après OAuth</div>
-
-              <label style={{ display: "grid", gap: 8 }}>
-                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>ID de mesure (ex: G-XXXXXXXXXX)</span>
-                <input
-                  value={siteWebGa4MeasurementId}
-                  readOnly
-                  aria-readonly="true"
-                  placeholder="Remplissage automatique après connexion"
-                  style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.4)",
-                    colorScheme: "dark",
-                    padding: "10px 12px",
-                    color: "rgba(255,255,255,0.88)",
-                    outline: "none",
-                    cursor: "not-allowed",
-                  }}
-                />
-              </label>
-
-
-              <label style={{ display: "grid", gap: 8 }}>
-                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Property ID (numérique, ex: 123456789)</span>
-                <input
-                  value={siteWebGa4PropertyId}
-                  readOnly
-                  aria-readonly="true"
-                  inputMode="numeric"
-                  placeholder="Remplissage automatique après connexion"
-                  style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.4)",
-                    colorScheme: "dark",
-                    padding: "10px 12px",
-                    color: "rgba(255,255,255,0.88)",
-                    outline: "none",
-                    cursor: "not-allowed",
-                  }}
-                />
-              </label>
-
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                {siteWebGa4Connected ? (
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-                    onClick={disconnectSiteWebGa4}
-                    title="Déconnecter (GA4)"
-                  >
-                    Déconnecter
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.connectBtn}`}
-                    onClick={connectSiteWebGa4}
-                    disabled={!canConnectSiteWebGoogle}
-                    title={!hasSiteWebUrl ? "Renseigne le lien du site web avant de connecter Google Analytics." : "Connecter Google Analytics"}
-                  >
-                    Connecter Google Analytics
-                  </button>
-                )}
-              </div>
-            </div>
-            {siteWebGa4Notice && <div className={styles.successNote}>{siteWebGa4Notice}</div>}
-
-
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div className={styles.blockHeaderRow}>
-                <div className={styles.blockTitle}>Google Search Console</div>
-                <ConnectionPill connected={siteWebGscConnected} />
-              </div>
-              <div className={styles.blockSub}>Connexion automatique : la propriété GSC se remplit après OAuth</div>
-
-              <label style={{ display: "grid", gap: 8 }}>
-                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
-                  Propriété (ex: <code>sc-domain:monsite.fr</code> ou <code>https://monsite.fr/</code>)
-                </span>
-                <input
-                  value={siteWebGscProperty}
-                  readOnly
-                  aria-readonly="true"
-                  placeholder="Remplissage automatique après connexion"
-                  style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.4)",
-                    colorScheme: "dark",
-                    padding: "10px 12px",
-                    color: "rgba(255,255,255,0.88)",
-                    outline: "none",
-                    cursor: "not-allowed",
-                  }}
-                />
-              </label>
-
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                {siteWebGscConnected ? (
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-                    onClick={disconnectSiteWebGsc}
-                    title="Déconnecter (GSC)"
-                  >
-                    Déconnecter
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.connectBtn}`}
-                    onClick={connectSiteWebGsc}
-                    disabled={!canConnectSiteWebGoogle}
-                    title={!hasSiteWebUrl ? "Renseigne le lien du site web avant de connecter Google Search Console." : "Connecter Google Search Console"}
-                  >
-                    Connecter Google Search Console
-                  </button>
-                )}
-              </div>
-            </div>
-            {siteWebGscNotice && <div className={styles.successNote}>{siteWebGscNotice}</div>}
-
-            {/* ✅ Widget actus (pour afficher les 5 dernières publications Booster sur le site du client) */}
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div className={styles.blockHeaderRow}>
-                <div className={styles.blockTitle}>Widget « Actus »</div>
-              </div>
-              <div className={styles.blockSub}>
-                Colle ce code iframe dans ton site (WordPress, Wix, Webflow, HTML…) pour afficher automatiquement tes dernières actus publiées depuis Booster.
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Affichage</strong></span>
-                  <select
-                    value={siteWebActusLayout}
-                    onChange={(e) => setSiteWebActusLayout(e.target.value === "carousel" ? "carousel" : "list")}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="list">Liste</option>
-                    <option value="carousel">Carousel</option>
-                  </select>
-                </label>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Nombre d'actus</strong></span>
-                  <select
-                    value={String(siteWebActusLimit)}
-                    onChange={(e) => setSiteWebActusLimit(Math.min(7, Math.max(3, Number(e.target.value) || 5)))}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    {[3, 4, 5, 6, 7].map((n) => (
-                      <option key={n} value={n}>{n} dernières actus</option>
-                    ))}
-                  </select>
-                </label>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Police</strong></span>
-                  <select
-                    value={siteWebActusFont}
-                    onChange={(e) => setSiteWebActusFont((( ["site", "inter", "poppins", "montserrat", "lora"] as const).includes(e.target.value as never) ? e.target.value : "site") as "site" | "inter" | "poppins" | "montserrat" | "lora")}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="site">Adaptative site</option>
-                    <option value="inter">Inter</option>
-                    <option value="poppins">Poppins</option>
-                    <option value="montserrat">Montserrat</option>
-                    <option value="lora">Lora</option>
-                  </select>
-                </label>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span className={styles.blockSub}><strong>Couleur de fond</strong></span>
-                  <select
-                    value={siteWebActusTheme}
-                    onChange={(e) => setSiteWebActusTheme((( ["white", "dark", "gray", "nature", "sand"] as const).includes(e.target.value as never) ? e.target.value : "nature") as "white" | "dark" | "gray" | "nature" | "sand")}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="white">Blanc</option>
-                    <option value="dark">Noir</option>
-                    <option value="gray">Gris</option>
-                    <option value="nature">Vert doux</option>
-                    <option value="sand">Sable</option>
-                  </select>
-                </label>
-              </div>
-
-              {(() => {
-                const url = (siteWebSavedUrl || "").trim();
-                let domain = "";
-                try {
-                  const withProto = /^https?:\/\//i.test(url) ? url : url ? `https://${url}` : "";
-                  if (withProto) domain = new URL(withProto).hostname.toLowerCase().replace(/^www\./, "");
-                } catch {
-                  // ignore
-                }
-                const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
-                const iframeId = `inrcy-actus-${domain || "site"}-${siteWebActusLayout}`.replace(/[^a-z0-9_-]/gi, "-");
-                const initialHeight = siteWebActusLayout === "carousel" ? 560 : 260;
-                const embedUrl = `${publicAppOrigin}/embed/actus?frameId=${encodeURIComponent(iframeId)}&domain=${encodeURIComponent(domain || "votre-site.fr")}&source=site_web&layout=${encodeURIComponent(siteWebActusLayout)}&limit=${encodeURIComponent(String(siteWebActusLimit))}&font=${encodeURIComponent(siteWebActusFont)}&theme=${encodeURIComponent(siteWebActusTheme)}&title=${encodeURIComponent("Actualités")}&token=${encodeURIComponent(widgetTokenSiteWeb)}`;
-                const snippet = `<iframe id="${iframeId}" src="${embedUrl}" width="100%" height="${initialHeight}" style="border:0;width:100%;max-width:100%;overflow:hidden;border-radius:24px;background:transparent;display:block;" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" scrolling="no" title="Actualités iNrCy"></iframe>
-<script>
-(function(){
-  var iframe=document.getElementById("${iframeId}");
-  if(!iframe)return;
-  var lastHeight=${initialHeight};
-  var ready=false;
-  function applyHeight(value){
-    var h=parseInt(value,10);
-    if(!h||h<140)return;
-    if(Math.abs(h-lastHeight)<2)return;
-    lastHeight=h;
-    iframe.style.height=h+"px";
-    iframe.setAttribute("height",String(h));
-  }
-  function send(type){
-    if(!iframe.contentWindow)return;
-    iframe.contentWindow.postMessage({source:"inrcy-host",type:type,frameId:"${iframeId}"},"${publicAppOrigin}");
-  }
-  function onMessage(event){
-    if(event.origin!=="${publicAppOrigin}")return;
-    if(event.source!==iframe.contentWindow)return;
-    var data=event.data||{};
-    if(data.frameId!=="${iframeId}")return;
-    if(data.type==="inrcy:embed-ready"){
-      ready=true;
-      applyHeight(data.height);
-      send("inrcy:embed-init");
-      return;
-    }
-    if(data.type!=="inrcy:embed-resize")return;
-    applyHeight(data.height);
-  }
-  window.addEventListener("message",onMessage,false);
-  iframe.addEventListener("load",function(){ send("inrcy:embed-init"); });
-  setTimeout(function(){ send("inrcy:embed-ping"); },120);
-  setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },500);
-  setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },1200);
-  setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },2600);
-})();
-<\/script>`;
-                return (
-                  <>
-                    {showSiteWebWidgetCode && (
-                      <div
-                        aria-label="Code du widget"
-                        onCopy={(e) => e.preventDefault()}
-                        onCut={(e) => e.preventDefault()}
-                        style={{
-                          width: "100%",
-                          minHeight: 170,
-                          borderRadius: 12,
-                          border: "1px solid rgba(255,255,255,0.14)",
-                          background: "rgba(15,23,42,0.65)",
-                          padding: "10px 12px",
-                          color: "rgba(255,255,255,0.92)",
-                          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-                          fontSize: 12,
-                          lineHeight: 1.5,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-all",
-                          userSelect: "none",
-                          WebkitUserSelect: "none",
-                          MozUserSelect: "none",
-                          msUserSelect: "none",
-                          pointerEvents: "none",
-                        }}
-                      >
-                        {snippet}
-                      </div>
-                    )}
-
-                    <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
-                      <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          className={styles.actionBtn}
-                          onClick={() => setShowSiteWebWidgetCode((prev) => !prev)}
-                        >
-                          {showSiteWebWidgetCode ? "Masquer le code" : "Afficher le code"}
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.actionBtn}
-                          onClick={() => {
-                            void navigator.clipboard?.writeText(snippet);
-                          }}
-                        >
-                          Copier le code
-                        </button>
-                      </div>
-                    </div>
-                    <div className={styles.blockSub}>
-                      <strong>Où le coller ?</strong> Sur WordPress : un bloc <em>HTML personnalisé</em> (Elementor → widget HTML). Sur Wix : <em>Embed Code</em>. Sur Webflow : <em>Embed</em>.
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-
-            {siteWebSettingsError && (
-              <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 12 }}>{siteWebSettingsError}</div>
-            )}
-
-
-
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                className={`${styles.actionBtn} ${styles.resetBtn}`}
-                onClick={resetSiteWebAll}
-                title="Réinitialiser (lien + GA4 + Search Console)"
-              >
-                Réinitialiser
-              </button>
-            </div>
-          </div>
+          <SiteWebPanel
+            siteWebAllGreen={siteWebAllGreen}
+            hasSiteWebUrl={hasSiteWebUrl}
+            siteWebUrl={siteWebUrl}
+            setSiteWebUrl={setSiteWebUrl}
+            saveSiteWebUrl={saveSiteWebUrl}
+            draftSiteWebUrlMeta={draftSiteWebUrlMeta}
+            siteWebUrlNotice={siteWebUrlNotice}
+            siteWebGa4Connected={siteWebGa4Connected}
+            siteWebGa4MeasurementId={siteWebGa4MeasurementId}
+            siteWebGa4PropertyId={siteWebGa4PropertyId}
+            disconnectSiteWebGa4={disconnectSiteWebGa4}
+            connectSiteWebGa4={connectSiteWebGa4}
+            canConnectSiteWebGoogle={canConnectSiteWebGoogle}
+            siteWebGa4Notice={siteWebGa4Notice}
+            siteWebGscConnected={siteWebGscConnected}
+            siteWebGscProperty={siteWebGscProperty}
+            disconnectSiteWebGsc={disconnectSiteWebGsc}
+            connectSiteWebGsc={connectSiteWebGsc}
+            siteWebGscNotice={siteWebGscNotice}
+            siteWebActusLayout={siteWebActusLayout}
+            setSiteWebActusLayout={setSiteWebActusLayout}
+            siteWebActusLimit={siteWebActusLimit}
+            setSiteWebActusLimit={setSiteWebActusLimit}
+            siteWebActusFont={siteWebActusFont}
+            setSiteWebActusFont={setSiteWebActusFont}
+            siteWebActusTheme={siteWebActusTheme}
+            setSiteWebActusTheme={setSiteWebActusTheme}
+            siteWebSavedUrl={siteWebSavedUrl}
+            widgetTokenSiteWeb={widgetTokenSiteWeb}
+            showSiteWebWidgetCode={showSiteWebWidgetCode}
+            setShowSiteWebWidgetCode={setShowSiteWebWidgetCode}
+            siteWebSettingsError={siteWebSettingsError}
+            resetSiteWebAll={resetSiteWebAll}
+          />
         )}
 
               {/* ✅ AJOUT : callbacks pour mise à jour immédiate de la pastille */}
         
 {panel === "instagram" && (
-  <div style={{ display: "grid", gap: 14 }}>
-    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          border: "1px solid rgba(255,255,255,0.12)",
-          background: "rgba(15,23,42,0.65)",
-          colorScheme: "dark",
-          padding: "8px 10px",
-          borderRadius: 999,
-          color: "rgba(255,255,255,0.92)",
-          fontSize: 13,
-        }}
-      >
-        <span
-          aria-hidden
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 999,
-            background: instagramConnected
-              ? "rgba(34,197,94,0.95)"
-              : instagramAccountConnected
-                ? "rgba(59,130,246,0.95)"
-                : "rgba(148,163,184,0.9)",
-          }}
-        />
-        Statut : <strong>{instagramConnected ? "Connecté" : instagramAccountConnected ? "Compte connecté" : "À connecter"}</strong>
-      </span>
-    </div>
-
-    {/* Compte (OAuth Meta) */}
-    <div
-      style={{
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(255,255,255,0.03)",
-        borderRadius: 14,
-        padding: 12,
-        display: "grid",
-        gap: 10,
-      }}
-    >
-      <div className={styles.blockHeaderRow}>
-        <div className={styles.blockTitle}>Compte connecté</div>
-        <ConnectionPill connected={instagramAccountConnected} />
-      </div>
-      <div className={styles.blockSub}>
-        Instagram nécessite un compte <strong>Business / Creator</strong> relié à une Page Facebook.
-      </div>
-
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          value={instagramUsername}
-          readOnly
-          placeholder={instagramAccountConnected ? "Compte connecté" : "Aucun compte connecté"}
-          style={{
-            flex: "1 1 280px",
-            minWidth: 220,
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.14)",
-            background: "rgba(15,23,42,0.65)",
-            colorScheme: "dark",
-            padding: "10px 12px",
-            color: "white",
-            outline: "none",
-            opacity: instagramAccountConnected ? 1 : 0.8,
-          }}
-        />
-
-        {!instagramAccountConnected ? (
-          <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectInstagramAccount}>
-            Connecter Instagram
-          </button>
-        ) : (
-          <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectInstagramAccount}>
-            Déconnecter Instagram
-          </button>
-        )}
-      </div>
-    </div>
-
-    {/* Choix du compte Instagram (via Pages Meta) */}
-    {instagramAccountConnected ? (
-      <div
-        style={{
-          border: "1px solid rgba(255,255,255,0.12)",
-          background: "rgba(255,255,255,0.03)",
-          borderRadius: 14,
-          padding: 12,
-          display: "grid",
-          gap: 10,
-        }}
-      >
-        <div className={styles.blockHeaderRow}>
-          <div className={styles.blockTitle}>Compte Instagram à connecter</div>
-          <ConnectionPill connected={instagramConnected} />
-        </div>
-        <div className={styles.blockSub}>On liste les Pages Facebook qui possèdent un Instagram Business/Creator.</div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <button
-            type="button"
-            className={`${styles.actionBtn} ${styles.secondaryBtn}`}
-            onClick={() => loadInstagramAccounts()}
-            disabled={igAccountsLoading}
-          >
-            {igAccountsLoading ? "Chargement..." : "Charger mes comptes"}
-          </button>
-
-          <select
-            value={igSelectedPageId}
-            onChange={(e) => setIgSelectedPageId(e.target.value)}
-            style={{
-              flex: "1 1 260px",
-              minWidth: 220,
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(15,23,42,0.65)",
-              colorScheme: "dark",
-              padding: "10px 12px",
-              color: "white",
-              outline: "none",
-            }}
-          >
-            <option value="">Sélectionner un compte</option>
-            {igAccounts.map((a) => (
-              <option key={a.page_id} value={a.page_id}>
-                @{a.username || "instagram"} — {a.page_name || a.page_id}
-              </option>
-            ))}
-          </select>
-
-          <button
-            type="button"
-            className={`${styles.actionBtn} ${styles.connectBtn}`}
-            onClick={saveInstagramProfile}
-            disabled={!igSelectedPageId}
-          >
-            Connecter
-          </button>
-        </div>
-        {igAccountsError && <div className={styles.errNote}>{igAccountsError}</div>}
-      </div>
-    ) : null}
-
-    {/* Lien + déconnexion */}
-    {instagramAccountConnected ? (
-      <div
-        style={{
-          border: "1px solid rgba(255,255,255,0.12)",
-          background: "rgba(255,255,255,0.03)",
-          borderRadius: 14,
-          padding: 12,
-          display: "grid",
-          gap: 10,
-        }}
-      >
-        <div className={styles.blockHeaderRow}>
-          <div className={styles.blockTitle}>Lien du compte</div>
-          <ConnectionPill connected={instagramConnected && !!instagramUrl?.trim()} />
-        </div>
-        <div className={styles.blockSub}>Se remplit automatiquement après sélection.</div>
-
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <input
-            value={instagramUrl}
-            readOnly
-            placeholder={instagramConnected ? "Lien récupéré automatiquement" : "Sélectionne un compte pour générer le lien"}
-            style={{
-              flex: "1 1 280px",
-              minWidth: 220,
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(15,23,42,0.65)",
-              colorScheme: "dark",
-              padding: "10px 12px",
-              color: "white",
-              outline: "none",
-              opacity: instagramUrl ? 1 : 0.8,
-            }}
+          <InstagramPanel
+            instagramConnected={instagramConnected}
+            instagramAccountConnected={instagramAccountConnected}
+            instagramUsername={instagramUsername}
+            connectInstagramAccount={connectInstagramAccount}
+            disconnectInstagramAccount={disconnectInstagramAccount}
+            igAccountsLoading={igAccountsLoading}
+            loadInstagramAccounts={loadInstagramAccounts}
+            igSelectedPageId={igSelectedPageId}
+            setIgSelectedPageId={setIgSelectedPageId}
+            igAccounts={igAccounts}
+            saveInstagramProfile={saveInstagramProfile}
+            igAccountsError={igAccountsError}
+            instagramUrl={instagramUrl}
+            instagramUrlNotice={instagramUrlNotice}
+            disconnectInstagramProfile={disconnectInstagramProfile}
           />
+        )}
 
-          <a
-            href={instagramUrl || "#"}
-            target="_blank"
-            rel="noreferrer"
-            className={`${styles.actionBtn} ${styles.viewBtn}`}
-            style={{ pointerEvents: instagramUrl ? "auto" : "none", opacity: instagramUrl ? 1 : 0.5 }}
-          >
-            Voir le compte
-          </a>
-        </div>
 
-        {instagramUrlNotice && <div className={styles.successNote}>{instagramUrlNotice}</div>}
-
-        {instagramConnected ? (
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectInstagramProfile}>
-              Déconnecter le compte
-            </button>
-          </div>
-        ) : null}
-      </div>
-    ) : null}
-  </div>
-)}
 
 {panel === "linkedin" && (
-  <div style={{ display: "grid", gap: 14 }}>
-    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          border: "1px solid rgba(255,255,255,0.12)",
-          background: "rgba(15,23,42,0.65)",
-          colorScheme: "dark",
-          padding: "8px 10px",
-          borderRadius: 999,
-          color: "rgba(255,255,255,0.92)",
-          fontSize: 13,
-        }}
-      >
-        <span
-          aria-hidden
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 999,
-            background: linkedinConnected
-              ? "rgba(34,197,94,0.95)"
-              : linkedinAccountConnected
-                ? "rgba(59,130,246,0.95)"
-                : "rgba(148,163,184,0.9)",
-          }}
-        />
-        Statut : <strong>{linkedinConnected ? "Connecté" : linkedinAccountConnected ? "Compte connecté" : "À connecter"}</strong>
-      </span>
-    </div>
-
-    {/* Compte LinkedIn */}
-    <div
-      style={{
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(255,255,255,0.03)",
-        borderRadius: 14,
-        padding: 12,
-        display: "grid",
-        gap: 10,
-      }}
-    >
-      <div className={styles.blockHeaderRow}>
-        <div className={styles.blockTitle}>Compte connecté</div>
-        <ConnectionPill connected={linkedinAccountConnected} />
-      </div>
-      <div className={styles.blockSub}>Connexion OAuth LinkedIn.</div>
-
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          value={linkedinDisplayName}
-          readOnly
-          placeholder={linkedinAccountConnected ? "Compte connecté" : "Aucun compte connecté"}
-          style={{
-            flex: "1 1 280px",
-            minWidth: 220,
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.14)",
-            background: "rgba(15,23,42,0.65)",
-            colorScheme: "dark",
-            padding: "10px 12px",
-            color: "white",
-            outline: "none",
-            opacity: linkedinAccountConnected ? 1 : 0.8,
-          }}
-        />
-
-        {!linkedinAccountConnected ? (
-          <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectLinkedinAccount}>
-            Connecter LinkedIn
-          </button>
-        ) : (
-          <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectLinkedinAccount}>
-            Déconnecter LinkedIn
-          </button>
+          <LinkedinPanel
+            linkedinConnected={linkedinConnected}
+            linkedinAccountConnected={linkedinAccountConnected}
+            linkedinDisplayName={linkedinDisplayName}
+            connectLinkedinAccount={connectLinkedinAccount}
+            disconnectLinkedinAccount={disconnectLinkedinAccount}
+            linkedinUrl={linkedinUrl}
+            setLinkedinUrl={setLinkedinUrl}
+            saveLinkedinProfileUrl={saveLinkedinProfileUrl}
+            linkedinUrlNotice={linkedinUrlNotice}
+            setLinkedinUrlNotice={setLinkedinUrlNotice}
+          />
         )}
-      </div>
-    </div>
 
-    
-    {/* Lien */}
-    <div
-      style={{
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(255,255,255,0.03)",
-        borderRadius: 14,
-        padding: 12,
-        display: "grid",
-        gap: 10,
-      }}
-    >
-      <div className={styles.blockHeaderRow}>
-        <div className={styles.blockTitle}>Lien du profil</div>
-        <ConnectionPill connected={!!linkedinUrl?.trim()} />
-      </div>
-      <div className={styles.blockSub}>Se remplit si LinkedIn fournit un lien public. Sinon laisse vide.</div>
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          value={linkedinUrl}
-          onChange={(e) => {
-            setLinkedinUrlNotice(null);
-            setLinkedinUrl(e.target.value);
-          }}
-          placeholder="Lien LinkedIn (optionnel)"
-          style={{
-            flex: "1 1 280px",
-            minWidth: 220,
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.14)",
-            background: "rgba(15,23,42,0.65)",
-            colorScheme: "dark",
-            padding: "10px 12px",
-            color: "white",
-            outline: "none",
-            opacity: linkedinUrl ? 1 : 0.8,
-          }}
-        />
-
-        
-
-<button
-  type="button"
-  className={`${styles.actionBtn} ${styles.connectBtn}`}
-  onClick={saveLinkedinProfileUrl}
->
-  Enregistrer
-</button>
-
-        <a
-          href={linkedinUrl || "#"}
-          target="_blank"
-          rel="noreferrer"
-          className={`${styles.actionBtn} ${styles.viewBtn}`}
-          style={{ pointerEvents: linkedinUrl ? "auto" : "none", opacity: linkedinUrl ? 1 : 0.5 }}
-        >
-          Voir
-        </a>
-      </div>
-
-      {linkedinUrlNotice && <div className={styles.successNote}>{linkedinUrlNotice}</div>}
-    </div>
-  </div>
-)}
 
 {panel === "gmb" && (
-          <div style={{ display: "grid", gap: 14 }}>
-            {/* Statut */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                  padding: "8px 10px",
-                  borderRadius: 999,
-                  color: "rgba(255,255,255,0.92)",
-                  fontSize: 13,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 999,
-                    background: gmbConnected ? "rgba(34,197,94,0.95)" : "rgba(148,163,184,0.9)",
-                  }}
-                />
-                Statut : <strong>{!gmbAccountConnected ? "À connecter" : gmbConfigured ? "Google Business connecté" : "Compte connecté"}</strong>
-              </span>
-            </div>
-
-            {/* Compte Google connecté */}
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.03)",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div className={styles.blockHeaderRow}>
-                <div className={styles.blockTitle}>Compte connecté</div>
-                  <ConnectionPill connected={gmbAccountConnected} />
-              </div>
-              <div className={styles.blockSub}>Ce compte Google sert à accéder à vos établissements Google Business.</div>
-
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <input
-                  value={gmbAccountEmail || (gmbAccountConnected ? "Compte connecté" : "")}
-                  readOnly
-                  placeholder="(aucun compte connecté)"
-                  style={{
-                    flex: "1 1 280px",
-                    minWidth: 220,
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.65)",
-                    colorScheme: "dark",
-                    padding: "10px 12px",
-                    color: "white",
-                    outline: "none",
-                    opacity: gmbAccountConnected ? 1 : 0.7,
-                  }}
-                />
-
-                {!gmbAccountConnected ? (
-                  <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectGmbAccount}>
-                    Connecter Google
-                  </button>
-                ) : (
-                  <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectGmbAccount}>
-                    Déconnecter Google
-                  </button>
-                )}
-              </div>
-            </div>
-
-
-            {/* Sélection de l'établissement (requis pour publier) */}
-            {gmbAccountConnected ? (
-              <div
-                style={{
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.03)",
-                  borderRadius: 14,
-                  padding: 12,
-                  display: "grid",
-                  gap: 10,
-                }}
-              >
-                <div className={styles.blockHeaderRow}>
-                  <div className={styles.blockTitle}>Établissement à publier</div>
-                  <ConnectionPill connected={!!gmbLocationName} />
-                </div>
-                <div className={styles.blockSub}>Choisis la fiche Google Business sur laquelle iNrCy publie.</div>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.secondaryBtn}`}
-                    onClick={() => loadGmbAccountsAndLocations()}
-                    disabled={gmbLoadingList}
-                  >
-                    {gmbLoadingList ? "Chargement..." : "Charger mes établissements"}
-                  </button>
-
-                  {/*
-                    Le compte Google est déjà identifié au-dessus (bloc "Compte connecté").
-                    Ici on ne garde que le choix de la fiche (location).
-                    Si plusieurs comptes sont disponibles, l'API renvoie un compte par défaut (souvent le premier).
-                  */}
-                  {gmbAccounts?.length > 1 ? (
-                    <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginLeft: 2 }}>
-                      Plusieurs comptes détectés : iNrCy utilise par défaut <strong>{gmbAccountName || "(non défini)"}</strong>.
-                    </div>
-                  ) : null}
-
-                  <select
-                    value={gmbLocationName}
-                    onChange={(e) => setGmbLocationName(e.target.value)}
-                    style={{
-                      flex: "1 1 320px",
-                      minWidth: 220,
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "white",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="">Fiche (location)</option>
-                    {gmbLocations.map((l) => (
-                      <option key={l.name} value={l.name}>
-                        {l.title || l.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.connectBtn}`}
-                    onClick={saveGmbLocation}
-                    disabled={!gmbAccountName || !gmbLocationName}
-                  >
-                    Connecter Google Business
-                  </button>
-                </div>
-                {gmbListError && (
-                  <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 13, lineHeight: 1.3 }}>
-                    {gmbListError}
-                    <div style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
-                      Astuce : si le message parle d’API non activée, active <strong>Business Profile Business Information API</strong> dans Google Cloud.
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : null}
-
-            {/* Lien de la page (auto) */}
-            {gmbAccountConnected ? (
-              <div
-                style={{
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.03)",
-                  borderRadius: 14,
-                  padding: 12,
-                  display: "grid",
-                  gap: 10,
-                }}
-              >
-                <div className={styles.blockHeaderRow}>
-                  <div className={styles.blockTitle}>Lien de la page</div>
-                  <ConnectionPill connected={!!gmbUrl?.trim() && gmbConfigured} />
-                </div>
-                <div className={styles.blockSub}>
-                  Se remplit automatiquement une fois l’<strong>établissement</strong> choisi.
-                </div>
-
-                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                  <input
-                    value={gmbUrl}
-                    readOnly
-                    placeholder="(sélectionne une fiche pour générer le lien)"
-                    style={{
-                      flex: "1 1 280px",
-                      minWidth: 220,
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "white",
-                      outline: "none",
-                      opacity: gmbUrl ? 1 : 0.75,
-                    }}
-                  />
-
-                  <a
-                    href={gmbUrl || "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={`${styles.actionBtn} ${styles.viewBtn}`}
-                    style={{ pointerEvents: gmbUrl ? "auto" : "none", opacity: gmbUrl ? 1 : 0.5 }}
-                  >
-                    Voir la page
-                  </a>
-                </div>
-
-                {gmbUrlNotice && <div className={styles.successNote}>{gmbUrlNotice}</div>}
-              </div>
-            ) : null}
-
-            {/* Bloc 3 — Déconnexion Google Business (ne déconnecte pas le compte Google) */}
-            {gmbAccountConnected && gmbConfigured ? (
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectGmbBusiness}>
-                  Déconnecter Google Business
-                </button>
-              </div>
-            ) : null}
-          </div>
+          <GoogleBusinessPanel
+            gmbConnected={gmbConnected}
+            gmbAccountConnected={gmbAccountConnected}
+            gmbAccountEmail={gmbAccountEmail}
+            connectGmbAccount={connectGmbAccount}
+            disconnectGmbAccount={disconnectGmbAccount}
+            gmbConfigured={gmbConfigured}
+            gmbAccountName={gmbAccountName}
+            gmbAccounts={gmbAccounts}
+            gmbLoadingList={gmbLoadingList}
+            loadGmbAccountsAndLocations={loadGmbAccountsAndLocations}
+            gmbLocationName={gmbLocationName}
+            setGmbLocationName={setGmbLocationName}
+            gmbLocations={gmbLocations}
+            saveGmbLocation={saveGmbLocation}
+            gmbListError={gmbListError}
+            gmbUrl={gmbUrl}
+            gmbUrlNotice={gmbUrlNotice}
+            disconnectGmbBusiness={disconnectGmbBusiness}
+          />
         )}
+
+
 
         {panel === "facebook" && (
-          <div style={{ display: "grid", gap: 14 }}>
-            {/* Statut */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                  padding: "8px 10px",
-                  borderRadius: 999,
-                  color: "rgba(255,255,255,0.92)",
-                  fontSize: 13,
-                }}
-              >
-	                <span
-                  aria-hidden
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 999,
-	                    background: facebookPageConnected
-	                      ? "rgba(34,197,94,0.95)"
-	                      : facebookAccountConnected
-	                        ? "rgba(59,130,246,0.95)"
-	                        : "rgba(148,163,184,0.9)",
-                  }}
-                />
-	                Statut :{" "}
-	                <strong>
-	                  {facebookPageConnected ? "Connecté" : facebookAccountConnected ? "Compte connecté" : "À connecter"}
-	                </strong>
-              </span>
-            </div>
-
-	            {/* Bloc 1 — Compte Facebook (OAuth) */}
-	            <div
-	              style={{
-	                border: "1px solid rgba(255,255,255,0.12)",
-	                background: "rgba(255,255,255,0.03)",
-	                borderRadius: 14,
-	                padding: 12,
-	                display: "grid",
-	                gap: 10,
-	              }}
-	            >
-	              <div className={styles.blockHeaderRow}>
-	                <div className={styles.blockTitle}>Compte connecté</div>
-	                <ConnectionPill connected={facebookAccountConnected} />
-	              </div>
-	              <div className={styles.blockSub}>Ce compte Facebook sert à accéder à vos pages.</div>
-	
-	              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-	                <input
-	                  value={facebookAccountEmail}
-	                  readOnly
-	                  placeholder={facebookAccountConnected ? "Compte connecté" : "Aucun compte connecté"}
-	                  style={{
-	                    flex: "1 1 280px",
-	                    minWidth: 220,
-	                    borderRadius: 12,
-	                    border: "1px solid rgba(255,255,255,0.14)",
-	                    background: "rgba(15,23,42,0.65)",
-	                    colorScheme: "dark",
-	                    padding: "10px 12px",
-	                    color: "white",
-	                    outline: "none",
-	                    opacity: facebookAccountConnected ? 1 : 0.8,
-	                  }}
-	                />
-
-	                {!facebookAccountConnected ? (
-	                  <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectFacebookAccount}>
-	                    Connecter Facebook
-	                  </button>
-	                ) : (
-	                  <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookAccount}>
-	                    Déconnecter Facebook
-	                  </button>
-	                )}
-	              </div>
-	            </div>
-
-	            {/* Bloc 2 — Choix de la page */}
-	            {facebookAccountConnected ? (
-              <div
-                style={{
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.03)",
-                  borderRadius: 14,
-                  padding: 12,
-                  display: "grid",
-                  gap: 10,
-                }}
-              >
-                <div className={styles.blockHeaderRow}>
-	                  <div className={styles.blockTitle}>Page à connecter</div>
-	                  <ConnectionPill connected={facebookPageConnected} />
-                </div>
-	                <div className={styles.blockSub}>Choisis la page Facebook à analyser (et éventuellement publier).</div>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                  <button
-                    type="button"
-                    className={`${styles.actionBtn} ${styles.secondaryBtn}`}
-                    onClick={() => loadFacebookPages()}
-                    disabled={fbPagesLoading}
-                  >
-                    {fbPagesLoading ? "Chargement..." : "Charger mes pages"}
-                  </button>
-
-                  <select
-                    value={fbSelectedPageId}
-                    onChange={(e) => setFbSelectedPageId(e.target.value)}
-                    style={{
-                      flex: "1 1 260px",
-                      minWidth: 220,
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.65)",
-                      colorScheme: "dark",
-                      padding: "10px 12px",
-                      color: "white",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="">Sélectionner une page</option>
-                    {fbPages.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name || p.id}
-                      </option>
-                    ))}
-                  </select>
-
-	                  <button
-	                    type="button"
-	                    className={`${styles.actionBtn} ${styles.connectBtn}`}
-	                    onClick={saveFacebookPage}
-	                    disabled={!fbSelectedPageId}
-	                  >
-	                    Connecter la page
-	                  </button>
-                </div>
-                {fbPagesError && <div className={styles.errNote}>{fbPagesError}</div>}
-              </div>
-            ) : null}
-
-	            {/* Bloc 3 — Lien de la page + Déconnexion page */}
-	            {facebookAccountConnected ? (
-	              <div
-	                style={{
-	                  border: "1px solid rgba(255,255,255,0.12)",
-	                  background: "rgba(255,255,255,0.03)",
-	                  borderRadius: 14,
-	                  padding: 12,
-	                  display: "grid",
-	                  gap: 10,
-	                }}
-	              >
-	                <div className={styles.blockHeaderRow}>
-	                  <div className={styles.blockTitle}>Lien de la page</div>
-	                  <ConnectionPill connected={facebookPageConnected && !!facebookUrl?.trim()} />
-	                </div>
-	                <div className={styles.blockSub}>Se remplit automatiquement une fois la page choisie.</div>
-	
-	                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-	                  <input
-	                    value={facebookUrl}
-	                    readOnly
-	                    placeholder={facebookPageConnected ? "Lien récupéré automatiquement" : "Sélectionne une page pour générer le lien"}
-	                    style={{
-	                      flex: "1 1 280px",
-	                      minWidth: 220,
-	                      borderRadius: 12,
-	                      border: "1px solid rgba(255,255,255,0.14)",
-	                      background: "rgba(15,23,42,0.65)",
-	                      colorScheme: "dark",
-	                      padding: "10px 12px",
-	                      color: "white",
-	                      outline: "none",
-	                      opacity: facebookUrl ? 1 : 0.8,
-	                    }}
-	                  />
-
-	                  <a
-	                    href={facebookUrl || "#"}
-	                    target="_blank"
-	                    rel="noreferrer"
-	                    className={`${styles.actionBtn} ${styles.viewBtn}`}
-	                    style={{ pointerEvents: facebookUrl ? "auto" : "none", opacity: facebookUrl ? 1 : 0.5 }}
-	                  >
-	                    Voir la page
-	                  </a>
-	                </div>
-	                {facebookUrlNotice && <div className={styles.successNote}>{facebookUrlNotice}</div>}
-
-	                {facebookPageConnected ? (
-	                  <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-	                    <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookPage}>
-	                      Déconnecter la page
-	                    </button>
-	                  </div>
-	                ) : null}
-	              </div>
-	            ) : null}
-          </div>
+          <FacebookPanel
+            facebookPageConnected={facebookPageConnected}
+            facebookAccountConnected={facebookAccountConnected}
+            facebookAccountEmail={facebookAccountEmail}
+            connectFacebookAccount={connectFacebookAccount}
+            disconnectFacebookAccount={disconnectFacebookAccount}
+            fbPagesLoading={fbPagesLoading}
+            loadFacebookPages={loadFacebookPages}
+            fbSelectedPageId={fbSelectedPageId}
+            setFbSelectedPageId={setFbSelectedPageId}
+            fbPages={fbPages}
+            saveFacebookPage={saveFacebookPage}
+            fbPagesError={fbPagesError}
+            facebookUrl={facebookUrl}
+            facebookUrlNotice={facebookUrlNotice}
+            disconnectFacebookPage={disconnectFacebookPage}
+          />
         )}
+
+
 
       </SettingsDrawer>
 
