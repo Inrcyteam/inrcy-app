@@ -22,6 +22,7 @@ const required = [
 
   // Internal deep health
   "HEALTHCHECK_TOKEN",
+  "VERCEL_CRON_SECRET",
 ];
 
 /** @type {string[]} */
@@ -33,6 +34,7 @@ const optionalButRecommended = [
 
   // AI
   "OPENAI_API_KEY",
+  "HEALTHCHECK_ALERT_TO",
 ];
 
 function check(list, label) {

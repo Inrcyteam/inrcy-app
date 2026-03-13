@@ -4,6 +4,8 @@
 
 - [ ] Sentry is receiving events (test in Preview only)
 - [ ] `HEALTHCHECK_TOKEN` set in Vercel (Production)
+- [ ] `VERCEL_CRON_SECRET` set in Vercel (Production + Preview if cron tested there)
+- [ ] `HEALTHCHECK_ALERT_TO` set if you want email alerts on failed health checks
 - [ ] Supabase backups enabled (and PITR if available)
 - [ ] New ENV vars added to **Production + Preview**
 - [ ] Migrations applied in staging/preview first
@@ -18,6 +20,7 @@
 
 - [ ] Check `GET /api/health` = 200
 - [ ] Check `GET /api/health/internal` = 200
+- [ ] Check `GET /api/cron/health?secret=...` = 200 (manual smoke once)
 - [ ] Vercel Logs: no spike 5xx
 - [ ] Sentry: no new high-volume issue
 - [ ] Key user journeys OK:

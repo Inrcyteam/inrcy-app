@@ -12,10 +12,13 @@ This runbook is the **minimum** you need to operate iNrCy safely at scale.
 
 - Public (safe): `GET /api/health`
 - Internal (deep): `GET /api/health/internal` with header `x-health-token: $HEALTHCHECK_TOKEN`
+- Scheduled infra check: `GET /api/cron/health` (Vercel Cron, bearer = `VERCEL_CRON_SECRET`)
 
 If internal health is `503`, check:
 - Supabase status + connection pool
 - Upstash/KV status
+- Stripe API status / secret validity
+- SMTP reachability / credentials
 
 ## Incident triage (5 minutes)
 

@@ -1035,8 +1035,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
   const triggerGeneratorRefresh = useCallback(async () => {
     const runSync = async () => {
       lastGeneratorRefreshAtRef.current = Date.now();
-      await loadSiteInrcy();
-      await refreshKpis({ fresh: true });
+      await Promise.allSettled([
+        loadSiteInrcy(),
+        refreshKpis({ fresh: true }),
+      ]);
       notifyStatsRefresh();
     };
 

@@ -96,6 +96,14 @@ type CubeModel = {
 const AVAILABLE_PERIODS: Period[] = [7, 14, 30, 60];
 const PERIODS: Period[] = [7, 30];
 
+function cubeSessionKey(period: Period) {
+  return `inrcy_stats_cube_snapshot_v1:${period}`;
+}
+
+function summarySessionKey(period: Period) {
+  return `inrcy_stats_summary_snapshot_v1:${period}`;
+}
+
 function fmtInt(n: number) {
   return new Intl.NumberFormat("fr-FR").format(Math.round(Number.isFinite(n) ? n : 0));
 }
@@ -871,6 +879,7 @@ export default function StatsClient() {
   // In-memory cache to avoid duplicate fetch bursts (React strict-mode/dev & quick navigations)
   const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const hydratedPeriodsRef = useRef(new Set<number>());
 
 
   const fetchCube = async (key: CubeKey, period: Period, forceFresh = false) => {
@@ -896,8 +905,10 @@ export default function StatsClient() {
     return (await r.json()) as Overview;
   };
 
-  const fetchSummaryOpportunities = async (period: Period) => {
-    const r = await fetch(`/api/metrics/summary?monthDays=${period}&weekDays=7&todayDays=2&fresh=1`, { cache: "no-store" });
+  const fetchSummaryOpportunities = async (period: Period, forceFresh = false) => {
+    const params = new URLSearchParams({ monthDays: String(period), weekDays: "7", todayDays: "2" });
+    if (forceFresh) params.set("fresh", "1");
+    const r = await fetch(`/api/metrics/summary?${params.toString()}`, { cache: "no-store" });
     if (!r.ok) {
       const txt = await r.text().catch(() => "");
       throw new Error(`summary_failed:${r.status}:${txt.slice(0, 160)}`);
@@ -916,6 +927,52 @@ export default function StatsClient() {
       } as Record<CubeKey, number>,
     };
   };
+
+  useEffect(() => {
+    if (hydratedPeriodsRef.current.has(period)) return;
+    hydratedPeriodsRef.current.add(period);
+
+    try {
+      const raw = window.sessionStorage.getItem(cubeSessionKey(period));
+      if (raw) {
+        const cached = JSON.parse(raw) as Record<CubeKey, Overview>;
+        if (cached && typeof cached === "object") {
+          periodCacheRef.current.set(period, cached);
+          setDataByCube((prev) => {
+            const next: any = { ...prev };
+            for (const k of Object.keys(cached) as CubeKey[]) {
+              next[k] = { ov: (cached as any)[k], loading: false, error: undefined };
+            }
+            return next;
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const raw = window.sessionStorage.getItem(summarySessionKey(period));
+      if (raw) {
+        const cached = JSON.parse(raw) as { total?: number; byCube?: Partial<Record<CubeKey, number>> };
+        const byCubePartial = cached?.byCube || {};
+        setSummaryOpp({
+          loading: false,
+          total: safeNum(cached?.total),
+          byCube: {
+            site_inrcy: safeNum(byCubePartial.site_inrcy),
+            site_web: safeNum(byCubePartial.site_web),
+            gmb: safeNum(byCubePartial.gmb),
+            facebook: safeNum(byCubePartial.facebook),
+            instagram: safeNum(byCubePartial.instagram),
+            linkedin: safeNum(byCubePartial.linkedin),
+          },
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }, [period]);
 
 useEffect(() => {
   let cancelled = false;
@@ -956,6 +1013,11 @@ useEffect(() => {
         const snap: any = {};
         for (const [k, ov] of res) snap[k] = ov;
         periodCacheRef.current.set(period, snap);
+        try {
+          window.sessionStorage.setItem(cubeSessionKey(period), JSON.stringify(snap));
+        } catch {
+          // ignore
+        }
       } catch {}
 
       if (cancelled) return;
@@ -992,9 +1054,14 @@ useEffect(() => {
 
     (async () => {
       try {
-        const next = await fetchSummaryOpportunities(period);
+        const next = await fetchSummaryOpportunities(period, refreshNonce > 0);
         if (cancelled) return;
         setSummaryOpp({ loading: false, total: next.total, byCube: next.byCube });
+        try {
+          window.sessionStorage.setItem(summarySessionKey(period), JSON.stringify(next));
+        } catch {
+          // ignore
+        }
       } catch {
         if (cancelled) return;
         setSummaryOpp((prev) => ({ ...prev, loading: false }));
