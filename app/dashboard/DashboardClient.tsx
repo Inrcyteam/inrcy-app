@@ -3103,7 +3103,7 @@ const checkActivity = useCallback(async () => {
             </div>
 
             <div className={`${styles.metricCard} ${styles.metricCa}`}>
-              <div className={styles.metricLabel}>CA POTENTIEL 30 J</div>
+              <div className={styles.metricLabel}>CA POTENTIEL 30 jours</div>
               <div className={styles.metricValue}>
                 {estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "0 €"}
               </div>
