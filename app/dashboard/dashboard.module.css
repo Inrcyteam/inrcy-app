@@ -196,16 +196,21 @@
   border-radius: 22px;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   align-items: center;
-  text-align: center; 
+  text-align: center;
+  min-height: 100%;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.05);
   box-shadow: 0 20px 70px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(12px);
+}
 
-display: flex;
+.heroTop {
+  display: flex;
   flex-direction: column;
-  min-height: 100%;              /* ✅ prend toute la hauteur disponible */
+  align-items: center;
+  width: 100%;
 }
 
 .kicker {
@@ -296,41 +301,147 @@ display: flex;
 }
 
 .subtitle {
-  margin-top: 16px;      /* 👈 descend "Tous vos canaux..." */
+  margin-top: 10px;
   max-width: 62ch;
   color: rgba(255, 255, 255, 0.76);
-  line-height: 1.58;
+  line-height: 1.48;
   font-size: 18px;
 }
 
-.pills {
-  margin-top: auto;   /* 👈 pousse le bloc en bas */
+.powerBlock {
+  margin-top: 12px;
+  width: min(100%, 560px);
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.powerHeader {
   display: flex;
-  flex-wrap: wrap;   /* 👈 autorise le retour à la ligne */
-  gap: 10px 12px;
-  align-items: center;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
 }
 
-.pill,
-.pillMuted {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
+.powerInlineTitle {
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.powerInlineValue {
+  background: linear-gradient(90deg, var(--c-cyan), var(--c-purple), var(--c-pink), var(--c-orange));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.powerMeta {
   font-size: 13px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.68);
+  text-align: right;
+  white-space: nowrap;
 }
 
-.pillMuted { color: rgba(255, 255, 255, 0.64); }
-
-.pillDot {
-  width: 8px;
-  height: 8px;
+.powerBar {
+  position: relative;
+  overflow: hidden;
+  height: 12px;
+  margin-top: 10px;
   border-radius: 999px;
-  background: var(--c-orange);
-  box-shadow: 0 0 0 7px rgba(251, 146, 60, 0.16);
+  background: rgba(255, 255, 255, 0.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.powerBar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(255,255,255,0.08), transparent 28%, transparent 72%, rgba(255,255,255,0.06));
+  pointer-events: none;
+}
+
+.powerBarFill {
+  position: relative;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--c-cyan) 0%, var(--c-purple) 38%, var(--c-pink) 68%, var(--c-orange) 100%);
+  box-shadow:
+    0 0 22px rgba(56, 189, 248, 0.22),
+    0 0 30px rgba(251, 146, 60, 0.14);
+  transition: width 320ms ease;
+  overflow: hidden;
+}
+
+.powerBarFill::before {
+  content: "";
+  position: absolute;
+  inset: -30% auto -30% -40%;
+  width: 42%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0.20),
+    rgba(255, 255, 255, 0.46),
+    rgba(255, 255, 255, 0.20),
+    rgba(255, 255, 255, 0)
+  );
+  filter: blur(4px);
+  animation: powerSweep 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.powerBarFill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.34), rgba(255,255,255,0.02));
+}
+
+@keyframes powerSweep {
+  0% {
+    transform: translateX(-140%);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.95;
+  }
+  58% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translateX(420%);
+    opacity: 0;
+  }
+}
+
+.powerFooter {
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+  text-align: center;
+}
+
+.powerHint,
+.powerHintComplete {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.powerHint strong {
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.powerHintComplete {
+  font-weight: 700;
 }
 
 .ctaRow {
@@ -1290,7 +1401,7 @@ display: flex;
 
 /* ===== iNrCy signature flow ===== */
 .signatureFlow {
-  margin: 40px auto 0;   /* ✅ centre horizontalement + descend */
+  margin: 12px auto 0;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -1391,17 +1502,21 @@ display: flex;
 
 
 @media (max-width: 560px) {
-  .pills {
-    display: grid;              /* passe en layout vertical */
-    grid-template-columns: 1fr; /* une bulle par ligne */
-    gap: 12px;
-    margin-top: 18px;           /* un peu d’air au-dessus */
+  .powerBlock {
+    width: 100%;
+    margin-top: 14px;
   }
 
-  .pill,
-  .pillMuted {
-    width: 100%;
-    justify-content: center;   /* texte centré dans chaque bulle */
+  .powerHeader {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+  }
+
+  .powerInlineTitle,
+  .powerMeta {
+    text-align: center;
   }
 }
 
@@ -3111,9 +3226,9 @@ transform: scale(1.50);
   box-sizing: border-box;
 }
 
-/* ✅ Mobile + "Version ordinateur" : espace entre le flux (Contacts → Devis → CA) et les pills */
+/* ✅ Mobile + "Version ordinateur" : espace entre le flux et la barre de puissance */
 @media (min-width: 560px){
-  :global(html.isTouch) .pills{
+  :global(html.isTouch) .powerBlock{
     margin-top: 16px !important;
   }
 }

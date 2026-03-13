@@ -356,6 +356,8 @@ const [linkedinUrl, setLinkedinUrl] = useState<string>("");
 const [linkedinAccountConnected, setLinkedinAccountConnected] = useState<boolean>(false);
 const [linkedinConnected, setLinkedinConnected] = useState<boolean>(false);
 const [linkedinDisplayName, setLinkedinDisplayName] = useState<string>("");
+const [profileIncomplete, setProfileIncomplete] = useState(false);
+const [activityIncomplete, setActivityIncomplete] = useState(false);
 
 // ✅ Google Business & Facebook (liens + connexion)
 const [gmbUrl, setGmbUrl] = useState<string>("");
@@ -799,6 +801,23 @@ const canConnectSiteWebGoogle = hasSiteWebUrl;
 
 const siteInrcyAllGreen = siteInrcyOwnership !== "none" && hasSiteInrcyUrl && siteInrcyGa4Connected && siteInrcyGscConnected;
 const siteWebAllGreen = hasSiteWebUrl && siteWebGa4Connected && siteWebGscConnected;
+const profileCompleted = !profileIncomplete;
+const activityCompleted = !activityIncomplete;
+const sitePowerConnected = siteInrcyAllGreen || siteWebAllGreen;
+
+const generatorPowerSteps = [
+  { key: "profile", label: "Compléter mon profil", shortLabel: "Profil", weight: 15, completed: profileCompleted },
+  { key: "activity", label: "Compléter mon activité", shortLabel: "Activité", weight: 15, completed: activityCompleted },
+  { key: "site", label: "Connecter un site internet", shortLabel: "Site internet", weight: 20, completed: sitePowerConnected },
+  { key: "gmb", label: "Connecter Google Business", shortLabel: "Google Business", weight: 20, completed: gmbConnected },
+  { key: "facebook", label: "Connecter Facebook", shortLabel: "Facebook", weight: 10, completed: facebookPageConnected },
+  { key: "instagram", label: "Connecter Instagram", shortLabel: "Instagram", weight: 10, completed: instagramConnected },
+  { key: "linkedin", label: "Connecter LinkedIn", shortLabel: "LinkedIn", weight: 10, completed: linkedinConnected },
+] as const;
+
+const generatorPower = generatorPowerSteps.reduce((sum, step) => sum + (step.completed ? step.weight : 0), 0);
+const nextGeneratorPowerStep = generatorPowerSteps.find((step) => !step.completed) ?? null;
+const remainingGeneratorPowerSteps = generatorPowerSteps.filter((step) => !step.completed).length;
 
 const updateSiteInrcySettings = useCallback(async (nextSettings: any) => {
   if (siteInrcyOwnership === "none") return;
@@ -1975,10 +1994,6 @@ const disconnectSiteWebGsc = useCallback(() => {
 }, [disconnectGoogleStats]);
 
   // ✅ AJOUT : profil incomplet -> mini pastille + tooltip
-  const [profileIncomplete, setProfileIncomplete] = useState(false);
-  const [activityIncomplete, setActivityIncomplete] = useState(false);
-
-
   const REQUIRED_PROFILE_FIELDS = [
     "first_name",
     "last_name",
@@ -2954,29 +2969,60 @@ const checkActivity = useCallback(async () => {
 
       <section className={styles.hero}>
         <div className={styles.heroLeft}>
-          <div className={styles.kicker}>
-            <span className={styles.kickerText}>Votre cockpit iNrCy</span>
-          </div>
+          <div className={styles.heroTop}>
+            <div className={styles.kicker}>
+              <span className={styles.kickerText}>Votre cockpit iNrCy</span>
+            </div>
 
-          <h1 className={styles.title}>
-            <span className={styles.titleAccent}>Le Générateur est lancé&nbsp;!</span>
-          </h1>
+            <h1 className={styles.title}>
+              <span className={styles.titleAccent}>Le Générateur est lancé&nbsp;!</span>
+            </h1>
 
-          <p className={styles.subtitle}>
-            Tous vos canaux alimentent maintenant une seule et même machine.
-            <br />
-            <span className={styles.signatureFlow}>
+            <p className={styles.subtitle}>
+              Tous vos canaux alimentent maintenant une seule et même machine.
+            </p>
+
+            <div className={styles.signatureFlow}>
               <span>Contacts</span>
               <span className={styles.flowArrow}>→</span>
               <span>Devis</span>
               <span className={styles.flowArrow}>→</span>
               <span>Chiffre d'affaires</span>
-            </span>
-          </p>
+            </div>
+          </div>
 
-          <div className={styles.pills}>
-            <span className={styles.pill}>Canaux • Tableau de bord • Boîte de vitesse</span>
-            <span className={styles.pillMuted}>Centralisé • Rentable • Automatisé</span>
+          <div className={styles.powerBlock}>
+            <div className={styles.powerHeader}>
+              <div className={styles.powerInlineTitle}>
+                Puissance du générateur : <span className={styles.powerInlineValue}>{generatorPower}%</span>
+              </div>
+              <div className={styles.powerMeta}>
+                {remainingGeneratorPowerSteps === 0
+                  ? "Pleine puissance"
+                  : `${remainingGeneratorPowerSteps} étape${remainingGeneratorPowerSteps > 1 ? "s" : ""} restante${remainingGeneratorPowerSteps > 1 ? "s" : ""}`}
+              </div>
+            </div>
+
+            <div
+              className={styles.powerBar}
+              role="progressbar"
+              aria-label="Puissance du générateur"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={generatorPower}
+            >
+              <div className={styles.powerBarFill} style={{ width: `${generatorPower}%` }} />
+            </div>
+
+            <div className={styles.powerFooter}>
+              {nextGeneratorPowerStep ? (
+                <span className={styles.powerHint}>
+                  Prochaine montée : {nextGeneratorPowerStep.label} <strong>(+{nextGeneratorPowerStep.weight}%)</strong>
+                </span>
+              ) : (
+                <span className={styles.powerHintComplete}>Tous vos leviers alimentent la machine à pleine puissance.</span>
+              )}
+            </div>
           </div>
         </div>
 
