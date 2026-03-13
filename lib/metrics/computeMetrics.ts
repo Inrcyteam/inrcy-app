@@ -391,6 +391,7 @@ export async function fetchCubeOverviews(args: {
       for (const [k, v] of Object.entries(extraParams || {})) {
         if (v !== undefined && v !== null && `${v}` !== '') params.set(k, String(v));
       }
+      if (bypassCache) params.set('fresh', '1');
       const url = `${origin}/api/stats/overview?${params.toString()}`;
       const headers = getHeaders?.();
       const overview = await fetchOverviewWithCache(url, headers, bypassCache);

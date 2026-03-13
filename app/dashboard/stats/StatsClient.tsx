@@ -870,9 +870,10 @@ export default function StatsClient() {
 
   // In-memory cache to avoid duplicate fetch bursts (React strict-mode/dev & quick navigations)
   const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
 
-  const fetchCube = async (key: CubeKey, period: Period) => {
+  const fetchCube = async (key: CubeKey, period: Period, forceFresh = false) => {
     const include =
       key === "site_inrcy"
         ? "site_inrcy_ga4,site_inrcy_gsc"
@@ -885,7 +886,9 @@ export default function StatsClient() {
               : key === "instagram"
                 ? "instagram"
                 : "linkedin";
-    const r = await fetch(`/api/stats/overview?days=${period}&include=${encodeURIComponent(include)}`, { cache: "no-store" });
+    const params = new URLSearchParams({ days: String(period), include });
+    if (forceFresh) params.set("fresh", "1");
+    const r = await fetch(`/api/stats/overview?${params.toString()}`, { cache: "no-store" });
     if (!r.ok) {
       const txt = await r.text().catch(() => "");
       throw new Error(`fetch_failed:${r.status}:${txt.slice(0, 160)}`);
@@ -943,7 +946,7 @@ useEffect(() => {
     try {
       const res = await Promise.all(
         keys.map(async (k) => {
-          const ov = await fetchCube(k, period);
+          const ov = await fetchCube(k, period, refreshNonce > 0);
           return [k, ov] as const;
         })
       );
@@ -980,7 +983,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [period]);
+}, [period, refreshNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1001,7 +1004,19 @@ useEffect(() => {
     return () => {
       cancelled = true;
     };
-  }, [period]);
+  }, [period, refreshNonce]);
+
+  useEffect(() => {
+    const handleChannelsUpdated = () => {
+      periodCacheRef.current.clear();
+      setRefreshNonce((prev) => prev + 1);
+    };
+
+    window.addEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
+    return () => {
+      window.removeEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
+    };
+  }, []);
 
   const models: CubeModel[] = useMemo(() => {
     const build = (key: CubeKey, title: string, subtitle: string): CubeModel => {

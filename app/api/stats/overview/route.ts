@@ -87,6 +87,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const days = Math.min(Math.max(Number(searchParams.get("days") || 28), 7), 90);
+    const fresh = searchParams.get("fresh") === "1";
 
     // Optional: filter which sources to aggregate.
     // Comma-separated keys:
@@ -258,7 +259,7 @@ const connectionsKey = await buildConnectionsKey();
 const rangeKey = `days=${days}|include=${includeRaw || "all"}|inrcy=${inrcyTrackingEnabled ? 1 : 0}|conn=${connectionsKey}`;
 
 // Lecture cache (best-effort)
-try {
+if (!fresh) try {
   const nowIso = new Date().toISOString();
   const { data: cacheHit } = await supabase
     .from("stats_cache")
@@ -284,7 +285,7 @@ try {
 }
 
 // Cache legacy (best-effort)
-try {
+if (!fresh) try {
   const { data: legacyHit } = await supabase
     .from("cache_statistiques")
     .select("charge_utile, cree_a")
@@ -302,7 +303,15 @@ try {
       const social = await fetchSocialStatus();
       payload["sources"] = { ...asRecord(payload["sources"]), ...social };
     } catch {}
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, {
+      headers: fresh
+        ? {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          }
+        : undefined,
+    });
   }
 } catch {
   // ignore
@@ -700,7 +709,15 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       });
     } catch {}
 
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, {
+      headers: fresh
+        ? {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          }
+        : undefined,
+    });
   // NOTE: Turbopack/SWC can be picky about type annotations in catch clauses.
   // We keep the variable untyped (it is effectively `unknown`), then narrow.
   } catch (e) {

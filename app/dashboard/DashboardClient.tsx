@@ -167,7 +167,12 @@ export default function DashboardClient() {
   const notificationsRequestSeqRef = useRef(0);
   const kpisRequestSeqRef = useRef(0);
   const siteConfigRequestSeqRef = useRef(0);
-  const lastConnectionSignatureRef = useRef<string | null>(null);
+
+  const [kpisLoading, setKpisLoading] = useState(false);
+  const [kpis, setKpis] = useState<null | {
+    leads: { today: number; week: number; month: number };
+    estimatedValue: number;
+  }>(null);
 
   const refreshNotifications = useCallback(async () => {
     const requestSeq = ++notificationsRequestSeqRef.current;
@@ -1014,17 +1019,30 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     }
   }, []);
 
-  const triggerGeneratorRefresh = useCallback((options?: { delayed?: boolean }) => {
-    const delayed = options?.delayed !== false;
-    void loadSiteInrcy();
-    void refreshKpis({ fresh: true });
-    if (delayed) {
-      window.setTimeout(() => {
-        void loadSiteInrcy();
-        void refreshKpis({ fresh: true });
-      }, 1200);
-    }
-  }, [loadSiteInrcy, refreshKpis]);
+  const notifyStatsRefresh = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("inrcy:channels-updated", { detail: { at: Date.now() } }));
+  }, []);
+
+  const refreshTimersRef = useRef<number[]>([]);
+  const lastGeneratorRefreshAtRef = useRef(0);
+
+  const clearScheduledGeneratorRefreshes = useCallback(() => {
+    refreshTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    refreshTimersRef.current = [];
+  }, []);
+
+  const triggerGeneratorRefresh = useCallback(async () => {
+    const runSync = async () => {
+      lastGeneratorRefreshAtRef.current = Date.now();
+      await loadSiteInrcy();
+      await refreshKpis({ fresh: true });
+      notifyStatsRefresh();
+    };
+
+    clearScheduledGeneratorRefreshes();
+    await runSync();
+  }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshKpis]);
 
   // ✅ Opportunités activables (iNrStats) — lues directement depuis /api/metrics/summary.
   const [oppTotal, setOppTotal] = useState<number | null>(null);
@@ -1051,11 +1069,15 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
 
     const scheduleRefresh = () => {
       if (disposed) return;
+      // Évite le "double refresh" juste après une action manuelle
+      // (déconnexion/connexion => refresh immédiat déjà lancé côté client).
+      if (Date.now() - lastGeneratorRefreshAtRef.current < 2500) return;
       if (t) window.clearTimeout(t);
       t = window.setTimeout(() => {
         if (disposed) return;
+        if (Date.now() - lastGeneratorRefreshAtRef.current < 2500) return;
         triggerGeneratorRefresh();
-      }, 350);
+      }, 500);
     };
 
     const ch = supabase
@@ -1085,11 +1107,12 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     return () => {
       disposed = true;
       if (t) window.clearTimeout(t);
+      clearScheduledGeneratorRefreshes();
       try {
         supabase.removeChannel(ch);
       } catch {}
     };
-  }, [triggerGeneratorRefresh]);
+  }, [clearScheduledGeneratorRefreshes, triggerGeneratorRefresh]);
 
   useEffect(() => {
     const linked = searchParams.get("linked");
@@ -1101,28 +1124,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     triggerGeneratorRefresh();
   }, [searchParams, triggerGeneratorRefresh]);
 
-  const connectionRefreshSignature = [
-    Boolean(siteInrcySavedUrl?.trim()) ? 1 : 0,
-    siteInrcyGa4Connected ? 1 : 0,
-    siteInrcyGscConnected ? 1 : 0,
-    Boolean(siteWebSavedUrl?.trim()) ? 1 : 0,
-    siteWebGa4Connected ? 1 : 0,
-    siteWebGscConnected ? 1 : 0,
-    gmbConnected ? 1 : 0,
-    facebookPageConnected ? 1 : 0,
-    instagramConnected ? 1 : 0,
-    linkedinConnected ? 1 : 0,
-  ].join(":");
-
-  useEffect(() => {
-    if (lastConnectionSignatureRef.current === null) {
-      lastConnectionSignatureRef.current = connectionRefreshSignature;
-      return;
-    }
-    if (lastConnectionSignatureRef.current === connectionRefreshSignature) return;
-    lastConnectionSignatureRef.current = connectionRefreshSignature;
-    void refreshKpis({ fresh: true });
-  }, [connectionRefreshSignature, refreshKpis]);
 
 const activateSiteInrcyTracking = useCallback(async () => {
   if (siteInrcyOwnership !== "rented") {
@@ -2161,14 +2162,6 @@ const checkActivity = useCallback(async () => {
       window.removeEventListener("touchstart", onPointerDownTouch);
     };
   }, [menuOpen]);
-
-
-  // ✅ KPIs Générateur (1 seul endpoint)
-  const [kpisLoading, setKpisLoading] = useState(false);
-  const [kpis, setKpis] = useState<null | {
-    leads: { today: number; week: number; month: number };
-    estimatedValue: number;
-  }>(null);
 
   useEffect(() => {
     try {
