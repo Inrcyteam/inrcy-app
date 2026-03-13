@@ -456,6 +456,8 @@ const [siteInrcyTrackingBusy, setSiteInrcyTrackingBusy] = useState(false);
   const [siteWebActusFont, setSiteWebActusFont] = useState<"site" | "inter" | "poppins" | "montserrat" | "lora">("site");
   const [siteInrcyActusTheme, setSiteInrcyActusTheme] = useState<"white" | "dark" | "gray" | "nature" | "sand">("nature");
   const [siteWebActusTheme, setSiteWebActusTheme] = useState<"white" | "dark" | "gray" | "nature" | "sand">("nature");
+  const [showSiteInrcyWidgetCode, setShowSiteInrcyWidgetCode] = useState(false);
+  const [showSiteWebWidgetCode, setShowSiteWebWidgetCode] = useState(false);
 
   // ✅ Connexions Google (viennent de integrations, pas des IDs)
   const [siteInrcyGa4Connected, setSiteInrcyGa4Connected] = useState(false);
@@ -4430,7 +4432,7 @@ const checkActivity = useCallback(async () => {
                 Colle ce code iframe dans ton site iNrCy (Elementor → widget HTML) pour afficher automatiquement tes dernières actus publiées depuis Booster.
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(180px, 1fr))", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
                 <label style={{ display: "grid", gap: 6 }}>
                   <span className={styles.blockSub}><strong>Affichage</strong></span>
                   <select
@@ -4572,36 +4574,56 @@ const checkActivity = useCallback(async () => {
 <\/script>`;
                 return (
                   <>
-                    <textarea
-                      readOnly
-                      value={snippet}
-                      style={{
-                        width: "100%",
-                        minHeight: 170,
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: "rgba(15,23,42,0.65)",
-                        colorScheme: "dark",
-                        padding: "10px 12px",
-                        color: "rgba(255,255,255,0.92)",
-                        outline: "none",
-                        fontFamily:
-                          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-                        fontSize: 12,
-                      }}
-                    />
+                    {showSiteInrcyWidgetCode && (
+                      <div
+                        aria-label="Code du widget"
+                        onCopy={(e) => e.preventDefault()}
+                        onCut={(e) => e.preventDefault()}
+                        style={{
+                          width: "100%",
+                          minHeight: 170,
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: "rgba(15,23,42,0.65)",
+                          padding: "10px 12px",
+                          color: "rgba(255,255,255,0.92)",
+                          fontFamily:
+                            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+                          fontSize: 12,
+                          lineHeight: 1.5,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-all",
+                          userSelect: "none",
+                          WebkitUserSelect: "none",
+                          MozUserSelect: "none",
+                          msUserSelect: "none",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        {snippet}
+                      </div>
+                    )}
 
                     <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
                       <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
-                      <button
-                        type="button"
-                        className={styles.actionBtn}
-                        onClick={() => {
-                          void navigator.clipboard?.writeText(snippet);
-                        }}
-                      >
-                        Copier le code
-                      </button>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          className={styles.actionBtn}
+                          onClick={() => setShowSiteInrcyWidgetCode((prev) => !prev)}
+                        >
+                          {showSiteInrcyWidgetCode ? "Masquer le code" : "Afficher le code"}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.actionBtn}
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(snippet);
+                          }}
+                        >
+                          Copier le code
+                        </button>
+                      </div>
                     </div>
                   </>
                 );
@@ -4892,7 +4914,7 @@ const checkActivity = useCallback(async () => {
                 Colle ce code iframe dans ton site (WordPress, Wix, Webflow, HTML…) pour afficher automatiquement tes dernières actus publiées depuis Booster.
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(180px, 1fr))", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
                 <label style={{ display: "grid", gap: 6 }}>
                   <span className={styles.blockSub}><strong>Affichage</strong></span>
                   <select
@@ -5034,35 +5056,55 @@ const checkActivity = useCallback(async () => {
 <\/script>`;
                 return (
                   <>
-                    <textarea
-                      readOnly
-                      value={snippet}
-                      style={{
-                        width: "100%",
-                        minHeight: 170,
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: "rgba(15,23,42,0.65)",
-                        colorScheme: "dark",
-                        padding: "10px 12px",
-                        color: "rgba(255,255,255,0.92)",
-                        outline: "none",
-                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-                        fontSize: 12,
-                      }}
-                    />
+                    {showSiteWebWidgetCode && (
+                      <div
+                        aria-label="Code du widget"
+                        onCopy={(e) => e.preventDefault()}
+                        onCut={(e) => e.preventDefault()}
+                        style={{
+                          width: "100%",
+                          minHeight: 170,
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: "rgba(15,23,42,0.65)",
+                          padding: "10px 12px",
+                          color: "rgba(255,255,255,0.92)",
+                          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+                          fontSize: 12,
+                          lineHeight: 1.5,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-all",
+                          userSelect: "none",
+                          WebkitUserSelect: "none",
+                          MozUserSelect: "none",
+                          msUserSelect: "none",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        {snippet}
+                      </div>
+                    )}
 
                     <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
                       <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
-                      <button
-                        type="button"
-                        className={styles.actionBtn}
-                        onClick={() => {
-                          void navigator.clipboard?.writeText(snippet);
-                        }}
-                      >
-                        Copier le code
-                      </button>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          className={styles.actionBtn}
+                          onClick={() => setShowSiteWebWidgetCode((prev) => !prev)}
+                        >
+                          {showSiteWebWidgetCode ? "Masquer le code" : "Afficher le code"}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.actionBtn}
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(snippet);
+                          }}
+                        >
+                          Copier le code
+                        </button>
+                      </div>
                     </div>
                     <div className={styles.blockSub}>
                       <strong>Où le coller ?</strong> Sur WordPress : un bloc <em>HTML personnalisé</em> (Elementor → widget HTML). Sur Wix : <em>Embed Code</em>. Sur Webflow : <em>Embed</em>.
