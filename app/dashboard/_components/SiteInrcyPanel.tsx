@@ -332,7 +332,7 @@ export default function SiteInrcyPanel(props: any) {
           <div className={styles.blockTitle}>Widget « Actus »</div>
         </div>
         <div className={styles.blockSub}>
-          Colle ce code iframe dans ton site iNrCy (Elementor → widget HTML) pour afficher automatiquement tes dernières actus publiées depuis Booster.
+          Collez ce code iframe dans votre site iNrCy (Elementor → widget HTML) pour afficher automatiquement vos dernières actus publiées depuis Booster.
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>

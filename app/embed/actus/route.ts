@@ -52,14 +52,31 @@ function normalizeDomain(input: string | null): string {
   }
 }
 
-function getRefererHost(req: Request): string {
-  const ref = req.headers.get("referer") || "";
-  if (!ref) return "";
+function getHeaderHost(value: string | null): string {
+  if (!value) return "";
   try {
-    return new URL(ref).hostname.toLowerCase().replace(/^www\./, "");
+    return new URL(value).hostname.toLowerCase().replace(/^www\./, "");
   } catch {
     return "";
   }
+}
+
+function getEmbeddingHost(req: Request): string {
+  const originHost = getHeaderHost(req.headers.get("origin"));
+  if (originHost) return originHost;
+  return getHeaderHost(req.headers.get("referer"));
+}
+
+function buildFrameAncestors(domain: string): string {
+  const d = normalizeDomain(domain);
+  if (!d) return "frame-ancestors 'none'";
+  const origins = [
+    `https://${d}`,
+    `https://www.${d}`,
+    `http://${d}`,
+    `http://www.${d}`
+  ];
+  return `frame-ancestors ${origins.join(" ")}`;
 }
 
 function getSupabaseAdmin() {
@@ -126,13 +143,14 @@ function clampTheme(value: string | null): ThemeMode {
   return v === "white" || v === "dark" || v === "gray" || v === "nature" || v === "sand" ? v : "nature";
 }
 
-function htmlResponse(html: string, status = 200) {
+function htmlResponse(html: string, status = 200, domain = "") {
   return new NextResponse(html, {
     status,
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "private, no-store, max-age=0",
       "x-robots-tag": "noindex, nofollow",
+      "content-security-policy": buildFrameAncestors(domain),
     },
   });
 }
@@ -150,9 +168,9 @@ export async function GET(req: Request) {
     const frameId = (searchParams.get("frameId") || "inrcy-embed").trim().slice(0, 120);
     const token = searchParams.get("token") || "";
 
-    if (!domain) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 400);
-    if (source !== "inrcy_site" && source !== "site_web") return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 400);
-    if (!token) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 401);
+    if (!domain) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 400, domain);
+    if (source !== "inrcy_site" && source !== "site_web") return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 400, domain);
+    if (!token) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 401, domain);
 
     const signingSecret = process.env.INRCY_WIDGETS_SIGNING_SECRET;
     if (!signingSecret) throw new Error("Missing INRCY_WIDGETS_SIGNING_SECRET");
@@ -160,13 +178,17 @@ export async function GET(req: Request) {
     const tok = verifyWidgetToken(token, signingSecret);
     const tokDomain = normalizeDomain(tok.domain);
     const tokSource = String(tok.source || "").trim();
-    if (tokDomain !== domain || tokSource !== source) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 403);
+    if (tokDomain !== domain || tokSource !== source) {
+      return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 403, tokDomain || domain);
+    }
 
-    const refHost = getRefererHost(req);
-    if (refHost && refHost !== tokDomain) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 403);
+    const embeddingHost = getEmbeddingHost(req);
+    if (!embeddingHost || embeddingHost !== tokDomain) {
+      return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 403, tokDomain);
+    }
 
     const articles = await fetchArticles(domain, source, limit);
-    return htmlResponse(renderEmbedHtml({ title, articles, layout, font, theme, frameId }), 200);
+    return htmlResponse(renderEmbedHtml({ title, articles, layout, font, theme, frameId }), 200, tokDomain);
   } catch {
     return htmlResponse(renderEmbedHtml({ title: "Actualités", articles: [], layout: "list", font: "site", theme: "nature", frameId: "inrcy-embed" }), 500);
   }

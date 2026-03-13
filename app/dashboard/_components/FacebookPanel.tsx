@@ -124,7 +124,7 @@ export default function FacebookPanel(props: any) {
     	                  <div className={styles.blockTitle}>Page à connecter</div>
     	                  <ConnectionPill connected={facebookPageConnected} />
                     </div>
-    	                <div className={styles.blockSub}>Choisis la page Facebook à analyser (et éventuellement publier).</div>
+    	                <div className={styles.blockSub}>Choisissez la page Facebook à analyser (et éventuellement publier).</div>
 
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                       <button
