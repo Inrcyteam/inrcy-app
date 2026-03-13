@@ -185,7 +185,7 @@ export async function buildMetricsSummary(args: {
     byTool: history30Resolved.perTool || { ...EMPTY_CUBE_RECORD },
   };
 
-  const estimatedValue = Math.round(leads.month * (profile.lead_conversion_rate / 100) * profile.avg_basket);
+  const estimatedValue = Math.round(oppResolved.total * (profile.lead_conversion_rate / 100) * profile.avg_basket);
 
   return {
     leads,

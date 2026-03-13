@@ -3102,6 +3102,14 @@ const checkActivity = useCallback(async () => {
               <div className={styles.miniCoreGlow} />
             </div>
 
+            <div className={`${styles.metricCard} ${styles.metricCa}`}>
+              <div className={styles.metricLabel}>CA POTENTIEL 30 J</div>
+              <div className={styles.metricValue}>
+                {estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "0 €"}
+              </div>
+              <div className={styles.metricHint}>Basé sur profil + opportunités</div>
+            </div>
+
             {/* ✅ Carte libérée : Opportunités activables (futur possible) */}
             <div className={`${styles.metricCard} ${styles.metricOpportunities}`}>
               <div className={styles.metricLabel}>Opportunités activables</div>
@@ -3110,7 +3118,6 @@ const checkActivity = useCallback(async () => {
               <div className={styles.metricValueRow}>
                 <div className={styles.metricValue}>
                   <span>{oppTotal === null ? "—" : `+${oppTotal}`}</span>
-                  
                 </div>
 
                 <button
@@ -3140,14 +3147,6 @@ const checkActivity = useCallback(async () => {
                   <div className={styles.metricSplitLabel}>30 derniers jours</div>
                 </div>
               </div>
-            </div>
-
-            <div className={`${styles.metricCard} ${styles.metricCa}`}>
-              <div className={styles.metricLabel}>CA GÉNÉRÉ</div>
-              <div className={styles.metricValue}>
-                {estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "0 €"}
-              </div>
-              <div className={styles.metricHint}>Montant basé sur votre profil</div>
             </div>
           </div>
 
