@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import styles from "./orientationGuard.module.css";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export default function OrientationGuard() {
   const pathname = usePathname();
+  const router = useRouter();
 
   // ✅ Mobile + tablette uniquement (≤ 1024px)
   const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
@@ -34,6 +35,40 @@ export default function OrientationGuard() {
       window.removeEventListener("orientationchange", check);
     };
   }, []);
+
+  useEffect(() => {
+    if (!pathname || !isMobileOrTablet) return;
+
+    const target = mustBeLandscape ? "landscape" : "portrait";
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const anyScreen = screen as Screen & {
+          orientation?: {
+            lock?: (mode: string) => Promise<void>;
+            unlock?: () => void;
+          };
+        };
+        if (anyScreen.orientation?.lock) {
+          await anyScreen.orientation.lock(target);
+          if (!cancelled) {
+            setTimeout(() => {
+              if (!cancelled) {
+                setIsLandscape(window.innerWidth > window.innerHeight);
+              }
+            }, 120);
+          }
+        }
+      } catch {
+        // iOS Safari / navigateurs non compatibles: le fallback visuel prendra le relais
+      }
+    })();
+
+    return () => {
+      cancelled = true
+    };
+  }, [pathname, mustBeLandscape, isMobileOrTablet]);
 
 
   // ✅ Logo: on tente png puis svg puis sans extension
@@ -71,20 +106,34 @@ export default function OrientationGuard() {
           <div className={styles.header}>
             <div className={styles.brand}>
               <Image
-          className={styles.logo}
-          src={logoSrc}
-          alt="Logo iNrCy"
-          width={80}
-          height={80}
-          priority
-          unoptimized
-          onError={() => {
-            setLogoIdx((i) => (i + 1 < logoCandidates.length ? i + 1 : i));
-          }}
-        />
+                className={styles.logo}
+                src={logoSrc}
+                alt="Logo iNrCy"
+                width={80}
+                height={80}
+                priority
+                unoptimized
+                onError={() => {
+                  setLogoIdx((i) => (i + 1 < logoCandidates.length ? i + 1 : i));
+                }}
+              />
               <div className={styles.brandName}>iNrCy</div>
             </div>
+
             <span className={styles.badge}>{badge}</span>
+
+            {showLandscapeBlock ? (
+              <button
+                type="button"
+                className={styles.closeBtn}
+                aria-label="Fermer et revenir au dashboard"
+                onClick={() => router.push("/dashboard")}
+              >
+                ×
+              </button>
+            ) : (
+              <span className={styles.closeSpacer} aria-hidden />
+            )}
           </div>
 
           <h2 className={styles.title}>{title}</h2>

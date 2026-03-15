@@ -30,6 +30,19 @@ export default function ReviewModal({
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
 
+  const [isCompact, setIsCompact] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsCompact(window.innerWidth <= 768);
+    check();
+    window.addEventListener("resize", check);
+    window.addEventListener("orientationchange", check);
+    return () => {
+      window.removeEventListener("resize", check);
+      window.removeEventListener("orientationchange", check);
+    };
+  }, []);
+
   useEffect(() => {
     if (!selected) return;
     const subj = selected.subject;
@@ -85,39 +98,85 @@ export default function ReviewModal({
           Choisissez un email préconçu, modifiez si besoin, puis cliquez sur Suivant.
         </div>
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-          {categories.map((t) => {
-            const isActive = selected?.category === t.category;
-            return (
-              <button
-                key={t.category}
-                type="button"
-                onClick={() => setSelectedKey(t.key)}
-                className={styles.pill}
-                style={{
-                  opacity: isActive ? 1 : 0.8,
-                  border: isActive
-                    ? "1px solid rgba(255,255,255,0.25)"
-                    : "1px solid rgba(255,255,255,0.12)",
-                }}
-                title={t.title}
-              >
-                {t.title}
-              </button>
-            );
-          })}
-        </div>
+        {isCompact ? (
+          <div style={{ marginBottom: 10 }}>
+            <select
+              value={selectedKey}
+              onChange={(e) => setSelectedKey(e.target.value)}
+              aria-label="Choisir un modèle"
+              style={{
+                width: "100%",
+                borderRadius: 14,
+                padding: "12px 14px",
+                background: "#ffffff",
+                color: "#111111",
+                border: "1px solid rgba(255,255,255,0.18)",
+                outline: "none",
+                fontSize: 16,
+                fontWeight: 600,
+              }}
+            >
+              {categories.map((tpl) => (
+                <option key={tpl.category} value={tpl.key}>
+                  {tpl.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+            {categories.map((t) => {
+              const isActive = selected?.category === t.category;
+              return (
+                <button
+                  key={t.category}
+                  type="button"
+                  onClick={() => setSelectedKey(t.key)}
+                  className={styles.pill}
+                  style={{
+                    opacity: isActive ? 1 : 0.8,
+                    border: isActive
+                      ? "1px solid rgba(255,255,255,0.25)"
+                      : "1px solid rgba(255,255,255,0.12)",
+                  }}
+                  title={t.title}
+                >
+                  {t.title}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0 }}>
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>Objet</div>
-            <input
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="Objet"
-              className={styles.input}
-              style={{ width: "100%" }}
-            />
+            {isCompact ? (
+              <textarea
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Objet"
+                className={styles.textarea}
+                rows={2}
+                style={{
+                  width: "100%",
+                  minHeight: 72,
+                  maxHeight: 120,
+                  resize: "none",
+                  overflowY: "auto",
+                  WebkitOverflowScrolling: "touch",
+                  fontSize: 16,
+                }}
+              />
+            ) : (
+              <input
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Objet"
+                className={styles.input}
+                style={{ width: "100%", fontSize: 16 }}
+              />
+            )}
           </div>
 
           <div style={{ ...sectionStyle, flex: 1, minHeight: 0 }}>
@@ -127,7 +186,7 @@ export default function ReviewModal({
               onChange={(e) => setBody(e.target.value)}
               placeholder="Votre message…"
               className={styles.textarea}
-              style={{ width: "100%", flex: 1, minHeight: 220, maxHeight: "45dvh", resize: "none", overflowY: "auto", WebkitOverflowScrolling: "touch" }}
+              style={{ width: "100%", flex: 1, minHeight: 220, maxHeight: "45dvh", resize: "none", overflowY: "auto", WebkitOverflowScrolling: "touch", fontSize: 16 }}
             />
           </div>
 
