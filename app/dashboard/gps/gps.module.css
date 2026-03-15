@@ -13,6 +13,7 @@
 
 .page {
   min-height: 100vh;
+  width: min(100%, 1200px);
   padding: 28px 18px 64px;
   max-width: 1200px;
   margin: 0 auto;
@@ -283,7 +284,35 @@
   background: var(--card);
   box-shadow: var(--shadow);
   padding: 16px;
+  overflow-x: hidden;
 }
+
+.header,
+.main,
+.sidebar,
+.content,
+.section,
+.cards,
+.card,
+.cardHeader,
+.block,
+.searchWrap {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.subtitle,
+.sectionDesc,
+.cardIntro,
+.steps,
+.list,
+.faqQ,
+.faqA,
+.footerText {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 
 .section {
   margin-bottom: 18px;
@@ -581,6 +610,18 @@
 }
 
 @media (max-width: 760px) {
+  .header,
+  .main,
+  .sidebar,
+  .content,
+  .section,
+  .card,
+  .block {
+    width: 100%;
+    max-width: 100%;
+    margin-inline: auto;
+  }
+
   .searchResult {
     flex-direction: column;
     align-items: flex-start;
@@ -597,10 +638,20 @@
 
   .cardLinks {
     width: 100%;
+    justify-content: center;
   }
 
   .cardLink {
     max-width: 100%;
+  }
+
+  .steps,
+  .list {
+    padding-left: 16px;
+  }
+
+  .block {
+    overflow-x: hidden;
   }
 
   :global(.uiTable) {
@@ -610,6 +661,7 @@
 
 @media (max-width: 520px) {
   .page {
+    width: 100%;
     padding: 16px 10px 44px;
   }
 
@@ -620,6 +672,9 @@
   .sidebar,
   .content,
   .card {
+    width: 100%;
+    max-width: 100%;
+    margin-inline: auto;
     border-radius: 16px;
   }
 
