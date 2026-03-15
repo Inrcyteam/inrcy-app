@@ -84,8 +84,8 @@ export default function CookieConsentBanner() {
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
     color: "white",
-    padding: 12,
-    maxWidth: 720,
+    padding: 14,
+    maxWidth: 980,
     margin: "0 auto",
     boxShadow: "0 14px 40px rgba(0,0,0,0.32)",
   };
@@ -95,7 +95,7 @@ export default function CookieConsentBanner() {
     background: "rgba(255,255,255,0.06)",
     color: "white",
     borderRadius: 12,
-    padding: "8px 10px",
+    padding: "8px 12px",
     cursor: "pointer",
     fontWeight: 900,
     textDecoration: "none",
@@ -103,6 +103,7 @@ export default function CookieConsentBanner() {
     justifyContent: "center",
     alignItems: "center",
     whiteSpace: "nowrap",
+    flex: "0 0 auto",
   };
 
   const primaryBtn: CSSProperties = {
@@ -112,9 +113,14 @@ export default function CookieConsentBanner() {
     border: "1px solid rgba(255,255,255,0.18)",
   };
 
-  const link: CSSProperties = {
+  const linkBtn: CSSProperties = {
+    ...btn,
+    background: "transparent",
+    border: "none",
     color: "rgba(255,255,255,0.85)",
     textDecoration: "underline",
+    padding: 0,
+    borderRadius: 0,
     fontWeight: 700,
   };
 
@@ -124,33 +130,39 @@ export default function CookieConsentBanner() {
     setOpen(false);
   };
 
+  const actionRow: CSSProperties = {
+    marginTop: 10,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    flexWrap: "nowrap",
+    overflowX: "auto",
+    WebkitOverflowScrolling: "touch",
+  };
+
   return (
     <div style={card} role="dialog" aria-live="polite" aria-label="Consentement cookies">
-      <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "nowrap" }}>
-        <div style={{ minWidth: 220, flex: "1 1 360px" }}>
-          <div style={{ fontWeight: 1000, marginBottom: 6 }}>Cookies</div>
-          <div style={{ opacity: 0.86, lineHeight: 1.42, fontSize: 13 }}>
-            iNrCy utilise des cookies <b>strictement nécessaires</b> au fonctionnement (connexion, sécurité). Les cookies de
-            mesure d’audience / services tiers ne sont activés qu’avec votre accord.
-          </div>
-          <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "nowrap" }}>
-            <a href="/legal/confidentialite" style={link}>
-              Politique de confidentialité
-            </a>
-            <button type="button" onClick={() => setOpen((v) => !v)} style={{ ...btn, padding: "8px 10px" }}>
-              {open ? "Fermer les réglages" : "Gérer mes cookies"}
-            </button>
-          </div>
-        </div>
+      <div style={{ fontWeight: 1000, marginBottom: 6 }}>Cookies</div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "nowrap", alignItems: "center" }}>
-          <button type="button" onClick={() => setAll(false)} style={btn}>
-            Refuser
-          </button>
-          <button type="button" onClick={() => setAll(true)} style={primaryBtn}>
-            Accepter
-          </button>
-        </div>
+      <div style={{ width: "100%", opacity: 0.86, lineHeight: 1.42, fontSize: 13 }}>
+        iNrCy utilise des cookies <b>strictement nécessaires</b> au fonctionnement (connexion, sécurité). Les cookies de
+        mesure d’audience / services tiers ne sont activés qu’avec votre accord.
+      </div>
+
+      <div style={actionRow}>
+        <a href="/legal/confidentialite" style={linkBtn}>
+          Politique de confidentialité
+        </a>
+        <button type="button" onClick={() => setOpen((v) => !v)} style={btn}>
+          {open ? "Fermer les réglages" : "Gérer mes cookies"}
+        </button>
+        <button type="button" onClick={() => setAll(false)} style={btn}>
+          Refuser
+        </button>
+        <button type="button" onClick={() => setAll(true)} style={primaryBtn}>
+          Accepter
+        </button>
       </div>
 
       {open ? (

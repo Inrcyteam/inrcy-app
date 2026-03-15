@@ -19,7 +19,26 @@ export default function BaseModal({
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyTouchAction = body.style.touchAction;
+    const prevBodyOverscroll = (body.style as any).overscrollBehavior;
+
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.touchAction = "none";
+    (body.style as any).overscrollBehavior = "none";
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      body.style.touchAction = prevBodyTouchAction;
+      (body.style as any).overscrollBehavior = prevBodyOverscroll;
+    };
   }, [onClose]);
 
   return (
@@ -37,7 +56,7 @@ export default function BaseModal({
         display: "flex",
         alignItems: "stretch",
         justifyContent: "stretch",
-        padding: 12,
+        padding: `max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))`,
       }}
     >
       <div
@@ -48,6 +67,7 @@ export default function BaseModal({
           height: "100%",
           borderRadius: 22,
           overflow: "hidden",
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
         }}
@@ -57,7 +77,7 @@ export default function BaseModal({
           className={styles.blockHeaderRow}
           style={{
             alignItems: "center",
-            padding: 12,
+            padding: `max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))`,
             borderBottom: "1px solid rgba(255,255,255,0.08)",
             position: "sticky",
             top: 0,
@@ -98,12 +118,12 @@ export default function BaseModal({
         </div>
 
         {/* Content scroll */}
-        <div style={{ padding: 12, overflow: "auto", flex: 1 }}>
+        <div style={{ padding: `max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))`, overflow: "auto", flex: 1 }}>
           <div
             style={{
               maxWidth: 1400,
               margin: "0 auto",
-              height: "100%",
+              minHeight: "100%",
               display: "flex",
               flexDirection: "column",
             }}

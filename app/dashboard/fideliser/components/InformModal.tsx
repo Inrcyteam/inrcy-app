@@ -131,7 +131,7 @@ export default function InformModal({
               onChange={(e) => setBody(e.target.value)}
               placeholder="Votre message…"
               className={styles.textarea}
-              style={{ width: "100%", flex: 1, minHeight: 340, resize: "vertical" }}
+              style={{ width: "100%", flex: 1, minHeight: 220, maxHeight: "45dvh", resize: "none", overflowY: "auto", WebkitOverflowScrolling: "touch" }}
             />
           </div>
 

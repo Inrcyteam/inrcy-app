@@ -17,6 +17,8 @@
   max-width: 1200px;
   margin: 0 auto;
   position: relative;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /*
@@ -201,6 +203,7 @@
 }
 
 .sidebar {
+  box-sizing: border-box;
   position: sticky;
   top: 14px;
   border: 1px solid rgba(0, 180, 255, 0.35);
@@ -274,6 +277,7 @@
 }
 
 .content {
+  box-sizing: border-box;
   border: 1px solid rgba(0, 180, 255, 0.35);
   border-radius: var(--r);
   background: var(--card);
@@ -307,6 +311,7 @@
 }
 
 .card {
+  box-sizing: border-box;
   border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 18px;
   background: rgba(18, 22, 32, 0.42);
@@ -367,6 +372,8 @@
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.10);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .blockTitle {
@@ -480,6 +487,7 @@
     grid-template-columns: 1fr;
   }
   .sidebar {
+  box-sizing: border-box;
     position: relative;
     top: auto;
   }
@@ -493,6 +501,7 @@
     font-size: 28px;
   }
   .content {
+  box-sizing: border-box;
     padding: 12px;
   }
 }
@@ -555,5 +564,89 @@
   }
   .uiTable th, .uiTable td{
     white-space:nowrap;
+  }
+}
+
+
+@media (max-width: 980px) {
+  .gpsClose {
+    position: static;
+    align-self: flex-end;
+    margin-bottom: 2px;
+  }
+
+  .header {
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 760px) {
+  .searchResult {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .searchResultMeta {
+    white-space: normal;
+  }
+
+  .cardHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cardLinks {
+    width: 100%;
+  }
+
+  .cardLink {
+    max-width: 100%;
+  }
+
+  :global(.uiTable) {
+    min-width: 640px;
+  }
+}
+
+@media (max-width: 520px) {
+  .page {
+    padding: 16px 10px 44px;
+  }
+
+  .main {
+    gap: 12px;
+  }
+
+  .sidebar,
+  .content,
+  .card {
+    border-radius: 16px;
+  }
+
+  .sidebar {
+    padding: 12px;
+  }
+
+  .content {
+    padding: 10px;
+  }
+
+  .card {
+    padding: 12px;
+  }
+
+  .title {
+    font-size: 26px;
+  }
+
+  .subtitle,
+  .cardIntro,
+  .steps,
+  .list,
+  .faqQ,
+  .faqA,
+  .footerText,
+  .sectionDesc {
+    font-size: 13px;
   }
 }
