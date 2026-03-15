@@ -104,30 +104,7 @@ export const GPS_SECTIONS: GpsSection[] = [
           { label: "Ouvrir Boutique", href: "/dashboard?panel=boutique" },
         ],
       },
-      {
-        id: "inertie-rewards",
-        title: "Tableau des gains UI",
-        keywords: ["gains", "tableau", "ui", "récompenses", "points"],
-        intro:
-          "Voici les actions qui rapportent des **UI** (Unités d’Inertie). Les limites hebdo et par cycle de 30 jours évitent la triche.",
-        steps: [
-          `<table class="uiTable">
-            <thead><tr><th>Action</th><th>Gain</th><th>Fréquence</th></tr></thead>
-            <tbody>
-              <tr><td>Ouverture du compte</td><td><strong>+50 UI</strong></td><td>1 fois</td></tr>
-              <tr><td>Compléter Mon profil</td><td><strong>+100 UI</strong></td><td>1 fois</td></tr>
-              <tr><td>Compléter Mon activité</td><td><strong>+100 UI</strong></td><td>1 fois</td></tr>
-              <tr><td>Créer une actu</td><td><strong>+10 UI</strong></td><td>1 fois / semaine</td></tr>
-              <tr><td>Utiliser Booster / Fidéliser</td><td><strong>+10 UI</strong></td><td>1 fois / semaine</td></tr>
-              <tr><td>Ancienneté</td><td><strong>+50 UI</strong></td><td>1re fois au 30e jour, puis tous les 30 jours</td></tr>
-            </tbody>
-          </table>`,
-          "Le **Turbo UI** multiplie certaines actions selon vos canaux connectés.",
-          "Tout est visible dans l’**Historique** de Mon inertie.",
-        ],
-        checks: ["Les gains apparaissent dans l’historique", "Le solde UI augmente après chaque action"],
-        links: [{ label: "Ouvrir Mon inertie", href: "/dashboard?panel=inertie" }],
-      },
+
     ],
   },
   {
