@@ -31,6 +31,7 @@ import NotificationsSettingsContent from "./settings/_components/NotificationsSe
 
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
+import { decodeBusinessSector } from "@/lib/activitySectors";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants";
 import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
@@ -2038,7 +2039,6 @@ const disconnectSiteWebGsc = useCallback(() => {
 
 
 const REQUIRED_ACTIVITY_FIELDS = [
-  "sector",
   "services",
   "intervention_zones",
   "opening_days",
@@ -2055,7 +2055,7 @@ const checkActivity = useCallback(async () => {
 
   const { data: business } = await supabase
     .from("business_profiles")
-    .select("sector,services,intervention_zones,opening_days,opening_hours,strengths")
+    .select("*")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -2064,7 +2064,11 @@ const checkActivity = useCallback(async () => {
     return;
   }
 
-  const incomplete = REQUIRED_ACTIVITY_FIELDS.some((field) => {
+  const decodedSector = decodeBusinessSector((business as any)?.sector ?? "");
+  const hasSectorCategory = !!decodedSector.sectorCategory;
+  const hasProfession = decodedSector.profession.trim().length > 0;
+
+  const incomplete = !hasSectorCategory || !hasProfession || REQUIRED_ACTIVITY_FIELDS.some((field) => {
     const v = (business as any)[field];
     if (Array.isArray(v)) return v.filter(Boolean).length === 0;
     return !v || String(v).trim() === "";

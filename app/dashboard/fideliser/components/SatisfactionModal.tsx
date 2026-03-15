@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import stylesDash from "../../dashboard/dashboard.module.css";
 import { getTemplates, type TemplateDef } from "@/lib/messageTemplates";
+import { useBusinessTemplateContext } from "@/app/dashboard/_hooks/useBusinessTemplateContext";
 
 export default function SatisfactionModal({
   styles,
@@ -11,8 +12,9 @@ export default function SatisfactionModal({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const { sectorCategory } = useBusinessTemplateContext();
 
-  const templates = useMemo(() => getTemplates("enquetes"), []);
+  const templates = useMemo(() => getTemplates("enquetes", undefined, sectorCategory), [sectorCategory]);
   const categories = useMemo(() => {
     const map = new Map<string, TemplateDef>();
     for (const t of templates) {
@@ -28,6 +30,11 @@ export default function SatisfactionModal({
   );
 
   const [subject, setSubject] = useState("");
+  useEffect(() => {
+    if (!templates.length) return;
+    setSelectedKey((current) => (templates.some((t) => t.key === current) ? current : templates[0]?.key ?? ""));
+  }, [templates]);
+
   const [body, setBody] = useState("");
 
   const [isCompact, setIsCompact] = useState(false);

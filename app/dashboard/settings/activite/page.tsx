@@ -5,7 +5,7 @@ export default function ActivitePage() {
   return (
     <SettingsShell
       title="Mon activité"
-      subtitle="Métier, zones, horaires et forces (utilisés pour générer vos communications)."
+      subtitle="Secteur d’activité, métier, zones, horaires et forces (utilisés pour générer vos communications)."
     >
       <ActivityContent mode="page" />
     </SettingsShell>

@@ -1,3 +1,6 @@
+import { buildSectorTemplates } from "@/lib/templates/sectorCatalog";
+import { type ActivitySectorCategory } from "@/lib/activitySectors";
+
 // Central registry for Booster/Fidéliser mail templates.
 // ✅ Version "dense" : vrais contenus, structurés, et auto-remplis via Mon Profil + Mon activité.
 // Placeholders disponibles (principaux) :
@@ -17,9 +20,10 @@ export type TemplateDef = {
   subject: string;
   body: string;
   ctaLabel?: string;
+  sectorCategory?: ActivitySectorCategory;
 };
 
-export const TEMPLATES: TemplateDef[] = [
+const BASE_TEMPLATES: TemplateDef[] = [
   // -------------------- BOOSTER --------------------
   {
     key: "booster_avis_base",
@@ -608,10 +612,23 @@ export const TEMPLATES: TemplateDef[] = [
   },
 ];
 
-export function getTemplates(action: TemplateAction, module?: TemplateModule): TemplateDef[] {
+const SECTOR_TEMPLATES: TemplateDef[] = buildSectorTemplates();
+
+export const TEMPLATES: TemplateDef[] = [...BASE_TEMPLATES, ...SECTOR_TEMPLATES];
+
+export function getTemplates(
+  action: TemplateAction,
+  module?: TemplateModule,
+  sectorCategory?: ActivitySectorCategory | null
+): TemplateDef[] {
   const inferredModule: TemplateModule =
     module ?? (action === "avis" || action === "offres" ? "booster" : "fideliser");
 
-  return TEMPLATES.filter((t) => t.action === action && t.module === inferredModule);
+  return TEMPLATES.filter((t) => {
+    if (t.action !== action || t.module !== inferredModule) return false;
+    if (!t.sectorCategory) return true;
+    if (!sectorCategory) return false;
+    return t.sectorCategory === sectorCategory;
+  });
 }
 

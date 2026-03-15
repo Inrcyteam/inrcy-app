@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
+import { ACTIVITY_SECTOR_OPTIONS, decodeBusinessSector, encodeBusinessSector } from "@/lib/activitySectors";
 
 type Props = {
   mode?: "page" | "drawer";
 };
 
 type BusinessActivityForm = {
-  sector: string;
+  sectorCategory: string;
+  sector: string; // métier
   services: string; // 1 ligne = 1 service
   interventionZones: string; // villes / zones / rayon
   openingDays: string; // ex: Lun–Ven
@@ -23,6 +25,7 @@ const TABLE = "business_profiles";
 export default function ActivityContent({ mode = "page" }: Props) {
   const initial: BusinessActivityForm = useMemo(
     () => ({
+      sectorCategory: "",
       sector: "",
       services: "",
       interventionZones: "",
@@ -119,8 +122,11 @@ export default function ActivityContent({ mode = "page" }: Props) {
         if (dbErr) throw new Error(dbErr.message);
         if (!data) return;
 
+        const decodedSector = decodeBusinessSector(data.sector ?? "");
+
         setForm({
-          sector: data.sector ?? "",
+          sectorCategory: decodedSector.sectorCategory,
+          sector: decodedSector.profession,
           services: Array.isArray(data.services) ? data.services.join("\n") : (data.services_text ?? ""),
           interventionZones: Array.isArray(data.intervention_zones)
             ? data.intervention_zones.join(", ")
@@ -173,7 +179,7 @@ export default function ActivityContent({ mode = "page" }: Props) {
 
       const payload = {
         user_id: user.id,
-        sector: form.sector.trim(),
+        sector: encodeBusinessSector(form.sectorCategory, form.sector.trim()),
         services: normalizeLines(form.services),
         intervention_zones: normalizeCommaList(form.interventionZones),
         opening_days: form.openingDays.trim(),
@@ -189,6 +195,7 @@ export default function ActivityContent({ mode = "page" }: Props) {
 
       // ✅ Récompense : activité complète (100 UI) — seulement si le formulaire est bien rempli
       const isComplete =
+        form.sectorCategory.trim().length > 0 &&
         form.sector.trim().length > 0 &&
         normalizeLines(form.services).length > 0 &&
         normalizeCommaList(form.interventionZones).length > 0 &&
@@ -240,13 +247,31 @@ export default function ActivityContent({ mode = "page" }: Props) {
         ) : (
           <div style={{ display: "grid", gap: 14 }}>
             <label style={label}>
-              <span style={labelTitle}>Secteur / métier</span>
+              <span style={labelTitle}>Secteur d’activité</span>
+              <select
+                style={input}
+                value={form.sectorCategory}
+                onChange={(e) => set("sectorCategory", e.target.value)}
+              >
+                <option value="" style={selectOption}>Choisir un secteur</option>
+                {ACTIVITY_SECTOR_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value} style={selectOption}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <span style={hint}>Cette catégorie pilote les modèles proposés dans Booster et Fidéliser.</span>
+            </label>
+
+            <label style={label}>
+              <span style={labelTitle}>Métier</span>
               <input
                 style={input}
                 value={form.sector}
                 onChange={(e) => set("sector", e.target.value)}
                 placeholder="Ex: Plombier, Couvreur, Menuisier…"
               />
+              <span style={hint}>Le métier reste utilisé comme base n°2 pour personnaliser les textes et les mots-clés.</span>
             </label>
 
             <label style={label}>

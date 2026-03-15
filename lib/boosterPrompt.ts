@@ -1,3 +1,5 @@
+import { decodeBusinessSector, getActivitySectorLabel } from "@/lib/activitySectors";
+
 export type BoosterChannels =
   | "inrcy_site"
   | "site_web"
@@ -69,7 +71,9 @@ export function boosterUserPrompt(args: {
   const email = profile.contact_email || profile.contactEmail || "";
 
   // business_profiles (Mon activité)
-  const sector = business.sector || "";
+  const decodedSector = decodeBusinessSector(business.sector || "");
+  const sector = decodedSector.profession || "";
+  const sectorCategory = getActivitySectorLabel(decodedSector.sectorCategory);
   const zones = business.intervention_zones || [];
   const days = business.opening_days || "";
   const hours = business.opening_hours || "";
@@ -90,7 +94,8 @@ Infos profil :
 - Email : ${email}
 
 Infos activité (Mon activité) :
-- Secteur : ${sector}
+- Secteur d’activité : ${sectorCategory}
+- Métier : ${sector}
 - Zones d'intervention : ${Array.isArray(zones) ? zones.join(", ") : String(zones || "")}
 - Jours : ${days}
 - Horaires : ${hours}
