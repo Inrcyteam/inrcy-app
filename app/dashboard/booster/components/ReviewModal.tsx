@@ -37,6 +37,15 @@ export default function ReviewModal({
 
   const [body, setBody] = useState("");
 
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
+
   useEffect(() => {
     if (!selected) return;
     const subj = selected.subject;
@@ -87,7 +96,7 @@ export default function ReviewModal({
           Modèle d’email — Récolter
         </div>
 
-        <div className={styles.subtitle} style={{ marginBottom: 10 }}>
+        <div className={styles.subtitle} style={{ marginBottom: isMobile ? 0 : 10, display: isMobile ? "none" : "block" }}>
           Choisissez un email préconçu, modifiez si besoin, puis cliquez sur Suivant.
         </div>
 
@@ -202,10 +211,10 @@ const footerStyle: CSSProperties = {
   justifyContent: "flex-end",
   gap: 10,
   marginTop: "auto",
-  paddingTop: 10,
+  paddingTop: 8,
   paddingBottom: "max(2px, env(safe-area-inset-bottom))",
   position: "sticky",
   bottom: 0,
   zIndex: 1,
-  background: "linear-gradient(180deg, rgba(9,12,24,0) 0%, rgba(9,12,24,0.82) 28%, rgba(9,12,24,0.96) 100%)",
+  background: "transparent",
 };
