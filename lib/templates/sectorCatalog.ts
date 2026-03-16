@@ -608,10 +608,10 @@ function buildTemplatesForAction(
   seeds: VariantSeed[]
 ): TemplateDef[] {
   const pack = PACKS[sector] ?? PACKS.autre;
-  const module = action === 'offres' || action === 'avis' ? 'booster' : 'fideliser';
+  const moduleName = action === 'offres' || action === 'avis' ? 'booster' : 'fideliser';
   return seeds.map((seed) => ({
-    key: `${module}_${action}_${sector}_${seed.slug}`,
-    module,
+    key: `${moduleName}_${action}_${sector}_${seed.slug}`,
+    module: moduleName,
     action,
     category: `${action}_${sector}_${seed.slug}`,
     title: seed.title,

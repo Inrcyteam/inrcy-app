@@ -46,7 +46,7 @@ export default function OrientationGuard() {
       try {
         const anyScreen = screen as Screen & {
           orientation?: {
-            lock?: (mode: string) => Promise<void>;
+            lock?: (_mode: string) => Promise<void>;
             unlock?: () => void;
           };
         };

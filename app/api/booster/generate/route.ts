@@ -75,7 +75,7 @@ const handler = async (req: Request) => {
     }
 
     const system = boosterSystemPrompt();
-    const input = boosterUserPrompt({ idea, theme, channels, profile: profile as any, business });
+    const input = boosterUserPrompt({ idea, theme, channels, profile: (profile ?? null) as JsonRecord | null, business });
 
     const out = await openaiGenerateJSON<BoosterGenResponse>({
       system,
@@ -83,7 +83,7 @@ const handler = async (req: Request) => {
       maxOutputTokens: 1800,
     });
 
-    const rawVersions = (out?.versions && typeof out.versions === "object" ? out.versions : {}) as Partial<Record<BoosterChannels, any>>;
+    const rawVersions = (out?.versions && typeof out.versions === "object" ? out.versions : {}) as Partial<Record<BoosterChannels, Partial<ChannelPost>>>;
     const safeVersions: Partial<Record<BoosterChannels, ChannelPost>> = {};
 
     for (const ch of channels) {

@@ -72,6 +72,7 @@ export default function PublishModal({
   const [genError, setGenError] = useState("");
   const [postsByChannel, setPostsByChannel] = useState<Partial<Record<ChannelKey, ChannelPost>>>({});
   const [activeCard, setActiveCard] = useState<DisplayKey>("site");
+  const [isMobile, setIsMobile] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [images, setImages] = useState<File[]>([]);
@@ -129,6 +130,13 @@ export default function PublishModal({
     return () => {
       alive = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const check = () => setIsMobile(typeof window !== "undefined" && window.innerWidth <= 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
   }, []);
 
   const displayCards = useMemo(() => {
@@ -351,22 +359,51 @@ export default function PublishModal({
         <div className={styles.subtitle} style={{ marginBottom: 10 }}>
           iNrCy diffuse une version adaptée sur chaque canal sélectionné !
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 10 }}>
           {(Object.keys(CHANNEL_LABELS) as ChannelKey[]).map((key) => (
-            <button key={key} type="button" onClick={() => toggle(key)} disabled={!connected[key]} style={{ ...channelBtn, ...(channels[key] && connected[key] ? channelBtnActive : {}), ...(!connected[key] ? channelBtnDisabled : {}) }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button
+              key={key}
+              type="button"
+              onClick={() => toggle(key)}
+              disabled={!connected[key]}
+              style={{
+                ...channelBtn,
+                ...(channels[key] && connected[key] ? channelBtnActive : {}),
+                ...(!connected[key] ? channelBtnDisabled : {}),
+                minHeight: isMobile ? 56 : channelBtn.minHeight,
+                padding: isMobile ? "0 14px" : channelBtn.padding,
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
                 <input
                   type="checkbox"
                   checked={!!channels[key]}
                   onChange={() => toggle(key)}
                   disabled={!connected[key]}
                   onClick={(e) => e.stopPropagation()}
-                  style={{ width: 16, height: 16, accentColor: "#4cc3ff", cursor: connected[key] ? "pointer" : "not-allowed" }}
+                  style={{ width: 18, height: 18, accentColor: "#4cc3ff", cursor: connected[key] ? "pointer" : "not-allowed", flexShrink: 0 }}
                 />
-                <span style={{ width: 10, height: 10, borderRadius: 999, background: channels[key] ? "#43d17d" : "#ff4d6d", boxShadow: channels[key] ? "0 0 12px rgba(67,209,125,0.35)" : "0 0 12px rgba(255,77,109,0.25)" }} />
-                {CHANNEL_LABELS[key]}
+                <span style={{ width: 10, height: 10, borderRadius: 999, background: channels[key] ? "#43d17d" : "#ff4d6d", boxShadow: channels[key] ? "0 0 12px rgba(67,209,125,0.35)" : "0 0 12px rgba(255,77,109,0.25)", flexShrink: 0 }} />
+                <span style={{ minWidth: 0, whiteSpace: isMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "left" }}>
+                  {CHANNEL_LABELS[key]}
+                </span>
               </span>
-              <span style={{ fontSize: 12, opacity: 0.85 }}>{connected[key] ? "Connecté" : "Non connecté"}</span>
+              <span
+                aria-label={connected[key] ? "Connecté" : "Non connecté"}
+                title={connected[key] ? "Connecté" : "Non connecté"}
+                style={{
+                  fontSize: isMobile ? 16 : 12,
+                  opacity: 0.9,
+                  flexShrink: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: isMobile ? 20 : 72,
+                  marginLeft: 8,
+                }}
+              >
+                {connected[key] ? "🔗" : "⛔"}
+              </span>
             </button>
           ))}
         </div>
