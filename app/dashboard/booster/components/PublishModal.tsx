@@ -46,6 +46,17 @@ const THEME_OPTIONS: Array<{ value: ThemeKey; label: string }> = [
   { value: "autre", label: "Autre" },
 ];
 
+const THEME_PLACEHOLDERS: Record<ThemeKey, string> = {
+  "": "Ex : Chantier réalisé chez Michel à Arras",
+  promotion: "Ex : Offre de printemps sur la taille de haies jusqu’au 30 avril",
+  information: "Ex : Nous intervenons désormais aussi le samedi sur Berck et ses alentours",
+  conseil: "Ex : Pensez à faire entretenir votre chaudière avant l’hiver pour éviter les pannes",
+  avis_client: "Ex : Merci à Mme Dupont pour sa confiance après la rénovation complète de sa salle de bain",
+  realisation: "Ex : Terrasse en bois posée cette semaine chez un client à Montreuil",
+  actualite: "Ex : Notre nouvelle prestation de nettoyage toiture est maintenant disponible",
+  autre: "Ex : Intervention rapide réalisée ce matin suite à une fuite en cuisine",
+};
+
 export default function PublishModal({
   styles,
   onClose,
@@ -413,7 +424,7 @@ export default function PublishModal({
           <div>
             <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Phrase libre</div>
             <textarea
-              placeholder={theme ? "Ex : (en rapport avec le thème)" : "Ex : Chantier réalisé chez Michel à Arras"}
+              placeholder={THEME_PLACEHOLDERS[theme] || THEME_PLACEHOLDERS[""]}
               style={textAreaStyle}
               value={idea}
               onChange={(e) => setIdea(e.target.value)}

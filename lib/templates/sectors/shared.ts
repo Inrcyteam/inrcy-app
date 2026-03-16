@@ -55,7 +55,7 @@ const boosterOffresSeeds: VariantSeed[] = [
   },
   {
     slug: 'saison',
-    title: 'Offre saisonnière',
+    title: 'Offre du moment',
     subject: 'Notre offre du moment — {{nom_entreprise}}',
     body: (pack) =>
       'Bonjour,\n\n' +
@@ -86,7 +86,7 @@ const boosterOffresSeeds: VariantSeed[] = [
   },
   {
     slug: 'fidelite',
-    title: 'Offre fidélité',
+    title: 'Avantage clients réguliers',
     subject: 'Merci pour votre fidélité — {{nom_entreprise}}',
     body: (pack) =>
       'Bonjour,\n\n' +
@@ -100,7 +100,7 @@ const boosterOffresSeeds: VariantSeed[] = [
   },
   {
     slug: 'nouveau_client',
-    title: 'Offre nouveau client',
+    title: 'Offre de bienvenue',
     subject: 'Bienvenue chez {{nom_entreprise}}',
     body: () =>
       'Bonjour,\n\n' +
