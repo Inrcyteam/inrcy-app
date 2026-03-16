@@ -46,16 +46,6 @@ const THEME_OPTIONS: Array<{ value: ThemeKey; label: string }> = [
   { value: "autre", label: "Autre" },
 ];
 
-const THEME_STARTERS: Partial<Record<Exclude<ThemeKey, "">, string>> = {
-  promotion: "Nous proposons actuellement une offre spéciale sur ",
-  information: "Nous souhaitons informer nos clients que ",
-  conseil: "Voici un conseil utile concernant ",
-  avis_client: "Un client nous a récemment partagé son retour sur ",
-  realisation: "Nous venons de réaliser ",
-  actualite: "Nouvelle actualité chez nous : ",
-  autre: "",
-};
-
 export default function PublishModal({
   styles,
   onClose,
@@ -179,9 +169,6 @@ export default function PublishModal({
 
   const onThemeChange = (next: ThemeKey) => {
     setTheme(next);
-    if ((!idea.trim() || Object.values(THEME_STARTERS).includes(idea)) && next) {
-      setIdea(THEME_STARTERS[next] || "");
-    }
   };
 
   const onReset = () => {
@@ -426,7 +413,7 @@ export default function PublishModal({
           <div>
             <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Phrase libre</div>
             <textarea
-              placeholder="Ex : Chantier réalisé chez Michel à Arras"
+              placeholder={theme ? "Ex : (en rapport avec le thème)" : "Ex : Chantier réalisé chez Michel à Arras"}
               style={textAreaStyle}
               value={idea}
               onChange={(e) => setIdea(e.target.value)}
