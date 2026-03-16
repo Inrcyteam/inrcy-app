@@ -7,23 +7,39 @@ import {
   boosterSystemPrompt,
   boosterUserPrompt,
   type BoosterChannels,
+  type BoosterTheme,
 } from "@/lib/boosterPrompt";
 
 type Payload = {
   idea?: string;
+  theme?: BoosterTheme;
   channels?: BoosterChannels[];
 };
 
-type BoosterGenResponse = {
+type ChannelPost = {
   title: string;
   content: string;
   cta: string;
   hashtags: string[];
 };
 
+type BoosterGenResponse = {
+  versions: Partial<Record<BoosterChannels, ChannelPost>>;
+};
+
 type JsonRecord = Record<string, unknown>;
 
 const allowedChannels: BoosterChannels[] = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"];
+const allowedThemes: BoosterTheme[] = ["", "promotion", "information", "conseil", "avis_client", "realisation", "actualite", "autre"];
+
+function cleanHashtags(input: unknown) {
+  return Array.isArray(input)
+    ? input
+        .map((h) => String(h || "").trim().replace(/^#+/, ""))
+        .filter(Boolean)
+        .slice(0, 8)
+    : [];
+}
 
 const handler = async (req: Request) => {
   try {
@@ -33,57 +49,54 @@ const handler = async (req: Request) => {
 
     const rl = await enforceRateLimit({ name: "booster_generate", identifier: userId, limit: 10, window: "1 m" });
     if (rl) return rl;
-const body = (await req.json().catch(() => ({}))) as Payload;
+
+    const body = (await req.json().catch(() => ({}))) as Payload;
     const idea = (body?.idea || "").trim();
     if (!idea) {
       return NextResponse.json({ error: "Missing idea" }, { status: 400 });
     }
 
-    const channels = (Array.isArray(body?.channels) ? body.channels : [])
-      .filter((c): c is BoosterChannels => allowedChannels.includes(c as BoosterChannels));
+    const theme = allowedThemes.includes(body?.theme as BoosterTheme) ? (body.theme as BoosterTheme) : "information";
+    const channels = (Array.isArray(body?.channels) ? body.channels : []).filter(
+      (c): c is BoosterChannels => allowedChannels.includes(c as BoosterChannels)
+    );
+    if (!channels.length) {
+      return NextResponse.json({ error: "Missing channels" }, { status: 400 });
+    }
 
-    // Load profile (identity/company info)
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle();
 
-    // Load business profile (Mon activité)
     let business: JsonRecord | null = null;
     try {
-      const { data } = await supabase
-        .from("business_profiles")
-        .select("*")
-        .eq("user_id", userId)
-        .maybeSingle();
+      const { data } = await supabase.from("business_profiles").select("*").eq("user_id", userId).maybeSingle();
       business = data && typeof data === "object" ? (data as JsonRecord) : null;
     } catch {
       business = null;
     }
 
     const system = boosterSystemPrompt();
-    const input = boosterUserPrompt({ idea, channels, profile, business });
+    const input = boosterUserPrompt({ idea, theme, channels, profile: profile as any, business });
 
     const out = await openaiGenerateJSON<BoosterGenResponse>({
       system,
       input,
-      maxOutputTokens: 900,
+      maxOutputTokens: 1800,
     });
 
-    const safe: BoosterGenResponse = {
-      title: String(out?.title || "").slice(0, 80),
-      content: String(out?.content || "").slice(0, 2000),
-      cta: String(out?.cta || "").slice(0, 160),
-      hashtags: Array.isArray(out?.hashtags)
-        ? out.hashtags
-            .map((h) => String(h || "").trim())
-            .filter(Boolean)
-            .slice(0, 6)
-        : [],
-    };
+    const rawVersions = (out?.versions && typeof out.versions === "object" ? out.versions : {}) as Partial<Record<BoosterChannels, any>>;
+    const safeVersions: Partial<Record<BoosterChannels, ChannelPost>> = {};
 
-    return NextResponse.json(safe);
+    for (const ch of channels) {
+      const raw = rawVersions[ch] || {};
+      safeVersions[ch] = {
+        title: String(raw?.title || "").slice(0, 90),
+        content: String(raw?.content || "").slice(0, ch === "inrcy_site" || ch === "site_web" ? 6000 : 2000),
+        cta: String(raw?.cta || "").slice(0, 180),
+        hashtags: cleanHashtags(raw?.hashtags),
+      };
+    }
+
+    return NextResponse.json({ versions: safeVersions });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Server error";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -3,6 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { ACTIVITY_SECTOR_OPTIONS, decodeBusinessSector, encodeBusinessSector } from "@/lib/activitySectors";
+import {
+  getJobsForSector,
+  getServicesForSectorAndJob,
+  getJobLabel,
+  isValidJobForSector,
+  findJobValueByLabel,
+} from "@/lib/activityCatalog";
 
 type Props = {
   mode?: "page" | "drawer";
@@ -10,12 +17,13 @@ type Props = {
 
 type BusinessActivityForm = {
   sectorCategory: string;
-  sector: string; // métier
-  services: string; // 1 ligne = 1 service
-  interventionZones: string; // villes / zones / rayon
-  openingDays: string; // ex: Lun–Ven
-  openingHours: string; // ex: 8h–18h
-  strengths: string; // 1 ligne = 1 force
+  sector: string; // métier (code)
+  selectedServices: string[];
+  customServices: string;
+  interventionZones: string;
+  openingDays: string;
+  openingHours: string;
+  strengths: string;
   tone: "pro" | "friendly" | "premium" | "direct";
   preferredCta: "appeler" | "devis" | "message";
 };
@@ -27,7 +35,8 @@ export default function ActivityContent({ mode = "page" }: Props) {
     () => ({
       sectorCategory: "",
       sector: "",
-      services: "",
+      selectedServices: [],
+      customServices: "",
       interventionZones: "",
       openingDays: "",
       openingHours: "",
@@ -43,6 +52,25 @@ export default function ActivityContent({ mode = "page" }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string>("");
+
+  const currentJobOptions = useMemo(() => {
+    const base = getJobsForSector(form.sectorCategory);
+    if (!form.sector) return base;
+    const currentExists = base.some((opt) => opt.value === form.sector);
+    if (currentExists) return base;
+    const fallbackLabel = getJobLabel(form.sectorCategory, form.sector) || form.sector;
+    return [...base, { value: form.sector, label: fallbackLabel }];
+  }, [form.sectorCategory, form.sector]);
+
+  const currentServiceOptions = useMemo(
+    () => getServicesForSectorAndJob(form.sectorCategory, form.sector),
+    [form.sectorCategory, form.sector]
+  );
+
+  const allSelectedServices = useMemo(() => {
+    const extras = normalizeLines(form.customServices);
+    return Array.from(new Set([...form.selectedServices, ...extras]));
+  }, [form.selectedServices, form.customServices]);
 
   const card: React.CSSProperties = {
     padding: 16,
@@ -102,6 +130,25 @@ export default function ActivityContent({ mode = "page" }: Props) {
     opacity: saving ? 0.7 : 1,
   };
 
+  const checkboxGrid: React.CSSProperties = {
+    display: "grid",
+    gap: 10,
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    marginTop: 4,
+  };
+
+  const chipLabel: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.04)",
+    color: "rgba(255,255,255,0.92)",
+    minWidth: 0,
+  };
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -123,11 +170,23 @@ export default function ActivityContent({ mode = "page" }: Props) {
         if (!data) return;
 
         const decodedSector = decodeBusinessSector(data.sector ?? "");
+        const rawServices = Array.isArray(data.services)
+          ? data.services.map((s: unknown) => String(s || "").trim()).filter(Boolean)
+          : normalizeLines(data.services_text ?? "");
+        const normalizedProfession = isValidJobForSector(decodedSector.sectorCategory, decodedSector.profession)
+          ? decodedSector.profession
+          : (findJobValueByLabel(decodedSector.sectorCategory, decodedSector.profession) || "");
+        const knownServices = normalizedProfession
+          ? getServicesForSectorAndJob(decodedSector.sectorCategory, normalizedProfession)
+          : [];
+        const selectedServices = rawServices.filter((item: string) => knownServices.includes(item));
+        const customServices = rawServices.filter((item: string) => !knownServices.includes(item)).join("\n");
 
         setForm({
           sectorCategory: decodedSector.sectorCategory,
-          sector: decodedSector.profession,
-          services: Array.isArray(data.services) ? data.services.join("\n") : (data.services_text ?? ""),
+          sector: normalizedProfession,
+          selectedServices,
+          customServices,
           interventionZones: Array.isArray(data.intervention_zones)
             ? data.intervention_zones.join(", ")
             : (data.intervention_zones_text ?? ""),
@@ -138,7 +197,6 @@ export default function ActivityContent({ mode = "page" }: Props) {
           preferredCta: (data.preferred_cta ?? "devis") as BusinessActivityForm["preferredCta"],
         });
       } catch (e: unknown) {
-        // Si la table n'existe pas encore, on laisse le formulaire vide.
         console.error(e);
       } finally {
         setLoading(false);
@@ -154,11 +212,46 @@ export default function ActivityContent({ mode = "page" }: Props) {
     setForm((p) => ({ ...p, [key]: value }));
   };
 
-  const normalizeLines = (v: string) =>
-    v
+  const handleSectorChange = (sectorCategory: string) => {
+    setSaved(false);
+    setError("");
+    setForm((p) => ({
+      ...p,
+      sectorCategory,
+      sector: "",
+      selectedServices: [],
+      customServices: "",
+    }));
+  };
+
+  const handleProfessionChange = (sector: string) => {
+    setSaved(false);
+    setError("");
+    setForm((p) => ({
+      ...p,
+      sector,
+      selectedServices: [],
+      customServices: "",
+    }));
+  };
+
+  const toggleService = (service: string) => {
+    setSaved(false);
+    setError("");
+    setForm((p) => ({
+      ...p,
+      selectedServices: p.selectedServices.includes(service)
+        ? p.selectedServices.filter((item) => item !== service)
+        : [...p.selectedServices, service],
+    }));
+  };
+
+  function normalizeLines(v: string) {
+    return String(v || "")
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
+  }
 
   const normalizeCommaList = (v: string) =>
     v
@@ -179,8 +272,8 @@ export default function ActivityContent({ mode = "page" }: Props) {
 
       const payload = {
         user_id: user.id,
-        sector: encodeBusinessSector(form.sectorCategory, form.sector.trim()),
-        services: normalizeLines(form.services),
+        sector: encodeBusinessSector(form.sectorCategory, getJobLabel(form.sectorCategory, form.sector) || form.sector.trim()),
+        services: allSelectedServices,
         intervention_zones: normalizeCommaList(form.interventionZones),
         opening_days: form.openingDays.trim(),
         opening_hours: form.openingHours.trim(),
@@ -193,11 +286,10 @@ export default function ActivityContent({ mode = "page" }: Props) {
       const { error: upErr } = await supabase.from(TABLE).upsert(payload, { onConflict: "user_id" });
       if (upErr) throw new Error(upErr.message);
 
-      // ✅ Récompense : activité complète (100 UI) — seulement si le formulaire est bien rempli
       const isComplete =
         form.sectorCategory.trim().length > 0 &&
         form.sector.trim().length > 0 &&
-        normalizeLines(form.services).length > 0 &&
+        allSelectedServices.length > 0 &&
         normalizeCommaList(form.interventionZones).length > 0 &&
         form.openingDays.trim().length > 0 &&
         form.openingHours.trim().length > 0 &&
@@ -216,7 +308,6 @@ export default function ActivityContent({ mode = "page" }: Props) {
               meta: { origin: "activity" },
             }),
           });
-          // (debug soft) ignore errors but keep dev visibility
           if (!resAward.ok) {
             console.warn("UI award failed (activity_complete)");
           }
@@ -251,7 +342,7 @@ export default function ActivityContent({ mode = "page" }: Props) {
               <select
                 style={input}
                 value={form.sectorCategory}
-                onChange={(e) => set("sectorCategory", e.target.value)}
+                onChange={(e) => handleSectorChange(e.target.value)}
               >
                 <option value="" style={selectOption}>Choisir un secteur</option>
                 {ACTIVITY_SECTOR_OPTIONS.map((option) => (
@@ -260,29 +351,61 @@ export default function ActivityContent({ mode = "page" }: Props) {
                   </option>
                 ))}
               </select>
-              <span style={hint}>Cette catégorie pilote les modèles proposés dans Booster et Fidéliser.</span>
+              <span style={hint}>Cette catégorie pilote les modèles proposés dans Booster, Fidéliser et les publications IA.</span>
             </label>
 
             <label style={label}>
               <span style={labelTitle}>Métier</span>
-              <input
+              <select
                 style={input}
                 value={form.sector}
-                onChange={(e) => set("sector", e.target.value)}
-                placeholder="Ex: Plombier, Couvreur, Menuisier…"
-              />
-              <span style={hint}>Le métier reste utilisé comme base n°2 pour personnaliser les textes et les mots-clés.</span>
+                onChange={(e) => handleProfessionChange(e.target.value)}
+                disabled={!form.sectorCategory}
+              >
+                <option value="" style={selectOption}>Choisir un métier</option>
+                {currentJobOptions.map((option) => (
+                  <option key={option.value} value={option.value} style={selectOption}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <span style={hint}>Le métier reste utilisé comme base n°2 pour personnaliser les textes, mots-clés et publications.</span>
             </label>
 
-            <label style={label}>
+            <div style={label}>
               <span style={labelTitle}>Prestations principales</span>
+              {form.sector && currentServiceOptions.length > 0 ? (
+                <div style={checkboxGrid}>
+                  {currentServiceOptions.map((service) => {
+                    const checked = form.selectedServices.includes(service);
+                    return (
+                      <label key={service} style={{ ...chipLabel, boxShadow: checked ? "0 0 0 1px rgba(56,189,248,0.35) inset" : undefined }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleService(service)}
+                          style={{ accentColor: "#38bdf8", flex: "0 0 auto" }}
+                        />
+                        <span style={{ minWidth: 0 }}>{service}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ ...hint, marginTop: 2 }}>Choisissez d’abord un métier pour afficher la liste de prestations cohérentes.</div>
+              )}
+              <span style={hint}>Ces prestations alimentent les templates et l’IA pour des contenus plus cohérents.</span>
+            </div>
+
+            <label style={label}>
+              <span style={labelTitle}>Autres prestations (optionnel)</span>
               <textarea
-                style={{ ...input, minHeight: 110, resize: "vertical" }}
-                value={form.services}
-                onChange={(e) => set("services", e.target.value)}
-                placeholder={`1 ligne = 1 prestation\nEx: Débouchage canalisation\nEx: Remplacement chauffe-eau`}
+                style={{ ...input, minHeight: 86, resize: "vertical" }}
+                value={form.customServices}
+                onChange={(e) => set("customServices", e.target.value)}
+                placeholder={`1 ligne = 1 prestation supplémentaire\nEx: Contrat entretien premium\nEx: Intervention week-end`}
               />
-              <span style={hint}>1 ligne = 1 service. L’IA les réutilise dans les posts.</span>
+              <span style={hint}>Ajoutez ici des prestations spécifiques non présentes dans la liste.</span>
             </label>
 
             <label style={label}>

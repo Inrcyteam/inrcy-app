@@ -614,7 +614,7 @@ function buildTemplatesForAction(
     module,
     action,
     category: `${action}_${sector}_${seed.slug}`,
-    title: `${seed.title} — ${pack.label}`,
+    title: seed.title,
     subject: seed.subject,
     body: seed.body(pack),
     ctaLabel: seed.ctaLabel,

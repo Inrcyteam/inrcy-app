@@ -41,6 +41,8 @@ type PostPayload = {
   hashtags?: string[];
 };
 
+type PostByChannel = Partial<Record<ChannelKey, PostPayload>>;
+
 function dataUrlToBuffer(dataUrl: string) {
   const match = /^data:(.+?);base64,(.+)$/.exec(dataUrl || "");
   if (!match) return null;
@@ -116,6 +118,7 @@ const body = await req.json().catch(() => null);
 
     const channels = (Array.isArray(body.channels) ? body.channels : []) as ChannelKey[];
     const post = (body.post || {}) as PostPayload;
+    const postByChannel = ((body.postByChannel || {}) as PostByChannel) || {};
     const idea = String(body.idea || "").trim();
     const images = (Array.isArray(body.images) ? body.images : []) as ImagePayload[];
 
@@ -124,14 +127,26 @@ const body = await req.json().catch(() => null);
       return NextResponse.json({ error: "Sélectionnez au moins 1 canal." }, { status: 400 });
     }
 
-    const title = String(post.title || "").trim();
-    const content = String(post.content || "").trim();
-    const cta = String(post.cta || "").trim();
-    const hashtags = Array.isArray(post.hashtags)
+    const fallbackTitle = String(post.title || "").trim();
+    const fallbackContent = String(post.content || "").trim();
+    const fallbackCta = String(post.cta || "").trim();
+    const fallbackHashtags = Array.isArray(post.hashtags)
       ? post.hashtags.map((h) => normalizeHashtag(String(h || ""))).filter(Boolean).slice(0, 20)
       : [];
 
-    if (!content) {
+    const getChannelPost = (channel: ChannelKey): PostPayload => {
+      const raw = ((channel === "inrcy_site" ? postByChannel?.inrcy_site || postByChannel?.site_web : channel === "site_web" ? postByChannel?.site_web || postByChannel?.inrcy_site : postByChannel?.[channel]) || {}) as PostPayload;
+      const title = String(raw.title || fallbackTitle || "").trim();
+      const content = String(raw.content || fallbackContent || "").trim();
+      const cta = String(raw.cta || fallbackCta || "").trim();
+      const hashtags = Array.isArray(raw.hashtags)
+        ? raw.hashtags.map((h) => normalizeHashtag(String(h || ""))).filter(Boolean).slice(0, 20)
+        : fallbackHashtags;
+      return { title, content, cta, hashtags };
+    };
+
+    const firstPost = getChannelPost(selected[0]);
+    if (!firstPost.content) {
       return NextResponse.json({ error: "Le contenu est vide." }, { status: 400 });
     }
 
@@ -227,10 +242,10 @@ const body = await req.json().catch(() => null);
     const { error: pubErr } = await supabaseAdmin.from("publications").insert({
       id: publicationId,
       user_id: userId,
-      title,
-      content,
-      cta,
-      hashtags,
+      title: firstPost.title,
+      content: firstPost.content,
+      cta: firstPost.cta,
+      hashtags: firstPost.hashtags,
       images: uploadedUrls,
       idea,
     });
@@ -276,7 +291,6 @@ const body = await req.json().catch(() => null);
     const inrcySiteUrl = String(profile["inrcy_site_url"] ?? inrcyCfg["site_url"] ?? "").trim();
     const siteWebUrl = String(proSiteWeb["url"] ?? "").trim();
 
-    const canonMessage = buildCanonMessage(title, content, cta);
     const externalImageUrls = (publishableUrls.length ? publishableUrls : uploadedUrls).slice(0, 5);
     const instagramImageUrls = (instagramPublishableUrls.length ? instagramPublishableUrls : externalImageUrls).slice(0, 5);
 
@@ -301,6 +315,8 @@ const body = await req.json().catch(() => null);
 
     for (const ch of selected) {
       try {
+        const channelPost = getChannelPost(ch);
+        const canonMessage = buildCanonMessage(channelPost.title, channelPost.content, channelPost.cta);
         if (ch === "inrcy_site" || ch === "site_web") {
           // We treat "publication" as an "article/actu" for the site.
           // This creates a record that your iNrCy site renderer (or your pro's website connector)
@@ -318,7 +334,7 @@ const body = await req.json().catch(() => null);
           }
 
           const articleId = randomUUID();
-          const slug = slugify(title) || "actu";
+          const slug = slugify(channelPost.title) || "actu";
           const externalUrl = targetUrl
             ? `${targetUrl.replace(/\/+$/g, "")}/actu/${slug}-${articleId}`
             : null;
@@ -330,10 +346,10 @@ const body = await req.json().catch(() => null);
             id: articleId,
             user_id: userId,
             source: ch,
-            title,
-            content,
-            cta,
-            hashtags,
+            title: channelPost.title,
+            content: channelPost.content,
+            cta: channelPost.cta,
+            hashtags: channelPost.hashtags,
             images: uploadedUrls,          // ✅ les URLs publiques des images
             external_url: externalUrl,     // ✅ si tu veux (optionnel)
             site_url: targetUrl || null,   // ✅ si tu veux (optionnel)
@@ -405,7 +421,7 @@ const body = await req.json().catch(() => null);
             continue;
           }
 
-          const instagramCaption = buildInstagramCaption(title, content, cta, hashtags);
+          const instagramCaption = buildInstagramCaption(channelPost.title, channelPost.content, channelPost.cta, channelPost.hashtags);
 
           const resp = await instagramPublishPhoto({
             igUserId,
@@ -511,7 +527,8 @@ const body = await req.json().catch(() => null);
       payload: {
         idea,
         channels: selected,
-        post: { title, content, cta, hashtags },
+        post: firstPost,
+        postByChannel,
         images: uploadedUrls,
         publishableUrls,
         instagramPublishableUrls,

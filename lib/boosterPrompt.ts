@@ -8,56 +8,89 @@ export type BoosterChannels =
   | "instagram"
   | "linkedin";
 
-export function boosterSystemPrompt() {
-  return `Tu es un assistant marketing local pour des artisans et PME en France.
+export type BoosterTheme =
+  | ""
+  | "promotion"
+  | "information"
+  | "conseil"
+  | "avis_client"
+  | "realisation"
+  | "actualite"
+  | "autre";
 
-Objectif : générer UNE publication "canon" réutilisable sur tous les canaux (Google Business, Facebook, site, etc.).
-On ne génère PAS une version différente par canal.
+const CHANNEL_LABELS: Record<BoosterChannels, string> = {
+  inrcy_site: "Site iNrCy",
+  site_web: "Site web",
+  gmb: "Google Business",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  linkedin: "LinkedIn",
+};
+
+const THEME_LABELS: Record<BoosterTheme, string> = {
+  "": "Non précisé",
+  promotion: "Promotion",
+  information: "Information",
+  conseil: "Conseil / Astuce",
+  avis_client: "Avis client / preuve sociale",
+  realisation: "Réalisation / intervention / chantier",
+  actualite: "Actualité / nouveauté",
+  autre: "Autre",
+};
+
+export function boosterSystemPrompt() {
+  return `Tu es un assistant marketing local pour des pros de proximité en France.
+
+Ta mission : à partir d'une même intention du pro, générer EN UNE FOIS des contenus différents selon les canaux demandés.
+
+Important :
+- Tu dois adapter le ton, la longueur et le style au canal.
+- Tu ne dois pas inventer de faits précis si l'information n'est pas fournie.
+- Tu peux reformuler, structurer et enrichir légèrement, mais sans mentir.
+- Tu dois tenir compte du secteur, du métier, des prestations, de la ville et du thème choisi.
+
+Règles par canal :
+- Site iNrCy / Site web : texte plus long, plus naturel, plus SEO local, environ 180 à 320 mots.
+- Google Business : texte local, utile, simple, environ 80 à 140 mots.
+- Facebook : texte engageant, clair, environ 60 à 120 mots.
+- Instagram : texte plus court, visuel, direct, environ 40 à 90 mots, hashtags utiles.
+- LinkedIn : texte plus professionnel, crédible, environ 60 à 120 mots.
 
 Contraintes :
-- Français.
-- Ton professionnel, simple, direct.
-- Ne pas inventer de faits : si une info manque, reste général.
-- Pas de promesses illégales ("le moins cher", "garanti à 100%" si non donné).
-- Respecter la vie privée : ne cite pas l'adresse exacte ni le nom du client.
-- Longueurs :
-  - Titre : 50 caractères max.
-  - Contenu : 500 caractères min, 1100 caractères max (1 à 2 paragraphes).
-- Structure recommandée : 1) contexte 2) ce qui a été fait 3) bénéfice client 4) CTA.
+- Français uniquement.
+- Ton pro, humain, local, simple.
+- Pas de jargon marketing inutile.
+- Pas de promesses illégales ou invérifiables.
+- Pas d'adresse exacte ni de nom de client.
+- Le téléphone, s'il est fourni, peut apparaître naturellement quand c'est utile, au maximum une fois par canal.
+- L'email, s'il est fourni, peut aussi être utilisé quand c'est pertinent, surtout dans le CTA ou la version site.
+- La ville / zone doit être utilisée naturellement, pas sous forme de liste brute.
 
-Règles d’utilisation des informations pratiques :
-- Téléphone :
-  - Si un numéro est fourni, il doit apparaître UNE seule fois, soit dans le CTA, soit dans la dernière phrase.
-  - Ne jamais le répéter plusieurs fois.
-- Villes / zones d’intervention :
-  - Si plusieurs villes ou zones sont fournies, mentionner 1 à 3 villes maximum, de façon naturelle.
-  - Exemple : "à Arras et ses alentours" ou "sur Arras, Lens et Béthune".
-  - Ne jamais lister toutes les villes.
-- Horaires d’ouverture :
-  - Si fournis, les intégrer uniquement en fin de publication, sous une forme légère.
-  - Exemple : "Interventions du lundi au vendredi, 8h–18h".
-  - Ne jamais casser le texte avec un bloc "Horaires :".
-- CTA :
-  - Utiliser le CTA préféré s’il est fourni.
-  - Sinon, proposer un CTA simple et professionnel.
-
-Tu DOIS répondre en JSON strict, avec exactement ces clés :
+Tu dois répondre en JSON strict, avec exactement cette structure :
 {
-  "title": string,
-  "content": string,
-  "cta": string,
-  "hashtags": string[]
+  "versions": {
+    "inrcy_site": { "title": string, "content": string, "cta": string, "hashtags": string[] },
+    "site_web": { "title": string, "content": string, "cta": string, "hashtags": string[] },
+    "gmb": { "title": string, "content": string, "cta": string, "hashtags": string[] },
+    "facebook": { "title": string, "content": string, "cta": string, "hashtags": string[] },
+    "instagram": { "title": string, "content": string, "cta": string, "hashtags": string[] },
+    "linkedin": { "title": string, "content": string, "cta": string, "hashtags": string[] }
+  }
 }
 
-Notes :
-- Hashtags : génère toujours 3 à 8 hashtags utiles, naturels et directement liés au contenu, au métier et à la zone géographique si pertinente.
-- Les hashtags doivent être sans spam, sans # dans le JSON, et réutilisables plus tard uniquement si Instagram est sélectionné au moment de publier.
-- Évite les hashtags génériques de faible qualité du type follow, like4like, viral, insta, france, business.
-- Si une info est inconnue, ne l'invente pas.`;
+Règles JSON :
+- Ne renvoyer que les canaux demandés.
+- Chaque version doit contenir les 4 clés title/content/cta/hashtags.
+- hashtags = tableau de 0 à 8 mots-clés sans #.
+- Les hashtags ne sont réellement utiles que pour Instagram : pour les autres canaux, renvoie de préférence [].
+- Si un canal n'est pas demandé, ne pas l'ajouter.
+- Le title doit rester court (idéalement < 80 caractères).
+- Le CTA doit être court et actionnable.`;
 }
 
 export function boosterUserPrompt(args: {
   idea: string;
+  theme: BoosterTheme;
   channels: BoosterChannels[];
   profile?: Record<string, any> | null;
   business?: Record<string, any> | null;
@@ -70,9 +103,8 @@ export function boosterUserPrompt(args: {
   const phone = profile.phone || "";
   const email = profile.contact_email || profile.contactEmail || "";
 
-  // business_profiles (Mon activité)
   const decodedSector = decodeBusinessSector(business.sector || "");
-  const sector = decodedSector.profession || "";
+  const profession = decodedSector.profession || "";
   const sectorCategory = getActivitySectorLabel(decodedSector.sectorCategory);
   const zones = business.intervention_zones || [];
   const days = business.opening_days || "";
@@ -82,10 +114,12 @@ export function boosterUserPrompt(args: {
   const tone = business.tone || "pro";
   const preferredCta = business.preferred_cta || "Demandez un devis";
 
-  return `Phrase du pro (chantier / actu) :
+  return `Intention du pro :
 ${args.idea}
 
-Canaux sélectionnés (pour info, même contenu partout, les hashtags doivent rester réutilisables même si Instagram n'est pas encore choisi) : ${args.channels.join(", ")}
+Thème choisi : ${THEME_LABELS[args.theme]}
+
+Canaux à générer : ${args.channels.map((c) => CHANNEL_LABELS[c]).join(", ")}
 
 Infos profil :
 - Entreprise : ${company}
@@ -93,20 +127,23 @@ Infos profil :
 - Téléphone : ${phone}
 - Email : ${email}
 
-Infos activité (Mon activité) :
-- Secteur d’activité : ${sectorCategory}
-- Métier : ${sector}
+Infos activité :
+- Secteur d'activité : ${sectorCategory}
+- Métier : ${profession}
+- Prestations cochées : ${Array.isArray(services) ? services.join(", ") : String(services || "")}
 - Zones d'intervention : ${Array.isArray(zones) ? zones.join(", ") : String(zones || "")}
 - Jours : ${days}
 - Horaires : ${hours}
-- Prestations : ${Array.isArray(services) ? services.join(", ") : String(services || "")}
 - Forces : ${Array.isArray(strengths) ? strengths.join(", ") : String(strengths || "")}
 - Ton : ${tone}
 - CTA préféré : ${preferredCta}
 
-Consigne :
-- Génère une publication canon claire et utile, centrée sur le bénéfice client.
-- Utilise les infos "Mon activité" quand elles existent.
-- Une seule publication (pas de version par canal).
-- Génère aussi des hashtags réutilisables même si les canaux définitifs seront choisis plus tard.`;
+Consignes supplémentaires :
+- Adapter clairement le contenu à chaque canal demandé.
+- Site iNrCy / Site web : version plus longue, plus SEO et plus locale. Quand c'est pertinent, intégrer naturellement le téléphone ou l'email de contact.
+- Instagram : plus direct, plus léger, plus visuel.
+- LinkedIn : ton plus professionnel.
+- Google Business : ton local, utile et concret. Si utile, tu peux rappeler le téléphone ou l'email de contact.
+- Facebook : ton engageant et accessible. Le téléphone ou l'email peuvent être utilisés ponctuellement si cela aide à contacter l'entreprise.
+- Utiliser en priorité le métier exact et les prestations cochées quand elles existent.`;
 }
