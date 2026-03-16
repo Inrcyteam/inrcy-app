@@ -126,7 +126,7 @@ export default function InformModal({
           </select>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0, overflow: "hidden" }}>
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>Objet</div>
             <input
@@ -138,18 +138,18 @@ export default function InformModal({
               />
           </div>
 
-          <div style={{ ...sectionStyle, flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <div style={{ ...sectionStyle, ...messageSectionStyle }}>
             <div style={sectionHeaderStyle}>Message (texte)</div>
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Votre message…"
               className={styles.textarea}
-              style={{ width: '100%', flex: 1, minHeight: 260, height: '100%', resize: 'none', overflowY: 'auto', WebkitOverflowScrolling: 'touch', fontSize: 16 }}
+              style={messageTextareaStyle}
             />
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: "auto", paddingTop: 4 }}>
+          <div style={footerStyle}>
             <button type="button" onClick={onClose} className={styles.secondaryBtn}>
               Annuler
             </button>
@@ -177,4 +177,41 @@ const sectionHeaderStyle: CSSProperties = {
   letterSpacing: "0.02em",
   color: "rgba(255,255,255,0.78)",
   marginBottom: 8,
+};
+
+
+const messageSectionStyle: CSSProperties = {
+  ...sectionStyle,
+  flex: 1,
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+};
+
+const messageTextareaStyle: CSSProperties = {
+  width: "100%",
+  flex: 1,
+  minHeight: "clamp(180px, 30vh, 260px)",
+  height: "100%",
+  maxHeight: "100%",
+  resize: "none",
+  overflowY: "auto",
+  WebkitOverflowScrolling: "touch",
+  fontSize: 16,
+  boxSizing: "border-box",
+  display: "block",
+};
+
+const footerStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 10,
+  marginTop: "auto",
+  paddingTop: 10,
+  paddingBottom: "max(2px, env(safe-area-inset-bottom))",
+  position: "sticky",
+  bottom: 0,
+  zIndex: 1,
+  background: "linear-gradient(180deg, rgba(9,12,24,0) 0%, rgba(9,12,24,0.82) 28%, rgba(9,12,24,0.96) 100%)",
 };
