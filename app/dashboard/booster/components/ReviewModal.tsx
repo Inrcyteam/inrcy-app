@@ -12,9 +12,9 @@ export default function ReviewModal({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const { sectorCategory } = useBusinessTemplateContext();
+  const { sectorCategory, profession } = useBusinessTemplateContext();
 
-  const templates = useMemo(() => getTemplates("avis", undefined, sectorCategory), [sectorCategory]);
+  const templates = useMemo(() => getTemplates("avis", undefined, sectorCategory, profession), [sectorCategory, profession]);
   const categories = useMemo(() => {
     const map = new Map<string, TemplateDef>();
     for (const t of templates) {

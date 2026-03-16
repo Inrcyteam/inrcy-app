@@ -124,6 +124,35 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
       juridique: { label: 'Juridique / Conseil', services: ['Conseil', 'Rédaction', 'Accompagnement dossier', 'Conformité', 'Audit', 'Rendez-vous', 'Formation', 'Suivi client'] },
     },
   },
+
+  communication: {
+    label: 'Communication',
+    jobs: {
+      agence_communication: { label: 'Agence de communication', services: ['Stratégie de communication', 'Identité visuelle', 'Campagne locale', 'Communication digitale', 'Accompagnement image de marque', 'Supports print', 'Conseil éditorial', 'Plan d’action'] },
+      community_manager: { label: 'Community manager', services: ['Calendrier éditorial', 'Gestion réseaux sociaux', 'Création de contenus', 'Animation de communauté', 'Réponses messages', 'Reporting', 'Stratégie Instagram / Facebook', 'Shooting / reels'] },
+      redacteur_web: { label: 'Rédacteur web / Copywriter', services: ['Pages site web', 'Articles SEO', 'Emails marketing', 'Fiches service', 'Storytelling', 'Optimisation conversion', 'Réécriture', 'Calendrier éditorial'] },
+      graphiste: { label: 'Graphiste / Studio créatif', services: ['Logo', 'Charte graphique', 'Flyers', 'Brochures', 'Visuels réseaux sociaux', 'Cartes de visite', 'Supports publicitaires', 'Habillage de marque'] },
+      agence_seo: { label: 'Agence SEO / SEA', services: ['Audit SEO', 'Optimisation pages', 'Rédaction SEO', 'Campagnes Google Ads', 'Suivi positionnement', 'Netlinking', 'Reporting', 'Accompagnement visibilité locale'] },
+    },
+  },
+  juridique: {
+    label: 'Juridique',
+    jobs: {
+      avocat: { label: 'Avocat', services: ['Premier rendez-vous', 'Conseil juridique', 'Analyse dossier', 'Rédaction d’actes', 'Négociation', 'Procédure', 'Suivi client', 'Accompagnement contentieux'] },
+      notaire: { label: 'Notaire', services: ['Rendez-vous étude', 'Achat immobilier', 'Succession', 'Donation', 'Contrat de mariage', 'Création société', 'Conseil patrimonial', 'Signature acte'] },
+      juriste_entreprise: { label: 'Juriste / Conseil aux entreprises', services: ['Contrats', 'Conformité', 'CGV / mentions légales', 'Protection des données', 'Secrétariat juridique', 'Audit juridique', 'Accompagnement création', 'Support dirigeants'] },
+      huissier: { label: 'Commissaire de justice / Huissier', services: ['Constat', 'Recouvrement', 'Signification', 'Exécution décision', 'Jeux concours', 'Conseil pré-contentieux', 'Rendez-vous étude', 'Suivi dossier'] },
+    },
+  },
+  finance: {
+    label: 'Finance',
+    jobs: {
+      expert_comptable_finance: { label: 'Cabinet comptable / financier', services: ['Comptabilité', 'Bilan', 'Tableau de bord', 'Prévisionnel', 'Déclarations', 'Accompagnement dirigeant', 'Optimisation gestion', 'Rendez-vous conseil'] },
+      courtier_credit: { label: 'Courtier en crédit', services: ['Simulation', 'Étude financement', 'Crédit immobilier', 'Renégociation', 'Assurance emprunteur', 'Montage dossier', 'Accompagnement banque', 'Conseil budget'] },
+      gestion_patrimoine: { label: 'Conseiller en gestion de patrimoine', services: ['Bilan patrimonial', 'Stratégie d’investissement', 'Préparation retraite', 'Transmission', 'Optimisation fiscale', 'Assurance-vie', 'Rendez-vous conseil', 'Suivi patrimonial'] },
+      daf_externalise: { label: 'DAF externalisé / Conseil financier', services: ['Pilotage trésorerie', 'Budget', 'Reporting', 'Prévisionnel', 'Analyse rentabilité', 'Structuration financière', 'Recherche financement', 'Accompagnement dirigeant'] },
+    },
+  },
   evenementiel: {
     label: 'Événementiel',
     jobs: {

@@ -12,9 +12,9 @@ export default function ThanksModal({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const { sectorCategory } = useBusinessTemplateContext();
+  const { sectorCategory, profession } = useBusinessTemplateContext();
 
-  const templates = useMemo(() => getTemplates("suivis", undefined, sectorCategory), [sectorCategory]);
+  const templates = useMemo(() => getTemplates("suivis", undefined, sectorCategory, profession), [sectorCategory, profession]);
   const categories = useMemo(() => {
     const map = new Map<string, TemplateDef>();
     for (const t of templates) {
@@ -37,18 +37,6 @@ export default function ThanksModal({
 
   const [body, setBody] = useState("");
 
-  const [isCompact, setIsCompact] = useState(false);
-
-  useEffect(() => {
-    const check = () => setIsCompact(window.innerWidth <= 768);
-    check();
-    window.addEventListener("resize", check);
-    window.addEventListener("orientationchange", check);
-    return () => {
-      window.removeEventListener("resize", check);
-      window.removeEventListener("orientationchange", check);
-    };
-  }, []);
 
   useEffect(() => {
     if (!selected) return;
@@ -106,95 +94,55 @@ export default function ThanksModal({
           Choisissez un email préconçu, modifiez si besoin, puis cliquez sur Suivant.
         </div>
 
-        {isCompact ? (
-          <div style={{ marginBottom: 10 }}>
-            <select
-              value={selectedKey}
-              onChange={(e) => setSelectedKey(e.target.value)}
-              aria-label="Choisir un modèle"
-              style={{
-                width: "100%",
-                borderRadius: 14,
-                padding: "12px 14px",
-                background: "#ffffff",
-                color: "#111111",
-                border: "1px solid rgba(255,255,255,0.18)",
-                outline: "none",
-                fontSize: 16,
-                fontWeight: 600,
-              }}
-            >
-              {categories.map((tpl) => (
-                <option key={tpl.category} value={tpl.key}>
-                  {tpl.title}
-                </option>
-              ))}
-            </select>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.04em', color: 'rgba(255,255,255,0.64)', marginBottom: 8, textTransform: 'uppercase' }}>
+            Modèle dédié
           </div>
-        ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-            {categories.map((t) => {
-              const isActive = selected?.category === t.category;
-              return (
-                <button
-                  key={t.category}
-                  type="button"
-                  onClick={() => setSelectedKey(t.key)}
-                  className={styles.pill}
-                  style={{
-                    opacity: isActive ? 1 : 0.8,
-                    border: isActive
-                      ? "1px solid rgba(255,255,255,0.25)"
-                      : "1px solid rgba(255,255,255,0.12)",
-                  }}
-                  title={t.title}
-                >
-                  {t.title}
-                </button>
-              );
-            })}
-          </div>
-        )}
+          <select
+            value={selectedKey}
+            onChange={(e) => setSelectedKey(e.target.value)}
+            aria-label="Choisir un modèle"
+            style={{
+              width: '100%',
+              borderRadius: 16,
+              padding: '14px 16px',
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%)',
+              color: '#ffffff',
+              border: '1px solid rgba(255,255,255,0.16)',
+              outline: 'none',
+              fontSize: 15,
+              fontWeight: 700,
+              boxShadow: '0 14px 28px rgba(0,0,0,0.18)',
+            }}
+          >
+            {categories.map((tpl, index) => (
+              <option key={tpl.category} value={tpl.key} style={{ color: '#111111' }}>
+                {index + 1}. {tpl.title}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0 }}>
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>Objet</div>
-            {isCompact ? (
-              <textarea
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="Objet"
-                className={styles.textarea}
-                rows={2}
-                style={{
-                  width: "100%",
-                  minHeight: 72,
-                  maxHeight: 120,
-                  resize: "none",
-                  overflowY: "auto",
-                  WebkitOverflowScrolling: "touch",
-                  fontSize: 16,
-                }}
-              />
-            ) : (
-              <input
+            <input
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="Objet"
                 className={styles.input}
                 style={{ width: "100%", fontSize: 16 }}
               />
-            )}
           </div>
 
-          <div style={{ ...sectionStyle, flex: 1, minHeight: 0 }}>
+          <div style={{ ...sectionStyle, flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             <div style={sectionHeaderStyle}>Message (texte)</div>
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Votre message…"
               className={styles.textarea}
-              style={{ width: "100%", flex: 1, minHeight: 220, maxHeight: "45dvh", resize: "none", overflowY: "auto", WebkitOverflowScrolling: "touch", fontSize: 16 }}
+              style={{ width: '100%', flex: 1, minHeight: 0, height: '100%', resize: 'none', overflowY: 'auto', WebkitOverflowScrolling: 'touch', fontSize: 16 }}
             />
           </div>
 

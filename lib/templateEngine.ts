@@ -1,4 +1,5 @@
 import { decodeBusinessSector, getActivitySectorLabel } from "@/lib/activitySectors";
+import { getJobLabel } from "@/lib/activityCatalog";
 
 // Lightweight placeholder renderer for iNrCy templates.
 // Replaces {{key}} tokens with values derived from:
@@ -30,7 +31,7 @@ export function buildDefaultContext(args: {
   const zones = Array.isArray(b.intervention_zones) ? b.intervention_zones.filter(Boolean).join(", ") : "";
   const strengths = Array.isArray(b.strengths) ? b.strengths.filter(Boolean).join(", ") : "";
   const decodedSector = decodeBusinessSector(b.sector);
-  const profession = decodedSector.profession;
+  const profession = getJobLabel(decodedSector.sectorCategory, decodedSector.profession) || decodedSector.profession;
   const sectorCategoryLabel = getActivitySectorLabel(decodedSector.sectorCategory);
 
   const nomEntreprise = String(p.company_legal_name || "").trim();

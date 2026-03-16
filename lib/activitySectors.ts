@@ -9,6 +9,9 @@ export const ACTIVITY_SECTOR_OPTIONS = [
   { value: 'immobilier', label: 'Immobilier' },
   { value: 'services_particuliers', label: 'Services aux particuliers' },
   { value: 'services_entreprises', label: 'Services aux entreprises' },
+  { value: 'communication', label: 'Communication' },
+  { value: 'juridique', label: 'Juridique' },
+  { value: 'finance', label: 'Finance' },
   { value: 'evenementiel', label: 'Événementiel' },
   { value: 'animalier', label: 'Animalier' },
   { value: 'transport', label: 'Transport' },
@@ -46,7 +49,10 @@ export function inferSectorCategoryFromProfession(input?: string | null): Activi
   if (/(naturopath|sophrolog|réflexolog|reflexolog|hypnos|énergét|energet|shiatsu|ayurv|reiki)/.test(value)) return 'medecine_douce';
   if (/(immobili|courtier|syndic|gestion locative|transaction|mandat)/.test(value)) return 'immobilier';
   if (/(ménage|menage|garde d'enfants|aide à domicile|aide a domicile|jardinage|dépannage|depannage|conciergerie|aide ménag|livraison)/.test(value)) return 'services_particuliers';
-  if (/(consult|agence|marketing|formation|informat|b2b|expert-comptable|comptable|juridique|rh|communication|cabinet de conseil)/.test(value)) return 'services_entreprises';
+  if (/(consult|agence|marketing|formation|informat|b2b|expert-comptable|comptable|rh|cabinet de conseil)/.test(value)) return 'services_entreprises';
+  if (/(communication|community manager|social media|attaché de presse|attache de presse|branding|studio créa|studio crea|graphiste|seo|sea|marketing digital|content manager)/.test(value)) return 'communication';
+  if (/(juridique|avocat|notaire|juriste|huissier|commissaire de justice|cabinet juridique|droit)/.test(value)) return 'juridique';
+  if (/(finance|courtage financier|gestion de patrimoine|patrimoine|cgp|conseiller financier|audit financier|daf|expert financier|trésorerie|tresorerie)/.test(value)) return 'finance';
   if (/(dj|photograph|wedding|événement|evenement|location matériel|location materiel|traiteur évènement|traiteur evenement)/.test(value)) return 'evenementiel';
   if (/(animal|vétér|veter|toilett|écurie|ecurie|élevage|elevage|pension canine|pension féline|pension feline|maréchal|marechal)/.test(value)) return 'animalier';
   if (/(transport|taxi|vtc|chauffeur|ambulance|livraison|coursier|messagerie|fret|marchandises|logistique|demenagement)/.test(value)) return 'transport';

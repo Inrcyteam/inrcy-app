@@ -21,6 +21,7 @@ export type TemplateDef = {
   body: string;
   ctaLabel?: string;
   sectorCategory?: ActivitySectorCategory;
+  professionKey?: string;
 };
 
 const BASE_TEMPLATES: TemplateDef[] = [
@@ -619,16 +620,24 @@ export const TEMPLATES: TemplateDef[] = [...BASE_TEMPLATES, ...SECTOR_TEMPLATES]
 export function getTemplates(
   action: TemplateAction,
   module?: TemplateModule,
-  sectorCategory?: ActivitySectorCategory | null
+  sectorCategory?: ActivitySectorCategory | null,
+  professionKey?: string | null
 ): TemplateDef[] {
   const inferredModule: TemplateModule =
     module ?? (action === "avis" || action === "offres" ? "booster" : "fideliser");
 
-  return TEMPLATES.filter((t) => {
+  const scoped = TEMPLATES.filter((t) => {
     if (t.action !== action || t.module !== inferredModule) return false;
     if (!t.sectorCategory) return true;
-    if (!sectorCategory) return false;
-    return t.sectorCategory === sectorCategory;
+    if (!sectorCategory || t.sectorCategory !== sectorCategory) return false;
+    return true;
   });
+
+  if (sectorCategory && professionKey) {
+    const dedicated = scoped.filter((t) => t.professionKey === professionKey);
+    if (dedicated.length) return dedicated;
+  }
+
+  return scoped.filter((t) => !t.professionKey);
 }
 
