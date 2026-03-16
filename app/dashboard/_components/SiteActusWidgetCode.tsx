@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import styles from "../dashboard.module.css";
 import { getNormalizedSiteDomain } from "../dashboard.utils";
 import type { ActusFont, ActusLayout, ActusTheme } from "../dashboard.types";
@@ -6,6 +7,7 @@ import type { ActusFont, ActusLayout, ActusTheme } from "../dashboard.types";
 type SiteActusWidgetCodeProps = { savedUrl: string; source: "inrcy_site" | "site_web"; layout: ActusLayout; limit: number; font: ActusFont; theme: ActusTheme; token: string; showCode: boolean; onToggle: () => void; };
 
 export default function SiteActusWidgetCode({ savedUrl, source, layout, limit, font, theme, token, showCode, onToggle }: SiteActusWidgetCodeProps) {
+  const [copyNotice, setCopyNotice] = useState<string | null>(null);
   const domain = getNormalizedSiteDomain(savedUrl);
   const publicAppOrigin = process.env.NEXT_PUBLIC_APP_URL || "https://app.inrcy.com";
   const iframeId = `inrcy-actus-${domain || "site"}-${layout}`.replace(/[^a-z0-9_-]/gi, "-");
@@ -29,15 +31,35 @@ export default function SiteActusWidgetCode({ savedUrl, source, layout, limit, f
   setTimeout(function(){ if(!ready) send("inrcy:embed-ping"); },2600);
 })();
 <\/script>`;
+  useEffect(() => {
+    if (!copyNotice) return;
+    const timer = window.setTimeout(() => setCopyNotice(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [copyNotice]);
+
   return <>
     {showCode && <div aria-label="Code du widget" onCopy={(e) => e.preventDefault()} onCut={(e) => e.preventDefault()} style={{ width: "100%", minHeight: 170, borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(15,23,42,0.65)", padding: "10px 12px", color: "rgba(255,255,255,0.92)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace", fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-all", userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none", msUserSelect: "none", pointerEvents: "none" }}>{snippet}</div>}
     <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
       <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button type="button" className={styles.actionBtn} onClick={onToggle}>{showCode ? "Masquer le code" : "Afficher le code"}</button>
-        <button type="button" className={styles.actionBtn} onClick={() => { void navigator.clipboard?.writeText(snippet); }}>Copier le code</button>
+        <button
+          type="button"
+          className={styles.actionBtn}
+          onClick={async () => {
+            try {
+              await navigator.clipboard?.writeText(snippet);
+              setCopyNotice("code copié");
+            } catch {
+              setCopyNotice(null);
+            }
+          }}
+        >
+          Copier le code
+        </button>
       </div>
     </div>
+    {copyNotice ? <div className={styles.blockSub} style={{ color: "#4ade80", fontWeight: 800 }}>{copyNotice}</div> : null}
     <div className={styles.blockSub}><strong>Où le coller ?</strong> Sur WordPress : un bloc <em>HTML personnalisé</em> (Elementor → widget HTML). Sur Wix : <em>Embed Code</em>. Sur Webflow : <em>Embed</em>.</div>
   </>;
 }

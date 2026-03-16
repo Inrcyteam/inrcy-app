@@ -14,6 +14,7 @@ export default function NotificationMenu(props: {
   openPanel: (panel?: "notifications") => void;
   markAllNotificationsRead: () => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
   onNavigate: (ctaUrl: string) => void;
   mobile?: boolean;
 }) {
@@ -28,6 +29,7 @@ export default function NotificationMenu(props: {
     openPanel,
     markAllNotificationsRead,
     markNotificationRead,
+    deleteNotification,
     onNavigate,
     mobile = false,
   } = props;
@@ -87,7 +89,18 @@ export default function NotificationMenu(props: {
                   </div>
                   <div className={styles.notificationTitleRow}>
                     <div className={styles.notificationTitle}>{item.title}</div>
-                    {item.unread && <span className={styles.notificationUnreadDot} aria-hidden />}
+                    <div className={styles.notificationTitleActions}>
+                      {item.unread && <span className={styles.notificationUnreadDot} aria-hidden />}
+                      <button
+                        type="button"
+                        className={styles.notificationDeleteBtn}
+                        aria-label="Supprimer la notification"
+                        title="Supprimer la notification"
+                        onClick={() => { void deleteNotification(item.id); }}
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                   <div className={styles.notificationBody}>{item.body}</div>
                   <div className={styles.notificationActions}>

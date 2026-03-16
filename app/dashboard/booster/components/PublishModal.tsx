@@ -433,6 +433,7 @@ export default function PublishModal({
             />
           </div>
           {genError ? <div style={{ fontSize: 13, color: "#ffb4b4" }}>{genError}</div> : null}
+          {generating ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>Cela peut prendre quelques secondes.</div> : null}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button type="button" className={styles.primaryBtn} onClick={onGenerate} disabled={generating}>
               {generating ? "Génération..." : "Générer avec iNrCy"}

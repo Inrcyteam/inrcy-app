@@ -217,6 +217,17 @@ export default function DashboardClient() {
     } catch {}
   }, []);
 
+  const deleteNotification = useCallback(async (id: string) => {
+    const previous = notifications;
+    setNotifications((current) => current.filter((item) => item.id !== id));
+    try {
+      const res = await fetch(`/api/notifications/${id}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error(`Erreur ${res.status}`);
+    } catch {
+      setNotifications(previous);
+    }
+  }, [notifications]);
+
   const extractDomain = useCallback((input: string) => {
     const url = (input || "").trim();
     if (!url) return "";
@@ -2704,6 +2715,7 @@ const checkActivity = useCallback(async () => {
               openPanel={() => openPanel("notifications")}
               markAllNotificationsRead={markAllNotificationsRead}
               markNotificationRead={markNotificationRead}
+              deleteNotification={deleteNotification}
               onNavigate={(ctaUrl) => {
                 if (ctaUrl.startsWith('/')) {
                   router.push(ctaUrl);
@@ -2748,6 +2760,7 @@ const checkActivity = useCallback(async () => {
               openPanel={() => openPanel("notifications")}
               markAllNotificationsRead={markAllNotificationsRead}
               markNotificationRead={markNotificationRead}
+              deleteNotification={deleteNotification}
               onNavigate={(ctaUrl) => {
                 if (ctaUrl.startsWith('/')) {
                   router.push(ctaUrl);

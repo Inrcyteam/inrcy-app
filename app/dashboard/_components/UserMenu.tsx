@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import styles from "./UserMenu.module.css";
 
 type OpenPanelName =
@@ -45,10 +46,32 @@ export default function UserMenu(props: {
     handleLogout,
   } = props;
 
+  const [profileTooltipOpen, setProfileTooltipOpen] = useState(false);
+  const [activityTooltipOpen, setActivityTooltipOpen] = useState(false);
+  const profileTooltipWrapRef = useRef<HTMLDivElement | null>(null);
+  const activityTooltipWrapRef = useRef<HTMLDivElement | null>(null);
+
   const closeAndOpen = (panel: OpenPanelName) => {
     setUserMenuOpen(false);
+    setProfileTooltipOpen(false);
+    setActivityTooltipOpen(false);
     openPanel(panel);
   };
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (profileTooltipWrapRef.current && !profileTooltipWrapRef.current.contains(target)) {
+        setProfileTooltipOpen(false);
+      }
+      if (activityTooltipWrapRef.current && !activityTooltipWrapRef.current.contains(target)) {
+        setActivityTooltipOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, []);
 
   return (
     <div className={styles.userMenuWrap}>
@@ -66,59 +89,67 @@ export default function UserMenu(props: {
       </button>
 
       {profileIncomplete && (
-        <div className={styles.profileIndicatorWrap} style={{ marginLeft: 6 }}>
+        <div
+          ref={profileTooltipWrapRef}
+          className={styles.profileIndicatorWrap}
+          style={{ marginLeft: 6 }}
+          data-open={profileTooltipOpen ? "true" : "false"}
+        >
           <button
             type="button"
             className={styles.profileWarnBtn}
             aria-label="Profil incomplet"
-            onClick={() => openPanel("profil")}
+            onClick={() => {
+              setProfileTooltipOpen((value) => !value);
+              setActivityTooltipOpen(false);
+            }}
           >
             <span className={styles.profileWarnDot} aria-hidden />
           </button>
 
-          <div className={styles.profileTooltip} role="tooltip">
+          <div
+            className={styles.profileTooltip}
+            role="tooltip"
+            onClick={() => closeAndOpen("profil")}
+          >
             <div>
               ⚠️ <strong>Profil incomplet</strong>
               <br />
-              Complétez votre profil pour activer pleinement iNrCy.
+              Cliquez pour compléter votre profil et activer pleinement iNrCy.
             </div>
-
-            <button
-              type="button"
-              className={styles.profileTooltipBtn}
-              onClick={() => openPanel("profil")}
-            >
-              Compléter mon profil
-            </button>
           </div>
         </div>
       )}
 
       {activityIncomplete && (
-        <div className={styles.profileIndicatorWrap} style={{ marginLeft: 6 }}>
+        <div
+          ref={activityTooltipWrapRef}
+          className={styles.profileIndicatorWrap}
+          style={{ marginLeft: 6 }}
+          data-open={activityTooltipOpen ? "true" : "false"}
+        >
           <button
             type="button"
             className={styles.profileWarnBtn}
             aria-label="Activité incomplète"
-            onClick={() => openPanel("activite")}
+            onClick={() => {
+              setActivityTooltipOpen((value) => !value);
+              setProfileTooltipOpen(false);
+            }}
           >
             <span className={styles.profileWarnDot} aria-hidden />
           </button>
 
-          <div className={styles.profileTooltip} role="tooltip">
+          <div
+            className={styles.profileTooltip}
+            role="tooltip"
+            onClick={() => closeAndOpen("activite")}
+          >
             <div>
               ⚠️ <strong>Activité incomplète</strong>
               <br />
-              Complétez « Mon activité » pour générer des contenus pertinents.
+              Cliquez pour compléter votre profil et activer pleinement iNrCy.
             </div>
-
-            <button
-              type="button"
-              className={styles.profileTooltipBtn}
-              onClick={() => openPanel("activite")}
-            >
-              Compléter mon activité
-            </button>
           </div>
         </div>
       )}
