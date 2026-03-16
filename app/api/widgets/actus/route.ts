@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-import { asRecord } from "@/lib/tsSafe";
+import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { resolveWidgetUserIdFromDomain, normalizeWidgetDomain } from "@/lib/widgets/domainRegistry";
 
 export const runtime = "nodejs";
-
-// In-memory rate limit (best-effort). Works per server instance.
-const RL_WINDOW_MS = 5 * 60 * 1000; // 5 min
-const RL_MAX = 120; // per key / window
-const rl = new Map<string, { count: number; resetAt: number }>();
 
 function corsHeaders(req?: Request) {
   const origin = req?.headers.get("origin") || "";
@@ -100,42 +96,6 @@ function allowedCorsOrigin(req: Request, expectedDomain: string): string | null 
   }
 }
 
-function getClientIp(req: Request) {
-  const xfwd = req.headers.get("x-forwarded-for");
-  if (xfwd) return xfwd.split(",")[0]?.trim() || "unknown";
-  return req.headers.get("x-real-ip") || "unknown";
-}
-
-function rateLimitOrThrow(key: string) {
-  const now = Date.now();
-  const cur = rl.get(key);
-  if (!cur || cur.resetAt <= now) {
-    rl.set(key, { count: 1, resetAt: now + RL_WINDOW_MS });
-    return;
-  }
-  cur.count += 1;
-  if (cur.count > RL_MAX) {
-    const secs = Math.ceil((cur.resetAt - now) / 1000);
-    throw new Error(`Rate limited. Retry in ${secs}s`);
-  }
-}
-
-function normalizeDomain(input: string | null): string {
-  if (!input) return "";
-  let raw = input.trim();
-  try {
-    if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
-    const u = new URL(raw);
-    return (u.hostname || "").toLowerCase().replace(/^www\./, "");
-  } catch {
-    return raw
-      .toLowerCase()
-      .replace(/^https?:\/\//i, "")
-      .replace(/^www\./, "")
-      .split("/")[0];
-  }
-}
-
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -154,7 +114,7 @@ export async function OPTIONS(req: Request) {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const domain = normalizeDomain(searchParams.get("domain"));
+    const domain = normalizeWidgetDomain(searchParams.get("domain"));
     const source = (searchParams.get("source") || "site_web").trim(); // "inrcy_site" | "site_web"
     const limit = Math.min(
       Math.max(parseInt(searchParams.get("limit") || "5", 10) || 5, 1),
@@ -189,7 +149,7 @@ export async function GET(req: Request) {
     }
 
     const tok = verifyWidgetToken(providedToken, signingSecret);
-    const tokDomain = normalizeDomain(tok.domain);
+    const tokDomain = normalizeWidgetDomain(tok.domain);
     const tokSource = String(tok.source || "").trim();
     if (!tokDomain || tokDomain !== domain) {
       return NextResponse.json(
@@ -219,46 +179,23 @@ export async function GET(req: Request) {
       "Access-Control-Allow-Origin": allowOrigin || "null",
     };
 
-    // ✅ Best-effort rate limiting (reduces scraping/abuse).
+    // Distributed rate limiting (Upstash), safe across serverless instances.
     const ip = getClientIp(req);
-    rateLimitOrThrow(`${ip}:${domain}:${source}`);
+    const rateLimited = await enforceRateLimit({
+      name: "widgets_actus_public",
+      identifier: `${ip}:${domain}:${source}`,
+      limit: 120,
+      window: "5 m",
+    });
+    if (rateLimited) {
+      Object.entries(headersOk).forEach(([k, v]) => rateLimited.headers.set(k, v));
+      return rateLimited;
+    }
 
     const supabase = getSupabaseAdmin();
 
-    // 1) Resolve user_id from domain (based on stored URLs)
-    let userId: string | null = null;
-
-    if (source === "inrcy_site") {
-      // inrcy_site_configs has site_url
-      const { data, error } = await supabase
-        .from("inrcy_site_configs")
-        .select("user_id, site_url")
-        .ilike("site_url", `%${domain}%`)
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
-      userId = (asRecord(data)["user_id"] as string | null) ?? null;
-    } else {
-      // site_web: pro_tools_configs has settings JSON with settings.site_web.url
-      const { data, error } = await supabase
-        .from("pro_tools_configs")
-        .select("user_id, settings")
-        .limit(200); // small enough in practice; optimize later if needed
-
-      if (error) throw error;
-
-      const rows = (data || []) as unknown[];
-      const match = rows.find((r) => {
-        const rr = asRecord(r);
-        const settings = asRecord(rr["settings"]);
-        const siteWeb = asRecord(settings["site_web"]);
-        const url = String(siteWeb["url"] ?? "");
-        return normalizeDomain(url) === domain;
-      });
-
-      userId = (asRecord(match)["user_id"] as string | null) ?? null;
-    }
+    // Resolve widget owner via indexed registry first, then durable fallback.
+    const userId = await resolveWidgetUserIdFromDomain(domain, source as "inrcy_site" | "site_web");
 
     if (!userId) {
       return NextResponse.json(

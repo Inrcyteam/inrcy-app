@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-import { asRecord } from "@/lib/tsSafe";
+import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
+import { resolveWidgetUserIdFromDomain, normalizeWidgetDomain } from "@/lib/widgets/domainRegistry";
 import { renderEmbedHtml, type FontMode, type LayoutMode, type ThemeMode } from "./_lib/render";
 
 export const runtime = "nodejs";
@@ -40,18 +41,6 @@ function verifyWidgetToken(token: string, secret: string): WidgetTokenPayload {
   return payload;
 }
 
-function normalizeDomain(input: string | null): string {
-  if (!input) return "";
-  let raw = input.trim();
-  try {
-    if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
-    const u = new URL(raw);
-    return (u.hostname || "").toLowerCase().replace(/^www\./, "");
-  } catch {
-    return raw.toLowerCase().replace(/^https?:\/\//i, "").replace(/^www\./, "").split("/")[0];
-  }
-}
-
 function getHeaderHost(value: string | null): string {
   if (!value) return "";
   try {
@@ -68,7 +57,7 @@ function getEmbeddingHost(req: Request): string {
 }
 
 function buildFrameAncestors(domain: string): string {
-  const d = normalizeDomain(domain);
+  const d = normalizeWidgetDomain(domain);
   if (!d) return "frame-ancestors 'none'";
   const origins = [
     `https://${d}`,
@@ -77,55 +66,6 @@ function buildFrameAncestors(domain: string): string {
     `http://www.${d}`
   ];
   return `frame-ancestors ${origins.join(" ")}`;
-}
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing SUPABASE env: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  return createClient(url, key, { auth: { persistSession: false } });
-}
-
-async function resolveUserIdFromDomain(domain: string, source: string) {
-  const supabase = getSupabaseAdmin();
-
-  if (source === "inrcy_site") {
-    const { data, error } = await supabase
-      .from("inrcy_site_configs")
-      .select("user_id, site_url")
-      .ilike("site_url", `%${domain}%`)
-      .limit(1)
-      .maybeSingle();
-    if (error) throw error;
-    return (asRecord(data)["user_id"] as string | null) ?? null;
-  }
-
-  const { data, error } = await supabase.from("pro_tools_configs").select("user_id, settings").limit(200);
-  if (error) throw error;
-  const rows = (data || []) as unknown[];
-  const match = rows.find((r) => {
-    const settings = asRecord(asRecord(r)["settings"]);
-    const siteWeb = asRecord(settings["site_web"]);
-    return normalizeDomain(String(siteWeb["url"] ?? "")) === domain;
-  });
-  return (asRecord(match)["user_id"] as string | null) ?? null;
-}
-
-async function fetchArticles(domain: string, source: string, limit: number) {
-  const userId = await resolveUserIdFromDomain(domain, source);
-  if (!userId) return [];
-
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("site_articles")
-    .select("id, created_at, title, content, images")
-    .eq("user_id", userId)
-    .eq("source", source)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (error) throw error;
-  return (data || []) as Array<Record<string, unknown>>;
 }
 
 function clampLimit(value: string | null) {
@@ -143,6 +83,28 @@ function clampTheme(value: string | null): ThemeMode {
   return v === "white" || v === "dark" || v === "gray" || v === "nature" || v === "sand" ? v : "nature";
 }
 
+
+async function fetchArticles(domain: string, source: string, limit: number) {
+  const userId = await resolveWidgetUserIdFromDomain(domain, source as "inrcy_site" | "site_web");
+  if (!userId) return [];
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing SUPABASE env: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+
+  const supabase = createClient(url, key, { auth: { persistSession: false } });
+  const { data, error } = await supabase
+    .from("site_articles")
+    .select("id, created_at, title, content, images")
+    .eq("user_id", userId)
+    .eq("source", source)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return (data || []) as Array<Record<string, unknown>>;
+}
+
 function htmlResponse(html: string, status = 200, domain = "") {
   return new NextResponse(html, {
     status,
@@ -158,7 +120,7 @@ function htmlResponse(html: string, status = 200, domain = "") {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const domain = normalizeDomain(searchParams.get("domain"));
+    const domain = normalizeWidgetDomain(searchParams.get("domain"));
     const source = (searchParams.get("source") || "site_web").trim();
     const title = (searchParams.get("title") || "Actualités").trim();
     const limit = clampLimit(searchParams.get("limit"));
@@ -176,7 +138,7 @@ export async function GET(req: Request) {
     if (!signingSecret) throw new Error("Missing INRCY_WIDGETS_SIGNING_SECRET");
 
     const tok = verifyWidgetToken(token, signingSecret);
-    const tokDomain = normalizeDomain(tok.domain);
+    const tokDomain = normalizeWidgetDomain(tok.domain);
     const tokSource = String(tok.source || "").trim();
     if (tokDomain !== domain || tokSource !== source) {
       return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 403, tokDomain || domain);
@@ -185,6 +147,17 @@ export async function GET(req: Request) {
     const embeddingHost = getEmbeddingHost(req);
     if (!embeddingHost || embeddingHost !== tokDomain) {
       return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 403, tokDomain);
+    }
+
+    const ip = getClientIp(req);
+    const rateLimited = await enforceRateLimit({
+      name: "embed_actus_public",
+      identifier: `${ip}:${domain}:${source}`,
+      limit: 180,
+      window: "5 m",
+    });
+    if (rateLimited) {
+      return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 429, tokDomain);
     }
 
     const articles = await fetchArticles(domain, source, limit);

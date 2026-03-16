@@ -11,6 +11,9 @@ const strict = process.env.STRICT === "1";
 
 /** @type {string[]} */
 const required = [
+  // Core URLs
+  "NEXT_PUBLIC_APP_URL",
+
   // Supabase
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
@@ -20,9 +23,25 @@ const required = [
   "KV_REST_API_URL",
   "KV_REST_API_TOKEN",
 
-  // Internal deep health
+  // Internal / ops
   "HEALTHCHECK_TOKEN",
   "VERCEL_CRON_SECRET",
+  "ADMIN_SECRET",
+
+  // Widgets
+  "INRCY_WIDGETS_SIGNING_SECRET",
+
+  // SMTP / transactional email
+  "TX_SMTP_HOST",
+  "TX_SMTP_PORT",
+  "TX_SMTP_USER",
+  "TX_SMTP_PASS",
+
+  // Stripe
+  "STRIPE_SECRET_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+  "STRIPE_PRICE_STARTER_ID",
+  "STRIPE_PRICE_ACCEL_ID",
 ];
 
 /** @type {string[]} */
@@ -34,7 +53,25 @@ const optionalButRecommended = [
 
   // AI
   "OPENAI_API_KEY",
+  "OPENAI_MODEL",
   "HEALTHCHECK_ALERT_TO",
+
+  // Integrations / OAuth
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "GOOGLE_REDIRECT_URI",
+  "GOOGLE_GMB_REDIRECT_URI",
+  "GOOGLE_STATS_REDIRECT_URI",
+  "FACEBOOK_APP_ID",
+  "FACEBOOK_APP_SECRET",
+  "FACEBOOK_REDIRECT_URI",
+  "INSTAGRAM_REDIRECT_URI",
+  "LINKEDIN_CLIENT_ID",
+  "LINKEDIN_CLIENT_SECRET",
+  "LINKEDIN_REDIRECT_URI",
+  "MICROSOFT_CLIENT_ID",
+  "MICROSOFT_CLIENT_SECRET",
+  "MICROSOFT_REDIRECT_URI",
 ];
 
 function check(list, label) {
