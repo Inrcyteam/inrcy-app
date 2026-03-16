@@ -128,6 +128,8 @@ export default function BaseModal({
             overflowX: "hidden",
             flex: 1,
             minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
             WebkitOverflowScrolling: "touch",
             overscrollBehavior: "contain",
             touchAction: "pan-y",
@@ -138,6 +140,8 @@ export default function BaseModal({
               maxWidth: 1400,
               margin: "0 auto",
               minHeight: "100%",
+              height: "100%",
+              width: "100%",
               display: "flex",
               flexDirection: "column",
             }}

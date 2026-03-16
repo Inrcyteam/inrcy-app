@@ -95,8 +95,8 @@ export default function ReviewModal({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div className={styles.blockCard} style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      <div className={styles.blockCard} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 10, fontSize: 20 }}>
           Modèle d’email — Récolter
         </div>
@@ -186,18 +186,18 @@ export default function ReviewModal({
             )}
           </div>
 
-          <div style={{ ...sectionStyle, flex: 1, minHeight: 0 }}>
+          <div style={{ ...sectionStyle, flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             <div style={sectionHeaderStyle}>Message (texte)</div>
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Votre message…"
               className={styles.textarea}
-              style={{ width: "100%", flex: 1, minHeight: 220, maxHeight: "45dvh", resize: "none", overflowY: "auto", WebkitOverflowScrolling: "touch", fontSize: 16 }}
+              style={{ width: "100%", flex: 1, minHeight: 260, height: "100%", resize: "none", overflowY: "auto", WebkitOverflowScrolling: "touch", fontSize: 16 }}
             />
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: "auto", paddingTop: 4 }}>
             <button type="button" onClick={onClose} className={styles.secondaryBtn}>
               Annuler
             </button>
