@@ -18,7 +18,7 @@ type AdminAlertInput = {
   type: AdminAlertType;
   userId: string;
   accountEmail?: string | null;
-  adminEmail?: string | null;
+  profileContactEmail?: string | null;
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
   stripePriceId?: string | null;
@@ -36,7 +36,7 @@ type AdminAlertInput = {
 
 type SubscriptionContext = {
   accountEmail: string | null;
-  adminEmail: string | null;
+  profileContactEmail: string | null;
 };
 
 function esc(value: string) {
@@ -87,10 +87,15 @@ export async function getSubscriptionContext(userId: string): Promise<Subscripti
   ]);
 
   const authEmail = authRes?.data?.user?.email ?? null;
-  const accountEmail = (subRow as { contact_email?: string | null } | null)?.contact_email?.trim() || authEmail || null;
-  const adminEmail = (profileRow as { contact_email?: string | null } | null)?.contact_email?.trim() || null;
+  const accountEmail =
+    (subRow as { contact_email?: string | null } | null)?.contact_email?.trim() ||
+    authEmail ||
+    null;
 
-  return { accountEmail, adminEmail };
+  const profileContactEmail =
+    (profileRow as { contact_email?: string | null } | null)?.contact_email?.trim() || null;
+
+  return { accountEmail, profileContactEmail };
 }
 
 export async function sendAdminSubscriptionAlert(input: AdminAlertInput) {
@@ -102,7 +107,8 @@ export async function sendAdminSubscriptionAlert(input: AdminAlertInput) {
     ["Source", input.source || "système"],
     ["User_id", input.userId],
     ["Email du compte", input.accountEmail || "Non renseigné"],
-    ["Email admin", input.adminEmail || "Non renseigné"],
+    ["Email de contact profil", input.profileContactEmail || "Non renseigné"],
+    ["Boîte d'alerte", destination],
     ["Plan", input.plan || null],
     ["Plan programmé", input.scheduledPlan || null],
     ["Statut", input.status || null],
@@ -116,6 +122,7 @@ export async function sendAdminSubscriptionAlert(input: AdminAlertInput) {
     ["Prochain renouvellement", input.nextRenewalDate || null],
     ["Note", input.note || null],
   ];
+
   const rows: Array<[string, string]> = rawRows.flatMap(([label, value]) => {
     if (value == null) return [];
     const normalized = String(value).trim();
@@ -153,16 +160,22 @@ export async function sendAdminSubscriptionAlert(input: AdminAlertInput) {
 }
 
 export async function sendAdminSubscriptionAlertForUser(
-  input: Omit<AdminAlertInput, "accountEmail" | "adminEmail"> & { accountEmail?: string | null; adminEmail?: string | null }
+  input: Omit<AdminAlertInput, "accountEmail" | "profileContactEmail"> & {
+    accountEmail?: string | null;
+    profileContactEmail?: string | null;
+  }
 ) {
   const context =
-    input.accountEmail !== undefined || input.adminEmail !== undefined
-      ? { accountEmail: input.accountEmail ?? null, adminEmail: input.adminEmail ?? null }
+    input.accountEmail !== undefined || input.profileContactEmail !== undefined
+      ? {
+          accountEmail: input.accountEmail ?? null,
+          profileContactEmail: input.profileContactEmail ?? null,
+        }
       : await getSubscriptionContext(input.userId);
 
   return sendAdminSubscriptionAlert({
     ...input,
     accountEmail: context.accountEmail,
-    adminEmail: context.adminEmail,
+    profileContactEmail: context.profileContactEmail,
   });
 }
