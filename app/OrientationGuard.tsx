@@ -9,6 +9,8 @@ export default function OrientationGuard() {
   const pathname = usePathname();
   const router = useRouter();
 
+  const [mounted, setMounted] = useState(false);
+
   // ✅ Mobile + tablette uniquement (≤ 1024px)
   const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
@@ -21,6 +23,8 @@ export default function OrientationGuard() {
   const mustBeLandscape = landscapeRoutes.some((r) => pathname?.startsWith(r));
 
   useEffect(() => {
+    setMounted(true);
+
     const check = () => {
       setIsMobileOrTablet(window.innerWidth <= 1024);
       setIsLandscape(window.innerWidth > window.innerHeight);
@@ -66,7 +70,7 @@ export default function OrientationGuard() {
     })();
 
     return () => {
-      cancelled = true
+      cancelled = true;
     };
   }, [pathname, mustBeLandscape, isMobileOrTablet]);
 
@@ -80,6 +84,8 @@ export default function OrientationGuard() {
 
   const [logoIdx, setLogoIdx] = useState(0);
   const logoSrc = logoCandidates[logoIdx] || logoCandidates[0];
+
+  if (!mounted) return null;
 
   // ✅ Desktop large → jamais d’overlay
   if (!isMobileOrTablet) return null;
