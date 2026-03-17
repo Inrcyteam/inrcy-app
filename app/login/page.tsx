@@ -29,9 +29,33 @@ function rint(min: number, max: number) {
   return Math.round(rand(min, max));
 }
 
+
+function clearStaleSupabaseAuthStorage() {
+  if (typeof window === "undefined") return;
+
+  try {
+    const keysToRemove: string[] = [];
+
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+      if (key.startsWith("sb-") && key.includes("-auth-token")) {
+        keysToRemove.push(key);
+      }
+    }
+
+    for (const key of keysToRemove) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // no-op
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
+  const [supabaseReady, setSupabaseReady] = useState(false);
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -95,9 +119,9 @@ useEffect(() => {
   );
 }, []);
 
-   useEffect(() => {
+useEffect(() => {
   (async () => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !supabaseReady) return;
 
     // évite double exécution (React strict mode + rerenders)
     if (handledHashRef.current) return;
@@ -112,6 +136,9 @@ useEffect(() => {
     const type = params.get("type"); // invite | recovery | etc.
 
     if (!access_token || !refresh_token) return;
+
+    const supabase = supabaseRef.current;
+    if (!supabase) return;
 
     const { error } = await supabase.auth.setSession({ access_token, refresh_token });
     if (error) {
@@ -128,11 +155,14 @@ useEffect(() => {
     // hard redirect + on garde l'historique propre
     window.location.replace(target);
   })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+  }, [supabaseReady]);
 
 useEffect(() => {
     setMounted(true);
+
+    clearStaleSupabaseAuthStorage();
+    supabaseRef.current = createClient();
+    setSupabaseReady(true);
 
     const newDots: WanderDot[] = Array.from({ length: 20 }).map(() => ({
       left: `${rint(6, 94)}%`,
@@ -167,6 +197,12 @@ useEffect(() => {
   try {
     const origin = window.location.origin;
 
+    const supabase = supabaseRef.current;
+    if (!supabase) {
+      setError("Client d’authentification indisponible. Recharge la page.");
+      return;
+    }
+
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
   redirectTo: `${origin}/set-password?mode=reset`,
 });
@@ -192,6 +228,12 @@ useEffect(() => {
     setLoading(true);
 
     try {
+      const supabase = supabaseRef.current;
+      if (!supabase) {
+        setError("Client d’authentification indisponible. Recharge la page.");
+        return;
+      }
+
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -333,6 +375,7 @@ useEffect(() => {
           <form suppressHydrationWarning onSubmit={onSubmit} className="space-y-3">
             <div className="relative">
               <input
+                suppressHydrationWarning
                 className="inrcy-input"
                 type="email"
                 placeholder="Email"
@@ -346,6 +389,7 @@ useEffect(() => {
 
             <div className="relative">
   <input
+    suppressHydrationWarning
     className="inrcy-input"
     type={showPassword ? "text" : "password"}
     placeholder="Mot de passe"
@@ -378,8 +422,8 @@ useEffect(() => {
               </div>
             ) : null}
 
-            <button className="inrcy-btn w-full" type="submit" disabled={loading}>
-              {loading ? "Connexion..." : "Se connecter"}
+            <button className="inrcy-btn w-full" type="submit" disabled={loading || !supabaseReady}>
+              {loading ? "Connexion..." : !supabaseReady ? "Initialisation..." : "Se connecter"}
             </button>
 
             {/* ✅ ajout : mot de passe oublié */}
@@ -387,7 +431,7 @@ useEffect(() => {
               type="button"
               onClick={onForgotPassword}
               className="w-full text-xs underline text-slate-600"
-              disabled={loading}
+              disabled={loading || !supabaseReady}
             >
               Mot de passe oublié ?
             </button>
