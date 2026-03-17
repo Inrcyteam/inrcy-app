@@ -28,12 +28,13 @@ export function getAppUrl(req?: Request) {
   return requireEnv("NEXT_PUBLIC_APP_URL").replace(/\/$/, "");
 }
 
-export async function stripePost(path: string, body: URLSearchParams) {
+export async function stripePost(path: string, body: URLSearchParams, options?: { idempotencyKey?: string | null }) {
   const res = await fetch(`${STRIPE_API_BASE}${path}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${stripeKey()}`,
       "Content-Type": "application/x-www-form-urlencoded",
+      ...(options?.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
     },
     body,
   });

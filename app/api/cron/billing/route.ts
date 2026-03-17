@@ -4,16 +4,10 @@ import { optionalEnv } from "@/lib/env";
 import { sendTxMail } from "@/lib/txMailer";
 import { buildTrialReminderEmail } from "@/lib/txTemplates";
 import { getAppUrl, stripeGet } from "@/lib/stripeRest";
+import { deleteUserAccountEverywhere } from "@/lib/deleteUserAccount";
+import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
 
 export const runtime = "nodejs";
-
-// We drive the trial lifecycle from subscriptions.trial_start_at / trial_end_at.
-// Intended to be called by a daily cron (Vercel Cron or GitHub Action).
-
-function daysBetween(a: Date, b: Date) {
-  const ms = b.getTime() - a.getTime();
-  return Math.floor(ms / (24 * 3600 * 1000));
-}
 
 function ymd(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -21,6 +15,31 @@ function ymd(d: Date) {
 
 type StripeSubscriptionSummary = { status?: string | null };
 type StripeSubscriptionListResponse = { data?: StripeSubscriptionSummary[] };
+
+type TrialRow = {
+  user_id: string;
+  contact_email: string | null;
+  trial_start_at: string | null;
+  trial_end_at: string | null;
+  plan: string | null;
+  stripe_subscription_id: string | null;
+  stripe_customer_id?: string | null;
+  stripe_price_id?: string | null;
+  scheduled_plan?: string | null;
+  last_trial_reminder_day: number | null;
+};
+
+type CancelledRow = {
+  user_id: string;
+  contact_email: string | null;
+  plan: string | null;
+  status: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  stripe_price_id: string | null;
+  end_date: string | null;
+  cancel_requested_at: string | null;
+};
 
 function frDate(d: Date) {
   try {
@@ -31,7 +50,6 @@ function frDate(d: Date) {
 }
 
 async function stripeCustomerHasAnySubscription(stripeCustomerId: string) {
-  // Guard-rail: if we can’t reach Stripe for any reason, we prefer NOT deleting the user.
   try {
     const qs = new URLSearchParams({
       customer: stripeCustomerId,
@@ -41,8 +59,6 @@ async function stripeCustomerHasAnySubscription(stripeCustomerId: string) {
 
     const json = (await stripeGet(`/subscriptions?${qs.toString()}`)) as StripeSubscriptionListResponse;
     const subs = Array.isArray(json?.data) ? json.data : [];
-
-    // Protect the user if ANY subscription exists that isn’t an expired incomplete attempt.
     return subs.some((subscription) => subscription?.status && subscription.status !== "incomplete_expired");
   } catch {
     return true;
@@ -50,9 +66,6 @@ async function stripeCustomerHasAnySubscription(stripeCustomerId: string) {
 }
 
 export async function GET(req: Request) {
-  // Simple auth for cron
-  // Vercel Cron sends: Authorization: Bearer <secret>
-  // We also keep x-cron-secret support for manual/dev calls.
   const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";
   if (!cronSecret) {
     return NextResponse.json(
@@ -69,102 +82,77 @@ export async function GET(req: Request) {
   }
 
   const now = new Date();
+  const reminderOffsets = [10, 6, 3, 1];
 
-  // 1) Trial reminders (J20, J24, J27, J30)
-  // Rules:
-  // - only for users still in app Trial (plan = Trial) AND no Stripe subscription has been created.
-  // - last reminder (J30) is sent on the trial_end date (not after), then deletion happens the day after.
   const { data: trials, error: tErr } = await supabaseAdmin
     .from("subscriptions")
-    .select("user_id, contact_email, trial_start_at, trial_end_at, plan, stripe_subscription_id, last_trial_reminder_day")
+    .select(
+      "user_id, contact_email, trial_start_at, trial_end_at, plan, stripe_subscription_id, stripe_customer_id, stripe_price_id, scheduled_plan, last_trial_reminder_day"
+    )
     .eq("plan", "Trial")
     .is("stripe_subscription_id", null);
 
   if (tErr) return NextResponse.json({ error: tErr.message }, { status: 500 });
 
-  const remindDays = [20, 24, 27, 30];
   let sent = 0;
-
-  for (const s of trials || []) {
-    const start = s.trial_start_at ? new Date(s.trial_start_at) : null;
+  for (const s of (trials || []) as TrialRow[]) {
     const end = s.trial_end_at ? new Date(s.trial_end_at) : null;
-    if (!start || !end) continue;
+    if (!end) continue;
 
-    const d = daysBetween(start, now);
-    const endYmd = ymd(end);
-    const nowYmd = ymd(now);
+    const nowDay = new Date(`${ymd(now)}T00:00:00.000Z`);
+    const endDay = new Date(`${ymd(end)}T00:00:00.000Z`);
+    const daysUntilEnd = Math.round((endDay.getTime() - nowDay.getTime()) / (24 * 3600 * 1000));
+    if (!reminderOffsets.includes(daysUntilEnd)) continue;
 
-    // J30 is special: we send it ON the end date.
-    const isEndDate = nowYmd === endYmd;
-    const shouldSendJ30 = isEndDate;
-
-    const shouldSend =
-      (remindDays.includes(d) && d !== 30) || // J20/J24/J27 by "days since start"
-      (d >= 30 && shouldSendJ30); // J30 by "end date"
-
-    if (!shouldSend) continue;
-
-    const reminderDay = d >= 30 ? 30 : d;
     const already = Number(s.last_trial_reminder_day || 0);
-    if (already >= reminderDay) continue;
+    const reminderMarker = 100 - daysUntilEnd; // stable ascending marker for J-10/J-6/J-3/J-1
+    if (already >= reminderMarker) continue;
 
     const to = s.contact_email;
     if (!to) continue;
 
-    const subject =
-      reminderDay === 30
-        ? "iNrCy — Dernier jour d’essai"
-        : "iNrCy — Ton essai se termine bientôt";
-
-    const appUrl = getAppUrl(req);
-    const ctaUrl = `${appUrl}/dashboard?panel=abonnement`;
-
+    const subject = daysUntilEnd === 1 ? "iNrCy — Votre essai se termine demain" : "iNrCy — Votre essai se termine bientôt";
+    const ctaUrl = `${getAppUrl(req)}/dashboard?panel=abonnement`;
     const { html, text } = buildTrialReminderEmail({
       endDateFr: frDate(end),
       ctaUrl,
-      reminderDay: reminderDay as 20 | 24 | 27 | 30,
+      daysBeforeEnd: daysUntilEnd,
     });
 
     await sendTxMail({ to, subject, text, html });
-
     await supabaseAdmin
       .from("subscriptions")
-      .update({ last_trial_reminder_day: reminderDay, last_reminder_at: new Date().toISOString() })
+      .update({ last_trial_reminder_day: reminderMarker, last_reminder_at: new Date().toISOString() })
       .eq("user_id", s.user_id);
 
     sent++;
   }
 
-  // 2) Auto delete AFTER the trial end date (day+1) if still not subscribed
-  // This ensures the "J30" email can be delivered before deletion.
   const { data: maybeExpired, error: eErr } = await supabaseAdmin
     .from("subscriptions")
-    .select("user_id, trial_end_at, stripe_subscription_id, stripe_customer_id, scheduled_plan, stripe_price_id, plan")
+    .select(
+      "user_id, contact_email, trial_end_at, stripe_subscription_id, stripe_customer_id, scheduled_plan, stripe_price_id, plan"
+    )
     .eq("plan", "Trial")
     .is("stripe_subscription_id", null);
 
   if (eErr) return NextResponse.json({ error: eErr.message }, { status: 500 });
 
-  const deleteAfterDays = Number(optionalEnv("INRCY_TRIAL_DELETE_AFTER_DAYS", "1")); // default: delete the day after trial_end
-  let deleted = 0;
+  const deleteAfterDays = Number(optionalEnv("INRCY_TRIAL_DELETE_AFTER_DAYS", "1"));
+  let deletedTrialAccounts = 0;
 
-  for (const s of maybeExpired || []) {
+  for (const s of (maybeExpired || []) as TrialRow[]) {
     const end = s.trial_end_at ? new Date(s.trial_end_at) : null;
     if (!end) continue;
 
     const deleteAfter = new Date(end);
     deleteAfter.setDate(deleteAfter.getDate() + (Number.isFinite(deleteAfterDays) ? deleteAfterDays : 1));
-
     if (now < deleteAfter) continue;
 
-    // Guard-rail #1: if a Stripe customer exists, verify Stripe before deleting.
-    // If Stripe is unreachable, we keep the user (fail-closed) to avoid accidental deletion.
     if (s.stripe_customer_id) {
       const hasAnySub = await stripeCustomerHasAnySubscription(s.stripe_customer_id);
       if (hasAnySub) continue;
     } else {
-      // Guard-rail #2: if checkout intent is recorded but we don’t have a Stripe customer yet,
-      // give a small extra grace window to avoid accidental deletion.
       const graceDays = Number(optionalEnv("INRCY_TRIAL_DELETE_GRACE_DAYS", "2"));
       if ((s.scheduled_plan || s.stripe_price_id) && Number.isFinite(graceDays) && graceDays > 0) {
         const graceUntil = new Date(deleteAfter);
@@ -173,16 +161,72 @@ export async function GET(req: Request) {
       }
     }
 
-    try {
-      // Delete subscription row + auth user.
-      // (Other tables should rely on ON DELETE CASCADE from user_id where applicable.)
-      await supabaseAdmin.from("subscriptions").delete().eq("user_id", s.user_id);
-      await supabaseAdmin.auth.admin.deleteUser(s.user_id);
-      deleted++;
-    } catch {
-      // ignore single user failures
-    }
+    const deletion = await deleteUserAccountEverywhere(s.user_id);
+    if (!deletion.ok) continue;
+
+    await sendAdminSubscriptionAlertForUser({
+      type: "trial_account_deleted",
+      source: "cron.billing.trial-expiry",
+      userId: s.user_id,
+      accountEmail: s.contact_email,
+      plan: s.plan,
+      trialEndAt: s.trial_end_at,
+      stripeCustomerId: s.stripe_customer_id ?? null,
+      stripePriceId: s.stripe_price_id ?? null,
+      scheduledPlan: s.scheduled_plan ?? null,
+      note: `Compte supprimé automatiquement après fin d'essai. Mode suppression: ${deletion.mode}.`,
+    }).catch(() => null);
+
+    deletedTrialAccounts++;
   }
 
-  return NextResponse.json({ ok: true, sent, deleted });
+  const { data: cancelledRows, error: cErr } = await supabaseAdmin
+    .from("subscriptions")
+    .select(
+      "user_id, contact_email, plan, status, stripe_customer_id, stripe_subscription_id, stripe_price_id, end_date, cancel_requested_at"
+    )
+    .not("stripe_subscription_id", "is", null)
+    .not("end_date", "is", null);
+
+  if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
+
+  let deletedCancelledAccounts = 0;
+
+  for (const s of (cancelledRows || []) as CancelledRow[]) {
+    if (!s.end_date) continue;
+    const deleteAt = new Date(`${s.end_date}T23:59:59.999Z`);
+    if (now < deleteAt) continue;
+
+    if (s.stripe_customer_id) {
+      const hasAnySub = await stripeCustomerHasAnySubscription(s.stripe_customer_id);
+      if (hasAnySub) continue;
+    }
+
+    const deletion = await deleteUserAccountEverywhere(s.user_id);
+    if (!deletion.ok) continue;
+
+    await sendAdminSubscriptionAlertForUser({
+      type: "cancelled_account_deleted",
+      source: "cron.billing.cancelled-expiry",
+      userId: s.user_id,
+      accountEmail: s.contact_email,
+      plan: s.plan,
+      status: s.status,
+      stripeCustomerId: s.stripe_customer_id,
+      stripeSubscriptionId: s.stripe_subscription_id,
+      stripePriceId: s.stripe_price_id,
+      cancelRequestedAt: s.cancel_requested_at,
+      endDate: s.end_date,
+      note: `Compte supprimé automatiquement à la fin du préavis / période de résiliation. Mode suppression: ${deletion.mode}.`,
+    }).catch(() => null);
+
+    deletedCancelledAccounts++;
+  }
+
+  return NextResponse.json({
+    ok: true,
+    sent,
+    deleted_trial_accounts: deletedTrialAccounts,
+    deleted_cancelled_accounts: deletedCancelledAccounts,
+  });
 }
