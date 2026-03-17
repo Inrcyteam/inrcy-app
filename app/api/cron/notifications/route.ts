@@ -265,7 +265,7 @@ async function buildActionNotification(userId: string, digestHours: number) {
 
 async function buildInformationNotification(userId: string, digestHours: number) {
   if (await hasRecentCategoryNotification(userId, "information", digestHours)) return null;
-  const [{ data: latest }, { data: integrations }] = await Promise.all([
+  const [{ data: latest }, { data: integrations }, { data: crmContacts }] = await Promise.all([
     supabaseAdmin
       .from("daily_metrics_summary")
       .select("connected_tools_count, demandes_captees_total, opportunites_activables_total, details")
@@ -278,12 +278,20 @@ async function buildInformationNotification(userId: string, digestHours: number)
       .select("provider, category, product, status")
       .eq("user_id", userId)
       .eq("status", "connected"),
+    supabaseAdmin
+      .from("crm_contacts")
+      .select("id, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1),
   ]);
 
   const connectedTools = toInt(latest?.connected_tools_count);
   const demandes = toInt(latest?.demandes_captees_total);
   const opportunities = toInt(latest?.opportunites_activables_total);
   const connectedRows = (integrations ?? []) as IntegrationRow[];
+  const latestCrmContactAt = Array.isArray(crmContacts) && crmContacts[0]?.created_at ? new Date(String(crmContacts[0].created_at)) : null;
+  const crmLooksEmptyOrStale = !latestCrmContactAt || (Date.now() - latestCrmContactAt.getTime()) > 30 * 24 * 3600 * 1000;
 
   const hasMail = connectedRows.some((row) => row.category === "mail");
   const hasSocial = connectedRows.some((row) => row.category === "social");
@@ -299,7 +307,17 @@ async function buildInformationNotification(userId: string, digestHours: number)
   let ctaUrl = connectedTools > 0 ? "/dashboard/gps" : "/dashboard";
   let kind = "cockpit_status";
 
-  if (hasSocial && !hasMail) {
+  if (crmLooksEmptyOrStale) {
+    title = latestCrmContactAt
+      ? "Pensez à mettre votre CRM à jour"
+      : "Votre CRM attend encore ses premiers contacts";
+    body = latestCrmContactAt
+      ? "Vos notifications tournent bien, mais votre CRM mérite un petit rafraîchissement. Ajoutez ou mettez à jour vos contacts chauds pour mieux suivre relances, rendez-vous et opportunités."
+      : "Ajoutez quelques contacts dans iNrCRM pour relier vos rendez-vous, vos relances et vos opportunités au bon endroit.";
+    ctaLabel = "Ouvrir le CRM";
+    ctaUrl = "/dashboard/crm";
+    kind = "crm_refresh";
+  } else if (hasSocial && !hasMail) {
     title = "Votre visibilité tourne déjà, branchez maintenant la relance mail";
     body = `Vos canaux sociaux sont connectés. Ajouter une boîte mail dans iNr'Send vous permettra de relancer les opportunités entrantes sans quitter iNrCy.`;
     ctaLabel = "Ouvrir iNr'Send";

@@ -31,29 +31,7 @@ export async function GET(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  let rows = data ?? [];
-
-  if (rows.length === 0) {
-    const seed = {
-      user_id: user.id,
-      category: "information",
-      kind: "welcome",
-      title: "Votre cloche iNrCy est activée",
-      body: "Vous recevrez ici vos relances Performance / Action / Information, regroupées toutes les 48 h pour garder un cockpit vivant sans vous saturer.",
-      cta_label: "Régler mes notifications",
-      cta_url: "/dashboard?panel=notifications",
-      dedupe_key: `welcome:${user.id}`,
-      meta: { seeded: true },
-    };
-    await supabaseAdmin.from("notifications").insert(seed);
-    const seeded = await supabaseAdmin
-      .from("notifications")
-      .select("id, user_id, category, kind, title, body, cta_label, cta_url, read_at, meta, dedupe_key, created_at")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    rows = seeded.data ?? [];
-  }
+  const rows = data ?? [];
 
   const items = rows.map((row) => toNotificationPayload(row as NotificationRow));
   const unreadCount = items.filter((item) => item.unread).length;

@@ -3495,8 +3495,8 @@ const checkActivity = useCallback(async () => {
       >
         {panel === "contact" && <ContactContent mode="drawer" />}
         {panel === "compte" && <AccountContent mode="drawer" />}
-        {panel === "profil" && <ProfilContent mode="drawer" />}
-        {panel === "activite" && <ActivityContent mode="drawer" />}
+        {panel === "profil" && <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} />}
+        {panel === "activite" && <ActivityContent mode="drawer" onActivitySaved={checkActivity} onActivityReset={checkActivity} />}
         {panel === "abonnement" && <AbonnementContent mode="drawer" />}
         {panel === "legal" && <LegalContent mode="drawer" />}
         {panel === "rgpd" && <RgpdContent mode="drawer" />}

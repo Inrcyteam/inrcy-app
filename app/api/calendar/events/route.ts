@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 /**
  * Agenda iNrCy NATIF (sans Google Calendar)
@@ -41,6 +42,56 @@ function normalizeAllDayRange(dateOnly: string) {
 
 function bad(msg: string, status = 400) {
   return NextResponse.json({ ok: false, error: msg }, { status });
+}
+
+type ReminderMeta = {
+  inAppMinutesBefore?: number;
+  emailMinutesBefore?: number;
+  lastInAppReminderAt?: string | null;
+  lastEmailReminderAt?: string | null;
+};
+
+function safeObj(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function buildAgendaMeta(input: unknown, previous?: unknown) {
+  const next = safeObj(input);
+  const prev = safeObj(previous);
+  const prevReminders = safeObj(prev.reminders);
+  const nextReminders = safeObj(next.reminders);
+
+  const reminders: ReminderMeta = {
+    inAppMinutesBefore: Number(nextReminders.inAppMinutesBefore ?? prevReminders.inAppMinutesBefore ?? 120),
+    emailMinutesBefore: Number(nextReminders.emailMinutesBefore ?? prevReminders.emailMinutesBefore ?? 1440),
+    lastInAppReminderAt: typeof prevReminders.lastInAppReminderAt === "string" ? prevReminders.lastInAppReminderAt : null,
+    lastEmailReminderAt: typeof prevReminders.lastEmailReminderAt === "string" ? prevReminders.lastEmailReminderAt : null,
+  };
+
+  return {
+    ...prev,
+    ...next,
+    reminders,
+  };
+}
+
+async function createAgendaConfirmationNotification(userId: string, title: string, startAt: string) {
+  const when = new Date(startAt);
+  const whenLabel = Number.isFinite(when.getTime())
+    ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(when)
+    : "bientôt";
+
+  await supabaseAdmin.from("notifications").insert({
+    user_id: userId,
+    category: "information",
+    kind: "agenda_event_saved",
+    title: "Rendez-vous enregistré dans iNrCalendar",
+    body: `“${title || "Rendez-vous"}” est bien positionné pour le ${whenLabel}. Les rappels in-app et email seront envoyés automatiquement avant l’échéance.`,
+    cta_label: "Ouvrir l’agenda",
+    cta_url: "/dashboard/agenda",
+    dedupe_key: `agenda_saved:${userId}:${title}:${startAt}`,
+    meta: { source: "agenda" },
+  });
 }
 
 export async function GET(req: Request) {
@@ -114,7 +165,7 @@ export async function POST(req: Request) {
     endAt = new Date(body.end!).toISOString();
   }
 
-  const meta = body.inrcy ?? null;
+  const meta = buildAgendaMeta(body.inrcy);
 
   const { data, error } = await supabase
     .from("agenda_events")
@@ -132,6 +183,7 @@ export async function POST(req: Request) {
     .single();
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  await createAgendaConfirmationNotification(user.id, String(body.summary ?? "(Sans titre)"), startAt).catch(() => null);
   return NextResponse.json({ ok: true, id: data?.id });
 }
 
@@ -146,12 +198,19 @@ export async function PATCH(req: Request) {
   const body = (await req.json().catch(() => ({}))) as CreateEventBody;
   const allDay = Boolean(body.allDay);
 
+  const { data: current } = await supabase
+    .from("agenda_events")
+    .select("meta")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   const patch: Record<string, unknown> = {
     title: body.summary ?? undefined,
     description: body.description ?? undefined,
     location: body.location ?? undefined,
     all_day: allDay,
-    meta: body.inrcy ?? undefined,
+    meta: buildAgendaMeta(body.inrcy, current?.meta) ?? undefined,
   };
 
   if (allDay) {
@@ -170,6 +229,7 @@ export async function PATCH(req: Request) {
   const { error } = await supabase.from("agenda_events").update(patch).eq("id", id).eq("user_id", user.id);
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  await createAgendaConfirmationNotification(user.id, String(body.summary ?? "(Sans titre)"), String(patch.start_at ?? body.start ?? "")).catch(() => null);
   return NextResponse.json({ ok: true });
 }
 

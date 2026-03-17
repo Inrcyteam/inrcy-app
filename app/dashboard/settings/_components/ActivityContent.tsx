@@ -13,6 +13,8 @@ import {
 
 type Props = {
   mode?: "page" | "drawer";
+  onActivitySaved?: () => void;
+  onActivityReset?: () => void;
 };
 
 type BusinessActivityForm = {
@@ -30,7 +32,7 @@ type BusinessActivityForm = {
 
 const TABLE = "business_profiles";
 
-export default function ActivityContent({ mode = "page" }: Props) {
+export default function ActivityContent({ mode = "page", onActivitySaved, onActivityReset }: Props) {
   const initial: BusinessActivityForm = useMemo(
     () => ({
       sectorCategory: "",
@@ -66,6 +68,8 @@ export default function ActivityContent({ mode = "page" }: Props) {
     () => getServicesForSectorAndJob(form.sectorCategory, form.sector),
     [form.sectorCategory, form.sector]
   );
+  const isCustomJobSector = form.sectorCategory === "autre";
+
 
   const allSelectedServices = useMemo(() => {
     const extras = normalizeLines(form.customServices);
@@ -317,11 +321,24 @@ export default function ActivityContent({ mode = "page" }: Props) {
       }
 
       setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+      onActivitySaved?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur lors de l'enregistrement.");
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleReset = () => {
+    const ok = window.confirm(`Réinitialiser l’activité ?
+
+Cela efface les informations d’activité en cours dans le formulaire.`);
+    if (!ok) return;
+    setForm(initial);
+    setSaved(false);
+    setError("");
+    onActivityReset?.();
   };
 
   return (
@@ -356,20 +373,30 @@ export default function ActivityContent({ mode = "page" }: Props) {
 
             <label style={label}>
               <span style={labelTitle}>Métier</span>
-              <select
-                style={input}
-                value={form.sector}
-                onChange={(e) => handleProfessionChange(e.target.value)}
-                disabled={!form.sectorCategory}
-              >
-                <option value="" style={selectOption}>Choisir un métier</option>
-                {currentJobOptions.map((option) => (
-                  <option key={option.value} value={option.value} style={selectOption}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <span style={hint}>Le métier reste utilisé comme base n°2 pour personnaliser les textes, mots-clés et publications.</span>
+              {isCustomJobSector ? (
+                <input
+                  style={input}
+                  value={form.sector}
+                  onChange={(e) => handleProfessionChange(e.target.value)}
+                  disabled={!form.sectorCategory}
+                  placeholder="Ex : Cordiste, Coach vocal, Fabricant sur mesure…"
+                />
+              ) : (
+                <select
+                  style={input}
+                  value={form.sector}
+                  onChange={(e) => handleProfessionChange(e.target.value)}
+                  disabled={!form.sectorCategory}
+                >
+                  <option value="" style={selectOption}>Choisir un métier</option>
+                  {currentJobOptions.map((option) => (
+                    <option key={option.value} value={option.value} style={selectOption}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <span style={hint}>Le métier reste utilisé comme base n°2 pour personnaliser les textes, mots-clés et publications. En choisissant “Autre”, vous pouvez saisir un métier libre qui sera aussi utilisé par les templates et l’IA.</span>
             </label>
 
             <div style={label}>
@@ -392,7 +419,11 @@ export default function ActivityContent({ mode = "page" }: Props) {
                   })}
                 </div>
               ) : (
-                <div style={{ ...hint, marginTop: 2 }}>Choisissez d’abord un métier pour afficher la liste de prestations cohérentes.</div>
+                <div style={{ ...hint, marginTop: 2 }}>
+                  {isCustomJobSector
+                    ? "Avec un métier libre, ajoutez vos prestations ci-dessous pour alimenter les templates et l’IA."
+                    : "Choisissez d’abord un métier pour afficher la liste de prestations cohérentes."}
+                </div>
               )}
               <span style={hint}>Ces prestations alimentent les templates et l’IA pour des contenus plus cohérents.</span>
             </div>
@@ -484,9 +515,27 @@ export default function ActivityContent({ mode = "page" }: Props) {
               <div style={{ color: "rgba(34,197,94,0.95)", fontWeight: 900 }}>Enregistré ✅</div>
             ) : null}
 
-            <button type="button" style={primaryBtn} disabled={saving} onClick={save}>
-              {saving ? "Enregistrement…" : "Enregistrer"}
-            </button>
+            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+              <button type="button" style={primaryBtn} disabled={saving} onClick={save}>
+                {saving ? "Enregistrement…" : "Enregistrer"}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={handleReset}
+                style={{
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: "white",
+                  borderRadius: 14,
+                  padding: "10px 12px",
+                  cursor: saving ? "not-allowed" : "pointer",
+                  fontWeight: 800,
+                }}
+              >
+                Réinitialiser
+              </button>
+            </div>
 
             {mode === "drawer" ? (
               <div style={{ fontSize: 12, opacity: 0.7 }}>
