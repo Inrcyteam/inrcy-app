@@ -81,6 +81,7 @@ Tu dois répondre en JSON strict, avec exactement cette structure :
 Règles JSON :
 - Ne renvoyer que les canaux demandés.
 - Chaque version doit contenir les 4 clés title/content/cta/hashtags.
+- Pour chaque canal demandé, title, content et cta doivent être non vides.
 - hashtags = tableau de 0 à 8 mots-clés sans #.
 - Les hashtags ne sont réellement utiles que pour Instagram : pour les autres canaux, renvoie de préférence [].
 - Si un canal n'est pas demandé, ne pas l'ajouter.
@@ -140,7 +141,7 @@ Infos activité :
 
 Consignes supplémentaires :
 - Adapter clairement le contenu à chaque canal demandé.
-- Site iNrCy / Site web : version plus longue, plus SEO et plus locale. Quand c'est pertinent, intégrer naturellement le téléphone ou l'email de contact.
+- Site iNrCy / Site web : version plus longue, plus SEO et plus locale. Quand c'est pertinent, intégrer naturellement le téléphone ou l'email de contact. Cette version est obligatoire si le canal site est demandé : ne jamais laisser title/content/cta vides.
 - Instagram : plus direct, plus léger, plus visuel.
 - LinkedIn : ton plus professionnel.
 - Google Business : ton local, utile et concret. Si utile, tu peux rappeler le téléphone ou l'email de contact.

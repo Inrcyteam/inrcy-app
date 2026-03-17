@@ -16,7 +16,7 @@ export async function openaiGenerateJSON<T extends OpenAIResponseJSON>(opts: {
   if (!apiKey) throw new Error("Missing OPENAI_API_KEY");
 
   const model = opts.model || process.env.OPENAI_MODEL || "gpt-4o-mini";
-  const max_output_tokens = Math.max(128, Math.min(1200, opts.maxOutputTokens ?? 700));
+  const max_output_tokens = Math.max(128, Math.min(2200, opts.maxOutputTokens ?? 700));
 
   const res = await fetchWithRetry("https://api.openai.com/v1/responses", {
     method: "POST",

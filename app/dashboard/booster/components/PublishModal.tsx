@@ -164,13 +164,13 @@ export default function PublishModal({
   );
 
   const selectedForGeneration = useMemo(() => {
-    const out: ChannelKey[] = [];
-    if (channels.inrcy_site || channels.site_web) out.push("site_web");
-    if (channels.gmb && connected.gmb) out.push("gmb");
-    if (channels.facebook && connected.facebook) out.push("facebook");
-    if (channels.instagram && connected.instagram) out.push("instagram");
-    if (channels.linkedin && connected.linkedin) out.push("linkedin");
-    return out;
+    const out = new Set<ChannelKey>();
+    if ((channels.inrcy_site && connected.inrcy_site) || (channels.site_web && connected.site_web)) out.add("site_web");
+    if (channels.gmb && connected.gmb) out.add("gmb");
+    if (channels.facebook && connected.facebook) out.add("facebook");
+    if (channels.instagram && connected.instagram) out.add("instagram");
+    if (channels.linkedin && connected.linkedin) out.add("linkedin");
+    return Array.from(out);
   }, [channels, connected]);
 
   const toggle = (key: ChannelKey) => {
@@ -222,7 +222,13 @@ export default function PublishModal({
       }
 
       const versions = json?.versions || {};
-      const sitePost = versions.site_web || versions.inrcy_site || undefined;
+      const sitePost =
+        versions.site_web?.content?.trim()
+          ? versions.site_web
+          : versions.inrcy_site?.content?.trim()
+            ? versions.inrcy_site
+            : undefined;
+
       setPostsByChannel({
         ...versions,
         ...(sitePost ? { inrcy_site: sitePost, site_web: sitePost } : {}),
