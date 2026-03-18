@@ -102,15 +102,15 @@ export default function FacebookPanel(props: any) {
     	                  }}
     	                />
 
-    	                                {!facebookAccountConnected ? (
-	                  <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectFacebookAccount}>
-	                    Connecter Facebook
-	                  </button>
-	                ) : (
-	                  <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookAccount}>
-	                    Déconnecter Facebook
-	                  </button>
-	                )}
+    	                {!facebookAccountConnected ? (
+    	                  <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectFacebookAccount}>
+    	                    Connecter Facebook
+    	                  </button>
+    	                ) : (
+    	                  <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookAccount}>
+    	                    Déconnecter Facebook
+    	                  </button>
+    	                )}
     	              </div>
     	            </div>
 
@@ -168,14 +168,14 @@ export default function FacebookPanel(props: any) {
                         ))}
                       </select>
 
-    	                  		                  <button
-		                    type="button"
-		                    className={`${styles.actionBtn} ${facebookPageConnected ? styles.disconnectBtn : styles.connectBtn}`}
-		                    onClick={facebookPageConnected ? disconnectFacebookPage : saveFacebookPage}
-		                    disabled={!fbSelectedPageId}
-		                  >
-		                    {facebookPageConnected ? "Déconnecter la page" : "Connecter la page"}
-		                  </button>
+    	                  <button
+    	                    type="button"
+    	                    className={`${styles.actionBtn} ${styles.connectBtn}`}
+    	                    onClick={saveFacebookPage}
+    	                    disabled={!fbSelectedPageId}
+    	                  >
+    	                    Connecter la page
+    	                  </button>
                     </div>
                     {fbPagesError && <div className={styles.errNote}>{fbPagesError}</div>}
                   </div>

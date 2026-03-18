@@ -92,18 +92,10 @@ function hasTruthyString(v: unknown) {
   return !!(asString(v) || "").trim();
 }
 
-function hasGoogleSetting(settingsNode: unknown, product: "ga4" | "gsc") {
-  const node = asRecord(settingsNode);
-  if (product === "ga4") return hasTruthyString(asRecord(node.ga4).property_id) || hasTruthyString(asRecord(node.ga4).measurement_id);
-  return hasTruthyString(asRecord(node.gsc).property);
-}
-
-function isConnectedGoogleStat(rows: IntegrationLite[], source: "site_inrcy" | "site_web", product: "ga4" | "gsc", fallbackSettingsNode?: unknown) {
+function isConnectedGoogleStat(rows: IntegrationLite[], source: "site_inrcy" | "site_web", product: "ga4" | "gsc") {
   const row = latestIntegration(rows, "google", source, product);
   const status = asString(row.status);
-  const integrationConnected = status === "connected" && !isExpired(row.expires_at) && (hasTruthyString(row.access_token_enc) || hasTruthyString(row.refresh_token_enc));
-  if (integrationConnected) return true;
-  return hasGoogleSetting(fallbackSettingsNode, product);
+  return status === "connected" && !isExpired(row.expires_at) && (hasTruthyString(row.access_token_enc) || hasTruthyString(row.refresh_token_enc));
 }
 
 export async function getChannelConnectionStates(supabase: any, userId: string): Promise<ChannelStates> {
@@ -129,10 +121,10 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
   const siteWeb = asRecord(settings.site_web);
   const siteWebUrl = (asString(siteWeb.url) || "").trim();
 
-  const inrcyGa4 = isConnectedGoogleStat(rows, "site_inrcy", "ga4", inrcyCfgSettings);
-  const inrcyGsc = isConnectedGoogleStat(rows, "site_inrcy", "gsc", inrcyCfgSettings);
-  const webGa4 = isConnectedGoogleStat(rows, "site_web", "ga4", siteWeb);
-  const webGsc = isConnectedGoogleStat(rows, "site_web", "gsc", siteWeb);
+  const inrcyGa4 = isConnectedGoogleStat(rows, "site_inrcy", "ga4");
+  const inrcyGsc = isConnectedGoogleStat(rows, "site_inrcy", "gsc");
+  const webGa4 = isConnectedGoogleStat(rows, "site_web", "ga4");
+  const webGsc = isConnectedGoogleStat(rows, "site_web", "gsc");
 
   const fb = latestIntegration(rows, "facebook", "facebook", "facebook");
   const fbSettings = asRecord(settings.facebook);
@@ -141,11 +133,11 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
   const fbExpired = isExpired(fb.expires_at) && !fbHasSelectedPageToken;
   const fbStatus = asString(fb.status);
   const fbHasToken = hasTruthyString(fb.access_token_enc);
-  const fbAccountConnected = Boolean(((fbStatus === "account_connected" || fbStatus === "connected") && !fbExpired && fbHasToken) || fbSettings.accountConnected);
-  const fbResourceId = asString(fb.resource_id) || asString(fbSettings.pageId) || null;
+  const fbAccountConnected = Boolean((fbStatus === "account_connected" || fbStatus === "connected") && !fbExpired && fbHasToken);
+  const fbResourceId = asString(fb.resource_id) || null;
   const fbResourceLabel = asString(fb.resource_label) || asString(fbSettings.pageName) || null;
   const fbPageUrl = asString(asRecord(fb.meta).page_url) || asString(fb.resource_url) || asString(fbSettings.url) || null;
-  const fbPageConnected = Boolean((fbAccountConnected && fbResourceId) || fbSettings.pageConnected);
+  const fbPageConnected = Boolean(fbAccountConnected && fbResourceId);
 
   const ig = latestIntegration(rows, "instagram", "instagram", "instagram");
   const igSettings = asRecord(settings.instagram);
@@ -154,8 +146,8 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
   const igExpired = isExpired(ig.expires_at) && !igHasSelectedProfileToken;
   const igStatus = asString(ig.status);
   const igHasToken = hasTruthyString(ig.access_token_enc);
-  const igAccountConnected = Boolean(((igStatus === "account_connected" || igStatus === "connected") && !igExpired && igHasToken) || igSettings.accountConnected);
-  const igResourceId = asString(ig.resource_id) || asString(igSettings.igId) || asString(igSettings.pageId) || null;
+  const igAccountConnected = Boolean((igStatus === "account_connected" || igStatus === "connected") && !igExpired && igHasToken);
+  const igResourceId = asString(ig.resource_id) || null;
   const igUsername = asString(ig.resource_label) || asString(igSettings.username) || null;
   const igProfileUrl = asString(igSettings.url) || (igUsername ? `https://www.instagram.com/${igUsername}/` : null);
   const igConnected = Boolean(igAccountConnected && igResourceId);
@@ -166,17 +158,17 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
   const liStatus = asString(li.status);
   const liHasToken = hasTruthyString(li.access_token_enc);
   const liMeta = asRecord(li.meta);
-  const liConnected = Boolean(((liStatus === "connected" || liStatus === "account_connected") && !liExpired && liHasToken) || liSettings.accountConnected || liSettings.connected);
+  const liConnected = Boolean((liStatus === "connected" || liStatus === "account_connected") && !liExpired && liHasToken);
 
   const gmb = latestIntegration(rows, "google", "gmb", "gmb");
   const gmbSettings = asRecord(settings.gmb);
   const gmbExpired = isExpired(gmb.expires_at);
   const gmbStatus = asString(gmb.status);
   const gmbHasToken = hasTruthyString(gmb.access_token_enc);
-  const gmbAccountConnected = Boolean(((gmbStatus === "connected" || gmbStatus === "account_connected") && !gmbExpired && gmbHasToken) || gmbSettings.connected || gmbSettings.accountEmail);
-  const gmbResourceId = asString(gmb.resource_id) || asString(gmbSettings.locationName) || null;
+  const gmbAccountConnected = Boolean((gmbStatus === "connected" || gmbStatus === "account_connected") && !gmbExpired && gmbHasToken);
+  const gmbResourceId = asString(gmb.resource_id) || null;
   const gmbResourceLabel = asString(gmb.resource_label) || asString(gmbSettings.locationTitle) || null;
-  const gmbConfigured = Boolean((gmbAccountConnected && gmbResourceId) || (gmbSettings.connected && (gmbSettings.locationName || gmbSettings.locationTitle)));
+  const gmbConfigured = Boolean(gmbAccountConnected && gmbResourceId);
 
   return {
     site_inrcy: {
