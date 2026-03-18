@@ -13,6 +13,7 @@ export default function FacebookPanel(props: any) {
     fbPagesLoading,
     loadFacebookPages,
     fbSelectedPageId,
+    fbSelectedPageName,
     setFbSelectedPageId,
     fbPages,
     saveFacebookPage,
@@ -21,6 +22,11 @@ export default function FacebookPanel(props: any) {
     facebookUrlNotice,
     disconnectFacebookPage
   } = props;
+
+  const hasSelectedPageInList = Boolean(
+    fbSelectedPageId && fbPages.some((p: { id: string; name?: string | null }) => p.id === fbSelectedPageId)
+  );
+  const selectedPageLabel = (fbSelectedPageName || facebookUrl || fbSelectedPageId || "").trim();
 
   return (
               <div style={{ display: "grid", gap: 14 }}>
@@ -96,15 +102,15 @@ export default function FacebookPanel(props: any) {
     	                  }}
     	                />
 
-    	                {!facebookAccountConnected ? (
-    	                  <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectFacebookAccount}>
-    	                    Connecter Facebook
-    	                  </button>
-    	                ) : (
-    	                  <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookAccount}>
-    	                    Déconnecter Facebook
-    	                  </button>
-    	                )}
+    	                                {!facebookAccountConnected ? (
+	                  <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectFacebookAccount}>
+	                    Connecter Facebook
+	                  </button>
+	                ) : (
+	                  <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookAccount}>
+	                    Déconnecter Facebook
+	                  </button>
+	                )}
     	              </div>
     	            </div>
 
@@ -152,6 +158,9 @@ export default function FacebookPanel(props: any) {
                         }}
                       >
                         <option value="">Sélectionner une page</option>
+                        {!hasSelectedPageInList && fbSelectedPageId ? (
+                          <option value={fbSelectedPageId}>{selectedPageLabel}</option>
+                        ) : null}
                         {fbPages.map((p: { id: string; name?: string | null }) => (
                           <option key={p.id} value={p.id}>
                             {p.name || p.id}
@@ -159,14 +168,14 @@ export default function FacebookPanel(props: any) {
                         ))}
                       </select>
 
-    	                  <button
-    	                    type="button"
-    	                    className={`${styles.actionBtn} ${styles.connectBtn}`}
-    	                    onClick={saveFacebookPage}
-    	                    disabled={!fbSelectedPageId}
-    	                  >
-    	                    Connecter la page
-    	                  </button>
+    	                  		                  <button
+		                    type="button"
+		                    className={`${styles.actionBtn} ${facebookPageConnected ? styles.disconnectBtn : styles.connectBtn}`}
+		                    onClick={facebookPageConnected ? disconnectFacebookPage : saveFacebookPage}
+		                    disabled={!fbSelectedPageId}
+		                  >
+		                    {facebookPageConnected ? "Déconnecter la page" : "Connecter la page"}
+		                  </button>
                     </div>
                     {fbPagesError && <div className={styles.errNote}>{fbPagesError}</div>}
                   </div>
