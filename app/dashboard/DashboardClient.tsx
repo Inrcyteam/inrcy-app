@@ -36,8 +36,6 @@ import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants";
 import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
 import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, Module, ModuleAction, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
-import { inferDirtyCubesFromUrlParams, markInrStatsDirty, type InrStatsCubeKey } from "@/lib/inrstatsRefresh";
-import { computeOpportunitySnapshot, type CubeKey as InrCubeKey } from "@/lib/inrstatsOpportunities";
 
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
@@ -115,7 +113,7 @@ export default function DashboardClient() {
       return;
     }
     closePanel();
-  }, [panel, closePanel]);
+  }, []);
 
   // Orientation: gérée globalement via <OrientationGuard />
 
@@ -925,7 +923,6 @@ const attachGoogleAnalytics = useCallback(async () => {
   window.setTimeout(() => setSiteInrcyGa4Notice(null), 2500);
 
   setSiteInrcySettingsError(null);
-  triggerGeneratorRefresh(["site_inrcy"]);
 }, [ga4MeasurementId, ga4PropertyId, siteInrcySettingsText]);
 
 
@@ -963,7 +960,6 @@ const attachGoogleSearchConsole = useCallback(async () => {
   window.setTimeout(() => setSiteInrcyGscNotice(null), 2500);
 
   setSiteInrcySettingsError(null);
-  triggerGeneratorRefresh(["site_inrcy"]);
 }, [gscProperty, siteInrcySettingsText]);
 
 
@@ -1011,27 +1007,6 @@ const connectSiteInrcyGsc = useCallback(() => {
 // ✅ Mode rented : déclenche une activation "serveur" (sans saisie d'IDs)
 // - Si un token Google existe déjà côté Supabase, l'API résout GA4 + GSC via le domaine et remplit les settings.
 // - Sinon, on bascule sur le flow OAuth "activate".
-const fetchFreshOpportunitySnapshot = useCallback(async (days: 30 = 30) => {
-    const includeByCube: Record<InrCubeKey, string> = {
-      site_inrcy: "site_inrcy_ga4,site_inrcy_gsc",
-      site_web: "site_web_ga4,site_web_gsc",
-      gmb: "gmb",
-      facebook: "facebook",
-      instagram: "instagram",
-      linkedin: "linkedin",
-    };
-
-    const entries = await Promise.all(
-      (Object.keys(includeByCube) as InrCubeKey[]).map(async (cube) => {
-        const params = new URLSearchParams({ days: String(days), include: includeByCube[cube], fresh: "1" });
-        const res = await fetch(`/api/stats/overview?${params.toString()}`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`overview:${cube}:${res.status}`);
-        return [cube, await res.json()] as const;
-      })
-    );
-
-    return computeOpportunitySnapshot(Object.fromEntries(entries));
-  }, []);
 const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     const requestSeq = ++kpisRequestSeqRef.current;
     const fresh = options?.fresh === true;
@@ -1049,31 +1024,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
       const json = await res.json();
       if (requestSeq !== kpisRequestSeqRef.current) return;
       setKpis(json);
-      let oppMonth = Number(json?.details?.opportunities?.month);
-      const oppByCube = json?.details?.opportunities?.byCube;
-      const looksStaleZero = (!Number.isFinite(oppMonth) || oppMonth <= 0) && (!oppByCube || Object.values(oppByCube).every((value) => Number(value || 0) <= 0));
-
-      if (fresh || looksStaleZero) {
-        try {
-          const snapshot = await fetchFreshOpportunitySnapshot(30);
-          oppMonth = snapshot.total;
-          setKpis((prev: any) => prev ? ({
-            ...prev,
-            details: {
-              ...(prev.details || {}),
-              opportunities: {
-                ...((prev.details || {}).opportunities || {}),
-                month: snapshot.total,
-                total: snapshot.total,
-                byCube: snapshot.byCube,
-              },
-            },
-          }) : prev);
-        } catch (fallbackErr) {
-          console.error(fallbackErr);
-        }
-      }
-
+      const oppMonth = Number(json?.details?.opportunities?.month);
       if (Number.isFinite(oppMonth)) {
         setOppTotal(oppMonth);
         try {
@@ -1083,17 +1034,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
         }
       }
       try {
-        window.sessionStorage.setItem("inrcy_generator_kpis_v1", JSON.stringify({
-          ...json,
-          details: {
-            ...(json?.details || {}),
-            opportunities: {
-              ...((json?.details || {}).opportunities || {}),
-              month: Number.isFinite(oppMonth) ? oppMonth : Number(json?.details?.opportunities?.month || 0),
-              total: Number.isFinite(oppMonth) ? oppMonth : Number(json?.details?.opportunities?.total || 0),
-            },
-          },
-        }));
+        window.sessionStorage.setItem("inrcy_generator_kpis_v1", JSON.stringify(json));
       } catch {
         // ignore
       }
@@ -1107,12 +1048,11 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
         setKpisLoading(false);
       }
     }
-  }, [fetchFreshOpportunitySnapshot]);
+  }, []);
 
-  const notifyStatsRefresh = useCallback((cubes?: InrStatsCubeKey[] | "all") => {
+  const notifyStatsRefresh = useCallback(() => {
     if (typeof window === "undefined") return;
-    markInrStatsDirty(cubes ?? "all");
-    window.dispatchEvent(new CustomEvent("inrcy:channels-updated", { detail: { at: Date.now(), cubes: cubes ?? "all" } }));
+    window.dispatchEvent(new CustomEvent("inrcy:channels-updated", { detail: { at: Date.now() } }));
   }, []);
 
   const refreshTimersRef = useRef<number[]>([]);
@@ -1123,27 +1063,18 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     refreshTimersRef.current = [];
   }, []);
 
-  const triggerGeneratorRefresh = useCallback(async (cubes?: InrStatsCubeKey[] | "all") => {
-    const target = cubes ?? "all";
+  const triggerGeneratorRefresh = useCallback(async () => {
     const runSync = async () => {
       lastGeneratorRefreshAtRef.current = Date.now();
-      notifyStatsRefresh(target);
       await Promise.allSettled([
         loadSiteInrcy(),
         refreshKpis({ fresh: true }),
       ]);
-      notifyStatsRefresh(target);
+      notifyStatsRefresh();
     };
 
     clearScheduledGeneratorRefreshes();
     await runSync();
-
-    [900, 2400].forEach((delayMs) => {
-      const timerId = window.setTimeout(() => {
-        void runSync();
-      }, delayMs);
-      refreshTimersRef.current.push(timerId);
-    });
   }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshKpis]);
 
   // ✅ Opportunités activables (iNrStats) — lues directement depuis /api/metrics/summary.
@@ -1223,8 +1154,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     const toast = searchParams.get("toast");
     const warning = searchParams.get("warning");
     if (!linked && !activated && !ok && !toast && !warning) return;
-    const dirtyFromParams = inferDirtyCubesFromUrlParams(searchParams);
-    triggerGeneratorRefresh(dirtyFromParams.length ? dirtyFromParams : "all");
+    triggerGeneratorRefresh();
   }, [searchParams, triggerGeneratorRefresh]);
 
 
@@ -1277,7 +1207,7 @@ const activateSiteInrcyTracking = useCallback(async () => {
   }, 2500);
 
   // Rafraîchit le générateur sans recharger la page
-  triggerGeneratorRefresh(["site_inrcy"]);
+  triggerGeneratorRefresh();
 }, [siteInrcyOwnership, siteInrcyUrl, triggerGeneratorRefresh]);
 
 // ✅ Mode rented : désactive le suivi (GA4+GSC) et nettoie les settings.
@@ -1321,7 +1251,7 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
   setSiteInrcyTrackingBusy(false);
 
   // Rafraîchit le générateur sans recharger la page
-  triggerGeneratorRefresh(["site_inrcy"]);
+  triggerGeneratorRefresh();
 }, [siteInrcyOwnership, triggerGeneratorRefresh]);
 
 
@@ -1384,7 +1314,7 @@ const disconnectGoogleStats = useCallback(
       }
     }
 
-    triggerGeneratorRefresh([source]);
+    triggerGeneratorRefresh();
   },
   [
     removeGoogleProductFromSettings,
@@ -1444,7 +1374,7 @@ const saveSiteInrcyUrl = useCallback(async () => {
 
   setSiteInrcySettingsError(null);
   setSiteInrcySavedUrl(url);
-  triggerGeneratorRefresh(["site_inrcy"]);
+  triggerGeneratorRefresh();
   setSiteInrcyUrlNotice("✅ Lien du site enregistré");
   window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
 }, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl]);
@@ -1513,7 +1443,7 @@ const saveSiteWebUrl = useCallback(async () => {
 
   await updateSiteWebSettings(parsed);
   setSiteWebSavedUrl(url);
-  triggerGeneratorRefresh(["site_web"]);
+  triggerGeneratorRefresh();
   setSiteWebUrlNotice("✅ Lien du site enregistré");
   window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
 }, [normalizeSiteUrl, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
@@ -1560,7 +1490,7 @@ const resetSiteInrcyAll = useCallback(async () => {
   setGscProperty("");
   setSiteInrcyGa4Connected(false);
   setSiteInrcyGscConnected(false);
-  triggerGeneratorRefresh(["site_inrcy"]);
+  triggerGeneratorRefresh();
 }, [resetGoogleStats, siteInrcyOwnership, triggerGeneratorRefresh, updateSiteInrcySettings]);
 
 const resetSiteWebAll = useCallback(async () => {
@@ -1579,7 +1509,7 @@ const resetSiteWebAll = useCallback(async () => {
   setSiteWebGscProperty("");
   setSiteWebGa4Connected(false);
   setSiteWebGscConnected(false);
-  triggerGeneratorRefresh(["site_web"]);
+  triggerGeneratorRefresh();
 }, [resetGoogleStats, updateSiteWebSettings, triggerGeneratorRefresh]);
 
 // ✅ Houzz / Pages Jaunes (liens uniquement, stockés dans inrcy_site_configs.settings)
@@ -1621,7 +1551,7 @@ const disconnectGmbAccount = useCallback(async () => {
   await fetch("/api/integrations/google-business/disconnect-account", { method: "POST" });
   setGmbConnected(false);
   setGmbAccountConnected(false);
-  triggerGeneratorRefresh(["gmb"]);
+  triggerGeneratorRefresh();
   setGmbConfigured(false);
   setGmbAccountEmail("");
   setGmbUrl("");
@@ -1633,7 +1563,7 @@ const disconnectGmbBusiness = useCallback(async () => {
   await fetch("/api/integrations/google-business/disconnect-location", { method: "POST" });
   setGmbConfigured(false);
   setGmbUrl("");
-  triggerGeneratorRefresh(["gmb"]);
+  triggerGeneratorRefresh();
   await updateRootSettingsKey("gmb", { url: "", resource_id: "" });
 }, [updateRootSettingsKey, triggerGeneratorRefresh]);
 
@@ -1669,7 +1599,7 @@ const disconnectFacebookAccount = useCallback(async () => {
 	  await fetch("/api/integrations/facebook/disconnect-account", { method: "POST" });
 	  setFacebookAccountConnected(false);
 	  setFacebookPageConnected(false);
-	  triggerGeneratorRefresh(["facebook"]);
+	  triggerGeneratorRefresh();
 	  setFacebookAccountEmail("");
 	  // Keep a lightweight mirror in pro_tools_configs for instant UI updates.
 	  await updateRootSettingsKey("facebook", {
@@ -1689,7 +1619,7 @@ const disconnectFacebookAccount = useCallback(async () => {
 const disconnectFacebookPage = useCallback(async () => {
 	  await fetch("/api/integrations/facebook/disconnect-page", { method: "POST" });
 	  setFacebookPageConnected(false);
-	  triggerGeneratorRefresh(["facebook"]);
+	  triggerGeneratorRefresh();
 	  await updateRootSettingsKey("facebook", {
 	    accountConnected: true,
 	    pageConnected: false,
@@ -1738,7 +1668,6 @@ const loadFacebookPages = useCallback(async () => {
         setFbSelectedPageName(String(only.name || ""));
         setFacebookPageConnected(true);
         setFacebookUrl(`https://www.facebook.com/${only.id}`);
-        triggerGeneratorRefresh(["facebook"]);
       }
     }
   } catch (e: any) {
@@ -1746,7 +1675,7 @@ const loadFacebookPages = useCallback(async () => {
   } finally {
     setFbPagesLoading(false);
   }
-	}, [facebookAccountConnected, fbSelectedPageId, triggerGeneratorRefresh]);
+	}, [facebookAccountConnected, fbSelectedPageId]);
 
 const saveFacebookPage = useCallback(async () => {
   const picked = fbPages.find((p) => p.id === fbSelectedPageId);
@@ -1767,7 +1696,7 @@ const saveFacebookPage = useCallback(async () => {
     setFacebookUrl(String(j?.pageUrl || `https://www.facebook.com/${picked.id}`));
 	    setFacebookPageConnected(true);
 	    setFbSelectedPageName(picked.name || "");
-    triggerGeneratorRefresh(["facebook"]);
+    triggerGeneratorRefresh();
     setFacebookUrlNotice("Enregistré ✓");
     window.setTimeout(() => setFacebookUrlNotice(null), 2200);
   } else {
@@ -1787,7 +1716,7 @@ const disconnectInstagramAccount = useCallback(async () => {
   await fetch("/api/integrations/instagram/disconnect-account", { method: "POST" });
   setInstagramAccountConnected(false);
   setInstagramConnected(false);
-  triggerGeneratorRefresh(["instagram"]);
+  triggerGeneratorRefresh();
   setInstagramUsername("");
   setInstagramUrl("");
   setIgAccounts([]);
@@ -1805,7 +1734,7 @@ const disconnectInstagramAccount = useCallback(async () => {
 const disconnectInstagramProfile = useCallback(async () => {
   await fetch("/api/integrations/instagram/disconnect-profile", { method: "POST" });
   setInstagramConnected(false);
-  triggerGeneratorRefresh(["instagram"]);
+  triggerGeneratorRefresh();
   setInstagramUsername("");
   setInstagramUrl("");
   setIgSelectedPageId("");
@@ -1841,7 +1770,7 @@ const loadInstagramAccounts = useCallback(async () => {
       setInstagramConnected(true);
       setInstagramUsername(String(only.username || ""));
       setInstagramUrl(only.username ? `https://www.instagram.com/${only.username}/` : "");
-      triggerGeneratorRefresh(["instagram"]);
+      triggerGeneratorRefresh();
       setInstagramUrlNotice("Enregistré ✓");
       window.setTimeout(() => setInstagramUrlNotice(null), 2200);
     }
@@ -1866,7 +1795,7 @@ const saveInstagramProfile = useCallback(async () => {
     setInstagramConnected(true);
     if (j?.username) setInstagramUsername(String(j.username));
     if (j?.profileUrl) setInstagramUrl(String(j.profileUrl));
-    triggerGeneratorRefresh(["instagram"]);
+    triggerGeneratorRefresh();
     setInstagramUrlNotice("Enregistré ✓");
     window.setTimeout(() => setInstagramUrlNotice(null), 2200);
   } else {
@@ -1885,7 +1814,7 @@ const disconnectLinkedinAccount = useCallback(async () => {
   await fetch("/api/integrations/linkedin/disconnect-account", { method: "POST" });
   setLinkedinAccountConnected(false);
   setLinkedinConnected(false);
-  triggerGeneratorRefresh(["linkedin"]);
+  triggerGeneratorRefresh();
   setLinkedinDisplayName("");
   setLinkedinUrl("");
   await updateRootSettingsKey("linkedin", {
@@ -1921,7 +1850,7 @@ const saveLinkedinProfileUrl = useCallback(async () => {
     url: raw,
   });
 
-  triggerGeneratorRefresh(["linkedin"]);
+  triggerGeneratorRefresh();
   setLinkedinUrlNotice("Lien enregistré ✅");
   window.setTimeout(() => setLinkedinUrlNotice(null), 1800);
 }, [linkedinUrl, linkedinAccountConnected, linkedinConnected, linkedinDisplayName, updateRootSettingsKey, triggerGeneratorRefresh]);
@@ -1964,7 +1893,7 @@ const saveGmbLocation = useCallback(async () => {
   if (!res.ok) throw new Error(js?.error || "Impossible d’enregistrer l’établissement");
 
   if (js?.url) setGmbUrl(String(js.url));
-  triggerGeneratorRefresh(["gmb"]);
+  triggerGeneratorRefresh();
   setGmbUrlNotice("Établissement enregistré ✅");
   window.setTimeout(() => setGmbUrlNotice(null), 1800);
 }, [gmbAccountName, gmbLocationName, gmbLocations, triggerGeneratorRefresh]);
@@ -1983,7 +1912,7 @@ const saveSiteWebSettings = useCallback(async () => {
   parsed.url = siteWebUrl.trim();
 
   await updateSiteWebSettings(parsed);
-  triggerGeneratorRefresh(["site_web"]);
+  triggerGeneratorRefresh();
   setSiteWebGa4Notice("✅ Enregistrement GA4 validé");
   window.setTimeout(() => setSiteWebGa4Notice(null), 2500);
 
@@ -2016,7 +1945,6 @@ const attachWebsiteGoogleAnalytics = useCallback(async () => {
   await updateSiteWebSettings(parsed);
   setSiteWebGa4Notice("✅ Enregistrement GA4 validé");
   window.setTimeout(() => setSiteWebGa4Notice(null), 2500);
-  triggerGeneratorRefresh(["site_web"]);
 
 }, [siteWebGa4MeasurementId, siteWebGa4PropertyId, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
 
@@ -2039,7 +1967,7 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
   parsed.gsc = { ...(parsed.gsc ?? {}), property };
 
   await updateSiteWebSettings(parsed);
-  triggerGeneratorRefresh(["site_web"]);
+  triggerGeneratorRefresh();
 }, [siteWebGscProperty, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
 
 

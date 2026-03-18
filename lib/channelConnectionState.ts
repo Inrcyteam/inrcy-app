@@ -78,22 +78,14 @@ function isExpired(expiresAt: unknown, skewSeconds = 60) {
   return t <= Date.now() + skewSeconds * 1000;
 }
 
-function matchingIntegrations(rows: IntegrationLite[], provider: string, source: string, product: string): IntegrationLite[] {
+function latestIntegration(rows: IntegrationLite[], provider: string, source: string, product: string): JsonRecord {
   const filtered = rows.filter((row) => row.provider === provider && row.source === source && row.product === product);
   filtered.sort((a, b) => {
     const at = new Date(String(a.updated_at || a.created_at || 0)).getTime();
     const bt = new Date(String(b.updated_at || b.created_at || 0)).getTime();
     return bt - at;
   });
-  return filtered;
-}
-
-function latestIntegration(rows: IntegrationLite[], provider: string, source: string, product: string): JsonRecord {
-  return asRecord(matchingIntegrations(rows, provider, source, product)[0]);
-}
-
-function hasIntegrationHistory(rows: IntegrationLite[], provider: string, source: string, product: string) {
-  return matchingIntegrations(rows, provider, source, product).length > 0;
+  return asRecord(filtered[0]);
 }
 
 function hasTruthyString(v: unknown) {
@@ -108,10 +100,9 @@ function hasGoogleSetting(settingsNode: unknown, product: "ga4" | "gsc") {
 
 function isConnectedGoogleStat(rows: IntegrationLite[], source: "site_inrcy" | "site_web", product: "ga4" | "gsc", fallbackSettingsNode?: unknown) {
   const row = latestIntegration(rows, "google", source, product);
-  const hasHistory = hasIntegrationHistory(rows, "google", source, product);
   const status = asString(row.status);
   const integrationConnected = status === "connected" && !isExpired(row.expires_at) && (hasTruthyString(row.access_token_enc) || hasTruthyString(row.refresh_token_enc));
-  if (hasHistory) return integrationConnected;
+  if (integrationConnected) return true;
   return hasGoogleSetting(fallbackSettingsNode, product);
 }
 
@@ -150,16 +141,11 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
   const fbExpired = isExpired(fb.expires_at) && !fbHasSelectedPageToken;
   const fbStatus = asString(fb.status);
   const fbHasToken = hasTruthyString(fb.access_token_enc);
-  const fbHasHistory = hasIntegrationHistory(rows, "facebook", "facebook", "facebook");
-  const fbAccountConnected = fbHasHistory
-    ? Boolean((fbStatus === "account_connected" || fbStatus === "connected") && !fbExpired && fbHasToken)
-    : Boolean(fbSettings.accountConnected);
+  const fbAccountConnected = Boolean(((fbStatus === "account_connected" || fbStatus === "connected") && !fbExpired && fbHasToken) || fbSettings.accountConnected);
   const fbResourceId = asString(fb.resource_id) || asString(fbSettings.pageId) || null;
   const fbResourceLabel = asString(fb.resource_label) || asString(fbSettings.pageName) || null;
   const fbPageUrl = asString(asRecord(fb.meta).page_url) || asString(fb.resource_url) || asString(fbSettings.url) || null;
-  const fbPageConnected = fbHasHistory
-    ? Boolean(fbAccountConnected && fbResourceId)
-    : Boolean((fbAccountConnected && fbResourceId) || fbSettings.pageConnected);
+  const fbPageConnected = Boolean((fbAccountConnected && fbResourceId) || fbSettings.pageConnected);
 
   const ig = latestIntegration(rows, "instagram", "instagram", "instagram");
   const igSettings = asRecord(settings.instagram);
@@ -168,16 +154,11 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
   const igExpired = isExpired(ig.expires_at) && !igHasSelectedProfileToken;
   const igStatus = asString(ig.status);
   const igHasToken = hasTruthyString(ig.access_token_enc);
-  const igHasHistory = hasIntegrationHistory(rows, "instagram", "instagram", "instagram");
-  const igAccountConnected = igHasHistory
-    ? Boolean((igStatus === "account_connected" || igStatus === "connected") && !igExpired && igHasToken)
-    : Boolean(igSettings.accountConnected);
+  const igAccountConnected = Boolean(((igStatus === "account_connected" || igStatus === "connected") && !igExpired && igHasToken) || igSettings.accountConnected);
   const igResourceId = asString(ig.resource_id) || asString(igSettings.igId) || asString(igSettings.pageId) || null;
   const igUsername = asString(ig.resource_label) || asString(igSettings.username) || null;
   const igProfileUrl = asString(igSettings.url) || (igUsername ? `https://www.instagram.com/${igUsername}/` : null);
-  const igConnected = igHasHistory
-    ? Boolean(igAccountConnected && igResourceId)
-    : Boolean(igAccountConnected && igResourceId);
+  const igConnected = Boolean(igAccountConnected && igResourceId);
 
   const li = latestIntegration(rows, "linkedin", "linkedin", "linkedin");
   const liSettings = asRecord(settings.linkedin);
@@ -185,25 +166,17 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
   const liStatus = asString(li.status);
   const liHasToken = hasTruthyString(li.access_token_enc);
   const liMeta = asRecord(li.meta);
-  const liHasHistory = hasIntegrationHistory(rows, "linkedin", "linkedin", "linkedin");
-  const liConnected = liHasHistory
-    ? Boolean((liStatus === "connected" || liStatus === "account_connected") && !liExpired && liHasToken)
-    : Boolean(liSettings.accountConnected || liSettings.connected);
+  const liConnected = Boolean(((liStatus === "connected" || liStatus === "account_connected") && !liExpired && liHasToken) || liSettings.accountConnected || liSettings.connected);
 
   const gmb = latestIntegration(rows, "google", "gmb", "gmb");
   const gmbSettings = asRecord(settings.gmb);
   const gmbExpired = isExpired(gmb.expires_at);
   const gmbStatus = asString(gmb.status);
   const gmbHasToken = hasTruthyString(gmb.access_token_enc);
-  const gmbHasHistory = hasIntegrationHistory(rows, "google", "gmb", "gmb");
-  const gmbAccountConnected = gmbHasHistory
-    ? Boolean((gmbStatus === "connected" || gmbStatus === "account_connected") && !gmbExpired && gmbHasToken)
-    : Boolean(gmbSettings.connected || gmbSettings.accountEmail);
+  const gmbAccountConnected = Boolean(((gmbStatus === "connected" || gmbStatus === "account_connected") && !gmbExpired && gmbHasToken) || gmbSettings.connected || gmbSettings.accountEmail);
   const gmbResourceId = asString(gmb.resource_id) || asString(gmbSettings.locationName) || null;
   const gmbResourceLabel = asString(gmb.resource_label) || asString(gmbSettings.locationTitle) || null;
-  const gmbConfigured = gmbHasHistory
-    ? Boolean(gmbAccountConnected && gmbResourceId)
-    : Boolean((gmbAccountConnected && gmbResourceId) || (gmbSettings.connected && (gmbSettings.locationName || gmbSettings.locationTitle)));
+  const gmbConfigured = Boolean((gmbAccountConnected && gmbResourceId) || (gmbSettings.connected && (gmbSettings.locationName || gmbSettings.locationTitle)));
 
   return {
     site_inrcy: {
