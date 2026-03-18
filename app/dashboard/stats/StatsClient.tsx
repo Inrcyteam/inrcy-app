@@ -884,6 +884,7 @@ export default function StatsClient() {
   const hydratedPeriodsRef = useRef(new Set<number>());
   const lastAutoRefreshAtRef = useRef(0);
   const refreshTimeoutRef = useRef<number | null>(null);
+  const hasAutoRefreshedRef = useRef(false);
 
   const clearCachedSnapshots = useCallback(() => {
     periodCacheRef.current.clear();
@@ -1143,6 +1144,15 @@ useEffect(() => {
     };
   }, [triggerRefresh]);
 
+  useEffect(() => {
+    if (hasAutoRefreshedRef.current) return;
+
+    hasAutoRefreshedRef.current = true;
+    lastAutoRefreshAtRef.current = Date.now();
+    triggerRefresh("manual");
+  }, [triggerRefresh]);
+
+
   const models: CubeModel[] = useMemo(() => {
     const build = (key: CubeKey, title: string, subtitle: string): CubeModel => {
       const periodForModel = period;
@@ -1257,8 +1267,8 @@ const provenance = buildProvenance(key, ov);
           </div>
 
           <div className={styles.headerActions}>
-            {/* ✅ Sélecteur global 7j / 30j */}
-            <div className={styles.headerPills}>
+            <div className={styles.headerCloseControls}>
+              <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Stats" />
               <PeriodSelect value={period} onChange={setPeriod} />
               <ResponsiveActionButton
                 desktopLabel={isRefreshing ? "Actualisation…" : "Actualiser"}
@@ -1267,13 +1277,7 @@ const provenance = buildProvenance(key, ov);
                 ariaLabel="Actualiser les données iNrStats"
                 title={lastRefreshAt ? `Dernière actualisation : ${new Date(lastRefreshAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Actualiser les données iNrStats"}
               />
-            </div>
-
-            <div className={styles.headerClose}>
-              <div className={styles.headerCloseControls}>
-                <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Stats" />
-                <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
-              </div>
+              <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
             </div>
           </div>
         </div>
