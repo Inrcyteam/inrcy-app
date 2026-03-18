@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./stats.module.css";
 import Image from "next/image";
@@ -503,8 +503,6 @@ function computeQuality(cubeKey: CubeKey, ov: Overview) {
 }
 
 function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): CubeModel["action"] {
-  const returnTo = encodeURIComponent("/dashboard/stats");
-
   // Connection states
   
 if (cubeKey === "site_inrcy") {
@@ -516,7 +514,7 @@ if (cubeKey === "site_inrcy") {
       key: "connect",
       title: "Configurer",
       detail: "Aucun site iNrCy associé pour le moment.",
-      href: "/dashboard",
+      href: "/dashboard?panel=site_inrcy",
       pill: "Connexion",
     };
   }
@@ -529,7 +527,7 @@ if (cubeKey === "site_inrcy") {
         key: "connect",
         title: "Activer",
         detail: "Active le suivi du site iNrCy (GA4 + Search Console) via iNrCy.",
-        href: "/dashboard",
+        href: "/dashboard?panel=site_inrcy",
         pill: "Connexion",
       };
     }
@@ -541,7 +539,7 @@ if (cubeKey === "site_inrcy") {
         key: "connect",
         title: "Connecter GA4",
         detail: "Pour analyser vos visiteurs et leur comportement.",
-        href: `/api/integrations/google-stats/start?source=site_inrcy&product=ga4&returnTo=${returnTo}`,
+        href: "/dashboard?panel=site_inrcy",
         pill: "Connexion",
       };
     }
@@ -550,7 +548,7 @@ if (cubeKey === "site_inrcy") {
         key: "connect",
         title: "Connecter Google Search Console",
         detail: "Pour lire les intentions de recherche (mots-clés).",
-        href: `/api/integrations/google-stats/start?source=site_inrcy&product=gsc&returnTo=${returnTo}`,
+        href: "/dashboard?panel=site_inrcy",
         pill: "Connexion",
       };
     }
@@ -564,7 +562,7 @@ if (cubeKey === "site_web") {
         key: "connect",
         title: "Connecter GA4",
         detail: "Pour analyser vos visiteurs et leur comportement.",
-        href: `/api/integrations/google-stats/start?source=site_web&product=ga4&returnTo=${returnTo}`,
+        href: "/dashboard?panel=site_web",
         pill: "Connexion",
       };
     }
@@ -573,7 +571,7 @@ if (cubeKey === "site_web") {
         key: "connect",
         title: "Connecter Google Search Console",
         detail: "Pour lire les intentions de recherche (mots-clés).",
-        href: `/api/integrations/google-stats/start?source=site_web&product=gsc&returnTo=${returnTo}`,
+        href: "/dashboard?panel=site_web",
         pill: "Connexion",
       };
     }
@@ -585,7 +583,7 @@ if (cubeKey === "site_web") {
         key: "connect",
         title: "Connecter Google Business",
         detail: "Pour capter les demandes locales (appels, itinéraires, clics site).",
-        href: `/api/integrations/google-business/start?returnTo=${returnTo}`,
+        href: "/dashboard?panel=gmb",
         pill: "Connexion",
       };
     }
@@ -597,7 +595,7 @@ if (cubeKey === "site_web") {
         key: "connect",
         title: "Connecter Facebook",
         detail: "Pour activer la visibilité sociale et la communauté.",
-        href: `/api/integrations/facebook/start?returnTo=${returnTo}`,
+        href: "/dashboard?panel=facebook",
         pill: "Connexion",
       };
     }
@@ -609,7 +607,7 @@ if (cubeKey === "site_web") {
         key: "connect",
         title: "Connecter Instagram",
         detail: "Pour activer la visibilité de votre marque.",
-        href: `/api/integrations/instagram/start?returnTo=${returnTo}`,
+        href: "/dashboard?panel=instagram",
         pill: "Connexion",
       };
     }
@@ -621,7 +619,7 @@ if (cubeKey === "site_web") {
         key: "connect",
         title: "Connecter LinkedIn",
         detail: "Pour activer la crédibilité.",
-        href: `/api/integrations/linkedin/start?returnTo=${returnTo}`,
+        href: "/dashboard?panel=linkedin",
         pill: "Connexion",
       };
     }
@@ -838,6 +836,8 @@ function PeriodSelect({ value, onChange }: { value: Period; onChange: (p: Period
 
 export default function StatsClient() {
   const [helpOpen, setHelpOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
   const router = useRouter();
 
   const inrcyRef = useRef<HTMLDivElement | null>(null);
@@ -882,6 +882,28 @@ export default function StatsClient() {
   const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
   const [refreshNonce, setRefreshNonce] = useState(0);
   const hydratedPeriodsRef = useRef(new Set<number>());
+  const lastAutoRefreshAtRef = useRef(0);
+  const refreshTimeoutRef = useRef<number | null>(null);
+
+  const clearCachedSnapshots = useCallback(() => {
+    periodCacheRef.current.clear();
+    try {
+      for (const p of AVAILABLE_PERIODS) {
+        window.sessionStorage.removeItem(cubeSessionKey(p));
+        window.sessionStorage.removeItem(summarySessionKey(p));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const triggerRefresh = useCallback((reason: "manual" | "focus" | "channels") => {
+    clearCachedSnapshots();
+    setIsRefreshing(true);
+    setLastRefreshAt(Date.now());
+    setRefreshNonce((prev) => prev + 1);
+    if (reason === "manual") router.refresh();
+  }, [clearCachedSnapshots, router]);
 
 
   const fetchCube = async (key: CubeKey, period: Period, forceFresh = false) => {
@@ -1076,16 +1098,50 @@ useEffect(() => {
   }, [period, refreshNonce]);
 
   useEffect(() => {
+    if (!isRefreshing) return;
+    if (refreshTimeoutRef.current) {
+      window.clearTimeout(refreshTimeoutRef.current);
+    }
+    refreshTimeoutRef.current = window.setTimeout(() => {
+      setIsRefreshing(false);
+      refreshTimeoutRef.current = null;
+    }, 900);
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        window.clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+    };
+  }, [isRefreshing, refreshNonce]);
+
+  useEffect(() => {
     const handleChannelsUpdated = () => {
-      periodCacheRef.current.clear();
-      setRefreshNonce((prev) => prev + 1);
+      triggerRefresh("channels");
+    };
+
+    const handleFocusRefresh = () => {
+      const now = Date.now();
+      if (now - lastAutoRefreshAtRef.current < 1500) return;
+      lastAutoRefreshAtRef.current = now;
+      triggerRefresh("focus");
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        handleFocusRefresh();
+      }
     };
 
     window.addEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
+    window.addEventListener("focus", handleFocusRefresh);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
+      window.removeEventListener("focus", handleFocusRefresh);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [triggerRefresh]);
 
   const models: CubeModel[] = useMemo(() => {
     const build = (key: CubeKey, title: string, subtitle: string): CubeModel => {
@@ -1204,6 +1260,13 @@ const provenance = buildProvenance(key, ov);
             {/* ✅ Sélecteur global 7j / 30j */}
             <div className={styles.headerPills}>
               <PeriodSelect value={period} onChange={setPeriod} />
+              <ResponsiveActionButton
+                desktopLabel={isRefreshing ? "Actualisation…" : "Actualiser"}
+                mobileIcon="↻"
+                onClick={() => triggerRefresh("manual")}
+                ariaLabel="Actualiser les données iNrStats"
+                title={lastRefreshAt ? `Dernière actualisation : ${new Date(lastRefreshAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Actualiser les données iNrStats"}
+              />
             </div>
 
             <div className={styles.headerClose}>
