@@ -135,44 +135,48 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
   const webGsc = isConnectedGoogleStat(rows, "site_web", "gsc", siteWeb);
 
   const fb = latestIntegration(rows, "facebook", "facebook", "facebook");
+  const fbSettings = asRecord(settings.facebook);
   const fbMeta = asRecord(fb.meta);
   const fbHasSelectedPageToken = hasTruthyString(fbMeta.selected) || hasTruthyString(fb.resource_id);
   const fbExpired = isExpired(fb.expires_at) && !fbHasSelectedPageToken;
   const fbStatus = asString(fb.status);
   const fbHasToken = hasTruthyString(fb.access_token_enc);
-  const fbAccountConnected = Boolean((fbStatus === "account_connected" || fbStatus === "connected") && !fbExpired && fbHasToken);
-  const fbResourceId = asString(fb.resource_id) || null;
-  const fbResourceLabel = asString(fb.resource_label) || null;
-  const fbPageUrl = asString(asRecord(fb.meta).page_url) || asString(fb.resource_url) || null;
-  const fbPageConnected = Boolean(fbAccountConnected && fbResourceId);
+  const fbAccountConnected = Boolean(((fbStatus === "account_connected" || fbStatus === "connected") && !fbExpired && fbHasToken) || fbSettings.accountConnected);
+  const fbResourceId = asString(fb.resource_id) || asString(fbSettings.pageId) || null;
+  const fbResourceLabel = asString(fb.resource_label) || asString(fbSettings.pageName) || null;
+  const fbPageUrl = asString(asRecord(fb.meta).page_url) || asString(fb.resource_url) || asString(fbSettings.url) || null;
+  const fbPageConnected = Boolean((fbAccountConnected && fbResourceId) || fbSettings.pageConnected);
 
   const ig = latestIntegration(rows, "instagram", "instagram", "instagram");
+  const igSettings = asRecord(settings.instagram);
   const igMeta = asRecord(ig.meta);
   const igHasSelectedProfileToken = hasTruthyString(igMeta.page_id) || hasTruthyString(ig.resource_id);
   const igExpired = isExpired(ig.expires_at) && !igHasSelectedProfileToken;
   const igStatus = asString(ig.status);
   const igHasToken = hasTruthyString(ig.access_token_enc);
-  const igAccountConnected = Boolean((igStatus === "account_connected" || igStatus === "connected") && !igExpired && igHasToken);
-  const igResourceId = asString(ig.resource_id) || null;
-  const igUsername = asString(ig.resource_label) || null;
-  const igProfileUrl = igUsername ? `https://www.instagram.com/${igUsername}/` : null;
+  const igAccountConnected = Boolean(((igStatus === "account_connected" || igStatus === "connected") && !igExpired && igHasToken) || igSettings.accountConnected);
+  const igResourceId = asString(ig.resource_id) || asString(igSettings.igId) || asString(igSettings.pageId) || null;
+  const igUsername = asString(ig.resource_label) || asString(igSettings.username) || null;
+  const igProfileUrl = asString(igSettings.url) || (igUsername ? `https://www.instagram.com/${igUsername}/` : null);
   const igConnected = Boolean(igAccountConnected && igResourceId);
 
   const li = latestIntegration(rows, "linkedin", "linkedin", "linkedin");
+  const liSettings = asRecord(settings.linkedin);
   const liExpired = isExpired(li.expires_at);
   const liStatus = asString(li.status);
   const liHasToken = hasTruthyString(li.access_token_enc);
   const liMeta = asRecord(li.meta);
-  const liConnected = Boolean((liStatus === "connected" || liStatus === "account_connected") && !liExpired && liHasToken);
+  const liConnected = Boolean(((liStatus === "connected" || liStatus === "account_connected") && !liExpired && liHasToken) || liSettings.accountConnected || liSettings.connected);
 
   const gmb = latestIntegration(rows, "google", "gmb", "gmb");
+  const gmbSettings = asRecord(settings.gmb);
   const gmbExpired = isExpired(gmb.expires_at);
   const gmbStatus = asString(gmb.status);
   const gmbHasToken = hasTruthyString(gmb.access_token_enc);
-  const gmbAccountConnected = Boolean((gmbStatus === "connected" || gmbStatus === "account_connected") && !gmbExpired && gmbHasToken);
-  const gmbResourceId = asString(gmb.resource_id) || null;
-  const gmbResourceLabel = asString(gmb.resource_label) || null;
-  const gmbConfigured = Boolean(gmbAccountConnected && gmbResourceId);
+  const gmbAccountConnected = Boolean(((gmbStatus === "connected" || gmbStatus === "account_connected") && !gmbExpired && gmbHasToken) || gmbSettings.connected || gmbSettings.accountEmail);
+  const gmbResourceId = asString(gmb.resource_id) || asString(gmbSettings.locationName) || null;
+  const gmbResourceLabel = asString(gmb.resource_label) || asString(gmbSettings.locationTitle) || null;
+  const gmbConfigured = Boolean((gmbAccountConnected && gmbResourceId) || (gmbSettings.connected && (gmbSettings.locationName || gmbSettings.locationTitle)));
 
   return {
     site_inrcy: {
@@ -194,7 +198,7 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
       expired: gmbExpired,
       resource_id: gmbResourceId,
       resource_label: gmbResourceLabel,
-      email: asString(gmb.email_address) || null,
+      email: asString(gmb.email_address) || asString(gmbSettings.accountEmail) || null,
     },
     facebook: {
       accountConnected: fbAccountConnected,
@@ -203,7 +207,7 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
       expired: fbExpired,
       resource_id: fbResourceId,
       resource_label: fbResourceLabel,
-      user_email: asString(fb.email_address) || null,
+      user_email: asString(fb.email_address) || asString(fbSettings.userEmail) || null,
       page_url: fbPageUrl,
     },
     instagram: {
@@ -211,16 +215,16 @@ export async function getChannelConnectionStates(supabase: any, userId: string):
       connected: igConnected,
       expired: igExpired,
       resource_id: igResourceId,
-      username: igConnected ? igUsername : null,
-      profile_url: igConnected ? igProfileUrl : null,
+      username: igUsername,
+      profile_url: igProfileUrl,
     },
     linkedin: {
       accountConnected: liConnected,
       connected: liConnected,
       expired: liExpired,
-      resource_id: liConnected ? asString(li.resource_id) || null : null,
-      display_name: liConnected ? asString(li.resource_label) || asString(li.display_name) || null : null,
-      profile_url: liConnected ? asString(liMeta.profile_url) || asString(liMeta.profile) || null : null,
+      resource_id: asString(li.resource_id) || null,
+      display_name: asString(li.resource_label) || asString(li.display_name) || asString(liSettings.displayName) || null,
+      profile_url: asString(liMeta.profile_url) || asString(liMeta.profile) || asString(liSettings.url) || null,
     },
   };
 }
