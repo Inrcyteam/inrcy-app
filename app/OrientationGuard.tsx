@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import styles from "./orientationGuard.module.css";
 import { usePathname, useRouter } from "next/navigation";
@@ -9,7 +9,11 @@ export default function OrientationGuard() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [mounted, setMounted] = useState(false);
+  const isClient = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false
+  );
 
   // ✅ Mobile + tablette uniquement (≤ 1024px)
   const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
@@ -23,8 +27,6 @@ export default function OrientationGuard() {
   const mustBeLandscape = landscapeRoutes.some((r) => pathname?.startsWith(r));
 
   useEffect(() => {
-    setMounted(true);
-
     const check = () => {
       setIsMobileOrTablet(window.innerWidth <= 1024);
       setIsLandscape(window.innerWidth > window.innerHeight);
@@ -85,7 +87,7 @@ export default function OrientationGuard() {
   const [logoIdx, setLogoIdx] = useState(0);
   const logoSrc = logoCandidates[logoIdx] || logoCandidates[0];
 
-  if (!mounted) return null;
+  if (!isClient) return null;
 
   // ✅ Desktop large → jamais d’overlay
   if (!isMobileOrTablet) return null;

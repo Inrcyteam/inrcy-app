@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { usePathname } from "next/navigation";
 
 type Consent = {
@@ -62,16 +62,17 @@ function subscribeToConsent(onStoreChange: () => void) {
 
 export default function CookieConsentBanner() {
   const pathname = usePathname();
-  const [mounted, setMounted] = useState(false);
+  const isClient = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false
+  );
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const consentRaw = useSyncExternalStore(subscribeToConsent, getConsentSnapshot, () => null);
   const consent = useMemo(() => parseConsent(consentRaw), [consentRaw]);
 
-  if (!mounted) return null;
+  if (!isClient) return null;
 
   const shouldHideOnThisPage = pathname?.startsWith("/login") || pathname?.startsWith("/legal");
   if (shouldHideOnThisPage) return null;

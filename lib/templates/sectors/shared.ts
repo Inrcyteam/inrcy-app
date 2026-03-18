@@ -19,7 +19,7 @@ export type VariantSeed = {
   slug: string;
   title: string;
   subject: string;
-  body: (pack: SectorPack) => string;
+  body: (_pack: SectorPack) => string;
   ctaLabel?: string;
 };
 
