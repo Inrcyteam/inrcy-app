@@ -32,7 +32,6 @@ type Overview = {
     instagram: { connected: boolean };
     linkedin: { connected: boolean };
   };
-  identities?: Partial<Record<CubeKey, { label?: string | null; url?: string | null }>>;
 };
 
 type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
@@ -69,7 +68,6 @@ type CubeModel = {
   key: CubeKey;
   title: string;
   subtitle: string;
-  accountLabel?: string;
   period: Period;
   loading: boolean;
   error?: string;
@@ -1109,8 +1107,8 @@ useEffect(() => {
           },
         } as Overview);
 
-      const accountLabel = String(ov?.identities?.[key]?.label || ov?.identities?.[key]?.url || "").trim();
-      const inrcyOwnership = (ov as any)?.inrcySiteOwnership;
+      
+const inrcyOwnership = (ov as any)?.inrcySiteOwnership;
 const inrcyDisconnected = inrcyOwnership === "none";
 
 const connections =
@@ -1156,7 +1154,6 @@ const provenance = buildProvenance(key, ov);
         inrcyOwnership: key === "site_inrcy" ? (inrcyOwnership as any) : undefined,
         title,
         subtitle,
-        accountLabel: accountLabel || undefined,
         period: periodForModel,
         loading: !!state.loading,
         error: state.error,
@@ -1348,7 +1345,6 @@ function Cube({
             <h2 className={styles.cubeTitle}>{model.title}</h2>
             {model.loading ? <span className={styles.spinner} aria-hidden /> : null}
           </div>
-          {model.accountLabel ? <div className={styles.cubeIdentity}>{model.accountLabel}</div> : null}
           <div className={styles.cubeSub}>{model.subtitle}</div>
         </div>
 

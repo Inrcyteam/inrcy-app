@@ -670,32 +670,6 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       days,
       selected: includeAll ? null : Array.from(includeSet),
       inrcySiteOwnership,
-      identities: {
-        site_inrcy: {
-          label: channelStates.site_inrcy.url || null,
-          url: channelStates.site_inrcy.url || null,
-        },
-        site_web: {
-          label: channelStates.site_web.url || null,
-          url: channelStates.site_web.url || null,
-        },
-        gmb: {
-          label: channelStates.gmb.resource_label || null,
-          url: null,
-        },
-        facebook: {
-          label: channelStates.facebook.resource_label || null,
-          url: channelStates.facebook.page_url || null,
-        },
-        instagram: {
-          label: channelStates.instagram.username ? `@${channelStates.instagram.username}` : null,
-          url: channelStates.instagram.profile_url || null,
-        },
-        linkedin: {
-          label: channelStates.linkedin.display_name || null,
-          url: channelStates.linkedin.profile_url || null,
-        },
-      },
       totals: {
         users: totalUsers,
         sessions: totalSessions,
