@@ -63,6 +63,10 @@ type ActionEffort = {
   label: string;
 };
 
+type CubeDisplayMeta = {
+  value?: string;
+};
+
 type CubeModel = {
   inrcyOwnership?: "none" | "sold" | "rented";
   key: CubeKey;
@@ -83,6 +87,7 @@ type CubeModel = {
   qualityLabel: string;
   qualityTone: "low" | "ok" | "solid" | "excellent";
   insights: string[];
+  displayMeta?: CubeDisplayMeta;
   action: {
     key: ActionKey;
     title: string;
@@ -106,6 +111,12 @@ function summarySessionKey(period: Period) {
 
 function fmtInt(n: number) {
   return new Intl.NumberFormat("fr-FR").format(Math.round(Number.isFinite(n) ? n : 0));
+}
+
+function normalizeDisplayValue(value?: string | null) {
+  const v = String(value || "").trim();
+  if (!v) return "";
+  return v.replace(/^https?:\/\//i, "").replace(/\/$/, "");
 }
 
 function clamp(n: number, min: number, max: number) {
@@ -875,6 +886,7 @@ export default function StatsClient() {
     total: 0,
     byCube: { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0 },
   });
+  const [channelDisplayMeta, setChannelDisplayMeta] = useState<Partial<Record<CubeKey, string>>>({});
 
   // In-memory cache to avoid duplicate fetch bursts (React strict-mode/dev & quick navigations)
   const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
@@ -1085,6 +1097,34 @@ useEffect(() => {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const states = await fetch("/api/integrations/channel-states", { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null) as any;
+        if (cancelled || !states) return;
+
+        setChannelDisplayMeta({
+          site_inrcy: normalizeDisplayValue(states?.site_inrcy?.url),
+          site_web: normalizeDisplayValue(states?.site_web?.url),
+          gmb: normalizeDisplayValue(states?.gmb?.resource_label || states?.gmb?.resource_id),
+          facebook: normalizeDisplayValue(states?.facebook?.resource_label || states?.facebook?.page_url),
+          instagram: normalizeDisplayValue(states?.instagram?.username),
+          linkedin: normalizeDisplayValue(states?.linkedin?.display_name),
+        });
+      } catch {
+        // ignore display-only metadata errors
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshNonce]);
+
   const models: CubeModel[] = useMemo(() => {
     const build = (key: CubeKey, title: string, subtitle: string): CubeModel => {
       const periodForModel = period;
@@ -1165,6 +1205,7 @@ const provenance = buildProvenance(key, ov);
         qualityLabel: q.label,
         qualityTone: q.tone,
         insights,
+        displayMeta: channelDisplayMeta[key] ? { value: channelDisplayMeta[key] } : undefined,
         action,
       };
     };
@@ -1177,7 +1218,7 @@ const provenance = buildProvenance(key, ov);
       build("instagram", "Instagram", "Visibilité de marque"),
       build("linkedin", "LinkedIn", "Visibilité professionnelle"),
     ];
-  }, [dataByCube, period, summaryOpp.byCube]);
+  }, [channelDisplayMeta, dataByCube, period, summaryOpp.byCube]);
 
   const centralPotential30 = summaryOpp.total;
   const centralByCube = summaryOpp.byCube;
@@ -1346,6 +1387,7 @@ function Cube({
             {model.loading ? <span className={styles.spinner} aria-hidden /> : null}
           </div>
           <div className={styles.cubeSub}>{model.subtitle}</div>
+          {model.displayMeta?.value ? <div className={styles.cubeMeta}>{model.displayMeta.value}</div> : null}
         </div>
 
         <div className={styles.cubeBadges}>
