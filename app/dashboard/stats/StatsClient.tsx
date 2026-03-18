@@ -8,6 +8,7 @@ import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
 import { clearInrStatsDirty, inferDirtyCubesFromUrlParams, readInrStatsDirty, type InrStatsCubeKey } from "@/lib/inrstatsRefresh";
+import { computeOpportunity30 as computeOpportunity30Shared, computeOpportunitySnapshot } from "@/lib/inrstatsOpportunities";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -909,29 +910,6 @@ export default function StatsClient() {
     return (await r.json()) as Overview;
   };
 
-  const fetchSummaryOpportunities = async (period: Period, forceFresh = false) => {
-    const params = new URLSearchParams({ monthDays: String(period), weekDays: "7", todayDays: "2" });
-    if (forceFresh) params.set("fresh", "1");
-    const r = await fetch(`/api/metrics/summary?${params.toString()}`, { cache: "no-store" });
-    if (!r.ok) {
-      const txt = await r.text().catch(() => "");
-      throw new Error(`summary_failed:${r.status}:${txt.slice(0, 160)}`);
-    }
-    const json = (await r.json()) as MetricsSummaryResponse;
-    const byCubePartial = json?.details?.opportunities?.byCube || {};
-    return {
-      total: safeNum(json?.details?.opportunities?.total),
-      byCube: {
-        site_inrcy: safeNum(byCubePartial.site_inrcy),
-        site_web: safeNum(byCubePartial.site_web),
-        gmb: safeNum(byCubePartial.gmb),
-        facebook: safeNum(byCubePartial.facebook),
-        instagram: safeNum(byCubePartial.instagram),
-        linkedin: safeNum(byCubePartial.linkedin),
-      } as Record<CubeKey, number>,
-    };
-  };
-
   const requestCubeRefresh = React.useCallback((cubes?: CubeKey[] | "all" | null) => {
     setRefreshRequest((prev) => ({ nonce: prev.nonce + 1, cubes: cubes ?? "all" }));
   }, []);
@@ -1080,34 +1058,27 @@ export default function StatsClient() {
   }, [period, refreshRequest]);
 
   useEffect(() => {
-    let cancelled = false;
-    const dirty = readInrStatsDirty();
-    const shouldRefreshSummary = summaryOpp.loading || dirty.all || dirty.cubes.length > 0 || refreshRequest.nonce > 0;
+    const overviewMap = Object.fromEntries(
+      ALL_CUBES.map((cube) => [cube, dataByCube[cube]?.ov ?? null])
+    ) as Partial<Record<CubeKey, Overview | null>>;
 
-    if (!shouldRefreshSummary) return () => { cancelled = true; };
+    const next = computeOpportunitySnapshot(overviewMap);
+    const hasAnyRealOverview = ALL_CUBES.some((cube) => !!dataByCube[cube]?.ov);
 
-    setSummaryOpp((prev) => ({ ...prev, loading: true }));
+    setSummaryOpp({
+      loading: !hasAnyRealOverview && ALL_CUBES.some((cube) => !!dataByCube[cube]?.loading),
+      total: next.total,
+      byCube: next.byCube,
+    });
 
-    (async () => {
+    if (hasAnyRealOverview) {
       try {
-        const next = await fetchSummaryOpportunities(period, true);
-        if (cancelled) return;
-        setSummaryOpp({ loading: false, total: next.total, byCube: next.byCube });
-        try {
-          window.sessionStorage.setItem(summarySessionKey(period), JSON.stringify(next));
-        } catch {
-          // ignore
-        }
+        window.sessionStorage.setItem(summarySessionKey(period), JSON.stringify(next));
       } catch {
-        if (cancelled) return;
-        setSummaryOpp((prev) => ({ ...prev, loading: false }));
+        // ignore
       }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [period, refreshRequest]);
+    }
+  }, [dataByCube, period]);
 
   useEffect(() => {
     const handleChannelsUpdated = (event: Event) => {
@@ -1166,7 +1137,7 @@ const connections =
             : { main: !!ov.sources?.linkedin?.connected };
 
 const provenance = buildProvenance(key, ov);
-      const opp30 = summaryOpp.byCube[key] ?? computeOpportunity30(key, ov);
+      const opp30 = summaryOpp.byCube[key] ?? computeOpportunity30Shared(key, ov as any);
 
       const q = computeQuality(key, ov);
       const insights = buildInsights(key, ov, q.score);
