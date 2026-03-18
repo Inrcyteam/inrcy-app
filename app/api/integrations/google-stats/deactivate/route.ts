@@ -34,6 +34,8 @@ export async function POST(req: Request) {
     const { data: cfg } = await supabase.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle();
     const current = safeJsonParse<SiteSettings>(asRecord(cfg)["settings"], {});
     const next: SiteSettings = { ...(current ?? {}), inrcy_tracking_enabled: false };
+    delete next.ga4;
+    delete next.gsc;
     await supabase.from("inrcy_site_configs").upsert({ user_id: userId, settings: next }, { onConflict: "user_id" });
 
     await clearAllToolCaches(supabase, userId);
