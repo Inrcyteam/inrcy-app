@@ -36,6 +36,7 @@ import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants";
 import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
 import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, Module, ModuleAction, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
+import { inferDirtyCubesFromUrlParams, markInrStatsDirty, type InrStatsCubeKey } from "@/lib/inrstatsRefresh";
 
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
@@ -1050,9 +1051,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     }
   }, []);
 
-  const notifyStatsRefresh = useCallback(() => {
+  const notifyStatsRefresh = useCallback((cubes?: InrStatsCubeKey[] | "all") => {
     if (typeof window === "undefined") return;
-    window.dispatchEvent(new CustomEvent("inrcy:channels-updated", { detail: { at: Date.now() } }));
+    markInrStatsDirty(cubes ?? "all");
+    window.dispatchEvent(new CustomEvent("inrcy:channels-updated", { detail: { at: Date.now(), cubes: cubes ?? "all" } }));
   }, []);
 
   const refreshTimersRef = useRef<number[]>([]);
@@ -1063,14 +1065,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     refreshTimersRef.current = [];
   }, []);
 
-  const triggerGeneratorRefresh = useCallback(async () => {
+  const triggerGeneratorRefresh = useCallback(async (cubes?: InrStatsCubeKey[] | "all") => {
     const runSync = async () => {
       lastGeneratorRefreshAtRef.current = Date.now();
       await Promise.allSettled([
         loadSiteInrcy(),
         refreshKpis({ fresh: true }),
       ]);
-      notifyStatsRefresh();
+      notifyStatsRefresh(cubes ?? "all");
     };
 
     clearScheduledGeneratorRefreshes();
@@ -1154,7 +1156,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     const toast = searchParams.get("toast");
     const warning = searchParams.get("warning");
     if (!linked && !activated && !ok && !toast && !warning) return;
-    triggerGeneratorRefresh();
+    const dirtyFromParams = inferDirtyCubesFromUrlParams(searchParams);
+    triggerGeneratorRefresh(dirtyFromParams.length ? dirtyFromParams : "all");
   }, [searchParams, triggerGeneratorRefresh]);
 
 
@@ -1207,7 +1210,7 @@ const activateSiteInrcyTracking = useCallback(async () => {
   }, 2500);
 
   // Rafraîchit le générateur sans recharger la page
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["site_inrcy"]);
 }, [siteInrcyOwnership, siteInrcyUrl, triggerGeneratorRefresh]);
 
 // ✅ Mode rented : désactive le suivi (GA4+GSC) et nettoie les settings.
@@ -1251,7 +1254,7 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
   setSiteInrcyTrackingBusy(false);
 
   // Rafraîchit le générateur sans recharger la page
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["site_inrcy"]);
 }, [siteInrcyOwnership, triggerGeneratorRefresh]);
 
 
@@ -1314,7 +1317,7 @@ const disconnectGoogleStats = useCallback(
       }
     }
 
-    triggerGeneratorRefresh();
+    triggerGeneratorRefresh([source]);
   },
   [
     removeGoogleProductFromSettings,
@@ -1374,7 +1377,7 @@ const saveSiteInrcyUrl = useCallback(async () => {
 
   setSiteInrcySettingsError(null);
   setSiteInrcySavedUrl(url);
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["site_inrcy"]);
   setSiteInrcyUrlNotice("✅ Lien du site enregistré");
   window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
 }, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl]);
@@ -1443,7 +1446,7 @@ const saveSiteWebUrl = useCallback(async () => {
 
   await updateSiteWebSettings(parsed);
   setSiteWebSavedUrl(url);
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["site_web"]);
   setSiteWebUrlNotice("✅ Lien du site enregistré");
   window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
 }, [normalizeSiteUrl, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
@@ -1490,7 +1493,7 @@ const resetSiteInrcyAll = useCallback(async () => {
   setGscProperty("");
   setSiteInrcyGa4Connected(false);
   setSiteInrcyGscConnected(false);
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["site_inrcy"]);
 }, [resetGoogleStats, siteInrcyOwnership, triggerGeneratorRefresh, updateSiteInrcySettings]);
 
 const resetSiteWebAll = useCallback(async () => {
@@ -1509,7 +1512,7 @@ const resetSiteWebAll = useCallback(async () => {
   setSiteWebGscProperty("");
   setSiteWebGa4Connected(false);
   setSiteWebGscConnected(false);
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["site_web"]);
 }, [resetGoogleStats, updateSiteWebSettings, triggerGeneratorRefresh]);
 
 // ✅ Houzz / Pages Jaunes (liens uniquement, stockés dans inrcy_site_configs.settings)
@@ -1551,7 +1554,7 @@ const disconnectGmbAccount = useCallback(async () => {
   await fetch("/api/integrations/google-business/disconnect-account", { method: "POST" });
   setGmbConnected(false);
   setGmbAccountConnected(false);
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["gmb"]);
   setGmbConfigured(false);
   setGmbAccountEmail("");
   setGmbUrl("");
@@ -1563,7 +1566,7 @@ const disconnectGmbBusiness = useCallback(async () => {
   await fetch("/api/integrations/google-business/disconnect-location", { method: "POST" });
   setGmbConfigured(false);
   setGmbUrl("");
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["gmb"]);
   await updateRootSettingsKey("gmb", { url: "", resource_id: "" });
 }, [updateRootSettingsKey, triggerGeneratorRefresh]);
 
@@ -1599,7 +1602,7 @@ const disconnectFacebookAccount = useCallback(async () => {
 	  await fetch("/api/integrations/facebook/disconnect-account", { method: "POST" });
 	  setFacebookAccountConnected(false);
 	  setFacebookPageConnected(false);
-	  triggerGeneratorRefresh();
+	  triggerGeneratorRefresh(["facebook"]);
 	  setFacebookAccountEmail("");
 	  // Keep a lightweight mirror in pro_tools_configs for instant UI updates.
 	  await updateRootSettingsKey("facebook", {
@@ -1619,7 +1622,7 @@ const disconnectFacebookAccount = useCallback(async () => {
 const disconnectFacebookPage = useCallback(async () => {
 	  await fetch("/api/integrations/facebook/disconnect-page", { method: "POST" });
 	  setFacebookPageConnected(false);
-	  triggerGeneratorRefresh();
+	  triggerGeneratorRefresh(["facebook"]);
 	  await updateRootSettingsKey("facebook", {
 	    accountConnected: true,
 	    pageConnected: false,
@@ -1696,7 +1699,7 @@ const saveFacebookPage = useCallback(async () => {
     setFacebookUrl(String(j?.pageUrl || `https://www.facebook.com/${picked.id}`));
 	    setFacebookPageConnected(true);
 	    setFbSelectedPageName(picked.name || "");
-    triggerGeneratorRefresh();
+    triggerGeneratorRefresh(["facebook"]);
     setFacebookUrlNotice("Enregistré ✓");
     window.setTimeout(() => setFacebookUrlNotice(null), 2200);
   } else {
@@ -1716,7 +1719,7 @@ const disconnectInstagramAccount = useCallback(async () => {
   await fetch("/api/integrations/instagram/disconnect-account", { method: "POST" });
   setInstagramAccountConnected(false);
   setInstagramConnected(false);
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["instagram"]);
   setInstagramUsername("");
   setInstagramUrl("");
   setIgAccounts([]);
@@ -1734,7 +1737,7 @@ const disconnectInstagramAccount = useCallback(async () => {
 const disconnectInstagramProfile = useCallback(async () => {
   await fetch("/api/integrations/instagram/disconnect-profile", { method: "POST" });
   setInstagramConnected(false);
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["instagram"]);
   setInstagramUsername("");
   setInstagramUrl("");
   setIgSelectedPageId("");
@@ -1770,7 +1773,7 @@ const loadInstagramAccounts = useCallback(async () => {
       setInstagramConnected(true);
       setInstagramUsername(String(only.username || ""));
       setInstagramUrl(only.username ? `https://www.instagram.com/${only.username}/` : "");
-      triggerGeneratorRefresh();
+      triggerGeneratorRefresh(["instagram"]);
       setInstagramUrlNotice("Enregistré ✓");
       window.setTimeout(() => setInstagramUrlNotice(null), 2200);
     }
@@ -1795,7 +1798,7 @@ const saveInstagramProfile = useCallback(async () => {
     setInstagramConnected(true);
     if (j?.username) setInstagramUsername(String(j.username));
     if (j?.profileUrl) setInstagramUrl(String(j.profileUrl));
-    triggerGeneratorRefresh();
+    triggerGeneratorRefresh(["instagram"]);
     setInstagramUrlNotice("Enregistré ✓");
     window.setTimeout(() => setInstagramUrlNotice(null), 2200);
   } else {
@@ -1814,7 +1817,7 @@ const disconnectLinkedinAccount = useCallback(async () => {
   await fetch("/api/integrations/linkedin/disconnect-account", { method: "POST" });
   setLinkedinAccountConnected(false);
   setLinkedinConnected(false);
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["linkedin"]);
   setLinkedinDisplayName("");
   setLinkedinUrl("");
   await updateRootSettingsKey("linkedin", {
@@ -1850,7 +1853,7 @@ const saveLinkedinProfileUrl = useCallback(async () => {
     url: raw,
   });
 
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["linkedin"]);
   setLinkedinUrlNotice("Lien enregistré ✅");
   window.setTimeout(() => setLinkedinUrlNotice(null), 1800);
 }, [linkedinUrl, linkedinAccountConnected, linkedinConnected, linkedinDisplayName, updateRootSettingsKey, triggerGeneratorRefresh]);
@@ -1893,7 +1896,7 @@ const saveGmbLocation = useCallback(async () => {
   if (!res.ok) throw new Error(js?.error || "Impossible d’enregistrer l’établissement");
 
   if (js?.url) setGmbUrl(String(js.url));
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["gmb"]);
   setGmbUrlNotice("Établissement enregistré ✅");
   window.setTimeout(() => setGmbUrlNotice(null), 1800);
 }, [gmbAccountName, gmbLocationName, gmbLocations, triggerGeneratorRefresh]);
@@ -1912,7 +1915,7 @@ const saveSiteWebSettings = useCallback(async () => {
   parsed.url = siteWebUrl.trim();
 
   await updateSiteWebSettings(parsed);
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["site_web"]);
   setSiteWebGa4Notice("✅ Enregistrement GA4 validé");
   window.setTimeout(() => setSiteWebGa4Notice(null), 2500);
 
@@ -1967,7 +1970,7 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
   parsed.gsc = { ...(parsed.gsc ?? {}), property };
 
   await updateSiteWebSettings(parsed);
-  triggerGeneratorRefresh();
+  triggerGeneratorRefresh(["site_web"]);
 }, [siteWebGscProperty, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
 
 

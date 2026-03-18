@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./stats.module.css";
 import Image from "next/image";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
+import { clearInrStatsDirty, inferDirtyCubesFromUrlParams, readInrStatsDirty, type InrStatsCubeKey } from "@/lib/inrstatsRefresh";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -880,9 +881,10 @@ export default function StatsClient() {
 
   // In-memory cache to avoid duplicate fetch bursts (React strict-mode/dev & quick navigations)
   const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
-  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [refreshRequest, setRefreshRequest] = useState<{ nonce: number; cubes: CubeKey[] | "all" | null }>({ nonce: 0, cubes: null });
   const hydratedPeriodsRef = useRef(new Set<number>());
-
+  const searchParams = useSearchParams();
+  const ALL_CUBES: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"];
 
   const fetchCube = async (key: CubeKey, period: Period, forceFresh = false) => {
     const include =
@@ -930,6 +932,10 @@ export default function StatsClient() {
     };
   };
 
+  const requestCubeRefresh = React.useCallback((cubes?: CubeKey[] | "all" | null) => {
+    setRefreshRequest((prev) => ({ nonce: prev.nonce + 1, cubes: cubes ?? "all" }));
+  }, []);
+
   useEffect(() => {
     if (hydratedPeriodsRef.current.has(period)) return;
     hydratedPeriodsRef.current.add(period);
@@ -976,43 +982,67 @@ export default function StatsClient() {
     }
   }, [period]);
 
-useEffect(() => {
-  let cancelled = false;
+  useEffect(() => {
+    const dirtyFromStorage = readInrStatsDirty();
+    const dirtyFromUrl = inferDirtyCubesFromUrlParams(searchParams) as CubeKey[];
+    const forcedKeys = Array.from(new Set<CubeKey>([
+      ...(dirtyFromStorage.cubes as CubeKey[]),
+      ...dirtyFromUrl,
+    ]));
 
-  (async () => {
-    // Fast path: cached data for this period
-    const cached = periodCacheRef.current.get(period);
-    if (cached) {
+    if (forcedKeys.length > 0) {
+      requestCubeRefresh(forcedKeys);
+      clearInrStatsDirty(forcedKeys as InrStatsCubeKey[]);
+    }
+  }, [requestCubeRefresh, searchParams?.toString()]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const cached = periodCacheRef.current.get(period);
+      const requested = refreshRequest.cubes === "all"
+        ? [...ALL_CUBES]
+        : Array.isArray(refreshRequest.cubes)
+          ? refreshRequest.cubes
+          : [];
+      const dirty = readInrStatsDirty();
+      const dirtyKeys = Array.from(new Set<CubeKey>([
+        ...(dirty.cubes as CubeKey[]),
+        ...requested,
+      ]));
+      const needsFresh = dirty.all || dirtyKeys.length > 0 || refreshRequest.nonce > 0;
+      const keysToFetch: CubeKey[] = cached ? (dirty.all ? [...ALL_CUBES] : dirtyKeys) : [...ALL_CUBES];
+
+      if (cached) {
+        setDataByCube((prev) => {
+          const next: any = { ...prev };
+          for (const k of Object.keys(cached) as CubeKey[]) {
+            next[k] = { ov: (cached as any)[k], loading: false, error: undefined };
+          }
+          return next;
+        });
+      }
+
+      if (cached && keysToFetch.length === 0 && !needsFresh) {
+        return;
+      }
+
       setDataByCube((prev) => {
         const next: any = { ...prev };
-        for (const k of Object.keys(cached) as CubeKey[]) {
-          next[k] = { ov: (cached as any)[k], loading: false, error: undefined };
-        }
+        for (const k of keysToFetch) next[k] = { ...next[k], loading: true, error: undefined };
         return next;
       });
-      return;
-    }
 
-    const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"];
-
-    // Set loading state
-    setDataByCube((prev) => {
-      const next: any = { ...prev };
-      for (const k of keys) next[k] = { ...next[k], loading: true, error: undefined };
-      return next;
-    });
-
-    try {
-      const res = await Promise.all(
-        keys.map(async (k) => {
-          const ov = await fetchCube(k, period, refreshNonce > 0);
-          return [k, ov] as const;
-        })
-      );
-
-      // Store period snapshot in cache (prevents repeated reads / 429 on Supabase)
       try {
-        const snap: any = {};
+        const res = await Promise.all(
+          keysToFetch.map(async (k) => {
+            const ov = await fetchCube(k, period, true);
+            return [k, ov] as const;
+          })
+        );
+
+        const snap: Record<CubeKey, Overview> = { ...(cached || ({} as Record<CubeKey, Overview>)) };
         for (const [k, ov] of res) snap[k] = ov;
         periodCacheRef.current.set(period, snap);
         try {
@@ -1020,43 +1050,47 @@ useEffect(() => {
         } catch {
           // ignore
         }
-      } catch {}
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      setDataByCube((prev) => {
-        const next: any = { ...prev };
-        for (const [k, ov] of res) next[k] = { ov, loading: false, error: undefined };
-        return next;
-      });
-    } catch (e: any) {
-      if (cancelled) return;
+        setDataByCube((prev) => {
+          const next: any = { ...prev };
+          for (const [k, ov] of res) next[k] = { ov, loading: false, error: undefined };
+          return next;
+        });
+        if (dirty.all) clearInrStatsDirty("all");
+        else if (keysToFetch.length) clearInrStatsDirty(keysToFetch as InrStatsCubeKey[]);
+      } catch (e: any) {
+        if (cancelled) return;
 
-      const msg = e?.message || "Erreur inconnue";
-      setDataByCube((prev) => {
-        const next: any = { ...prev };
-        // Mark all cubes with the error only if they have no data yet.
-        for (const k of keys) {
-          next[k] = { ...next[k], loading: false, error: next[k]?.ov ? undefined : msg };
-        }
-        return next;
-      });
-    }
-  })();
+        const msg = e?.message || "Erreur inconnue";
+        setDataByCube((prev) => {
+          const next: any = { ...prev };
+          for (const k of keysToFetch) {
+            next[k] = { ...next[k], loading: false, error: next[k]?.ov ? undefined : msg };
+          }
+          return next;
+        });
+      }
+    })();
 
-  return () => {
-    cancelled = true;
-  };
-}, [period, refreshNonce]);
+    return () => {
+      cancelled = true;
+    };
+  }, [period, refreshRequest]);
 
   useEffect(() => {
     let cancelled = false;
+    const dirty = readInrStatsDirty();
+    const shouldRefreshSummary = summaryOpp.loading || dirty.all || dirty.cubes.length > 0 || refreshRequest.nonce > 0;
+
+    if (!shouldRefreshSummary) return () => { cancelled = true; };
 
     setSummaryOpp((prev) => ({ ...prev, loading: true }));
 
     (async () => {
       try {
-        const next = await fetchSummaryOpportunities(period, refreshNonce > 0);
+        const next = await fetchSummaryOpportunities(period, true);
         if (cancelled) return;
         setSummaryOpp({ loading: false, total: next.total, byCube: next.byCube });
         try {
@@ -1073,19 +1107,20 @@ useEffect(() => {
     return () => {
       cancelled = true;
     };
-  }, [period, refreshNonce]);
+  }, [period, refreshRequest]);
 
   useEffect(() => {
-    const handleChannelsUpdated = () => {
-      periodCacheRef.current.clear();
-      setRefreshNonce((prev) => prev + 1);
+    const handleChannelsUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ cubes?: CubeKey[] | "all" }>).detail;
+      const cubes = detail?.cubes;
+      requestCubeRefresh(cubes === "all" ? "all" : Array.isArray(cubes) ? cubes : "all");
     };
 
     window.addEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
     return () => {
       window.removeEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
     };
-  }, []);
+  }, [requestCubeRefresh]);
 
   const models: CubeModel[] = useMemo(() => {
     const build = (key: CubeKey, title: string, subtitle: string): CubeModel => {
