@@ -1639,21 +1639,13 @@ const loadFacebookPages = useCallback(async () => {
     const r = await fetch("/api/integrations/facebook/pages", { cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j?.error || "Erreur");
-    const pages = j.pages || [];
-    setFbPages(pages);
-
-    const currentPage = pages.find((p: { id: string; name?: string }) => p.id === fbSelectedPageId);
-    if (currentPage?.name) setFbSelectedPageName(currentPage.name);
-
+    setFbPages(j.pages || []);
     // Preselect first if none
-    if (!fbSelectedPageId && pages[0]?.id) {
-      setFbSelectedPageId(pages[0].id);
-      setFbSelectedPageName(pages[0]?.name || "");
-    }
+    if (!fbSelectedPageId && j.pages?.[0]?.id) setFbSelectedPageId(j.pages[0].id);
 
     // If there is exactly one page, auto-select & save it server-side (no extra "Enregistrer").
-    if (pages.length === 1) {
-      const only = pages[0];
+    if ((j.pages || []).length === 1) {
+      const only = j.pages[0];
       if (only?.id && only?.access_token) {
         await fetch("/api/integrations/facebook/select-page", {
           method: "POST",
@@ -1665,9 +1657,7 @@ const loadFacebookPages = useCallback(async () => {
           }),
         });
         setFbSelectedPageId(only.id);
-        setFbSelectedPageName(only.name || "");
         setFacebookUrl(`https://www.facebook.com/${only.id}`);
-        setFacebookPageConnected(true);
       }
     }
   } catch (e: any) {
@@ -3888,9 +3878,7 @@ const checkActivity = useCallback(async () => {
             fbPagesLoading={fbPagesLoading}
             loadFacebookPages={loadFacebookPages}
             fbSelectedPageId={fbSelectedPageId}
-            fbSelectedPageName={fbSelectedPageName}
             setFbSelectedPageId={setFbSelectedPageId}
-            setFbSelectedPageName={setFbSelectedPageName}
             fbPages={fbPages}
             saveFacebookPage={saveFacebookPage}
             fbPagesError={fbPagesError}
