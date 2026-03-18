@@ -1110,10 +1110,10 @@ useEffect(() => {
         setChannelDisplayMeta({
           site_inrcy: normalizeDisplayValue(states?.site_inrcy?.url),
           site_web: normalizeDisplayValue(states?.site_web?.url),
-          gmb: normalizeDisplayValue(states?.gmb?.resource_label || states?.gmb?.resource_id),
-          facebook: normalizeDisplayValue(states?.facebook?.resource_label || states?.facebook?.page_url),
-          instagram: normalizeDisplayValue(states?.instagram?.username),
-          linkedin: normalizeDisplayValue(states?.linkedin?.display_name),
+          gmb: states?.gmb?.connected ? normalizeDisplayValue(states?.gmb?.resource_label || states?.gmb?.resource_id) : "",
+          facebook: states?.facebook?.connected ? normalizeDisplayValue(states?.facebook?.resource_label || states?.facebook?.page_url) : "",
+          instagram: states?.instagram?.connected ? normalizeDisplayValue(states?.instagram?.username) : "",
+          linkedin: states?.linkedin?.connected ? normalizeDisplayValue(states?.linkedin?.display_name) : "",
         });
       } catch {
         // ignore display-only metadata errors
