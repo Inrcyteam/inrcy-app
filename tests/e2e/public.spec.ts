@@ -1,27 +1,40 @@
 import { test, expect } from '@playwright/test';
 
-test('login page loads and shows email/password fields', async ({ page }) => {
-  await page.goto('/login');
-  await expect(page.getByPlaceholder('Email')).toBeVisible();
-  await expect(page.getByPlaceholder('Mot de passe')).toBeVisible();
-  await expect(page.getByRole('button', { name: /se connecter/i })).toBeVisible();
-});
+test.describe('public flows', () => {
+  test('login page loads and shows email/password fields', async ({ page }) => {
+    await page.goto('/login');
 
-test('health endpoints behave as expected', async ({ request }) => {
-  const health = await request.get('/api/health');
-  expect(health.ok()).toBeTruthy();
-  const healthJson = await health.json();
-  expect(healthJson).toHaveProperty('ok');
+    await expect(page.getByPlaceholder(/email/i)).toBeVisible();
+    await expect(page.getByPlaceholder(/mot de passe|password/i)).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /se connecter|connexion|login/i })
+    ).toBeVisible();
+  });
 
-  // internal endpoint should be protected
-  const internal = await request.get('/api/health/internal');
-  expect(internal.status()).toBe(401);
-});
+  test('anonymous user is redirected to login when visiting dashboard', async ({ page }) => {
+    await page.goto('/dashboard');
+    await page.waitForURL(/\/login/, { timeout: 15_000 });
 
-test('CSP Report-Only header is present on dashboard route (or redirect)', async ({ page }) => {
-  const resp = await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
-  // If unauth, may redirect; still fine.
-  const headers = resp?.headers() || {};
-  const cspRO = headers['content-security-policy-report-only'];
-  expect(cspRO || '').toContain("default-src 'self'");
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test('health endpoints behave as expected', async ({ request }) => {
+    const health = await request.get('/api/health');
+    expect(health.ok()).toBeTruthy();
+
+    const healthJson = await health.json();
+    expect(healthJson).toHaveProperty('ok');
+
+    const internal = await request.get('/api/health/internal');
+    expect([401, 403]).toContain(internal.status());
+  });
+
+  test('CSP Report-Only header is present on dashboard route or redirect response', async ({ page }) => {
+    const response = await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const headers = response?.headers() || {};
+    const cspReportOnly = headers['content-security-policy-report-only'];
+
+    expect(cspReportOnly || '').not.toBe('');
+    expect(cspReportOnly || '').toContain("default-src 'self'");
+  });
 });

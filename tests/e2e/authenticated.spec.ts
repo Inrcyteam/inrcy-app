@@ -1,24 +1,51 @@
 import { test, expect } from '@playwright/test';
+import { login } from './helpers/auth';
+import { attachRuntimeErrorTracking } from './helpers/runtime';
 
 const email = process.env.E2E_EMAIL;
 const password = process.env.E2E_PASSWORD;
 
 test.describe('authenticated flows', () => {
-  test.skip(!email || !password, 'E2E_EMAIL and E2E_PASSWORD must be set to run authenticated tests');
+  test.skip(!email || !password, 'E2E_EMAIL et E2E_PASSWORD sont requis');
 
   test('user can sign in and reach dashboard', async ({ page }) => {
-    await page.goto('/login');
+    const runtime = attachRuntimeErrorTracking(page);
 
-    await page.getByPlaceholder('Email').fill(email!);
-    await page.getByPlaceholder('Mot de passe').fill(password!);
-    await page.getByRole('button', { name: /se connecter/i }).click();
+    await login(page);
 
-    // After login, app should land on dashboard.
-    await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/dashboard/);
 
-    // Robust assertion: accept a couple of known texts.
     await expect(
       page.getByText(/Votre cockpit iNrCy|Le Générateur est lancé|Générateur/i).first()
     ).toBeVisible({ timeout: 30_000 });
+
+    await runtime.expectNoErrors();
+  });
+
+  test('session survives refresh on dashboard', async ({ page }) => {
+    const runtime = attachRuntimeErrorTracking(page);
+
+    await login(page);
+    await page.reload();
+
+    await expect(page).toHaveURL(/\/dashboard/);
+
+    await expect(
+      page.getByText(/Votre cockpit iNrCy|Le Générateur est lancé|Générateur/i).first()
+    ).toBeVisible({ timeout: 30_000 });
+
+    await runtime.expectNoErrors();
+  });
+
+  test('main dashboard modules render', async ({ page }) => {
+    const runtime = attachRuntimeErrorTracking(page);
+
+    await login(page);
+
+    await expect(page.getByText(/CRM/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/STATS/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/AGENDA/i).first()).toBeVisible({ timeout: 15_000 });
+
+    await runtime.expectNoErrors();
   });
 });
