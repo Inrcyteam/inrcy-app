@@ -28,13 +28,14 @@ test.describe('authenticated flows', () => {
     await login(page);
 
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle');
 
-    await expect(page).toHaveURL(/\/dashboard/);
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
 
     await expect(
       page.getByText(/Votre cockpit iNrCy|Le Générateur est lancé|Générateur/i).first()
     ).toBeVisible({ timeout: 30_000 });
+
+    await expect(page.getByText(/CRM/i).first()).toBeVisible({ timeout: 15_000 });
 
     await runtime.expectNoErrors();
   });

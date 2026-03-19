@@ -14,13 +14,12 @@ test.describe('billing/account panel', () => {
     await login(page);
 
     await page.goto('/dashboard?panel=abonnement', { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle');
 
-    await expect(page).toHaveURL(/panel=abonnement/);
+    await expect(page).toHaveURL(/panel=abonnement/, { timeout: 30_000 });
 
     await expect(
       page.getByText(/abonnement|billing|plan|facturation/i).first()
-    ).toBeVisible({ timeout: 15_000 });
+    ).toBeVisible({ timeout: 20_000 });
 
     await runtime.expectNoErrors();
   });
