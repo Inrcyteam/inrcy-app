@@ -43,9 +43,11 @@ test.describe('booster and fideliser pages', () => {
     await page.goto('/dashboard/stats', { waitUntil: 'domcontentloaded' });
 
     await expect(page).toHaveURL(/\/dashboard\/stats/, { timeout: 30_000 });
-    await expect(page.getByText(/Stats|statistiques|visites|leads/i).first()).toBeVisible({
-      timeout: 20_000,
-    });
+
+    // On valide la page stats avec des signaux plus robustes que le simple texte "Stats"
+    await expect(
+      page.locator('main').getByText(/graphique|canaux|période|générateur|leads|ca/i).first()
+    ).toBeVisible({ timeout: 20_000 });
 
     await runtime.expectNoErrors();
   });
