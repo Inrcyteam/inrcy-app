@@ -13,7 +13,8 @@ test.describe('integrations', () => {
 
     await login(page);
 
-    await page.goto('/dashboard');
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle');
 
     await expect(
       page.getByText(/Google Business|Google|Instagram|Facebook|LinkedIn/i).first()

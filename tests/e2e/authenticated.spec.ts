@@ -26,7 +26,9 @@ test.describe('authenticated flows', () => {
     const runtime = attachRuntimeErrorTracking(page);
 
     await login(page);
-    await page.reload();
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle');
 
     await expect(page).toHaveURL(/\/dashboard/);
 

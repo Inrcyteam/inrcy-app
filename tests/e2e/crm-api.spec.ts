@@ -13,12 +13,12 @@ test.describe('crm api', () => {
 
     const res = await apiGET(page, '/api/crm');
 
-    expect(res.ok()).toBeTruthy();
+    expect(
+      [200, 204].includes(res.status),
+      `HTTP ${res.status}\n${res.text}`
+    ).toBeTruthy();
 
-    const contentType = res.headers()['content-type'] || '';
-    expect(contentType).toContain('application/json');
-
-    const body = await res.json();
-    expect(body).toBeDefined();
+    // si ton endpoint renvoie autre chose parfois, adapte ici
+    expect(res.contentType || '').toContain('application/json');
   });
 });

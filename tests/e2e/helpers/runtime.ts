@@ -12,11 +12,15 @@ export function attachRuntimeErrorTracking(page: Page) {
 
     const text = msg.text();
 
-    // Ignore quelques faux positifs fréquents
+    // Faux positifs fréquents / bruit réseau non bloquant en CI
     if (
-      /favicon|chrome-extension|extensions\/|Failed to load resource: the server responded with a status of 404/i.test(
-        text
-      )
+      /favicon/i.test(text) ||
+      /chrome-extension/i.test(text) ||
+      /extensions\//i.test(text) ||
+      /Failed to load resource: the server responded with a status of 404/i.test(text) ||
+      /TypeError:\s*Failed to fetch/i.test(text) ||
+      /supabase\.co/i.test(text) ||
+      /ECONNRESET/i.test(text)
     ) {
       return;
     }

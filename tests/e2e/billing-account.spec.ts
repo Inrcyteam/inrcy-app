@@ -13,7 +13,8 @@ test.describe('billing/account panel', () => {
 
     await login(page);
 
-    await page.goto('/dashboard?panel=abonnement');
+    await page.goto('/dashboard?panel=abonnement', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle');
 
     await expect(page).toHaveURL(/panel=abonnement/);
 
