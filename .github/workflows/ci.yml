@@ -14,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    # Shared env for the whole job (so verify/lint/build see the same variables)
     env:
       # Supabase
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
@@ -30,7 +29,17 @@ jobs:
       # Healthcheck / monitoring
       HEALTHCHECK_TOKEN: ${{ secrets.HEALTHCHECK_TOKEN }}
 
-      # Sentry (optional but used if configured)
+      # Stripe
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+      STRIPE_PRICE_STARTER_ID: ${{ secrets.STRIPE_PRICE_STARTER_ID }}
+      STRIPE_PRICE_ACCEL_ID: ${{ secrets.STRIPE_PRICE_ACCEL_ID }}
+      STRIPE_PRICE_SPEED_ID: ${{ secrets.STRIPE_PRICE_SPEED_ID }}
+      STRIPE_PRICE_FULL_ID: ${{ secrets.STRIPE_PRICE_FULL_ID }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+      NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+
+      # Sentry
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
@@ -75,8 +84,6 @@ jobs:
     timeout-minutes: 30
     needs: build
 
-    # ✅ SAFE CONDITION (compatible forks & secrets)
-    # GitHub does not expose repository secrets to PRs from forks.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
 
     env:
@@ -98,7 +105,17 @@ jobs:
       E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
       E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
 
-      # Sentry (optional but used if configured)
+      # Stripe
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+      STRIPE_PRICE_STARTER_ID: ${{ secrets.STRIPE_PRICE_STARTER_ID }}
+      STRIPE_PRICE_ACCEL_ID: ${{ secrets.STRIPE_PRICE_ACCEL_ID }}
+      STRIPE_PRICE_SPEED_ID: ${{ secrets.STRIPE_PRICE_SPEED_ID }}
+      STRIPE_PRICE_FULL_ID: ${{ secrets.STRIPE_PRICE_FULL_ID }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+      NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+
+      # Sentry
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}

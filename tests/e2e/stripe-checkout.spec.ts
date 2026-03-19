@@ -7,7 +7,7 @@ const password = process.env.E2E_PASSWORD;
 test.describe('stripe checkout flow (simulated)', () => {
   test.skip(!email || !password, 'E2E_EMAIL et E2E_PASSWORD requis');
 
-  test('checkout endpoint does not crash', async ({ page }) => {
+  test('checkout endpoint is reachable without crashing server', async ({ page }) => {
     await login(page);
 
     const result = await page.evaluate(async () => {
@@ -37,8 +37,11 @@ test.describe('stripe checkout flow (simulated)', () => {
       }
     });
 
-    // IMPORTANT :
-    // On accepte plusieurs états business normaux
-    expect([200, 400, 401, 403, 409]).toContain(result.status);
+    // 200 = checkout créé
+    // 400 = plan invalide / payload invalide
+    // 403 = essai terminé
+    // 409 = déjà abonné
+    // 503 = Stripe non configuré dans cet environnement
+    expect([200, 400, 403, 409, 503]).toContain(result.status);
   });
 });

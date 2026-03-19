@@ -16,8 +16,23 @@ type SubscriptionRow = {
   contact_email?: string | null;
 };
 
+function hasStripeConfig() {
+  return Boolean(
+    process.env.STRIPE_SECRET_KEY &&
+      process.env.STRIPE_PRICE_STARTER_ID &&
+      process.env.STRIPE_PRICE_ACCEL_ID
+  );
+}
+
 export async function POST(req: Request) {
   try {
+    if (!hasStripeConfig()) {
+      return NextResponse.json(
+        { error: "Stripe non configuré sur cet environnement." },
+        { status: 503 }
+      );
+    }
+
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
 
@@ -33,7 +48,9 @@ export async function POST(req: Request) {
     };
 
     const priceId = priceIdByPlan[wantedPlan];
-    if (!priceId) return NextResponse.json({ error: "Plan invalide" }, { status: 400 });
+    if (!priceId) {
+      return NextResponse.json({ error: "Plan invalide" }, { status: 400 });
+    }
 
     const { data: sub, error: subErr } = await supabase
       .from("subscriptions")
@@ -42,6 +59,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (subErr) throw new Error(subErr.message);
+
     const row = sub as SubscriptionRow | null | undefined;
     const appUrl = getAppUrl(req) || requireEnv("NEXT_PUBLIC_APP_URL");
 
@@ -59,11 +77,16 @@ export async function POST(req: Request) {
       const computed = new Date(start);
       computed.setDate(computed.getDate() + trialDays);
       trialEndAt = computed.toISOString();
-      await supabaseAdmin.from("subscriptions").update({ trial_end_at: trialEndAt }).eq("user_id", userId);
+
+      await supabaseAdmin
+        .from("subscriptions")
+        .update({ trial_end_at: trialEndAt })
+        .eq("user_id", userId);
     }
 
     const trialEndUnix = Math.floor(new Date(trialEndAt).getTime() / 1000);
     const nowUnix = Math.floor(Date.now() / 1000);
+
     if (!Number.isFinite(trialEndUnix) || trialEndUnix <= nowUnix + 60) {
       return NextResponse.json(
         { error: "La période d'essai est terminée. L'abonnement n'est plus disponible pour ce compte." },
@@ -73,6 +96,7 @@ export async function POST(req: Request) {
 
     const existingSubId = row?.stripe_subscription_id ?? undefined;
     const existingStatus = String(row?.status || "").toLowerCase();
+
     const alreadySubscribed =
       !!existingSubId &&
       existingStatus !== "canceled" &&
@@ -80,13 +104,19 @@ export async function POST(req: Request) {
       existingStatus !== "incomplete_expired";
 
     if (alreadySubscribed) {
-      return NextResponse.json({ error: "Un abonnement est déjà en cours pour ce compte." }, { status: 409 });
+      return NextResponse.json(
+        { error: "Un abonnement est déjà en cours pour ce compte." },
+        { status: 409 }
+      );
     }
 
     const email = row?.contact_email || user.email;
-    if (!email) return NextResponse.json({ error: "Email manquant" }, { status: 400 });
+    if (!email) {
+      return NextResponse.json({ error: "Email manquant" }, { status: 400 });
+    }
 
     let customerId = row?.stripe_customer_id ?? undefined;
+
     if (!customerId) {
       const customerParams = new URLSearchParams();
       customerParams.set("email", email);
@@ -95,9 +125,13 @@ export async function POST(req: Request) {
       const customer = await stripePost("/customers", customerParams, {
         idempotencyKey: `customer-create-${userId}`,
       });
+
       customerId = customer.id;
 
-      await supabaseAdmin.from("subscriptions").update({ stripe_customer_id: customerId }).eq("user_id", userId);
+      await supabaseAdmin
+        .from("subscriptions")
+        .update({ stripe_customer_id: customerId })
+        .eq("user_id", userId);
     }
 
     if (!customerId) throw new Error("Stripe customer manquant");
