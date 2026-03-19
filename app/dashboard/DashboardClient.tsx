@@ -2372,7 +2372,7 @@ const checkActivity = useCallback(async () => {
 	      // Google Business + Facebook: “Connecté” = établissement/page sélectionné(e)
       if (m.key === "gmb") {
         if (gmbConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
-        return { status: "coming" as ModuleStatus, text: "🔒 Avril 2026" };
+        return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
       if (m.key === "facebook") {
@@ -2528,15 +2528,11 @@ const checkActivity = useCallback(async () => {
               disabled={
                 m.key === "site_inrcy"
                   ? !canConfigureSite
-                  : m.key === "gmb"
-                  ? true // TEMPORAIRE — Google Business désactivé jusqu’en avril 2026
                   : false
               }
               title={
                 m.key === "site_inrcy" && !canConfigureSite
                   ? "Disponible uniquement si vous avez un site iNrCy"
-                  : m.key === "gmb"
-                  ? "Canal disponible à partir d’avril 2026"
                   : undefined
               }
             >

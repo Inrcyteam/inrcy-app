@@ -20,9 +20,9 @@ export const fluxModules: Module[] = [
       { key: "ga4", label: "Connecter Analytics", variant: "connect", onClick: () => {} },
       { key: "gsc", label: "Connecter Search Console", variant: "connect", onClick: () => {} },
     ] },
-  { key: "gmb", name: "Google Business", description: "Augmente les appels 📞", status: "coming", accent: "orange", actions: [
+  { key: "gmb", name: "Google Business", description: "Augmente les appels 📞", status: "available", accent: "orange", actions: [
       { key: "view", label: "Voir la page", variant: "view", href: "#" },
-      { key: "connect", label: "Configurer", variant: "connect", onClick: () => {}, disabled: true },
+      { key: "connect", label: "Configurer", variant: "connect", onClick: () => {} },
     ] },
   { key: "facebook", name: "Facebook", description: "Crée de la demande 📈", status: "available", accent: "cyan", actions: [
       { key: "view", label: "Voir le compte", variant: "view", href: "#" },
