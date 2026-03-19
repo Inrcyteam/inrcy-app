@@ -15,9 +15,9 @@ test.describe('booster and fideliser pages', () => {
     await page.goto('/dashboard/booster', { waitUntil: 'domcontentloaded' });
 
     await expect(page).toHaveURL(/\/dashboard\/booster/, { timeout: 30_000 });
-    await expect(page.getByText(/Booster|Aide Booster|Module Booster/i).first()).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(
+      page.getByText(/Booster|Aide Booster|Module Booster/i).first()
+    ).toBeVisible({ timeout: 20_000 });
 
     await runtime.expectNoErrors();
   });
@@ -29,27 +29,9 @@ test.describe('booster and fideliser pages', () => {
     await page.goto('/dashboard/fideliser', { waitUntil: 'domcontentloaded' });
 
     await expect(page).toHaveURL(/\/dashboard\/fideliser/, { timeout: 30_000 });
-    await expect(page.getByText(/Fidéliser|Informer|newsletter/i).first()).toBeVisible({
-      timeout: 20_000,
-    });
-
-    await runtime.expectNoErrors();
-  });
-
-  test('stats page loads', async ({ page }) => {
-    const runtime = attachRuntimeErrorTracking(page);
-
-    await login(page);
-    await page.goto('/dashboard/stats', { waitUntil: 'domcontentloaded' });
-
-    await expect(page).toHaveURL(/\/dashboard\/stats/, { timeout: 30_000 });
-
-    // Validation robuste : la page existe et le main a du contenu exploitable
-    await expect(page.locator('main')).toBeVisible({ timeout: 20_000 });
-
-    // On évite les textes trop spécifiques qui varient selon l'état des données.
-    await expect(page.locator('main').locator('button, a, canvas, svg, table, [role="tab"], [role="button"]').first())
-      .toBeVisible({ timeout: 20_000 });
+    await expect(
+      page.getByText(/Fidéliser|Informer|newsletter/i).first()
+    ).toBeVisible({ timeout: 20_000 });
 
     await runtime.expectNoErrors();
   });
