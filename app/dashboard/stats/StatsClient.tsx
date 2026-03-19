@@ -7,6 +7,7 @@ import Image from "next/image";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
+import { getSimpleFrenchApiError } from "@/lib/userFacingErrors";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -924,8 +925,7 @@ export default function StatsClient() {
     if (forceFresh) params.set("fresh", "1");
     const r = await fetch(`/api/stats/overview?${params.toString()}`, { cache: "no-store" });
     if (!r.ok) {
-      const txt = await r.text().catch(() => "");
-      throw new Error(`fetch_failed:${r.status}:${txt.slice(0, 160)}`);
+      throw new Error(await getSimpleFrenchApiError(r));
     }
     return (await r.json()) as Overview;
   };
@@ -935,8 +935,7 @@ export default function StatsClient() {
     if (forceFresh) params.set("fresh", "1");
     const r = await fetch(`/api/metrics/summary?${params.toString()}`, { cache: "no-store" });
     if (!r.ok) {
-      const txt = await r.text().catch(() => "");
-      throw new Error(`summary_failed:${r.status}:${txt.slice(0, 160)}`);
+      throw new Error(await getSimpleFrenchApiError(r));
     }
     const json = (await r.json()) as MetricsSummaryResponse;
     const byCubePartial = json?.details?.opportunities?.byCube || {};

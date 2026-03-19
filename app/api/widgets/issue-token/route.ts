@@ -99,10 +99,10 @@ const handler = async (_req: Request) => {
     const source = (searchParams.get("source") || "").trim();
 
     if (!domain) {
-      return NextResponse.json({ ok: false, error: "Missing domain" }, { status: 400, headers: corsHeaders(null) });
+      return NextResponse.json({ ok: false, error: "Domaine manquant." }, { status: 400, headers: corsHeaders(null) });
     }
     if (source !== "inrcy_site" && source !== "site_web") {
-      return NextResponse.json({ ok: false, error: "Invalid source" }, { status: 400, headers: corsHeaders(null) });
+      return NextResponse.json({ ok: false, error: "Source invalide." }, { status: 400, headers: corsHeaders(null) });
     }
 
     // CORS hard-binding (widgets) + dashboard allowlist (issuing tokens from app.inrcy.com).
@@ -129,12 +129,12 @@ const handler = async (_req: Request) => {
       if (isAllowedOrigin(effective, allowedOrigins)) {
         allowOrigin = null; // Not needed for navigation; keep CORS conservative.
       } else {
-        return NextResponse.json({ ok: false, error: "Origin not allowed" }, { status: 403, headers: corsHeaders(null) });
+        return NextResponse.json({ ok: false, error: "Origine non autorisée." }, { status: 403, headers: corsHeaders(null) });
       }
     }
 
     if (!allowOrigin && origin) {
-      return NextResponse.json({ ok: false, error: "Origin not allowed" }, { status: 403, headers: corsHeaders(null) });
+      return NextResponse.json({ ok: false, error: "Origine non autorisée." }, { status: 403, headers: corsHeaders(null) });
     }
 
     // Rate-limit early (IP-based) to protect against anonymous abuse.
@@ -159,7 +159,7 @@ const handler = async (_req: Request) => {
     } = await supabase.auth.getUser();
 
     if (userErr || !user) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: corsHeaders(allowOrigin) });
+      return NextResponse.json({ ok: false, error: "Non authentifié." }, { status: 401, headers: corsHeaders(allowOrigin) });
     }
 
     // User-based limiter (protect costs + prevent a single account from hammering).
@@ -185,7 +185,7 @@ const handler = async (_req: Request) => {
       const d = normalizeDomain(String(asRecord(data)["site_url"] ?? ""));
       if (!d || d !== domain) {
         return NextResponse.json(
-          { ok: false, error: "Domain not linked to your iNrCy site" },
+          { ok: false, error: "Ce domaine n'est pas rattaché à votre site iNrCy." },
           { status: 403, headers: corsHeaders(allowOrigin) }
         );
       }
@@ -202,7 +202,7 @@ const handler = async (_req: Request) => {
       const d = normalizeDomain(String(siteWeb["url"] ?? ""));
       if (!d || d !== domain) {
         return NextResponse.json(
-          { ok: false, error: "Domain not linked to your website" },
+          { ok: false, error: "Ce domaine n'est pas rattaché à votre site web." },
           { status: 403, headers: corsHeaders(allowOrigin) }
         );
       }
@@ -223,7 +223,7 @@ const handler = async (_req: Request) => {
   } catch (e: unknown) {
     // We can't reliably know the correct origin in this catch (it may have failed before parsing),
     // so keep CORS conservative.
-    return NextResponse.json({ ok: false, error: (e instanceof Error ? e.message : String(e)) || "Server error" }, { status: 500, headers: corsHeaders(null) });
+    return NextResponse.json({ ok: false, error: (e instanceof Error ? e.message : String(e)) || "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes." }, { status: 500, headers: corsHeaders(null) });
   }
 };
 

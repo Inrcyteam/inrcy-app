@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     if (!SUPABASE_URL) {
       return NextResponse.json(
         {
-          error: 'Missing Supabase env vars. Need NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY',
+          error: 'Configuration serveur incomplète.',
           debug,
         },
         { status: 500 }
@@ -38,7 +38,7 @@ export async function GET(req: Request) {
 
     if (!user) {
       return NextResponse.json(
-        { error: 'Unauthorized', debug: process.env.NODE_ENV === 'development' ? debug : undefined },
+        { error: 'Non authentifié.', debug: process.env.NODE_ENV === 'development' ? debug : undefined },
         { status: 401 }
       );
     }

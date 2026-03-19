@@ -38,7 +38,7 @@ async function uploadUnpublishedPhoto(params: {
     // Support data URLs (base64)
     if (imageUrl.startsWith("data:")) {
       const m = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
-      if (!m) return { ok: false, error: "Invalid data URL for image" };
+      if (!m) return { ok: false, error: "Image invalide." };
       const mime = m[1];
       const b64 = m[2];
       const buf = Buffer.from(b64, "base64");
@@ -68,15 +68,15 @@ async function uploadUnpublishedPhoto(params: {
 
     const uploadJson: any = await uploadRes.json().catch(() => ({}));
     if (!uploadRes.ok) {
-      return { ok: false, error: uploadJson?.error?.message || "Photo upload failed" };
+      return { ok: false, error: uploadJson?.error?.message || "Impossible d'envoyer la photo pour le moment." };
     }
 
     const mediaFbid = uploadJson?.id;
-    if (!mediaFbid) return { ok: false, error: "Photo upload succeeded but no id returned" };
+    if (!mediaFbid) return { ok: false, error: "La photo n'a pas pu être enregistrée correctement." };
 
     return { ok: true, mediaFbid };
   } catch (e: any) {
-    return { ok: false, error: e?.message || "Photo upload error" };
+    return { ok: false, error: e?.message || "Impossible d'envoyer la photo pour le moment." };
   }
 }
 
@@ -122,7 +122,7 @@ export async function facebookPublishToPage(params: {
     if (!feedRes.ok) {
       return {
         ok: false,
-        error: feedJson?.error?.message || "Facebook feed post failed",
+        error: feedJson?.error?.message || "Impossible de publier sur Facebook pour le moment.",
         uploadedImages: attachedMedia.length,
         failedImages: photoErrors.length,
         photoErrors: photoErrors.length ? photoErrors : undefined,
@@ -139,7 +139,7 @@ export async function facebookPublishToPage(params: {
   } catch (e: any) {
     return {
       ok: false,
-      error: e?.message || "Unknown Facebook publish error",
+      error: e?.message || "Impossible de publier sur Facebook pour le moment.",
     };
   }
 }

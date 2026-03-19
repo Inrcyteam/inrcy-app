@@ -88,7 +88,7 @@ export async function enforceRateLimit(config: RateLimitConfig): Promise<NextRes
   } catch {
     if (config.failClosed) {
       return NextResponse.json(
-        { error: "Rate limiter unavailable" },
+        { error: "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes." },
         {
           status: 503,
           headers: {
@@ -152,7 +152,7 @@ export async function enforceQuota(config: QuotaConfig): Promise<NextResponse | 
   } catch {
     if (config.failClosed) {
       return NextResponse.json(
-        { error: "Quota backend unavailable" },
+        { error: "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes." },
         {
           status: 503,
           headers: {

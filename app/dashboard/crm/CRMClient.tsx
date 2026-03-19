@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./crm.module.css";
+import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { getTemplates } from "@/lib/messageTemplates";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
@@ -298,7 +299,7 @@ export default function CRMClient() {
     try {
       const r = await fetch("/api/crm/contacts", { method: "GET" });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.error || "Impossible de charger le CRM.");
+      if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger le CRM."));
       const base = Array.isArray(j?.contacts) ? j.contacts : [];
       // Merge local notes/important (if backend doesn't provide them yet)
       const merged = base.map((c: any) => ({
@@ -574,7 +575,7 @@ async function importContacts(rows: any[]) {
       body: JSON.stringify({ contacts: cleaned }),
     });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j?.error || "Import impossible.");
+    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Import impossible."));
     await loadContacts();
     alert(`✅ Import terminé : ${j?.inserted ?? cleaned.length} contact(s)`);
   } catch (e: any) {
@@ -787,7 +788,7 @@ const exportCsv = () => {
         body: JSON.stringify(editingId ? { id: editingId, ...payload } : payload),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.error || "Impossible d'enregistrer.");
+      if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible d'enregistrer."));
       await loadContacts();
       // If editing, persist ⭐ + notes locally (works even if backend doesn't store it yet)
       if (editingId) {
@@ -830,7 +831,7 @@ const exportCsv = () => {
         ids.map(async (id) => {
           const r = await fetch(`/api/crm/contacts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
           const j = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(j?.error || "Impossible de supprimer.");
+          if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de supprimer."));
         })
       );
 
@@ -853,7 +854,7 @@ const exportCsv = () => {
     try {
       const r = await fetch(`/api/crm/contacts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.error || "Impossible de supprimer.");
+      if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de supprimer."));
       await loadContacts();
       if (editingId === id) startNew();
     } catch (e: any) {

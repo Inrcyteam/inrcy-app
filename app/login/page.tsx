@@ -4,6 +4,7 @@ import Image from "next/image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type WanderDot = {
   left: string; // %
@@ -208,13 +209,13 @@ useEffect(() => {
 });
 
     if (error) {
-      setError(error.message);
+      setError(getSimpleFrenchErrorMessage(error));
       return;
     }
 
     setInfo("Email envoyé. Vérifiez votre boîte mail (et vos spams).");
   } catch (err: unknown) {
-    setError(err instanceof Error ? err.message : "Erreur lors de l’envoi de l’email");
+    setError(getSimpleFrenchErrorMessage(err, "Erreur lors de l’envoi de l’email"));
   } finally {
     setLoading(false);
   }
@@ -240,7 +241,7 @@ useEffect(() => {
       });
 
       if (error) {
-        setError(error.message);
+        setError(getSimpleFrenchErrorMessage(error));
         return;
       }
 
@@ -261,7 +262,7 @@ useEffect(() => {
       router.replace("/dashboard");
       router.refresh();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erreur de connexion");
+      setError(getSimpleFrenchErrorMessage(err, "Erreur de connexion"));
     } finally {
       setLoading(false);
     }

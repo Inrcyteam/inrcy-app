@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { getSimpleFrenchApiError } from "@/lib/userFacingErrors";
 
 type MailAccount = {
   id: string;
@@ -169,7 +170,7 @@ React.useEffect(() => {
         const res = await fetch("/api/integrations/status");
         if (!res.ok) {
           const j = await res.json().catch(() => ({}));
-          throw new Error(j?.error || `Erreur (${res.status})`);
+          throw new Error(await getSimpleFrenchApiError(res));
         }
         const data = await res.json();
         if (!alive) return;
@@ -340,7 +341,7 @@ React.useEffect(() => {
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
-        throw new Error(j?.error || "Erreur déconnexion");
+        throw new Error(await getSimpleFrenchApiError(r, "Erreur de déconnexion"));
       }
       setToast(acc.provider === "gmail" ? "gmail_disconnected" : acc.provider === "microsoft" ? "outlook_disconnected" : "imap_disconnected");
       // refresh status
@@ -550,7 +551,7 @@ React.useEffect(() => {
                         }),
                       });
                       const j = await r.json().catch(() => ({}));
-                      if (!r.ok) throw new Error(j?.error || "Test impossible");
+                      if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Test impossible"));
                       setImapFormError(null);
                       setToast("imap_test_ok");
                     } catch (e: any) {
@@ -594,7 +595,7 @@ React.useEffect(() => {
                         }),
                       });
                       const j = await r.json().catch(() => ({}));
-                      if (!r.ok) throw new Error(j?.error || "Connexion impossible");
+                      if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Connexion impossible"));
                       setImapModalOpen(false);
                       // refresh
                       const res = await fetch("/api/integrations/status");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 const LS_KEY = "inrcy_cookie_consent";
 
@@ -74,7 +75,7 @@ export default function RgpdContent({ mode = "page" }: Props) {
       const res = await fetch("/api/account/export", { method: "GET" });
       if (!res.ok) {
         const t = await res.text().catch(() => "");
-        throw new Error(t || `Export impossible (${res.status})`);
+        throw new Error(await getSimpleFrenchApiError(res, "Export impossible"));
       }
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -107,7 +108,7 @@ export default function RgpdContent({ mode = "page" }: Props) {
       const json = await res.json().catch(() => null);
       if (!res.ok) {
         const msg = json?.error || `Suppression impossible (${res.status})`;
-        throw new Error(msg);
+        throw new Error(getSimpleFrenchErrorMessage(msg));
       }
       setDone("Compte supprimé. Vous allez être déconnecté.");
       // Redirect to home/login.

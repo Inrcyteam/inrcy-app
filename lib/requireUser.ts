@@ -11,7 +11,7 @@ export async function requireUser() {
     return {
       supabase: null as any,
       user: null as any,
-      errorResponse: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      errorResponse: NextResponse.json({ error: "Non authentifié." }, { status: 401 }),
     };
   }
 

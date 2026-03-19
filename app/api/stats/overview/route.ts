@@ -115,7 +115,7 @@ export async function GET(request: Request) {
     if (!isCronMode) {
       const { data: authData, error: authErr } = await supabase.auth.getUser();
       if (authErr || !authData?.user) {
-        return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+        return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
       }
       userId = authData.user.id;
     }
@@ -658,7 +658,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           try {
             sourcesStatus.gmb.metrics = await gmbFetchDailyMetricsNormalized(accessToken, loc, start, end);
           } catch (e) {
-            sourcesStatus.gmb.metrics = { error: (e instanceof Error ? e.message : String(e)) || "performance fetch failed", location: loc };
+            sourcesStatus.gmb.metrics = { error: (e instanceof Error ? e.message : String(e)) || "Impossible de récupérer les statistiques pour le moment.", location: loc };
           }
         } else {
           sourcesStatus.gmb.metrics = null;
@@ -747,6 +747,6 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
   // NOTE: Turbopack/SWC can be picky about type annotations in catch clauses.
   // We keep the variable untyped (it is effectively `unknown`), then narrow.
   } catch (e) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
+    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes." }, { status: 500 });
   }
 }

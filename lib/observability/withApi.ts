@@ -62,8 +62,8 @@ export function withApi(handler: Handler, opts?: { route?: string }) {
 
       const body =
         process.env.NODE_ENV === "production"
-          ? { error: "Server error", request_id }
-          : { error: "Server error", request_id, message };
+          ? { error: "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes.", request_id }
+          : { error: "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes.", request_id, message };
 
       const out = NextResponse.json(body, { status: 500 });
       out.headers.set("x-request-id", request_id || "");

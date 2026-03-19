@@ -38,7 +38,7 @@ export async function refreshGoogleAccessToken(refreshToken: string) {
 
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data?.error_description || data?.error || "Token refresh failed");
+    throw new Error(data?.error_description || data?.error || "Connexion Google expirée. Merci de reconnecter le compte.");
   }
 
   const accessToken = data.access_token as string;
@@ -114,7 +114,7 @@ export async function getGoogleTokenFor(
   let effectiveUserId = ctx?.userId || "";
   if (!effectiveUserId) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) throw new Error("Not authenticated");
+    if (authErr || !authData?.user) throw new Error("Non authentifié.");
     effectiveUserId = authData.user.id;
   }
 
@@ -134,7 +134,7 @@ export async function getGoogleTokenFor(
     .eq("status", "connected")
     .maybeSingle();
 
-  if (error) throw new Error("DB read failed");
+  if (error) throw new Error("Lecture des données impossible pour le moment.");
   if (!data) return null;
 
   const row = data as unknown as GoogleTokenRow;
@@ -195,7 +195,7 @@ export async function runGa4Report(accessToken: string, propertyId: string, days
   );
 
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || "GA4 runReport failed");
+  if (!res.ok) throw new Error(data?.error?.message || "Impossible de récupérer les statistiques Google Analytics pour le moment.");
 
   const row = data?.rows?.[0];
   const values = row?.metricValues?.map((v: any) => v?.value) || [];
@@ -282,7 +282,7 @@ export async function runGa4Leads(accessToken: string, propertyId: string, days:
   );
 
   const data2 = await res2.json().catch(() => ({}));
-  if (!res2.ok) throw new Error((data2 as any)?.error?.message || "GA4 leads fallback failed");
+  if (!res2.ok) throw new Error((data2 as any)?.error?.message || "Impossible de récupérer les conversions Google Analytics pour le moment.");
 
   const rows = Array.isArray((data2 as any)?.rows) ? (data2 as any).rows : [];
   let sum = 0;
@@ -317,7 +317,7 @@ export async function runGa4TopPages(accessToken: string, propertyId: string, da
   );
 
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || "GA4 top pages failed");
+  if (!res.ok) throw new Error(data?.error?.message || "Impossible de récupérer les pages les plus vues pour le moment.");
 
   const rows = (data?.rows || []).map((r: any) => ({
     path: r?.dimensionValues?.[0]?.value || "/",
@@ -351,7 +351,7 @@ export async function runGa4Channels(accessToken: string, propertyId: string, da
   );
 
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || "GA4 channels failed");
+  if (!res.ok) throw new Error(data?.error?.message || "Impossible de récupérer les canaux d'acquisition pour le moment.");
 
   const rows = (data?.rows || []).map((r: any) => ({
     channel: r?.dimensionValues?.[0]?.value || "Other",
@@ -386,7 +386,7 @@ export async function runGscQuery(accessToken: string, property: string, days: n
   );
 
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || "GSC query failed");
+  if (!res.ok) throw new Error(data?.error?.message || "Impossible de récupérer les données Search Console pour le moment.");
 
   const rows = (data?.rows || []).map((r: any) => ({
     query: r?.keys?.[0] || "",
@@ -410,7 +410,7 @@ export async function getGoogleTokenForAnyGoogle(
   let userId = ctx?.userId || "";
   if (!userId) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) throw new Error("Not authenticated");
+    if (authErr || !authData?.user) throw new Error("Non authentifié.");
     userId = authData.user.id;
   }
 
@@ -428,7 +428,7 @@ export async function getGoogleTokenForAnyGoogle(
     .eq("status", "connected")
     .maybeSingle();
 
-  if (error) throw new Error("DB read failed");
+  if (error) throw new Error("Lecture des données impossible pour le moment.");
   if (!data) return null;
 
   const row = data as unknown as GoogleTokenRow;

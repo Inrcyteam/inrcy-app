@@ -29,9 +29,9 @@ export async function linkedinPublishText(params: {
   const { accessToken, authorUrn, text, visibility = "PUBLIC" } = params;
 
   try {
-    if (!accessToken) return { ok: false, error: "Missing LinkedIn access token" };
-    if (!authorUrn) return { ok: false, error: "Missing LinkedIn author URN" };
-    if (!text?.trim()) return { ok: false, error: "Empty post text" };
+    if (!accessToken) return { ok: false, error: "Connexion LinkedIn invalide." };
+    if (!authorUrn) return { ok: false, error: "Compte LinkedIn invalide." };
+    if (!text?.trim()) return { ok: false, error: "Le contenu de la publication est vide." };
 
     const payload = {
       author: authorUrn,
@@ -76,6 +76,6 @@ export async function linkedinPublishText(params: {
     const postUrn = res.headers.get("x-restli-id") || json?.id;
     return { ok: true, postUrn: postUrn || undefined, diagnostics: { status: res.status, body: json ?? raw } };
   } catch (e: any) {
-    return { ok: false, error: e?.message || "Unknown LinkedIn publish error" };
+    return { ok: false, error: e?.message || "Impossible de publier sur LinkedIn pour le moment." };
   }
 }

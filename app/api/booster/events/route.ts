@@ -13,7 +13,7 @@ const body = await req.json().catch(() => ({}));
     const payload = (body?.payload ?? {}) as Record<string, unknown>;
 
     if (!type || !["publish", "review_mail", "promo_mail"].includes(type)) {
-      return NextResponse.json({ error: "Invalid type" }, { status: 400 });
+      return NextResponse.json({ error: "Type d'action invalide." }, { status: 400 });
     }
 
     const { error } = await supabase.from("app_events").insert({
@@ -29,6 +29,6 @@ const body = await req.json().catch(() => ({}));
 
     return NextResponse.json({ ok: true });
   } catch {
-    return NextResponse.json({ error: "Bad request" }, { status: 400 });
+    return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 }

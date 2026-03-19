@@ -3,6 +3,7 @@
 import styles from "./dashboard.module.css";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useCallback, useMemo, type TouchEvent as ReactTouchEvent } from "react";
+import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import Link from "next/link";
 import SettingsDrawer from "./SettingsDrawer";
 import HelpButton from "./_components/HelpButton";
@@ -181,7 +182,7 @@ export default function DashboardClient() {
       setNotificationsLoading(true);
       const res = await fetch("/api/notifications/feed?limit=12", { credentials: "include" });
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || `Erreur ${res.status}`);
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res));
       if (requestSeq !== notificationsRequestSeqRef.current) return;
       setNotifications(Array.isArray(json?.items) ? json.items : []);
       setNotificationsError(null);
@@ -503,7 +504,7 @@ const submitReferral = useCallback(async () => {
     });
     const json = await res.json().catch(() => null);
     if (!res.ok || !json?.ok) {
-      throw new Error(json?.error || `Erreur ${res.status}`);
+      throw new Error(await getSimpleFrenchApiError(res));
     }
     setReferralNotice("Merci, votre recommandation a bien été envoyée à l’équipe iNrCy.");
     setReferralName("");
@@ -511,7 +512,7 @@ const submitReferral = useCallback(async () => {
     setReferralEmail("");
     setReferralFrom("");
   } catch (e: any) {
-    setReferralError(e?.message || "Impossible d’envoyer la recommandation pour le moment.");
+    setReferralError(getSimpleFrenchErrorMessage(e, "Impossible d’envoyer la recommandation pour le moment."));
   } finally {
     setReferralSubmitting(false);
   }
@@ -844,7 +845,7 @@ const updateSiteInrcySettings = useCallback(async (nextSettings: any) => {
     .upsert({ user_id: user.id, settings: nextSettings ?? {} }, { onConflict: "user_id" });
 
   if (error) {
-    setSiteInrcySettingsError(error.message);
+    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
     return;
   }
 
@@ -875,7 +876,7 @@ const saveSiteInrcySettings = useCallback(async () => {
   const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, settings: parsed }, { onConflict: "user_id" });
 
   if (error) {
-    setSiteInrcySettingsError(error.message);
+    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
     return;
   }
 
@@ -914,7 +915,7 @@ const attachGoogleAnalytics = useCallback(async () => {
   const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, settings: parsed }, { onConflict: "user_id" });
 
   if (error) {
-    setSiteInrcySettingsError(error.message);
+    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
     return;
   }
 
@@ -951,7 +952,7 @@ const attachGoogleSearchConsole = useCallback(async () => {
   const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, settings: parsed }, { onConflict: "user_id" });
 
   if (error) {
-    setSiteInrcySettingsError(error.message);
+    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
     return;
   }
 
@@ -1190,7 +1191,7 @@ const activateSiteInrcyTracking = useCallback(async () => {
   // Si le token admin iNrCy n'est pas configuré, on affiche une erreur explicite.
   if (!res.ok) {
     setSiteInrcyTrackingBusy(false);
-    setSiteInrcySettingsError((data as any)?.error || `Erreur d'activation (${res.status}).`);
+    setSiteInrcySettingsError(getSimpleFrenchErrorMessage((data as any)?.error || String(res.status)));
     return;
   }
 
@@ -1235,7 +1236,7 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
   const data = await res.json().catch(() => ({} as any));
   if (!res.ok) {
     setSiteInrcyTrackingBusy(false);
-    setSiteInrcySettingsError((data as any)?.error || `Erreur de désactivation (${res.status}).`);
+    setSiteInrcySettingsError(getSimpleFrenchErrorMessage((data as any)?.error || String(res.status)));
     return;
   }
 
@@ -1266,9 +1267,9 @@ const disconnectGoogleStats = useCallback(
     if (!res || !res.ok) {
       const msg = !res
         ? "Impossible de joindre le serveur."
-        : `Erreur de déconnexion (${res.status}).`;
-      if (source === "site_inrcy") setSiteInrcySettingsError(msg);
-      else setSiteWebSettingsError(msg);
+        : getSimpleFrenchErrorMessage(String(res.status));
+      if (source === "site_inrcy") setSiteInrcySettingsError(getSimpleFrenchErrorMessage(msg));
+      else setSiteWebSettingsError(getSimpleFrenchErrorMessage(msg));
       return;
     }
 
@@ -1368,7 +1369,7 @@ const saveSiteInrcyUrl = useCallback(async () => {
 
   const error = cfgRes.error ?? profileRes.error;
   if (error) {
-    setSiteInrcySettingsError(error.message);
+    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
     return;
   }
 
@@ -1398,7 +1399,7 @@ const updateSiteWebSettings = useCallback(
       .maybeSingle();
 
     if (readErr) {
-      setSiteWebSettingsError(readErr.message);
+      setSiteWebSettingsError(getSimpleFrenchErrorMessage(readErr));
       return;
     }
 
@@ -1407,7 +1408,7 @@ const updateSiteWebSettings = useCallback(
 
     const { error } = await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
     if (error) {
-      setSiteWebSettingsError(error.message);
+      setSiteWebSettingsError(getSimpleFrenchErrorMessage(error));
       return;
     }
 

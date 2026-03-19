@@ -11,6 +11,7 @@ import PromoModal from "./components/PromoModal";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
+import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type ActiveModal = null | "publish" | "reviews" | "promo";
 
@@ -86,13 +87,13 @@ const trackEvent = async (
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(json?.error || "La publication a échoué.");
+        throw new Error(await getSimpleFrenchApiError(res, "La publication a échoué."));
       }
 
       const failed = Object.entries((json?.results || {}) as Record<string, any>).filter(([, value]) => value && value.ok === false);
       if (failed.length) {
         const detail = failed.map(([channel, value]) => `${channel}: ${String((value as any)?.error || "erreur")}`).join(" | ");
-        throw new Error(detail);
+        throw new Error(getSimpleFrenchErrorMessage(detail, "La publication a échoué."));
       }
 
       // ✅ 10 UI pour une actu (1 fois / semaine)

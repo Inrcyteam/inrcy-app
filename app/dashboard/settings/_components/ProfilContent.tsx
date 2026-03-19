@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabaseClient";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type Props = {
   mode?: "page" | "drawer";
@@ -111,7 +112,7 @@ export default function ProfilContent({
         const supabase = createClient();
 
         const { data: authData, error: authErr } = await supabase.auth.getUser();
-        if (authErr) throw new Error(authErr.message);
+        if (authErr) throw new Error(getSimpleFrenchErrorMessage(authErr));
         const user = authData?.user;
         if (!user) return;
 
@@ -121,7 +122,7 @@ export default function ProfilContent({
           .eq("user_id", user.id)
           .maybeSingle();
 
-        if (error) throw new Error(error.message);
+        if (error) throw new Error(getSimpleFrenchErrorMessage(error));
         if (!data) return;
 
         setForm((prev) => ({
@@ -266,7 +267,7 @@ export default function ProfilContent({
     const path = `${userId}/logo.${ext}`;
 
     const { error: uploadError } = await supabase.storage.from("logos").upload(path, file, { upsert: true });
-    if (uploadError) throw new Error(uploadError.message);
+    if (uploadError) throw new Error(getSimpleFrenchErrorMessage(uploadError));
 
     // Bucket privé => URL signée (7 jours)
     const { data, error: signError } = await supabase.storage.from("logos").createSignedUrl(path, 60 * 60 * 24 * 7);
@@ -291,7 +292,7 @@ export default function ProfilContent({
       const supabase = createClient();
 
       const { data: authData, error: authErr } = await supabase.auth.getUser();
-      if (authErr) throw new Error(authErr.message);
+      if (authErr) throw new Error(getSimpleFrenchErrorMessage(authErr));
       const user = authData?.user;
       if (!user) throw new Error("Utilisateur non connecté.");
 
@@ -341,7 +342,7 @@ export default function ProfilContent({
       };
 
       const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(getSimpleFrenchErrorMessage(error));
 
       // ✅ Récompense : profil complet (100 UI) — idempotent via sourceId
       try {

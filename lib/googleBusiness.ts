@@ -17,7 +17,7 @@ export async function gmbListAccounts(accessToken: string) {
   }
 
   if (!r.ok) {
-    const msg = j?.error?.message || j?.error_description || raw || "GMB accounts API error";
+    const msg = j?.error?.message || j?.error_description || raw || "Impossible de récupérer les comptes Google Business pour le moment.";
     throw new Error(`GMB accounts error (${r.status}): ${msg}`);
   }
   return (j.accounts || []) as GMBAccount[];
@@ -56,7 +56,7 @@ export async function gmbListLocations(accessToken: string, accountName: string)
   url.searchParams.set("pageSize", "100");
 
   const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } });
-  const j = await fetchJsonOrThrow(r, "GMB locations (businessinformation) error");
+  const j = await fetchJsonOrThrow(r, "Impossible de récupérer les établissements Google Business pour le moment.");
 
   const items = (j.locations || []) as GMBLocation[];
   return items.map((l: any) => ({ ...l, name: normalizeLocationName(l.name) }));
@@ -65,13 +65,13 @@ export async function gmbListLocations(accessToken: string, accountName: string)
 // Fallback API: older My Business API (v4). Useful when the v1 API is not enabled on the GCP project.
 async function gmbListLocationsV4(accessToken: string, accountName: string) {
   const accountId = accountName.split("/").pop();
-  if (!accountId) throw new Error("Invalid accountName");
+  if (!accountId) throw new Error("Compte Google Business invalide.");
 
   const url = new URL(`https://mybusiness.googleapis.com/v4/accounts/${accountId}/locations`);
   url.searchParams.set("pageSize", "100");
 
   const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } });
-  const j = await fetchJsonOrThrow(r, "GMB locations (v4) error");
+  const j = await fetchJsonOrThrow(r, "Impossible de récupérer les établissements Google Business pour le moment.");
 
   const locations = (j.locations || []) as any[];
   return locations.map((l) => ({
@@ -153,7 +153,7 @@ export async function gmbFetchDailyMetrics(accessToken: string, locationName: st
     body: JSON.stringify(body),
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j?.error?.message || j?.error_description || "GMB performance API error");
+  if (!r.ok) throw new Error(j?.error?.message || j?.error_description || "Impossible de récupérer les statistiques Google Business pour le moment.");
   return j;
 }
 
@@ -286,7 +286,7 @@ export async function gmbCreateLocalPost(args: {
 
   const accountId = accountName.split("/").pop();
   const locationId = locationName.split("/").pop();
-  if (!accountId || !locationId) throw new Error("Invalid account/location selection");
+  if (!accountId || !locationId) throw new Error("Établissement Google Business invalide.");
 
   const endpoint = `https://mybusiness.googleapis.com/v4/accounts/${accountId}/locations/${locationId}/localPosts`;
 
@@ -316,7 +316,7 @@ export async function gmbCreateLocalPost(args: {
   });
 
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j?.error?.message || j?.error_description || "GMB create post error");
+  if (!r.ok) throw new Error(j?.error?.message || j?.error_description || "Impossible de publier sur Google Business pour le moment.");
 
   return j;
 }

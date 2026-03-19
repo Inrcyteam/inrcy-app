@@ -67,6 +67,6 @@ export async function openaiGenerateJSON<T extends OpenAIResponseJSON>(opts: {
     if (start >= 0 && end > start) {
       return JSON.parse(contentText.slice(start, end + 1)) as T;
     }
-    throw new Error("OpenAI: invalid JSON output");
+    throw new Error("La génération n'a pas pu être finalisée. Merci de réessayer.");
   }
 }

@@ -19,6 +19,6 @@ export async function GET() {
       },
     });
   } catch {
-    return NextResponse.json({ error: "Bad request" }, { status: 400 });
+    return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 }

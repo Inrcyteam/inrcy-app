@@ -5,7 +5,7 @@ export async function loadImapAccount(accountId: string) {
   const supabase = await createSupabaseServer();
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    return { error: "Unauthorized" as const, status: 401 };
+    return { error: "Non authentifié." as const, status: 401 };
   }
 
   const { data, error } = await supabase

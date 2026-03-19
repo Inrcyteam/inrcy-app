@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import styles from "./agenda.module.css";
+import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
@@ -535,7 +536,7 @@ body: JSON.stringify({
     }).catch(() => null);
 
     const j = r ? await r.json().catch(() => ({})) : {};
-    if (!r || !r.ok) throw new Error((j as any)?.error ?? "Impossible d’ajouter le contact au CRM");
+    if (!r || !r.ok) throw new Error(r ? await getSimpleFrenchApiError(r, "Impossible d’ajouter le contact au CRM") : "Connexion au serveur impossible pour le moment. Merci de réessayer.");
 
     await loadContacts();
     const createdId = (j as any)?.id as string | undefined;
@@ -626,7 +627,7 @@ async function submitRdv() {
         body: JSON.stringify(payload),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) throw new Error(j?.error ?? "Impossible de créer le rendez-vous");
+      if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de créer le rendez-vous") : getSimpleFrenchErrorMessage(j?.error, "Impossible de créer le rendez-vous"));
     } else {
       const r = await fetch(`/api/calendar/events?id=${encodeURIComponent(rdvEventId)}`, {
         method: "PATCH",
@@ -634,7 +635,7 @@ async function submitRdv() {
         body: JSON.stringify(payload),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) throw new Error(j?.error ?? "Impossible de modifier le rendez-vous");
+      if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de modifier le rendez-vous") : getSimpleFrenchErrorMessage(j?.error, "Impossible de modifier le rendez-vous"));
     }
 
     setRdvOpen(false);
@@ -653,7 +654,7 @@ async function deleteRdv() {
   try {
     const r = await fetch(`/api/calendar/events?id=${encodeURIComponent(rdvEventId)}`, { method: "DELETE" });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j.ok) throw new Error(j?.error ?? "Impossible de supprimer");
+    if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de supprimer") : getSimpleFrenchErrorMessage(j?.error, "Impossible de supprimer"));
     setRdvOpen(false);
     await loadEventsForMonth(cursorMonth);
   } catch (e: any) {
@@ -668,7 +669,7 @@ async function deleteEventById(id: string) {
   try {
     const r = await fetch(`/api/calendar/events?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j.ok) throw new Error(j?.error ?? "Impossible de supprimer");
+    if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de supprimer") : getSimpleFrenchErrorMessage(j?.error, "Impossible de supprimer"));
     await loadEventsForMonth(cursorMonth);
   } catch (e: any) {
     // Affiche l'erreur dans la modale si elle est ouverte, sinon en haut

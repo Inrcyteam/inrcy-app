@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { getSimpleFrenchApiError } from "@/lib/userFacingErrors";
 
 type Preferences = {
   in_app_enabled: boolean;
@@ -100,7 +101,7 @@ export default function NotificationsSettingsContent() {
         setLoading(true);
         const res = await fetch("/api/notifications/preferences", { credentials: "include" });
         const json = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(json?.error || `Erreur ${res.status}`);
+        if (!res.ok) throw new Error(await getSimpleFrenchApiError(res));
         if (!alive) return;
         setPrefs(json.preferences);
         setError(null);
@@ -126,7 +127,7 @@ export default function NotificationsSettingsContent() {
         body: JSON.stringify(next),
       });
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || `Erreur ${res.status}`);
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res));
       setPrefs(json.preferences);
       setNotice("Préférences enregistrées.");
       setError(null);
