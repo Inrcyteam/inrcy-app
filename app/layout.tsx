@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import OrientationGuard from "./OrientationGuard"; // ✅ AJOUT
+import OrientationGuard from "./OrientationGuard";
 import CookieConsentBanner from "./_components/CookieConsentBanner";
 
 const geistSans = Geist({
@@ -23,19 +23,28 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon.png",
   },
   manifest: "/site.webmanifest",
+  // 🔒 Bloque la traduction Google
+  other: {
+    "google": "notranslate",
+  },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="en">
+    <html lang="fr" translate="no" className="notranslate">
+      <head>
+        {/* 🔒 Empêche Google Translate */}
+        <meta name="google" content="notranslate" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        translate="no"
       >
-        <OrientationGuard /> {/* ✅ AJOUT ICI */}
+        <OrientationGuard />
         <CookieConsentBanner />
         {children}
       </body>
