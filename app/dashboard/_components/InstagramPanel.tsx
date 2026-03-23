@@ -159,11 +159,11 @@ export default function InstagramPanel(props: any) {
 
             <button
               type="button"
-              className={`${styles.actionBtn} ${styles.connectBtn}`}
-              onClick={saveInstagramProfile}
+              className={`${styles.actionBtn} ${instagramConnected ? styles.disconnectBtn : styles.connectBtn}`}
+              onClick={instagramConnected ? disconnectInstagramProfile : saveInstagramProfile}
               disabled={!igSelectedPageId}
             >
-              Connecter
+              {instagramConnected ? "Déconnecter la page" : "Connecter"}
             </button>
           </div>
           {igAccountsError && <div className={styles.errNote}>{igAccountsError}</div>}
