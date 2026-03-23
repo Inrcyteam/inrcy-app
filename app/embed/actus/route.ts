@@ -41,31 +41,10 @@ function verifyWidgetToken(token: string, secret: string): WidgetTokenPayload {
   return payload;
 }
 
-function getHeaderHost(value: string | null): string {
-  if (!value) return "";
-  try {
-    return new URL(value).hostname.toLowerCase().replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-
-function getEmbeddingHost(req: Request): string {
-  const originHost = getHeaderHost(req.headers.get("origin"));
-  if (originHost) return originHost;
-  return getHeaderHost(req.headers.get("referer"));
-}
-
-function buildFrameAncestors(domain: string): string {
-  const d = normalizeWidgetDomain(domain);
-  if (!d) return "frame-ancestors 'none'";
-  const origins = [
-    `https://${d}`,
-    `https://www.${d}`,
-    `http://${d}`,
-    `http://www.${d}`
-  ];
-  return `frame-ancestors ${origins.join(" ")}`;
+function buildFrameAncestors(): string {
+  // Public read-only widget: allow embedding from any site builder/editor.
+  // The signed token still controls what content can be requested.
+  return "frame-ancestors *";
 }
 
 function clampLimit(value: string | null) {
@@ -112,7 +91,7 @@ function htmlResponse(html: string, status = 200, domain = "") {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "private, no-store, max-age=0",
       "x-robots-tag": "noindex, nofollow",
-      "content-security-policy": buildFrameAncestors(domain),
+      "content-security-policy": buildFrameAncestors(),
     },
   });
 }
@@ -144,10 +123,10 @@ export async function GET(req: Request) {
       return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 403, tokDomain || domain);
     }
 
-    const embeddingHost = getEmbeddingHost(req);
-    if (!embeddingHost || embeddingHost !== tokDomain) {
-      return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 403, tokDomain);
-    }
+    // Do not bind public widgets to the parent frame origin.
+    // Site builders (Wix, Webflow, Squarespace, Shopify, etc.) often render
+    // previews from technical domains that differ from the final customer domain.
+    // The signed token + domain/source match above remain the access control.
 
     const ip = getClientIp(req);
     const rateLimited = await enforceRateLimit({
