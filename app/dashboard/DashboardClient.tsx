@@ -1575,12 +1575,14 @@ const disconnectGmbBusiness = useCallback(async () => {
   const [fbSelectedPageId, setFbSelectedPageId] = useState<string>("");
   const [fbSelectedPageName, setFbSelectedPageName] = useState<string>("");
   const [fbPagesError, setFbPagesError] = useState<string | null>(null);
+  const fbPagesAutoLoadRef = useRef(false);
 
 // Instagram accounts (selection via Facebook pages that have an IG Business account)
 const [igAccounts, setIgAccounts] = useState<Array<{ page_id: string; page_name?: string; ig_id: string; username?: string; page_access_token?: string }>>([]);
 const [igAccountsLoading, setIgAccountsLoading] = useState(false);
 const [igSelectedPageId, setIgSelectedPageId] = useState<string>("");
 const [igAccountsError, setIgAccountsError] = useState<string | null>(null);
+const igAccountsAutoLoadRef = useRef(false);
 
 
 
@@ -1677,6 +1679,29 @@ const loadFacebookPages = useCallback(async () => {
     setFbPagesLoading(false);
   }
 	}, [facebookAccountConnected, fbSelectedPageId]);
+
+useEffect(() => {
+  const linked = searchParams.get("linked");
+  const ok = searchParams.get("ok");
+  const shouldAutoLoad = panel === "facebook" && linked === "facebook" && ok === "1";
+
+  if (!shouldAutoLoad) {
+    fbPagesAutoLoadRef.current = false;
+    return;
+  }
+
+  if (!facebookAccountConnected || facebookPageConnected || fbPagesLoading || fbPagesAutoLoadRef.current) return;
+
+  fbPagesAutoLoadRef.current = true;
+  void loadFacebookPages();
+}, [
+  panel,
+  searchParams,
+  facebookAccountConnected,
+  facebookPageConnected,
+  fbPagesLoading,
+  loadFacebookPages,
+]);
 
 const saveFacebookPage = useCallback(async () => {
   const picked = fbPages.find((p) => p.id === fbSelectedPageId);
@@ -1781,6 +1806,29 @@ const loadInstagramAccounts = useCallback(async () => {
     setIgAccountsLoading(false);
   }
 }, [instagramAccountConnected, igSelectedPageId, triggerGeneratorRefresh]);
+
+useEffect(() => {
+  const linked = searchParams.get("linked");
+  const ok = searchParams.get("ok");
+  const shouldAutoLoad = panel === "instagram" && linked === "instagram" && ok === "1";
+
+  if (!shouldAutoLoad) {
+    igAccountsAutoLoadRef.current = false;
+    return;
+  }
+
+  if (!instagramAccountConnected || instagramConnected || igAccountsLoading || igAccountsAutoLoadRef.current) return;
+
+  igAccountsAutoLoadRef.current = true;
+  void loadInstagramAccounts();
+}, [
+  panel,
+  searchParams,
+  instagramAccountConnected,
+  instagramConnected,
+  igAccountsLoading,
+  loadInstagramAccounts,
+]);
 
 const saveInstagramProfile = useCallback(async () => {
   const picked = igAccounts.find((a) => a.page_id === igSelectedPageId);
