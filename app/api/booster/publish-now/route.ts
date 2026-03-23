@@ -7,9 +7,9 @@ import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { facebookPublishToPage } from "@/lib/facebookPublish";
 import { instagramPublishPhoto } from "@/lib/instagramPublish";
-import { linkedinPublishText } from "@/lib/linkedinPublish";
+import { linkedinPublishImage, linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
-import { optimizeForInstagram } from "@/lib/imageOptimizer";
+import { optimizeForInstagram, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
@@ -154,10 +154,11 @@ const body = await req.json().catch(() => null);
     const uploadedUrls: string[] = []; // stored for UI
     const publishableUrls: string[] = []; // used for external platforms
     const instagramPublishableUrls: string[] = []; // optimized JPEGs for Instagram
+    const socialFeedPublishableUrls: string[] = []; // padded JPEGs for Facebook/LinkedIn feeds
     const uploadErrors: Array<{
       name: string;
       reason: string;
-      stage: "parse" | "upload" | "publicUrl" | "signedUrl" | "instagramOptimize" | "instagramUpload";
+      stage: "parse" | "upload" | "publicUrl" | "signedUrl" | "instagramOptimize" | "instagramUpload" | "socialFeedOptimize" | "socialFeedUpload";
     }> = [];
 
     for (const img of images.slice(0, 5)) {
@@ -226,6 +227,35 @@ const body = await req.json().catch(() => null);
           stage: "instagramOptimize",
         });
       }
+
+      try {
+        const optimized = await optimizeForSocialFeed(parsed.buffer);
+        const socialPath = `${userId}/social-feed/${randomUUID()}.${optimized.extension}`;
+        const socialUpload = await supabaseAdmin.storage.from("booster").upload(socialPath, optimized.buffer, {
+          contentType: optimized.mime,
+          upsert: false,
+        });
+
+        if (socialUpload.error) {
+          uploadErrors.push({ name: img?.name || "image", reason: socialUpload.error.message, stage: "socialFeedUpload" });
+        } else {
+          const socialSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(socialPath, 60 * 60 * 24);
+          const socialPublic = supabaseAdmin.storage.from("booster").getPublicUrl(socialPath);
+          if (socialSigned?.data?.signedUrl) {
+            socialFeedPublishableUrls.push(socialSigned.data.signedUrl);
+          } else if (socialPublic?.data?.publicUrl) {
+            socialFeedPublishableUrls.push(socialPublic.data.publicUrl);
+          } else {
+            uploadErrors.push({ name: img?.name || "image", reason: "Social feed optimized image URL unavailable", stage: "socialFeedUpload" });
+          }
+        }
+      } catch (optErr) {
+        uploadErrors.push({
+          name: img?.name || "image",
+          reason: errMessage(optErr, "Social feed image optimization failed"),
+          stage: "socialFeedOptimize",
+        });
+      }
     }
 
     // Optional hard fail if user selected images but none uploaded
@@ -292,7 +322,8 @@ const body = await req.json().catch(() => null);
     const siteWebUrl = String(proSiteWeb["url"] ?? "").trim();
 
     const externalImageUrls = (publishableUrls.length ? publishableUrls : uploadedUrls).slice(0, 5);
-    const instagramImageUrls = (instagramPublishableUrls.length ? instagramPublishableUrls : externalImageUrls).slice(0, 5);
+    const socialFeedImageUrls = (socialFeedPublishableUrls.length ? socialFeedPublishableUrls : externalImageUrls).slice(0, 5);
+    const instagramImageUrls = (instagramPublishableUrls.length ? instagramPublishableUrls : socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).slice(0, 5);
 
     async function setDelivery(channel: ChannelKey, patch: JsonRecord) {
       const nextStatus = String(patch.status ?? "").trim();
@@ -386,7 +417,7 @@ const body = await req.json().catch(() => null);
             pageId,
             pageAccessToken: pageToken,
             message: canonMessage,
-            imageUrls: externalImageUrls,
+            imageUrls: socialFeedImageUrls,
           });
 
           if (!resp.ok) {
@@ -457,11 +488,38 @@ const body = await req.json().catch(() => null);
           const liMeta = asRecord(li["meta"]);
           const orgUrn = String(liMeta["org_urn"] ?? "");
           const useAuthor = orgUrn || authorUrn;
-          const resp = await linkedinPublishText({
-            accessToken,
-            authorUrn: useAuthor,
-            text: canonMessage,
-          });
+          const linkedInImageUrl = socialFeedImageUrls[0] || externalImageUrls[0] || "";
+          let resp = linkedInImageUrl
+            ? await linkedinPublishImage({
+                accessToken,
+                authorUrn: useAuthor,
+                text: canonMessage,
+                imageUrl: linkedInImageUrl,
+                title: channelPost.title || undefined,
+              })
+            : await linkedinPublishText({
+                accessToken,
+                authorUrn: useAuthor,
+                text: canonMessage,
+              });
+
+          if (!resp.ok && linkedInImageUrl) {
+            const fallbackResp = await linkedinPublishText({
+              accessToken,
+              authorUrn: useAuthor,
+              text: canonMessage,
+            });
+            if (fallbackResp.ok) {
+              resp = {
+                ...fallbackResp,
+                diagnostics: {
+                  imagePublishError: resp.error,
+                  imagePublishDiagnostics: resp.diagnostics,
+                  fallback: "text_only",
+                },
+              };
+            }
+          }
 
           if (!resp.ok) {
             await setDelivery(ch, { status: "failed", error: resp.error });
@@ -532,6 +590,7 @@ const body = await req.json().catch(() => null);
         images: uploadedUrls,
         publishableUrls,
         instagramPublishableUrls,
+        socialFeedPublishableUrls,
         uploadErrors,
         publication_id: publicationId,
         results,
@@ -544,6 +603,7 @@ const body = await req.json().catch(() => null);
       images: uploadedUrls,
       publishableUrls,
       instagramPublishableUrls,
+      socialFeedPublishableUrls,
       uploadErrors,
       results,
     });
@@ -551,3 +611,4 @@ const body = await req.json().catch(() => null);
     return NextResponse.json({ error: errMessage(e, "Erreur") }, { status: 500 });
   }
 }
+
