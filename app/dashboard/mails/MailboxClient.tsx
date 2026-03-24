@@ -143,102 +143,6 @@ type PublicationParts = {
   attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null }[];
 };
 
-type PublicationChannelParts = PublicationParts & {
-  channel: string;
-  label: string;
-  deleted?: boolean;
-  deleteDisabled?: boolean;
-  deleteReason?: string | null;
-};
-
-type AttachmentInfo = {
-  name: string;
-  type?: string | null;
-  size?: number | null;
-  url?: string | null;
-};
-
-function basenameFromUrl(value?: string | null): string {
-  const source = String(value || "").trim();
-  if (!source) return "Pièce jointe";
-  try {
-    const pathname = new URL(source).pathname;
-    const raw = pathname.split("/").filter(Boolean).pop() || source;
-    return decodeURIComponent(raw);
-  } catch {
-    const clean = source.split("?")[0].split("#")[0];
-    const raw = clean.split("/").filter(Boolean).pop() || source;
-    return decodeURIComponent(raw);
-  }
-}
-
-function normalizeAttachmentName(attachment: AttachmentInfo): string {
-  const raw = String(attachment.name || "").trim();
-  if (!raw) return basenameFromUrl(attachment.url);
-  if (/^https?:\/\//i.test(raw)) return basenameFromUrl(raw);
-  if (raw.includes('/')) return basenameFromUrl(raw);
-  return raw;
-}
-
-function attachmentKind(attachment: AttachmentInfo): "image" | "video" | "file" {
-  const mime = String(attachment.type || "").toLowerCase();
-  const ref = `${attachment.url || ""} ${attachment.name || ""}`.toLowerCase();
-  if (mime.startsWith("image/")) return "image";
-  if (mime.startsWith("video/")) return "video";
-  if (/\.(png|jpe?g|webp|gif|bmp|svg|avif)(\?|#|$)/i.test(ref)) return "image";
-  if (/\.(mp4|webm|ogg|mov|m4v)(\?|#|$)/i.test(ref)) return "video";
-  return "file";
-}
-
-function AttachmentPreviewSection({ attachments }: { attachments: AttachmentInfo[] }) {
-  if (!attachments.length) return null;
-
-  return (
-    <div className={styles.mediaSection}>
-      <div className={styles.publicationLabel}>Pièces jointes</div>
-      <div className={styles.mediaGrid}>
-        {attachments.map((attachment, idx) => {
-          const url = typeof attachment.url === "string" ? attachment.url.trim() : "";
-          const kind = attachmentKind(attachment);
-          const name = normalizeAttachmentName(attachment);
-          return (
-            <div key={`${name}-${idx}`} className={styles.mediaCard}>
-              {url && kind === "image" ? (
-                <a href={url} target="_blank" rel="noreferrer" className={styles.mediaPreviewLink}>
-                  <img src={url} alt={name} className={styles.mediaImage} />
-                </a>
-              ) : null}
-
-              {url && kind === "video" ? (
-                <div className={styles.mediaVideoWrap}>
-                  <video className={styles.mediaVideo} controls preload="metadata">
-                    <source src={url} type={attachment.type || undefined} />
-                  </video>
-                </div>
-              ) : null}
-
-              <div className={styles.mediaMeta}>
-                <div className={styles.mediaName}>{name}</div>
-                <div className={styles.mediaMetaRow}>
-                  {attachment.type ? <span className={styles.attachmentMeta}>{attachment.type}</span> : null}
-                  {typeof attachment.size === "number" ? (
-                    <span className={styles.attachmentMeta}>{Math.round(attachment.size / 1024)} Ko</span>
-                  ) : null}
-                </div>
-                {url ? (
-                  <a className={styles.attachmentLink} href={url} target="_blank" rel="noreferrer">
-                    Ouvrir le fichier
-                  </a>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function splitList(v?: string | null): string[] {
   if (!v) return [];
   return String(v)
@@ -376,10 +280,7 @@ function extractAttachmentsFromPayload(payload: any): { name: string; type?: str
   return candidates
     .map((a: any) => {
       if (!a) return null;
-      if (typeof a === "string") {
-        const raw = String(a).trim();
-        return { name: basenameFromUrl(raw), url: /^https?:\/\//i.test(raw) ? raw : null };
-      }
+      if (typeof a === "string") return { name: a };
       const name = a.name || a.filename || a.fileName || a.originalname || a.path || a.url || a.href;
       if (!name) return null;
       return {
@@ -390,50 +291,6 @@ function extractAttachmentsFromPayload(payload: any): { name: string; type?: str
       };
     })
     .filter(Boolean) as any;
-}
-
-function channelLabel(channel: string): string {
-  switch (String(channel || "")) {
-    case "inrcy_site": return "Site iNrCy";
-    case "site_web": return "Site web";
-    case "facebook": return "Facebook";
-    case "instagram": return "Instagram";
-    case "linkedin": return "LinkedIn";
-    case "gmb": return "Google Business";
-    default: return String(channel || "Canal");
-  }
-}
-
-function getPublicationChannelParts(payload: any): PublicationChannelParts[] {
-  if (!payload || typeof payload !== "object") return [];
-  const selected: string[] = Array.isArray(payload.channels)
-    ? payload.channels.map((x: any) => String(x || "").trim()).filter(Boolean)
-    : [];
-  const uniq: string[] = Array.from(new Set<string>(selected));
-  const results: Record<string, any> = payload?.results && typeof payload.results === "object" ? payload.results : {};
-  const postByChannel: Record<string, any> = payload?.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : {};
-
-  const resolvePost = (channel: string) => {
-    if (channel === "inrcy_site") return postByChannel.inrcy_site || postByChannel.site_web || payload.post || payload;
-    if (channel === "site_web") return postByChannel.site_web || postByChannel.inrcy_site || payload.post || payload;
-    return postByChannel[channel] || payload.post || payload;
-  };
-
-  return uniq.map((channel: string) => {
-    const channelPayload = { ...payload, post: resolvePost(channel) };
-    const parts = extractPublicationParts(channelPayload);
-    const rawChannelResult = results[channel];
-    const channelResult: Record<string, any> = rawChannelResult && typeof rawChannelResult === "object" ? rawChannelResult : {};
-    const externalId = String(channelResult.external_id || "").trim();
-    return {
-      channel,
-      label: channelLabel(channel),
-      ...parts,
-      deleted: !!channelResult.deleted,
-      deleteDisabled: !externalId,
-      deleteReason: externalId ? null : "Aucune publication enregistrée pour ce canal.",
-    } as PublicationChannelParts;
-  });
 }
 
 function extractPublicationParts(payload: any): PublicationParts {
@@ -529,14 +386,6 @@ export default function MailboxClient() {
   // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsId, setDetailsId] = useState<string | null>(null);
-  const [selectedPublicationChannel, setSelectedPublicationChannel] = useState<string | null>(null);
-  const [deletingPublicationChannel, setDeletingPublicationChannel] = useState<string | null>(null);
-  const [editingPublicationChannel, setEditingPublicationChannel] = useState<string | null>(null);
-  const [savingPublicationChannel, setSavingPublicationChannel] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editContent, setEditContent] = useState("");
-  const [editCta, setEditCta] = useState("");
-  const [editHashtags, setEditHashtags] = useState("");
 
   const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
@@ -905,58 +754,6 @@ const subTitle = firstNonEmpty(
     if (!detailsId) return null;
     return items.find((x) => x.id === detailsId) || null;
   }, [items, detailsId]);
-
-  const detailsPublicationChannels = useMemo(() => {
-    if (!detailsItem || detailsItem.source === "send_items") return [] as PublicationChannelParts[];
-    const payload = (detailsItem as any)?.raw?.payload || null;
-    return detailsItem.folder === "publications" ? getPublicationChannelParts(payload) : [];
-  }, [detailsItem]);
-
-  const activePublicationChannel = useMemo(() => {
-    if (!detailsPublicationChannels.length) return null;
-    return detailsPublicationChannels.find((c) => c.channel === selectedPublicationChannel) || detailsPublicationChannels[0] || null;
-  }, [detailsPublicationChannels, selectedPublicationChannel]);
-
-  useEffect(() => {
-    setSelectedPublicationChannel(detailsPublicationChannels[0]?.channel || null);
-  }, [detailsId, detailsPublicationChannels]);
-
-  useEffect(() => {
-    if (!activePublicationChannel) {
-      setEditingPublicationChannel(null);
-      setEditTitle("");
-      setEditContent("");
-      setEditCta("");
-      setEditHashtags("");
-      return;
-    }
-    setEditTitle(activePublicationChannel.title || "");
-    setEditContent(activePublicationChannel.content || "");
-    setEditCta(activePublicationChannel.cta || "");
-    setEditHashtags(Array.isArray(activePublicationChannel.hashtags) ? activePublicationChannel.hashtags.join(", ") : "");
-    setEditingPublicationChannel(null);
-  }, [activePublicationChannel?.channel, detailsId]);
-
-  async function deletePublicationChannel(eventId: string, channel: string) {
-    const label = channelLabel(channel);
-    const ok = window.confirm(`Supprimer la publication sur ${label} ?`);
-    if (!ok) return;
-    setDeletingPublicationChannel(channel);
-    try {
-      const res = await fetch('/api/booster/delete-publication', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId, channel }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error || 'Suppression impossible');
-      await loadHistory();
-    } catch (e: any) {
-      window.alert(e?.message || 'Suppression impossible');
-    } finally {
-      setDeletingPublicationChannel(null);
-    }
-  }
 
   const detailsAccountLabel = useMemo(() => {
     if (!detailsItem) return "";
@@ -1482,56 +1279,6 @@ async function deleteDraftPermanently(id: string) {
 
   // Trash has been intentionally removed: the tool always shows the last sent items.
 
-  async function savePublicationChannel(eventId: string, channel: string) {
-    if (!eventId || !channel || savingPublicationChannel) return;
-    const label = channelLabel(channel);
-    const ok = window.confirm(`Enregistrer les modifications pour ${label} ?`);
-    if (!ok) return;
-
-    try {
-      setSavingPublicationChannel(channel);
-      const hashtags = editHashtags
-        .split(/[\n,; ]+/)
-        .map((x) => x.trim().replace(/^#+/, ""))
-        .filter(Boolean);
-
-      const res = await fetch('/api/booster/update-publication', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventId,
-          channel,
-          post: {
-            title: editTitle,
-            content: editContent,
-            cta: editCta,
-            hashtags,
-          },
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setToast(typeof json?.error === 'string' ? json.error : `Impossible de modifier la publication sur ${label}.`);
-        return;
-      }
-
-      setItems((prev) => prev.map((it) => {
-        if (it.id !== eventId || it.source === 'send_items') return it;
-        const raw = it.raw || {};
-        return {
-          ...it,
-          raw: { ...raw, payload: json?.payload || raw.payload },
-        };
-      }));
-      setToast(`Publication ${label} mise à jour`);
-      setEditingPublicationChannel(null);
-      await loadHistory();
-    } finally {
-      setSavingPublicationChannel(null);
-    }
-  }
-
-
   function openDetails(it: OutboxItem) {
     setSelectedId(it.id);
     setDetailsId(it.id);
@@ -1954,120 +1701,150 @@ async function deleteDraftPermanently(id: string) {
                   <div style={{ color: "rgba(255,255,255,0.65)" }}>Sélectionne un élément.</div>
                 ) : (
                   <>
-                    <div className={styles.detailsCard}>
-                      <div className={styles.detailsTitle}>{detailsItem.title || "(sans objet)"}</div>
-                      <div className={styles.detailsSub}>
-                        {detailsItem.status === "draft"
-                          ? "Brouillon"
-                          : detailsItem.status === "error"
-                          ? "Erreur"
-                          : detailsItem.sent_at
-                          ? `Envoyé • ${new Date(detailsItem.sent_at).toLocaleString()}`
-                          : `Historique • ${new Date(detailsItem.created_at).toLocaleString()}`}
+                    <div className={styles.detailsLayout}>
+                      {/* Meta */}
+                      <div className={styles.detailsMeta}>
+                        <div className={styles.detailsTitle}>{detailsItem.title || "(sans objet)"}</div>
+                        <div className={styles.detailsSub}>
+                          {detailsItem.status === "draft"
+                            ? "Brouillon"
+                            : detailsItem.status === "error"
+                            ? "Erreur"
+                            : detailsItem.sent_at
+                            ? `Envoyé • ${new Date(detailsItem.sent_at).toLocaleString()}`
+                            : `Historique • ${new Date(detailsItem.created_at).toLocaleString()}`}
+                        </div>
+
+                        {detailsItem.source === "send_items" ? (
+                          <div className={styles.metaGrid}>
+                            <div className={styles.metaRow}>
+                              <div className={styles.metaKey}>Boîte d’envoi</div>
+                              <div className={styles.metaVal}>{detailsAccountLabel || "—"}</div>
+                            </div>
+                            <div className={styles.metaRow}>
+                              <div className={styles.metaKey}>Destinataires</div>
+                              <div className={styles.metaVal}>
+                                {splitList(detailsItem.to || detailsItem.target).join(", ") || "—"}
+                              </div>
+                            </div>
+                            <div className={styles.metaRow}>
+                              <div className={styles.metaKey}>Objet</div>
+                              <div className={styles.metaVal}>{detailsItem.subject || detailsItem.title || "—"}</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={styles.metaGrid}>
+                            <div className={styles.metaRow}>
+                              <div className={styles.metaKey}>Canaux</div>
+                              <div className={styles.metaVal}>
+                                {(detailsItem.channels && detailsItem.channels.length
+                                  ? detailsItem.channels
+                                  : [detailsItem.target]
+                                )
+                                  .filter(Boolean)
+                                  .join(" / ") || "—"}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {detailsItem.error ? (
+                          <div className={styles.detailsError}>
+                            <b>Erreur :</b> {detailsItem.error}
+                          </div>
+                        ) : null}
+
+                        {/* PJ (best-effort) */}
+                        {detailsItem.attachments && detailsItem.attachments.length ? (
+                          <div className={styles.attachmentsBox}>
+                            <div className={styles.attachmentsTitle}>Pièces jointes</div>
+                            <div className={styles.attachmentsList}>
+                              {detailsItem.attachments.map((a, idx) => (
+                                <div key={idx} className={styles.attachmentItem}>
+                                  <span className={styles.attachmentName}>{a.name}</span>
+                                  {a.type ? <span className={styles.attachmentMeta}>{a.type}</span> : null}
+                                  {typeof a.size === "number" ? (
+                                    <span className={styles.attachmentMeta}>{Math.round(a.size / 1024)} Ko</span>
+                                  ) : null}
+                                  {a.url ? (
+                                    <a className={styles.attachmentLink} href={a.url} target="_blank" rel="noreferrer">
+                                      Ouvrir
+                                    </a>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
 
-                      {detailsItem.source === "send_items" ? (
-                        <div className={styles.metaGrid}>
-                          <div className={styles.metaRow}><div className={styles.metaKey}>Boîte d’envoi</div><div className={styles.metaVal}>{detailsAccountLabel || "—"}</div></div>
-                          <div className={styles.metaRow}><div className={styles.metaKey}>Destinataires</div><div className={styles.metaVal}>{splitList(detailsItem.to || detailsItem.target).join(", ") || "—"}</div></div>
-                          <div className={styles.metaRow}><div className={styles.metaKey}>Objet</div><div className={styles.metaVal}>{detailsItem.subject || detailsItem.title || "—"}</div></div>
-                        </div>
-                      ) : (
-                        <div className={styles.metaGrid}>
-                          <div className={styles.metaRow}><div className={styles.metaKey}>Publication</div><div className={styles.metaVal}>{detailsItem.title || "—"}</div></div>
-                          <div className={styles.metaRow}><div className={styles.metaKey}>Historique</div><div className={styles.metaVal}>{new Date(detailsItem.created_at).toLocaleString()}</div></div>
-                          <div className={styles.metaRow}><div className={styles.metaKey}>Canaux</div><div className={styles.metaVal}>{(detailsItem.channels && detailsItem.channels.length ? detailsItem.channels : [detailsItem.target]).filter(Boolean).join(" / ") || "—"}</div></div>
-                        </div>
-                      )}
-
-                      {detailsItem.error ? <div className={styles.detailsError}><b>Erreur :</b> {detailsItem.error}</div> : null}
-
+                      {/* Message */}
                       <div className={styles.detailsMessage}>
                         <div className={styles.messageHeaderRow}>
                           <div className={styles.messageHeaderTitle}>Message</div>
                         </div>
 
+                        {/* Détails enrichis pour Publication (Booster) */}
                         {detailsItem.source !== "send_items" ? (() => {
                           const payload = (detailsItem as any)?.raw?.payload || null;
-                          const isPublication = detailsItem.folder === "publications" && detailsPublicationChannels.length > 0;
-                          const parts = isPublication ? (activePublicationChannel || extractPublicationParts(payload)) : extractPublicationParts(payload);
+                          const parts = extractPublicationParts(payload);
                           const hasAny = !!(parts.title || parts.content || parts.cta || (parts.hashtags && parts.hashtags.length) || (parts.attachments && parts.attachments.length));
-                          if (!hasAny && !isPublication) return null;
-                          const isEditing = !!(isPublication && activePublicationChannel && editingPublicationChannel === activePublicationChannel.channel);
+                          if (!hasAny) return null;
                           return (
                             <div className={styles.publicationParts}>
-                              {isPublication ? (
-                                <>
-                                  <div className={styles.publicationChannelRow}>
-                                    {detailsPublicationChannels.map((ch) => (
-                                      <button
-                                        key={ch.channel}
-                                        type="button"
-                                        className={`${styles.publicationChannelPill} ${activePublicationChannel?.channel === ch.channel ? styles.publicationChannelPillActive : ""}`}
-                                        onClick={() => setSelectedPublicationChannel(ch.channel)}
-                                      >
-                                        {ch.label}
-                                      </button>
-                                    ))}
-                                  </div>
-                                  <div className={styles.publicationChannelHeader}>
-                                    <div className={styles.publicationChannelTitle}>{activePublicationChannel?.label}</div>
-                                    <div className={styles.publicationActions}>
-                                      {activePublicationChannel?.deleted ? (
-                                        <span className={styles.publicationDeletedBadge}>Supprimée</span>
-                                      ) : (
-                                        <>
-                                          <button
-                                            type="button"
-                                            className={styles.publicationEditBtn}
-                                            onClick={() => setEditingPublicationChannel(isEditing ? null : (activePublicationChannel?.channel || null))}
-                                            disabled={savingPublicationChannel === activePublicationChannel?.channel}
-                                          >
-                                            {isEditing ? 'Annuler' : 'Modifier'}
-                                          </button>
-                                          {isEditing ? (
-                                            <button
-                                              type="button"
-                                              className={styles.publicationSaveBtn}
-                                              onClick={() => savePublicationChannel(detailsItem.id, activePublicationChannel?.channel || "")}
-                                              disabled={savingPublicationChannel === activePublicationChannel?.channel}
-                                            >
-                                              {savingPublicationChannel === activePublicationChannel?.channel ? 'Enregistrement…' : 'Enregistrer'}
-                                            </button>
-                                          ) : null}
-                                          <button
-                                            type="button"
-                                            className={styles.publicationDeleteBtn}
-                                            disabled={!!activePublicationChannel?.deleteDisabled || deletingPublicationChannel === activePublicationChannel?.channel || savingPublicationChannel === activePublicationChannel?.channel}
-                                            onClick={() => deletePublicationChannel(detailsItem.id, activePublicationChannel?.channel || "")}
-                                            title={activePublicationChannel?.deleteReason || `Supprimer sur ${activePublicationChannel?.label}`}
-                                          >
-                                            {deletingPublicationChannel === activePublicationChannel?.channel ? 'Suppression…' : `Supprimer • ${activePublicationChannel?.label}`}
-                                          </button>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                </>
+                              {parts.title ? (
+                                <div className={styles.publicationTitle}>
+                                  <div className={styles.publicationLabel}>Titre</div>
+                                  <div className={styles.publicationValue}>{parts.title}</div>
+                                </div>
                               ) : null}
 
-                              {isEditing ? (
-                                <div className={styles.publicationEditForm}>
-                                  <label className={styles.publicationField}><span className={styles.publicationLabel}>Titre</span><input className={styles.publicationInput} value={editTitle} onChange={(e) => setEditTitle(e.target.value)} /></label>
-                                  <label className={styles.publicationField}><span className={styles.publicationLabel}>Contenu</span><textarea className={styles.publicationTextarea} value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={8} /></label>
-                                  <label className={styles.publicationField}><span className={styles.publicationLabel}>CTA</span><input className={styles.publicationInput} value={editCta} onChange={(e) => setEditCta(e.target.value)} /></label>
-                                  <label className={styles.publicationField}><span className={styles.publicationLabel}>Hashtags</span><input className={styles.publicationInput} value={editHashtags} onChange={(e) => setEditHashtags(e.target.value)} placeholder="#inrcy, #jardin" /></label>
+                              {parts.content ? (
+                                <div className={styles.publicationContent}>
+                                  <div className={styles.publicationLabel}>Contenu</div>
+                                  <pre className={styles.publicationPre}>{parts.content}</pre>
                                 </div>
-                              ) : (
-                                <>
-                                  {parts.title ? <div className={styles.publicationTitle}><div className={styles.publicationLabel}>Titre</div><div className={styles.publicationValue}>{parts.title}</div></div> : null}
-                                  {parts.content ? <div className={styles.publicationContent}><div className={styles.publicationLabel}>Contenu</div><pre className={styles.publicationPre}>{parts.content}</pre></div> : null}
-                                  {parts.cta ? <div className={styles.publicationCta}><div className={styles.publicationLabel}>CTA</div><div className={styles.publicationCtaBox}>{parts.cta}</div></div> : null}
-                                  {parts.hashtags && parts.hashtags.length ? <div className={styles.publicationTags}><div className={styles.publicationLabel}>Hashtags</div><div className={styles.publicationTagRow}>{parts.hashtags.map((t, idx) => (<span key={idx} className={styles.publicationTag}>#{t.replace(/^#/, "")}</span>))}</div></div> : null}
-                                </>
-                              )}
+                              ) : null}
 
-                              {parts.attachments && parts.attachments.length ? <AttachmentPreviewSection attachments={parts.attachments} /> : null}
+                              {parts.cta ? (
+                                <div className={styles.publicationCta}>
+                                  <div className={styles.publicationLabel}>CTA</div>
+                                  <div className={styles.publicationCtaBox}>{parts.cta}</div>
+                                </div>
+                              ) : null}
+
+                              {parts.hashtags && parts.hashtags.length ? (
+                                <div className={styles.publicationTags}>
+                                  <div className={styles.publicationLabel}>Hashtags</div>
+                                  <div className={styles.publicationTagRow}>
+                                    {parts.hashtags.map((t, idx) => (
+                                      <span key={idx} className={styles.publicationTag}>#{t.replace(/^#/, "")}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {parts.attachments && parts.attachments.length ? (
+                                <div className={styles.publicationAttachments}>
+                                  <div className={styles.publicationLabel}>Pièces jointes</div>
+                                  <div className={styles.attachmentsList}>
+                                    {parts.attachments.map((a, idx) => (
+                                      <div key={idx} className={styles.attachmentItem}>
+                                        <span className={styles.attachmentName}>{a.name}</span>
+                                        {a.type ? <span className={styles.attachmentMeta}>{a.type}</span> : null}
+                                        {typeof a.size === "number" ? (
+                                          <span className={styles.attachmentMeta}>{Math.round(a.size / 1024)} Ko</span>
+                                        ) : null}
+                                        {a.url ? (
+                                          <a className={styles.attachmentLink} href={a.url} target="_blank" rel="noreferrer">
+                                            Ouvrir
+                                          </a>
+                                        ) : null}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
                           );
                         })() : null}
@@ -2082,9 +1859,6 @@ async function deleteDraftPermanently(id: string) {
                                 ) : (
                                   <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
                                 )}
-                                {detailsItem.attachments && detailsItem.attachments.length ? (
-                                  <AttachmentPreviewSection attachments={detailsItem.attachments} />
-                                ) : null}
                               </div>
                             );
                           }

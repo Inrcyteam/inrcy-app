@@ -6,6 +6,9 @@ const INSTAGRAM_HEIGHT = 1350;
 const SOCIAL_FEED_MAX_BYTES = 8 * 1024 * 1024;
 const SOCIAL_FEED_WIDTH = 1200;
 const SOCIAL_FEED_HEIGHT = 1200;
+const SITE_CARD_MAX_BYTES = 8 * 1024 * 1024;
+const SITE_CARD_WIDTH = 1440;
+const SITE_CARD_HEIGHT = 900;
 
 export type OptimizeResult = {
   buffer: Buffer;
@@ -18,39 +21,54 @@ export type OptimizeResult = {
   sourceFormat?: string;
 };
 
-async function flattenToJpegContain(params: {
+async function createBlurContainJpeg(params: {
   inputBuffer: Buffer;
   width: number;
   height: number;
   maxBytes: number;
   startQuality?: number;
   minQuality?: number;
+  blurSigma?: number;
 }) : Promise<OptimizeResult> {
-  const { inputBuffer, width, height, maxBytes, startQuality = 88, minQuality = 52 } = params;
+  const { inputBuffer, width, height, maxBytes, startQuality = 88, minQuality = 52, blurSigma = 28 } = params;
+
   const src = sharp(inputBuffer, { failOn: "none" }).rotate();
   const meta = await src.metadata();
 
   let quality = startQuality;
-  const pipeline = src
-    .resize({
-      width,
-      height,
-      fit: "contain",
-      position: "centre",
-      withoutEnlargement: true,
-      background: { r: 255, g: 255, b: 255, alpha: 1 },
-    })
-    .flatten({ background: { r: 255, g: 255, b: 255 } });
 
-  let output = await pipeline
-    .jpeg({ quality, mozjpeg: true, progressive: true, chromaSubsampling: "4:2:0" })
-    .toBuffer();
+  async function render(q: number) {
+    const backdrop = await sharp(inputBuffer, { failOn: "none" })
+      .rotate()
+      .resize({ width, height, fit: "cover", position: "centre" })
+      .blur(blurSigma)
+      .modulate({ brightness: 1.03, saturation: 1.05 })
+      .jpeg({ quality: Math.max(54, Math.min(q, 76)), mozjpeg: true, progressive: true, chromaSubsampling: "4:2:0" })
+      .toBuffer();
 
+    const foreground = await sharp(inputBuffer, { failOn: "none" })
+      .rotate()
+      .resize({
+        width,
+        height,
+        fit: "contain",
+        position: "centre",
+        withoutEnlargement: true,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer();
+
+    return sharp(backdrop)
+      .composite([{ input: foreground, gravity: "centre" }])
+      .jpeg({ quality: q, mozjpeg: true, progressive: true, chromaSubsampling: "4:2:0" })
+      .toBuffer();
+  }
+
+  let output = await render(quality);
   while (output.byteLength > maxBytes && quality > minQuality) {
     quality -= 6;
-    output = await pipeline
-      .jpeg({ quality, mozjpeg: true, progressive: true, chromaSubsampling: "4:2:0" })
-      .toBuffer();
+    output = await render(quality);
   }
 
   return {
@@ -66,7 +84,7 @@ async function flattenToJpegContain(params: {
 }
 
 export async function optimizeForInstagram(inputBuffer: Buffer): Promise<OptimizeResult> {
-  let result = await flattenToJpegContain({
+  let result = await createBlurContainJpeg({
     inputBuffer,
     width: INSTAGRAM_WIDTH,
     height: INSTAGRAM_HEIGHT,
@@ -76,7 +94,7 @@ export async function optimizeForInstagram(inputBuffer: Buffer): Promise<Optimiz
   });
 
   if (result.size > INSTAGRAM_MAX_BYTES) {
-    result = await flattenToJpegContain({
+    result = await createBlurContainJpeg({
       inputBuffer,
       width: 900,
       height: 1125,
@@ -90,7 +108,7 @@ export async function optimizeForInstagram(inputBuffer: Buffer): Promise<Optimiz
 }
 
 export async function optimizeForSocialFeed(inputBuffer: Buffer): Promise<OptimizeResult> {
-  let result = await flattenToJpegContain({
+  let result = await createBlurContainJpeg({
     inputBuffer,
     width: SOCIAL_FEED_WIDTH,
     height: SOCIAL_FEED_HEIGHT,
@@ -100,13 +118,39 @@ export async function optimizeForSocialFeed(inputBuffer: Buffer): Promise<Optimi
   });
 
   if (result.size > SOCIAL_FEED_MAX_BYTES) {
-    result = await flattenToJpegContain({
+    result = await createBlurContainJpeg({
       inputBuffer,
       width: 1080,
       height: 1080,
       maxBytes: SOCIAL_FEED_MAX_BYTES,
       startQuality: 80,
       minQuality: 50,
+    });
+  }
+
+  return result;
+}
+
+export async function optimizeForSiteCard(inputBuffer: Buffer): Promise<OptimizeResult> {
+  let result = await createBlurContainJpeg({
+    inputBuffer,
+    width: SITE_CARD_WIDTH,
+    height: SITE_CARD_HEIGHT,
+    maxBytes: SITE_CARD_MAX_BYTES,
+    startQuality: 88,
+    minQuality: 56,
+    blurSigma: 24,
+  });
+
+  if (result.size > SITE_CARD_MAX_BYTES) {
+    result = await createBlurContainJpeg({
+      inputBuffer,
+      width: 1280,
+      height: 800,
+      maxBytes: SITE_CARD_MAX_BYTES,
+      startQuality: 80,
+      minQuality: 50,
+      blurSigma: 22,
     });
   }
 

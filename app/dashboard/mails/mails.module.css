@@ -1947,7 +1947,9 @@ width: 100%;
   border: 1px solid rgba(255,255,255,0.10);
   background: rgba(255,255,255,0.04);
   border-radius: 16px;
-  padding: 16px;
+  padding: 14px;
+  overflow: auto;
+  min-height: 0;
 }
 
 .detailsTitle {
@@ -2053,6 +2055,7 @@ width: 100%;
   padding: 0;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .messageHeaderRow {
@@ -2088,6 +2091,9 @@ width: 100%;
 }
 
 .messageBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   padding: 14px;
 }
 
@@ -2174,6 +2180,14 @@ width: 100%;
     width: calc(100vw - 16px);
     height: calc(100dvh - 16px);
     max-height: calc(100dvh - 16px);
+  }
+
+  .detailsLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .detailsMeta {
+    max-height: 38dvh;
   }
 }
 
@@ -3955,194 +3969,5 @@ width: 100%;
   }
   .crmSearchInput{
     height: 36px;
-  }
-}
-
-.publicationChannelRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.publicationChannelPill {
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.88);
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.publicationChannelPillActive {
-  background: linear-gradient(90deg, rgba(56,189,248,0.14), rgba(167,139,250,0.12), rgba(244,114,182,0.12));
-  border-color: rgba(56,189,248,0.28);
-}
-
-.publicationChannelHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.publicationChannelTitle {
-  font-size: 14px;
-  font-weight: 900;
-  color: rgba(255,255,255,0.96);
-}
-
-.publicationDeleteBtn {
-  border: 1px solid rgba(244,114,182,0.28);
-  background: rgba(244,114,182,0.10);
-  color: rgba(255,255,255,0.95);
-  border-radius: 12px;
-  padding: 9px 12px;
-  font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.publicationDeleteBtn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.publicationDeletedBadge {
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.86);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-
-.detailsCard {
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
-  border-radius: 18px;
-  padding: 18px;
-  display: grid;
-  gap: 14px;
-}
-
-.publicationActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.publicationEditBtn,
-.publicationSaveBtn {
-  border-radius: 12px;
-  padding: 8px 12px;
-  font-weight: 850;
-  cursor: pointer;
-  border: 1px solid rgba(255,255,255,0.14);
-  color: rgba(255,255,255,0.92);
-}
-
-.publicationEditBtn {
-  background: rgba(255,255,255,0.08);
-}
-
-.publicationSaveBtn {
-  background: linear-gradient(90deg, rgba(56,189,248,0.20), rgba(167,139,250,0.18));
-  border-color: rgba(56,189,248,0.28);
-}
-
-.publicationEditForm {
-  display: grid;
-  gap: 12px;
-}
-
-.publicationField {
-  display: grid;
-  gap: 6px;
-}
-
-.publicationInput,
-.publicationTextarea {
-  width: 100%;
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.05);
-  color: rgba(255,255,255,0.94);
-  padding: 12px 14px;
-  font: inherit;
-}
-
-.publicationTextarea {
-  resize: vertical;
-  min-height: 180px;
-}
-.mediaSection {
-  display: grid;
-  gap: 10px;
-}
-
-.mediaGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.mediaCard {
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.04);
-  border-radius: 16px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.mediaPreviewLink {
-  display: block;
-  text-decoration: none;
-  background: rgba(255,255,255,0.03);
-}
-
-.mediaImage,
-.mediaVideo {
-  display: block;
-  width: 100%;
-  max-height: 280px;
-  object-fit: contain;
-  background: rgba(9,14,34,0.92);
-}
-
-.mediaVideoWrap {
-  background: rgba(9,14,34,0.92);
-}
-
-.mediaMeta {
-  padding: 12px;
-  display: grid;
-  gap: 8px;
-}
-
-.mediaName {
-  font-size: 13px;
-  color: rgba(255,255,255,0.92);
-  font-weight: 850;
-  word-break: break-word;
-}
-
-.mediaMetaRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-@media (max-width: 720px) {
-  .mediaGrid {
-    grid-template-columns: 1fr;
   }
 }

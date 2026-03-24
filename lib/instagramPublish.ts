@@ -223,20 +223,3 @@ export async function instagramPublishPhoto(params: {
     return { ok: false, error: e?.message || "Unknown Instagram publish error" };
   }
 }
-
-
-export async function instagramDeleteMedia(params: { accessToken: string; mediaId: string; }) {
-  const { accessToken, mediaId } = params;
-  try {
-    if (!accessToken) return { ok: false as const, error: "Token Instagram manquant." };
-    if (!mediaId) return { ok: false as const, error: "Publication Instagram introuvable." };
-    const url = `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(mediaId)}?access_token=${encodeURIComponent(accessToken)}`;
-    const { res, json } = await fetchJson(url, { method: "DELETE" });
-    if (!res.ok || json?.success === false) {
-      return { ok: false as const, error: json?.error?.message || "Impossible de supprimer la publication Instagram pour le moment.", diagnostics: json };
-    }
-    return { ok: true as const, diagnostics: json };
-  } catch (e: any) {
-    return { ok: false as const, error: e?.message || "Impossible de supprimer la publication Instagram pour le moment." };
-  }
-}
