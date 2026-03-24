@@ -350,7 +350,8 @@ function pickLimit(pathname: string, method: string): LimitPlan {
       tokens: Number(process.env.RL_PUBLISH_NOW_PER_MIN || 6),
       windowSeconds: 60,
       name: "publish-now",
-      failClosed: true,
+      // Keep publication available even if KV / rate limiting is unavailable.
+      failClosed: false,
       dailyQuota: Number(process.env.QUOTA_PUBLISH_NOW_PER_DAY || 80),
     };
   }
