@@ -143,6 +143,14 @@ type PublicationParts = {
   attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null }[];
 };
 
+type PublicationChannelParts = PublicationParts & {
+  channel: string;
+  label: string;
+  deleted?: boolean;
+  deleteDisabled?: boolean;
+  deleteReason?: string | null;
+};
+
 function splitList(v?: string | null): string[] {
   if (!v) return [];
   return String(v)
@@ -293,6 +301,50 @@ function extractAttachmentsFromPayload(payload: any): { name: string; type?: str
     .filter(Boolean) as any;
 }
 
+function channelLabel(channel: string): string {
+  switch (String(channel || "")) {
+    case "inrcy_site": return "Site iNrCy";
+    case "site_web": return "Site web";
+    case "facebook": return "Facebook";
+    case "instagram": return "Instagram";
+    case "linkedin": return "LinkedIn";
+    case "gmb": return "Google Business";
+    default: return String(channel || "Canal");
+  }
+}
+
+function getPublicationChannelParts(payload: any): PublicationChannelParts[] {
+  if (!payload || typeof payload !== "object") return [];
+  const selected: string[] = Array.isArray(payload.channels)
+    ? payload.channels.map((x: any) => String(x || "").trim()).filter(Boolean)
+    : [];
+  const uniq: string[] = Array.from(new Set<string>(selected));
+  const results: Record<string, any> = payload?.results && typeof payload.results === "object" ? payload.results : {};
+  const postByChannel: Record<string, any> = payload?.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : {};
+
+  const resolvePost = (channel: string) => {
+    if (channel === "inrcy_site") return postByChannel.inrcy_site || postByChannel.site_web || payload.post || payload;
+    if (channel === "site_web") return postByChannel.site_web || postByChannel.inrcy_site || payload.post || payload;
+    return postByChannel[channel] || payload.post || payload;
+  };
+
+  return uniq.map((channel: string) => {
+    const channelPayload = { ...payload, post: resolvePost(channel) };
+    const parts = extractPublicationParts(channelPayload);
+    const rawChannelResult = results[channel];
+    const channelResult: Record<string, any> = rawChannelResult && typeof rawChannelResult === "object" ? rawChannelResult : {};
+    const externalId = String(channelResult.external_id || "").trim();
+    return {
+      channel,
+      label: channelLabel(channel),
+      ...parts,
+      deleted: !!channelResult.deleted,
+      deleteDisabled: !externalId,
+      deleteReason: externalId ? null : "Aucune publication enregistrée pour ce canal.",
+    } as PublicationChannelParts;
+  });
+}
+
 function extractPublicationParts(payload: any): PublicationParts {
   if (!payload || typeof payload !== "object") return {};
   const post = payload.post && typeof payload.post === "object" ? payload.post : payload;
@@ -386,6 +438,8 @@ export default function MailboxClient() {
   // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [selectedPublicationChannel, setSelectedPublicationChannel] = useState<string | null>(null);
+  const [deletingPublicationChannel, setDeletingPublicationChannel] = useState<string | null>(null);
 
   const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
@@ -754,6 +808,42 @@ const subTitle = firstNonEmpty(
     if (!detailsId) return null;
     return items.find((x) => x.id === detailsId) || null;
   }, [items, detailsId]);
+
+  const detailsPublicationChannels = useMemo(() => {
+    if (!detailsItem || detailsItem.source === "send_items") return [] as PublicationChannelParts[];
+    const payload = (detailsItem as any)?.raw?.payload || null;
+    return detailsItem.folder === "publications" ? getPublicationChannelParts(payload) : [];
+  }, [detailsItem]);
+
+  const activePublicationChannel = useMemo(() => {
+    if (!detailsPublicationChannels.length) return null;
+    return detailsPublicationChannels.find((c) => c.channel === selectedPublicationChannel) || detailsPublicationChannels[0] || null;
+  }, [detailsPublicationChannels, selectedPublicationChannel]);
+
+  useEffect(() => {
+    setSelectedPublicationChannel(detailsPublicationChannels[0]?.channel || null);
+  }, [detailsId, detailsPublicationChannels]);
+
+  async function deletePublicationChannel(eventId: string, channel: string) {
+    const label = channelLabel(channel);
+    const ok = window.confirm(`Supprimer la publication sur ${label} ?`);
+    if (!ok) return;
+    setDeletingPublicationChannel(channel);
+    try {
+      const res = await fetch('/api/booster/delete-publication', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId, channel }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error || 'Suppression impossible');
+      await loadHistory();
+    } catch (e: any) {
+      window.alert(e?.message || 'Suppression impossible');
+    } finally {
+      setDeletingPublicationChannel(null);
+    }
+  }
 
   const detailsAccountLabel = useMemo(() => {
     if (!detailsItem) return "";
@@ -1787,11 +1877,45 @@ async function deleteDraftPermanently(id: string) {
                         {/* Détails enrichis pour Publication (Booster) */}
                         {detailsItem.source !== "send_items" ? (() => {
                           const payload = (detailsItem as any)?.raw?.payload || null;
-                          const parts = extractPublicationParts(payload);
+                          const isPublication = detailsItem.folder === "publications" && detailsPublicationChannels.length > 0;
+                          const parts = isPublication ? (activePublicationChannel || extractPublicationParts(payload)) : extractPublicationParts(payload);
                           const hasAny = !!(parts.title || parts.content || parts.cta || (parts.hashtags && parts.hashtags.length) || (parts.attachments && parts.attachments.length));
-                          if (!hasAny) return null;
+                          if (!hasAny && !isPublication) return null;
                           return (
                             <div className={styles.publicationParts}>
+                              {isPublication ? (
+                                <>
+                                  <div className={styles.publicationChannelRow}>
+                                    {detailsPublicationChannels.map((ch) => (
+                                      <button
+                                        key={ch.channel}
+                                        type="button"
+                                        className={`${styles.publicationChannelPill} ${activePublicationChannel?.channel === ch.channel ? styles.publicationChannelPillActive : ""}`}
+                                        onClick={() => setSelectedPublicationChannel(ch.channel)}
+                                      >
+                                        {ch.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <div className={styles.publicationChannelHeader}>
+                                    <div className={styles.publicationChannelTitle}>{activePublicationChannel?.label}</div>
+                                    {activePublicationChannel?.deleted ? (
+                                      <span className={styles.publicationDeletedBadge}>Supprimée</span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className={styles.publicationDeleteBtn}
+                                        disabled={!!activePublicationChannel?.deleteDisabled || deletingPublicationChannel === activePublicationChannel?.channel}
+                                        onClick={() => deletePublicationChannel(detailsItem.id, activePublicationChannel?.channel || "")}
+                                        title={activePublicationChannel?.deleteReason || `Supprimer sur ${activePublicationChannel?.label}`}
+                                      >
+                                        {deletingPublicationChannel === activePublicationChannel?.channel ? 'Suppression…' : `Supprimer • ${activePublicationChannel?.label}`}
+                                      </button>
+                                    )}
+                                  </div>
+                                </>
+                              ) : null}
+
                               {parts.title ? (
                                 <div className={styles.publicationTitle}>
                                   <div className={styles.publicationLabel}>Titre</div>

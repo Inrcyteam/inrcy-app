@@ -230,3 +230,32 @@ export async function linkedinPublishImage(params: {
     return { ok: false, error: e?.message || "Impossible de publier l'image sur LinkedIn pour le moment." };
   }
 }
+
+
+export async function linkedinDeletePost(params: { accessToken: string; postUrn: string; }) {
+  const { accessToken, postUrn } = params;
+  try {
+    if (!accessToken) return { ok: false as const, error: "Token LinkedIn manquant." };
+    if (!postUrn) return { ok: false as const, error: "Publication LinkedIn introuvable." };
+
+    const encoded = encodeURIComponent(postUrn);
+    const res = await fetch(`https://api.linkedin.com/v2/ugcPosts/${encoded}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "X-Restli-Protocol-Version": "2.0.0",
+      },
+      cache: "no-store",
+    });
+
+    const { raw, json } = await parseResponse(res);
+    if (!res.ok) {
+      const errMsg = json?.message || json?.error || raw || `LinkedIn delete failed (${res.status})`;
+      return { ok: false as const, error: errMsg, diagnostics: { status: res.status, body: json ?? raw } };
+    }
+
+    return { ok: true as const, diagnostics: { status: res.status, body: json ?? raw } };
+  } catch (e: any) {
+    return { ok: false as const, error: e?.message || "Impossible de supprimer la publication LinkedIn pour le moment." };
+  }
+}

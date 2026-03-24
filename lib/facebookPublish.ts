@@ -143,3 +143,22 @@ export async function facebookPublishToPage(params: {
     };
   }
 }
+
+
+export async function facebookDeletePost(params: { pageAccessToken: string; postId: string; }) {
+  const { pageAccessToken, postId } = params;
+  try {
+    if (!pageAccessToken) return { ok: false as const, error: "Token Facebook manquant." };
+    if (!postId) return { ok: false as const, error: "Publication Facebook introuvable." };
+
+    const url = `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(postId)}?access_token=${encodeURIComponent(pageAccessToken)}`;
+    const res = await fetch(url, { method: "DELETE", cache: "no-store" });
+    const json: any = await res.json().catch(() => ({}));
+    if (!res.ok || json?.success === false) {
+      return { ok: false as const, error: json?.error?.message || "Impossible de supprimer la publication Facebook pour le moment." };
+    }
+    return { ok: true as const };
+  } catch (e: any) {
+    return { ok: false as const, error: e?.message || "Impossible de supprimer la publication Facebook pour le moment." };
+  }
+}

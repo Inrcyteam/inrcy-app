@@ -4,7 +4,7 @@ export type BrowserFetchResult = {
   ok: boolean;
   status: number;
   contentType: string;
-  json: unknown | null;
+  json: any;
   text: string;
 };
 
@@ -21,7 +21,7 @@ export async function apiGET(page: Page, url: string): Promise<BrowserFetchResul
     const contentType = res.headers.get('content-type') || '';
     const text = await res.text();
 
-    let json: unknown = null;
+    let json: any = null;
     try {
       json = contentType.includes('application/json') ? JSON.parse(text) : null;
     } catch {

@@ -320,3 +320,26 @@ export async function gmbCreateLocalPost(args: {
 
   return j;
 }
+
+
+export async function gmbDeleteLocalPost(args: { accessToken: string; localPostName: string; }) {
+  const { accessToken, localPostName } = args;
+  if (!accessToken) throw new Error("Token Google invalide/expiré");
+  if (!localPostName) throw new Error("Publication Google Business introuvable.");
+
+  const endpoint = `https://mybusiness.googleapis.com/v4/${String(localPostName).replace(/^\/+/, "")}`;
+  const r = await fetch(endpoint, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  const raw = await r.text().catch(() => "");
+  let j: any = {};
+  try {
+    j = raw ? JSON.parse(raw) : {};
+  } catch {
+    j = {};
+  }
+  if (!r.ok) throw new Error(j?.error?.message || j?.error_description || raw || "Impossible de supprimer la publication Google Business pour le moment.");
+  return j;
+}
