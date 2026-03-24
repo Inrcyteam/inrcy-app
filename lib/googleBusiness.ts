@@ -343,3 +343,31 @@ export async function gmbDeleteLocalPost(args: { accessToken: string; localPostN
   if (!r.ok) throw new Error(j?.error?.message || j?.error_description || raw || "Impossible de supprimer la publication Google Business pour le moment.");
   return j;
 }
+
+
+export async function gmbUpdateLocalPost(args: { accessToken: string; localPostName: string; summary: string; languageCode?: string; }) {
+  const { accessToken, localPostName } = args;
+  if (!accessToken) throw new Error("Token Google invalide/expiré");
+  if (!localPostName) throw new Error("Publication Google Business introuvable.");
+
+  const endpoint = new URL(`https://mybusiness.googleapis.com/v4/${String(localPostName).replace(/^\/+/, "")}`);
+  endpoint.searchParams.set("updateMask", "summary,languageCode");
+
+  const r = await fetch(endpoint.toString(), {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      languageCode: args.languageCode || "fr-FR",
+      summary: args.summary,
+    }),
+  });
+
+  const raw = await r.text().catch(() => "");
+  let j: any = {};
+  try { j = raw ? JSON.parse(raw) : {}; } catch { j = {}; }
+  if (!r.ok) throw new Error(j?.error?.message || j?.error_description || raw || "Impossible de modifier la publication Google Business pour le moment.");
+  return j;
+}

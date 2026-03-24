@@ -4022,6 +4022,67 @@ width: 100%;
   font-weight: 800;
 }
 
+
+.detailsCard {
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  border-radius: 18px;
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.publicationActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.publicationEditBtn,
+.publicationSaveBtn {
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-weight: 850;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.14);
+  color: rgba(255,255,255,0.92);
+}
+
+.publicationEditBtn {
+  background: rgba(255,255,255,0.08);
+}
+
+.publicationSaveBtn {
+  background: linear-gradient(90deg, rgba(56,189,248,0.20), rgba(167,139,250,0.18));
+  border-color: rgba(56,189,248,0.28);
+}
+
+.publicationEditForm {
+  display: grid;
+  gap: 12px;
+}
+
+.publicationField {
+  display: grid;
+  gap: 6px;
+}
+
+.publicationInput,
+.publicationTextarea {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.94);
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.publicationTextarea {
+  resize: vertical;
+  min-height: 180px;
+}
 .mediaSection {
   display: grid;
   gap: 10px;

@@ -162,3 +162,29 @@ export async function facebookDeletePost(params: { pageAccessToken: string; post
     return { ok: false as const, error: e?.message || "Impossible de supprimer la publication Facebook pour le moment." };
   }
 }
+
+
+export async function facebookUpdatePost(params: { pageAccessToken: string; postId: string; message: string; }) {
+  const { pageAccessToken, postId, message } = params;
+  try {
+    if (!pageAccessToken) return { ok: false as const, error: "Token Facebook manquant." };
+    if (!postId) return { ok: false as const, error: "Publication Facebook introuvable." };
+
+    const form = new FormData();
+    form.append("access_token", pageAccessToken);
+    form.append("message", message || "");
+
+    const res = await fetch(`https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(postId)}`, {
+      method: "POST",
+      body: form,
+      cache: "no-store",
+    });
+    const json: any = await res.json().catch(() => ({}));
+    if (!res.ok || json?.success === false) {
+      return { ok: false as const, error: json?.error?.message || "Impossible de modifier la publication Facebook pour le moment." };
+    }
+    return { ok: true as const };
+  } catch (e: any) {
+    return { ok: false as const, error: e?.message || "Impossible de modifier la publication Facebook pour le moment." };
+  }
+}
