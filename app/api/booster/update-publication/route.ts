@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { getGmbToken, gmbCreateLocalPost, gmbDeleteLocalPost, gmbUpdateLocalPost } from "@/lib/googleBusiness";
 import { facebookUpdatePost } from "@/lib/facebookPublish";
-import { instagramDeleteMediaWithFallbacks, instagramPublishPhoto } from "@/lib/instagramPublish";
+import { instagramDeleteMedia, instagramPublishPhoto } from "@/lib/instagramPublish";
 import { linkedinDeletePost, linkedinPublishImage, linkedinPublishText } from "@/lib/linkedinPublish";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
@@ -42,18 +42,6 @@ async function getLatestIntegrationRow(userId: string, provider: string, source:
     .limit(1);
   if (error) throw error;
   return Array.isArray(data) ? data[0] ?? null : null;
-}
-
-async function getInstagramDeleteTokens(userId: string, pageToken?: string) {
-  const tokens: string[] = [];
-  if (pageToken) tokens.push(pageToken);
-  const fb = asRecord(await getLatestIntegrationRow(userId, "facebook", "facebook", "facebook", "access_token_enc,meta"));
-  const fbMeta = asRecord(fb.meta);
-  const fbUserToken = tryDecryptToken(String(fbMeta.user_access_token_enc || "")) || "";
-  const fbAccessToken = tryDecryptToken(String(fb.access_token_enc || "")) || "";
-  if (fbUserToken) tokens.push(fbUserToken);
-  if (fbAccessToken) tokens.push(fbAccessToken);
-  return Array.from(new Set(tokens.filter(Boolean)));
 }
 
 export async function POST(req: Request) {
@@ -115,15 +103,7 @@ export async function POST(req: Request) {
       const igUserId = String(ig.resource_id || "");
       const imageUrl = instagramUrls[0];
       if (!igUserId || !accessToken || !imageUrl) return NextResponse.json({ error: "Instagram non configuré ou image manquante." }, { status: 400 });
-
-      if (externalId) {
-        const deleteTokens = await getInstagramDeleteTokens(userId, accessToken);
-        const deleted = await instagramDeleteMediaWithFallbacks({ mediaId: externalId, accessTokens: deleteTokens });
-        if (!deleted.ok) {
-          return NextResponse.json({ error: deleted.error, diagnostics: deleted.attempts }, { status: 400 });
-        }
-      }
-
+      if (externalId) await instagramDeleteMedia({ accessToken, mediaId: externalId });
       const resp = await instagramPublishPhoto({ igUserId, accessToken, caption: buildInstagramCaption(title, content, cta, hashtags), imageUrl });
       if (!resp.ok) return NextResponse.json({ error: resp.error }, { status: 400 });
       nextExternalId = resp.mediaId;

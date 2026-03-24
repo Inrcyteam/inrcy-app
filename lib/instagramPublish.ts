@@ -240,21 +240,3 @@ export async function instagramDeleteMedia(params: { accessToken: string; mediaI
     return { ok: false as const, error: e?.message || "Impossible de supprimer la publication Instagram pour le moment." };
   }
 }
-
-
-export async function instagramDeleteMediaWithFallbacks(params: { mediaId: string; accessTokens: string[]; }) {
-  const mediaId = String(params.mediaId || "").trim();
-  const tokens = Array.from(new Set((params.accessTokens || []).map((t) => String(t || "").trim()).filter(Boolean)));
-  if (!mediaId) return { ok: false as const, error: "Publication Instagram introuvable.", attempts: [] as any[] };
-  if (!tokens.length) return { ok: false as const, error: "Token Instagram manquant.", attempts: [] as any[] };
-
-  const attempts: any[] = [];
-  for (const token of tokens) {
-    const resp = await instagramDeleteMedia({ accessToken: token, mediaId });
-    attempts.push(resp);
-    if (resp.ok) return { ok: true as const, attempts };
-  }
-
-  const last = attempts[attempts.length - 1] || null;
-  return { ok: false as const, error: last?.error || "Impossible de supprimer la publication Instagram pour le moment.", attempts };
-}
