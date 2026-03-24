@@ -338,7 +338,8 @@ function pickLimit(pathname: string, method: string): LimitPlan {
           tokens: Number(process.env.RL_TEMPLATES_RENDER_PER_MIN || 20),
           windowSeconds: 60,
           name: "templates-render-write",
-          failClosed: true,
+          // Keep template autofill available even if KV / rate limiting is unavailable.
+          failClosed: false,
           dailyQuota: Number(process.env.QUOTA_TEMPLATES_RENDER_PER_DAY || 500),
         }
       : { tokens: 60, windowSeconds: 60, name: "templates-render-read" };
