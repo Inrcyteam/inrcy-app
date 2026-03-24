@@ -9,7 +9,7 @@ import { facebookPublishToPage } from "@/lib/facebookPublish";
 import { instagramPublishPhoto } from "@/lib/instagramPublish";
 import { linkedinPublishImage, linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
-import { optimizeForInstagram, optimizeForSocialFeed } from "@/lib/imageOptimizer";
+import { optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
@@ -154,11 +154,12 @@ const body = await req.json().catch(() => null);
     const uploadedUrls: string[] = []; // stored for UI
     const publishableUrls: string[] = []; // used for external platforms
     const instagramPublishableUrls: string[] = []; // optimized JPEGs for Instagram
-    const socialFeedPublishableUrls: string[] = []; // padded JPEGs for Facebook/LinkedIn feeds
+    const socialFeedPublishableUrls: string[] = []; // adapted JPEGs for Facebook/LinkedIn feeds
+    const siteCardPublishableUrls: string[] = []; // adapted JPEGs for the site widget/cards
     const uploadErrors: Array<{
       name: string;
       reason: string;
-      stage: "parse" | "upload" | "publicUrl" | "signedUrl" | "instagramOptimize" | "instagramUpload" | "socialFeedOptimize" | "socialFeedUpload";
+      stage: "parse" | "upload" | "publicUrl" | "signedUrl" | "instagramOptimize" | "instagramUpload" | "socialFeedOptimize" | "socialFeedUpload" | "siteCardOptimize" | "siteCardUpload";
     }> = [];
 
     for (const img of images.slice(0, 5)) {
@@ -254,6 +255,35 @@ const body = await req.json().catch(() => null);
           name: img?.name || "image",
           reason: errMessage(optErr, "Social feed image optimization failed"),
           stage: "socialFeedOptimize",
+        });
+      }
+
+      try {
+        const optimized = await optimizeForSiteCard(parsed.buffer);
+        const sitePath = `${userId}/site-card/${randomUUID()}.${optimized.extension}`;
+        const siteUpload = await supabaseAdmin.storage.from("booster").upload(sitePath, optimized.buffer, {
+          contentType: optimized.mime,
+          upsert: false,
+        });
+
+        if (siteUpload.error) {
+          uploadErrors.push({ name: img?.name || "image", reason: siteUpload.error.message, stage: "siteCardUpload" });
+        } else {
+          const siteSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(sitePath, 60 * 60 * 24);
+          const sitePublic = supabaseAdmin.storage.from("booster").getPublicUrl(sitePath);
+          if (siteSigned?.data?.signedUrl) {
+            siteCardPublishableUrls.push(siteSigned.data.signedUrl);
+          } else if (sitePublic?.data?.publicUrl) {
+            siteCardPublishableUrls.push(sitePublic.data.publicUrl);
+          } else {
+            uploadErrors.push({ name: img?.name || "image", reason: "Site card optimized image URL unavailable", stage: "siteCardUpload" });
+          }
+        }
+      } catch (optErr) {
+        uploadErrors.push({
+          name: img?.name || "image",
+          reason: errMessage(optErr, "Site card image optimization failed"),
+          stage: "siteCardOptimize",
         });
       }
     }
@@ -381,7 +411,7 @@ const body = await req.json().catch(() => null);
             content: channelPost.content,
             cta: channelPost.cta,
             hashtags: channelPost.hashtags,
-            images: uploadedUrls,          // ✅ les URLs publiques des images
+            images: siteCardPublishableUrls.length ? siteCardPublishableUrls : socialFeedPublishableUrls.length ? socialFeedPublishableUrls : uploadedUrls,
             external_url: externalUrl,     // ✅ si tu veux (optionnel)
             site_url: targetUrl || null,   // ✅ si tu veux (optionnel)
           });
