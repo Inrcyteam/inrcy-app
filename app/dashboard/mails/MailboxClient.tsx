@@ -151,6 +151,94 @@ type PublicationChannelParts = PublicationParts & {
   deleteReason?: string | null;
 };
 
+type AttachmentInfo = {
+  name: string;
+  type?: string | null;
+  size?: number | null;
+  url?: string | null;
+};
+
+function basenameFromUrl(value?: string | null): string {
+  const source = String(value || "").trim();
+  if (!source) return "Pièce jointe";
+  try {
+    const pathname = new URL(source).pathname;
+    const raw = pathname.split("/").filter(Boolean).pop() || source;
+    return decodeURIComponent(raw);
+  } catch {
+    const clean = source.split("?")[0].split("#")[0];
+    const raw = clean.split("/").filter(Boolean).pop() || source;
+    return decodeURIComponent(raw);
+  }
+}
+
+function normalizeAttachmentName(attachment: AttachmentInfo): string {
+  const raw = String(attachment.name || "").trim();
+  if (!raw) return basenameFromUrl(attachment.url);
+  if (/^https?:\/\//i.test(raw)) return basenameFromUrl(raw);
+  if (raw.includes('/')) return basenameFromUrl(raw);
+  return raw;
+}
+
+function attachmentKind(attachment: AttachmentInfo): "image" | "video" | "file" {
+  const mime = String(attachment.type || "").toLowerCase();
+  const ref = `${attachment.url || ""} ${attachment.name || ""}`.toLowerCase();
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (/\.(png|jpe?g|webp|gif|bmp|svg|avif)(\?|#|$)/i.test(ref)) return "image";
+  if (/\.(mp4|webm|ogg|mov|m4v)(\?|#|$)/i.test(ref)) return "video";
+  return "file";
+}
+
+function AttachmentPreviewSection({ attachments }: { attachments: AttachmentInfo[] }) {
+  if (!attachments.length) return null;
+
+  return (
+    <div className={styles.mediaSection}>
+      <div className={styles.publicationLabel}>Pièces jointes</div>
+      <div className={styles.mediaGrid}>
+        {attachments.map((attachment, idx) => {
+          const url = typeof attachment.url === "string" ? attachment.url.trim() : "";
+          const kind = attachmentKind(attachment);
+          const name = normalizeAttachmentName(attachment);
+          return (
+            <div key={`${name}-${idx}`} className={styles.mediaCard}>
+              {url && kind === "image" ? (
+                <a href={url} target="_blank" rel="noreferrer" className={styles.mediaPreviewLink}>
+                  <img src={url} alt={name} className={styles.mediaImage} />
+                </a>
+              ) : null}
+
+              {url && kind === "video" ? (
+                <div className={styles.mediaVideoWrap}>
+                  <video className={styles.mediaVideo} controls preload="metadata">
+                    <source src={url} type={attachment.type || undefined} />
+                  </video>
+                </div>
+              ) : null}
+
+              <div className={styles.mediaMeta}>
+                <div className={styles.mediaName}>{name}</div>
+                <div className={styles.mediaMetaRow}>
+                  {attachment.type ? <span className={styles.attachmentMeta}>{attachment.type}</span> : null}
+                  {typeof attachment.size === "number" ? (
+                    <span className={styles.attachmentMeta}>{Math.round(attachment.size / 1024)} Ko</span>
+                  ) : null}
+                </div>
+                {url ? (
+                  <a className={styles.attachmentLink} href={url} target="_blank" rel="noreferrer">
+                    Ouvrir le fichier
+                  </a>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function splitList(v?: string | null): string[] {
   if (!v) return [];
   return String(v)
@@ -1843,29 +1931,6 @@ async function deleteDraftPermanently(id: string) {
                             <b>Erreur :</b> {detailsItem.error}
                           </div>
                         ) : null}
-
-                        {/* PJ (best-effort) */}
-                        {detailsItem.attachments && detailsItem.attachments.length ? (
-                          <div className={styles.attachmentsBox}>
-                            <div className={styles.attachmentsTitle}>Pièces jointes</div>
-                            <div className={styles.attachmentsList}>
-                              {detailsItem.attachments.map((a, idx) => (
-                                <div key={idx} className={styles.attachmentItem}>
-                                  <span className={styles.attachmentName}>{a.name}</span>
-                                  {a.type ? <span className={styles.attachmentMeta}>{a.type}</span> : null}
-                                  {typeof a.size === "number" ? (
-                                    <span className={styles.attachmentMeta}>{Math.round(a.size / 1024)} Ko</span>
-                                  ) : null}
-                                  {a.url ? (
-                                    <a className={styles.attachmentLink} href={a.url} target="_blank" rel="noreferrer">
-                                      Ouvrir
-                                    </a>
-                                  ) : null}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
                       </div>
 
                       {/* Message */}
@@ -1949,25 +2014,7 @@ async function deleteDraftPermanently(id: string) {
                               ) : null}
 
                               {parts.attachments && parts.attachments.length ? (
-                                <div className={styles.publicationAttachments}>
-                                  <div className={styles.publicationLabel}>Pièces jointes</div>
-                                  <div className={styles.attachmentsList}>
-                                    {parts.attachments.map((a, idx) => (
-                                      <div key={idx} className={styles.attachmentItem}>
-                                        <span className={styles.attachmentName}>{a.name}</span>
-                                        {a.type ? <span className={styles.attachmentMeta}>{a.type}</span> : null}
-                                        {typeof a.size === "number" ? (
-                                          <span className={styles.attachmentMeta}>{Math.round(a.size / 1024)} Ko</span>
-                                        ) : null}
-                                        {a.url ? (
-                                          <a className={styles.attachmentLink} href={a.url} target="_blank" rel="noreferrer">
-                                            Ouvrir
-                                          </a>
-                                        ) : null}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
+                                <AttachmentPreviewSection attachments={parts.attachments} />
                               ) : null}
                             </div>
                           );
@@ -1983,6 +2030,9 @@ async function deleteDraftPermanently(id: string) {
                                 ) : (
                                   <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
                                 )}
+                                {detailsItem.attachments && detailsItem.attachments.length ? (
+                                  <AttachmentPreviewSection attachments={detailsItem.attachments} />
+                                ) : null}
                               </div>
                             );
                           }
