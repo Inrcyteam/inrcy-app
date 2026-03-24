@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { getGmbToken, gmbDeleteLocalPost } from "@/lib/googleBusiness";
 import { facebookDeletePost } from "@/lib/facebookPublish";
-import { instagramDeleteMedia } from "@/lib/instagramPublish";
+import { instagramDeleteMediaWithFallbacks } from "@/lib/instagramPublish";
 import { linkedinDeletePost } from "@/lib/linkedinPublish";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
@@ -25,6 +25,22 @@ async function getLatestIntegrationRow(userId: string, provider: string, source:
 
   if (error) throw error;
   return Array.isArray(data) ? data[0] ?? null : null;
+}
+
+async function getInstagramDeleteTokens(userId: string) {
+  const tokens: string[] = [];
+  const ig = asRecord(await getLatestIntegrationRow(userId, "instagram", "instagram", "instagram", "access_token_enc"));
+  const igToken = tryDecryptToken(String(ig.access_token_enc || "")) || "";
+  if (igToken) tokens.push(igToken);
+
+  const fb = asRecord(await getLatestIntegrationRow(userId, "facebook", "facebook", "facebook", "access_token_enc,meta"));
+  const fbMeta = asRecord(fb.meta);
+  const fbUserToken = tryDecryptToken(String(fbMeta.user_access_token_enc || "")) || "";
+  const fbAccessToken = tryDecryptToken(String(fb.access_token_enc || "")) || "";
+  if (fbUserToken) tokens.push(fbUserToken);
+  if (fbAccessToken) tokens.push(fbAccessToken);
+
+  return Array.from(new Set(tokens.filter(Boolean)));
 }
 
 export async function POST(req: Request) {
@@ -80,10 +96,9 @@ export async function POST(req: Request) {
       const resp = await facebookDeletePost({ pageAccessToken: token, postId: externalId });
       if (!resp.ok) return NextResponse.json({ error: resp.error }, { status: 400 });
     } else if (channel === "instagram") {
-      const ig = asRecord(await getLatestIntegrationRow(userId, "instagram", "instagram", "instagram", "status,access_token_enc"));
-      const token = tryDecryptToken(String(ig.access_token_enc || "")) || "";
-      const resp = await instagramDeleteMedia({ accessToken: token, mediaId: externalId });
-      if (!resp.ok) return NextResponse.json({ error: resp.error }, { status: 400 });
+      const tokens = await getInstagramDeleteTokens(userId);
+      const resp = await instagramDeleteMediaWithFallbacks({ mediaId: externalId, accessTokens: tokens });
+      if (!resp.ok) return NextResponse.json({ error: resp.error, diagnostics: resp.attempts }, { status: 400 });
     } else if (channel === "linkedin") {
       const li = asRecord(await getLatestIntegrationRow(userId, "linkedin", "linkedin", "linkedin", "status,access_token_enc"));
       const token = tryDecryptToken(String(li.access_token_enc || "")) || "";
