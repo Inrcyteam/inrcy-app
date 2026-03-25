@@ -156,6 +156,13 @@ type PublicationEditForm = {
   hashtags: string;
 };
 
+type EditablePublicationAttachment = {
+  name: string;
+  type?: string | null;
+  size?: number | null;
+  url?: string | null;
+};
+
 function splitList(v?: string | null): string[] {
   if (!v) return [];
   return String(v)
@@ -436,13 +443,25 @@ function orderChannelKeys(channels: string[]): string[] {
 function extractChannelPublications(payload: any): ChannelPublication[] {
   if (!payload || typeof payload !== "object") return [];
 
-  const channels = extractChannelsFromPayload(payload);
-  const channelSet = new Set(channels.map((ch) => normalizeChannelKey(String(ch || ""))).filter(Boolean));
+  const explicitChannels = [
+    ...extractChannelsFromPayload(payload),
+    ...Object.keys(payload?.results && typeof payload.results === "object" ? payload.results : {}),
+  ]
+    .map((ch) => normalizeChannelKey(String(ch || "")))
+    .filter(Boolean);
+
+  const channelSet = new Set(explicitChannels);
   const postByChannel = payload?.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : {};
   const postByNormalizedChannel = Object.entries(postByChannel).reduce<Record<string, any>>((acc, [key, value]) => {
     const cleaned = normalizeChannelKey(String(key || ""));
-    if (cleaned && !(cleaned in acc)) acc[cleaned] = value;
-    if (cleaned) channelSet.add(cleaned);
+    if (!cleaned) return acc;
+    if (!(cleaned in acc)) acc[cleaned] = value;
+    if (channelSet.has(cleaned)) return acc;
+
+    const isSiteMirror = (cleaned === "inrcy_site" || cleaned === "site_web") && (channelSet.has("inrcy_site") || channelSet.has("site_web"));
+    if (!channelSet.size || !isSiteMirror) {
+      channelSet.add(cleaned);
+    }
     return acc;
   }, {});
 
@@ -556,6 +575,8 @@ export default function MailboxClient() {
   const [detailsActionBusy, setDetailsActionBusy] = useState(false);
   const [detailsActionError, setDetailsActionError] = useState<string | null>(null);
   const [publicationEditForm, setPublicationEditForm] = useState<PublicationEditForm>({ title: "", content: "", cta: "", hashtags: "" });
+  const [publicationEditExistingAttachments, setPublicationEditExistingAttachments] = useState<EditablePublicationAttachment[]>([]);
+  const [publicationEditNewFiles, setPublicationEditNewFiles] = useState<File[]>([]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -632,6 +653,7 @@ export default function MailboxClient() {
 
   // Used to trigger the hidden file input with a nice button
   const fileInputId = "inrsend-attachments";
+  const publicationEditFileInputId = "inrsend-publication-edit-attachments";
 
   function itemMailAccountId(it: OutboxItem): string {
     try {
@@ -993,6 +1015,14 @@ const subTitle = firstNonEmpty(
       cta: parts.cta || "",
       hashtags: tagsToEditorString(parts.hashtags),
     });
+    setPublicationEditExistingAttachments(
+      Array.isArray(parts.attachments)
+        ? parts.attachments
+            .filter((att) => att?.url && isImageAttachment(att))
+            .map((att) => ({ name: att.name, type: att.type || null, size: att.size ?? null, url: att.url || null }))
+        : []
+    );
+    setPublicationEditNewFiles([]);
     setDetailsEditMode(false);
     setDetailsActionError(null);
   }, [detailsOpen, detailsItem, activeDetailsChannelEntry?.key]);
@@ -1522,6 +1552,58 @@ async function deleteDraftPermanently(id: string) {
     setDetailsOpen(true);
   }
 
+  function removePublicationExistingAttachment(idx: number) {
+    setPublicationEditExistingAttachments((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function removePublicationNewFile(idx: number) {
+    setPublicationEditNewFiles((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function addPublicationFiles(fileList: FileList | null) {
+    if (!fileList) return;
+    setDetailsActionError(null);
+    const picked = Array.from(fileList);
+    if (!picked.length) return;
+
+    const invalid = picked.find((file) => !file.type.startsWith("image/"));
+    if (invalid) {
+      setDetailsActionError("Seules les images sont acceptées dans les pièces jointes d'une publication.");
+      return;
+    }
+
+    const tooBig = picked.find((file) => file.size > 2 * 1024 * 1024);
+    if (tooBig) {
+      setDetailsActionError("Une image dépasse 2 Mo.");
+      return;
+    }
+
+    setPublicationEditNewFiles((prev) => {
+      const merged = [...prev];
+      const existingCount = publicationEditExistingAttachments.length;
+      for (const file of picked) {
+        const alreadyAdded = merged.some(
+          (existing) => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified
+        );
+        if (alreadyAdded) continue;
+        if (existingCount + merged.length >= 5) {
+          setDetailsActionError("Maximum 5 images par publication.");
+          break;
+        }
+        merged.push(file);
+      }
+      return merged;
+    });
+  }
+
+  const fileToDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error ?? new Error("FileReader error"));
+      reader.readAsDataURL(file);
+    });
+
   async function saveChannelPublication() {
     if (!detailsItem || detailsItem.source === "send_items") return;
     const publicationId = String((detailsPayload as any)?.publication_id || "").trim();
@@ -1536,6 +1618,14 @@ async function deleteDraftPermanently(id: string) {
         .map((tag) => tag.trim().replace(/^#+/, ""))
         .filter(Boolean);
 
+      const newImages = await Promise.all(
+        publicationEditNewFiles.map(async (file) => ({
+          name: file.name,
+          type: file.type,
+          dataUrl: await fileToDataUrl(file),
+        }))
+      );
+
       const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/${encodeURIComponent(channelApiPath(channel))}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1545,6 +1635,8 @@ async function deleteDraftPermanently(id: string) {
           cta: publicationEditForm.cta,
           hashtags,
           externalId: (activeDetailsChannelResult as any)?.external_id || null,
+          retainedImages: publicationEditExistingAttachments.map((att) => String(att.url || "")).filter(Boolean),
+          newImages,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -2237,6 +2329,52 @@ async function deleteDraftPermanently(id: string) {
                                             />
                                           </div>
                                         ) : null}
+                                        <div style={{ display: "grid", gap: 10 }}>
+                                          <div className={styles.publicationLabel}>Pièces jointes</div>
+                                          <input
+                                            id={publicationEditFileInputId}
+                                            type="file"
+                                            accept="image/*"
+                                            multiple
+                                            className={styles.hiddenFileInput}
+                                            onChange={(e) => {
+                                              addPublicationFiles(e.target.files);
+                                              e.currentTarget.value = "";
+                                            }}
+                                          />
+                                          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                            <label htmlFor={publicationEditFileInputId} className={styles.btnAttach}>📎 Ajouter / remplacer des images</label>
+                                            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                                              {publicationEditExistingAttachments.length + publicationEditNewFiles.length} image(s)
+                                            </span>
+                                          </div>
+                                          {publicationEditExistingAttachments.length || publicationEditNewFiles.length ? (
+                                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                                              {publicationEditExistingAttachments.map((att, idx) => (
+                                                <div key={`existing-${att.url || att.name}-${idx}`} style={{ position: "relative" }}>
+                                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                  <img src={String(att.url || "")} alt={att.name} style={{ width: 110, height: 110, objectFit: "cover", borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)" }} />
+                                                  <button type="button" className={styles.secondaryBtn} style={{ position: "absolute", top: 6, right: 6, padding: "6px 10px", fontSize: 12 }} onClick={() => removePublicationExistingAttachment(idx)}>✕</button>
+                                                </div>
+                                              ))}
+                                              {publicationEditNewFiles.map((file, idx) => (
+                                                <span key={`new-${file.name}-${file.lastModified}-${idx}`} className={styles.fileChip} title={file.name}>
+                                                  {file.name}
+                                                  <button
+                                                    type="button"
+                                                    className={styles.fileChipRemove}
+                                                    onClick={() => removePublicationNewFile(idx)}
+                                                    aria-label={`Retirer ${file.name}`}
+                                                  >
+                                                    ✕
+                                                  </button>
+                                                </span>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>Aucune image.</div>
+                                          )}
+                                        </div>
                                       </>
                                     ) : (
                                       <>

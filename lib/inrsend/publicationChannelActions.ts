@@ -6,6 +6,8 @@ import { facebookPublishToPage } from "@/lib/facebookPublish";
 import { instagramPublishCarousel, instagramPublishPhoto } from "@/lib/instagramPublish";
 import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
+import { optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
+import { randomUUID } from "crypto";
 
 const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
@@ -24,6 +26,19 @@ type PostPayload = {
   content: string;
   cta: string;
   hashtags: string[];
+};
+
+type ImagePayload = {
+  name: string;
+  type: string;
+  dataUrl: string;
+};
+
+type ImageSet = {
+  images: string[];
+  instagramPublishableUrls: string[];
+  socialFeedPublishableUrls: string[];
+  siteCardPublishableUrls: string[];
 };
 
 function asRecord(v: unknown): JsonRecord {
@@ -54,6 +69,119 @@ function buildInstagramCaption(title: string, content: string, cta: string, hash
 
 function errMessage(e: unknown, fallback: string) {
   return e instanceof Error ? e.message : fallback;
+}
+
+function dataUrlToBuffer(dataUrl: string) {
+  const match = /^data:(.+?);base64,(.+)$/.exec(dataUrl || "");
+  if (!match) return null;
+  const mime = match[1];
+  const b64 = match[2];
+  return { mime, buffer: Buffer.from(b64, "base64") };
+}
+
+async function uploadPublicationImages(userId: string, newImages: ImagePayload[]): Promise<ImageSet> {
+  const uploadedUrls: string[] = [];
+  const instagramPublishableUrls: string[] = [];
+  const socialFeedPublishableUrls: string[] = [];
+  const siteCardPublishableUrls: string[] = [];
+
+  for (const img of newImages.slice(0, 5)) {
+    const parsed = dataUrlToBuffer(img.dataUrl);
+    if (!parsed) throw new Error(`Image invalide : ${img?.name || "image"}.`);
+
+    const ext = (img.name || "image").split(".").pop() || "jpg";
+    const originalPath = `${userId}/${randomUUID()}.${ext}`;
+    const originalUpload = await supabaseAdmin.storage.from("booster").upload(originalPath, parsed.buffer, {
+      contentType: parsed.mime || img.type || "application/octet-stream",
+      upsert: false,
+    });
+    if (originalUpload.error) throw originalUpload.error;
+
+    const originalPublic = supabaseAdmin.storage.from("booster").getPublicUrl(originalPath);
+    const originalUrl = String(originalPublic?.data?.publicUrl || "").trim();
+    if (!originalUrl) throw new Error(`URL publique introuvable pour ${img?.name || "image"}.`);
+    uploadedUrls.push(originalUrl);
+
+    const instagramOptimized = await optimizeForInstagram(parsed.buffer);
+    const instagramPath = `${userId}/instagram/${randomUUID()}.${instagramOptimized.extension}`;
+    const instagramUpload = await supabaseAdmin.storage.from("booster").upload(instagramPath, instagramOptimized.buffer, {
+      contentType: instagramOptimized.mime,
+      upsert: false,
+    });
+    if (instagramUpload.error) throw instagramUpload.error;
+    const instagramSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(instagramPath, 60 * 60 * 24);
+    const instagramPublic = supabaseAdmin.storage.from("booster").getPublicUrl(instagramPath);
+    const instagramUrl = String(instagramSigned?.data?.signedUrl || instagramPublic?.data?.publicUrl || "").trim();
+    if (!instagramUrl) throw new Error(`URL Instagram introuvable pour ${img?.name || "image"}.`);
+    instagramPublishableUrls.push(instagramUrl);
+
+    const socialOptimized = await optimizeForSocialFeed(parsed.buffer);
+    const socialPath = `${userId}/social-feed/${randomUUID()}.${socialOptimized.extension}`;
+    const socialUpload = await supabaseAdmin.storage.from("booster").upload(socialPath, socialOptimized.buffer, {
+      contentType: socialOptimized.mime,
+      upsert: false,
+    });
+    if (socialUpload.error) throw socialUpload.error;
+    const socialSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(socialPath, 60 * 60 * 24);
+    const socialPublic = supabaseAdmin.storage.from("booster").getPublicUrl(socialPath);
+    const socialUrl = String(socialSigned?.data?.signedUrl || socialPublic?.data?.publicUrl || "").trim();
+    if (!socialUrl) throw new Error(`URL social introuvable pour ${img?.name || "image"}.`);
+    socialFeedPublishableUrls.push(socialUrl);
+
+    const siteOptimized = await optimizeForSiteCard(parsed.buffer);
+    const sitePath = `${userId}/site-card/${randomUUID()}.${siteOptimized.extension}`;
+    const siteUpload = await supabaseAdmin.storage.from("booster").upload(sitePath, siteOptimized.buffer, {
+      contentType: siteOptimized.mime,
+      upsert: false,
+    });
+    if (siteUpload.error) throw siteUpload.error;
+    const siteSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(sitePath, 60 * 60 * 24);
+    const sitePublic = supabaseAdmin.storage.from("booster").getPublicUrl(sitePath);
+    const siteUrl = String(siteSigned?.data?.signedUrl || sitePublic?.data?.publicUrl || "").trim();
+    if (!siteUrl) throw new Error(`URL site introuvable pour ${img?.name || "image"}.`);
+    siteCardPublishableUrls.push(siteUrl);
+  }
+
+  return { images: uploadedUrls, instagramPublishableUrls, socialFeedPublishableUrls, siteCardPublishableUrls };
+}
+
+function filterUrlsByIndexes(values: unknown, indexes: number[]): string[] {
+  const items = Array.isArray(values) ? values.map((value) => String(value || "").trim()) : [];
+  return indexes.map((index) => items[index]).filter(Boolean);
+}
+
+async function updatePublicationImages(params: {
+  userId: string;
+  publicationId: string;
+  publication: JsonRecord;
+  eventPayload: JsonRecord;
+  retainedImages?: string[];
+  newImages?: ImagePayload[];
+}): Promise<ImageSet> {
+  const { userId, publicationId, publication, eventPayload, retainedImages = [], newImages = [] } = params;
+  const currentImages = Array.isArray(publication.images) ? publication.images.map((value) => String(value || "").trim()).filter(Boolean) : [];
+  const sanitizedRetained = retainedImages.map((value) => String(value || "").trim()).filter(Boolean);
+  const retainedIndexes = sanitizedRetained.map((url) => currentImages.indexOf(url)).filter((index) => index >= 0);
+
+  const baseImageSet: ImageSet = {
+    images: retainedIndexes.map((index) => currentImages[index]).filter(Boolean),
+    instagramPublishableUrls: filterUrlsByIndexes(eventPayload.instagramPublishableUrls, retainedIndexes),
+    socialFeedPublishableUrls: filterUrlsByIndexes(eventPayload.socialFeedPublishableUrls, retainedIndexes),
+    siteCardPublishableUrls: filterUrlsByIndexes(eventPayload.siteCardPublishableUrls, retainedIndexes),
+  };
+
+  const uploadedSet = newImages.length ? await uploadPublicationImages(userId, newImages) : { images: [], instagramPublishableUrls: [], socialFeedPublishableUrls: [], siteCardPublishableUrls: [] };
+  const merged: ImageSet = {
+    images: [...baseImageSet.images, ...uploadedSet.images].slice(0, 5),
+    instagramPublishableUrls: [...baseImageSet.instagramPublishableUrls, ...uploadedSet.instagramPublishableUrls].slice(0, 10),
+    socialFeedPublishableUrls: [...baseImageSet.socialFeedPublishableUrls, ...uploadedSet.socialFeedPublishableUrls].slice(0, 20),
+    siteCardPublishableUrls: [...baseImageSet.siteCardPublishableUrls, ...uploadedSet.siteCardPublishableUrls].slice(0, 20),
+  };
+
+  const { error } = await supabaseAdmin.from("publications").update({ images: merged.images }).eq("id", publicationId).eq("user_id", userId);
+  if (error) throw error;
+  publication.images = merged.images;
+  return merged;
 }
 
 function cloneRecord<T extends JsonRecord>(input: T): T {
@@ -256,15 +384,29 @@ async function replaceChannelDelivery(params: {
   publication: JsonRecord;
   eventPayload: JsonRecord;
   nextPost: PostPayload;
+  imageSet?: ImageSet | null;
 }) {
-  const { userId, channel, previousExternalId, publication, eventPayload, nextPost } = params;
-  const images = Array.isArray(publication.images) ? publication.images.map((x: unknown) => String(x || "").trim()).filter(Boolean) : [];
-  const socialFeedImageUrls = Array.isArray(eventPayload.socialFeedPublishableUrls) && eventPayload.socialFeedPublishableUrls.length
-    ? eventPayload.socialFeedPublishableUrls.map((x: unknown) => String(x || "").trim()).filter(Boolean)
-    : images;
-  const instagramImageUrls = Array.isArray(eventPayload.instagramPublishableUrls) && eventPayload.instagramPublishableUrls.length
-    ? eventPayload.instagramPublishableUrls.map((x: unknown) => String(x || "").trim()).filter(Boolean)
-    : images;
+  const { userId, channel, previousExternalId, publication, eventPayload, nextPost, imageSet } = params;
+  const images = imageSet?.images?.length
+    ? imageSet.images
+    : Array.isArray(publication.images)
+      ? publication.images.map((x: unknown) => String(x || "").trim()).filter(Boolean)
+      : [];
+  const socialFeedImageUrls = imageSet?.socialFeedPublishableUrls?.length
+    ? imageSet.socialFeedPublishableUrls
+    : Array.isArray(eventPayload.socialFeedPublishableUrls) && eventPayload.socialFeedPublishableUrls.length
+      ? eventPayload.socialFeedPublishableUrls.map((x: unknown) => String(x || "").trim()).filter(Boolean)
+      : images;
+  const instagramImageUrls = imageSet?.instagramPublishableUrls?.length
+    ? imageSet.instagramPublishableUrls
+    : Array.isArray(eventPayload.instagramPublishableUrls) && eventPayload.instagramPublishableUrls.length
+      ? eventPayload.instagramPublishableUrls.map((x: unknown) => String(x || "").trim()).filter(Boolean)
+      : images;
+  const siteCardImageUrls = imageSet?.siteCardPublishableUrls?.length
+    ? imageSet.siteCardPublishableUrls
+    : Array.isArray(eventPayload.siteCardPublishableUrls) && eventPayload.siteCardPublishableUrls.length
+      ? eventPayload.siteCardPublishableUrls.map((x: unknown) => String(x || "").trim()).filter(Boolean)
+      : socialFeedImageUrls;
 
   const canonMessage = buildCanonMessage(nextPost.title, nextPost.content, nextPost.cta);
 
@@ -276,7 +418,7 @@ async function replaceChannelDelivery(params: {
         content: nextPost.content,
         cta: nextPost.cta,
         hashtags: nextPost.hashtags,
-        images,
+        images: siteCardImageUrls.length ? siteCardImageUrls : images,
       })
       .eq("id", previousExternalId || "")
       .eq("user_id", userId)
@@ -434,8 +576,9 @@ function buildUpdatedPayload(params: {
   channel: ChannelKey;
   nextPost: PostPayload;
   externalId: string | null;
+  imageSet?: ImageSet | null;
 }) {
-  const { eventPayload, publication, channel, nextPost, externalId } = params;
+  const { eventPayload, publication, channel, nextPost, externalId, imageSet } = params;
   const results = cloneRecord(asRecord(eventPayload.results));
   const channelResult = asRecord(results[channel]);
   results[channel] = {
@@ -458,6 +601,14 @@ function buildUpdatedPayload(params: {
     post: channel === "inrcy_site" || channel === "site_web" ? asRecord(eventPayload.post) : eventPayload.post,
     results,
   };
+
+  if (imageSet) {
+    nextPayload.images = imageSet.images;
+    nextPayload.publishableUrls = imageSet.images;
+    nextPayload.instagramPublishableUrls = imageSet.instagramPublishableUrls;
+    nextPayload.socialFeedPublishableUrls = imageSet.socialFeedPublishableUrls;
+    nextPayload.siteCardPublishableUrls = imageSet.siteCardPublishableUrls;
+  }
 
   if (!asRecord(nextPayload.post).title && !asRecord(nextPayload.post).content) {
     nextPayload.post = getChannelPost(eventPayload, publication, channel);
@@ -525,6 +676,34 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       if (!nextPost.content) return NextResponse.json({ error: "Le contenu est vide." }, { status: 400 });
 
+      const retainedImages = Array.isArray(body.retainedImages)
+        ? body.retainedImages.map((value: unknown) => String(value || "").trim()).filter(Boolean)
+        : Array.isArray(ctx.publication.images)
+          ? ctx.publication.images.map((value: unknown) => String(value || "").trim()).filter(Boolean)
+          : [];
+      const newImages = Array.isArray(body.newImages)
+        ? body.newImages
+            .map((value: unknown) => asRecord(value))
+            .map((value) => ({
+              name: String(value.name ?? "image").trim() || "image",
+              type: String(value.type ?? "image/jpeg").trim() || "image/jpeg",
+              dataUrl: String(value.dataUrl ?? "").trim(),
+            }))
+            .filter((value) => value.dataUrl)
+        : [];
+      if (retainedImages.length + newImages.length > 5) {
+        return NextResponse.json({ error: "Maximum 5 images par publication." }, { status: 400 });
+      }
+
+      const imageSet = await updatePublicationImages({
+        userId: user.id,
+        publicationId,
+        publication: ctx.publication,
+        eventPayload: ctx.eventPayload,
+        retainedImages,
+        newImages,
+      });
+
       const previousExternalId = String(body.externalId ?? channelResult.external_id ?? "").trim() || null;
       const replaceResult = await replaceChannelDelivery({
         userId: user.id,
@@ -533,6 +712,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         publication: ctx.publication,
         eventPayload: ctx.eventPayload,
         nextPost,
+        imageSet,
       });
 
       const nextPayload = buildUpdatedPayload({
@@ -541,6 +721,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         channel,
         nextPost,
         externalId: replaceResult.externalId,
+        imageSet,
       });
 
       await persistEventPayload(user.id, publicationId, nextPayload);

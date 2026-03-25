@@ -249,7 +249,7 @@ export default function PublishModal({
     setImgError("");
     if (!files) return;
 
-    const picked = Array.from(files).slice(0, 5);
+    const picked = Array.from(files);
     if (!picked.length) return;
 
     const tooBig = picked.find((f) => f.size > 2 * 1024 * 1024);
@@ -258,16 +258,38 @@ export default function PublishModal({
       return;
     }
 
-    imagePreviews.forEach((url) => URL.revokeObjectURL(url));
-    setImages(picked);
-    setImagePreviews(picked.map((f) => URL.createObjectURL(f)));
+    setImages((prev) => {
+      const merged = [...prev];
+      for (const file of picked) {
+        const alreadyAdded = merged.some(
+          (existing) => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified
+        );
+        if (alreadyAdded) continue;
+        if (merged.length >= 5) {
+          setImgError("Maximum 5 images.");
+          break;
+        }
+        merged.push(file);
+      }
+      return merged;
+    });
   };
 
+  useEffect(() => {
+    setImagePreviews((prev) => {
+      prev.forEach((url) => URL.revokeObjectURL(url));
+      return images.map((file) => URL.createObjectURL(file));
+    });
+  }, [images]);
+
+  useEffect(() => {
+    return () => {
+      imagePreviews.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [imagePreviews]);
+
   const removeImage = (idx: number) => {
-    const removed = imagePreviews[idx];
-    if (removed) URL.revokeObjectURL(removed);
     setImages((prev) => prev.filter((_, i) => i !== idx));
-    setImagePreviews((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const fileToDataUrl = (file: File): Promise<string> =>
@@ -514,7 +536,17 @@ export default function PublishModal({
 >
           Ajoutez 1 ou plusieurs images (max 5, 2 Mo chacune). <strong>Fort recommandé</strong>. <strong>Obligatoire pour Instagram</strong>.
         </div>
-        <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => onImagesChange(e.target.files)} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => {
+            onImagesChange(e.target.files);
+            e.currentTarget.value = "";
+          }}
+        />
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button type="button" className={styles.secondaryBtn} onClick={onPickImagesClick}>+ Ajouter des images</button>
           {images.length ? <div style={{ fontSize: 12, opacity: 0.85 }}>{images.length} fichier(s) sélectionné(s)</div> : <div style={{ fontSize: 12, opacity: 0.7 }}>Aucune image</div>}
