@@ -4,6 +4,7 @@ import stylesDash from "../../dashboard/dashboard.module.css";
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 type DisplayKey = "site" | "gmb" | "facebook" | "instagram" | "linkedin";
 type ThemeKey = "" | "promotion" | "information" | "conseil" | "avis_client" | "realisation" | "actualite" | "autre";
+type FitMode = "contain" | "cover";
 
 type ChannelPost = {
   title: string;
@@ -16,6 +17,37 @@ type ImagePayload = {
   name: string;
   type: string;
   dataUrl: string;
+};
+
+type ImageTransform = {
+  fit: FitMode;
+  zoom: number;
+  offsetX: number;
+  offsetY: number;
+  blurBackground: boolean;
+};
+
+type ChannelImageEditorState = {
+  imageKeys: string[];
+  transforms: Record<string, ImageTransform>;
+};
+
+type ChannelImagePayload = Record<ChannelKey, ImagePayload[]>;
+type ChannelImageSettingsPayload = Record<ChannelKey, { imageKeys: string[]; transforms: Record<string, ImageTransform> }>;
+
+type RenderPreset = {
+  width: number;
+  height: number;
+  defaultFit: FitMode;
+  defaultBlurBackground: boolean;
+};
+
+const DEFAULT_TRANSFORM: ImageTransform = {
+  fit: "contain",
+  zoom: 1,
+  offsetX: 0,
+  offsetY: 0,
+  blurBackground: true,
 };
 
 const DISPLAY_LABELS: Record<DisplayKey, string> = {
@@ -33,6 +65,15 @@ const CHANNEL_LABELS: Record<ChannelKey, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+};
+
+const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
+  inrcy_site: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
+  site_web: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
+  gmb: { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: true },
+  facebook: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
+  instagram: { width: 1080, height: 1350, defaultFit: "cover", defaultBlurBackground: false },
+  linkedin: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
 };
 
 const THEME_OPTIONS: Array<{ value: ThemeKey; label: string }> = [
@@ -57,6 +98,116 @@ const THEME_PLACEHOLDERS: Record<ThemeKey, string> = {
   autre: "Ex : Intervention rapide réalisée ce matin suite à une fuite en cuisine",
 };
 
+function makeImageKey(file: File): string {
+  return `${file.name}__${file.size}__${file.lastModified}`;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function loadHtmlImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Impossible de charger l'image."));
+    img.src = src;
+  });
+}
+
+async function renderChannelImage(params: {
+  file: File;
+  transform: ImageTransform;
+  preset: RenderPreset;
+}): Promise<ImagePayload> {
+  const { file, transform, preset } = params;
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await loadHtmlImage(objectUrl);
+    const canvas = document.createElement("canvas");
+    canvas.width = preset.width;
+    canvas.height = preset.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas indisponible.");
+
+    const cw = canvas.width;
+    const ch = canvas.height;
+    const iw = img.naturalWidth || img.width;
+    const ih = img.naturalHeight || img.height;
+    const baseScale = transform.fit === "cover" ? Math.max(cw / iw, ch / ih) : Math.min(cw / iw, ch / ih);
+    const scale = baseScale * clamp(transform.zoom || 1, 1, 3);
+    const drawW = iw * scale;
+    const drawH = ih * scale;
+    const maxX = Math.max(0, (drawW - cw) / 2);
+    const maxY = Math.max(0, (drawH - ch) / 2);
+    const dx = (cw - drawW) / 2 - maxX * clamp(transform.offsetX || 0, -100, 100) / 100;
+    const dy = (ch - drawH) / 2 - maxY * clamp(transform.offsetY || 0, -100, 100) / 100;
+
+    ctx.clearRect(0, 0, cw, ch);
+
+    if (transform.fit === "contain" && transform.blurBackground) {
+      ctx.save();
+      ctx.filter = "blur(28px) saturate(1.05) brightness(1.02)";
+      const bgScale = Math.max(cw / iw, ch / ih);
+      const bgW = iw * bgScale;
+      const bgH = ih * bgScale;
+      ctx.drawImage(img, (cw - bgW) / 2, (ch - bgH) / 2, bgW, bgH);
+      ctx.restore();
+      ctx.fillStyle = "rgba(0,0,0,0.08)";
+      ctx.fillRect(0, 0, cw, ch);
+    } else {
+      ctx.fillStyle = "#0d1320";
+      ctx.fillRect(0, 0, cw, ch);
+    }
+
+    ctx.drawImage(img, dx, dy, drawW, drawH);
+
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    return {
+      name: file.name.replace(/\.[^.]+$/, "") + `-${preset.width}x${preset.height}.jpg`,
+      type: "image/jpeg",
+      dataUrl,
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function getDefaultTransform(channel: ChannelKey): ImageTransform {
+  const preset = CHANNEL_PRESETS[channel];
+  return {
+    fit: preset.defaultFit,
+    zoom: 1,
+    offsetX: 0,
+    offsetY: 0,
+    blurBackground: preset.defaultBlurBackground,
+  };
+}
+
+function syncChannelImageEditors(params: {
+  previous: Partial<Record<ChannelKey, ChannelImageEditorState>>;
+  imageKeys: string[];
+  selectedChannels: ChannelKey[];
+}): Partial<Record<ChannelKey, ChannelImageEditorState>> {
+  const { previous, imageKeys, selectedChannels } = params;
+  const next: Partial<Record<ChannelKey, ChannelImageEditorState>> = {};
+
+  for (const channel of selectedChannels) {
+    const prevState = previous[channel];
+    const nextImageKeys = (prevState?.imageKeys || []).filter((key) => imageKeys.includes(key));
+    const mergedKeys = nextImageKeys.length ? nextImageKeys : [...imageKeys];
+    const transforms: Record<string, ImageTransform> = {};
+    for (const key of imageKeys) {
+      transforms[key] = prevState?.transforms?.[key]
+        ? { ...prevState.transforms[key] }
+        : getDefaultTransform(channel);
+    }
+    next[channel] = { imageKeys: mergedKeys.filter((key, index, arr) => arr.indexOf(key) === index), transforms };
+  }
+
+  return next;
+}
+
 export default function PublishModal({
   styles,
   onClose,
@@ -79,6 +230,9 @@ export default function PublishModal({
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imgError, setImgError] = useState("");
+  const [channelImageEditors, setChannelImageEditors] = useState<Partial<Record<ChannelKey, ChannelImageEditorState>>>({});
+  const [activeImageChannel, setActiveImageChannel] = useState<ChannelKey>("inrcy_site");
+  const [activeImageKeyByChannel, setActiveImageKeyByChannel] = useState<Partial<Record<ChannelKey, string>>>({});
 
   const [channels, setChannels] = useState<Record<ChannelKey, boolean>>({
     inrcy_site: true,
@@ -173,6 +327,48 @@ export default function PublishModal({
     return Array.from(out);
   }, [channels, connected]);
 
+  const imageKeys = useMemo(() => images.map((file) => makeImageKey(file)), [images]);
+  const imageFileByKey = useMemo(() => Object.fromEntries(images.map((file) => [makeImageKey(file), file])), [images]);
+  const previewByKey = useMemo(() => Object.fromEntries(imageKeys.map((key, index) => [key, imagePreviews[index]])), [imageKeys, imagePreviews]);
+
+  useEffect(() => {
+    setChannelImageEditors((prev) => syncChannelImageEditors({ previous: prev, imageKeys, selectedChannels }));
+  }, [imageKeys.join("|"), selectedChannels.join("|")]);
+
+  useEffect(() => {
+    if (!selectedChannels.length) {
+      setActiveImageChannel("inrcy_site");
+      return;
+    }
+    if (!selectedChannels.includes(activeImageChannel)) {
+      setActiveImageChannel(selectedChannels[0]);
+    }
+  }, [selectedChannels, activeImageChannel]);
+
+  useEffect(() => {
+    setActiveImageKeyByChannel((prev) => {
+      const next = { ...prev };
+      for (const channel of selectedChannels) {
+        const available = channelImageEditors[channel]?.imageKeys || [];
+        if (!available.length) {
+          delete next[channel];
+          continue;
+        }
+        if (!next[channel] || !available.includes(next[channel] as string)) {
+          next[channel] = available[0];
+        }
+      }
+      for (const key of Object.keys(next) as ChannelKey[]) {
+        if (!selectedChannels.includes(key)) delete next[key];
+      }
+      return next;
+    });
+  }, [selectedChannels.join("|"), channelImageEditors, imageKeys.join("|")]);
+
+  const activeEditor = channelImageEditors[activeImageChannel];
+  const activeEditorImageKey = activeImageKeyByChannel[activeImageChannel] || activeEditor?.imageKeys?.[0] || "";
+  const activeEditorTransform = activeEditor?.transforms?.[activeEditorImageKey] || getDefaultTransform(activeImageChannel);
+
   const toggle = (key: ChannelKey) => {
     if (!connected[key]) return;
     setChannels((s) => ({ ...s, [key]: !s[key] }));
@@ -191,6 +387,8 @@ export default function PublishModal({
     setImages([]);
     setImagePreviews([]);
     setImgError("");
+    setChannelImageEditors({});
+    setActiveImageKeyByChannel({});
   };
 
   const onGenerate = async () => {
@@ -331,9 +529,103 @@ export default function PublishModal({
     return postsByChannel[key] || { title: "", content: "", cta: "", hashtags: [] };
   };
 
+  const updateChannelTransform = (channel: ChannelKey, imageKey: string, patch: Partial<ImageTransform>) => {
+    setChannelImageEditors((prev) => {
+      const current = prev[channel] || { imageKeys: imageKeys.slice(), transforms: {} };
+      return {
+        ...prev,
+        [channel]: {
+          imageKeys: current.imageKeys,
+          transforms: {
+            ...current.transforms,
+            [imageKey]: {
+              ...(current.transforms[imageKey] || getDefaultTransform(channel)),
+              ...patch,
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const toggleChannelImage = (channel: ChannelKey, imageKey: string) => {
+    setChannelImageEditors((prev) => {
+      const current = prev[channel] || { imageKeys: imageKeys.slice(), transforms: {} };
+      const exists = current.imageKeys.includes(imageKey);
+      const nextKeys = exists ? current.imageKeys.filter((key) => key !== imageKey) : [...current.imageKeys, imageKey];
+      return {
+        ...prev,
+        [channel]: {
+          imageKeys: nextKeys,
+          transforms: {
+            ...current.transforms,
+            [imageKey]: current.transforms[imageKey] || getDefaultTransform(channel),
+          },
+        },
+      };
+    });
+    setActiveImageKeyByChannel((prev) => {
+      if (prev[channel] !== imageKey) return prev;
+      const currentKeys = channelImageEditors[channel]?.imageKeys || [];
+      const nextKeys = currentKeys.filter((key) => key !== imageKey);
+      return { ...prev, [channel]: nextKeys[0] || "" };
+    });
+  };
+
+  const resetChannelImage = (channel: ChannelKey, imageKey: string) => {
+    updateChannelTransform(channel, imageKey, getDefaultTransform(channel));
+  };
+
+  const applyCurrentImageToSelectedChannels = () => {
+    if (!activeEditorImageKey) return;
+    setChannelImageEditors((prev) => {
+      const next = { ...prev };
+      for (const channel of selectedChannels) {
+        const current = next[channel] || { imageKeys: imageKeys.slice(), transforms: {} };
+        next[channel] = {
+          imageKeys: current.imageKeys.includes(activeEditorImageKey)
+            ? current.imageKeys
+            : [...current.imageKeys, activeEditorImageKey],
+          transforms: {
+            ...current.transforms,
+            [activeEditorImageKey]: { ...activeEditorTransform },
+          },
+        };
+      }
+      return next;
+    });
+  };
+
+  const buildChannelImagesPayload = async (): Promise<{
+    channelImages: ChannelImagePayload;
+    channelSettings: ChannelImageSettingsPayload;
+  }> => {
+    const channelImages = {} as ChannelImagePayload;
+    const channelSettings = {} as ChannelImageSettingsPayload;
+
+    for (const channel of selectedChannels) {
+      const editor = channelImageEditors[channel] || { imageKeys: [], transforms: {} };
+      const renderList: ImagePayload[] = [];
+      for (const imageKey of editor.imageKeys) {
+        const file = imageFileByKey[imageKey];
+        if (!file) continue;
+        const transform = editor.transforms[imageKey] || getDefaultTransform(channel);
+        renderList.push(await renderChannelImage({ file, transform, preset: CHANNEL_PRESETS[channel] }));
+      }
+      channelImages[channel] = renderList;
+      channelSettings[channel] = {
+        imageKeys: [...editor.imageKeys],
+        transforms: Object.fromEntries(Object.entries(editor.transforms || {}).map(([key, value]) => [key, { ...value }])),
+      };
+    }
+
+    return { channelImages, channelSettings };
+  };
+
   const onPublish = async () => {
     if (saving) return;
     setGenError("");
+    setImgError("");
 
     if (!selectedChannels.length) {
       setGenError("Sélectionnez au moins 1 canal.");
@@ -344,6 +636,14 @@ export default function PublishModal({
     if (missingContent) {
       setGenError(`Le contenu est vide pour ${CHANNEL_LABELS[missingContent]}.`);
       return;
+    }
+
+    if (selectedChannels.includes("instagram")) {
+      const instagramImages = channelImageEditors.instagram?.imageKeys || [];
+      if (!instagramImages.length) {
+        setImgError("Instagram nécessite au moins 1 image sélectionnée.");
+        return;
+      }
     }
 
     setSaving(true);
@@ -357,6 +657,7 @@ export default function PublishModal({
         return;
       }
 
+      const { channelImages, channelSettings } = await buildChannelImagesPayload();
       const sitePost = getDisplayPost("site");
       await trackEvent("publish", {
         idea: idea.trim(),
@@ -368,6 +669,8 @@ export default function PublishModal({
           ...(channels.site_web ? { site_web: sitePost } : {}),
         },
         images: imagePayloads,
+        imagesByChannel: channelImages,
+        imageSettingsByChannel: channelSettings,
       });
 
       onClose();
@@ -377,6 +680,10 @@ export default function PublishModal({
       setSaving(false);
     }
   };
+
+  const previewAspectRatio = `${CHANNEL_PRESETS[activeImageChannel].width} / ${CHANNEL_PRESETS[activeImageChannel].height}`;
+  const previewTransform = `translate(${activeEditorTransform.offsetX * 0.45}%, ${activeEditorTransform.offsetY * 0.45}%) scale(${activeEditorTransform.zoom})`;
+  const previewObjectFit = activeEditorTransform.fit === "cover" ? "cover" : "contain";
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -437,14 +744,7 @@ export default function PublishModal({
 
       <div className={styles.blockCard}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Votre intention</div>
-        <div
-          className={styles.subtitle}
-          style={{
-            marginBottom: 10,
-            maxWidth: "none",
-            whiteSpace: isMobile ? "normal" : "nowrap",
-          }}
-        >
+        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: isMobile ? "normal" : "nowrap" }}>
           Choisissez le thème si vous le souhaitez, puis écrivez votre phrase. iNrCy adapte ensuite le contenu à chaque canal.
         </div>
         <div style={{ display: "grid", gap: 10 }}>
@@ -478,7 +778,7 @@ export default function PublishModal({
 
       <div className={styles.blockCard}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Contenus par canal</div>
-        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: isMobile ? "normal" : "nowrap", }}>
+        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: isMobile ? "normal" : "nowrap" }}>
           Relisez et ajustez si nécessaire chaque version avant publication. Les contenus publiés sont modifiables et supprimables depuis le module iNr'Send.
         </div>
         {displayCards.length ? (
@@ -526,14 +826,7 @@ export default function PublishModal({
 
       <div className={styles.blockCard}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Images</div>
-        <div
-  className={styles.subtitle}
-  style={{
-    marginBottom: 10,
-    maxWidth: "none",
-    whiteSpace: isMobile ? "normal" : "nowrap",
-  }}
->
+        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: isMobile ? "normal" : "nowrap" }}>
           Ajoutez 1 ou plusieurs images (max 5, 2 Mo chacune). <strong>Fort recommandé</strong>. <strong>Obligatoire pour Instagram</strong>.
         </div>
         <input
@@ -555,13 +848,126 @@ export default function PublishModal({
         {imagePreviews.length ? (
           <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
             {imagePreviews.map((src, idx) => (
-              <div key={src} style={{ position: "relative" }}>
+              <div key={`${src}-${idx}`} style={{ position: "relative" }}>
                 <img src={src} alt={`upload-${idx}`} style={{ width: 110, height: 110, objectFit: "cover", borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)" }} />
                 <button type="button" className={styles.secondaryBtn} style={{ position: "absolute", top: 6, right: 6, padding: "6px 10px", fontSize: 12 }} onClick={() => removeImage(idx)}>✕</button>
               </div>
             ))}
           </div>
         ) : null}
+      </div>
+
+      <div className={styles.blockCard}>
+        <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Retouche des images par canal</div>
+        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none" }}>
+          iNrCy prépare un aperçu pour chacun des 6 canaux. Vous pouvez ensuite sélectionner et ajuster les images canal par canal.
+        </div>
+        {!selectedChannels.length ? (
+          <div style={{ fontSize: 13, opacity: 0.75 }}>Sélectionnez d’abord vos canaux.</div>
+        ) : !images.length ? (
+          <div style={{ fontSize: 13, opacity: 0.75 }}>Ajoutez d’abord une ou plusieurs images pour activer les aperçus et les retouches.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", overflowX: "auto" }}>
+              {selectedChannels.map((channel) => (
+                <button key={channel} type="button" onClick={() => setActiveImageChannel(channel)} style={{ ...pillBtn, ...(activeImageChannel === channel ? pillBtnActive : {}) }}>
+                  {CHANNEL_LABELS[channel]}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ border: "1px solid rgba(255,255,255,0.10)", borderRadius: 16, padding: 12, background: "rgba(255,255,255,0.03)", display: "grid", gap: 12 }}>
+              <div style={{ fontWeight: 900 }}>{CHANNEL_LABELS[activeImageChannel]}</div>
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {(channelImageEditors[activeImageChannel]?.imageKeys || imageKeys).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setActiveImageKeyByChannel((prev) => ({ ...prev, [activeImageChannel]: key }))}
+                    style={{
+                      border: activeEditorImageKey === key ? "1px solid rgba(76,195,255,0.55)" : "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(255,255,255,0.04)",
+                      borderRadius: 14,
+                      padding: 6,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <img src={previewByKey[key]} alt={key} style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 10, display: "block" }} />
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(320px, 420px) minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+                <div>
+                  {activeEditorImageKey ? (
+                    <div style={{ position: "relative", width: "100%", aspectRatio: previewAspectRatio, borderRadius: 18, overflow: "hidden", border: "1px solid rgba(255,255,255,0.12)", background: "#0d1320" }}>
+                      {activeEditorTransform.blurBackground ? (
+                        <img
+                          src={previewByKey[activeEditorImageKey]}
+                          alt="background-preview"
+                          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(24px)", transform: "scale(1.08)", opacity: 0.95 }}
+                        />
+                      ) : null}
+                      <img
+                        src={previewByKey[activeEditorImageKey]}
+                        alt="preview"
+                        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: previewObjectFit, transform: previewTransform, transformOrigin: "center center" }}
+                      />
+                      <div style={{ position: "absolute", left: 10, bottom: 10, fontSize: 12, padding: "6px 10px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)" }}>
+                        {CHANNEL_PRESETS[activeImageChannel].width}×{CHANNEL_PRESETS[activeImageChannel].height} • {activeEditorTransform.fit === "cover" ? "Remplir" : "Adapter"}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13, opacity: 0.75 }}>Aucune image active pour ce canal.</div>
+                  )}
+                </div>
+
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" className={styles.secondaryBtn} onClick={() => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { fit: "contain", blurBackground: true })} disabled={!activeEditorImageKey}>Adapter</button>
+                    <button type="button" className={styles.secondaryBtn} onClick={() => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { fit: "cover", blurBackground: false })} disabled={!activeEditorImageKey}>Remplir</button>
+                    <button type="button" className={styles.secondaryBtn} onClick={() => activeEditorImageKey && resetChannelImage(activeImageChannel, activeEditorImageKey)} disabled={!activeEditorImageKey}>Réinitialiser</button>
+                    <button type="button" className={styles.secondaryBtn} onClick={applyCurrentImageToSelectedChannels} disabled={!activeEditorImageKey}>Appliquer aux canaux sélectionnés</button>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {imageKeys.map((key, index) => {
+                      const included = (channelImageEditors[activeImageChannel]?.imageKeys || []).includes(key);
+                      return (
+                        <label key={`${activeImageChannel}-${key}`} style={{ display: "grid", gridTemplateColumns: "auto auto 1fr auto", gap: 10, alignItems: "center", padding: "8px 10px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+                          <input type="checkbox" checked={included} onChange={() => toggleChannelImage(activeImageChannel, key)} style={{ width: 16, height: 16, accentColor: "#4cc3ff" }} />
+                          <img src={previewByKey[key]} alt={key} style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 10 }} />
+                          <span style={{ fontSize: 12, opacity: included ? 0.95 : 0.65 }}>Image {index + 1} • {included ? "publiée sur ce canal" : "non envoyée sur ce canal"}</span>
+                          <button type="button" className={styles.secondaryBtn} style={{ padding: "6px 10px", fontSize: 12 }} onClick={() => setActiveImageKeyByChannel((prev) => ({ ...prev, [activeImageChannel]: key }))}>Modifier</button>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Zoom</div>
+                      <input type="range" min={1} max={2.5} step={0.01} value={activeEditorTransform.zoom} onChange={(e) => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { zoom: Number(e.target.value) })} disabled={!activeEditorImageKey} style={{ width: "100%" }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Centrage horizontal</div>
+                      <input type="range" min={-100} max={100} step={1} value={activeEditorTransform.offsetX} onChange={(e) => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { offsetX: Number(e.target.value) })} disabled={!activeEditorImageKey} style={{ width: "100%" }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Centrage vertical</div>
+                      <input type="range" min={-100} max={100} step={1} value={activeEditorTransform.offsetY} onChange={(e) => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { offsetY: Number(e.target.value) })} disabled={!activeEditorImageKey} style={{ width: "100%" }} />
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, opacity: activeEditorImageKey ? 1 : 0.6 }}>
+                      <input type="checkbox" checked={!!activeEditorTransform.blurBackground} onChange={(e) => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { blurBackground: e.target.checked })} disabled={!activeEditorImageKey || activeEditorTransform.fit === "cover"} style={{ width: 16, height: 16, accentColor: "#4cc3ff" }} />
+                      Fond flou (utile pour les visuels avec texte)
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>

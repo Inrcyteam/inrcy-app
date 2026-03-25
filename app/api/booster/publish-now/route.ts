@@ -42,6 +42,14 @@ type PostPayload = {
 };
 
 type PostByChannel = Partial<Record<ChannelKey, PostPayload>>;
+type ImagesByChannel = Partial<Record<ChannelKey, ImagePayload[]>>;
+type ImageSet = {
+  images: string[];
+  publishableUrls: string[];
+  instagramPublishableUrls: string[];
+  socialFeedPublishableUrls: string[];
+  siteCardPublishableUrls: string[];
+};
 
 function dataUrlToBuffer(dataUrl: string) {
   const match = /^data:(.+?);base64,(.+)$/.exec(dataUrl || "");
@@ -89,6 +97,153 @@ function isExpired(expiresAt: unknown, skewSeconds = 60) {
   return t <= Date.now() + skewSeconds * 1000;
 }
 
+
+async function uploadImageSet(userId: string, images: ImagePayload[]): Promise<{ imageSet: ImageSet; uploadErrors: Array<{ name: string; reason: string; stage: string }> }> {
+  const uploadedUrls: string[] = [];
+  const publishableUrls: string[] = [];
+  const instagramPublishableUrls: string[] = [];
+  const socialFeedPublishableUrls: string[] = [];
+  const siteCardPublishableUrls: string[] = [];
+  const uploadErrors: Array<{ name: string; reason: string; stage: string }> = [];
+
+  for (const img of images.slice(0, 5)) {
+    const parsed = dataUrlToBuffer(img.dataUrl);
+    if (!parsed) {
+      uploadErrors.push({ name: img?.name || "image", reason: "Invalid dataUrl (expected data:*;base64,...)", stage: "parse" });
+      continue;
+    }
+
+    const ext = (img.name || "image").split(".").pop() || "jpg";
+    const path = `${userId}/${randomUUID()}.${ext}`;
+
+    const up = await supabaseAdmin.storage.from("booster").upload(path, parsed.buffer, {
+      contentType: parsed.mime || img.type || "application/octet-stream",
+      upsert: false,
+    });
+
+    if (up.error) {
+      console.error("[Booster] Storage upload error:", up.error.message, { path, name: img.name });
+      uploadErrors.push({ name: img?.name || "image", reason: up.error.message, stage: "upload" });
+      continue;
+    }
+
+    const pub = supabaseAdmin.storage.from("booster").getPublicUrl(path);
+    if (pub?.data?.publicUrl) {
+      uploadedUrls.push(pub.data.publicUrl);
+    } else {
+      uploadErrors.push({ name: img?.name || "image", reason: "getPublicUrl returned empty", stage: "publicUrl" });
+    }
+
+    const signed = await supabaseAdmin.storage.from("booster").createSignedUrl(path, 60 * 60 * 24);
+    if (signed?.data?.signedUrl) {
+      publishableUrls.push(signed.data.signedUrl);
+    } else if (pub?.data?.publicUrl) {
+      publishableUrls.push(pub.data.publicUrl);
+      uploadErrors.push({ name: img?.name || "image", reason: "createSignedUrl failed, fell back to publicUrl", stage: "signedUrl" });
+    } else {
+      uploadErrors.push({ name: img?.name || "image", reason: "createSignedUrl failed and no publicUrl available", stage: "signedUrl" });
+    }
+
+    try {
+      const optimized = await optimizeForInstagram(parsed.buffer);
+      const igPath = `${userId}/instagram/${randomUUID()}.${optimized.extension}`;
+      const igUpload = await supabaseAdmin.storage.from("booster").upload(igPath, optimized.buffer, {
+        contentType: optimized.mime,
+        upsert: false,
+      });
+
+      if (igUpload.error) {
+        uploadErrors.push({ name: img?.name || "image", reason: igUpload.error.message, stage: "instagramUpload" });
+      } else {
+        const igSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(igPath, 60 * 60 * 24);
+        const igPublic = supabaseAdmin.storage.from("booster").getPublicUrl(igPath);
+        if (igSigned?.data?.signedUrl) {
+          instagramPublishableUrls.push(igSigned.data.signedUrl);
+        } else if (igPublic?.data?.publicUrl) {
+          instagramPublishableUrls.push(igPublic.data.publicUrl);
+        } else {
+          uploadErrors.push({ name: img?.name || "image", reason: "Instagram optimized image URL unavailable", stage: "instagramUpload" });
+        }
+      }
+    } catch (optErr) {
+      uploadErrors.push({
+        name: img?.name || "image",
+        reason: errMessage(optErr, "Instagram image optimization failed"),
+        stage: "instagramOptimize",
+      });
+    }
+
+    try {
+      const optimized = await optimizeForSocialFeed(parsed.buffer);
+      const socialPath = `${userId}/social-feed/${randomUUID()}.${optimized.extension}`;
+      const socialUpload = await supabaseAdmin.storage.from("booster").upload(socialPath, optimized.buffer, {
+        contentType: optimized.mime,
+        upsert: false,
+      });
+
+      if (socialUpload.error) {
+        uploadErrors.push({ name: img?.name || "image", reason: socialUpload.error.message, stage: "socialFeedUpload" });
+      } else {
+        const socialSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(socialPath, 60 * 60 * 24);
+        const socialPublic = supabaseAdmin.storage.from("booster").getPublicUrl(socialPath);
+        if (socialSigned?.data?.signedUrl) {
+          socialFeedPublishableUrls.push(socialSigned.data.signedUrl);
+        } else if (socialPublic?.data?.publicUrl) {
+          socialFeedPublishableUrls.push(socialPublic.data.publicUrl);
+        } else {
+          uploadErrors.push({ name: img?.name || "image", reason: "Social feed optimized image URL unavailable", stage: "socialFeedUpload" });
+        }
+      }
+    } catch (optErr) {
+      uploadErrors.push({
+        name: img?.name || "image",
+        reason: errMessage(optErr, "Social feed image optimization failed"),
+        stage: "socialFeedOptimize",
+      });
+    }
+
+    try {
+      const optimized = await optimizeForSiteCard(parsed.buffer);
+      const sitePath = `${userId}/site-card/${randomUUID()}.${optimized.extension}`;
+      const siteUpload = await supabaseAdmin.storage.from("booster").upload(sitePath, optimized.buffer, {
+        contentType: optimized.mime,
+        upsert: false,
+      });
+
+      if (siteUpload.error) {
+        uploadErrors.push({ name: img?.name || "image", reason: siteUpload.error.message, stage: "siteCardUpload" });
+      } else {
+        const siteSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(sitePath, 60 * 60 * 24);
+        const sitePublic = supabaseAdmin.storage.from("booster").getPublicUrl(sitePath);
+        if (siteSigned?.data?.signedUrl) {
+          siteCardPublishableUrls.push(siteSigned.data.signedUrl);
+        } else if (sitePublic?.data?.publicUrl) {
+          siteCardPublishableUrls.push(sitePublic.data.publicUrl);
+        } else {
+          uploadErrors.push({ name: img?.name || "image", reason: "Site card optimized image URL unavailable", stage: "siteCardUpload" });
+        }
+      }
+    } catch (optErr) {
+      uploadErrors.push({
+        name: img?.name || "image",
+        reason: errMessage(optErr, "Site card image optimization failed"),
+        stage: "siteCardOptimize",
+      });
+    }
+  }
+
+  return {
+    imageSet: {
+      images: uploadedUrls,
+      publishableUrls,
+      instagramPublishableUrls,
+      socialFeedPublishableUrls,
+      siteCardPublishableUrls,
+    },
+    uploadErrors,
+  };
+}
+
 async function getLatestIntegrationRow(userId: string, provider: string, source: string, product: string, columns: string) {
   const { data, error } = await supabaseAdmin
     .from("integrations")
@@ -121,6 +276,8 @@ const body = await req.json().catch(() => null);
     const postByChannel = ((body.postByChannel || {}) as PostByChannel) || {};
     const idea = String(body.idea || "").trim();
     const images = (Array.isArray(body.images) ? body.images : []) as ImagePayload[];
+    const imagesByChannel = ((body.imagesByChannel || {}) as ImagesByChannel) || {};
+    const imageSettingsByChannel = (body.imageSettingsByChannel || {}) as Record<string, unknown>;
 
     const selected = Array.from(new Set(channels)).filter(Boolean);
     if (!selected.length) {
@@ -151,141 +308,20 @@ const body = await req.json().catch(() => null);
     }
 
     // 1) Upload images to Supabase Storage (bucket: booster) + collect diagnostics
-    const uploadedUrls: string[] = []; // stored for UI
-    const publishableUrls: string[] = []; // used for external platforms
-    const instagramPublishableUrls: string[] = []; // optimized JPEGs for Instagram
-    const socialFeedPublishableUrls: string[] = []; // adapted JPEGs for Facebook/LinkedIn feeds
-    const siteCardPublishableUrls: string[] = []; // adapted JPEGs for the site widget/cards
-    const uploadErrors: Array<{
-      name: string;
-      reason: string;
-      stage: "parse" | "upload" | "publicUrl" | "signedUrl" | "instagramOptimize" | "instagramUpload" | "socialFeedOptimize" | "socialFeedUpload" | "siteCardOptimize" | "siteCardUpload";
-    }> = [];
+    const { imageSet: baseImageSet, uploadErrors } = await uploadImageSet(userId, images);
+    const uploadedUrls = baseImageSet.images;
+    const publishableUrls = baseImageSet.publishableUrls;
+    const instagramPublishableUrls = baseImageSet.instagramPublishableUrls;
+    const socialFeedPublishableUrls = baseImageSet.socialFeedPublishableUrls;
+    const siteCardPublishableUrls = baseImageSet.siteCardPublishableUrls;
 
-    for (const img of images.slice(0, 5)) {
-      const parsed = dataUrlToBuffer(img.dataUrl);
-      if (!parsed) {
-        uploadErrors.push({ name: img?.name || "image", reason: "Invalid dataUrl (expected data:*;base64,...)", stage: "parse" });
-        continue;
-      }
-
-      const ext = (img.name || "image").split(".").pop() || "jpg";
-      const path = `${userId}/${randomUUID()}.${ext}`;
-
-      const up = await supabaseAdmin.storage.from("booster").upload(path, parsed.buffer, {
-        contentType: parsed.mime || img.type || "application/octet-stream",
-        upsert: false,
-      });
-
-      if (up.error) {
-        console.error("[Booster] Storage upload error:", up.error.message, { path, name: img.name });
-        uploadErrors.push({ name: img?.name || "image", reason: up.error.message, stage: "upload" });
-        continue;
-      }
-
-      const pub = supabaseAdmin.storage.from("booster").getPublicUrl(path);
-      if (pub?.data?.publicUrl) {
-        uploadedUrls.push(pub.data.publicUrl);
-      } else {
-        uploadErrors.push({ name: img?.name || "image", reason: "getPublicUrl returned empty", stage: "publicUrl" });
-      }
-
-      const signed = await supabaseAdmin.storage.from("booster").createSignedUrl(path, 60 * 60 * 24);
-      if (signed?.data?.signedUrl) {
-        publishableUrls.push(signed.data.signedUrl);
-      } else if (pub?.data?.publicUrl) {
-        publishableUrls.push(pub.data.publicUrl);
-        uploadErrors.push({ name: img?.name || "image", reason: "createSignedUrl failed, fell back to publicUrl", stage: "signedUrl" });
-      } else {
-        uploadErrors.push({ name: img?.name || "image", reason: "createSignedUrl failed and no publicUrl available", stage: "signedUrl" });
-      }
-
-      try {
-        const optimized = await optimizeForInstagram(parsed.buffer);
-        const igPath = `${userId}/instagram/${randomUUID()}.${optimized.extension}`;
-        const igUpload = await supabaseAdmin.storage.from("booster").upload(igPath, optimized.buffer, {
-          contentType: optimized.mime,
-          upsert: false,
-        });
-
-        if (igUpload.error) {
-          uploadErrors.push({ name: img?.name || "image", reason: igUpload.error.message, stage: "instagramUpload" });
-        } else {
-          const igSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(igPath, 60 * 60 * 24);
-          const igPublic = supabaseAdmin.storage.from("booster").getPublicUrl(igPath);
-          if (igSigned?.data?.signedUrl) {
-            instagramPublishableUrls.push(igSigned.data.signedUrl);
-          } else if (igPublic?.data?.publicUrl) {
-            instagramPublishableUrls.push(igPublic.data.publicUrl);
-          } else {
-            uploadErrors.push({ name: img?.name || "image", reason: "Instagram optimized image URL unavailable", stage: "instagramUpload" });
-          }
-        }
-      } catch (optErr) {
-        uploadErrors.push({
-          name: img?.name || "image",
-          reason: errMessage(optErr, "Instagram image optimization failed"),
-          stage: "instagramOptimize",
-        });
-      }
-
-      try {
-        const optimized = await optimizeForSocialFeed(parsed.buffer);
-        const socialPath = `${userId}/social-feed/${randomUUID()}.${optimized.extension}`;
-        const socialUpload = await supabaseAdmin.storage.from("booster").upload(socialPath, optimized.buffer, {
-          contentType: optimized.mime,
-          upsert: false,
-        });
-
-        if (socialUpload.error) {
-          uploadErrors.push({ name: img?.name || "image", reason: socialUpload.error.message, stage: "socialFeedUpload" });
-        } else {
-          const socialSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(socialPath, 60 * 60 * 24);
-          const socialPublic = supabaseAdmin.storage.from("booster").getPublicUrl(socialPath);
-          if (socialSigned?.data?.signedUrl) {
-            socialFeedPublishableUrls.push(socialSigned.data.signedUrl);
-          } else if (socialPublic?.data?.publicUrl) {
-            socialFeedPublishableUrls.push(socialPublic.data.publicUrl);
-          } else {
-            uploadErrors.push({ name: img?.name || "image", reason: "Social feed optimized image URL unavailable", stage: "socialFeedUpload" });
-          }
-        }
-      } catch (optErr) {
-        uploadErrors.push({
-          name: img?.name || "image",
-          reason: errMessage(optErr, "Social feed image optimization failed"),
-          stage: "socialFeedOptimize",
-        });
-      }
-
-      try {
-        const optimized = await optimizeForSiteCard(parsed.buffer);
-        const sitePath = `${userId}/site-card/${randomUUID()}.${optimized.extension}`;
-        const siteUpload = await supabaseAdmin.storage.from("booster").upload(sitePath, optimized.buffer, {
-          contentType: optimized.mime,
-          upsert: false,
-        });
-
-        if (siteUpload.error) {
-          uploadErrors.push({ name: img?.name || "image", reason: siteUpload.error.message, stage: "siteCardUpload" });
-        } else {
-          const siteSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(sitePath, 60 * 60 * 24);
-          const sitePublic = supabaseAdmin.storage.from("booster").getPublicUrl(sitePath);
-          if (siteSigned?.data?.signedUrl) {
-            siteCardPublishableUrls.push(siteSigned.data.signedUrl);
-          } else if (sitePublic?.data?.publicUrl) {
-            siteCardPublishableUrls.push(sitePublic.data.publicUrl);
-          } else {
-            uploadErrors.push({ name: img?.name || "image", reason: "Site card optimized image URL unavailable", stage: "siteCardUpload" });
-          }
-        }
-      } catch (optErr) {
-        uploadErrors.push({
-          name: img?.name || "image",
-          reason: errMessage(optErr, "Site card image optimization failed"),
-          stage: "siteCardOptimize",
-        });
-      }
+    const channelImageSets: Partial<Record<ChannelKey, ImageSet>> = {};
+    for (const channel of selected) {
+      const rawChannelImages = Array.isArray(imagesByChannel?.[channel]) ? (imagesByChannel[channel] as ImagePayload[]) : [];
+      if (!rawChannelImages.length) continue;
+      const { imageSet, uploadErrors: channelErrors } = await uploadImageSet(userId, rawChannelImages);
+      channelImageSets[channel] = imageSet;
+      uploadErrors.push(...channelErrors.map((entry) => ({ ...entry, stage: `${channel}:${entry.stage}` })));
     }
 
     // Optional hard fail if user selected images but none uploaded
@@ -295,7 +331,6 @@ const body = await req.json().catch(() => null);
         { status: 400 }
       );
     }
-
     // 2) Persist publication
     const publicationId = randomUUID();
 
@@ -355,6 +390,8 @@ const body = await req.json().catch(() => null);
     const socialFeedImageUrls = (socialFeedPublishableUrls.length ? socialFeedPublishableUrls : externalImageUrls).slice(0, 5);
     const instagramImageUrls = (instagramPublishableUrls.length ? instagramPublishableUrls : socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).slice(0, 5);
 
+    const getChannelImageSet = (channel: ChannelKey): ImageSet => channelImageSets[channel] || baseImageSet;
+
     async function setDelivery(channel: ChannelKey, patch: JsonRecord) {
       const nextStatus = String(patch.status ?? "").trim();
       const nextError = String(patch.error ?? patch.last_error ?? "").trim();
@@ -411,7 +448,14 @@ const body = await req.json().catch(() => null);
             content: channelPost.content,
             cta: channelPost.cta,
             hashtags: channelPost.hashtags,
-            images: siteCardPublishableUrls.length ? siteCardPublishableUrls : socialFeedPublishableUrls.length ? socialFeedPublishableUrls : uploadedUrls,
+            images: (() => {
+              const channelImageSet = getChannelImageSet(ch);
+              return channelImageSet.siteCardPublishableUrls.length
+                ? channelImageSet.siteCardPublishableUrls
+                : channelImageSet.socialFeedPublishableUrls.length
+                  ? channelImageSet.socialFeedPublishableUrls
+                  : channelImageSet.images;
+            })(),
             external_url: externalUrl,     // ✅ si tu veux (optionnel)
             site_url: targetUrl || null,   // ✅ si tu veux (optionnel)
           });
@@ -447,7 +491,7 @@ const body = await req.json().catch(() => null);
             pageId,
             pageAccessToken: pageToken,
             message: canonMessage,
-            imageUrls: socialFeedImageUrls,
+            imageUrls: (getChannelImageSet(ch).socialFeedPublishableUrls.length ? getChannelImageSet(ch).socialFeedPublishableUrls : socialFeedImageUrls).slice(0, 5),
           });
 
           if (!resp.ok) {
@@ -476,7 +520,7 @@ const body = await req.json().catch(() => null);
           }
 
           const instagramCaption = buildInstagramCaption(channelPost.title, channelPost.content, channelPost.cta, channelPost.hashtags);
-          const instagramImages = instagramImageUrls.filter(Boolean).slice(0, 10);
+          const instagramImages = (getChannelImageSet(ch).instagramPublishableUrls.length ? getChannelImageSet(ch).instagramPublishableUrls : instagramImageUrls).filter(Boolean).slice(0, 10);
           if (!instagramImages.length) {
             await setDelivery(ch, { status: "failed", error: "Instagram nécessite au moins 1 image" });
             results[ch] = { ok: false, error: "missing_image" };
@@ -524,7 +568,7 @@ const body = await req.json().catch(() => null);
           const liMeta = asRecord(li["meta"]);
           const orgUrn = String(liMeta["org_urn"] ?? "");
           const useAuthor = orgUrn || authorUrn;
-          const linkedInImages = (socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).filter(Boolean).slice(0, 20);
+          const linkedInImages = (getChannelImageSet(ch).socialFeedPublishableUrls.length ? getChannelImageSet(ch).socialFeedPublishableUrls : socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).filter(Boolean).slice(0, 20);
           let resp = linkedInImages.length > 1
             ? await linkedinPublishMultiImage({
                 accessToken,
@@ -601,7 +645,7 @@ const body = await req.json().catch(() => null);
             accountName,
             locationName,
             summary: canonMessage.slice(0, 1498),
-            imageUrls: externalImageUrls,
+            imageUrls: (getChannelImageSet(ch).publishableUrls.length ? getChannelImageSet(ch).publishableUrls : externalImageUrls).slice(0, 5),
             languageCode: "fr-FR",
           });
 
@@ -620,6 +664,27 @@ const body = await req.json().catch(() => null);
       }
     }
 
+    const persistedPostByChannel = Object.fromEntries(
+      selected.map((channel) => {
+        const baseValue = (postByChannel as Record<string, unknown>)[channel] as Record<string, unknown> | undefined;
+        const imageSet = channelImageSets[channel];
+        return [
+          channel,
+          imageSet
+            ? {
+                ...(baseValue || {}),
+                images: imageSet.images,
+                attachments: imageSet.images,
+                publishableUrls: imageSet.publishableUrls,
+                instagramPublishableUrls: imageSet.instagramPublishableUrls,
+                socialFeedPublishableUrls: imageSet.socialFeedPublishableUrls,
+                siteCardPublishableUrls: imageSet.siteCardPublishableUrls,
+              }
+            : (baseValue || {}),
+        ];
+      })
+    );
+
     // 5) Log booster event
     await supabaseAdmin.from("app_events").insert({
       id: randomUUID(),
@@ -630,11 +695,13 @@ const body = await req.json().catch(() => null);
         idea,
         channels: selected,
         post: firstPost,
-        postByChannel,
+        postByChannel: persistedPostByChannel,
+        imageSettingsByChannel,
         images: uploadedUrls,
         publishableUrls,
         instagramPublishableUrls,
         socialFeedPublishableUrls,
+        siteCardPublishableUrls,
         uploadErrors,
         publication_id: publicationId,
         results,
