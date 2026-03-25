@@ -27,6 +27,12 @@ type ImageTransform = {
   blurBackground: boolean;
 };
 
+type ImageMeta = {
+  width: number;
+  height: number;
+  ratio: number;
+};
+
 type ChannelImageEditorState = {
   imageKeys: string[];
   transforms: Record<string, ImageTransform>;
@@ -184,12 +190,61 @@ function getDefaultTransform(channel: ChannelKey): ImageTransform {
   };
 }
 
+function getOptimizedTransform(channel: ChannelKey, meta?: ImageMeta): ImageTransform {
+  const base = getDefaultTransform(channel);
+  if (!meta || !meta.width || !meta.height) return base;
+
+  const ratio = meta.ratio || meta.width / meta.height;
+  const isVeryWide = ratio >= 1.45;
+  const isWide = ratio >= 1.15;
+  const isTall = ratio <= 0.85;
+  const isVeryTall = ratio <= 0.68;
+
+  if (channel === "inrcy_site" || channel === "site_web" || channel === "gmb") {
+    return { ...base, fit: "contain", blurBackground: true, zoom: 1 };
+  }
+
+  if (channel === "instagram") {
+    if (isVeryWide) return { ...base, fit: "contain", blurBackground: true, zoom: 1, offsetX: 0, offsetY: 0 };
+    if (isWide) return { ...base, fit: "contain", blurBackground: true, zoom: 1 };
+    if (isVeryTall) return { ...base, fit: "contain", blurBackground: true, zoom: 1 };
+    if (isTall) return { ...base, fit: "cover", blurBackground: false, zoom: 1.04, offsetX: 0, offsetY: -10 };
+    return { ...base, fit: "cover", blurBackground: false, zoom: ratio < 1 ? 1.03 : 1.08, offsetX: 0, offsetY: ratio > 1 ? 0 : -6 };
+  }
+
+  if (channel === "facebook" || channel === "linkedin") {
+    if (isVeryWide || isVeryTall) return { ...base, fit: "contain", blurBackground: true, zoom: 1 };
+    if (isWide) return { ...base, fit: "contain", blurBackground: true, zoom: 1 };
+    if (isTall) return { ...base, fit: "cover", blurBackground: false, zoom: 1.06, offsetX: 0, offsetY: -12 };
+    return { ...base, fit: "cover", blurBackground: false, zoom: ratio < 1 ? 1.02 : 1.06, offsetX: 0, offsetY: ratio < 0.98 ? -8 : 0 };
+  }
+
+  return base;
+}
+
+async function readImageMeta(file: File): Promise<ImageMeta> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await loadHtmlImage(objectUrl);
+    const width = img.naturalWidth || img.width || 0;
+    const height = img.naturalHeight || img.height || 0;
+    return {
+      width,
+      height,
+      ratio: width && height ? width / height : 1,
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 function syncChannelImageEditors(params: {
   previous: Partial<Record<ChannelKey, ChannelImageEditorState>>;
   imageKeys: string[];
   selectedChannels: ChannelKey[];
+  imageMetaByKey?: Record<string, ImageMeta>;
 }): Partial<Record<ChannelKey, ChannelImageEditorState>> {
-  const { previous, imageKeys, selectedChannels } = params;
+  const { previous, imageKeys, selectedChannels, imageMetaByKey = {} } = params;
   const next: Partial<Record<ChannelKey, ChannelImageEditorState>> = {};
 
   for (const channel of selectedChannels) {
@@ -200,7 +255,7 @@ function syncChannelImageEditors(params: {
     for (const key of imageKeys) {
       transforms[key] = prevState?.transforms?.[key]
         ? { ...prevState.transforms[key] }
-        : getDefaultTransform(channel);
+        : getOptimizedTransform(channel, imageMetaByKey[key]);
     }
     next[channel] = { imageKeys: mergedKeys.filter((key, index, arr) => arr.indexOf(key) === index), transforms };
   }
@@ -230,6 +285,7 @@ export default function PublishModal({
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imgError, setImgError] = useState("");
+  const [imageMetaByKey, setImageMetaByKey] = useState<Record<string, ImageMeta>>({});
   const [channelImageEditors, setChannelImageEditors] = useState<Partial<Record<ChannelKey, ChannelImageEditorState>>>({});
   const [activeImageChannel, setActiveImageChannel] = useState<ChannelKey>("inrcy_site");
   const [activeImageKeyByChannel, setActiveImageKeyByChannel] = useState<Partial<Record<ChannelKey, string>>>({});
@@ -332,8 +388,8 @@ export default function PublishModal({
   const previewByKey = useMemo(() => Object.fromEntries(imageKeys.map((key, index) => [key, imagePreviews[index]])), [imageKeys, imagePreviews]);
 
   useEffect(() => {
-    setChannelImageEditors((prev) => syncChannelImageEditors({ previous: prev, imageKeys, selectedChannels }));
-  }, [imageKeys.join("|"), selectedChannels.join("|")]);
+    setChannelImageEditors((prev) => syncChannelImageEditors({ previous: prev, imageKeys, selectedChannels, imageMetaByKey }));
+  }, [imageKeys.join("|"), selectedChannels.join("|"), Object.keys(imageMetaByKey).sort().map((key) => `${key}:${imageMetaByKey[key]?.width || 0}x${imageMetaByKey[key]?.height || 0}`).join("|")]);
 
   useEffect(() => {
     if (!selectedChannels.length) {
@@ -367,7 +423,7 @@ export default function PublishModal({
 
   const activeEditor = channelImageEditors[activeImageChannel];
   const activeEditorImageKey = activeImageKeyByChannel[activeImageChannel] || activeEditor?.imageKeys?.[0] || "";
-  const activeEditorTransform = activeEditor?.transforms?.[activeEditorImageKey] || getDefaultTransform(activeImageChannel);
+  const activeEditorTransform = activeEditor?.transforms?.[activeEditorImageKey] || getOptimizedTransform(activeImageChannel, imageMetaByKey[activeEditorImageKey]);
 
   const toggle = (key: ChannelKey) => {
     if (!connected[key]) return;
@@ -387,6 +443,7 @@ export default function PublishModal({
     setImages([]);
     setImagePreviews([]);
     setImgError("");
+    setImageMetaByKey({});
     setChannelImageEditors({});
     setActiveImageKeyByChannel({});
   };
@@ -443,7 +500,7 @@ export default function PublishModal({
     fileInputRef.current?.click();
   };
 
-  const onImagesChange = (files: FileList | null) => {
+  const onImagesChange = async (files: FileList | null) => {
     setImgError("");
     if (!files) return;
 
@@ -456,21 +513,27 @@ export default function PublishModal({
       return;
     }
 
-    setImages((prev) => {
-      const merged = [...prev];
-      for (const file of picked) {
-        const alreadyAdded = merged.some(
-          (existing) => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified
-        );
-        if (alreadyAdded) continue;
-        if (merged.length >= 5) {
-          setImgError("Maximum 5 images.");
-          break;
-        }
-        merged.push(file);
-      }
-      return merged;
-    });
+    const existingKeys = new Set(images.map((file) => makeImageKey(file)));
+    const uniquePicked: File[] = [];
+    for (const file of picked) {
+      const key = makeImageKey(file);
+      if (existingKeys.has(key)) continue;
+      existingKeys.add(key);
+      uniquePicked.push(file);
+    }
+
+    if (!uniquePicked.length) return;
+
+    const remainingSlots = Math.max(0, 5 - images.length);
+    const accepted = uniquePicked.slice(0, remainingSlots);
+    if (uniquePicked.length > accepted.length) {
+      setImgError("Maximum 5 images.");
+    }
+    if (!accepted.length) return;
+
+    const metaEntries = await Promise.all(accepted.map(async (file) => [makeImageKey(file), await readImageMeta(file)] as const));
+    setImageMetaByKey((prev) => ({ ...prev, ...Object.fromEntries(metaEntries) }));
+    setImages((prev) => [...prev, ...accepted]);
   };
 
   useEffect(() => {
@@ -539,7 +602,7 @@ export default function PublishModal({
           transforms: {
             ...current.transforms,
             [imageKey]: {
-              ...(current.transforms[imageKey] || getDefaultTransform(channel)),
+              ...(current.transforms[imageKey] || getOptimizedTransform(channel, imageMetaByKey[imageKey])),
               ...patch,
             },
           },
@@ -559,7 +622,7 @@ export default function PublishModal({
           imageKeys: nextKeys,
           transforms: {
             ...current.transforms,
-            [imageKey]: current.transforms[imageKey] || getDefaultTransform(channel),
+            [imageKey]: current.transforms[imageKey] || getOptimizedTransform(channel, imageMetaByKey[imageKey]),
           },
         },
       };
@@ -573,7 +636,7 @@ export default function PublishModal({
   };
 
   const resetChannelImage = (channel: ChannelKey, imageKey: string) => {
-    updateChannelTransform(channel, imageKey, getDefaultTransform(channel));
+    updateChannelTransform(channel, imageKey, getOptimizedTransform(channel, imageMetaByKey[imageKey]));
   };
 
   const applyCurrentImageToSelectedChannels = () => {
@@ -827,7 +890,7 @@ export default function PublishModal({
       <div className={styles.blockCard}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Images</div>
         <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: isMobile ? "normal" : "nowrap" }}>
-          Ajoutez 1 ou plusieurs images (max 5, 2 Mo chacune). <strong>Fort recommandé</strong>. <strong>Obligatoire pour Instagram</strong>.
+          Ajoutez 1 ou plusieurs images (max 5, 2 Mo chacune). iNrCy applique automatiquement un cadrage de départ intelligent par canal. <strong>Fort recommandé</strong>. <strong>Obligatoire pour Instagram</strong>.
         </div>
         <input
           ref={fileInputRef}
@@ -859,6 +922,9 @@ export default function PublishModal({
 
       <div className={styles.blockCard}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Retouche des images par canal</div>
+        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none" }}>
+          Optimisation intelligente appliquée automatiquement à l'upload : iNrCy choisit le meilleur rendu de départ par canal pour éviter les recadrages inutiles.
+        </div>
         <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none" }}>
           iNrCy prépare un aperçu pour chacun des 6 canaux. Vous pouvez ensuite sélectionner et ajuster les images canal par canal.
         </div>
