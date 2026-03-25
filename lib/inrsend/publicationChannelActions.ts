@@ -26,6 +26,12 @@ type PostPayload = {
   content: string;
   cta: string;
   hashtags: string[];
+  images?: string[];
+  attachments?: string[];
+  publishableUrls?: string[];
+  instagramPublishableUrls?: string[];
+  socialFeedPublishableUrls?: string[];
+  siteCardPublishableUrls?: string[];
 };
 
 type ImagePayload = {
@@ -150,38 +156,70 @@ function filterUrlsByIndexes(values: unknown, indexes: number[]): string[] {
   return indexes.map((index) => items[index]).filter(Boolean);
 }
 
+function emptyImageSet(): ImageSet {
+  return { images: [], instagramPublishableUrls: [], socialFeedPublishableUrls: [], siteCardPublishableUrls: [] };
+}
+
+function getChannelImageSet(eventPayload: JsonRecord, publication: JsonRecord, channel: ChannelKey): ImageSet {
+  const postByChannel = asRecord(eventPayload.postByChannel);
+  const fallbackChannelPost = channel === "inrcy_site" ? postByChannel.site_web : channel === "site_web" ? postByChannel.inrcy_site : null;
+  const raw = asRecord(postByChannel[channel] ?? fallbackChannelPost);
+  const publicationImages = Array.isArray(publication.images)
+    ? publication.images.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+
+  const images = Array.isArray(raw.images)
+    ? raw.images.map((value) => String(value || "").trim()).filter(Boolean)
+    : Array.isArray(raw.attachments)
+      ? raw.attachments.map((value) => String(value || "").trim()).filter(Boolean)
+      : publicationImages;
+
+  const inheritedIndexes = images.map((url) => publicationImages.indexOf(url)).filter((index) => index >= 0);
+
+  return {
+    images,
+    instagramPublishableUrls: Array.isArray(raw.instagramPublishableUrls)
+      ? raw.instagramPublishableUrls.map((value) => String(value || "").trim()).filter(Boolean)
+      : filterUrlsByIndexes(eventPayload.instagramPublishableUrls, inheritedIndexes),
+    socialFeedPublishableUrls: Array.isArray(raw.socialFeedPublishableUrls)
+      ? raw.socialFeedPublishableUrls.map((value) => String(value || "").trim()).filter(Boolean)
+      : filterUrlsByIndexes(eventPayload.socialFeedPublishableUrls, inheritedIndexes),
+    siteCardPublishableUrls: Array.isArray(raw.siteCardPublishableUrls)
+      ? raw.siteCardPublishableUrls.map((value) => String(value || "").trim()).filter(Boolean)
+      : filterUrlsByIndexes(eventPayload.siteCardPublishableUrls, inheritedIndexes),
+  };
+}
+
 async function updatePublicationImages(params: {
   userId: string;
-  publicationId: string;
   publication: JsonRecord;
   eventPayload: JsonRecord;
+  channel: ChannelKey;
   retainedImages?: string[];
   newImages?: ImagePayload[];
 }): Promise<ImageSet> {
-  const { userId, publicationId, publication, eventPayload, retainedImages = [], newImages = [] } = params;
-  const currentImages = Array.isArray(publication.images) ? publication.images.map((value) => String(value || "").trim()).filter(Boolean) : [];
+  const { userId, publication, eventPayload, channel, retainedImages = [], newImages = [] } = params;
+  const currentImageSet = getChannelImageSet(eventPayload, publication, channel);
+  const currentImages = currentImageSet.images;
   const sanitizedRetained = retainedImages.map((value) => String(value || "").trim()).filter(Boolean);
-  const retainedIndexes = sanitizedRetained.map((url) => currentImages.indexOf(url)).filter((index) => index >= 0);
+  const retainedIndexes = sanitizedRetained
+    .map((url) => currentImages.indexOf(url))
+    .filter((index, position, arr) => index >= 0 && arr.indexOf(index) === position);
 
   const baseImageSet: ImageSet = {
     images: retainedIndexes.map((index) => currentImages[index]).filter(Boolean),
-    instagramPublishableUrls: filterUrlsByIndexes(eventPayload.instagramPublishableUrls, retainedIndexes),
-    socialFeedPublishableUrls: filterUrlsByIndexes(eventPayload.socialFeedPublishableUrls, retainedIndexes),
-    siteCardPublishableUrls: filterUrlsByIndexes(eventPayload.siteCardPublishableUrls, retainedIndexes),
+    instagramPublishableUrls: filterUrlsByIndexes(currentImageSet.instagramPublishableUrls, retainedIndexes),
+    socialFeedPublishableUrls: filterUrlsByIndexes(currentImageSet.socialFeedPublishableUrls, retainedIndexes),
+    siteCardPublishableUrls: filterUrlsByIndexes(currentImageSet.siteCardPublishableUrls, retainedIndexes),
   };
 
-  const uploadedSet = newImages.length ? await uploadPublicationImages(userId, newImages) : { images: [], instagramPublishableUrls: [], socialFeedPublishableUrls: [], siteCardPublishableUrls: [] };
-  const merged: ImageSet = {
+  const uploadedSet = newImages.length ? await uploadPublicationImages(userId, newImages) : emptyImageSet();
+  return {
     images: [...baseImageSet.images, ...uploadedSet.images].slice(0, 5),
     instagramPublishableUrls: [...baseImageSet.instagramPublishableUrls, ...uploadedSet.instagramPublishableUrls].slice(0, 10),
     socialFeedPublishableUrls: [...baseImageSet.socialFeedPublishableUrls, ...uploadedSet.socialFeedPublishableUrls].slice(0, 20),
     siteCardPublishableUrls: [...baseImageSet.siteCardPublishableUrls, ...uploadedSet.siteCardPublishableUrls].slice(0, 20),
   };
-
-  const { error } = await supabaseAdmin.from("publications").update({ images: merged.images }).eq("id", publicationId).eq("user_id", userId);
-  if (error) throw error;
-  publication.images = merged.images;
-  return merged;
 }
 
 function cloneRecord<T extends JsonRecord>(input: T): T {
@@ -387,26 +425,11 @@ async function replaceChannelDelivery(params: {
   imageSet?: ImageSet | null;
 }) {
   const { userId, channel, previousExternalId, publication, eventPayload, nextPost, imageSet } = params;
-  const images = imageSet?.images?.length
-    ? imageSet.images
-    : Array.isArray(publication.images)
-      ? publication.images.map((x: unknown) => String(x || "").trim()).filter(Boolean)
-      : [];
-  const socialFeedImageUrls = imageSet?.socialFeedPublishableUrls?.length
-    ? imageSet.socialFeedPublishableUrls
-    : Array.isArray(eventPayload.socialFeedPublishableUrls) && eventPayload.socialFeedPublishableUrls.length
-      ? eventPayload.socialFeedPublishableUrls.map((x: unknown) => String(x || "").trim()).filter(Boolean)
-      : images;
-  const instagramImageUrls = imageSet?.instagramPublishableUrls?.length
-    ? imageSet.instagramPublishableUrls
-    : Array.isArray(eventPayload.instagramPublishableUrls) && eventPayload.instagramPublishableUrls.length
-      ? eventPayload.instagramPublishableUrls.map((x: unknown) => String(x || "").trim()).filter(Boolean)
-      : images;
-  const siteCardImageUrls = imageSet?.siteCardPublishableUrls?.length
-    ? imageSet.siteCardPublishableUrls
-    : Array.isArray(eventPayload.siteCardPublishableUrls) && eventPayload.siteCardPublishableUrls.length
-      ? eventPayload.siteCardPublishableUrls.map((x: unknown) => String(x || "").trim()).filter(Boolean)
-      : socialFeedImageUrls;
+  const resolvedImageSet = imageSet ?? getChannelImageSet(eventPayload, publication, channel);
+  const images = resolvedImageSet.images;
+  const socialFeedImageUrls = resolvedImageSet.socialFeedPublishableUrls.length ? resolvedImageSet.socialFeedPublishableUrls : images;
+  const instagramImageUrls = resolvedImageSet.instagramPublishableUrls.length ? resolvedImageSet.instagramPublishableUrls : images;
+  const siteCardImageUrls = resolvedImageSet.siteCardPublishableUrls.length ? resolvedImageSet.siteCardPublishableUrls : socialFeedImageUrls;
 
   const canonMessage = buildCanonMessage(nextPost.title, nextPost.content, nextPost.cta);
 
@@ -591,24 +614,32 @@ function buildUpdatedPayload(params: {
     updated_at: new Date().toISOString(),
   };
 
+  const currentPostByChannel = asRecord(eventPayload.postByChannel);
+  const currentChannelPost = asRecord(currentPostByChannel[channel]);
+  const nextChannelPost: JsonRecord = {
+    ...currentChannelPost,
+    ...nextPost,
+  };
+
+  if (imageSet) {
+    nextChannelPost.images = imageSet.images;
+    nextChannelPost.attachments = imageSet.images;
+    nextChannelPost.publishableUrls = imageSet.images;
+    nextChannelPost.instagramPublishableUrls = imageSet.instagramPublishableUrls;
+    nextChannelPost.socialFeedPublishableUrls = imageSet.socialFeedPublishableUrls;
+    nextChannelPost.siteCardPublishableUrls = imageSet.siteCardPublishableUrls;
+  }
+
   const nextPayload: JsonRecord = {
     ...eventPayload,
     channels: Array.from(new Set([...(Array.isArray(eventPayload.channels) ? eventPayload.channels : []), channel])),
     postByChannel: {
-      ...asRecord(eventPayload.postByChannel),
-      [channel]: nextPost,
+      ...currentPostByChannel,
+      [channel]: nextChannelPost,
     },
     post: channel === "inrcy_site" || channel === "site_web" ? asRecord(eventPayload.post) : eventPayload.post,
     results,
   };
-
-  if (imageSet) {
-    nextPayload.images = imageSet.images;
-    nextPayload.publishableUrls = imageSet.images;
-    nextPayload.instagramPublishableUrls = imageSet.instagramPublishableUrls;
-    nextPayload.socialFeedPublishableUrls = imageSet.socialFeedPublishableUrls;
-    nextPayload.siteCardPublishableUrls = imageSet.siteCardPublishableUrls;
-  }
 
   if (!asRecord(nextPayload.post).title && !asRecord(nextPayload.post).content) {
     nextPayload.post = getChannelPost(eventPayload, publication, channel);
@@ -678,9 +709,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       const retainedImages = Array.isArray(body.retainedImages)
         ? body.retainedImages.map((value: unknown) => String(value || "").trim()).filter(Boolean)
-        : Array.isArray(ctx.publication.images)
-          ? ctx.publication.images.map((value: unknown) => String(value || "").trim()).filter(Boolean)
-          : [];
+        : getChannelImageSet(ctx.eventPayload, ctx.publication, channel).images;
       const newImages = Array.isArray(body.newImages)
         ? body.newImages
             .map((value: unknown) => asRecord(value))
@@ -697,9 +726,9 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       const imageSet = await updatePublicationImages({
         userId: user.id,
-        publicationId,
         publication: ctx.publication,
         eventPayload: ctx.eventPayload,
+        channel,
         retainedImages,
         newImages,
       });

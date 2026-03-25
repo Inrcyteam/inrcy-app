@@ -328,6 +328,21 @@ function extractAttachmentsFromPayload(payload: any): { name: string; type?: str
     .filter(Boolean) as any;
 }
 
+
+function hasAttachmentFields(payload: any): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  return [
+    payload.attachments,
+    payload.files,
+    payload.images,
+    payload.media,
+    payload?.post?.attachments,
+    payload?.post?.files,
+    payload?.post?.images,
+    payload?.post?.media,
+  ].some((value) => Array.isArray(value));
+}
+
 function extractPublicationParts(payload: any): PublicationParts {
   if (!payload || typeof payload !== "object") return {};
   const post = payload.post && typeof payload.post === "object" ? payload.post : payload;
@@ -477,6 +492,8 @@ function extractChannelPublications(payload: any): ChannelPublication[] {
     const channelParts = extractPublicationParts(channelPayload);
     const fallbackParts = extractPublicationParts(payload);
 
+    const channelOwnsAttachments = hasAttachmentFields(channelPayload);
+
     return {
       key: channel,
       label: formatChannelLabel(channel),
@@ -485,7 +502,7 @@ function extractChannelPublications(payload: any): ChannelPublication[] {
         content: channelParts.content || fallbackParts.content || null,
         cta: channelParts.cta || fallbackParts.cta || null,
         hashtags: channelParts.hashtags?.length ? channelParts.hashtags : fallbackParts.hashtags || [],
-        attachments: channelParts.attachments?.length ? channelParts.attachments : fallbackParts.attachments || [],
+        attachments: channelOwnsAttachments ? channelParts.attachments || [] : fallbackParts.attachments || [],
       },
     };
   });
