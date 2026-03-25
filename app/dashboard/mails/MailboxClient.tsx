@@ -2136,10 +2136,7 @@ async function deleteDraftPermanently(id: string) {
                   const activeParts = activePublicationEntry?.parts || defaultParts;
                   const attachmentCandidates = detailsItem.source === "send_items"
                     ? [...(detailsItem.attachments || [])]
-                    : [
-                        ...(detailsItem.attachments || []),
-                        ...(activeParts.attachments || []),
-                      ];
+                    : [...(activeParts.attachments || [])];
                   const dedupedAttachments = attachmentCandidates.filter((att, idx, arr) => {
                     const key = `${att.url || ""}|${att.name || ""}`;
                     return arr.findIndex((x) => `${x.url || ""}|${x.name || ""}` === key) === idx;
