@@ -923,10 +923,7 @@ export default function PublishModal({
       <div className={styles.blockCard}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Retouche des images par canal</div>
         <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none" }}>
-          Optimisation intelligente appliquée automatiquement à l'upload : iNrCy choisit le meilleur rendu de départ par canal pour éviter les recadrages inutiles.
-        </div>
-        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none" }}>
-          iNrCy prépare un aperçu pour chacun des 6 canaux. Vous pouvez ensuite sélectionner et ajuster les images canal par canal.
+          iNrCy prépare un aperçu optimisé pour chacun des 6 canaux. Vous pouvez ensuite sélectionner et ajuster les images canal par canal.
         </div>
         {!selectedChannels.length ? (
           <div style={{ fontSize: 13, opacity: 0.75 }}>Sélectionnez d’abord vos canaux.</div>
