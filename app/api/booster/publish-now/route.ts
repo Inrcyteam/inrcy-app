@@ -6,8 +6,8 @@ import { randomUUID } from "crypto";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { facebookPublishToPage } from "@/lib/facebookPublish";
-import { instagramPublishPhoto } from "@/lib/instagramPublish";
-import { linkedinPublishImage, linkedinPublishText } from "@/lib/linkedinPublish";
+import { instagramPublishCarousel, instagramPublishPhoto } from "@/lib/instagramPublish";
+import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 
@@ -475,21 +475,27 @@ const body = await req.json().catch(() => null);
             continue;
           }
 
-          const img = instagramImageUrls[0];
-          if (!img) {
+          const instagramCaption = buildInstagramCaption(channelPost.title, channelPost.content, channelPost.cta, channelPost.hashtags);
+          const instagramImages = instagramImageUrls.filter(Boolean).slice(0, 10);
+          if (!instagramImages.length) {
             await setDelivery(ch, { status: "failed", error: "Instagram nécessite au moins 1 image" });
             results[ch] = { ok: false, error: "missing_image" };
             continue;
           }
 
-          const instagramCaption = buildInstagramCaption(channelPost.title, channelPost.content, channelPost.cta, channelPost.hashtags);
-
-          const resp = await instagramPublishPhoto({
-            igUserId,
-            accessToken: igToken,
-            caption: instagramCaption,
-            imageUrl: img,
-          });
+          const resp = instagramImages.length > 1
+            ? await instagramPublishCarousel({
+                igUserId,
+                accessToken: igToken,
+                caption: instagramCaption,
+                imageUrls: instagramImages,
+              })
+            : await instagramPublishPhoto({
+                igUserId,
+                accessToken: igToken,
+                caption: instagramCaption,
+                imageUrl: instagramImages[0],
+              });
 
           if (!resp.ok) {
             await setDelivery(ch, { status: "failed", error: resp.error });
@@ -518,22 +524,30 @@ const body = await req.json().catch(() => null);
           const liMeta = asRecord(li["meta"]);
           const orgUrn = String(liMeta["org_urn"] ?? "");
           const useAuthor = orgUrn || authorUrn;
-          const linkedInImageUrl = socialFeedImageUrls[0] || externalImageUrls[0] || "";
-          let resp = linkedInImageUrl
-            ? await linkedinPublishImage({
+          const linkedInImages = (socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).filter(Boolean).slice(0, 20);
+          let resp = linkedInImages.length > 1
+            ? await linkedinPublishMultiImage({
                 accessToken,
                 authorUrn: useAuthor,
                 text: canonMessage,
-                imageUrl: linkedInImageUrl,
+                imageUrls: linkedInImages,
                 title: channelPost.title || undefined,
               })
-            : await linkedinPublishText({
-                accessToken,
-                authorUrn: useAuthor,
-                text: canonMessage,
-              });
+            : linkedInImages[0]
+              ? await linkedinPublishImage({
+                  accessToken,
+                  authorUrn: useAuthor,
+                  text: canonMessage,
+                  imageUrl: linkedInImages[0],
+                  title: channelPost.title || undefined,
+                })
+              : await linkedinPublishText({
+                  accessToken,
+                  authorUrn: useAuthor,
+                  text: canonMessage,
+                });
 
-          if (!resp.ok && linkedInImageUrl) {
+          if (!resp.ok && linkedInImages[0]) {
             const fallbackResp = await linkedinPublishText({
               accessToken,
               authorUrn: useAuthor,

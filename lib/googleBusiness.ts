@@ -296,14 +296,12 @@ export async function gmbCreateLocalPost(args: {
     topicType: "STANDARD",
   };
 
-  const urls = (args.imageUrls || []).filter(Boolean).slice(0, 1); // GBP: keep 1 photo for now (simple & reliable)
+  const urls = (args.imageUrls || []).filter(Boolean).slice(0, 10);
   if (urls.length) {
-    payload.media = [
-      {
-        mediaFormat: "PHOTO",
-        sourceUrl: urls[0],
-      },
-    ];
+    payload.media = urls.map((sourceUrl) => ({
+      mediaFormat: "PHOTO",
+      sourceUrl,
+    }));
   }
 
   const r = await fetch(endpoint, {

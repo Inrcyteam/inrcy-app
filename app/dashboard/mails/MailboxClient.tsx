@@ -143,6 +143,19 @@ type PublicationParts = {
   attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null }[];
 };
 
+type ChannelPublication = {
+  key: string;
+  label: string;
+  parts: PublicationParts;
+};
+
+type PublicationEditForm = {
+  title: string;
+  content: string;
+  cta: string;
+  hashtags: string;
+};
+
 function splitList(v?: string | null): string[] {
   if (!v) return [];
   return String(v)
@@ -277,17 +290,32 @@ function extractAttachmentsFromPayload(payload: any): { name: string; type?: str
 
   if (!Array.isArray(candidates)) return [];
 
+  const isLikelyUrl = (value: string) => /^https?:\/\//i.test(value) || value.startsWith("/");
+  const buildNameFromUrl = (value: string) => {
+    const cleaned = String(value || "").split("?")[0].trim();
+    if (!cleaned) return "Pièce jointe";
+    const last = cleaned.split("/").filter(Boolean).pop() || cleaned;
+    return safeDecode(last);
+  };
+
   return candidates
     .map((a: any) => {
       if (!a) return null;
-      if (typeof a === "string") return { name: a };
-      const name = a.name || a.filename || a.fileName || a.originalname || a.path || a.url || a.href;
-      if (!name) return null;
+      if (typeof a === "string") {
+        const raw = String(a).trim();
+        if (!raw) return null;
+        return isLikelyUrl(raw)
+          ? { name: buildNameFromUrl(raw), url: raw }
+          : { name: raw };
+      }
+      const url = a.url || a.href || a.publicUrl || a.public_url || (typeof a.path === "string" && isLikelyUrl(a.path) ? a.path : null);
+      const name = a.name || a.filename || a.fileName || a.originalname || (typeof a.path === "string" && !isLikelyUrl(a.path) ? a.path : null) || url;
+      if (!name && !url) return null;
       return {
-        name: String(name),
+        name: String(name || buildNameFromUrl(String(url || ""))),
         type: a.type || a.mime || a.mimeType || null,
         size: typeof a.size === "number" ? a.size : typeof a.bytes === "number" ? a.bytes : null,
-        url: a.url || a.href || a.publicUrl || a.public_url || null,
+        url: url || null,
       };
     })
     .filter(Boolean) as any;
@@ -321,6 +349,118 @@ function extractPublicationParts(payload: any): PublicationParts {
   const attachments = extractAttachmentsFromPayload(payload);
 
   return { title, content, cta, hashtags, attachments };
+}
+
+function normalizeChannelKey(channel: string): string {
+  const normalized = String(channel || "").trim().toLowerCase();
+  switch (normalized) {
+    case "inrcy_site":
+    case "site_inrcy":
+    case "site inrcy":
+      return "inrcy_site";
+    case "site_web":
+    case "site web":
+    case "website":
+    case "web":
+      return "site_web";
+    case "gmb":
+    case "google_business":
+    case "google business":
+    case "googlebusiness":
+      return "gmb";
+    case "linked in":
+      return "linkedin";
+    default:
+      return normalized;
+  }
+}
+
+function formatChannelLabel(channel: string): string {
+  const normalized = normalizeChannelKey(channel);
+  switch (normalized) {
+    case "inrcy_site":
+      return "Site iNrCy";
+    case "site_web":
+      return "Site web";
+    case "gmb":
+      return "Google Business";
+    case "facebook":
+      return "Facebook";
+    case "instagram":
+      return "Instagram";
+    case "linkedin":
+      return "LinkedIn";
+    default:
+      return normalized || "canal";
+  }
+}
+
+function orderChannelKeys(channels: string[]): string[] {
+  const priority = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"];
+  const normalizedUnique = Array.from(new Set(channels.map((channel) => normalizeChannelKey(channel)).filter(Boolean)));
+  return normalizedUnique.sort((a, b) => {
+    const indexA = priority.indexOf(a);
+    const indexB = priority.indexOf(b);
+    const rankA = indexA === -1 ? Number.MAX_SAFE_INTEGER : indexA;
+    const rankB = indexB === -1 ? Number.MAX_SAFE_INTEGER : indexB;
+    if (rankA !== rankB) return rankA - rankB;
+    return a.localeCompare(b);
+  });
+}
+
+function extractChannelPublications(payload: any): ChannelPublication[] {
+  if (!payload || typeof payload !== "object") return [];
+
+  const channels = extractChannelsFromPayload(payload);
+  const channelSet = new Set(channels.map((ch) => normalizeChannelKey(String(ch || ""))).filter(Boolean));
+  const postByChannel = payload?.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : {};
+  const postByNormalizedChannel = Object.entries(postByChannel).reduce<Record<string, any>>((acc, [key, value]) => {
+    const cleaned = normalizeChannelKey(String(key || ""));
+    if (cleaned && !(cleaned in acc)) acc[cleaned] = value;
+    if (cleaned) channelSet.add(cleaned);
+    return acc;
+  }, {});
+
+  const orderedChannels = orderChannelKeys(Array.from(channelSet));
+  if (!orderedChannels.length) {
+    const baseParts = extractPublicationParts(payload);
+    const hasBase = !!(baseParts.title || baseParts.content || baseParts.cta || baseParts.hashtags?.length || baseParts.attachments?.length);
+    return hasBase ? [{ key: "default", label: "publication", parts: baseParts }] : [];
+  }
+
+  return orderedChannels.map((channel) => {
+    const channelPayload = postByNormalizedChannel[channel];
+    const channelParts = extractPublicationParts(channelPayload);
+    const fallbackParts = extractPublicationParts(payload);
+
+    return {
+      key: channel,
+      label: formatChannelLabel(channel),
+      parts: {
+        title: channelParts.title || fallbackParts.title || null,
+        content: channelParts.content || fallbackParts.content || null,
+        cta: channelParts.cta || fallbackParts.cta || null,
+        hashtags: channelParts.hashtags?.length ? channelParts.hashtags : fallbackParts.hashtags || [],
+        attachments: channelParts.attachments?.length ? channelParts.attachments : fallbackParts.attachments || [],
+      },
+    };
+  });
+}
+
+function tagsToEditorString(tags?: string[]): string {
+  return Array.isArray(tags) ? tags.map((tag) => String(tag || "").trim().replace(/^#/, "")).filter(Boolean).join(" ") : "";
+}
+
+function isImageAttachment(att: { name: string; type?: string | null; url?: string | null }): boolean {
+  const type = String(att.type || "").toLowerCase();
+  const raw = String(att.url || att.name || "").toLowerCase().split("?")[0];
+  return type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|svg|avif)$/.test(raw);
+}
+
+function isVideoAttachment(att: { name: string; type?: string | null; url?: string | null }): boolean {
+  const type = String(att.type || "").toLowerCase();
+  const raw = String(att.url || att.name || "").toLowerCase().split("?")[0];
+  return type.startsWith("video/") || /\.(mp4|mov|webm|ogg|m4v)$/.test(raw);
 }
 
 function folderLabel(f: Folder) {
@@ -386,6 +526,33 @@ export default function MailboxClient() {
   // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [detailsChannelKey, setDetailsChannelKey] = useState<string | null>(null);
+  const [detailsEditMode, setDetailsEditMode] = useState(false);
+  const [detailsActionBusy, setDetailsActionBusy] = useState(false);
+  const [detailsActionError, setDetailsActionError] = useState<string | null>(null);
+  const [publicationEditForm, setPublicationEditForm] = useState<PublicationEditForm>({ title: "", content: "", cta: "", hashtags: "" });
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyTouchAction = body.style.touchAction;
+
+    if (detailsOpen) {
+      html.style.overflow = "hidden";
+      body.style.overflow = "hidden";
+      body.style.touchAction = "none";
+    }
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+      body.style.touchAction = previousBodyTouchAction;
+    };
+  }, [detailsOpen]);
 
   const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
@@ -763,6 +930,47 @@ const subTitle = firstNonEmpty(
     if (!acc) return "";
     return (acc.display_name ? `${acc.display_name} — ` : "") + acc.email_address;
   }, [detailsItem, mailAccounts]);
+
+  const detailsPayload = useMemo(() => {
+    return detailsItem && detailsItem.source !== "send_items" ? (((detailsItem as any)?.raw?.payload || null) as any) : null;
+  }, [detailsItem]);
+
+  const detailsChannelEntries = useMemo(() => {
+    if (!detailsItem || detailsItem.source === "send_items") return [] as ChannelPublication[];
+    const payload = detailsPayload;
+    const channelPublications = extractChannelPublications(payload);
+    if (channelPublications.length) return channelPublications;
+    const defaultParts = extractPublicationParts(payload);
+    return orderChannelKeys((detailsItem.channels && detailsItem.channels.length ? detailsItem.channels : [detailsItem.target]).filter(Boolean).map((channel) => String(channel))).map((channel) => ({
+      key: channel,
+      label: formatChannelLabel(channel),
+      parts: defaultParts,
+    }));
+  }, [detailsItem, detailsPayload]);
+
+  const activeDetailsChannelEntry = useMemo(() => {
+    if (!detailsChannelEntries.length) return null;
+    return detailsChannelEntries.find((entry) => entry.key === detailsChannelKey) || detailsChannelEntries[0] || null;
+  }, [detailsChannelEntries, detailsChannelKey]);
+
+  const activeDetailsChannelResult = useMemo(() => {
+    if (!detailsPayload || !activeDetailsChannelEntry) return null;
+    const results = detailsPayload?.results && typeof detailsPayload.results === "object" ? detailsPayload.results : {};
+    return (results as any)?.[activeDetailsChannelEntry.key] || null;
+  }, [detailsPayload, activeDetailsChannelEntry]);
+
+  useEffect(() => {
+    if (!detailsOpen || !detailsItem || detailsItem.source === "send_items") return;
+    const parts = activeDetailsChannelEntry?.parts || {};
+    setPublicationEditForm({
+      title: parts.title || "",
+      content: parts.content || "",
+      cta: parts.cta || "",
+      hashtags: tagsToEditorString(parts.hashtags),
+    });
+    setDetailsEditMode(false);
+    setDetailsActionError(null);
+  }, [detailsOpen, detailsItem, activeDetailsChannelEntry?.key]);
 
   const selectedAccount = useMemo(() => {
     return mailAccounts.find((a) => a.id === selectedAccountId) || null;
@@ -1282,7 +1490,84 @@ async function deleteDraftPermanently(id: string) {
   function openDetails(it: OutboxItem) {
     setSelectedId(it.id);
     setDetailsId(it.id);
+    setDetailsChannelKey(null);
+    setDetailsEditMode(false);
+    setDetailsActionBusy(false);
+    setDetailsActionError(null);
     setDetailsOpen(true);
+  }
+
+  async function saveChannelPublication() {
+    if (!detailsItem || detailsItem.source === "send_items") return;
+    const publicationId = String((detailsPayload as any)?.publication_id || "").trim();
+    const channel = String(activeDetailsChannelEntry?.key || "").trim();
+    if (!publicationId || !channel) return;
+
+    setDetailsActionBusy(true);
+    setDetailsActionError(null);
+    try {
+      const hashtags = publicationEditForm.hashtags
+        .split(/[;,\n\s]+/)
+        .map((tag) => tag.trim().replace(/^#+/, ""))
+        .filter(Boolean);
+
+      const res = await fetch(`/api/booster/publications/${encodeURIComponent(publicationId)}/deliveries/${encodeURIComponent(channel)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: publicationEditForm.title,
+          content: publicationEditForm.content,
+          cta: publicationEditForm.cta,
+          hashtags,
+          externalId: (activeDetailsChannelResult as any)?.external_id || null,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Modification impossible.");
+      setToast(`Publication ${formatChannelLabel(channel)} modifiée ✅`);
+      setDetailsEditMode(false);
+      await loadHistory();
+    } catch (e: any) {
+      setDetailsActionError(e?.message || "Modification impossible.");
+    } finally {
+      setDetailsActionBusy(false);
+    }
+  }
+
+  async function deleteChannelPublication() {
+    if (!detailsItem || detailsItem.source === "send_items") return;
+    const publicationId = String((detailsPayload as any)?.publication_id || "").trim();
+    const channel = String(activeDetailsChannelEntry?.key || "").trim();
+    if (!publicationId || !channel) return;
+    const label = activeDetailsChannelEntry?.label || formatChannelLabel(channel);
+    if (!window.confirm(`Supprimer la publication ${label} ?`)) return;
+
+    setDetailsActionBusy(true);
+    setDetailsActionError(null);
+    try {
+      const res = await fetch(`/api/booster/publications/${encodeURIComponent(publicationId)}/deliveries/${encodeURIComponent(channel)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ externalId: (activeDetailsChannelResult as any)?.external_id || null }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Suppression impossible.");
+      setToast(`Publication ${label} supprimée ✅`);
+      setDetailsEditMode(false);
+      await loadHistory();
+      if (json?.removed_publication) {
+        setDetailsOpen(false);
+        setDetailsId(null);
+        setDetailsChannelKey(null);
+      } else {
+        const remaining = detailsChannelEntries.filter((entry) => entry.key !== channel);
+        setDetailsChannelKey(remaining[0]?.key || null);
+      }
+    } catch (e: any) {
+      setDetailsActionError(e?.message || "Suppression impossible.");
+    } finally {
+      setDetailsActionBusy(false);
+    }
   }
 
   async function openItem(it: OutboxItem) {
@@ -1585,7 +1870,9 @@ async function deleteDraftPermanently(id: string) {
                     const midLabel =
                       it.source === "send_items"
                         ? accountLabel
-                        : (it.channels && it.channels.length ? it.channels.join(" / ") : it.target);
+                        : (it.channels && it.channels.length
+                            ? it.channels.map((channel) => formatChannelLabel(channel)).join(" / ")
+                            : formatChannelLabel(it.target || ""));
 
                     // NOTE: this is a clickable row that contains action buttons.
                     // Using a <button> wrapper would create invalid HTML (nested buttons)
@@ -1699,186 +1986,154 @@ async function deleteDraftPermanently(id: string) {
               <div className={styles.modalBody}>
                 {!detailsItem ? (
                   <div style={{ color: "rgba(255,255,255,0.65)" }}>Sélectionne un élément.</div>
-                ) : (
-                  <>
-                    <div className={styles.detailsLayout}>
-                      {/* Meta */}
-                      <div className={styles.detailsMeta}>
-                        <div className={styles.detailsTitle}>{detailsItem.title || "(sans objet)"}</div>
-                        <div className={styles.detailsSub}>
-                          {detailsItem.status === "draft"
-                            ? "Brouillon"
-                            : detailsItem.status === "error"
-                            ? "Erreur"
-                            : detailsItem.sent_at
-                            ? `Envoyé • ${new Date(detailsItem.sent_at).toLocaleString()}`
-                            : `Historique • ${new Date(detailsItem.created_at).toLocaleString()}`}
-                        </div>
+                ) : (() => {
+                  const payload = (detailsItem as any)?.raw?.payload || null;
+                  const channelPublications = detailsItem.source !== "send_items" ? extractChannelPublications(payload) : [];
+                  const defaultParts = detailsItem.source !== "send_items" ? extractPublicationParts(payload) : {};
+                  const publicationChannelEntries = detailsItem.source !== "send_items"
+                    ? channelPublications.length
+                      ? channelPublications
+                      : orderChannelKeys((detailsItem.channels && detailsItem.channels.length ? detailsItem.channels : [detailsItem.target]).filter(Boolean).map((channel) => String(channel))).map((channel) => ({
+                          key: channel,
+                          label: formatChannelLabel(channel),
+                          parts: defaultParts,
+                        }))
+                    : [];
+                  const activePublicationEntry = detailsItem.source !== "send_items"
+                    ? (publicationChannelEntries.find((entry) => entry.key === detailsChannelKey) || publicationChannelEntries[0] || null)
+                    : null;
+                  const activeParts = activePublicationEntry?.parts || defaultParts;
+                  const attachmentCandidates = detailsItem.source === "send_items"
+                    ? [...(detailsItem.attachments || [])]
+                    : [
+                        ...(detailsItem.attachments || []),
+                        ...(activeParts.attachments || []),
+                      ];
+                  const dedupedAttachments = attachmentCandidates.filter((att, idx, arr) => {
+                    const key = `${att.url || ""}|${att.name || ""}`;
+                    return arr.findIndex((x) => `${x.url || ""}|${x.name || ""}` === key) === idx;
+                  });
+                  const imageAttachments = dedupedAttachments.filter((att) => att?.url && isImageAttachment(att));
+                  const videoAttachments = dedupedAttachments.filter((att) => att?.url && isVideoAttachment(att));
+                  const fileAttachments = dedupedAttachments.filter((att) => !imageAttachments.includes(att) && !videoAttachments.includes(att));
+                  const showFallbackMessage = (() => {
+                    if (detailsItem.source === "send_items") return true;
+                    const activeHasStructured = !!(activeParts.title || activeParts.content || activeParts.cta || activeParts.hashtags?.length || activeParts.attachments?.length);
+                    const fallbackTitle = firstNonEmpty(payload?.post?.title, payload?.subject, payload?.title);
+                    const fallbackContent = firstNonEmpty(payload?.post?.content, payload?.post?.text, payload?.content, payload?.text, payload?.message);
+                    const fallbackCta = firstNonEmpty(payload?.post?.cta, payload?.cta);
+                    const fallbackHashtags = Array.isArray(payload?.post?.hashtags || payload?.hashtags)
+                      ? (payload?.post?.hashtags || payload?.hashtags).map((x: any) => String(x || "").trim()).filter(Boolean)
+                      : [];
+                    const fallbackAttachments = extractAttachmentsFromPayload(payload);
+                    return !(activeHasStructured || fallbackTitle || fallbackContent || fallbackCta || fallbackHashtags.length || fallbackAttachments.length);
+                  })();
 
-                        {detailsItem.source === "send_items" ? (
-                          <div className={styles.metaGrid}>
-                            <div className={styles.metaRow}>
-                              <div className={styles.metaKey}>Boîte d’envoi</div>
-                              <div className={styles.metaVal}>{detailsAccountLabel || "—"}</div>
-                            </div>
-                            <div className={styles.metaRow}>
-                              <div className={styles.metaKey}>Destinataires</div>
-                              <div className={styles.metaVal}>
-                                {splitList(detailsItem.to || detailsItem.target).join(", ") || "—"}
+                  return (
+                    <>
+                      <div className={styles.detailsStack}>
+                        <section className={styles.detailSectionCard}>
+                          <div className={styles.detailSectionHeader}>
+                            <div>
+                              <div className={styles.detailsTitle}>{detailsItem.title || "(sans objet)"}</div>
+                              <div className={styles.detailsSub}>
+                                {detailsItem.status === "draft"
+                                  ? "Brouillon"
+                                  : detailsItem.status === "error"
+                                  ? "Erreur"
+                                  : detailsItem.sent_at
+                                  ? `Envoyé • ${new Date(detailsItem.sent_at).toLocaleString()}`
+                                  : `Historique • ${new Date(detailsItem.created_at).toLocaleString()}`}
                               </div>
                             </div>
-                            <div className={styles.metaRow}>
-                              <div className={styles.metaKey}>Objet</div>
-                              <div className={styles.metaVal}>{detailsItem.subject || detailsItem.title || "—"}</div>
-                            </div>
                           </div>
-                        ) : (
-                          <div className={styles.metaGrid}>
-                            <div className={styles.metaRow}>
-                              <div className={styles.metaKey}>Canaux</div>
-                              <div className={styles.metaVal}>
-                                {(detailsItem.channels && detailsItem.channels.length
-                                  ? detailsItem.channels
-                                  : [detailsItem.target]
-                                )
-                                  .filter(Boolean)
-                                  .join(" / ") || "—"}
+
+                          {detailsItem.source === "send_items" ? (
+                            <div className={styles.metaGrid}>
+                              <div className={styles.metaRow}>
+                                <div className={styles.metaKey}>Boîte d’envoi</div>
+                                <div className={styles.metaVal}>{detailsAccountLabel || "—"}</div>
+                              </div>
+                              <div className={styles.metaRow}>
+                                <div className={styles.metaKey}>Destinataires</div>
+                                <div className={styles.metaVal}>{splitList(detailsItem.to || detailsItem.target).join(", ") || "—"}</div>
+                              </div>
+                              <div className={styles.metaRow}>
+                                <div className={styles.metaKey}>Objet</div>
+                                <div className={styles.metaVal}>{detailsItem.subject || detailsItem.title || "—"}</div>
                               </div>
                             </div>
-                          </div>
-                        )}
-
-                        {detailsItem.error ? (
-                          <div className={styles.detailsError}>
-                            <b>Erreur :</b> {detailsItem.error}
-                          </div>
-                        ) : null}
-
-                        {/* PJ (best-effort) */}
-                        {detailsItem.attachments && detailsItem.attachments.length ? (
-                          <div className={styles.attachmentsBox}>
-                            <div className={styles.attachmentsTitle}>Pièces jointes</div>
-                            <div className={styles.attachmentsList}>
-                              {detailsItem.attachments.map((a, idx) => (
-                                <div key={idx} className={styles.attachmentItem}>
-                                  <span className={styles.attachmentName}>{a.name}</span>
-                                  {a.type ? <span className={styles.attachmentMeta}>{a.type}</span> : null}
-                                  {typeof a.size === "number" ? (
-                                    <span className={styles.attachmentMeta}>{Math.round(a.size / 1024)} Ko</span>
-                                  ) : null}
-                                  {a.url ? (
-                                    <a className={styles.attachmentLink} href={a.url} target="_blank" rel="noreferrer">
-                                      Ouvrir
-                                    </a>
-                                  ) : null}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {/* Message */}
-                      <div className={styles.detailsMessage}>
-                        <div className={styles.messageHeaderRow}>
-                          <div className={styles.messageHeaderTitle}>Message</div>
-                        </div>
-
-                        {/* Détails enrichis pour Publication (Booster) */}
-                        {detailsItem.source !== "send_items" ? (() => {
-                          const payload = (detailsItem as any)?.raw?.payload || null;
-                          const parts = extractPublicationParts(payload);
-                          const hasAny = !!(parts.title || parts.content || parts.cta || (parts.hashtags && parts.hashtags.length) || (parts.attachments && parts.attachments.length));
-                          if (!hasAny) return null;
-                          return (
-                            <div className={styles.publicationParts}>
-                              {parts.title ? (
-                                <div className={styles.publicationTitle}>
-                                  <div className={styles.publicationLabel}>Titre</div>
-                                  <div className={styles.publicationValue}>{parts.title}</div>
-                                </div>
-                              ) : null}
-
-                              {parts.content ? (
-                                <div className={styles.publicationContent}>
-                                  <div className={styles.publicationLabel}>Contenu</div>
-                                  <pre className={styles.publicationPre}>{parts.content}</pre>
-                                </div>
-                              ) : null}
-
-                              {parts.cta ? (
-                                <div className={styles.publicationCta}>
-                                  <div className={styles.publicationLabel}>CTA</div>
-                                  <div className={styles.publicationCtaBox}>{parts.cta}</div>
-                                </div>
-                              ) : null}
-
-                              {parts.hashtags && parts.hashtags.length ? (
-                                <div className={styles.publicationTags}>
-                                  <div className={styles.publicationLabel}>Hashtags</div>
-                                  <div className={styles.publicationTagRow}>
-                                    {parts.hashtags.map((t, idx) => (
-                                      <span key={idx} className={styles.publicationTag}>#{t.replace(/^#/, "")}</span>
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : null}
-
-                              {parts.attachments && parts.attachments.length ? (
-                                <div className={styles.publicationAttachments}>
-                                  <div className={styles.publicationLabel}>Pièces jointes</div>
-                                  <div className={styles.attachmentsList}>
-                                    {parts.attachments.map((a, idx) => (
-                                      <div key={idx} className={styles.attachmentItem}>
-                                        <span className={styles.attachmentName}>{a.name}</span>
-                                        {a.type ? <span className={styles.attachmentMeta}>{a.type}</span> : null}
-                                        {typeof a.size === "number" ? (
-                                          <span className={styles.attachmentMeta}>{Math.round(a.size / 1024)} Ko</span>
-                                        ) : null}
-                                        {a.url ? (
-                                          <a className={styles.attachmentLink} href={a.url} target="_blank" rel="noreferrer">
-                                            Ouvrir
-                                          </a>
-                                        ) : null}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : null}
-                            </div>
-                          );
-                        })() : null}
-                        {(() => {
-                          if (!detailsItem) return null;
-
-                          if (detailsItem.source === "send_items") {
-                            return (
-                              <div className={styles.messageBody}>
-                                {detailsItem.detailHtml ? (
-                                  <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
+                          ) : (
+                            <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                              <div className={styles.detailPillsWrap}>
+                                {publicationChannelEntries.length ? (
+                                  publicationChannelEntries.map((entry, idx) => (
+                                    <button
+                                      key={`${entry.key}-${idx}`}
+                                      type="button"
+                                      className={`${styles.channelBubbleBtn} ${activePublicationEntry?.key === entry.key ? styles.channelBubbleBtnActive : ""}`}
+                                      onClick={() => setDetailsChannelKey(entry.key)}
+                                    >
+                                      <span className={styles.channelBubble}>{entry.label}</span>
+                                    </button>
+                                  ))
                                 ) : (
-                                  <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
+                                  <span className={styles.metaVal}>—</span>
                                 )}
                               </div>
-                            );
-                          }
+                              {activePublicationEntry ? (
+                                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
+                                  {detailsEditMode ? (
+                                    <button
+                                      type="button"
+                                      className={styles.btnPrimary}
+                                      onClick={saveChannelPublication}
+                                      disabled={detailsActionBusy}
+                                    >
+                                      {detailsActionBusy ? "Enregistrement…" : "Enregistrer"}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className={styles.btnGhost}
+                                      onClick={() => { setDetailsEditMode(true); setDetailsActionError(null); }}
+                                      disabled={detailsActionBusy}
+                                    >
+                                      Modifier
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className={styles.btnDangerSmall}
+                                    onClick={deleteChannelPublication}
+                                    disabled={detailsActionBusy}
+                                  >
+                                    {detailsActionBusy && !detailsEditMode ? "Suppression…" : "Supprimer"}
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          )}
 
-                          const payload = (detailsItem as any)?.raw?.payload || null;
-                          const parts = extractPublicationParts(payload);
-                          const hasStructured = !!(parts.title || parts.content || parts.cta || (parts.hashtags && parts.hashtags.length) || (parts.attachments && parts.attachments.length));
+                          {detailsActionError ? (
+                            <div className={styles.detailsError}>
+                              <b>Action :</b> {detailsActionError}
+                            </div>
+                          ) : null}
 
-                          const fallbackTitle = firstNonEmpty(payload?.post?.title, payload?.subject, payload?.title);
-                          const fallbackContent = firstNonEmpty(payload?.post?.content, payload?.post?.text, payload?.content, payload?.text, payload?.message);
-                          const fallbackCta = firstNonEmpty(payload?.post?.cta, payload?.cta);
-                          const fallbackHashtags = Array.isArray(payload?.post?.hashtags || payload?.hashtags)
-                            ? (payload?.post?.hashtags || payload?.hashtags).map((x: any) => String(x || "").trim()).filter(Boolean)
-                            : [];
-                          const fallbackAttachments = extractAttachmentsFromPayload(payload);
-                          const hasFallbackStructured = !!(fallbackTitle || fallbackContent || fallbackCta || fallbackHashtags.length || fallbackAttachments.length);
+                          {detailsItem.error ? (
+                            <div className={styles.detailsError}>
+                              <b>Erreur :</b> {detailsItem.error}
+                            </div>
+                          ) : null}
+                        </section>
 
-                          if (hasStructured || hasFallbackStructured) return null;
+                        <section className={styles.detailSectionCard}>
+                          <div className={styles.detailSectionHeader}>
+                            <div className={styles.messageHeaderTitle}>Message</div>
+                          </div>
 
-                          return (
+                          {detailsItem.source === "send_items" ? (
                             <div className={styles.messageBody}>
                               {detailsItem.detailHtml ? (
                                 <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
@@ -1886,18 +2141,195 @@ async function deleteDraftPermanently(id: string) {
                                 <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
                               )}
                             </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
+                          ) : activePublicationEntry ? (
+                            (() => {
+                              const parts = activeParts;
+                              const showInstagramHashtags = activePublicationEntry.key === "instagram";
+                              const hasAny = !!(parts.title || parts.content || parts.cta || (showInstagramHashtags && parts.hashtags?.length));
+                              if (!hasAny && showFallbackMessage) {
+                                return (
+                                  <div className={styles.messageBody}>
+                                    {detailsItem.detailHtml ? (
+                                      <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
+                                    ) : (
+                                      <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              if (!hasAny && !detailsEditMode) return <div className={styles.emptyDetailText}>Aucun message disponible pour ce canal.</div>;
+                              return (
+                                <article key={activePublicationEntry.key} className={styles.channelPublicationCard}>
+                                  <div className={styles.publicationParts}>
+                                    {detailsEditMode ? (
+                                      <>
+                                        <div>
+                                          <div className={styles.publicationLabel}>Titre</div>
+                                          <input
+                                            type="text"
+                                            value={publicationEditForm.title}
+                                            onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, title: e.target.value }))}
+                                            className={styles.publicationFieldInput}
+                                            placeholder="Titre"
+                                            disabled={detailsActionBusy}
+                                          />
+                                        </div>
+                                        <div>
+                                          <div className={styles.publicationLabel}>Contenu</div>
+                                          <textarea
+                                            value={publicationEditForm.content}
+                                            onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, content: e.target.value }))}
+                                            className={styles.publicationFieldTextarea}
+                                            placeholder="Contenu"
+                                            rows={8}
+                                            disabled={detailsActionBusy}
+                                          />
+                                        </div>
+                                        <div>
+                                          <div className={styles.publicationLabel}>CTA</div>
+                                          <input
+                                            type="text"
+                                            value={publicationEditForm.cta}
+                                            onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, cta: e.target.value }))}
+                                            className={styles.publicationFieldInput}
+                                            placeholder="CTA"
+                                            disabled={detailsActionBusy}
+                                          />
+                                        </div>
+                                        {activePublicationEntry.key === "instagram" ? (
+                                          <div>
+                                            <div className={styles.publicationLabel}>Hashtags</div>
+                                            <input
+                                              type="text"
+                                              value={publicationEditForm.hashtags}
+                                              onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, hashtags: e.target.value }))}
+                                              className={styles.publicationFieldInput}
+                                              placeholder="maçonnerie lens btp"
+                                              disabled={detailsActionBusy}
+                                            />
+                                          </div>
+                                        ) : null}
+                                      </>
+                                    ) : (
+                                      <>
+                                        {parts.title ? (
+                                          <div>
+                                            <div className={styles.publicationLabel}>Titre</div>
+                                            <div className={styles.publicationValue}>{parts.title}</div>
+                                          </div>
+                                        ) : null}
+                                        {parts.content ? (
+                                          <div>
+                                            <div className={styles.publicationLabel}>Contenu</div>
+                                            <pre className={styles.publicationPre}>{parts.content}</pre>
+                                          </div>
+                                        ) : null}
+                                        {parts.cta ? (
+                                          <div>
+                                            <div className={styles.publicationLabel}>CTA</div>
+                                            <div className={styles.publicationCtaBox}>{parts.cta}</div>
+                                          </div>
+                                        ) : null}
+                                        {activePublicationEntry.key === "instagram" && parts.hashtags && parts.hashtags.length ? (
+                                          <div>
+                                            <div className={styles.publicationLabel}>Hashtags</div>
+                                            <div className={styles.publicationTagRow}>
+                                              {parts.hashtags.map((t, idx) => (
+                                                <span key={idx} className={styles.publicationTag}>#{t.replace(/^#/, "")}</span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        ) : null}
+                                      </>
+                                    )}
+                                  </div>
+                                </article>
+                              );
+                            })()
+                          ) : showFallbackMessage ? (
+                            <div className={styles.messageBody}>
+                              {detailsItem.detailHtml ? (
+                                <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
+                              ) : (
+                                <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
+                              )}
+                            </div>
+                          ) : (
+                            <div className={styles.emptyDetailText}>Aucun message disponible.</div>
+                          )}
+                        </section>
 
-                    {detailsItem.source === "send_items" && (detailsItem as any).raw?.status === "draft" ? (
-                      <div style={{ marginTop: 14, color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
-                        Astuce : clique sur ce brouillon dans la liste pour l’ouvrir en édition.
+                        <section className={styles.detailSectionCard}>
+                          <div className={styles.detailSectionHeader}>
+                            <div className={styles.messageHeaderTitle}>Pièces jointes</div>
+                          </div>
+
+                          {imageAttachments.length || videoAttachments.length || fileAttachments.length ? (
+                            <div className={styles.attachmentsPanel}>
+                              {imageAttachments.length ? (
+                                <div className={styles.attachmentGallery}>
+                                  {imageAttachments.map((a, idx) => (
+                                    <a
+                                      key={`${a.url || a.name}-${idx}`}
+                                      className={styles.attachmentPreviewCard}
+                                      href={a.url || undefined}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      <img src={a.url || ""} alt={a.name || `Pièce jointe ${idx + 1}`} className={styles.attachmentPreviewImage} />
+                                      <div className={styles.attachmentPreviewCaption}>{a.name}</div>
+                                    </a>
+                                  ))}
+                                </div>
+                              ) : null}
+
+                              {videoAttachments.length ? (
+                                <div className={styles.attachmentGallery}>
+                                  {videoAttachments.map((a, idx) => (
+                                    <div key={`${a.url || a.name}-${idx}`} className={styles.attachmentPreviewCard}>
+                                      <video
+                                        src={a.url || ""}
+                                        className={styles.attachmentPreviewImage}
+                                        controls
+                                        preload="metadata"
+                                      />
+                                      <div className={styles.attachmentPreviewCaption}>{a.name}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+
+                              {fileAttachments.length ? (
+                                <div className={styles.attachmentsList}>
+                                  {fileAttachments.map((a, idx) => (
+                                    <div key={`${a.url || a.name}-${idx}`} className={styles.attachmentItem}>
+                                      <span className={styles.attachmentName}>{a.name}</span>
+                                      {a.type ? <span className={styles.attachmentMeta}>{a.type}</span> : null}
+                                      {typeof a.size === "number" ? <span className={styles.attachmentMeta}>{Math.round(a.size / 1024)} Ko</span> : null}
+                                      {a.url ? (
+                                        <a className={styles.attachmentLink} href={a.url} target="_blank" rel="noreferrer">
+                                          Ouvrir
+                                        </a>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div className={styles.emptyDetailText}>Aucune pièce jointe disponible.</div>
+                          )}
+                        </section>
                       </div>
-                    ) : null}
-                  </>
-                )}
+
+                      {detailsItem.source === "send_items" && (detailsItem as any).raw?.status === "draft" ? (
+                        <div style={{ marginTop: 14, color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
+                          Astuce : clique sur ce brouillon dans la liste pour l’ouvrir en édition.
+                        </div>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>

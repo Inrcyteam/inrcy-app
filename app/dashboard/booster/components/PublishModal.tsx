@@ -415,7 +415,14 @@ export default function PublishModal({
 
       <div className={styles.blockCard}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Votre intention</div>
-        <div className={styles.subtitle} style={{ marginBottom: 10 }}>
+        <div
+          className={styles.subtitle}
+          style={{
+            marginBottom: 10,
+            maxWidth: "none",
+            whiteSpace: isMobile ? "normal" : "nowrap",
+          }}
+        >
           Choisissez le thème si vous le souhaitez, puis écrivez votre phrase. iNrCy adapte ensuite le contenu à chaque canal.
         </div>
         <div style={{ display: "grid", gap: 10 }}>
@@ -449,8 +456,8 @@ export default function PublishModal({
 
       <div className={styles.blockCard}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Contenus par canal</div>
-        <div className={styles.subtitle} style={{ marginBottom: 10 }}>
-          Relisez et ajustez si nécessaire chaque version avant publication.
+        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: isMobile ? "normal" : "nowrap", }}>
+          Relisez et ajustez si nécessaire chaque version avant publication. Les contenus publiés sont modifiables et supprimables depuis le module iNr'Send.
         </div>
         {displayCards.length ? (
           <>
@@ -497,7 +504,14 @@ export default function PublishModal({
 
       <div className={styles.blockCard}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Images</div>
-        <div className={styles.subtitle} style={{ marginBottom: 10 }}>
+        <div
+  className={styles.subtitle}
+  style={{
+    marginBottom: 10,
+    maxWidth: "none",
+    whiteSpace: isMobile ? "normal" : "nowrap",
+  }}
+>
           Ajoutez 1 ou plusieurs images (max 5, 2 Mo chacune). <strong>Fort recommandé</strong>. <strong>Obligatoire pour Instagram</strong>.
         </div>
         <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => onImagesChange(e.target.files)} />

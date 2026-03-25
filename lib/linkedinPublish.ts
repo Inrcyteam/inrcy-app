@@ -1,3 +1,5 @@
+const LINKEDIN_VERSION = "202603";
+
 type PublishOk = {
   ok: true;
   /** LinkedIn post URN (often returned in x-restli-id header). */
@@ -26,6 +28,16 @@ async function parseResponse(res: Response) {
   return { raw, json };
 }
 
+function linkedInHeaders(accessToken: string, extra: Record<string, string> = {}) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    "X-Restli-Protocol-Version": "2.0.0",
+    "Linkedin-Version": LINKEDIN_VERSION,
+    ...extra,
+  };
+}
+
 async function fetchImageBlob(imageUrl: string): Promise<Blob> {
   if (imageUrl.startsWith("data:")) {
     const m = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -51,13 +63,9 @@ async function createLinkedInPost(params: {
 }): Promise<LinkedInPublishResult> {
   const { accessToken, payload } = params;
 
-  const res = await fetch("https://api.linkedin.com/v2/ugcPosts", {
+  const res = await fetch("https://api.linkedin.com/rest/posts", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      "X-Restli-Protocol-Version": "2.0.0",
-    },
+    headers: linkedInHeaders(accessToken),
     body: JSON.stringify(payload),
     cache: "no-store",
   });
@@ -66,20 +74,57 @@ async function createLinkedInPost(params: {
 
   if (!res.ok) {
     const errMsg = json?.message || json?.error || raw || `LinkedIn publish failed (${res.status})`;
-    return { ok: false, error: errMsg, diagnostics: { status: res.status, body: json ?? raw } };
+    return { ok: false, error: errMsg, diagnostics: { status: res.status, body: json ?? raw, payload } };
   }
 
   const postUrn = res.headers.get("x-restli-id") || json?.id;
   return { ok: true, postUrn: postUrn || undefined, diagnostics: { status: res.status, body: json ?? raw } };
 }
 
-/**
- * Publish a text-only LinkedIn post using the UGC API.
- *
- * authorUrn examples:
- * - Person: urn:li:person:xxxxx
- * - Org:    urn:li:organization:xxxxx
- */
+async function uploadLinkedInImage(params: {
+  accessToken: string;
+  ownerUrn: string;
+  imageUrl: string;
+}) {
+  const { accessToken, ownerUrn, imageUrl } = params;
+
+  const initRes = await fetch("https://api.linkedin.com/rest/images?action=initializeUpload", {
+    method: "POST",
+    headers: linkedInHeaders(accessToken),
+    body: JSON.stringify({ initializeUploadRequest: { owner: ownerUrn } }),
+    cache: "no-store",
+  });
+
+  const { raw: initRaw, json: initJson } = await parseResponse(initRes);
+  if (!initRes.ok) {
+    throw new Error(initJson?.message || initJson?.error || initRaw || `LinkedIn initializeUpload failed (${initRes.status})`);
+  }
+
+  const uploadUrl = String(initJson?.value?.uploadUrl || "");
+  const imageUrn = String(initJson?.value?.image || "");
+  if (!uploadUrl || !imageUrn) {
+    throw new Error("LinkedIn n'a pas renvoyé les informations d'upload d'image.");
+  }
+
+  const imageBlob = await fetchImageBlob(imageUrl);
+  const uploadRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": imageBlob.type || "image/jpeg",
+    },
+    body: imageBlob,
+    cache: "no-store",
+  });
+
+  const uploadRaw = await uploadRes.text().catch(() => "");
+  if (!uploadRes.ok) {
+    throw new Error(uploadRaw || `LinkedIn image upload failed (${uploadRes.status})`);
+  }
+
+  return { imageUrn, initJson: initJson ?? initRaw, uploadRaw };
+}
+
 export async function linkedinPublishText(params: {
   accessToken: string;
   authorUrn: string;
@@ -97,16 +142,15 @@ export async function linkedinPublishText(params: {
       accessToken,
       payload: {
         author: authorUrn,
+        commentary: text,
+        visibility,
+        distribution: {
+          feedDistribution: "MAIN_FEED",
+          targetEntities: [],
+          thirdPartyDistributionChannels: [],
+        },
         lifecycleState: "PUBLISHED",
-        specificContent: {
-          "com.linkedin.ugc.ShareContent": {
-            shareCommentary: { text },
-            shareMediaCategory: "NONE",
-          },
-        },
-        visibility: {
-          "com.linkedin.ugc.MemberNetworkVisibility": visibility,
-        },
+        isReshareDisabledByAuthor: false,
       },
     });
   } catch (e: any) {
@@ -130,79 +174,26 @@ export async function linkedinPublishImage(params: {
     if (!text?.trim()) return { ok: false, error: "Le contenu de la publication est vide." };
     if (!imageUrl?.trim()) return linkedinPublishText({ accessToken, authorUrn, text, visibility });
 
-    const registerRes = await fetch("https://api.linkedin.com/v2/assets?action=registerUpload", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        "X-Restli-Protocol-Version": "2.0.0",
-      },
-      body: JSON.stringify({
-        registerUploadRequest: {
-          owner: authorUrn,
-          recipes: ["urn:li:digitalmediaRecipe:feedshare-image"],
-          serviceRelationships: [
-            {
-              relationshipType: "OWNER",
-              identifier: "urn:li:userGeneratedContent",
-            },
-          ],
-        },
-      }),
-      cache: "no-store",
-    });
-
-    const { raw: registerRaw, json: registerJson } = await parseResponse(registerRes);
-    if (!registerRes.ok) {
-      const errMsg = registerJson?.message || registerJson?.error || registerRaw || `LinkedIn registerUpload failed (${registerRes.status})`;
-      return { ok: false, error: errMsg, diagnostics: { stage: "registerUpload", status: registerRes.status, body: registerJson ?? registerRaw } };
-    }
-
-    const uploadInfo = registerJson?.value?.uploadMechanism?.["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"];
-    const uploadUrl = String(uploadInfo?.uploadUrl || "");
-    const asset = String(registerJson?.value?.asset || "");
-    if (!uploadUrl || !asset) {
-      return { ok: false, error: "LinkedIn n'a pas renvoyé les informations d'upload du média.", diagnostics: { stage: "registerUpload", body: registerJson ?? registerRaw } };
-    }
-
-    const imageBlob = await fetchImageBlob(imageUrl);
-    const uploadRes = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": imageBlob.type || "image/jpeg",
-      },
-      body: imageBlob,
-      cache: "no-store",
-    });
-
-    const uploadRaw = await uploadRes.text().catch(() => "");
-    if (!uploadRes.ok) {
-      return { ok: false, error: uploadRaw || `LinkedIn media upload failed (${uploadRes.status})`, diagnostics: { stage: "upload", status: uploadRes.status, body: uploadRaw } };
-    }
-
+    const uploaded = await uploadLinkedInImage({ accessToken, ownerUrn: authorUrn, imageUrl });
     const postResult = await createLinkedInPost({
       accessToken,
       payload: {
         author: authorUrn,
-        lifecycleState: "PUBLISHED",
-        specificContent: {
-          "com.linkedin.ugc.ShareContent": {
-            shareCommentary: { text },
-            shareMediaCategory: "IMAGE",
-            media: [
-              {
-                status: "READY",
-                description: { text: title || text.slice(0, 200) },
-                media: asset,
-                title: { text: title || "Publication iNrCy" },
-              },
-            ],
+        commentary: text,
+        visibility,
+        distribution: {
+          feedDistribution: "MAIN_FEED",
+          targetEntities: [],
+          thirdPartyDistributionChannels: [],
+        },
+        content: {
+          media: {
+            altText: title || text.slice(0, 120),
+            id: uploaded.imageUrn,
           },
         },
-        visibility: {
-          "com.linkedin.ugc.MemberNetworkVisibility": visibility,
-        },
+        lifecycleState: "PUBLISHED",
+        isReshareDisabledByAuthor: false,
       },
     });
 
@@ -210,9 +201,8 @@ export async function linkedinPublishImage(params: {
       return {
         ...postResult,
         diagnostics: {
-          stage: "ugcPost",
-          registerUpload: registerJson ?? registerRaw,
-          asset,
+          stage: "post",
+          imageUpload: uploaded,
           upstream: postResult.diagnostics,
         },
       };
@@ -221,12 +211,81 @@ export async function linkedinPublishImage(params: {
     return {
       ...postResult,
       diagnostics: {
-        registerUpload: registerJson ?? registerRaw,
-        asset,
+        imageUpload: uploaded,
         upstream: postResult.diagnostics,
       },
     };
   } catch (e: any) {
     return { ok: false, error: e?.message || "Impossible de publier l'image sur LinkedIn pour le moment." };
+  }
+}
+
+export async function linkedinPublishMultiImage(params: {
+  accessToken: string;
+  authorUrn: string;
+  text: string;
+  imageUrls: string[];
+  visibility?: "PUBLIC" | "CONNECTIONS";
+  title?: string;
+}): Promise<LinkedInPublishResult> {
+  const { accessToken, authorUrn, text, visibility = "PUBLIC", title } = params;
+  const imageUrls = (params.imageUrls || []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, 20);
+
+  try {
+    if (!accessToken) return { ok: false, error: "Connexion LinkedIn invalide." };
+    if (!authorUrn) return { ok: false, error: "Compte LinkedIn invalide." };
+    if (!text?.trim()) return { ok: false, error: "Le contenu de la publication est vide." };
+    if (imageUrls.length === 0) return linkedinPublishText({ accessToken, authorUrn, text, visibility });
+    if (imageUrls.length === 1) return linkedinPublishImage({ accessToken, authorUrn, text, imageUrl: imageUrls[0], visibility, title });
+
+    const uploadedImages = [] as Array<{ imageUrn: string; initJson: any; uploadRaw: string }>;
+    for (const imageUrl of imageUrls) {
+      uploadedImages.push(await uploadLinkedInImage({ accessToken, ownerUrn: authorUrn, imageUrl }));
+    }
+
+    const postResult = await createLinkedInPost({
+      accessToken,
+      payload: {
+        author: authorUrn,
+        commentary: text,
+        visibility,
+        distribution: {
+          feedDistribution: "MAIN_FEED",
+          targetEntities: [],
+          thirdPartyDistributionChannels: [],
+        },
+        content: {
+          multiImage: {
+            images: uploadedImages.map((img, index) => ({
+              id: img.imageUrn,
+              altText: index === 0 ? (title || text.slice(0, 120)) : `${title || "Publication iNrCy"} ${index + 1}`,
+            })),
+          },
+        },
+        lifecycleState: "PUBLISHED",
+        isReshareDisabledByAuthor: false,
+      },
+    });
+
+    if (!postResult.ok) {
+      return {
+        ...postResult,
+        diagnostics: {
+          stage: "multiImagePost",
+          uploadedImages,
+          upstream: postResult.diagnostics,
+        },
+      };
+    }
+
+    return {
+      ...postResult,
+      diagnostics: {
+        uploadedImages,
+        upstream: postResult.diagnostics,
+      },
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "Impossible de publier les images sur LinkedIn pour le moment." };
   }
 }
