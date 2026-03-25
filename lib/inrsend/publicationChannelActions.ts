@@ -10,7 +10,7 @@ import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
 
-type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
+export type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 type JsonRecord = Record<string, unknown>;
 
 type AppEventRow = {
@@ -28,29 +28,6 @@ type PostPayload = {
 
 function asRecord(v: unknown): JsonRecord {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as JsonRecord) : {};
-}
-
-function normalizeChannelKey(channel: string): ChannelKey | null {
-  const normalized = String(channel || "").trim().toLowerCase();
-  switch (normalized) {
-    case "inrcy_site":
-    case "site_inrcy":
-      return "inrcy_site";
-    case "site_web":
-    case "website":
-    case "web":
-      return "site_web";
-    case "gmb":
-    case "google_business":
-    case "google business":
-      return "gmb";
-    case "facebook":
-    case "instagram":
-    case "linkedin":
-      return normalized;
-    default:
-      return null;
-  }
 }
 
 function normalizeHashtag(input: string): string {
@@ -77,6 +54,15 @@ function buildInstagramCaption(title: string, content: string, cta: string, hash
 
 function errMessage(e: unknown, fallback: string) {
   return e instanceof Error ? e.message : fallback;
+}
+
+function cloneRecord<T extends JsonRecord>(input: T): T {
+  return JSON.parse(JSON.stringify(input || {})) as T;
+}
+
+function isDeletedResult(result: JsonRecord | null | undefined): boolean {
+  if (!result) return false;
+  return result.deleted === true || String(result.status || "").toLowerCase() === "deleted";
 }
 
 function getChannelPost(eventPayload: JsonRecord, publication: JsonRecord, channel: ChannelKey): PostPayload {
@@ -137,10 +123,19 @@ async function loadPublicationContext(userId: string, publicationId: string) {
   const event = ((events || []) as AppEventRow[]).find((row) => String(asRecord(row.payload).publication_id || "") === publicationId) ?? null;
   const eventPayload = asRecord(event?.payload);
 
+  const { data: delivery, error: deliveryError } = await supabaseAdmin
+    .from("publication_deliveries")
+    .select("id,status,error,channel")
+    .eq("user_id", userId)
+    .eq("publication_id", publicationId);
+
+  if (deliveryError) throw deliveryError;
+
   return {
     publication: asRecord(publication),
     event,
     eventPayload,
+    deliveries: Array.isArray(delivery) ? delivery : [],
   };
 }
 
@@ -154,6 +149,21 @@ async function deleteFacebookPost(externalId: string, pageAccessToken: string) {
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json?.success === false) {
     throw new Error(json?.error?.message || `Suppression Facebook impossible (${res.status})`);
+  }
+}
+
+async function updateFacebookPost(externalId: string, pageAccessToken: string, message: string) {
+  if (!externalId) throw new Error("Publication Facebook introuvable.");
+  const body = new URLSearchParams({ access_token: pageAccessToken, message });
+  const res = await fetch(`https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(externalId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+    cache: "no-store",
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.success === false) {
+    throw new Error(json?.error?.message || `Modification Facebook impossible (${res.status})`);
   }
 }
 
@@ -199,6 +209,44 @@ async function deleteGmbPost(externalId: string, accessToken: string) {
   if (!res.ok && res.status !== 404) {
     throw new Error(raw || `Suppression Google Business impossible (${res.status})`);
   }
+}
+
+async function syncDeliveryRow(params: {
+  userId: string;
+  publicationId: string;
+  channel: ChannelKey;
+  status: string;
+  error?: string | null;
+}) {
+  const { userId, publicationId, channel, status, error } = params;
+  const { error: upError } = await supabaseAdmin
+    .from("publication_deliveries")
+    .update({ status, error: error || null })
+    .eq("user_id", userId)
+    .eq("publication_id", publicationId)
+    .eq("channel", channel);
+
+  if (upError) throw upError;
+}
+
+async function persistEventPayload(userId: string, publicationId: string, nextPayload: JsonRecord) {
+  const { data: events, error } = await supabaseAdmin
+    .from("app_events")
+    .select("id,payload")
+    .eq("user_id", userId)
+    .eq("module", "booster")
+    .eq("type", "publish")
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (error) throw error;
+  const ids = ((events || []) as AppEventRow[])
+    .filter((row) => String(asRecord(row.payload).publication_id || "") === publicationId)
+    .map((row) => String(row.id));
+
+  if (!ids.length) return;
+  const { error: upError } = await supabaseAdmin.from("app_events").update({ payload: nextPayload }).in("id", ids);
+  if (upError) throw upError;
 }
 
 async function replaceChannelDelivery(params: {
@@ -253,7 +301,14 @@ async function replaceChannelDelivery(params: {
     const pageId = String(fb.resource_id ?? "");
     const pageToken = tryDecryptToken(String(fb.access_token_enc ?? "")) || "";
     if (String(fb.status ?? "") !== "connected" || !pageId || !pageToken) throw new Error("Facebook non configuré.");
-    if (previousExternalId) await deleteFacebookPost(previousExternalId, pageToken);
+    if (previousExternalId) {
+      try {
+        await updateFacebookPost(previousExternalId, pageToken, canonMessage);
+        return { externalId: previousExternalId, status: "delivered", error: null };
+      } catch {
+        await deleteFacebookPost(previousExternalId, pageToken);
+      }
+    }
     const resp = await facebookPublishToPage({ pageId, pageAccessToken: pageToken, message: canonMessage, imageUrls: socialFeedImageUrls });
     if (!resp.ok) throw new Error(resp.error);
     return { externalId: resp.postId, status: "delivered", error: null };
@@ -370,157 +425,166 @@ async function removeChannelDelivery(params: {
     const token = await getGmbToken();
     if (!token?.accessToken) throw new Error("Token Google Business invalide.");
     if (previousExternalId) await deleteGmbPost(previousExternalId, token.accessToken);
-    return;
   }
 }
 
-async function persistEventPayload(userId: string, publicationId: string, nextPayload: JsonRecord | null) {
-  const { data: events, error } = await supabaseAdmin
-    .from("app_events")
-    .select("id,payload")
-    .eq("user_id", userId)
-    .eq("module", "booster")
-    .eq("type", "publish")
-    .order("created_at", { ascending: false })
-    .limit(200);
+function buildUpdatedPayload(params: {
+  eventPayload: JsonRecord;
+  publication: JsonRecord;
+  channel: ChannelKey;
+  nextPost: PostPayload;
+  externalId: string | null;
+}) {
+  const { eventPayload, publication, channel, nextPost, externalId } = params;
+  const results = cloneRecord(asRecord(eventPayload.results));
+  const channelResult = asRecord(results[channel]);
+  results[channel] = {
+    ...channelResult,
+    ok: true,
+    status: "delivered",
+    deleted: false,
+    error: null,
+    external_id: externalId,
+    updated_at: new Date().toISOString(),
+  };
 
-  if (error) throw error;
-  const ids = ((events || []) as AppEventRow[])
-    .filter((row) => String(asRecord(row.payload).publication_id || "") === publicationId)
-    .map((row) => String(row.id));
+  const nextPayload: JsonRecord = {
+    ...eventPayload,
+    channels: Array.from(new Set([...(Array.isArray(eventPayload.channels) ? eventPayload.channels : []), channel])),
+    postByChannel: {
+      ...asRecord(eventPayload.postByChannel),
+      [channel]: nextPost,
+    },
+    post: channel === "inrcy_site" || channel === "site_web" ? asRecord(eventPayload.post) : eventPayload.post,
+    results,
+  };
 
-  if (!ids.length) return;
-  if (!nextPayload) {
-    const { error: delError } = await supabaseAdmin.from("app_events").delete().in("id", ids);
-    if (delError) throw delError;
-    return;
+  if (!asRecord(nextPayload.post).title && !asRecord(nextPayload.post).content) {
+    nextPayload.post = getChannelPost(eventPayload, publication, channel);
   }
 
-  const { error: upError } = await supabaseAdmin.from("app_events").update({ payload: nextPayload }).in("id", ids);
-  if (upError) throw upError;
+  return nextPayload;
 }
 
-export async function PATCH(req: Request, context: { params: Promise<{ publicationId: string; channel: string }> }) {
-  try {
-    const { user, errorResponse } = await requireUser();
-    if (errorResponse) return errorResponse;
+function buildDeletedPayload(params: {
+  eventPayload: JsonRecord;
+  channel: ChannelKey;
+  previousExternalId: string | null;
+}) {
+  const { eventPayload, channel, previousExternalId } = params;
+  const results = cloneRecord(asRecord(eventPayload.results));
+  const channelResult = asRecord(results[channel]);
+  results[channel] = {
+    ...channelResult,
+    ok: false,
+    status: "deleted",
+    deleted: true,
+    error: null,
+    deleted_at: new Date().toISOString(),
+    external_id: previousExternalId || channelResult.external_id || null,
+  };
 
-    const params = await context.params;
-    const publicationId = String(params.publicationId || "").trim();
-    const channel = normalizeChannelKey(params.channel || "");
-    if (!publicationId || !channel) return NextResponse.json({ error: "Paramètres invalides." }, { status: 400 });
-
-    const body = (await req.json().catch(() => null)) as JsonRecord | null;
-    if (!body) return NextResponse.json({ error: "Bad payload" }, { status: 400 });
-
-    const ctx = await loadPublicationContext(user.id, publicationId);
-    if (!ctx) return NextResponse.json({ error: "Publication introuvable." }, { status: 404 });
-
-    const currentPost = getChannelPost(ctx.eventPayload, ctx.publication, channel);
-    const nextPost: PostPayload = {
-      title: String(body.title ?? currentPost.title ?? "").trim(),
-      content: String(body.content ?? currentPost.content ?? "").trim(),
-      cta: String(body.cta ?? currentPost.cta ?? "").trim(),
-      hashtags: Array.isArray(body.hashtags)
-        ? body.hashtags.map((tag: unknown) => normalizeHashtag(String(tag || ""))).filter(Boolean).slice(0, 20)
-        : currentPost.hashtags,
-    };
-
-    if (!nextPost.content) return NextResponse.json({ error: "Le contenu est vide." }, { status: 400 });
-
-    const results = asRecord(ctx.eventPayload.results);
-    const channelResult = asRecord(results[channel]);
-    const previousExternalId = String(body.externalId ?? channelResult.external_id ?? "").trim() || null;
-
-    const replaceResult = await replaceChannelDelivery({
-      userId: user.id,
-      channel,
-      previousExternalId,
-      publication: ctx.publication,
-      eventPayload: ctx.eventPayload,
-      nextPost,
-    });
-
-    const nextPayload: JsonRecord = {
-      ...ctx.eventPayload,
-      channels: Array.from(new Set([...(Array.isArray(ctx.eventPayload.channels) ? ctx.eventPayload.channels : []), channel])),
-      postByChannel: {
-        ...asRecord(ctx.eventPayload.postByChannel),
-        [channel]: nextPost,
-      },
-      results: {
-        ...results,
-        [channel]: {
-          ...channelResult,
-          ok: true,
-          external_id: replaceResult.externalId,
-          updated_at: new Date().toISOString(),
-        },
-      },
-    };
-
-    await persistEventPayload(user.id, publicationId, nextPayload);
-
-    const { error: deliveryError } = await supabaseAdmin
-      .from("publication_deliveries")
-      .update({ status: replaceResult.status, error: replaceResult.error })
-      .eq("user_id", user.id)
-      .eq("publication_id", publicationId)
-      .eq("channel", channel);
-    if (deliveryError) throw deliveryError;
-
-    return NextResponse.json({ ok: true, publication_id: publicationId, channel, external_id: replaceResult.externalId, payload: nextPayload });
-  } catch (e: unknown) {
-    return NextResponse.json({ error: errMessage(e, "Erreur") }, { status: 500 });
-  }
+  return {
+    ...eventPayload,
+    channels: Array.from(new Set([...(Array.isArray(eventPayload.channels) ? eventPayload.channels : []), channel])),
+    results,
+  } as JsonRecord;
 }
 
-export async function DELETE(req: Request, context: { params: Promise<{ publicationId: string; channel: string }> }) {
-  try {
-    const { user, errorResponse } = await requireUser();
-    if (errorResponse) return errorResponse;
+export function createPublicationChannelHandlers(channel: ChannelKey) {
+  async function PATCH(req: Request, context: { params: Promise<{ publicationId: string }> }) {
+    try {
+      const { user, errorResponse } = await requireUser();
+      if (errorResponse) return errorResponse;
 
-    const params = await context.params;
-    const publicationId = String(params.publicationId || "").trim();
-    const channel = normalizeChannelKey(params.channel || "");
-    if (!publicationId || !channel) return NextResponse.json({ error: "Paramètres invalides." }, { status: 400 });
+      const params = await context.params;
+      const publicationId = String(params.publicationId || "").trim();
+      if (!publicationId) return NextResponse.json({ error: "Paramètres invalides." }, { status: 400 });
 
-    const ctx = await loadPublicationContext(user.id, publicationId);
-    if (!ctx) return NextResponse.json({ error: "Publication introuvable." }, { status: 404 });
+      const body = (await req.json().catch(() => null)) as JsonRecord | null;
+      if (!body) return NextResponse.json({ error: "Bad payload" }, { status: 400 });
 
-    const body = (await req.json().catch(() => ({}))) as JsonRecord;
-    const results = asRecord(ctx.eventPayload.results);
-    const channelResult = asRecord(results[channel]);
-    const previousExternalId = String(body.externalId ?? channelResult.external_id ?? "").trim() || null;
+      const ctx = await loadPublicationContext(user.id, publicationId);
+      if (!ctx) return NextResponse.json({ error: "Publication introuvable." }, { status: 404 });
 
-    await removeChannelDelivery({ userId: user.id, channel, previousExternalId });
+      const results = asRecord(ctx.eventPayload.results);
+      const channelResult = asRecord(results[channel]);
+      if (isDeletedResult(channelResult)) {
+        return NextResponse.json({ error: "Ce canal est déjà supprimé." }, { status: 409 });
+      }
 
-    const nextChannels = (Array.isArray(ctx.eventPayload.channels) ? ctx.eventPayload.channels : []).filter((item: unknown) => normalizeChannelKey(String(item || "")) !== channel);
-    const nextPostByChannel = { ...asRecord(ctx.eventPayload.postByChannel) };
-    delete nextPostByChannel[channel];
-    const nextResults = { ...results };
-    delete nextResults[channel];
+      const currentPost = getChannelPost(ctx.eventPayload, ctx.publication, channel);
+      const nextPost: PostPayload = {
+        title: String(body.title ?? currentPost.title ?? "").trim(),
+        content: String(body.content ?? currentPost.content ?? "").trim(),
+        cta: String(body.cta ?? currentPost.cta ?? "").trim(),
+        hashtags: Array.isArray(body.hashtags)
+          ? body.hashtags.map((tag: unknown) => normalizeHashtag(String(tag || ""))).filter(Boolean).slice(0, 20)
+          : currentPost.hashtags,
+      };
 
-    await supabaseAdmin.from("publication_deliveries").delete().eq("user_id", user.id).eq("publication_id", publicationId).eq("channel", channel);
+      if (!nextPost.content) return NextResponse.json({ error: "Le contenu est vide." }, { status: 400 });
 
-    if (!nextChannels.length) {
-      await persistEventPayload(user.id, publicationId, null);
-      await supabaseAdmin.from("publication_deliveries").delete().eq("user_id", user.id).eq("publication_id", publicationId);
-      await supabaseAdmin.from("publications").delete().eq("user_id", user.id).eq("id", publicationId);
-      return NextResponse.json({ ok: true, deleted: true, removed_publication: true });
+      const previousExternalId = String(body.externalId ?? channelResult.external_id ?? "").trim() || null;
+      const replaceResult = await replaceChannelDelivery({
+        userId: user.id,
+        channel,
+        previousExternalId,
+        publication: ctx.publication,
+        eventPayload: ctx.eventPayload,
+        nextPost,
+      });
+
+      const nextPayload = buildUpdatedPayload({
+        eventPayload: ctx.eventPayload,
+        publication: ctx.publication,
+        channel,
+        nextPost,
+        externalId: replaceResult.externalId,
+      });
+
+      await persistEventPayload(user.id, publicationId, nextPayload);
+      await syncDeliveryRow({ userId: user.id, publicationId, channel, status: replaceResult.status, error: replaceResult.error });
+
+      return NextResponse.json({ ok: true, publication_id: publicationId, channel, external_id: replaceResult.externalId, payload: nextPayload });
+    } catch (e: unknown) {
+      return NextResponse.json({ error: errMessage(e, "Erreur") }, { status: 500 });
     }
-
-    const nextPayload: JsonRecord = {
-      ...ctx.eventPayload,
-      channels: nextChannels,
-      postByChannel: nextPostByChannel,
-      results: nextResults,
-    };
-
-    await persistEventPayload(user.id, publicationId, nextPayload);
-
-    return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload: nextPayload });
-  } catch (e: unknown) {
-    return NextResponse.json({ error: errMessage(e, "Erreur") }, { status: 500 });
   }
+
+  async function DELETE(req: Request, context: { params: Promise<{ publicationId: string }> }) {
+    try {
+      const { user, errorResponse } = await requireUser();
+      if (errorResponse) return errorResponse;
+
+      const params = await context.params;
+      const publicationId = String(params.publicationId || "").trim();
+      if (!publicationId) return NextResponse.json({ error: "Paramètres invalides." }, { status: 400 });
+
+      const ctx = await loadPublicationContext(user.id, publicationId);
+      if (!ctx) return NextResponse.json({ error: "Publication introuvable." }, { status: 404 });
+
+      const body = (await req.json().catch(() => ({}))) as JsonRecord;
+      const results = asRecord(ctx.eventPayload.results);
+      const channelResult = asRecord(results[channel]);
+      const previousExternalId = String(body.externalId ?? channelResult.external_id ?? "").trim() || null;
+
+      if (isDeletedResult(channelResult)) {
+        const payload = buildDeletedPayload({ eventPayload: ctx.eventPayload, channel, previousExternalId });
+        return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload });
+      }
+
+      await removeChannelDelivery({ userId: user.id, channel, previousExternalId });
+
+      const nextPayload = buildDeletedPayload({ eventPayload: ctx.eventPayload, channel, previousExternalId });
+      await persistEventPayload(user.id, publicationId, nextPayload);
+      await syncDeliveryRow({ userId: user.id, publicationId, channel, status: "deleted", error: null });
+
+      return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload: nextPayload });
+    } catch (e: unknown) {
+      return NextResponse.json({ error: errMessage(e, "Erreur") }, { status: 500 });
+    }
+  }
+
+  return { PATCH, DELETE };
 }

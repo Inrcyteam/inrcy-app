@@ -395,6 +395,31 @@ function formatChannelLabel(channel: string): string {
   }
 }
 
+function channelApiPath(channel: string): string {
+  const normalized = normalizeChannelKey(channel);
+  switch (normalized) {
+    case "inrcy_site":
+      return "site-inrcy";
+    case "site_web":
+      return "site-web";
+    case "gmb":
+      return "gmb";
+    case "facebook":
+      return "facebook";
+    case "instagram":
+      return "instagram";
+    case "linkedin":
+      return "linkedin";
+    default:
+      return normalized || channel;
+  }
+}
+
+function isDeletedChannelResult(result: any): boolean {
+  if (!result || typeof result !== "object") return false;
+  return result.deleted === true || String(result.status || "").toLowerCase() === "deleted";
+}
+
 function orderChannelKeys(channels: string[]): string[] {
   const priority = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"];
   const normalizedUnique = Array.from(new Set(channels.map((channel) => normalizeChannelKey(channel)).filter(Boolean)));
@@ -1511,7 +1536,7 @@ async function deleteDraftPermanently(id: string) {
         .map((tag) => tag.trim().replace(/^#+/, ""))
         .filter(Boolean);
 
-      const res = await fetch(`/api/booster/publications/${encodeURIComponent(publicationId)}/deliveries/${encodeURIComponent(channel)}`, {
+      const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/${encodeURIComponent(channelApiPath(channel))}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1545,7 +1570,7 @@ async function deleteDraftPermanently(id: string) {
     setDetailsActionBusy(true);
     setDetailsActionError(null);
     try {
-      const res = await fetch(`/api/booster/publications/${encodeURIComponent(publicationId)}/deliveries/${encodeURIComponent(channel)}`, {
+      const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/${encodeURIComponent(channelApiPath(channel))}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ externalId: (activeDetailsChannelResult as any)?.external_id || null }),
@@ -1555,14 +1580,7 @@ async function deleteDraftPermanently(id: string) {
       setToast(`Publication ${label} supprimée ✅`);
       setDetailsEditMode(false);
       await loadHistory();
-      if (json?.removed_publication) {
-        setDetailsOpen(false);
-        setDetailsId(null);
-        setDetailsChannelKey(null);
-      } else {
-        const remaining = detailsChannelEntries.filter((entry) => entry.key !== channel);
-        setDetailsChannelKey(remaining[0]?.key || null);
-      }
+      setDetailsChannelKey(channel);
     } catch (e: any) {
       setDetailsActionError(e?.message || "Suppression impossible.");
     } finally {
@@ -2002,6 +2020,10 @@ async function deleteDraftPermanently(id: string) {
                   const activePublicationEntry = detailsItem.source !== "send_items"
                     ? (publicationChannelEntries.find((entry) => entry.key === detailsChannelKey) || publicationChannelEntries[0] || null)
                     : null;
+                  const activePublicationResult = detailsItem.source !== "send_items" && activePublicationEntry
+                    ? ((payload?.results && typeof payload.results === "object" ? (payload.results as any)[activePublicationEntry.key] : null) || null)
+                    : null;
+                  const activePublicationDeleted = isDeletedChannelResult(activePublicationResult);
                   const activeParts = activePublicationEntry?.parts || defaultParts;
                   const attachmentCandidates = detailsItem.source === "send_items"
                     ? [...(detailsItem.attachments || [])]
@@ -2145,6 +2167,7 @@ async function deleteDraftPermanently(id: string) {
                             (() => {
                               const parts = activeParts;
                               const showInstagramHashtags = activePublicationEntry.key === "instagram";
+                              const deletedAt = activePublicationResult?.deleted_at ? new Date(String(activePublicationResult.deleted_at)).toLocaleString() : null;
                               const hasAny = !!(parts.title || parts.content || parts.cta || (showInstagramHashtags && parts.hashtags?.length));
                               if (!hasAny && showFallbackMessage) {
                                 return (
@@ -2160,8 +2183,13 @@ async function deleteDraftPermanently(id: string) {
                               if (!hasAny && !detailsEditMode) return <div className={styles.emptyDetailText}>Aucun message disponible pour ce canal.</div>;
                               return (
                                 <article key={activePublicationEntry.key} className={styles.channelPublicationCard}>
+                                  {activePublicationDeleted ? (
+                                    <div className={styles.detailsError} style={{ marginBottom: 12 }}>
+                                      <b>Statut :</b> Supprimé{deletedAt ? ` le ${deletedAt}` : ""}
+                                    </div>
+                                  ) : null}
                                   <div className={styles.publicationParts}>
-                                    {detailsEditMode ? (
+                                    {detailsEditMode && !activePublicationDeleted ? (
                                       <>
                                         <div>
                                           <div className={styles.publicationLabel}>Titre</div>
