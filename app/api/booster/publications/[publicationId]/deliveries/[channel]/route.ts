@@ -11,7 +11,13 @@ const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
-type JsonRecord = Record<string, any>;
+type JsonRecord = Record<string, unknown>;
+
+type AppEventRow = {
+  id: string | number;
+  payload?: unknown;
+  created_at?: string;
+};
 
 type PostPayload = {
   title: string;
@@ -75,9 +81,13 @@ function errMessage(e: unknown, fallback: string) {
 
 function getChannelPost(eventPayload: JsonRecord, publication: JsonRecord, channel: ChannelKey): PostPayload {
   const postByChannel = asRecord(eventPayload.postByChannel);
-  const raw = asRecord(postByChannel[channel] ?? (channel === "inrcy_site" ? postByChannel.site_web : channel === "site_web" ? postByChannel.inrcy_site : null) ?? eventPayload.post);
+  const fallbackChannelPost = channel === "inrcy_site" ? postByChannel.site_web : channel === "site_web" ? postByChannel.inrcy_site : null;
+  const raw = asRecord(postByChannel[channel] ?? fallbackChannelPost ?? eventPayload.post);
+  const eventPost = asRecord(eventPayload.post);
   const publicationTags = Array.isArray(publication.hashtags) ? publication.hashtags : [];
-  const rawTags = Array.isArray(raw.hashtags) ? raw.hashtags : Array.isArray(eventPayload?.post?.hashtags) ? eventPayload.post.hashtags : publicationTags;
+  const eventPostTags = Array.isArray(eventPost.hashtags) ? eventPost.hashtags : [];
+  const rawTags = Array.isArray(raw.hashtags) ? raw.hashtags : eventPostTags.length ? eventPostTags : publicationTags;
+
   return {
     title: String(raw.title ?? publication.title ?? "").trim(),
     content: String(raw.content ?? raw.text ?? raw.message ?? publication.content ?? "").trim(),
@@ -124,7 +134,7 @@ async function loadPublicationContext(userId: string, publicationId: string) {
 
   if (eventsError) throw eventsError;
 
-  const event = (events || []).find((row: any) => String(asRecord(row.payload).publication_id || "") === publicationId) ?? null;
+  const event = ((events || []) as AppEventRow[]).find((row) => String(asRecord(row.payload).publication_id || "") === publicationId) ?? null;
   const eventPayload = asRecord(event?.payload);
 
   return {
@@ -375,9 +385,9 @@ async function persistEventPayload(userId: string, publicationId: string, nextPa
     .limit(200);
 
   if (error) throw error;
-  const ids = (events || [])
-    .filter((row: any) => String(asRecord(row.payload).publication_id || "") === publicationId)
-    .map((row: any) => String(row.id));
+  const ids = ((events || []) as AppEventRow[])
+    .filter((row) => String(asRecord(row.payload).publication_id || "") === publicationId)
+    .map((row) => String(row.id));
 
   if (!ids.length) return;
   if (!nextPayload) {

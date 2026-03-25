@@ -1,6 +1,18 @@
 import { test, expect } from '@playwright/test';
 import { login } from './helpers/auth';
 
+type ApiPayload = {
+  ok?: boolean;
+  id?: string;
+};
+
+type EvaluateResult = {
+  ok: boolean;
+  status: number;
+  text: string;
+  json: ApiPayload | null;
+};
+
 const email = process.env.E2E_EMAIL;
 const password = process.env.E2E_PASSWORD;
 const allowWrites = process.env.E2E_ALLOW_WRITES === 'true';
@@ -15,7 +27,7 @@ test.describe('calendar write api', () => {
     const start = new Date(Date.now() + 24 * 3600 * 1000);
     const end = new Date(start.getTime() + 60 * 60 * 1000);
 
-    const created = await page.evaluate(
+    const created = await page.evaluate<EvaluateResult, { startIso: string; endIso: string }>(
       async ({ startIso, endIso }) => {
         const res = await fetch('/api/calendar/events', {
           method: 'POST',
@@ -35,7 +47,7 @@ test.describe('calendar write api', () => {
         });
 
         const text = await res.text();
-        let json: any = null;
+        let json: ApiPayload | null = null;
         try {
           json = JSON.parse(text);
         } catch {
@@ -56,9 +68,10 @@ test.describe('calendar write api', () => {
     expect(created.json?.ok).toBeTruthy();
     expect(created.json?.id).toBeTruthy();
 
-    const eventId = created.json.id as string;
+    const eventId = String(created.json?.id || "");
+    expect(eventId).toBeTruthy();
 
-    const removed = await page.evaluate(async ({ id }) => {
+    const removed = await page.evaluate<EvaluateResult, { id: string }>(async ({ id }) => {
       const res = await fetch(`/api/calendar/events?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
         credentials: 'include',
@@ -68,7 +81,7 @@ test.describe('calendar write api', () => {
       });
 
       const text = await res.text();
-      let json: any = null;
+      let json: ApiPayload | null = null;
       try {
         json = JSON.parse(text);
       } catch {

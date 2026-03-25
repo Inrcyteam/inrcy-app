@@ -84,7 +84,7 @@ async function fetchArticles(domain: string, source: string, limit: number) {
   return (data || []) as Array<Record<string, unknown>>;
 }
 
-function htmlResponse(html: string, status = 200, domain = "") {
+function htmlResponse(html: string, status = 200, _domain?: string | null) {
   return new NextResponse(html, {
     status,
     headers: {
