@@ -50,6 +50,54 @@ function toNumber(v: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function safeJsonValue<T>(v: unknown, fallback: T): T {
+  return v !== null && v !== undefined ? (v as T) : fallback;
+}
+
+async function buildSummaryConnectionsKey(supabase: SupabaseClient, userId: string): Promise<string> {
+  const keyParts: string[] = [];
+
+  try {
+    const { data: integrations = [] } = await supabase
+      .from('integrations')
+      .select('provider,source,product,status,resource_id,updated_at,created_at')
+      .eq('user_id', userId);
+    const rows = Array.isArray(integrations) ? integrations : [];
+    for (const row of rows) {
+      const rec = asRecord(row);
+      const provider = String(rec['provider'] ?? '');
+      const source = String(rec['source'] ?? '');
+      const product = String(rec['product'] ?? '');
+      const status = String(rec['status'] ?? '');
+      const resource = String(rec['resource_id'] ?? '');
+      const updated = String(rec['updated_at'] ?? rec['created_at'] ?? '');
+      if (!provider || !source || !product) continue;
+      keyParts.push(`${provider}:${source}:${product}:${status}:${resource}:${updated}`);
+    }
+  } catch {}
+
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('inrcy_site_ownership')
+      .eq('user_id', userId)
+      .maybeSingle();
+    keyParts.push(`ownership:${String(asRecord(profile)['inrcy_site_ownership'] ?? 'none')}`);
+  } catch {}
+
+  try {
+    const { data: siteCfg } = await supabase
+      .from('inrcy_site_configs')
+      .select('settings')
+      .eq('user_id', userId)
+      .maybeSingle();
+    const settings = asRecord(asRecord(siteCfg)['settings']);
+    keyParts.push(`inrcyTrackingEnabled:${Boolean(settings['inrcy_tracking_enabled'] ?? true) ? '1' : '0'}`);
+  } catch {}
+
+  return keyParts.join('|') || 'none';
+}
+
 async function getProfile(
   supabase: SupabaseClient,
   userId: string,
@@ -125,6 +173,26 @@ export async function buildMetricsSummary(args: {
     invalidateOverviewCache();
   }
 
+  const cacheRangeKey = `month=${monthDays}|week=${weekDays}|today=${todayDays}|conn=${await buildSummaryConnectionsKey(supabase, userId)}`;
+
+  if (!fresh) {
+    try {
+      const nowIso = new Date().toISOString();
+      const { data: cacheHit } = await supabase
+        .from('stats_cache')
+        .select('payload, expires_at')
+        .eq('user_id', userId)
+        .eq('source', 'metrics_summary')
+        .eq('range_key', cacheRangeKey)
+        .gt('expires_at', nowIso)
+        .order('expires_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const payload = safeJsonValue<MetricsSummary | null>(asRecord(cacheHit)['payload'], null);
+      if (payload) return payload;
+    } catch {}
+  }
+
   const [profile, monthOverviews, weekOverviews] = await Promise.all([
     safe('profile', () => getProfile(supabase, userId, debug), {
       lead_conversion_rate: 0,
@@ -187,7 +255,7 @@ export async function buildMetricsSummary(args: {
 
   const estimatedValue = Math.round(oppResolved.total * (profile.lead_conversion_rate / 100) * profile.avg_basket);
 
-  return {
+  const payload: MetricsSummary = {
     leads,
     estimatedValue,
     details: {
@@ -199,4 +267,17 @@ export async function buildMetricsSummary(args: {
       generatedAt: new Date().toISOString(),
     },
   };
+
+  try {
+    const expiresAt = new Date(Date.now() + 45 * 1000).toISOString();
+    await supabase.from('stats_cache').insert({
+      user_id: userId,
+      source: 'metrics_summary',
+      range_key: cacheRangeKey,
+      payload,
+      expires_at: expiresAt,
+    });
+  } catch {}
+
+  return payload;
 }

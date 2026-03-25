@@ -106,23 +106,41 @@ function isConnectedGoogleStat(rows: IntegrationLite[], source: "site_inrcy" | "
   return hasGoogleSetting(fallbackSettingsNode, product);
 }
 
-export async function getChannelConnectionStates(supabase: any, userId: string): Promise<ChannelStates> {
-  const [profileRes, inrcyCfgRes, proCfgRes, integrationsRes] = await Promise.all([
-    supabase.from("profiles").select("inrcy_site_ownership,inrcy_site_url").eq("user_id", userId).maybeSingle(),
-    supabase.from("inrcy_site_configs").select("site_url,settings").eq("user_id", userId).maybeSingle(),
-    supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
-    supabase
-      .from("integrations")
-      .select("provider,source,product,status,resource_id,resource_label,resource_url,display_name,email_address,expires_at,access_token_enc,refresh_token_enc,meta,updated_at,created_at")
-      .eq("user_id", userId),
-  ]);
+export async function getChannelConnectionStates(
+  supabase: any,
+  userId: string,
+  preload?: {
+    profile?: unknown;
+    inrcySiteConfig?: unknown;
+    proToolsConfig?: unknown;
+    integrations?: unknown[];
+  }
+): Promise<ChannelStates> {
+  const usePreload = Boolean(preload);
+  const [profileRes, inrcyCfgRes, proCfgRes, integrationsRes] = usePreload
+    ? await Promise.all([
+        Promise.resolve({ data: preload?.profile ?? null }),
+        Promise.resolve({ data: preload?.inrcySiteConfig ?? null }),
+        Promise.resolve({ data: preload?.proToolsConfig ?? null }),
+        Promise.resolve({ data: preload?.integrations ?? [] }),
+      ])
+    : await Promise.all([
+        supabase.from("profiles").select("inrcy_site_ownership,inrcy_site_url").eq("user_id", userId).maybeSingle(),
+        supabase.from("inrcy_site_configs").select("site_url,settings").eq("user_id", userId).maybeSingle(),
+        supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
+        supabase
+          .from("integrations")
+          .select("provider,source,product,status,resource_id,resource_label,resource_url,display_name,email_address,expires_at,access_token_enc,refresh_token_enc,meta,updated_at,created_at")
+          .eq("user_id", userId),
+      ]);
 
-  const profile = asRecord(profileRes.data);
-  const inrcyCfg = asRecord(inrcyCfgRes.data);
+  const profile = asRecord((profileRes as { data?: unknown }).data);
+  const inrcyCfg = asRecord((inrcyCfgRes as { data?: unknown }).data);
   const inrcyCfgSettings = asRecord(inrcyCfg.settings);
-  const proCfg = asRecord(proCfgRes.data);
+  const proCfg = asRecord((proCfgRes as { data?: unknown }).data);
   const settings = asRecord(proCfg.settings);
-  const rows = Array.isArray(integrationsRes.data) ? (integrationsRes.data as IntegrationLite[]) : [];
+  const rowsRaw = (integrationsRes as { data?: unknown }).data;
+  const rows = Array.isArray(rowsRaw) ? (rowsRaw as IntegrationLite[]) : [];
 
   const ownership = asString(profile.inrcy_site_ownership) || "none";
   const inrcyUrl = (asString(profile.inrcy_site_url) || asString(inrcyCfg.site_url) || "").trim();

@@ -2343,7 +2343,7 @@ async function deleteDraftPermanently(id: string) {
                                             }}
                                           />
                                           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                                            <label htmlFor={publicationEditFileInputId} className={styles.btnAttach}>📎 Ajouter / remplacer des images</label>
+                                            <label htmlFor={publicationEditFileInputId} className={styles.btnAttach}>📎 Ajouter des images</label>
                                             <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
                                               {publicationEditExistingAttachments.length + publicationEditNewFiles.length} image(s)
                                             </span>

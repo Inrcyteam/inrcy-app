@@ -40,12 +40,11 @@ type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "l
 
 type Period = 7 | 14 | 30 | 60;
 
-type MetricsSummaryResponse = {
-  details?: {
-    opportunities?: {
-      total?: number;
-      byCube?: Partial<Record<CubeKey, number>>;
-    };
+type StatsBulkResponse = {
+  overviews?: Partial<Record<CubeKey, Overview>>;
+  opportunities?: {
+    total?: number;
+    byCube?: Partial<Record<CubeKey, number>>;
   };
 };
 
@@ -908,47 +907,29 @@ export default function StatsClient() {
   }, [clearCachedSnapshots, router]);
 
 
-  const fetchCube = async (key: CubeKey, period: Period, forceFresh = false) => {
-    const include =
-      key === "site_inrcy"
-        ? "site_inrcy_ga4,site_inrcy_gsc"
-        : key === "site_web"
-          ? "site_web_ga4,site_web_gsc"
-          : key === "gmb"
-            ? "gmb"
-            : key === "facebook"
-              ? "facebook"
-              : key === "instagram"
-                ? "instagram"
-                : "linkedin";
-    const params = new URLSearchParams({ days: String(period), include });
+  const fetchBulkStats = async (period: Period, forceFresh = false) => {
+    const params = new URLSearchParams({ days: String(period) });
     if (forceFresh) params.set("fresh", "1");
-    const r = await fetch(`/api/stats/overview?${params.toString()}`, { cache: "no-store" });
+    const r = await fetch(`/api/stats/dashboard-bulk?${params.toString()}`, { cache: "no-store" });
     if (!r.ok) {
       throw new Error(await getSimpleFrenchApiError(r));
     }
-    return (await r.json()) as Overview;
-  };
-
-  const fetchSummaryOpportunities = async (period: Period, forceFresh = false) => {
-    const params = new URLSearchParams({ monthDays: String(period), weekDays: "7", todayDays: "2" });
-    if (forceFresh) params.set("fresh", "1");
-    const r = await fetch(`/api/metrics/summary?${params.toString()}`, { cache: "no-store" });
-    if (!r.ok) {
-      throw new Error(await getSimpleFrenchApiError(r));
-    }
-    const json = (await r.json()) as MetricsSummaryResponse;
-    const byCubePartial = json?.details?.opportunities?.byCube || {};
+    const json = (await r.json()) as StatsBulkResponse;
+    const overviews = (json?.overviews || {}) as Partial<Record<CubeKey, Overview>>;
+    const byCubePartial = json?.opportunities?.byCube || {};
     return {
-      total: safeNum(json?.details?.opportunities?.total),
-      byCube: {
-        site_inrcy: safeNum(byCubePartial.site_inrcy),
-        site_web: safeNum(byCubePartial.site_web),
-        gmb: safeNum(byCubePartial.gmb),
-        facebook: safeNum(byCubePartial.facebook),
-        instagram: safeNum(byCubePartial.instagram),
-        linkedin: safeNum(byCubePartial.linkedin),
-      } as Record<CubeKey, number>,
+      overviews,
+      summary: {
+        total: safeNum(json?.opportunities?.total),
+        byCube: {
+          site_inrcy: safeNum(byCubePartial.site_inrcy),
+          site_web: safeNum(byCubePartial.site_web),
+          gmb: safeNum(byCubePartial.gmb),
+          facebook: safeNum(byCubePartial.facebook),
+          instagram: safeNum(byCubePartial.instagram),
+          linkedin: safeNum(byCubePartial.linkedin),
+        } as Record<CubeKey, number>,
+      },
     };
   };
 
@@ -1000,6 +981,7 @@ export default function StatsClient() {
 
 useEffect(() => {
   let cancelled = false;
+  const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"];
 
   (async () => {
     // Fast path: cached data for this period
@@ -1015,30 +997,26 @@ useEffect(() => {
       return;
     }
 
-    const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"];
-
-    // Set loading state
     setDataByCube((prev) => {
       const next: any = { ...prev };
       for (const k of keys) next[k] = { ...next[k], loading: true, error: undefined };
       return next;
     });
+    setSummaryOpp((prev) => ({ ...prev, loading: true }));
 
     try {
-      const res = await Promise.all(
-        keys.map(async (k) => {
-          const ov = await fetchCube(k, period, refreshNonce > 0);
-          return [k, ov] as const;
-        })
-      );
+      const next = await fetchBulkStats(period, refreshNonce > 0);
+      const snap = next.overviews as Record<CubeKey, Overview>;
 
-      // Store period snapshot in cache (prevents repeated reads / 429 on Supabase)
       try {
-        const snap: any = {};
-        for (const [k, ov] of res) snap[k] = ov;
         periodCacheRef.current.set(period, snap);
         try {
           window.sessionStorage.setItem(cubeSessionKey(period), JSON.stringify(snap));
+        } catch {
+          // ignore
+        }
+        try {
+          window.sessionStorage.setItem(summarySessionKey(period), JSON.stringify(next.summary));
         } catch {
           // ignore
         }
@@ -1047,22 +1025,25 @@ useEffect(() => {
       if (cancelled) return;
 
       setDataByCube((prev) => {
-        const next: any = { ...prev };
-        for (const [k, ov] of res) next[k] = { ov, loading: false, error: undefined };
-        return next;
+        const updated: any = { ...prev };
+        for (const k of keys) {
+          updated[k] = { ov: snap[k] ?? null, loading: false, error: undefined };
+        }
+        return updated;
       });
+      setSummaryOpp({ loading: false, total: next.summary.total, byCube: next.summary.byCube });
     } catch (e: any) {
       if (cancelled) return;
 
       const msg = e?.message || "Erreur inconnue";
       setDataByCube((prev) => {
-        const next: any = { ...prev };
-        // Mark all cubes with the error only if they have no data yet.
+        const updated: any = { ...prev };
         for (const k of keys) {
-          next[k] = { ...next[k], loading: false, error: next[k]?.ov ? undefined : msg };
+          updated[k] = { ...updated[k], loading: false, error: updated[k]?.ov ? undefined : msg };
         }
-        return next;
+        return updated;
       });
+      setSummaryOpp((prev) => ({ ...prev, loading: false }));
     }
   })();
 
@@ -1070,32 +1051,6 @@ useEffect(() => {
     cancelled = true;
   };
 }, [period, refreshNonce]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    setSummaryOpp((prev) => ({ ...prev, loading: true }));
-
-    (async () => {
-      try {
-        const next = await fetchSummaryOpportunities(period, refreshNonce > 0);
-        if (cancelled) return;
-        setSummaryOpp({ loading: false, total: next.total, byCube: next.byCube });
-        try {
-          window.sessionStorage.setItem(summarySessionKey(period), JSON.stringify(next));
-        } catch {
-          // ignore
-        }
-      } catch {
-        if (cancelled) return;
-        setSummaryOpp((prev) => ({ ...prev, loading: false }));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [period, refreshNonce]);
 
   useEffect(() => {
     if (!isRefreshing) return;
