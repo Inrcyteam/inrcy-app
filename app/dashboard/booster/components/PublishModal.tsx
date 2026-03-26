@@ -5,6 +5,7 @@ type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" |
 type DisplayKey = "site" | "gmb" | "facebook" | "instagram" | "linkedin";
 type ThemeKey = "" | "promotion" | "information" | "conseil" | "avis_client" | "realisation" | "actualite" | "autre";
 type FitMode = "contain" | "cover";
+type BackgroundMode = "blur" | "white" | "black";
 
 type ChannelPost = {
   title: string;
@@ -25,6 +26,7 @@ type ImageTransform = {
   offsetX: number;
   offsetY: number;
   blurBackground: boolean;
+  backgroundMode?: BackgroundMode;
 };
 
 type ImageMeta = {
@@ -48,12 +50,22 @@ type RenderPreset = {
   defaultBlurBackground: boolean;
 };
 
+type PreviewLayout = {
+  drawW: number;
+  drawH: number;
+  dx: number;
+  dy: number;
+  maxX: number;
+  maxY: number;
+};
+
 const DEFAULT_TRANSFORM: ImageTransform = {
   fit: "contain",
   zoom: 1,
   offsetX: 0,
   offsetY: 0,
   blurBackground: true,
+  backgroundMode: "blur",
 };
 
 const DISPLAY_LABELS: Record<DisplayKey, string> = {
@@ -112,6 +124,61 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function getBackgroundMode(transform: ImageTransform): BackgroundMode {
+  if (transform.backgroundMode) return transform.backgroundMode;
+  return transform.blurBackground ? "blur" : "black";
+}
+
+function withBackgroundMode(transform: ImageTransform, backgroundMode: BackgroundMode): ImageTransform {
+  return {
+    ...transform,
+    backgroundMode,
+    blurBackground: backgroundMode === "blur",
+  };
+}
+
+function computePreviewLayout(params: {
+  containerWidth: number;
+  containerHeight: number;
+  imageWidth: number;
+  imageHeight: number;
+  transform: ImageTransform;
+}): PreviewLayout {
+  const { containerWidth, containerHeight, imageWidth, imageHeight, transform } = params;
+  if (!containerWidth || !containerHeight || !imageWidth || !imageHeight) {
+    return { drawW: 0, drawH: 0, dx: 0, dy: 0, maxX: 0, maxY: 0 };
+  }
+
+  const baseScale = transform.fit === "cover"
+    ? Math.max(containerWidth / imageWidth, containerHeight / imageHeight)
+    : Math.min(containerWidth / imageWidth, containerHeight / imageHeight);
+  const scale = baseScale * clamp(transform.zoom || 1, 1, 3);
+  const drawW = imageWidth * scale;
+  const drawH = imageHeight * scale;
+  const maxX = Math.max(0, (drawW - containerWidth) / 2);
+  const maxY = Math.max(0, (drawH - containerHeight) / 2);
+  const dx = (containerWidth - drawW) / 2 - maxX * clamp(transform.offsetX || 0, -100, 100) / 100;
+  const dy = (containerHeight - drawH) / 2 - maxY * clamp(transform.offsetY || 0, -100, 100) / 100;
+
+  return { drawW, drawH, dx, dy, maxX, maxY };
+}
+
+function offsetFromDrawPosition(params: {
+  containerWidth: number;
+  containerHeight: number;
+  drawW: number;
+  drawH: number;
+  dx: number;
+  dy: number;
+}): Pick<ImageTransform, "offsetX" | "offsetY"> {
+  const { containerWidth, containerHeight, drawW, drawH, dx, dy } = params;
+  const maxX = Math.max(0, (drawW - containerWidth) / 2);
+  const maxY = Math.max(0, (drawH - containerHeight) / 2);
+  const offsetX = maxX ? clamp((((containerWidth - drawW) / 2 - dx) / maxX) * 100, -100, 100) : 0;
+  const offsetY = maxY ? clamp((((containerHeight - drawH) / 2 - dy) / maxY) * 100, -100, 100) : 0;
+  return { offsetX, offsetY };
+}
+
 function loadHtmlImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -151,7 +218,8 @@ async function renderChannelImage(params: {
 
     ctx.clearRect(0, 0, cw, ch);
 
-    if (transform.fit === "contain" && transform.blurBackground) {
+    const backgroundMode = getBackgroundMode(transform);
+    if (transform.fit === "contain" && backgroundMode === "blur") {
       ctx.save();
       ctx.filter = "blur(28px) saturate(1.05) brightness(1.02)";
       const bgScale = Math.max(cw / iw, ch / ih);
@@ -162,7 +230,7 @@ async function renderChannelImage(params: {
       ctx.fillStyle = "rgba(0,0,0,0.08)";
       ctx.fillRect(0, 0, cw, ch);
     } else {
-      ctx.fillStyle = "#0d1320";
+      ctx.fillStyle = backgroundMode === "white" ? "#ffffff" : "#0d1320";
       ctx.fillRect(0, 0, cw, ch);
     }
 
@@ -187,6 +255,7 @@ function getDefaultTransform(channel: ChannelKey): ImageTransform {
     offsetX: 0,
     offsetY: 0,
     blurBackground: preset.defaultBlurBackground,
+    backgroundMode: preset.defaultBlurBackground ? "blur" : "black",
   };
 }
 
@@ -201,22 +270,22 @@ function getOptimizedTransform(channel: ChannelKey, meta?: ImageMeta): ImageTran
   const isVeryTall = ratio <= 0.68;
 
   if (channel === "inrcy_site" || channel === "site_web" || channel === "gmb") {
-    return { ...base, fit: "contain", blurBackground: true, zoom: 1 };
+    return withBackgroundMode({ ...base, fit: "contain", zoom: 1 }, "blur");
   }
 
   if (channel === "instagram") {
-    if (isVeryWide) return { ...base, fit: "contain", blurBackground: true, zoom: 1, offsetX: 0, offsetY: 0 };
-    if (isWide) return { ...base, fit: "contain", blurBackground: true, zoom: 1 };
-    if (isVeryTall) return { ...base, fit: "contain", blurBackground: true, zoom: 1 };
-    if (isTall) return { ...base, fit: "cover", blurBackground: false, zoom: 1.04, offsetX: 0, offsetY: -10 };
-    return { ...base, fit: "cover", blurBackground: false, zoom: ratio < 1 ? 1.03 : 1.08, offsetX: 0, offsetY: ratio > 1 ? 0 : -6 };
+    if (isVeryWide) return withBackgroundMode({ ...base, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, "blur");
+    if (isWide) return withBackgroundMode({ ...base, fit: "contain", zoom: 1 }, "blur");
+    if (isVeryTall) return withBackgroundMode({ ...base, fit: "contain", zoom: 1 }, "blur");
+    if (isTall) return withBackgroundMode({ ...base, fit: "cover", zoom: 1.04, offsetX: 0, offsetY: -10 }, "black");
+    return withBackgroundMode({ ...base, fit: "cover", zoom: ratio < 1 ? 1.03 : 1.08, offsetX: 0, offsetY: ratio > 1 ? 0 : -6 }, "black");
   }
 
   if (channel === "facebook" || channel === "linkedin") {
-    if (isVeryWide || isVeryTall) return { ...base, fit: "contain", blurBackground: true, zoom: 1 };
-    if (isWide) return { ...base, fit: "contain", blurBackground: true, zoom: 1 };
-    if (isTall) return { ...base, fit: "cover", blurBackground: false, zoom: 1.06, offsetX: 0, offsetY: -12 };
-    return { ...base, fit: "cover", blurBackground: false, zoom: ratio < 1 ? 1.02 : 1.06, offsetX: 0, offsetY: ratio < 0.98 ? -8 : 0 };
+    if (isVeryWide || isVeryTall) return withBackgroundMode({ ...base, fit: "contain", zoom: 1 }, "blur");
+    if (isWide) return withBackgroundMode({ ...base, fit: "contain", zoom: 1 }, "blur");
+    if (isTall) return withBackgroundMode({ ...base, fit: "cover", zoom: 1.06, offsetX: 0, offsetY: -12 }, "black");
+    return withBackgroundMode({ ...base, fit: "cover", zoom: ratio < 1 ? 1.02 : 1.06, offsetX: 0, offsetY: ratio < 0.98 ? -8 : 0 }, "black");
   }
 
   return base;
@@ -289,6 +358,11 @@ export default function PublishModal({
   const [channelImageEditors, setChannelImageEditors] = useState<Partial<Record<ChannelKey, ChannelImageEditorState>>>({});
   const [activeImageChannel, setActiveImageChannel] = useState<ChannelKey>("inrcy_site");
   const [activeImageKeyByChannel, setActiveImageKeyByChannel] = useState<Partial<Record<ChannelKey, string>>>({});
+  const previewStageRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<{ pointerId: number; startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
+  const [previewStageSize, setPreviewStageSize] = useState({ width: 0, height: 0 });
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [isImageEditorOpen, setIsImageEditorOpen] = useState(false);
 
   const [channels, setChannels] = useState<Record<ChannelKey, boolean>>({
     inrcy_site: true,
@@ -349,6 +423,20 @@ export default function PublishModal({
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  useEffect(() => {
+    const node = previewStageRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+
+    const update = () => {
+      setPreviewStageSize({ width: node.clientWidth || 0, height: node.clientHeight || 0 });
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [activeImageChannel, activeImageKeyByChannel[activeImageChannel], isImageEditorOpen, images.length]);
 
   const displayCards = useMemo(() => {
     const cards: DisplayKey[] = [];
@@ -424,6 +512,16 @@ export default function PublishModal({
   const activeEditor = channelImageEditors[activeImageChannel];
   const activeEditorImageKey = activeImageKeyByChannel[activeImageChannel] || activeEditor?.imageKeys?.[0] || "";
   const activeEditorTransform = activeEditor?.transforms?.[activeEditorImageKey] || getOptimizedTransform(activeImageChannel, imageMetaByKey[activeEditorImageKey]);
+  const activeEditorMeta = imageMetaByKey[activeEditorImageKey];
+  const activeBackgroundMode = getBackgroundMode(activeEditorTransform);
+  const previewAspectRatio = `${CHANNEL_PRESETS[activeImageChannel].width} / ${CHANNEL_PRESETS[activeImageChannel].height}`;
+  const previewLayout = computePreviewLayout({
+    containerWidth: previewStageSize.width,
+    containerHeight: previewStageSize.height,
+    imageWidth: activeEditorMeta?.width || 0,
+    imageHeight: activeEditorMeta?.height || 0,
+    transform: activeEditorTransform,
+  });
 
   const toggle = (key: ChannelKey) => {
     if (!connected[key]) return;
@@ -611,6 +709,86 @@ export default function PublishModal({
     });
   };
 
+  const setContainMode = (channel: ChannelKey, imageKey: string) => {
+    const current = channelImageEditors[channel]?.transforms?.[imageKey] || getOptimizedTransform(channel, imageMetaByKey[imageKey]);
+    const backgroundMode = current.fit === "contain" ? getBackgroundMode(current) : "blur";
+    updateChannelTransform(channel, imageKey, { fit: "contain", backgroundMode, blurBackground: backgroundMode === "blur" });
+  };
+
+  const setCoverMode = (channel: ChannelKey, imageKey: string) => {
+    updateChannelTransform(channel, imageKey, { fit: "cover", backgroundMode: "black", blurBackground: false });
+  };
+
+  const nudgeZoom = (delta: number) => {
+    if (!activeEditorImageKey) return;
+    const nextZoom = clamp((activeEditorTransform.zoom || 1) + delta, 1, 3);
+    updateChannelTransform(activeImageChannel, activeEditorImageKey, { zoom: nextZoom });
+  };
+
+  const handlePreviewWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (!activeEditorImageKey || !activeEditorMeta?.width || !activeEditorMeta?.height || !previewStageRef.current) return;
+    event.preventDefault();
+
+    const rect = previewStageRef.current.getBoundingClientRect();
+    const pointerX = event.clientX - rect.left;
+    const pointerY = event.clientY - rect.top;
+    const nextZoom = clamp((activeEditorTransform.zoom || 1) + (event.deltaY < 0 ? 0.08 : -0.08), 1, 3);
+
+    const nextLayout = computePreviewLayout({
+      containerWidth: rect.width,
+      containerHeight: rect.height,
+      imageWidth: activeEditorMeta.width,
+      imageHeight: activeEditorMeta.height,
+      transform: { ...activeEditorTransform, zoom: nextZoom },
+    });
+
+    const currentDrawW = previewLayout.drawW || nextLayout.drawW;
+    const currentDrawH = previewLayout.drawH || nextLayout.drawH;
+    const ux = currentDrawW ? (pointerX - previewLayout.dx) / currentDrawW : 0.5;
+    const uy = currentDrawH ? (pointerY - previewLayout.dy) / currentDrawH : 0.5;
+    const nextDx = pointerX - ux * nextLayout.drawW;
+    const nextDy = pointerY - uy * nextLayout.drawH;
+    const offsets = offsetFromDrawPosition({
+      containerWidth: rect.width,
+      containerHeight: rect.height,
+      drawW: nextLayout.drawW,
+      drawH: nextLayout.drawH,
+      dx: nextDx,
+      dy: nextDy,
+    });
+
+    updateChannelTransform(activeImageChannel, activeEditorImageKey, { zoom: nextZoom, ...offsets });
+  };
+
+  const handlePreviewPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!activeEditorImageKey) return;
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startOffsetX: activeEditorTransform.offsetX,
+      startOffsetY: activeEditorTransform.offsetY,
+    };
+    setIsDraggingImage(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePreviewPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !activeEditorImageKey) return;
+    const nextOffsetX = previewLayout.maxX ? clamp(drag.startOffsetX - ((event.clientX - drag.startX) / previewLayout.maxX) * 100, -100, 100) : 0;
+    const nextOffsetY = previewLayout.maxY ? clamp(drag.startOffsetY - ((event.clientY - drag.startY) / previewLayout.maxY) * 100, -100, 100) : 0;
+    updateChannelTransform(activeImageChannel, activeEditorImageKey, { offsetX: nextOffsetX, offsetY: nextOffsetY });
+  };
+
+  const endPreviewDrag = (event?: React.PointerEvent<HTMLDivElement>) => {
+    if (event && dragStateRef.current?.pointerId === event.pointerId) {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    }
+    dragStateRef.current = null;
+    setIsDraggingImage(false);
+  };
+
   const toggleChannelImage = (channel: ChannelKey, imageKey: string) => {
     setChannelImageEditors((prev) => {
       const current = prev[channel] || { imageKeys: imageKeys.slice(), transforms: {} };
@@ -657,6 +835,18 @@ export default function PublishModal({
       }
       return next;
     });
+  };
+
+  const openImageEditor = (channel: ChannelKey, imageKey: string) => {
+    setActiveImageChannel(channel);
+    setActiveImageKeyByChannel((prev) => ({ ...prev, [channel]: imageKey }));
+    setIsImageEditorOpen(true);
+  };
+
+  const closeImageEditor = () => {
+    dragStateRef.current = null;
+    setIsDraggingImage(false);
+    setIsImageEditorOpen(false);
   };
 
   const buildChannelImagesPayload = async (): Promise<{
@@ -743,10 +933,6 @@ export default function PublishModal({
       setSaving(false);
     }
   };
-
-  const previewAspectRatio = `${CHANNEL_PRESETS[activeImageChannel].width} / ${CHANNEL_PRESETS[activeImageChannel].height}`;
-  const previewTransform = `translate(${activeEditorTransform.offsetX * 0.45}%, ${activeEditorTransform.offsetY * 0.45}%) scale(${activeEditorTransform.zoom})`;
-  const previewObjectFit = activeEditorTransform.fit === "cover" ? "cover" : "contain";
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -923,12 +1109,12 @@ export default function PublishModal({
       <div className={styles.blockCard}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Retouche des images par canal</div>
         <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none" }}>
-          iNrCy prépare un aperçu optimisé pour chacun des 6 canaux. Vous pouvez ensuite sélectionner et ajuster les images canal par canal.
+          Gérez chaque canal séparément : cochez les images à publier, puis ouvrez la retouche uniquement quand vous voulez recadrer une image.
         </div>
         {!selectedChannels.length ? (
           <div style={{ fontSize: 13, opacity: 0.75 }}>Sélectionnez d’abord vos canaux.</div>
         ) : !images.length ? (
-          <div style={{ fontSize: 13, opacity: 0.75 }}>Ajoutez d’abord une ou plusieurs images pour activer les aperçus et les retouches.</div>
+          <div style={{ fontSize: 13, opacity: 0.75 }}>Ajoutez d’abord une ou plusieurs images pour activer les retouches.</div>
         ) : (
           <div style={{ display: "grid", gap: 12 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", overflowX: "auto" }}>
@@ -939,99 +1125,267 @@ export default function PublishModal({
               ))}
             </div>
 
-            <div style={{ border: "1px solid rgba(255,255,255,0.10)", borderRadius: 16, padding: 12, background: "rgba(255,255,255,0.03)", display: "grid", gap: 12 }}>
-              <div style={{ fontWeight: 900 }}>{CHANNEL_LABELS[activeImageChannel]}</div>
-
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                {(channelImageEditors[activeImageChannel]?.imageKeys || imageKeys).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setActiveImageKeyByChannel((prev) => ({ ...prev, [activeImageChannel]: key }))}
-                    style={{
-                      border: activeEditorImageKey === key ? "1px solid rgba(76,195,255,0.55)" : "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(255,255,255,0.04)",
-                      borderRadius: 14,
-                      padding: 6,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <img src={previewByKey[key]} alt={key} style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 10, display: "block" }} />
-                  </button>
-                ))}
+            <div style={{ border: "1px solid rgba(255,255,255,0.10)", borderRadius: 18, padding: 14, background: "rgba(255,255,255,0.03)", display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ fontWeight: 900 }}>{CHANNEL_LABELS[activeImageChannel]}</div>
+                <div style={{ fontSize: 12, opacity: 0.78 }}>
+                  Format final : {CHANNEL_PRESETS[activeImageChannel].width}×{CHANNEL_PRESETS[activeImageChannel].height}
+                </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(320px, 420px) minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
-                <div>
-                  {activeEditorImageKey ? (
-                    <div style={{ position: "relative", width: "100%", aspectRatio: previewAspectRatio, borderRadius: 18, overflow: "hidden", border: "1px solid rgba(255,255,255,0.12)", background: "#0d1320" }}>
-                      {activeEditorTransform.blurBackground ? (
-                        <img
-                          src={previewByKey[activeEditorImageKey]}
-                          alt="background-preview"
-                          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(24px)", transform: "scale(1.08)", opacity: 0.95 }}
-                        />
-                      ) : null}
-                      <img
-                        src={previewByKey[activeEditorImageKey]}
-                        alt="preview"
-                        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: previewObjectFit, transform: previewTransform, transformOrigin: "center center" }}
-                      />
-                      <div style={{ position: "absolute", left: 10, bottom: 10, fontSize: 12, padding: "6px 10px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)" }}>
-                        {CHANNEL_PRESETS[activeImageChannel].width}×{CHANNEL_PRESETS[activeImageChannel].height} • {activeEditorTransform.fit === "cover" ? "Remplir" : "Adapter"}
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+                {imageKeys.map((key, index) => {
+                  const included = (channelImageEditors[activeImageChannel]?.imageKeys || []).includes(key);
+                  const transform = channelImageEditors[activeImageChannel]?.transforms?.[key] || getOptimizedTransform(activeImageChannel, imageMetaByKey[key]);
+                  const bgMode = getBackgroundMode(transform);
+                  return (
+                    <div
+                      key={`${activeImageChannel}-${key}`}
+                      style={{
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        borderRadius: 18,
+                        padding: 10,
+                        background: included ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.025)",
+                        display: "grid",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: previewAspectRatio, background: bgMode === "white" ? "#ffffff" : "#0d1320", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <img src={previewByKey[key]} alt={key} style={{ width: "100%", height: "100%", objectFit: transform.fit === "cover" ? "cover" : "contain", display: "block" }} />
+                        <div style={{ position: "absolute", left: 8, bottom: 8, fontSize: 11, padding: "5px 8px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff" }}>
+                          {transform.fit === "cover" ? "Remplir" : "Adapter"}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 13, opacity: 0.75 }}>Aucune image active pour ce canal.</div>
-                  )}
-                </div>
 
-                <div style={{ display: "grid", gap: 12 }}>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button type="button" className={styles.secondaryBtn} onClick={() => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { fit: "contain", blurBackground: true })} disabled={!activeEditorImageKey}>Adapter</button>
-                    <button type="button" className={styles.secondaryBtn} onClick={() => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { fit: "cover", blurBackground: false })} disabled={!activeEditorImageKey}>Remplir</button>
-                    <button type="button" className={styles.secondaryBtn} onClick={() => activeEditorImageKey && resetChannelImage(activeImageChannel, activeEditorImageKey)} disabled={!activeEditorImageKey}>Réinitialiser</button>
-                    <button type="button" className={styles.secondaryBtn} onClick={applyCurrentImageToSelectedChannels} disabled={!activeEditorImageKey}>Appliquer aux canaux sélectionnés</button>
-                  </div>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                        <input type="checkbox" checked={included} onChange={() => toggleChannelImage(activeImageChannel, key)} style={{ width: 16, height: 16, accentColor: "#4cc3ff" }} />
+                        <span>Image {index + 1}</span>
+                      </label>
 
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {imageKeys.map((key, index) => {
-                      const included = (channelImageEditors[activeImageChannel]?.imageKeys || []).includes(key);
-                      return (
-                        <label key={`${activeImageChannel}-${key}`} style={{ display: "grid", gridTemplateColumns: "auto auto 1fr auto", gap: 10, alignItems: "center", padding: "8px 10px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
-                          <input type="checkbox" checked={included} onChange={() => toggleChannelImage(activeImageChannel, key)} style={{ width: 16, height: 16, accentColor: "#4cc3ff" }} />
-                          <img src={previewByKey[key]} alt={key} style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 10 }} />
-                          <span style={{ fontSize: 12, opacity: included ? 0.95 : 0.65 }}>Image {index + 1} • {included ? "publiée sur ce canal" : "non envoyée sur ce canal"}</span>
-                          <button type="button" className={styles.secondaryBtn} style={{ padding: "6px 10px", fontSize: 12 }} onClick={() => setActiveImageKeyByChannel((prev) => ({ ...prev, [activeImageChannel]: key }))}>Modifier</button>
-                        </label>
-                      );
-                    })}
-                  </div>
+                      <div style={{ fontSize: 11, opacity: 0.68 }}>
+                        {included ? "Publiée sur ce canal" : "Non envoyée sur ce canal"}
+                      </div>
 
-                  <div style={{ display: "grid", gap: 10 }}>
-                    <div>
-                      <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Zoom</div>
-                      <input type="range" min={1} max={2.5} step={0.01} value={activeEditorTransform.zoom} onChange={(e) => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { zoom: Number(e.target.value) })} disabled={!activeEditorImageKey} style={{ width: "100%" }} />
+                      <button
+                        type="button"
+                        className={styles.secondaryBtn}
+                        onClick={() => openImageEditor(activeImageChannel, key)}
+                        style={{ width: "100%", justifyContent: "center" }}
+                      >
+                        Retoucher
+                      </button>
                     </div>
-                    <div>
-                      <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Centrage horizontal</div>
-                      <input type="range" min={-100} max={100} step={1} value={activeEditorTransform.offsetX} onChange={(e) => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { offsetX: Number(e.target.value) })} disabled={!activeEditorImageKey} style={{ width: "100%" }} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Centrage vertical</div>
-                      <input type="range" min={-100} max={100} step={1} value={activeEditorTransform.offsetY} onChange={(e) => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { offsetY: Number(e.target.value) })} disabled={!activeEditorImageKey} style={{ width: "100%" }} />
-                    </div>
-                    <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, opacity: activeEditorImageKey ? 1 : 0.6 }}>
-                      <input type="checkbox" checked={!!activeEditorTransform.blurBackground} onChange={(e) => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { blurBackground: e.target.checked })} disabled={!activeEditorImageKey || activeEditorTransform.fit === "cover"} style={{ width: 16, height: 16, accentColor: "#4cc3ff" }} />
-                      Fond flou (utile pour les visuels avec texte)
-                    </label>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {isImageEditorOpen && activeEditorImageKey ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={closeImageEditor}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            background: "rgba(4, 8, 18, 0.72)",
+            backdropFilter: "blur(8px)",
+            display: "grid",
+            placeItems: "center",
+            padding: isMobile ? 12 : 24,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(1100px, 100%)",
+              maxHeight: "min(92vh, 980px)",
+              overflow: "auto",
+              borderRadius: 24,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "linear-gradient(180deg, rgba(24,28,42,0.98), rgba(14,17,28,0.98))",
+              boxShadow: "0 24px 90px rgba(0,0,0,0.45)",
+              padding: isMobile ? 14 : 18,
+              display: "grid",
+              gap: 16,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontWeight: 900, fontSize: 18 }}>Retoucher Image {(imageKeys.indexOf(activeEditorImageKey) || 0) + 1}</div>
+                <div style={{ fontSize: 12, opacity: 0.74, marginTop: 4 }}>
+                  {CHANNEL_LABELS[activeImageChannel]} • {CHANNEL_PRESETS[activeImageChannel].width}×{CHANNEL_PRESETS[activeImageChannel].height}
+                </div>
+              </div>
+              <button type="button" className={styles.secondaryBtn} onClick={closeImageEditor}>Fermer</button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(320px, 1fr) 320px", gap: 18, alignItems: "start" }}>
+              <div style={{ display: "grid", gap: 12 }}>
+                <div
+                  ref={previewStageRef}
+                  onWheel={handlePreviewWheel}
+                  onPointerDown={handlePreviewPointerDown}
+                  onPointerMove={handlePreviewPointerMove}
+                  onPointerUp={endPreviewDrag}
+                  onPointerCancel={endPreviewDrag}
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    aspectRatio: previewAspectRatio,
+                    borderRadius: 22,
+                    overflow: "hidden",
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: activeBackgroundMode === "white" ? "#ffffff" : "#0d1320",
+                    cursor: isDraggingImage ? "grabbing" : "grab",
+                    touchAction: "none",
+                    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.03)",
+                  }}
+                >
+                  {activeEditorTransform.fit === "contain" && activeBackgroundMode === "blur" ? (
+                    <img
+                      src={previewByKey[activeEditorImageKey]}
+                      alt="background-preview"
+                      draggable={false}
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        filter: "blur(26px) saturate(1.05) brightness(1.02)",
+                        transform: "scale(1.08)",
+                        opacity: 0.95,
+                        pointerEvents: "none",
+                        userSelect: "none",
+                      }}
+                    />
+                  ) : null}
+                  {previewLayout.drawW > 0 && previewLayout.drawH > 0 ? (
+                    <img
+                      src={previewByKey[activeEditorImageKey]}
+                      alt="preview"
+                      draggable={false}
+                      style={{
+                        position: "absolute",
+                        left: previewLayout.dx,
+                        top: previewLayout.dy,
+                        width: previewLayout.drawW,
+                        height: previewLayout.drawH,
+                        maxWidth: "none",
+                        pointerEvents: "none",
+                        userSelect: "none",
+                      }}
+                    />
+                  ) : null}
+                  <div style={{ position: "absolute", inset: 12, borderRadius: 16, border: "1px solid rgba(255,255,255,0.14)", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.14)", pointerEvents: "none" }} />
+                  <div style={{ position: "absolute", left: 12, right: 12, bottom: 12, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", pointerEvents: "none", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 12, padding: "6px 10px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff" }}>
+                      {activeEditorTransform.fit === "cover" ? "Remplir" : "Adapter"} • zoom {activeEditorTransform.zoom.toFixed(2)}×
+                    </div>
+                    <div style={{ fontSize: 11, padding: "6px 10px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff" }}>
+                      Glisser • Molette
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 12, opacity: 0.72 }}>Glissez dans l’image pour recadrer. Utilisez la molette pour zoomer. Le rendu final suivra exactement ce cadre pour ce canal.</div>
+              </div>
+
+              <div style={{ display: "grid", gap: 14 }}>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 12, opacity: 0.82 }}>Zoom et cadrage</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" className={styles.secondaryBtn} onClick={() => nudgeZoom(-0.08)}>−</button>
+                    <button type="button" className={styles.secondaryBtn} onClick={() => nudgeZoom(0.08)}>+</button>
+                    <button type="button" className={styles.secondaryBtn} onClick={() => setContainMode(activeImageChannel, activeEditorImageKey)}>Adapter</button>
+                    <button type="button" className={styles.secondaryBtn} onClick={() => setCoverMode(activeImageChannel, activeEditorImageKey)}>Remplir</button>
+                    <button type="button" className={styles.secondaryBtn} onClick={() => resetChannelImage(activeImageChannel, activeEditorImageKey)}>Réinitialiser</button>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 12, opacity: 0.82 }}>Arrière-plan</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {([
+                      { value: "blur", label: "Flou" },
+                      { value: "white", label: "Blanc" },
+                      { value: "black", label: "Noir" },
+                    ] as Array<{ value: BackgroundMode; label: string }>).map((option) => {
+                      const active = activeBackgroundMode === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => updateChannelTransform(activeImageChannel, activeEditorImageKey, { backgroundMode: option.value, blurBackground: option.value === "blur", fit: "contain" })}
+                          style={{
+                            ...pillBtn,
+                            ...(active ? pillBtnActive : {}),
+                            borderColor: activeEditorTransform.fit === "cover" ? "rgba(255,255,255,0.08)" : undefined,
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, opacity: 0.64 }}>Le fond s’applique en mode Adapter. En mode Remplir, l’image couvre déjà tout le cadre.</div>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 12, opacity: 0.82 }}>Actions rapides</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" className={styles.secondaryBtn} onClick={applyCurrentImageToSelectedChannels}>Appliquer ce cadrage aux canaux sélectionnés</button>
+                    <button type="button" className={styles.primaryBtn} onClick={closeImageEditor}>Enregistrer</button>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 12, opacity: 0.82 }}>Autres images du canal</div>
+                  <div style={{ display: "grid", gap: 8, maxHeight: 260, overflow: "auto", paddingRight: 2 }}>
+                    {imageKeys.map((key, index) => {
+                      const included = (channelImageEditors[activeImageChannel]?.imageKeys || []).includes(key);
+                      const active = key === activeEditorImageKey;
+                      return (
+                        <button
+                          key={`editor-${activeImageChannel}-${key}`}
+                          type="button"
+                          onClick={() => setActiveImageKeyByChannel((prev) => ({ ...prev, [activeImageChannel]: key }))}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "60px minmax(0, 1fr)",
+                            gap: 10,
+                            alignItems: "center",
+                            textAlign: "left",
+                            borderRadius: 16,
+                            padding: 8,
+                            border: active ? "1px solid rgba(76,195,255,0.45)" : "1px solid rgba(255,255,255,0.08)",
+                            background: active ? "rgba(76,195,255,0.08)" : "rgba(255,255,255,0.03)",
+                            color: "inherit",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <img src={previewByKey[key]} alt={key} style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 12, display: "block" }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 800 }}>Image {index + 1}</div>
+                            <div style={{ fontSize: 11, opacity: 0.68, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {included ? "Publiée sur ce canal" : "Non envoyée sur ce canal"}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
         <button type="button" className={styles.primaryBtn} onClick={onPublish} disabled={saving}>
