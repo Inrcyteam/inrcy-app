@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 import { login } from './helpers/auth';
 
 const email = process.env.E2E_EMAIL;
@@ -34,7 +36,7 @@ test.describe('crm contacts write api', () => {
       });
 
       const text = await res.text();
-      let json: any = null;
+      let json: JsonValue = null;
       try {
         json = JSON.parse(text);
       } catch {
@@ -65,7 +67,7 @@ test.describe('crm contacts write api', () => {
       });
 
       const text = await res.text();
-      let json: any = null;
+      let json: JsonValue = null;
       try {
         json = JSON.parse(text);
       } catch {

@@ -1,10 +1,12 @@
 import { Page, expect } from '@playwright/test';
 
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
 export type BrowserFetchResult = {
   ok: boolean;
   status: number;
   contentType: string;
-  json: any;
+  json: JsonValue;
   text: string;
 };
 
@@ -21,7 +23,7 @@ export async function apiGET(page: Page, url: string): Promise<BrowserFetchResul
     const contentType = res.headers.get('content-type') || '';
     const text = await res.text();
 
-    let json: any = null;
+    let json: JsonValue = null;
     try {
       json = contentType.includes('application/json') ? JSON.parse(text) : null;
     } catch {
