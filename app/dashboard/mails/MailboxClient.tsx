@@ -11,7 +11,25 @@ import HelpModal from "../_components/HelpModal";
 import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
 import { createClient } from "@/lib/supabaseClient";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
+import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/dashboard/_components/ChannelImageRetouchTool";
 
+
+const pillBtn: React.CSSProperties = {
+  minHeight: 38,
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.03)",
+  color: "inherit",
+  padding: "0 14px",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const pillBtnActive: React.CSSProperties = {
+  border: "1px solid rgba(76,195,255,0.45)",
+  boxShadow: "0 0 0 1px rgba(76,195,255,0.18) inset",
+  background: "rgba(76,195,255,0.10)",
+};
 
 function safeDecode(v: string): string {
   try {
@@ -162,6 +180,286 @@ type EditablePublicationAttachment = {
   size?: number | null;
   url?: string | null;
 };
+
+type PublicationImageFitMode = "contain" | "cover";
+type PublicationImageBackgroundMode = "blur" | "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
+type PublicationDesignPosition = "top" | "center" | "bottom";
+type PublicationImageDesign = { enabled: boolean; text: string; color: string; background: string; position: PublicationDesignPosition; size: number; x?: number; y?: number; };
+
+type PublicationImageTransform = {
+  fit: PublicationImageFitMode;
+  zoom: number;
+  offsetX: number;
+  offsetY: number;
+  blurBackground: boolean;
+  backgroundMode?: PublicationImageBackgroundMode;
+  backgroundColor?: string;
+  design?: PublicationImageDesign;
+};
+
+type PublicationImageAsset = {
+  key: string;
+  name: string;
+  type: string;
+  previewUrl: string;
+  sourceUrl: string | null;
+  file: File | null;
+  selected: boolean;
+  transform: PublicationImageTransform;
+};
+
+type PublicationChannelImagesState = {
+  assets: PublicationImageAsset[];
+};
+
+type PublicationImageRenderPreset = {
+  width: number;
+  height: number;
+  defaultFit: PublicationImageFitMode;
+  defaultBlurBackground: boolean;
+};
+
+type PublicationPreviewLayout = {
+  drawW: number;
+  drawH: number;
+  dx: number;
+  dy: number;
+};
+
+const DEFAULT_PUBLICATION_DESIGN: PublicationImageDesign = { enabled: false, text: "", color: "#ffffff", background: "#111827", position: "bottom", size: 30, x: 50, y: 88 };
+
+const PUBLICATION_CHANNEL_PRESETS: Record<string, PublicationImageRenderPreset> = {
+  inrcy_site: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
+  site_web: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
+  gmb: { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: true },
+  facebook: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
+  instagram: { width: 1080, height: 1350, defaultFit: "cover", defaultBlurBackground: false },
+  linkedin: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
+};
+
+function publicationClamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getPublicationChannelPreset(channel: string): PublicationImageRenderPreset {
+  return PUBLICATION_CHANNEL_PRESETS[normalizeChannelKey(channel)] || { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: true };
+}
+
+function buildPublicationDefaultTransform(channel: string): PublicationImageTransform {
+  const preset = getPublicationChannelPreset(channel);
+  return {
+    fit: preset.defaultFit,
+    zoom: 1,
+    offsetX: 0,
+    offsetY: 0,
+    blurBackground: preset.defaultBlurBackground,
+    backgroundMode: preset.defaultBlurBackground ? "blur" : "black",
+    backgroundColor: "#e8f6ff",
+    design: { ...DEFAULT_PUBLICATION_DESIGN },
+  };
+}
+
+function getPublicationBackgroundMode(transform: PublicationImageTransform): PublicationImageBackgroundMode {
+  if (transform.backgroundMode) return transform.backgroundMode;
+  return transform.blurBackground ? "blur" : "black";
+}
+
+function withPublicationBackgroundMode(transform: PublicationImageTransform, backgroundMode: PublicationImageBackgroundMode): PublicationImageTransform {
+  return {
+    ...transform,
+    backgroundMode,
+    blurBackground: backgroundMode === "blur",
+  };
+}
+
+function getPublicationBackgroundFill(mode: PublicationImageBackgroundMode, backgroundColor?: string): string {
+  if (backgroundColor) return backgroundColor;
+  switch (mode) {
+    case "white": return "#ffffff";
+    case "gray": return "#d6dae2";
+    case "sand": return "#efe4d3";
+    case "brand": return "#e8f6ff";
+    case "color": return "#e8f6ff";
+    default: return "#0d1320";
+  }
+}
+
+function getPublicationDesign(transform: PublicationImageTransform): PublicationImageDesign {
+  const design = { ...DEFAULT_PUBLICATION_DESIGN, ...(transform.design || {}) };
+  if (typeof design.x !== "number") design.x = 50;
+  if (typeof design.y !== "number") design.y = design.position === "top" ? 12 : design.position === "center" ? 50 : 88;
+  return design;
+}
+
+function drawPublicationDesignOverlay(ctx: CanvasRenderingContext2D, cw: number, ch: number, transform: PublicationImageTransform) {
+  const design = getPublicationDesign(transform);
+  const text = String(design.text || "").trim();
+  if (!design.enabled || !text) return;
+  const size = publicationClamp(design.size || 30, 18, 72);
+  ctx.save();
+  ctx.font = `900 ${size}px Inter, Arial, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const maxTextWidth = cw * 0.78;
+  const metrics = ctx.measureText(text);
+  const textWidth = Math.min(metrics.width, maxTextWidth);
+  const padX = 22;
+  const padY = 14;
+  const boxW = textWidth + padX * 2;
+  const boxH = size + padY * 2;
+  const x = publicationClamp((typeof design.x === "number" ? design.x : 50) / 100 * cw, boxW / 2 + 16, cw - boxW / 2 - 16);
+  const fallbackY = design.position === "top" ? 12 : design.position === "center" ? 50 : 88;
+  const y = publicationClamp((typeof design.y === "number" ? design.y : fallbackY) / 100 * ch, boxH / 2 + 16, ch - boxH / 2 - 16);
+  const rx = x - boxW / 2;
+  const ry = y - boxH / 2;
+  const radius = 18;
+  ctx.fillStyle = `${design.background || "#111827"}cc`;
+  ctx.beginPath();
+  ctx.moveTo(rx + radius, ry);
+  ctx.lineTo(rx + boxW - radius, ry);
+  ctx.quadraticCurveTo(rx + boxW, ry, rx + boxW, ry + radius);
+  ctx.lineTo(rx + boxW, ry + boxH - radius);
+  ctx.quadraticCurveTo(rx + boxW, ry + boxH, rx + boxW - radius, ry + boxH);
+  ctx.lineTo(rx + radius, ry + boxH);
+  ctx.quadraticCurveTo(rx, ry + boxH, rx, ry + boxH - radius);
+  ctx.lineTo(rx, ry + radius);
+  ctx.quadraticCurveTo(rx, ry, rx + radius, ry);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = design.color || "#ffffff";
+  ctx.fillText(text, x, y, maxTextWidth);
+  ctx.restore();
+}
+
+function isPublicationTransformModified(transform: PublicationImageTransform, channel: string): boolean {
+  const defaults = buildPublicationDefaultTransform(channel);
+  return (
+    transform.fit !== defaults.fit ||
+    Math.abs((transform.zoom || 1) - 1) > 0.001 ||
+    Math.abs(transform.offsetX || 0) > 0.001 ||
+    Math.abs(transform.offsetY || 0) > 0.001 ||
+    getPublicationBackgroundMode(transform) !== getPublicationBackgroundMode(defaults) ||
+    JSON.stringify(getPublicationDesign(transform)) !== JSON.stringify(getPublicationDesign(defaults))
+  );
+}
+
+function computePublicationPreviewLayout(params: {
+  containerWidth: number;
+  containerHeight: number;
+  imageWidth: number;
+  imageHeight: number;
+  transform: PublicationImageTransform;
+}): PublicationPreviewLayout {
+  const { containerWidth, containerHeight, imageWidth, imageHeight, transform } = params;
+  if (!containerWidth || !containerHeight || !imageWidth || !imageHeight) {
+    return { drawW: 0, drawH: 0, dx: 0, dy: 0 };
+  }
+
+  const baseScale = transform.fit === "cover"
+    ? Math.max(containerWidth / imageWidth, containerHeight / imageHeight)
+    : Math.min(containerWidth / imageWidth, containerHeight / imageHeight);
+  const scale = baseScale * publicationClamp(transform.zoom || 1, 0.4, 3);
+  const drawW = imageWidth * scale;
+  const drawH = imageHeight * scale;
+  const maxX = Math.abs(drawW - containerWidth) / 2;
+  const maxY = Math.abs(drawH - containerHeight) / 2;
+  const dx = (containerWidth - drawW) / 2 - maxX * publicationClamp(transform.offsetX || 0, -100, 100) / 100;
+  const dy = (containerHeight - drawH) / 2 - maxY * publicationClamp(transform.offsetY || 0, -100, 100) / 100;
+
+  return { drawW, drawH, dx, dy };
+}
+
+function offsetFromPublicationDrawPosition(params: {
+  containerWidth: number;
+  containerHeight: number;
+  drawW: number;
+  drawH: number;
+  dx: number;
+  dy: number;
+}): Pick<PublicationImageTransform, "offsetX" | "offsetY"> {
+  const { containerWidth, containerHeight, drawW, drawH, dx, dy } = params;
+  const maxX = Math.abs(drawW - containerWidth) / 2;
+  const maxY = Math.abs(drawH - containerHeight) / 2;
+  const offsetX = maxX ? publicationClamp((((containerWidth - drawW) / 2 - dx) / maxX) * 100, -100, 100) : 0;
+  const offsetY = maxY ? publicationClamp((((containerHeight - drawH) / 2 - dy) / maxY) * 100, -100, 100) : 0;
+  return { offsetX, offsetY };
+}
+
+function makePublicationImageAssetKey(prefix: string, name: string, suffix: string) {
+  return `${prefix}:${name}:${suffix}`;
+}
+
+function loadPublicationHtmlImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Impossible de charger l'image."));
+    img.src = src;
+  });
+}
+
+async function renderPublicationImageAsset(params: {
+  source: string | File;
+  transform: PublicationImageTransform;
+  channel: string;
+  name: string;
+  type: string;
+}): Promise<{ name: string; type: string; dataUrl: string }> {
+  const { source, transform, channel, name, type } = params;
+  const preset = getPublicationChannelPreset(channel);
+  const sourceUrl = typeof source === "string" ? source : URL.createObjectURL(source);
+  try {
+    const img = await loadPublicationHtmlImage(sourceUrl);
+    const canvas = document.createElement("canvas");
+    canvas.width = preset.width;
+    canvas.height = preset.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas indisponible.");
+
+    const cw = canvas.width;
+    const ch = canvas.height;
+    const iw = img.naturalWidth || img.width;
+    const ih = img.naturalHeight || img.height;
+    const baseScale = transform.fit === "cover" ? Math.max(cw / iw, ch / ih) : Math.min(cw / iw, ch / ih);
+    const scale = baseScale * publicationClamp(transform.zoom || 1, 0.4, 3);
+    const drawW = iw * scale;
+    const drawH = ih * scale;
+    const maxX = Math.abs(drawW - cw) / 2;
+    const maxY = Math.abs(drawH - ch) / 2;
+    const dx = (cw - drawW) / 2 - maxX * publicationClamp(transform.offsetX || 0, -100, 100) / 100;
+    const dy = (ch - drawH) / 2 - maxY * publicationClamp(transform.offsetY || 0, -100, 100) / 100;
+
+    ctx.clearRect(0, 0, cw, ch);
+
+    const backgroundMode = getPublicationBackgroundMode(transform);
+    if (transform.fit === "contain") {
+      if (backgroundMode !== "blur" && backgroundMode !== "transparent") {
+        ctx.fillStyle = getPublicationBackgroundFill(backgroundMode, transform.backgroundColor);
+        ctx.fillRect(0, 0, cw, ch);
+      } else if (backgroundMode === "blur") {
+        const blurScale = Math.max(cw / iw, ch / ih);
+        const blurW = iw * blurScale;
+        const blurH = ih * blurScale;
+        const blurX = (cw - blurW) / 2;
+        const blurY = (ch - blurH) / 2;
+        ctx.save();
+        ctx.filter = "blur(28px) saturate(1.05)";
+        ctx.drawImage(img, blurX, blurY, blurW, blurH);
+        ctx.restore();
+        ctx.fillStyle = "rgba(8, 12, 24, 0.24)";
+        ctx.fillRect(0, 0, cw, ch);
+      }
+    }
+
+    ctx.drawImage(img, dx, dy, drawW, drawH);
+    drawPublicationDesignOverlay(ctx, cw, ch, transform);
+    const outputType = backgroundMode === "transparent" ? "image/png" : (type || "image/jpeg");
+    return { name: name.replace(/\.[^.]+$/, "") + (backgroundMode === "transparent" ? ".png" : name.match(/\.[^.]+$/)?.[0] || ".jpg"), type: outputType, dataUrl: canvas.toDataURL(outputType, 0.92) };
+  } finally {
+    if (typeof source !== "string") URL.revokeObjectURL(sourceUrl);
+  }
+}
 
 function splitList(v?: string | null): string[] {
   if (!v) return [];
@@ -592,8 +890,59 @@ export default function MailboxClient() {
   const [detailsActionBusy, setDetailsActionBusy] = useState(false);
   const [detailsActionError, setDetailsActionError] = useState<string | null>(null);
   const [publicationEditForm, setPublicationEditForm] = useState<PublicationEditForm>({ title: "", content: "", cta: "", hashtags: "" });
-  const [publicationEditExistingAttachments, setPublicationEditExistingAttachments] = useState<EditablePublicationAttachment[]>([]);
-  const [publicationEditNewFiles, setPublicationEditNewFiles] = useState<File[]>([]);
+  const [publicationEditImagesByChannel, setPublicationEditImagesByChannel] = useState<Record<string, PublicationChannelImagesState>>({});
+  const [publicationRetouchChannelKey, setPublicationRetouchChannelKey] = useState<string | null>(null);
+  const [publicationRetouchImageKey, setPublicationRetouchImageKey] = useState<string | null>(null);
+  const publicationRetouchDragRef = useRef<{ channel: string; imageKey: string; startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
+  const publicationRetouchStageRef = useRef<HTMLDivElement | null>(null);
+  const [publicationRetouchStageSize, setPublicationRetouchStageSize] = useState({ width: 0, height: 0 });
+  const [publicationRetouchImageMeta, setPublicationRetouchImageMeta] = useState<Record<string, { width: number; height: number }>>({});
+  const [isPublicationRetouchDragging, setIsPublicationRetouchDragging] = useState(false);
+
+  const publicationRetouchChannelState = publicationRetouchChannelKey
+    ? publicationEditImagesByChannel[publicationRetouchChannelKey] || { assets: [] }
+    : null;
+  const publicationRetouchAsset =
+    publicationRetouchChannelState?.assets.find((asset) => asset.key === publicationRetouchImageKey) || null;
+
+  useEffect(() => {
+    if (!detailsOpen || !detailsEditMode || !publicationRetouchAsset) return;
+    const key = publicationRetouchAsset.key;
+    if (publicationRetouchImageMeta[key]) return;
+    let cancelled = false;
+    const image = new window.Image();
+    image.onload = () => {
+      if (cancelled) return;
+      setPublicationRetouchImageMeta((prev) => ({
+        ...prev,
+        [key]: {
+          width: image.naturalWidth || image.width || 0,
+          height: image.naturalHeight || image.height || 0,
+        },
+      }));
+    };
+    image.src = publicationRetouchAsset.previewUrl;
+    return () => {
+      cancelled = true;
+    };
+  }, [detailsOpen, detailsEditMode, publicationRetouchAsset?.key, publicationRetouchAsset?.previewUrl, publicationRetouchImageMeta]);
+
+  useEffect(() => {
+    if (!detailsOpen || !detailsEditMode || !publicationRetouchAsset || !publicationRetouchStageRef.current) return;
+    const node = publicationRetouchStageRef.current;
+    const updateSize = () => {
+      const rect = node.getBoundingClientRect();
+      setPublicationRetouchStageSize({ width: rect.width, height: rect.height });
+    };
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(node);
+    window.addEventListener("resize", updateSize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateSize);
+    };
+  }, [detailsOpen, detailsEditMode, publicationRetouchAsset?.key]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -1023,6 +1372,10 @@ const subTitle = firstNonEmpty(
     return (results as any)?.[activeDetailsChannelEntry.key] || null;
   }, [detailsPayload, activeDetailsChannelEntry]);
 
+  const activePublicationEditChannelKey = normalizeChannelKey(activeDetailsChannelEntry?.key || "");
+  const activePublicationEditPreset = useMemo(() => getPublicationChannelPreset(activePublicationEditChannelKey), [activePublicationEditChannelKey]);
+  const activePublicationEditAssets = publicationEditImagesByChannel[activePublicationEditChannelKey]?.assets || [];
+
   useEffect(() => {
     if (!detailsOpen || !detailsItem || detailsItem.source === "send_items") return;
     const parts = activeDetailsChannelEntry?.parts || {};
@@ -1032,17 +1385,34 @@ const subTitle = firstNonEmpty(
       cta: parts.cta || "",
       hashtags: tagsToEditorString(parts.hashtags),
     });
-    setPublicationEditExistingAttachments(
-      Array.isArray(parts.attachments)
-        ? parts.attachments
-            .filter((att) => att?.url && isImageAttachment(att))
-            .map((att) => ({ name: att.name, type: att.type || null, size: att.size ?? null, url: att.url || null }))
-        : []
-    );
-    setPublicationEditNewFiles([]);
     setDetailsEditMode(false);
     setDetailsActionError(null);
   }, [detailsOpen, detailsItem, activeDetailsChannelEntry?.key]);
+
+  useEffect(() => {
+    if (!detailsOpen || !detailsItem || detailsItem.source === "send_items") return;
+    const nextState: Record<string, PublicationChannelImagesState> = {};
+    for (const entry of detailsChannelEntries) {
+      const channel = normalizeChannelKey(entry.key);
+      const defaultTransform = buildPublicationDefaultTransform(channel);
+      const assets = (Array.isArray(entry.parts.attachments) ? entry.parts.attachments : [])
+        .filter((att) => att?.url && isImageAttachment(att))
+        .map((att, index) => ({
+          key: makePublicationImageAssetKey("existing", att.name || `image-${index + 1}`, `${index}:${String(att.url || "")}`),
+          name: att.name || `Image ${index + 1}`,
+          type: String(att.type || "image/jpeg") || "image/jpeg",
+          previewUrl: String(att.url || ""),
+          sourceUrl: String(att.url || "") || null,
+          file: null,
+          selected: true,
+          transform: { ...defaultTransform },
+        }));
+      nextState[channel] = { assets };
+    }
+    setPublicationEditImagesByChannel(nextState);
+    setPublicationRetouchChannelKey(null);
+    setPublicationRetouchImageKey(null);
+  }, [detailsOpen, detailsItem?.id, detailsChannelEntries]);
 
   const selectedAccount = useMemo(() => {
     return mailAccounts.find((a) => a.id === selectedAccountId) || null;
@@ -1569,16 +1939,40 @@ async function deleteDraftPermanently(id: string) {
     setDetailsOpen(true);
   }
 
-  function removePublicationExistingAttachment(idx: number) {
-    setPublicationEditExistingAttachments((prev) => prev.filter((_, i) => i !== idx));
+  function updatePublicationChannelAssets(channel: string, updater: (assets: PublicationImageAsset[]) => PublicationImageAsset[]) {
+    const normalizedChannel = normalizeChannelKey(channel);
+    setPublicationEditImagesByChannel((prev) => ({
+      ...prev,
+      [normalizedChannel]: {
+        assets: updater(prev[normalizedChannel]?.assets || []).slice(0, 5),
+      },
+    }));
   }
 
-  function removePublicationNewFile(idx: number) {
-    setPublicationEditNewFiles((prev) => prev.filter((_, i) => i !== idx));
+  function togglePublicationImage(channel: string, imageKey: string) {
+    updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === imageKey ? { ...asset, selected: !asset.selected } : asset));
+  }
+
+  function removePublicationImage(channel: string, imageKey: string) {
+    updatePublicationChannelAssets(channel, (assets) => assets.filter((asset) => asset.key !== imageKey));
+  }
+
+  function openPublicationRetouch(channel: string, imageKey: string) {
+    setPublicationRetouchChannelKey(normalizeChannelKey(channel));
+    setPublicationRetouchImageKey(imageKey);
+    setDetailsActionError(null);
+  }
+
+  function closePublicationRetouch() {
+    setPublicationRetouchChannelKey(null);
+    setPublicationRetouchImageKey(null);
+    publicationRetouchDragRef.current = null;
   }
 
   function addPublicationFiles(fileList: FileList | null) {
     if (!fileList) return;
+    const channel = normalizeChannelKey(activeDetailsChannelEntry?.key || "");
+    if (!channel) return;
     setDetailsActionError(null);
     const picked = Array.from(fileList);
     if (!picked.length) return;
@@ -1595,19 +1989,25 @@ async function deleteDraftPermanently(id: string) {
       return;
     }
 
-    setPublicationEditNewFiles((prev) => {
-      const merged = [...prev];
-      const existingCount = publicationEditExistingAttachments.length;
+    updatePublicationChannelAssets(channel, (assets) => {
+      const merged = [...assets];
       for (const file of picked) {
-        const alreadyAdded = merged.some(
-          (existing) => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified
-        );
-        if (alreadyAdded) continue;
-        if (existingCount + merged.length >= 5) {
+        const key = makePublicationImageAssetKey("new", file.name, `${file.size}:${file.lastModified}`);
+        if (merged.some((asset) => asset.key === key)) continue;
+        if (merged.length >= 5) {
           setDetailsActionError("Maximum 5 images par publication.");
           break;
         }
-        merged.push(file);
+        merged.push({
+          key,
+          name: file.name,
+          type: file.type || "image/jpeg",
+          previewUrl: URL.createObjectURL(file),
+          sourceUrl: null,
+          file,
+          selected: true,
+          transform: buildPublicationDefaultTransform(channel),
+        });
       }
       return merged;
     });
@@ -1635,13 +2035,35 @@ async function deleteDraftPermanently(id: string) {
         .map((tag) => tag.trim().replace(/^#+/, ""))
         .filter(Boolean);
 
-      const newImages = await Promise.all(
-        publicationEditNewFiles.map(async (file) => ({
-          name: file.name,
-          type: file.type,
-          dataUrl: await fileToDataUrl(file),
-        }))
-      );
+      const channelImages = publicationEditImagesByChannel[normalizeChannelKey(channel)]?.assets || [];
+      const selectedAssets = channelImages.filter((asset) => asset.selected).slice(0, 5);
+      const retainedImages: string[] = [];
+      const newImages: Array<{ name: string; type: string; dataUrl: string }> = [];
+
+      for (const asset of selectedAssets) {
+        const canRetain = !!asset.sourceUrl && !asset.file && !isPublicationTransformModified(asset.transform, channel);
+        if (canRetain) {
+          retainedImages.push(String(asset.sourceUrl || ""));
+          continue;
+        }
+
+        if (asset.file && !isPublicationTransformModified(asset.transform, channel)) {
+          newImages.push({
+            name: asset.name,
+            type: asset.type,
+            dataUrl: await fileToDataUrl(asset.file),
+          });
+          continue;
+        }
+
+        newImages.push(await renderPublicationImageAsset({
+          source: asset.file || asset.previewUrl,
+          transform: asset.transform,
+          channel,
+          name: asset.name,
+          type: asset.type,
+        }));
+      }
 
       const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/${encodeURIComponent(channelApiPath(channel))}`, {
         method: "PATCH",
@@ -1652,7 +2074,7 @@ async function deleteDraftPermanently(id: string) {
           cta: publicationEditForm.cta,
           hashtags,
           externalId: (activeDetailsChannelResult as any)?.external_id || null,
-          retainedImages: publicationEditExistingAttachments.map((att) => String(att.url || "")).filter(Boolean),
+          retainedImages,
           newImages,
         }),
       });
@@ -2343,7 +2765,7 @@ async function deleteDraftPermanently(id: string) {
                                             />
                                           </div>
                                         ) : null}
-                                        <div style={{ display: "grid", gap: 10 }}>
+                                        <div style={{ display: "grid", gap: 12 }}>
                                           <div className={styles.publicationLabel}>Pièces jointes</div>
                                           <input
                                             id={publicationEditFileInputId}
@@ -2359,35 +2781,41 @@ async function deleteDraftPermanently(id: string) {
                                           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                                             <label htmlFor={publicationEditFileInputId} className={styles.btnAttach}>📎 Ajouter des images</label>
                                             <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                                              {publicationEditExistingAttachments.length + publicationEditNewFiles.length} image(s)
+                                              {activePublicationEditAssets.length} image(s) pour {activePublicationEntry?.label || "ce canal"}
                                             </span>
                                           </div>
-                                          {publicationEditExistingAttachments.length || publicationEditNewFiles.length ? (
-                                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                                              {publicationEditExistingAttachments.map((att, idx) => (
-                                                <div key={`existing-${att.url || att.name}-${idx}`} style={{ position: "relative" }}>
-                                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                  <img src={String(att.url || "")} alt={att.name} style={{ width: 110, height: 110, objectFit: "cover", borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)" }} />
-                                                  <button type="button" className={styles.secondaryBtn} style={{ position: "absolute", top: 6, right: 6, padding: "6px 10px", fontSize: 12 }} onClick={() => removePublicationExistingAttachment(idx)}>✕</button>
-                                                </div>
-                                              ))}
-                                              {publicationEditNewFiles.map((file, idx) => (
-                                                <span key={`new-${file.name}-${file.lastModified}-${idx}`} className={styles.fileChip} title={file.name}>
-                                                  {file.name}
-                                                  <button
-                                                    type="button"
-                                                    className={styles.fileChipRemove}
-                                                    onClick={() => removePublicationNewFile(idx)}
-                                                    aria-label={`Retirer ${file.name}`}
-                                                  >
-                                                    ✕
-                                                  </button>
-                                                </span>
-                                              ))}
+
+
+                                          <div style={{ display: "grid", gap: 8 }}>
+                                            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+                                              Cochez les images à publier puis ouvrez la retouche uniquement quand vous voulez recadrer une image.
                                             </div>
-                                          ) : (
-                                            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>Aucune image.</div>
-                                          )}
+                                            <ChannelImageRetouchCardsPanel
+                                              tabs={[{ key: activePublicationEditChannelKey, label: activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey) }]}
+                                              activeChannel={activePublicationEditChannelKey}
+                                              onActiveChannelChange={() => {}}
+                                              channelTitle={activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey)}
+                                              formatLabel={`Format final : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`}
+                                              aspectRatio={`${activePublicationEditPreset.width} / ${activePublicationEditPreset.height}`}
+                                              items={activePublicationEditAssets.map((asset, index) => ({
+                                                key: asset.key,
+                                                previewUrl: asset.previewUrl,
+                                                included: asset.selected,
+                                                title: `Image ${index + 1}`,
+                                                subtitle: asset.selected ? "Publiée sur ce canal" : "Non publiée sur ce canal",
+                                                fitLabel: asset.transform.fit === "cover" ? "Remplir" : "Adapter",
+                                                backgroundMode: getPublicationBackgroundMode(asset.transform),
+                                                onToggle: () => togglePublicationImage(activePublicationEditChannelKey, asset.key),
+                                                onRetouch: () => openPublicationRetouch(activePublicationEditChannelKey, asset.key),
+                                                onRemove: () => removePublicationImage(activePublicationEditChannelKey, asset.key),
+                                              }))}
+                                              buttonClassName={styles.btnGhost}
+                                              pillButtonStyle={pillBtn}
+                                              pillButtonActiveStyle={pillBtnActive}
+                                              showTabs={false}
+                                              emptyMessage="Aucune image pour ce canal."
+                                            />
+                                          </div>
                                         </div>
                                       </>
                                     ) : (
@@ -2514,6 +2942,127 @@ async function deleteDraftPermanently(id: string) {
             </div>
           </div>
         ) : null}
+
+        {detailsOpen && detailsEditMode && publicationRetouchAsset && publicationRetouchChannelKey ? (() => {
+          const channel = publicationRetouchChannelKey;
+          const preset = getPublicationChannelPreset(channel);
+          const transform = publicationRetouchAsset.transform;
+          const imageMeta = publicationRetouchImageMeta[publicationRetouchAsset.key];
+          const previewLayout = computePublicationPreviewLayout({
+            containerWidth: publicationRetouchStageSize.width,
+            containerHeight: publicationRetouchStageSize.height,
+            imageWidth: imageMeta?.width || 0,
+            imageHeight: imageMeta?.height || 0,
+            transform,
+          });
+          const backgroundMode = getPublicationBackgroundMode(transform);
+          const zoomLabel = `zoom ${Number(transform.zoom || 1).toFixed(2)}×`;
+          return (
+            <ChannelImageRetouchModal
+              open
+              title={`Retoucher ${publicationRetouchAsset.name}`}
+              subtitle={`${formatChannelLabel(channel)} • ${preset.width}×${preset.height}`}
+              aspectRatio={`${preset.width} / ${preset.height}`}
+              backgroundMode={backgroundMode}
+              backgroundColor={publicationRetouchAsset.transform.backgroundColor}
+              fitLabel={transform.fit === "cover" ? "Remplir" : "Adapter"}
+              zoomLabel={zoomLabel}
+              previewSrc={publicationRetouchAsset.previewUrl}
+              previewLayout={previewLayout}
+              previewRef={publicationRetouchStageRef}
+              isDragging={isPublicationRetouchDragging}
+              onClose={closePublicationRetouch}
+              buttonClassName={styles.btnGhost}
+              primaryButtonClassName={styles.btnPrimary}
+              onWheel={(event) => {
+                if (!publicationRetouchStageRef.current || !imageMeta?.width || !imageMeta?.height) return;
+                event.preventDefault();
+                const rect = publicationRetouchStageRef.current.getBoundingClientRect();
+                const pointerX = event.clientX - rect.left;
+                const pointerY = event.clientY - rect.top;
+                const nextZoom = publicationClamp((transform.zoom || 1) + (event.deltaY < 0 ? 0.08 : -0.08), 0.4, 3);
+                const nextLayout = computePublicationPreviewLayout({
+                  containerWidth: rect.width,
+                  containerHeight: rect.height,
+                  imageWidth: imageMeta.width,
+                  imageHeight: imageMeta.height,
+                  transform: { ...transform, zoom: nextZoom },
+                });
+                const currentDrawW = previewLayout.drawW || nextLayout.drawW;
+                const currentDrawH = previewLayout.drawH || nextLayout.drawH;
+                const ux = currentDrawW ? (pointerX - previewLayout.dx) / currentDrawW : 0.5;
+                const uy = currentDrawH ? (pointerY - previewLayout.dy) / currentDrawH : 0.5;
+                const nextDx = pointerX - ux * nextLayout.drawW;
+                const nextDy = pointerY - uy * nextLayout.drawH;
+                const offsets = offsetFromPublicationDrawPosition({
+                  containerWidth: rect.width,
+                  containerHeight: rect.height,
+                  drawW: nextLayout.drawW,
+                  drawH: nextLayout.drawH,
+                  dx: nextDx,
+                  dy: nextDy,
+                });
+                updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...asset.transform, zoom: nextZoom, ...offsets } } : asset));
+              }}
+              onPointerDown={(event) => {
+                publicationRetouchDragRef.current = {
+                  channel,
+                  imageKey: publicationRetouchAsset.key,
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  startOffsetX: transform.offsetX || 0,
+                  startOffsetY: transform.offsetY || 0,
+                };
+                setIsPublicationRetouchDragging(true);
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                const drag = publicationRetouchDragRef.current;
+                if (!drag || drag.imageKey !== publicationRetouchAsset.key) return;
+                const maxX = Math.abs(previewLayout.drawW - publicationRetouchStageSize.width) / 2;
+                const maxY = Math.abs(previewLayout.drawH - publicationRetouchStageSize.height) / 2;
+                const nextOffsetX = maxX ? publicationClamp(drag.startOffsetX - ((event.clientX - drag.startX) / maxX) * 100, -100, 100) : 0;
+                const nextOffsetY = maxY ? publicationClamp(drag.startOffsetY - ((event.clientY - drag.startY) / maxY) * 100, -100, 100) : 0;
+                updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...asset.transform, offsetX: nextOffsetX, offsetY: nextOffsetY } } : asset));
+              }}
+              onPointerUp={(event) => {
+                if (publicationRetouchDragRef.current) {
+                  event.currentTarget.releasePointerCapture?.(event.pointerId);
+                }
+                publicationRetouchDragRef.current = null;
+                setIsPublicationRetouchDragging(false);
+              }}
+              onPointerCancel={(event) => {
+                if (publicationRetouchDragRef.current) {
+                  event.currentTarget.releasePointerCapture?.(event.pointerId);
+                }
+                publicationRetouchDragRef.current = null;
+                setIsPublicationRetouchDragging(false);
+              }}
+              onZoomOut={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...asset.transform, zoom: publicationClamp((asset.transform.zoom || 1) - 0.08, 0.4, 3) } } : asset))}
+              onZoomIn={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...asset.transform, zoom: publicationClamp((asset.transform.zoom || 1) + 0.08, 0.4, 3) } } : asset))}
+              onContain={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: withPublicationBackgroundMode({ ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, getPublicationBackgroundMode(asset.transform)) } : asset))}
+              onCover={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: withPublicationBackgroundMode({ ...asset.transform, fit: "cover", zoom: 1, offsetX: 0, offsetY: 0 }, "black") } : asset))}
+              onReset={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: buildPublicationDefaultTransform(channel) } : asset))}
+              onDoubleClick={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...asset.transform, offsetX: 0, offsetY: 0 } } : asset))}
+              onSave={closePublicationRetouch}
+              onBackgroundModeChange={(mode) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: mode === "blur" ? withPublicationBackgroundMode({ ...asset.transform, fit: "contain" }, "blur") : mode === "transparent" ? withPublicationBackgroundMode({ ...asset.transform, fit: "contain" }, "transparent") : { ...withPublicationBackgroundMode({ ...asset.transform, fit: "contain" }, "color"), backgroundColor: asset.transform.backgroundColor || "#e8f6ff" } } : asset))}
+              onBackgroundColorChange={(color) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...withPublicationBackgroundMode({ ...asset.transform, fit: "contain" }, "color"), backgroundColor: color } } : asset))}
+              designState={getPublicationDesign(publicationRetouchAsset.transform)}
+              onDesignChange={(patch) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...asset.transform, design: { ...getPublicationDesign(asset.transform), ...patch } } } : asset))}
+              pillButtonStyle={pillBtn}
+              pillButtonActiveStyle={pillBtnActive}
+              sidebarItems={(publicationEditImagesByChannel[channel]?.assets || []).map((asset, index) => ({
+                key: asset.key,
+                previewUrl: asset.previewUrl,
+                title: `Image ${index + 1}`,
+                subtitle: asset.selected ? "Publiée sur ce canal" : "Non publiée sur ce canal",
+                active: asset.key === publicationRetouchAsset.key,
+                onClick: () => setPublicationRetouchImageKey(asset.key),
+              }))}
+            />
+          );
+        })() : null}
 
         {/* Compose modal */}
         {composeOpen ? (
