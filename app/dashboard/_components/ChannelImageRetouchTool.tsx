@@ -253,7 +253,7 @@ export function ChannelImageRetouchModal({
   const textResizeRef = useRef<{ pointerId: number; startX: number; startY: number; originWidth: number; originHeight: number } | null>(null);
   const textBoxPos = useMemo(() => getTextBoxPosition(designState), [designState]);
   const textBoxWidth = Math.max(140, Math.min(520, designState?.width ?? 320));
-  const textBoxHeight = Math.max(54, Math.min(280, designState?.height ?? Math.max(72, Math.round((designState?.size ?? 30) * 2.2))));
+  const textBoxHeight = Math.max(64, Math.min(280, designState?.height ?? Math.max(84, Math.round((designState?.size ?? 30) * 2.6))));
 
   useEffect(() => {
     if (!open) return;
@@ -347,13 +347,13 @@ export function ChannelImageRetouchModal({
                       transform: "translate(-50%, -50%)",
                       width: textBoxWidth,
                       height: textBoxHeight,
-                      padding: "10px 18px",
+                      padding: "12px 18px 14px",
                       borderRadius: 18,
                       background: `${designState.background}cc`,
                       color: designState.color,
                       fontWeight: 900,
                       fontSize: designState.size,
-                      lineHeight: 1.08,
+                      lineHeight: 1.2,
                       textAlign: "center",
                       boxShadow: "0 12px 34px rgba(0,0,0,0.22)",
                       cursor: textResizeRef.current ? "nwse-resize" : "move",
@@ -364,7 +364,7 @@ export function ChannelImageRetouchModal({
                       overflow: "hidden",
                     }}
                   >
-                    <div style={{ maxWidth: "100%", maxHeight: "100%", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>
+                    <div style={{ maxWidth: "100%", maxHeight: "100%", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", lineHeight: 1.2, paddingBottom: 2 }}>
                       {designState.text}
                     </div>
                     <div
