@@ -250,12 +250,16 @@ export function ChannelImageRetouchModal({
   onDesignChange,
 }: ModalProps) {
   const textDragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const textResizeRef = useRef<{ pointerId: number; startX: number; startY: number; originWidth: number; originHeight: number } | null>(null);
   const textBoxPos = useMemo(() => getTextBoxPosition(designState), [designState]);
+  const textBoxWidth = Math.max(140, Math.min(520, designState?.width ?? 320));
+  const textBoxHeight = Math.max(54, Math.min(280, designState?.height ?? Math.max(72, Math.round((designState?.size ?? 30) * 2.2))));
 
   useEffect(() => {
     if (!open) return;
     const onWindowPointerUp = () => {
       textDragRef.current = null;
+      textResizeRef.current = null;
     };
     window.addEventListener("pointerup", onWindowPointerUp);
     return () => window.removeEventListener("pointerup", onWindowPointerUp);
@@ -308,20 +312,32 @@ export function ChannelImageRetouchModal({
                   <div
                     onPointerDown={(event) => {
                       event.stopPropagation();
+                      if ((event.target as HTMLElement)?.dataset?.resizeHandle === "true") return;
                       textDragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: textBoxPos.x, originY: textBoxPos.y };
                       (event.currentTarget as HTMLDivElement).setPointerCapture?.(event.pointerId);
                     }}
                     onPointerMove={(event) => {
-                      const drag = textDragRef.current;
-                      if (!drag || drag.pointerId !== event.pointerId || !previewRef?.current || !onDesignChange) return;
+                      if (!previewRef?.current || !onDesignChange) return;
                       const rect = previewRef.current.getBoundingClientRect();
-                      const nextX = Math.max(6, Math.min(94, drag.originX + ((event.clientX - drag.startX) / rect.width) * 100));
-                      const nextY = Math.max(8, Math.min(92, drag.originY + ((event.clientY - drag.startY) / rect.height) * 100));
+                      const resize = textResizeRef.current;
+                      if (resize && resize.pointerId === event.pointerId) {
+                        const nextWidth = Math.max(140, Math.min(rect.width * 0.92, resize.originWidth + (event.clientX - resize.startX)));
+                        const nextHeight = Math.max(54, Math.min(rect.height * 0.6, resize.originHeight + (event.clientY - resize.startY)));
+                        onDesignChange({ width: nextWidth, height: nextHeight });
+                        return;
+                      }
+                      const drag = textDragRef.current;
+                      if (!drag || drag.pointerId !== event.pointerId) return;
+                      const halfW = (textBoxWidth / rect.width) * 50;
+                      const halfH = (textBoxHeight / rect.height) * 50;
+                      const nextX = Math.max(halfW + 2, Math.min(98 - halfW, drag.originX + ((event.clientX - drag.startX) / rect.width) * 100));
+                      const nextY = Math.max(halfH + 2, Math.min(98 - halfH, drag.originY + ((event.clientY - drag.startY) / rect.height) * 100));
                       const nextPosition = nextY < 30 ? "top" : nextY > 70 ? "bottom" : "center";
                       onDesignChange({ x: nextX, y: nextY, position: nextPosition });
                     }}
                     onPointerUp={(event) => {
                       textDragRef.current = null;
+                      textResizeRef.current = null;
                       (event.currentTarget as HTMLDivElement).releasePointerCapture?.(event.pointerId);
                     }}
                     style={{
@@ -329,7 +345,8 @@ export function ChannelImageRetouchModal({
                       left: `${textBoxPos.x}%`,
                       top: `${textBoxPos.y}%`,
                       transform: "translate(-50%, -50%)",
-                      maxWidth: "78%",
+                      width: textBoxWidth,
+                      height: textBoxHeight,
                       padding: "10px 18px",
                       borderRadius: 18,
                       background: `${designState.background}cc`,
@@ -339,12 +356,48 @@ export function ChannelImageRetouchModal({
                       lineHeight: 1.08,
                       textAlign: "center",
                       boxShadow: "0 12px 34px rgba(0,0,0,0.22)",
-                      cursor: "move",
+                      cursor: textResizeRef.current ? "nwse-resize" : "move",
                       userSelect: "none",
                       touchAction: "none",
+                      display: "grid",
+                      placeItems: "center",
+                      overflow: "hidden",
                     }}
                   >
-                    {designState.text}
+                    <div style={{ maxWidth: "100%", maxHeight: "100%", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>
+                      {designState.text}
+                    </div>
+                    <div
+                      data-resize-handle="true"
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        textResizeRef.current = {
+                          pointerId: event.pointerId,
+                          startX: event.clientX,
+                          startY: event.clientY,
+                          originWidth: textBoxWidth,
+                          originHeight: textBoxHeight,
+                        };
+                        (event.currentTarget as HTMLDivElement).setPointerCapture?.(event.pointerId);
+                      }}
+                      onPointerUp={(event) => {
+                        event.stopPropagation();
+                        textResizeRef.current = null;
+                        (event.currentTarget as HTMLDivElement).releasePointerCapture?.(event.pointerId);
+                      }}
+                      style={{
+                        position: "absolute",
+                        right: 8,
+                        bottom: 8,
+                        width: 16,
+                        height: 16,
+                        borderRadius: 5,
+                        background: "rgba(255,255,255,0.96)",
+                        border: "1px solid rgba(15,23,42,0.28)",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.18)",
+                        cursor: "nwse-resize",
+                      }}
+                    />
                   </div>
                 ) : null}
                 <div style={{ position: "absolute", inset: 12, borderRadius: 16, border: "1px solid rgba(255,255,255,0.14)", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.14)", pointerEvents: "none" }} />

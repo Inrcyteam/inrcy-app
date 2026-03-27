@@ -9,6 +9,8 @@ export type MiniDesignState = {
   size: number;
   x?: number;
   y?: number;
+  width?: number;
+  height?: number;
 };
 
 type Props = {
@@ -79,7 +81,7 @@ export default function ImageMiniDesignPanel({ value, onChange }: Props) {
         <input type="range" min={18} max={72} step={2} value={value.size} onChange={(e) => onChange({ size: Number(e.target.value) || 30 })} />
       </label>
 
-      <div style={{ fontSize: 11, opacity: 0.65 }}>Astuce : glissez directement le bloc texte dans l’image.</div>
+      <div style={{ fontSize: 11, opacity: 0.65 }}>Astuce : glissez le bloc texte dans l’image et utilisez la poignée en bas à droite pour le redimensionner.</div>
     </div>
   );
 }
