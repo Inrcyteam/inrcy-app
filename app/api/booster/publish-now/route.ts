@@ -450,11 +450,14 @@ const body = await req.json().catch(() => null);
             hashtags: channelPost.hashtags,
             images: (() => {
               const channelImageSet = getChannelImageSet(ch);
-              return channelImageSet.siteCardPublishableUrls.length
-                ? channelImageSet.siteCardPublishableUrls
+              // For website embeds, always prefer the original uploaded assets.
+              // They preserve the real framing and avoid publishing the blurred
+              // site-card derivative inside the iframe media slot.
+              return channelImageSet.images.length
+                ? channelImageSet.images
                 : channelImageSet.socialFeedPublishableUrls.length
                   ? channelImageSet.socialFeedPublishableUrls
-                  : channelImageSet.images;
+                  : channelImageSet.siteCardPublishableUrls;
             })(),
             external_url: externalUrl,     // ✅ si tu veux (optionnel)
             site_url: targetUrl || null,   // ✅ si tu veux (optionnel)
