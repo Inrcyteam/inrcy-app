@@ -558,7 +558,7 @@ async function removeChannelDelivery(params: {
     return;
   }
 
-  const [fbRow, gmbRow, igRow, liRow] = await Promise.all([
+  const [fbRow, _gmbRow, igRow, liRow] = await Promise.all([
     getLatestIntegrationRow(userId, "facebook", "facebook", "facebook", "status,resource_id,access_token_enc"),
     getLatestIntegrationRow(userId, "google", "gmb", "gmb", "status,resource_id,meta"),
     getLatestIntegrationRow(userId, "instagram", "instagram", "instagram", "status,resource_id,access_token_enc"),
