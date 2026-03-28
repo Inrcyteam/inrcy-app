@@ -252,6 +252,7 @@ export function ChannelImageRetouchModal({
   const textDragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const textResizeRef = useRef<{ pointerId: number; startX: number; startY: number; originWidth: number; originHeight: number } | null>(null);
   const [viewportWidth, setViewportWidth] = useState<number>(typeof window === "undefined" ? 1440 : window.innerWidth);
+  const [isTextResizing, setIsTextResizing] = useState(false);
   const textBoxPos = useMemo(() => getTextBoxPosition(designState), [designState]);
   const textBoxWidth = Math.max(140, Math.min(520, designState?.width ?? 320));
   const textBoxHeight = Math.max(64, Math.min(280, designState?.height ?? Math.max(84, Math.round((designState?.size ?? 30) * 2.6))));
@@ -261,6 +262,8 @@ export function ChannelImageRetouchModal({
     const onWindowPointerUp = () => {
       textDragRef.current = null;
       textResizeRef.current = null;
+                        setIsTextResizing(false);
+      setIsTextResizing(false);
     };
     const onResize = () => setViewportWidth(window.innerWidth);
     onResize();
@@ -359,6 +362,8 @@ export function ChannelImageRetouchModal({
                     onPointerUp={(event) => {
                       textDragRef.current = null;
                       textResizeRef.current = null;
+                        setIsTextResizing(false);
+      setIsTextResizing(false);
                       (event.currentTarget as HTMLDivElement).releasePointerCapture?.(event.pointerId);
                     }}
                     style={{
@@ -377,7 +382,7 @@ export function ChannelImageRetouchModal({
                       lineHeight: 1.2,
                       textAlign: "center",
                       boxShadow: "0 12px 34px rgba(0,0,0,0.22)",
-                      cursor: textResizeRef.current ? "nwse-resize" : "move",
+                      cursor: isTextResizing ? "nwse-resize" : "move",
                       userSelect: "none",
                       touchAction: "none",
                       display: "grid",
@@ -392,6 +397,7 @@ export function ChannelImageRetouchModal({
                       data-resize-handle="true"
                       onPointerDown={(event) => {
                         event.stopPropagation();
+                        setIsTextResizing(true);
                         textResizeRef.current = {
                           pointerId: event.pointerId,
                           startX: event.clientX,
@@ -404,6 +410,8 @@ export function ChannelImageRetouchModal({
                       onPointerUp={(event) => {
                         event.stopPropagation();
                         textResizeRef.current = null;
+                        setIsTextResizing(false);
+      setIsTextResizing(false);
                         (event.currentTarget as HTMLDivElement).releasePointerCapture?.(event.pointerId);
                       }}
                       style={{
