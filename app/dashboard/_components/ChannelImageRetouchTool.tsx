@@ -251,7 +251,7 @@ export function ChannelImageRetouchModal({
 }: ModalProps) {
   const textDragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const textResizeRef = useRef<{ pointerId: number; startX: number; startY: number; originWidth: number; originHeight: number } | null>(null);
-  const [isTextResizing, setIsTextResizing] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState<number>(typeof window === "undefined" ? 1440 : window.innerWidth);
   const textBoxPos = useMemo(() => getTextBoxPosition(designState), [designState]);
   const textBoxWidth = Math.max(140, Math.min(520, designState?.width ?? 320));
   const textBoxHeight = Math.max(64, Math.min(280, designState?.height ?? Math.max(84, Math.round((designState?.size ?? 30) * 2.6))));
@@ -261,10 +261,15 @@ export function ChannelImageRetouchModal({
     const onWindowPointerUp = () => {
       textDragRef.current = null;
       textResizeRef.current = null;
-      setIsTextResizing(false);
     };
+    const onResize = () => setViewportWidth(window.innerWidth);
+    onResize();
     window.addEventListener("pointerup", onWindowPointerUp);
-    return () => window.removeEventListener("pointerup", onWindowPointerUp);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("pointerup", onWindowPointerUp);
+      window.removeEventListener("resize", onResize);
+    };
   }, [open]);
 
   if (!open) return null;
@@ -274,24 +279,38 @@ export function ChannelImageRetouchModal({
   const bgFill = legacyColorFromMode(backgroundMode, backgroundColor);
   const previewBg = previewBackgroundStyle(backgroundMode, backgroundColor);
 
+  const isMobile = viewportWidth <= 768;
+  const isCompact = viewportWidth <= 1180;
+  const modalWidth = isMobile ? "calc(100vw - 8px)" : "min(1580px, calc(100vw - 28px))";
+  const modalHeight = isMobile ? "calc(100vh - 8px)" : "min(940px, calc(100vh - 28px))";
+  const modalPadding = isMobile ? 10 : 18;
+  const previewMinHeight = isMobile ? 120 : isCompact ? 320 : 0;
+  const controlsGridColumns = isMobile ? "1fr 1fr" : "48px 48px 1fr 1fr";
+  const contentGridTemplateColumns = isMobile ? undefined : isCompact ? "minmax(0, 1fr)" : "minmax(0, 1fr) 300px 320px";
+  const contentGridTemplateRows = isMobile ? undefined : isCompact ? "auto auto auto" : undefined;
+  const mobileStackStyle: React.CSSProperties | undefined = isMobile
+    ? { display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }
+    : undefined;
+
   return (
-    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", display: "grid", placeItems: "center", padding: 16 }}>
-      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(1580px, calc(100vw - 28px))", height: "min(940px, calc(100vh - 28px))", borderRadius: 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: 18, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: 16, overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minHeight: 52 }}>
+    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? 6 : 16, overflow: "hidden" }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: modalWidth, height: modalHeight, alignSelf: isMobile ? "stretch" : undefined, justifySelf: isMobile ? "stretch" : undefined, borderRadius: isMobile ? 20 : 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: modalPadding, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: isMobile ? 10 : 16, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 12, minHeight: 52, flexWrap: "wrap" }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 900, fontSize: 18, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
+            <div style={{ fontWeight: 900, fontSize: isMobile ? 16 : 18, whiteSpace: isMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.15 }}>{title}</div>
             <div style={{ fontSize: 12, opacity: 0.74, marginTop: 4 }}>{subtitle}</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end", width: isMobile ? "100%" : undefined }}>
             {onApplyToSelectedChannels ? <button type="button" className={buttonClassName} onClick={onApplyToSelectedChannels}>Appliquer partout</button> : null}
             <button type="button" className={primaryButtonClassName || buttonClassName} onClick={onSave}>Enregistrer</button>
             <button type="button" className={buttonClassName} onClick={onClose}>Fermer</button>
           </div>
         </div>
 
-        <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px 320px", gap: 18, alignItems: "stretch" }}>
-          <div style={{ minWidth: 0, minHeight: 0, display: "grid", gridTemplateRows: "minmax(0, 1fr) auto" }}>
-            <div style={{ minHeight: 0, display: "grid", placeItems: "center", borderRadius: 24, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.02))", padding: 14, overflow: "hidden" }}>
+        <div style={{ minHeight: 0, display: isMobile ? "flex" : "grid",
+    flexDirection: isMobile ? "column" : undefined, gridTemplateColumns: contentGridTemplateColumns, gridTemplateRows: contentGridTemplateRows, gap: isMobile ? 24 : 18, alignItems: "stretch", overflowY: "auto", overflowX: "hidden", paddingRight: isMobile ? 2 : 0, paddingBottom: isMobile ? 96 : 0 }}>
+          <div style={{ minWidth: 0, minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, gridTemplateRows: isMobile ? undefined : "minmax(0, 1fr) auto", gap: isMobile ? 10 : undefined, order: isMobile ? 2 : 1, flex: isMobile ? "0 0 auto" : undefined }}>
+            <div style={{ minHeight: previewMinHeight, height: isMobile ? 220 : undefined, maxHeight: isMobile ? 220 : undefined, display: "grid", placeItems: "center", borderRadius: isMobile ? 18 : 24, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.02))", padding: isMobile ? 8 : 14, overflow: "hidden", flex: isMobile ? "0 0 auto" : undefined }}>
               <div
                 ref={previewRef}
                 onWheel={onWheel}
@@ -300,7 +319,7 @@ export function ChannelImageRetouchModal({
                 onPointerUp={onPointerUp}
                 onPointerCancel={onPointerCancel}
                 onDoubleClick={onDoubleClick}
-                style={{ position: "relative", height: "100%", maxWidth: "100%", aspectRatio, borderRadius: 22, overflow: "hidden", border: "1px solid rgba(255,255,255,0.14)", ...previewBg, cursor: isDragging ? "grabbing" : "grab", touchAction: "none", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.03)" }}
+                style={{ position: "relative", width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", aspectRatio, borderRadius: isMobile ? 16 : 22, overflow: "hidden", border: "1px solid rgba(255,255,255,0.14)", ...previewBg, cursor: isDragging ? "grabbing" : "grab", touchAction: "none", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.03)" }}
               >
                 {bgMode === "blur" && fitLabel === "Adapter" ? (
                   <img src={previewSrc} alt="background-preview" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(26px) saturate(1.05) brightness(1.02)", transform: "scale(1.08)", opacity: 0.95, pointerEvents: "none", userSelect: "none" }} />
@@ -340,7 +359,6 @@ export function ChannelImageRetouchModal({
                     onPointerUp={(event) => {
                       textDragRef.current = null;
                       textResizeRef.current = null;
-                      setIsTextResizing(false);
                       (event.currentTarget as HTMLDivElement).releasePointerCapture?.(event.pointerId);
                     }}
                     style={{
@@ -359,7 +377,7 @@ export function ChannelImageRetouchModal({
                       lineHeight: 1.2,
                       textAlign: "center",
                       boxShadow: "0 12px 34px rgba(0,0,0,0.22)",
-                      cursor: isTextResizing ? "nwse-resize" : "move",
+                      cursor: textResizeRef.current ? "nwse-resize" : "move",
                       userSelect: "none",
                       touchAction: "none",
                       display: "grid",
@@ -381,13 +399,11 @@ export function ChannelImageRetouchModal({
                           originWidth: textBoxWidth,
                           originHeight: textBoxHeight,
                         };
-                        setIsTextResizing(true);
                         (event.currentTarget as HTMLDivElement).setPointerCapture?.(event.pointerId);
                       }}
                       onPointerUp={(event) => {
                         event.stopPropagation();
                         textResizeRef.current = null;
-                        setIsTextResizing(false);
                         (event.currentTarget as HTMLDivElement).releasePointerCapture?.(event.pointerId);
                       }}
                       style={{
@@ -408,17 +424,17 @@ export function ChannelImageRetouchModal({
                 <div style={{ position: "absolute", inset: 12, borderRadius: 16, border: "1px solid rgba(255,255,255,0.14)", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.14)", pointerEvents: "none" }} />
                 <div style={{ position: "absolute", left: 12, right: 12, bottom: 12, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", pointerEvents: "none", flexWrap: "wrap" }}>
                   <div style={{ fontSize: 12, padding: "6px 10px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff" }}>{fitLabel} • {zoomLabel}</div>
-                  <div style={{ fontSize: 11, padding: "6px 10px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff" }}>Glisser • Molette • Double-clic</div>
+                  {!isMobile ? <div style={{ fontSize: 11, padding: "6px 10px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff" }}>Glisser • Molette • Double-clic</div> : null}
                 </div>
               </div>
             </div>
             <div style={{ fontSize: 12, opacity: 0.72, padding: "10px 2px 0" }}>Tout tient dans cette fenêtre. Déplacez l’image, dézoomez, choisissez un fond et glissez le bloc texte directement dans le visuel.</div>
           </div>
 
-          <div style={{ minHeight: 0, display: "grid", alignContent: "start", gap: 12 }}>
+          <div style={{ minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, alignContent: "start", gap: 12, order: isMobile ? 2 : 1, flex: isMobile ? "0 0 auto" : undefined }}>
             <div style={{ display: "grid", gap: 8, padding: 14, borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
               <div style={{ fontSize: 12, opacity: 0.82 }}>Image</div>
-              <div style={{ display: "grid", gridTemplateColumns: "48px 48px 1fr 1fr", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: controlsGridColumns, gap: 8 }}>
                 <button type="button" className={buttonClassName} onClick={onZoomOut} style={{ justifyContent: "center" }}>−</button>
                 <button type="button" className={buttonClassName} onClick={onZoomIn} style={{ justifyContent: "center" }}>+</button>
                 <button type="button" className={buttonClassName} onClick={onContain} style={{ justifyContent: "center" }}>Adapter</button>
@@ -445,13 +461,26 @@ export function ChannelImageRetouchModal({
             {designState && onDesignChange ? <ImageMiniDesignPanel value={designState} onChange={onDesignChange} /> : null}
           </div>
 
-          <div style={{ minHeight: 0, display: "grid", gridTemplateRows: "minmax(0, 1fr)", gap: 12 }}>
+          <div style={{ minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, gridTemplateRows: isMobile ? undefined : "minmax(0, 1fr)", gap: 12, order: isMobile ? 3 : 2, flex: isMobile ? "0 0 auto" : undefined }}>
             {sidebarItems?.length ? (
-              <div style={{ minHeight: 0, height: "100%", display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: 8, padding: 14, borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
+              <div style={{ minHeight: 0, height: isMobile ? "auto" : "100%",
+                marginTop: isMobile ? 8 : 0, display: "grid", gridTemplateRows: isMobile ? undefined : isCompact ? "auto auto" : "auto minmax(0, 1fr)", gap: 8, padding: 14, borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
                 <div style={{ fontSize: 12, opacity: 0.82 }}>Images du canal</div>
-                <div style={{ minHeight: 0, display: "grid", alignContent: "start", gap: 8, overflow: "auto", paddingRight: 2 }}>
+                <div
+                  style={{
+                    minHeight: 0,
+                    display: isMobile ? "flex" : "grid",
+                    gridTemplateColumns: !isMobile && isCompact ? "repeat(auto-fit, minmax(180px, 1fr))" : undefined,
+                    alignContent: "start",
+                    gap: 8,
+                    overflowX: isMobile ? "auto" : "hidden",
+                    overflowY: isMobile ? "hidden" : "auto",
+                    paddingRight: 2,
+                    paddingBottom: isMobile ? 2 : 0,
+                  }}
+                >
                   {sidebarItems.map((item) => (
-                    <button key={item.key} type="button" onClick={item.onClick} style={{ display: "grid", gridTemplateColumns: "60px minmax(0, 1fr)", gap: 10, alignItems: "center", textAlign: "left", borderRadius: 16, padding: 8, border: item.active ? "1px solid rgba(76,195,255,0.45)" : "1px solid rgba(255,255,255,0.08)", background: item.active ? "rgba(76,195,255,0.08)" : "rgba(255,255,255,0.03)", color: "inherit", cursor: "pointer" }}>
+                    <button key={item.key} type="button" onClick={item.onClick} style={{ display: "grid", gridTemplateColumns: "60px minmax(0, 1fr)", gap: 10, alignItems: "center", textAlign: "left", borderRadius: 16, padding: 8, border: item.active ? "1px solid rgba(76,195,255,0.45)" : "1px solid rgba(255,255,255,0.08)", background: item.active ? "rgba(76,195,255,0.08)" : "rgba(255,255,255,0.03)", color: "inherit", cursor: "pointer", minWidth: isMobile ? 220 : undefined, flex: isMobile ? "0 0 220px" : undefined }}>
                       <img src={item.previewUrl} alt={item.title} style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 12, display: "block" }} />
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 12, fontWeight: 800 }}>{item.title}</div>

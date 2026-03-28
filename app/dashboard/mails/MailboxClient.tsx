@@ -2566,6 +2566,7 @@ async function deleteDraftPermanently(id: string) {
                   const imageAttachments = dedupedAttachments.filter((att) => att?.url && isImageAttachment(att));
                   const videoAttachments = dedupedAttachments.filter((att) => att?.url && isVideoAttachment(att));
                   const fileAttachments = dedupedAttachments.filter((att) => !imageAttachments.includes(att) && !videoAttachments.includes(att));
+                  const hasAttachments = imageAttachments.length > 0 || videoAttachments.length > 0 || fileAttachments.length > 0;
                   const showFallbackMessage = (() => {
                     if (detailsItem.source === "send_items") return true;
                     const activeHasStructured = !!(activeParts.title || activeParts.content || activeParts.cta || activeParts.hashtags?.length || activeParts.attachments?.length);
@@ -2867,12 +2868,12 @@ async function deleteDraftPermanently(id: string) {
                           )}
                         </section>
 
-                        <section className={styles.detailSectionCard}>
-                          <div className={styles.detailSectionHeader}>
-                            <div className={styles.messageHeaderTitle}>Pièces jointes</div>
-                          </div>
+                        {hasAttachments ? (
+                          <section className={styles.detailSectionCard}>
+                            <div className={styles.detailSectionHeader}>
+                              <div className={styles.messageHeaderTitle}>Pièces jointes</div>
+                            </div>
 
-                          {imageAttachments.length || videoAttachments.length || fileAttachments.length ? (
                             <div className={styles.attachmentsPanel}>
                               {imageAttachments.length ? (
                                 <div className={styles.attachmentGallery}>
@@ -2924,10 +2925,8 @@ async function deleteDraftPermanently(id: string) {
                                 </div>
                               ) : null}
                             </div>
-                          ) : (
-                            <div className={styles.emptyDetailText}>Aucune pièce jointe disponible.</div>
-                          )}
-                        </section>
+                          </section>
+                        ) : null}
                       </div>
 
                       {detailsItem.source === "send_items" && (detailsItem as any).raw?.status === "draft" ? (

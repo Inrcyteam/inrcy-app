@@ -25,6 +25,7 @@ const POSITIONS: Array<{ value: MiniDesignState["position"]; label: string }> = 
 ];
 
 export default function ImageMiniDesignPanel({ value, onChange }: Props) {
+  const isMobile = typeof window !== "undefined" ? window.innerWidth <= 768 : false;
   return (
     <div style={{ display: "grid", gap: 10, padding: 14, borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
       <div style={{ fontSize: 12, opacity: 0.82 }}>Mini design</div>
@@ -33,14 +34,17 @@ export default function ImageMiniDesignPanel({ value, onChange }: Props) {
         <span>Afficher un texte</span>
       </label>
 
-      <input
+      <label style={{ display: "grid", gap: 6, fontSize: 12, opacity: 0.82 }}>
+        <span>Texte</span>
+        <input
         value={value.text}
         onChange={(e) => onChange({ text: e.target.value })}
         placeholder="Ex : Demandez votre devis"
         style={{ width: "100%", minHeight: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)", color: "inherit", padding: "0 12px" }}
       />
+      </label>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
         <label style={{ display: "grid", gap: 6, fontSize: 12, opacity: 0.82 }}>
           <span>Couleur texte</span>
           <input type="color" value={value.color} onChange={(e) => onChange({ color: e.target.value })} style={{ width: "100%", height: 40, borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "transparent" }} />
@@ -53,7 +57,7 @@ export default function ImageMiniDesignPanel({ value, onChange }: Props) {
 
       <div style={{ display: "grid", gap: 6, fontSize: 12, opacity: 0.82 }}>
         <span>Position rapide</span>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(3, minmax(0, 1fr))" : "repeat(3, auto)", gap: 8 }}>
           {POSITIONS.map((option) => (
             <button
               key={option.value}
@@ -66,6 +70,7 @@ export default function ImageMiniDesignPanel({ value, onChange }: Props) {
                 boxShadow: value.position === option.value ? "0 0 0 1px rgba(76,195,255,0.18) inset" : "none",
                 background: value.position === option.value ? "rgba(76,195,255,0.10)" : "rgba(255,255,255,0.03)",
                 color: "inherit",
+                width: "100%",
                 padding: "0 12px",
                 cursor: "pointer",
               }}
@@ -81,7 +86,7 @@ export default function ImageMiniDesignPanel({ value, onChange }: Props) {
         <input type="range" min={18} max={72} step={2} value={value.size} onChange={(e) => onChange({ size: Number(e.target.value) || 30 })} />
       </label>
 
-      <div style={{ fontSize: 11, opacity: 0.65 }}>Astuce : glissez le bloc texte dans l’image et utilisez la poignée en bas à droite pour le redimensionner.</div>
+      <div style={{ fontSize: 11, opacity: 0.65, lineHeight: 1.45 }}>Astuce : glissez le bloc texte dans l’image et utilisez la poignée en bas à droite pour le redimensionner.</div>
     </div>
   );
 }

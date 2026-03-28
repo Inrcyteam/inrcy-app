@@ -112,6 +112,8 @@ export default function CookieConsentBanner() {
     alignItems: "center",
     whiteSpace: "nowrap",
     flex: "0 0 auto",
+    minHeight: 42,
+    width: "100%",
   };
 
   const primaryBtn: CSSProperties = {
@@ -130,6 +132,7 @@ export default function CookieConsentBanner() {
     padding: 0,
     borderRadius: 0,
     fontWeight: 700,
+    width: "fit-content",
   };
 
   const setAll = (analytics: boolean) => {
@@ -138,15 +141,14 @@ export default function CookieConsentBanner() {
     setOpen(false);
   };
 
+  const isMobile = typeof window !== "undefined" ? window.innerWidth <= 640 : false;
+
   const actionRow: CSSProperties = {
     marginTop: 10,
-    display: "flex",
+    display: "grid",
+    gridTemplateColumns: isMobile ? "1fr 1fr" : "minmax(0, 1fr) repeat(3, auto)",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: 10,
-    flexWrap: "nowrap",
-    overflowX: "auto",
-    WebkitOverflowScrolling: "touch",
   };
 
   return (
@@ -159,16 +161,16 @@ export default function CookieConsentBanner() {
       </div>
 
       <div style={actionRow}>
-        <a href="/legal/confidentialite" style={linkBtn}>
+        <a href="/legal/confidentialite" style={{ ...linkBtn, gridColumn: isMobile ? "1 / -1" : undefined }}>
           Politique de confidentialité
         </a>
-        <button type="button" onClick={() => setOpen((v) => !v)} style={btn}>
+        <button type="button" onClick={() => setOpen((v) => !v)} style={{ ...btn, width: isMobile ? "100%" : undefined }}>
           {open ? "Fermer les réglages" : "Gérer mes cookies"}
         </button>
-        <button type="button" onClick={() => setAll(false)} style={btn}>
+        <button type="button" onClick={() => setAll(false)} style={{ ...btn, width: isMobile ? "100%" : undefined }}>
           Refuser
         </button>
-        <button type="button" onClick={() => setAll(true)} style={primaryBtn}>
+        <button type="button" onClick={() => setAll(true)} style={{ ...primaryBtn, width: isMobile ? "100%" : undefined }}>
           Accepter
         </button>
       </div>
