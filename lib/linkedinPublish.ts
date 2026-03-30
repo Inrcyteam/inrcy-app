@@ -73,7 +73,7 @@ async function createLinkedInPost(params: {
   const { raw, json } = await parseResponse(res);
 
   if (!res.ok) {
-    const errMsg = json?.message || json?.error || raw || `LinkedIn publish failed (${res.status})`;
+    const errMsg = json?.message || json?.error || raw || "Impossible de publier sur LinkedIn pour le moment.";
     return { ok: false, error: errMsg, diagnostics: { status: res.status, body: json ?? raw, payload } };
   }
 

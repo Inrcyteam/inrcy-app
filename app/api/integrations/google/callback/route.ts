@@ -138,7 +138,7 @@ if (!tokenRes.ok || !tokenData.access_token) {
     const userInfo = (await userRes.json()) as GoogleUserInfo;
 
     if (!userRes.ok || !userInfo?.email) {
-      return fail("userinfo_failed", "Userinfo fetch failed");
+      return fail("userinfo_failed", "Impossible de récupérer les informations du compte.");
     }
 
     // 3) Read existing row (to preserve refresh_token if not returned)
@@ -152,7 +152,7 @@ if (!tokenRes.ok || !tokenData.access_token) {
       .maybeSingle();
 
     if (existingErr) {
-      return fail("db_read_failed", "DB read existing failed");
+      return fail("db_read_failed", "Le service est momentanément indisponible. Merci de réessayer.");
     }
 
     const refreshTokenEncToStore = tokenData.refresh_token
@@ -195,7 +195,7 @@ if (!tokenRes.ok || !tokenData.access_token) {
     } else {
       const { error: insErr } = await supabaseAdmin.from("integrations").insert(payload);
       if (insErr) {
-        return fail("db_insert_failed", "DB insert failed");
+        return fail("db_insert_failed", "Le service est momentanément indisponible. Merci de réessayer.");
       }
     }
 

@@ -225,7 +225,7 @@ const handler = async (req: Request) => {
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
     return NextResponse.json(
-      { error: safeErrorMessage(e) || "Internal server error" },
+      { error: safeErrorMessage(e) || "Impossible d'envoyer le message pour le moment." },
       { status: asHttpStatus(asRecord(e)["status"], 500) }
     );
   }

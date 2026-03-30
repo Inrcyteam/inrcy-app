@@ -22,18 +22,18 @@ function isPrivateIp(ip: string): boolean {
 
 function validateHost(input: string): string {
   const host = String(input || "").trim();
-  if (!host) throw new Error("Hôte IMAP/SMTP manquant.");
-  if (host.includes("/") || host.includes("\\")) throw new Error("Hôte IMAP/SMTP invalide.");
-  if (!/^[a-z0-9.-]+$/i.test(host)) throw new Error("Hôte IMAP/SMTP invalide.");
+  if (!host) throw new Error("Le serveur de messagerie est manquant.");
+  if (host.includes("/") || host.includes("\\")) throw new Error("L'adresse du serveur de messagerie est invalide.");
+  if (!/^[a-z0-9.-]+$/i.test(host)) throw new Error("L'adresse du serveur de messagerie est invalide.");
 
   const lower = host.toLowerCase();
   if (lower === "localhost" || lower.endsWith(".local") || lower.endsWith(".internal")) {
-    throw new Error("Hôte IMAP/SMTP non autorisé.");
+    throw new Error("Ce serveur de messagerie n'est pas autorisé.");
   }
 
   const ipVersion = net.isIP(host);
   if (ipVersion && isPrivateIp(host)) {
-    throw new Error("Hôte IMAP/SMTP non autorisé.");
+    throw new Error("Ce serveur de messagerie n'est pas autorisé.");
   }
 
   return host;

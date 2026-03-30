@@ -157,7 +157,7 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     if (existingErr) {
-      return fail("db_read_failed", "DB read existing failed");
+      return fail("db_read_failed", "Le service est momentanément indisponible. Merci de réessayer.");
     }
 
     const existingRefreshEnc = asString(asRecord(existing)["refresh_token_enc"]) ?? null;
@@ -192,7 +192,7 @@ export async function GET(req: Request) {
       if (upErr) return fail("db_update_failed", "La mise à jour a échoué.");
     } else {
       const { error: insErr } = await supabaseAdmin.from("integrations").insert(payload);
-      if (insErr) return fail("db_insert_failed", "DB insert failed");
+      if (insErr) return fail("db_insert_failed", "Le service est momentanément indisponible. Merci de réessayer.");
     }
 
 

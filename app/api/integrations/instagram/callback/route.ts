@@ -116,7 +116,7 @@ export async function GET(req: Request) {
 
     const tokenData = await fetchJson<TokenResponse>(tokenUrl);
     const userAccessToken = tokenData.access_token;
-    if (!userAccessToken) return fail("missing_access_token", "No access_token from Meta");
+    if (!userAccessToken) return fail("missing_access_token", "La connexion Instagram a échoué. Merci de réessayer.");
 
     const shortExpiresIn = typeof tokenData.expires_in === "number" ? tokenData.expires_in : null;
 
@@ -160,7 +160,7 @@ const { error: upsertErr } = await supabaseAdmin
   .from("integrations")
   .upsert(payload, { onConflict: "user_id,provider,source,product" });
 
-if (upsertErr) return fail("db_upsert_failed", "DB upsert failed");
+if (upsertErr) return fail("db_upsert_failed", "Le service est momentanément indisponible. Merci de réessayer.");
 
     // Invalidate stats cache so iNrStats + Generator reflect the new connection immediately.
     await invalidateUserStatsCache(supabase, userId);
@@ -196,7 +196,7 @@ if (upsertErr) return fail("db_upsert_failed", "DB upsert failed");
     finalUrl.searchParams.set("linked", "instagram");
     finalUrl.searchParams.set("ok", "0");
     finalUrl.searchParams.set("error", "oauth_callback_failed");
-    const msg = ((e instanceof Error ? e.message : String(e)) || "Unknown error").slice(0, 200);
+    const msg = ((e instanceof Error ? e.message : String(e)) || "Une erreur est survenue. Merci de réessayer.").slice(0, 200);
     if (msg) finalUrl.searchParams.set("message", msg);
     return NextResponse.redirect(finalUrl);
   }

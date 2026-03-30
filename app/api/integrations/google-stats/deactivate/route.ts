@@ -39,6 +39,6 @@ export async function POST(req: Request) {
     await clearAllToolCaches(supabase, userId);
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Unknown error" }, { status: 500 });
+    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Une erreur est survenue. Merci de réessayer." }, { status: 500 });
   }
 }

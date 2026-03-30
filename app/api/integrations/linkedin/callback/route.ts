@@ -125,7 +125,7 @@ export async function GET(req: Request) {
     });
 
     const accessToken = String(token?.access_token || "");
-    if (!accessToken) return fail("missing_access_token", "No access_token from LinkedIn");
+    if (!accessToken) return fail("missing_access_token", "La connexion LinkedIn a échoué. Merci de réessayer.");
 
     const expiresIn = Number(token?.expires_in);
     const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
@@ -204,7 +204,7 @@ await supabaseAdmin
     finalUrl.searchParams.set("linked", "linkedin");
     finalUrl.searchParams.set("ok", "0");
     finalUrl.searchParams.set("error", "oauth_callback_failed");
-    const msg = ((e instanceof Error ? e.message : String(e)) || "Unknown error").slice(0, 200);
+    const msg = ((e instanceof Error ? e.message : String(e)) || "Une erreur est survenue. Merci de réessayer.").slice(0, 200);
     if (msg) finalUrl.searchParams.set("message", msg);
     return NextResponse.redirect(finalUrl);
   }

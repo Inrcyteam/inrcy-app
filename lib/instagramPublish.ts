@@ -163,7 +163,7 @@ export async function instagramPublishPhoto(params: {
     if (!createRes.ok) {
       return {
         ok: false,
-        error: createJson?.error?.message || "Instagram media creation failed",
+        error: createJson?.error?.message || "Impossible de préparer la publication Instagram.",
         diagnostics: { createResponse: createJson },
       };
     }
@@ -205,7 +205,7 @@ export async function instagramPublishPhoto(params: {
     if (!publishRes.ok) {
       return {
         ok: false,
-        error: publishJson?.error?.message || "Instagram publish failed",
+        error: publishJson?.error?.message || "Impossible de publier sur Instagram pour le moment.",
         diagnostics: {
           containerId,
           createResponse: createJson,
@@ -278,7 +278,7 @@ export async function instagramPublishCarousel(params: {
       if (!childRes.ok) {
         return {
           ok: false,
-          error: childJson?.error?.message || "Instagram carousel child creation failed",
+          error: childJson?.error?.message || "Impossible de préparer le carrousel Instagram.",
           diagnostics: { childCreateResponses },
         };
       }
@@ -326,7 +326,7 @@ export async function instagramPublishCarousel(params: {
     if (!createRes.ok) {
       return {
         ok: false,
-        error: createJson?.error?.message || "Instagram carousel creation failed",
+        error: createJson?.error?.message || "Impossible de créer le carrousel Instagram.",
         diagnostics: { childContainerIds, childCreateResponses, childStatusChecks, createResponse: createJson },
       };
     }
@@ -371,7 +371,7 @@ export async function instagramPublishCarousel(params: {
     if (!publishRes.ok) {
       return {
         ok: false,
-        error: publishJson?.error?.message || "Instagram carousel publish failed",
+        error: publishJson?.error?.message || "Impossible de publier le carrousel Instagram pour le moment.",
         diagnostics: {
           containerId,
           childContainerIds,
@@ -415,6 +415,6 @@ export async function instagramPublishCarousel(params: {
       },
     };
   } catch (e: any) {
-    return { ok: false, error: e?.message || "Unknown Instagram carousel publish error" };
+    return { ok: false, error: e?.message || "Une erreur est survenue lors de la publication Instagram." };
   }
 }

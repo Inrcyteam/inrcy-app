@@ -487,7 +487,7 @@ export async function GET(req: Request) {
     const userInfo = (await userRes.json()) as GoogleUserInfo;
 
     if (!userRes.ok || !userInfo?.email) {
-      return fail("userinfo_failed", "Userinfo fetch failed");
+      return fail("userinfo_failed", "Impossible de récupérer les informations du compte.");
     }
 
     // Default behavior: connect the requested product only.
@@ -719,7 +719,7 @@ if (domain && tokenData.access_token) {
     const fallbackUrl = new URL("/dashboard/stats", origin);
     fallbackUrl.searchParams.set("ok", "0");
     fallbackUrl.searchParams.set("error", "oauth_callback_failed");
-    const msg = ((e instanceof Error ? e.message : String(e)) || "Unknown error").slice(0, 200);
+    const msg = ((e instanceof Error ? e.message : String(e)) || "Une erreur est survenue. Merci de réessayer.").slice(0, 200);
     if (msg) fallbackUrl.searchParams.set("message", msg);
     return NextResponse.redirect(fallbackUrl);
   }

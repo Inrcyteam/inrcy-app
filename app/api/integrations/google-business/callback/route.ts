@@ -150,7 +150,7 @@ export async function GET(req: Request) {
     });
     const userInfo = (await userRes.json()) as GoogleUserInfo;
     if (!userRes.ok || !userInfo?.email) {
-      return fail("userinfo_failed", "Userinfo fetch failed");
+      return fail("userinfo_failed", "Impossible de récupérer les informations du compte.");
     }
 
     // Preserve refresh_token if Google doesn't return it
@@ -164,7 +164,7 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     if (existingErr) {
-      return fail("db_read_failed", "DB read existing failed");
+      return fail("db_read_failed", "Le service est momentanément indisponible. Merci de réessayer.");
     }
 
     const existingRec = asRecord(existing);
@@ -203,7 +203,7 @@ export async function GET(req: Request) {
       if (upErr) return fail("db_update_failed", "La mise à jour a échoué.");
     } else {
       const { error: insErr } = await supabaseAdmin.from("integrations").insert(payload);
-      if (insErr) return fail("db_insert_failed", "DB insert failed");
+      if (insErr) return fail("db_insert_failed", "Le service est momentanément indisponible. Merci de réessayer.");
     }
 
     // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
@@ -271,7 +271,7 @@ export async function GET(req: Request) {
     finalUrl.searchParams.set("linked", "gmb");
     finalUrl.searchParams.set("ok", "0");
     finalUrl.searchParams.set("error", "oauth_callback_failed");
-    const msg = ((e instanceof Error ? e.message : String(e)) || "Unknown error").slice(0, 200);
+    const msg = ((e instanceof Error ? e.message : String(e)) || "Une erreur est survenue. Merci de réessayer.").slice(0, 200);
     if (msg) finalUrl.searchParams.set("message", msg);
     return NextResponse.redirect(finalUrl);
   }

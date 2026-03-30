@@ -151,7 +151,7 @@ export async function GET(req: Request) {
     const tokenData = await fetchJson<TokenResponse>(tokenUrl);
     const userAccessToken = tokenData.access_token;
     if (!userAccessToken) {
-      return fail("missing_access_token", "No access_token from Facebook");
+      return fail("missing_access_token", "La connexion Facebook a échoué. Merci de réessayer.");
     }
 
     const shortExpiresIn = typeof tokenData.expires_in === "number" ? tokenData.expires_in : null;
@@ -220,7 +220,7 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     if (existingErr) {
-      return fail("db_read_failed", "DB read existing failed");
+      return fail("db_read_failed", "Le service est momentanément indisponible. Merci de réessayer.");
     }
 
     const payload: Record<string, unknown> = {
@@ -260,7 +260,7 @@ export async function GET(req: Request) {
       if (upErr) return fail("db_update_failed", "La mise à jour a échoué.");
     } else {
       const { error: insErr } = await supabaseAdmin.from("integrations").insert(payload);
-      if (insErr) return fail("db_insert_failed", "DB insert failed");
+      if (insErr) return fail("db_insert_failed", "Le service est momentanément indisponible. Merci de réessayer.");
     }
 
     // Also keep a boolean in pro_tools_configs.settings so the dashboard can show it instantly.
@@ -301,7 +301,7 @@ export async function GET(req: Request) {
     finalUrl.searchParams.set("linked", "facebook");
     finalUrl.searchParams.set("ok", "0");
     finalUrl.searchParams.set("error", "oauth_callback_failed");
-    const msg = ((e instanceof Error ? e.message : String(e)) || "Unknown error").slice(0, 200);
+    const msg = ((e instanceof Error ? e.message : String(e)) || "Une erreur est survenue. Merci de réessayer.").slice(0, 200);
     if (msg) finalUrl.searchParams.set("message", msg);
     return NextResponse.redirect(finalUrl);
   }

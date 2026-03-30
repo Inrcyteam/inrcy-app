@@ -60,7 +60,7 @@ export async function POST(req: Request) {
   }).toString()}`;
   const pagesResp = await fetchJson<{ data?: Array<{ id: string; name?: string; access_token?: string }> }>(pagesUrl);
   const page = (pagesResp.data || []).find((p) => p.id === pageId);
-  if (!page?.access_token) return NextResponse.json({ error: "Page introuvable ou token manquant" }, { status: 400 });
+  if (!page?.access_token) return NextResponse.json({ error: "Impossible de retrouver cette page Facebook." }, { status: 400 });
 
   // Get IG business account
   const infoUrl = `https://graph.facebook.com/v20.0/${encodeURIComponent(pageId)}?${new URLSearchParams({
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
   const ig = asRecord(infoRec["instagram_business_account"]);
   const igId = String(asString(ig["id"]) || "");
   const username = String(asString(ig["username"]) || "");
-  if (!igId) return NextResponse.json({ error: "Aucun Instagram Business relié à cette page" }, { status: 400 });
+  if (!igId) return NextResponse.json({ error: "Aucun compte Instagram professionnel n'est relié à cette page." }, { status: 400 });
 
   // Update integration: now connected + store page token for publishing.
   // Use supabaseAdmin here because this route must persist the selected Instagram profile

@@ -213,7 +213,7 @@ const handler = async (req: Request) => {
     return NextResponse.json({ success: true, id: info.messageId });
   } catch (e: unknown) {
     return NextResponse.json(
-      { error: safeErrorMessage(e) || "IMAP send failed" },
+      { error: safeErrorMessage(e) || "Impossible d'envoyer le message pour le moment." },
       { status: 500 }
     );
   }

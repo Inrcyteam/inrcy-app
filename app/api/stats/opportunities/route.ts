@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     return NextResponse.json(computeOpportunitiesFromOverviews(overviews, days));
   } catch (e: unknown) {
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : String(e) || 'Unknown error' },
+      { error: e instanceof Error ? e.message : String(e) || 'Une erreur est survenue. Merci de réessayer.' },
       { status: 500 }
     );
   }
