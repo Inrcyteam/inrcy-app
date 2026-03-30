@@ -424,7 +424,7 @@ export default function NewFacturePage() {
 
     await refreshSaves();
     setDraftsOpen(true);
-    setFormMessage({ type: "success", text: "Sauvegarde effectuée." });
+    setFormMessage({ type: "success", text: "Facture enregistrée." });
   };
 
   const openDraft = (d: FactureDraft) => {

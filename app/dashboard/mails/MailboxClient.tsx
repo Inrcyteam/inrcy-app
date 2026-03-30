@@ -1950,7 +1950,7 @@ async function deleteDraftPermanently(id: string) {
         }
       }
 
-      setToast("Envoyé ✅");
+      setToast("Message envoyé.");
       setComposeOpen(false);
       resetCompose();
       await loadHistory();
@@ -2119,7 +2119,7 @@ async function deleteDraftPermanently(id: string) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Modification impossible.");
-      setToast(`Publication ${formatChannelLabel(channel)} modifiée ✅`);
+      setToast(`Publication ${formatChannelLabel(channel)} modifiée.`);
       setDetailsEditMode(false);
       await loadHistory();
     } catch (e: any) {
@@ -2147,7 +2147,7 @@ async function deleteDraftPermanently(id: string) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Suppression impossible.");
-      setToast(`Publication ${label} supprimée ✅`);
+      setToast(`Publication ${label} supprimée.`);
       setDetailsEditMode(false);
       await loadHistory();
       setDetailsChannelKey(channel);

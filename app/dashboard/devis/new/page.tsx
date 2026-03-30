@@ -402,7 +402,7 @@ export default function NewDevisPage() {
 
     await refreshSaves();
     setDraftsOpen(true);
-    setFormMessage({ type: "success", text: "Sauvegarde effectuée." });
+    setFormMessage({ type: "success", text: "Devis enregistré." });
   };
 
   const openDraft = (d: DevisDraft) => {
