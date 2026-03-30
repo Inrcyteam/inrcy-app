@@ -5,7 +5,7 @@ export default function ContactPage() {
   return (
     <SettingsShell
       title="Nous contacter"
-      subtitle="Décris ta demande, on te répond rapidement."
+      subtitle="Décrivez votre demande, nous vous répondrons rapidement."
     >
       <ContactContent mode="page" />
     </SettingsShell>

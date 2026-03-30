@@ -889,7 +889,7 @@ export default function NewFacturePage() {
             onClick={async () => {
               const to = (clientEmail || "").trim();
               if (!to) {
-                setFormMessage({ type: "error", text: "Ajoute d'abord un email client pour envoyer un mail." });
+                setFormMessage({ type: "error", text: "Veuillez d’abord ajouter un email client pour envoyer un message." });
                 return;
               }
 

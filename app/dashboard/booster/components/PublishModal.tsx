@@ -630,7 +630,7 @@ export default function PublishModal({
 
     const trimmed = idea.trim();
     if (!selectedChannels.length) {
-      setGenError("Sélectionnez au moins 1 canal avant de générer.");
+      setGenError("Veuillez sélectionner au moins 1 canal avant de générer.");
       return;
     }
     if (!trimmed) {
@@ -972,7 +972,7 @@ export default function PublishModal({
     if (selectedChannels.includes("instagram")) {
       const instagramImages = channelImageEditors.instagram?.imageKeys || [];
       if (!instagramImages.length) {
-        setImgError("Ajoutez au moins 1 image pour publier sur Instagram.");
+        setImgError("Veuillez ajouter au moins 1 image pour publier sur Instagram.");
         return;
       }
     }

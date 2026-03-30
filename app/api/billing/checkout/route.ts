@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { optionalEnv, requireEnv } from "@/lib/env";
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
   try {
     if (!hasStripeConfig()) {
       return NextResponse.json(
-        { error: "Stripe non configuré sur cet environnement." },
+        { error: "Le paiement n’est pas disponible pour le moment." },
         { status: 503 }
       );
     }
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
 
     const priceId = priceIdByPlan[wantedPlan];
     if (!priceId) {
-      return NextResponse.json({ error: "Plan invalide" }, { status: 400 });
+      return NextResponse.json({ error: "L’offre sélectionnée est invalide." }, { status: 400 });
     }
 
     const { data: sub, error: subErr } = await supabase
@@ -112,7 +113,7 @@ export async function POST(req: Request) {
 
     const email = row?.contact_email || user.email;
     if (!email) {
-      return NextResponse.json({ error: "Email manquant" }, { status: 400 });
+      return NextResponse.json({ error: "Adresse email manquante." }, { status: 400 });
     }
 
     let customerId = row?.stripe_customer_id ?? undefined;
@@ -134,7 +135,7 @@ export async function POST(req: Request) {
         .eq("user_id", userId);
     }
 
-    if (!customerId) throw new Error("Stripe customer manquant");
+    if (!customerId) throw new Error("Le paiement n’a pas pu être préparé pour ce compte.");
 
     const sessionParams = new URLSearchParams();
     sessionParams.set("mode", "subscription");
@@ -163,7 +164,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ url: session.url });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Erreur";
+    const msg = getSimpleFrenchErrorMessage(e, "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes.");
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

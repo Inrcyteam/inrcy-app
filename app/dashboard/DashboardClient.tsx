@@ -852,7 +852,7 @@ const sitePowerConnected = siteInrcyAllGreen || siteWebAllGreen;
 const generatorPowerSteps = [
   { key: "profile", label: "Compléter mon profil", shortLabel: "Profil", weight: 15, completed: profileCompleted },
   { key: "activity", label: "Compléter mon activité", shortLabel: "Activité", weight: 15, completed: activityCompleted },
-  { key: "site", label: "Connecter un site internet", shortLabel: "Site internet", weight: 20, completed: sitePowerConnected },
+  { key: "site", label: "Connecter le site internet", shortLabel: "Site internet", weight: 20, completed: sitePowerConnected },
   { key: "gmb", label: "Connecter Google Business", shortLabel: "Google Business", weight: 20, completed: gmbConnected },
   { key: "facebook", label: "Connecter Facebook", shortLabel: "Facebook", weight: 10, completed: facebookPageConnected },
   { key: "instagram", label: "Connecter Instagram", shortLabel: "Instagram", weight: 10, completed: instagramConnected },

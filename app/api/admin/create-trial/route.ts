@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { optionalEnv, requireEnv } from "@/lib/env";
 import { getAppUrl } from "@/lib/stripeRest";
@@ -66,7 +67,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, user_id: userId, trial_end_at: end.toISOString() });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Erreur";
+    const msg = getSimpleFrenchErrorMessage(e, "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes.");
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

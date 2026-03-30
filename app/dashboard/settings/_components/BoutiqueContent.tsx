@@ -1,5 +1,6 @@
 "use client";
 
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
@@ -150,7 +151,7 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
 
       const json = (await res.json().catch(() => null)) as any;
       if (!res.ok) {
-        setNotice(json?.error || "Erreur lors de l'envoi de la commande.");
+        setNotice(getSimpleFrenchErrorMessage(json?.error, "La commande n’a pas pu être envoyée pour le moment."));
         return;
       }
 

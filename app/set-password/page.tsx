@@ -29,9 +29,9 @@ function rint(min: number, max: number) {
 }
 
 function mapSupabaseRecoveryError(code?: string | null, desc?: string | null) {
-  if (code === "otp_expired") return "Ce lien a expiré. Refais une demande de réinitialisation depuis la page de connexion.";
-  if (code === "access_denied") return "Accès refusé. Refais une demande de réinitialisation depuis la page de connexion.";
-  if (desc && desc.toLowerCase().includes("invalid")) return "Lien invalide. Refais une demande de réinitialisation.";
+  if (code === "otp_expired") return "Ce lien a expiré. Veuillez refaire une demande de réinitialisation depuis la page de connexion.";
+  if (code === "access_denied") return "Accès refusé. Veuillez refaire une demande de réinitialisation depuis la page de connexion.";
+  if (desc && desc.toLowerCase().includes("invalid")) return "Lien invalide. Veuillez refaire une demande de réinitialisation.";
   return null;
 }
 
@@ -160,7 +160,7 @@ function SetPasswordInner() {
       const { data, error } = await supabase.auth.getUser();
       if (error || !data.user) {
         setMsg(
-          "Lien invalide/expiré ou ouvert dans un autre navigateur. Copiez-collez le lien dans le même navigateur ou refaites une demande."
+          "Lien invalide/expiré ou ouvert dans un autre navigateur. Veuillez copier-coller le lien dans le même navigateur ou refaire une demande."
         );
         return;
       }

@@ -12,12 +12,12 @@ export const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
 export const fluxModules: Module[] = [
   { key: "site_inrcy", name: "Site iNrCy", description: "Votre machine à leads ⚡", status: "available", accent: "purple", actions: [
       { key: "view", label: "Voir le site", variant: "view", href: "#" },
-      { key: "ga4", label: "Connecter Analytics", variant: "connect", onClick: () => {} },
+      { key: "ga4", label: "Connecter Google Analytics", variant: "connect", onClick: () => {} },
       { key: "gsc", label: "Connecter Search Console", variant: "connect", onClick: () => {} },
     ] },
   { key: "site_web", name: "Site web", description: "Convertit vos visiteurs 💡", status: "available", accent: "pink", actions: [
       { key: "view", label: "Voir le site", variant: "view", href: "#" },
-      { key: "ga4", label: "Connecter Analytics", variant: "connect", onClick: () => {} },
+      { key: "ga4", label: "Connecter Google Analytics", variant: "connect", onClick: () => {} },
       { key: "gsc", label: "Connecter Search Console", variant: "connect", onClick: () => {} },
     ] },
   { key: "gmb", name: "Google Business", description: "Augmente les appels 📞", status: "available", accent: "orange", actions: [

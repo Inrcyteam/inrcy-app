@@ -32,7 +32,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         intro:
           "Objectif : avoir au moins 1 canal connecté + le suivi actif, pour que la machine puisse mesurer et améliorer.",
         steps: [
-          "Ouvrez **Les canaux** et connectez votre 1er canal (Google / Site / Facebook…).",
+          "Ouvrez **Les canaux** et connectez votre premier canal (Google / Site / Facebook…).",
           "Activez le **Suivi** si ce n’est pas déjà fait (pour mesurer).",
           "Passez dans **Stats** pour vérifier que les données remontent.",
           "Utilisez **Booster → Publier** pour lancer une première action simple.",

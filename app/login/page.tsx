@@ -104,11 +104,11 @@ useEffect(() => {
   ) {
     setInfo(
       "Ce lien n’est plus valide (il a déjà été utilisé ou a expiré). " +
-      "Clique sur « Mot de passe oublié » pour en recevoir un nouveau."
+      "Veuillez cliquer sur « Mot de passe oublié » pour en recevoir un nouveau."
     );
   } else {
     setInfo(
-      "Le lien de connexion est invalide. Clique sur « Mot de passe oublié » pour recevoir un nouveau lien."
+      "Le lien de connexion est invalide. Veuillez cliquer sur « Mot de passe oublié » pour recevoir un nouveau lien."
     );
   }
 
@@ -189,7 +189,7 @@ useEffect(() => {
   setInfo(null);
 
   if (!email) {
-    setError("Entre ton email d’abord.");
+    setError("Veuillez d’abord saisir votre adresse email.");
     return;
   }
 
@@ -200,7 +200,7 @@ useEffect(() => {
 
     const supabase = supabaseRef.current;
     if (!supabase) {
-      setError("Client d’authentification indisponible. Recharge la page.");
+      setError("Le service d’authentification est momentanément indisponible. Veuillez recharger la page.");
       return;
     }
 
@@ -213,9 +213,9 @@ useEffect(() => {
       return;
     }
 
-    setInfo("Email envoyé. Vérifiez votre boîte mail (et vos spams).");
+    setInfo("Email envoyé. Veuillez vérifier votre boîte mail, y compris vos courriers indésirables.");
   } catch (err: unknown) {
-    setError(getSimpleFrenchErrorMessage(err, "Erreur lors de l’envoi de l’email"));
+    setError(getSimpleFrenchErrorMessage(err, "L’email n’a pas pu être envoyé pour le moment."));
   } finally {
     setLoading(false);
   }
@@ -231,7 +231,7 @@ useEffect(() => {
     try {
       const supabase = supabaseRef.current;
       if (!supabase) {
-        setError("Client d’authentification indisponible. Recharge la page.");
+        setError("Le service d’authentification est momentanément indisponible. Veuillez recharger la page.");
         return;
       }
 
@@ -255,14 +255,14 @@ useEffect(() => {
       }
 
       if (!session) {
-        setError("Connexion OK mais session non récupérée. Réessaie.");
+        setError("La connexion a abouti, mais la session n’a pas pu être finalisée. Veuillez réessayer.");
         return;
       }
 
       router.replace("/dashboard");
       router.refresh();
     } catch (err: unknown) {
-      setError(getSimpleFrenchErrorMessage(err, "Erreur de connexion"));
+      setError(getSimpleFrenchErrorMessage(err, "La connexion a échoué. Veuillez réessayer."));
     } finally {
       setLoading(false);
     }

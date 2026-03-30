@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
@@ -212,9 +213,7 @@ export async function POST(req: Request) {
       {
         ok: false,
         orderId,
-        error: isDev
-          ? `Impossible d'envoyer la commande (SMTP): ${lastError ?? "Erreur inconnue"}`
-          : "Impossible d'envoyer la commande pour le moment.",
+        error: "La commande a bien été enregistrée, mais son envoi par email a échoué pour le moment. Notre équipe peut tout de même la retrouver.",
       },
       { status: 500 }
     );

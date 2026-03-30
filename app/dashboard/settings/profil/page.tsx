@@ -5,7 +5,7 @@ export default function ProfilPage() {
   return (
     <SettingsShell
       title="Mon profil"
-      subtitle="Tes informations + celles de ton entreprise (utilisées par iNrCy)."
+      subtitle="Vos informations et celles de votre entreprise (utilisées par iNrCy)."
     >
       <ProfilContent mode="page" />
     </SettingsShell>

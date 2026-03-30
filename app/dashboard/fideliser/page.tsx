@@ -112,7 +112,7 @@ useEffect(() => {
         {
           key: "inform" as const,
           title: "Informer",
-          desc: "Newsletter, actus, nouveautés. Choisissez vos contacts CRM et envoyez.",
+          desc: "Newsletter, actualités, nouveautés. Sélectionnez vos contacts CRM puis envoyez.",
           accent: "cyan" as const,
           cta: "Envoyer",
           status: statusFromMonth(newsletterMonth),

@@ -40,7 +40,7 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Une erre
     return "Certaines informations sont manquantes ou incorrectes.";
   }
 
-  if (matches(message, ["500", "502", "503", "504", "server error", "internal server error", "unknown error", "unknown", "unhandled", "db read failed", "db insert failed", "db upsert failed", "userinfo fetch failed", "oauth callback failed", "oauth_config_missing", "oauth_callback_failed", "invalid_state", "missing_state", "token_exchange_failed", "openai", "stripe error", "webhook error"])) {
+  if (matches(message, ["500", "502", "503", "504", "server error", "internal server error", "unknown error", "unknown", "unhandled", "db read failed", "db insert failed", "db upsert failed", "userinfo fetch failed", "oauth callback failed", "oauth_config_missing", "oauth_callback_failed", "invalid_state", "missing_state", "token_exchange_failed", "openai", "stripe error", "webhook error", "stripe customer manquant", "getpublicurl returned empty", "invalid dataurl", "optimized image url unavailable", "missing openai_api_key", "bad payload"])) {
     return "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes.";
   }
 
@@ -52,7 +52,7 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Une erre
     return "Le lien n'est plus valide ou l'envoi est temporairement limité. Merci de réessayer dans quelques minutes.";
   }
 
-  if (matches(message, ["photo upload failed", "facebook feed post failed", "linkedin publish failed", "gmb create post error", "instagram", "publish error", "performance api error", "runreport failed", "gsc query failed", "microsoft send failed", "imap send failed", "token refresh failed", "db update failed", "google business", "facebook", "linkedin", "mail account not found", "missing_access_token"])) {
+  if (matches(message, ["photo upload failed", "facebook feed post failed", "linkedin publish failed", "gmb create post error", "instagram", "publish error", "performance api error", "runreport failed", "gsc query failed", "microsoft send failed", "imap send failed", "token refresh failed", "db update failed", "google business", "facebook", "linkedin", "mail account not found", "missing_access_token", "google_calendar_integration_removed", "instagram optimized image url unavailable"])) {
     return "L'action demandée n'a pas pu être finalisée pour le moment. Merci de réessayer.";
   }
 
@@ -101,7 +101,13 @@ function normalizeRawMessage(input: unknown): string {
 function sanitizeSentence(value: string): string {
   const trimmed = value.trim().replace(/\s+/g, " ");
   if (!trimmed) return "Une erreur est survenue. Merci de réessayer.";
-  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  if (looksTechnical(trimmed)) return "Une erreur est survenue. Merci de réessayer.";
+  const cleaned = trimmed
+    .replace(/(^erreur\s*:?\s*)/i, "")
+    .replace(/(^error\s*:?\s*)/i, "")
+    .trim();
+  const sentence = cleaned || "Une erreur est survenue. Merci de réessayer.";
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }
 
 function matches(message: string, needles: string[]) {

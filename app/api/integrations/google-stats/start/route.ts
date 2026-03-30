@@ -111,7 +111,7 @@ const rawUrl =
     const parsed = extractDomainFromUrl(String(rawUrl || "").trim());
     if (!parsed) {
       return NextResponse.json(
-        { error: "Le lien du site est manquant ou invalide. Enregistre-le puis réessaie." },
+        { error: "Le lien du site est manquant ou invalide. Veuillez l’enregistrer puis réessayer." },
         { status: 400 }
       );
     }

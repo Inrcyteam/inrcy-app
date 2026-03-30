@@ -242,7 +242,7 @@ async function buildActionNotification(userId: string, digestHours: number) {
     kind = "connect_channels";
   } else if (facebookClicks > 0 && !connectedRows.some((row) => (row.product || row.provider) === "facebook" && row.category === "social")) {
     title = "Votre compte Facebook est prêt, mais la page n’est pas encore reliée";
-    body = `Le compte est connecté, mais la page Facebook doit encore être attachée pour publier et analyser. Faites ce dernier pas pour débloquer le canal.`;
+    body = `Le compte est connecté, mais la page Facebook doit encore être attachée pour publier et analyser. Veuillez effectuer cette dernière étape pour débloquer le canal.`;
     ctaLabel = "Relier ma page";
     ctaUrl = "/dashboard?panel=facebook";
     kind = "facebook_page_pending";

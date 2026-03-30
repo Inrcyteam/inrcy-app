@@ -1,5 +1,6 @@
 "use client";
 
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -415,7 +416,7 @@ useEffect(() => {
       if (!res.ok || !json?.url) throw new Error(json?.error || "Impossible de démarrer le paiement.");
       window.location.href = json.url;
     } catch (e: unknown) {
-      setBillingMsg(e instanceof Error ? e.message : "Erreur paiement.");
+      setBillingMsg(getSimpleFrenchErrorMessage(e, "Le paiement n’a pas pu être lancé pour le moment."));
       setBillingBusy(false);
     }
   };
@@ -433,11 +434,11 @@ useEffect(() => {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Impossible de résilier.");
-      setBillingMsg(json?.warning || "Résiliation programmée (préavis 1 mois). Un email a été envoyé à iNrCy.");
+      setBillingMsg(json?.warning || "La résiliation a bien été programmée avec un préavis d’un mois. Un email a été envoyé à iNrCy.");
       await fetchSubscription();
       setBillingBusy(false);
     } catch (e: unknown) {
-      setBillingMsg(e instanceof Error ? e.message : "Erreur résiliation.");
+      setBillingMsg(getSimpleFrenchErrorMessage(e, "La résiliation n’a pas pu être enregistrée pour le moment."));
       setBillingBusy(false);
     }
   };
@@ -455,11 +456,11 @@ useEffect(() => {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Impossible d'annuler la résiliation.");
-      setBillingMsg("Résiliation annulée.");
+      setBillingMsg("La résiliation programmée a bien été annulée.");
       await fetchSubscription();
       setBillingBusy(false);
     } catch (e: unknown) {
-      setBillingMsg(e instanceof Error ? e.message : "Erreur.");
+      setBillingMsg(getSimpleFrenchErrorMessage(e, "Cette action n’a pas pu être finalisée pour le moment."));
       setBillingBusy(false);
     }
   };

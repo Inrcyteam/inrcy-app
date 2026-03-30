@@ -236,11 +236,11 @@ React.useEffect(() => {
           Réglages iNr’Send
         </div>
         <div style={{ marginTop: 6, fontSize: 13, color: "rgba(255,255,255,0.72)" }}>
-          Connecte jusqu’à <b>4 boîtes d’envoi</b> : <b>3</b> en OAuth (Gmail / Outlook) + <b>1</b> en IMAP.
+          Vous pouvez connecter jusqu’à <b>4 boîtes d’envoi</b> : <b>3</b> en OAuth (Gmail / Outlook) et <b>1</b> en IMAP.
         </div>
 
         <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-          {loading ? "Chargement…" : error ? `Erreur: ${error}` : `Boîtes connectées : ${oauthAccounts.length + (imapAccount ? 1 : 0)}/4`}
+          {loading ? "Chargement…" : error ? `Erreur : ${error}` : `Boîtes connectées : ${oauthAccounts.length + (imapAccount ? 1 : 0)}/4`}
         </div>
 {toast === "already_connected" && (
   <div style={{ marginTop: 8, fontSize: 13, color: "#fbbf24" }}>
@@ -250,7 +250,7 @@ React.useEffect(() => {
 
 {toast === "connected" && (
   <div style={{ marginTop: 8, fontSize: 13, color: "#34d399" }}>
-    ✅ Boîte mail connectée avec succès.
+    ✅ Boîte mail connectée. Vous pouvez maintenant l’utiliser pour vos envois.
   </div>
 )}
 
@@ -274,13 +274,13 @@ React.useEffect(() => {
 
 {toast === "imap_test_ok" && (
   <div style={{ marginTop: 8, fontSize: 13, color: "#34d399" }}>
-    ✅ Test de connexion réussi.
+    ✅ Test de connexion réussi. Vous pouvez maintenant enregistrer cette boîte.
   </div>
 )}
 
 {toast === "imap_connected" && (
   <div style={{ marginTop: 8, fontSize: 13, color: "#34d399" }}>
-    ✅ Boîte IMAP connectée avec succès.
+    ✅ Boîte IMAP connectée. Vous pouvez maintenant l’utiliser pour vos envois.
   </div>
 )}
 
@@ -299,7 +299,7 @@ React.useEffect(() => {
                 loading
                   ? "Chargement…"
                   : acc
-                  ? `Connectée : ${acc.email_address} (${ProviderLabel(acc.provider)})`
+                  ? `Boîte connectée : ${acc.email_address} (${ProviderLabel(acc.provider)})`
                   : isImapSlot
                     ? "Vide (IMAP)"
                     : "Vide"
@@ -427,7 +427,7 @@ React.useEffect(() => {
               <div>
                 <div style={{ fontSize: 16, fontWeight: 950 }}>Connexion IMAP (boîte 4)</div>
                 <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>
-                  Choisis un fournisseur (pré-rempli), saisis <b>identifiant</b> + <b>mot de passe</b>, puis teste.
+                  Choisissez un fournisseur (prérempli), saisissez votre <b>identifiant</b> et votre <b>mot de passe</b>, puis lancez le test.
                 </div>
               </div>
               <button

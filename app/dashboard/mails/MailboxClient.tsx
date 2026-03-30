@@ -1750,7 +1750,7 @@ const subTitle = firstNonEmpty(
       setCrmContacts(mapped);
     } catch (e: any) {
       console.error("CRM load error", e);
-      const msg = e?.name === "AbortError" ? "Le chargement a expiré. Clique sur “Réessayer”." : "Impossible de charger les contacts.";
+      const msg = e?.name === "AbortError" ? "Le chargement a expiré. Veuillez réessayer." : "Impossible de charger les contacts.";
       setCrmError(msg);
     } finally {
       clearTimeout(timeout);
@@ -1867,7 +1867,7 @@ async function deleteDraftPermanently(id: string) {
       .eq("user_id", userId);
 
     if (error) {
-      setToast("Impossible de supprimer ce brouillon.");
+      setToast("Impossible de supprimer ce brouillon pour le moment.");
       return;
     }
 
@@ -1879,7 +1879,7 @@ async function deleteDraftPermanently(id: string) {
       setDetailsId(null);
     }
 
-    setToast("Brouillon supprimé");
+    setToast("Brouillon supprimé.");
     // Reload to keep the list consistent (and still capped at 20)
     await loadHistory();
   } finally {
@@ -1890,16 +1890,16 @@ async function deleteDraftPermanently(id: string) {
 
   async function doSend() {
     if (!selectedAccount) {
-      setToast("Connecte une boîte d’envoi dans Réglages.");
+      setToast("Veuillez connecter une boîte d’envoi dans les réglages.");
       return;
     }
     const recipients = to.trim();
     if (!recipients) {
-      setToast("Ajoute au moins un destinataire.");
+      setToast("Veuillez ajouter au moins un destinataire.");
       return;
     }
     if (attachBusy) {
-      setToast("Patiente pendant le chargement des pièces jointes.");
+      setToast("Veuillez patienter pendant le chargement des pièces jointes.");
       return;
     }
     setSendBusy(true);
@@ -1922,7 +1922,7 @@ async function deleteDraftPermanently(id: string) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setToast(data?.error || "Erreur d’envoi");
+        setToast(data?.error || "Le message n’a pas pu être envoyé pour le moment.");
         return;
       }
 
@@ -3439,7 +3439,7 @@ async function deleteDraftPermanently(id: string) {
                           });
                         } catch (err) {
                           console.error("Attachment upload failed", err);
-                          setToast("Impossible de préparer la pièce jointe.");
+                          setToast("Impossible de préparer cette pièce jointe. Veuillez vérifier son format ou sa taille.");
                         } finally {
                           e.currentTarget.value = "";
                           setFiles([]);

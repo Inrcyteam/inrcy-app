@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 import { requireUser } from "@/lib/requireUser";
 import { stripePost } from "@/lib/stripeRest";
@@ -22,7 +23,7 @@ export async function POST() {
     if (subErr) throw subErr;
     const stripeSubId = (subRow as { stripe_subscription_id?: string | null } | null | undefined)?.stripe_subscription_id ?? null;
     if (!stripeSubId) {
-      return NextResponse.json({ error: "Aucun abonnement Stripe trouvé" }, { status: 400 });
+      return NextResponse.json({ error: "Aucun abonnement actif n’a été trouvé pour ce compte." }, { status: 400 });
     }
 
     // Stripe REST API: POST /v1/subscriptions/{id}
@@ -46,7 +47,7 @@ export async function POST() {
 
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Erreur";
+    const msg = getSimpleFrenchErrorMessage(e, "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes.");
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

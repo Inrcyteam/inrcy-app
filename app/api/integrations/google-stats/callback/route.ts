@@ -242,7 +242,7 @@ async function resolveGscFromDomain(accessToken: string, domain: string, siteUrl
   }
 
   throw new Error(
-    "Aucune propriété Search Console ne correspond à ce domaine sur ce compte Google. Ajoute le domaine dans Search Console (ou donne accès à ce compte), puis relance l'activation."
+    "Aucune propriété Search Console ne correspond à ce domaine sur ce compte Google. Veuillez ajouter le domaine dans Search Console, ou donner accès à ce compte, puis relancer l’activation."
   );
 }
 
