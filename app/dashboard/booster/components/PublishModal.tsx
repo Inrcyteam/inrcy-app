@@ -1,3 +1,4 @@
+import StatusMessage from "../../_components/StatusMessage";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import stylesDash from "../../dashboard/dashboard.module.css";
@@ -1280,7 +1281,7 @@ export default function PublishModal({
             {saving ? "Publication..." : "Publier"}
           </button>
         </div>
-        {publishError ? <div className={styles.errNote} style={{ marginTop: 0, textAlign: "right", maxWidth: 440 }}>{publishError}</div> : null}
+        {publishError ? <StatusMessage variant="error" style={{ marginTop: 0, textAlign: "right", maxWidth: 440 }}>{publishError}</StatusMessage> : null}
       </div>
     </div>
   );

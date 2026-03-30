@@ -2,6 +2,7 @@
 
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
+import StatusMessage from "./StatusMessage";
 import SiteActusWidgetCode from "./SiteActusWidgetCode";
 import SaveIcon from "./SaveIcon";
 
@@ -132,7 +133,7 @@ export default function SiteWebPanel(props: any) {
             Voir le site
           </a>
         </div>
-        {siteWebUrlNotice && <div className={styles.successNote}>{siteWebUrlNotice}</div>}
+        {siteWebUrlNotice && <StatusMessage variant="success">{siteWebUrlNotice}</StatusMessage>}
       </div>
       <div
         style={{
@@ -216,7 +217,7 @@ export default function SiteWebPanel(props: any) {
           )}
         </div>
       </div>
-      {siteWebGa4Notice && <div className={styles.successNote}>{siteWebGa4Notice}</div>}
+      {siteWebGa4Notice && <StatusMessage variant="success">{siteWebGa4Notice}</StatusMessage>}
 
       <div
         style={{
@@ -280,7 +281,7 @@ export default function SiteWebPanel(props: any) {
           )}
         </div>
       </div>
-      {siteWebGscNotice && <div className={styles.successNote}>{siteWebGscNotice}</div>}
+      {siteWebGscNotice && <StatusMessage variant="success">{siteWebGscNotice}</StatusMessage>}
 
       <div
         style={{

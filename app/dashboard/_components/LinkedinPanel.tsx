@@ -2,6 +2,7 @@
 
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
+import StatusMessage from "./StatusMessage";
 
 export default function LinkedinPanel(props: any) {
   const {
@@ -14,6 +15,7 @@ export default function LinkedinPanel(props: any) {
     setLinkedinUrl,
     saveLinkedinProfileUrl,
     linkedinUrlNotice,
+    linkedinUrlError,
     setLinkedinUrlNotice
   } = props;
 
@@ -160,7 +162,8 @@ export default function LinkedinPanel(props: any) {
             </a>
           </div>
 
-          {linkedinUrlNotice && <div className={styles.successNote}>{linkedinUrlNotice}</div>}
+          {linkedinUrlNotice && <StatusMessage variant="success">{linkedinUrlNotice}</StatusMessage>}
+          {linkedinUrlError && <StatusMessage variant="error">{linkedinUrlError}</StatusMessage>}
         </div>
       </div>
   );

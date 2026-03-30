@@ -10,13 +10,13 @@ export async function POST(req: Request) {
   const { data: auth } = await supabase.auth.getUser();
 
   if (!auth?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
   }
 
   const body = await req.json().catch(() => ({}));
   const accountId = body?.accountId as string | undefined;
   if (!accountId) {
-    return NextResponse.json({ error: "Missing accountId" }, { status: 400 });
+    return NextResponse.json({ error: "Identifiant de compte manquant." }, { status: 400 });
   }
 
   const { error } = await supabase

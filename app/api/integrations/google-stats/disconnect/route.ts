@@ -17,13 +17,13 @@ function stripGoogleProduct(settingsNode: unknown, product: string) {
 export async function POST(request: Request) {
   const supabase = await createSupabaseServer();
   const { data: authData, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !authData?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  if (authErr || !authData?.user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
 
   const userId = authData.user.id;
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const source = typeof body.source === "string" ? body.source : "";
   const product = typeof body.product === "string" ? body.product : "";
-  if (!source || !product) return NextResponse.json({ error: "Missing source/product" }, { status: 400 });
+  if (!source || !product) return NextResponse.json({ error: "Source ou produit manquant." }, { status: 400 });
 
   await supabase
     .from("integrations")

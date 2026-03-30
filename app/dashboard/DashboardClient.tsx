@@ -297,9 +297,40 @@ const [siteInrcyTrackingBusy, setSiteInrcyTrackingBusy] = useState(false);
   const [siteWebGscNotice, setSiteWebGscNotice] = useState<string | null>(null);
   const [siteWebUrlNotice, setSiteWebUrlNotice] = useState<string | null>(null);
   const [instagramUrlNotice, setInstagramUrlNotice] = useState<string | null>(null);
+  const [instagramUrlError, setInstagramUrlError] = useState<string | null>(null);
   const [linkedinUrlNotice, setLinkedinUrlNotice] = useState<string | null>(null);
+  const [linkedinUrlError, setLinkedinUrlError] = useState<string | null>(null);
   const [gmbUrlNotice, setGmbUrlNotice] = useState<string | null>(null);
+  const [gmbUrlError, setGmbUrlError] = useState<string | null>(null);
   const [facebookUrlNotice, setFacebookUrlNotice] = useState<string | null>(null);
+  const [facebookUrlError, setFacebookUrlError] = useState<string | null>(null);
+
+  const clearPanelNotices = useCallback((kind: "facebook" | "instagram" | "linkedin" | "gmb") => {
+    if (kind === "facebook") { setFacebookUrlNotice(null); setFacebookUrlError(null); return; }
+    if (kind === "instagram") { setInstagramUrlNotice(null); setInstagramUrlError(null); return; }
+    if (kind === "linkedin") { setLinkedinUrlNotice(null); setLinkedinUrlError(null); return; }
+    setGmbUrlNotice(null); setGmbUrlError(null);
+  }, []);
+
+  const setPanelSuccess = useCallback((kind: "facebook" | "instagram" | "linkedin" | "gmb", message: string, timeout = 2200) => {
+    clearPanelNotices(kind);
+    const clean = message.trim();
+    if (kind === "facebook") setFacebookUrlNotice(clean);
+    else if (kind === "instagram") setInstagramUrlNotice(clean);
+    else if (kind === "linkedin") setLinkedinUrlNotice(clean);
+    else setGmbUrlNotice(clean);
+    window.setTimeout(() => clearPanelNotices(kind), timeout);
+  }, [clearPanelNotices]);
+
+  const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" | "gmb", input: unknown, fallback: string, timeout = 3200) => {
+    clearPanelNotices(kind);
+    const clean = getSimpleFrenchErrorMessage(input, fallback);
+    if (kind === "facebook") setFacebookUrlError(clean);
+    else if (kind === "instagram") setInstagramUrlError(clean);
+    else if (kind === "linkedin") setLinkedinUrlError(clean);
+    else setGmbUrlError(clean);
+    window.setTimeout(() => clearPanelNotices(kind), timeout);
+  }, [clearPanelNotices]);
 
   // ✅ Tokens widget actus (signés + liés au domaine, anti-copie)
   const [widgetTokenInrcySite, setWidgetTokenInrcySite] = useState<string>("");
@@ -1158,6 +1189,27 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     triggerGeneratorRefresh();
   }, [searchParams, triggerGeneratorRefresh]);
 
+  useEffect(() => {
+    const linked = searchParams.get("linked");
+    const ok = searchParams.get("ok");
+    const error = searchParams.get("error");
+    const message = searchParams.get("message");
+    if (!linked || ok !== "0" || (!error && !message)) return;
+
+    const byLinked = linked === "facebook" || linked === "instagram" || linked === "linkedin" || linked === "gmb" ? linked : null;
+    const byPanel = panel === "facebook" || panel === "instagram" || panel === "linkedin" || panel === "gmb" ? panel : null;
+    const target = byLinked || byPanel;
+    if (!target) return;
+
+    const fallbackByTarget = {
+      facebook: "La connexion Facebook n'a pas pu aboutir.",
+      instagram: "La connexion Instagram n'a pas pu aboutir.",
+      linkedin: "La connexion LinkedIn n'a pas pu aboutir.",
+      gmb: "La connexion Google Business n'a pas pu aboutir.",
+    } as const;
+
+    setPanelError(target, message || error, fallbackByTarget[target]);
+  }, [panel, searchParams, setPanelError]);
 
 const activateSiteInrcyTracking = useCallback(async () => {
   if (siteInrcyOwnership !== "rented") {
@@ -1723,11 +1775,9 @@ const saveFacebookPage = useCallback(async () => {
 	    setFacebookPageConnected(true);
 	    setFbSelectedPageName(picked.name || "");
     triggerGeneratorRefresh();
-    setFacebookUrlNotice("Enregistré ✓");
-    window.setTimeout(() => setFacebookUrlNotice(null), 2200);
+    setPanelSuccess("facebook", "Page Facebook enregistrée.");
   } else {
-    setFacebookUrlNotice(j?.error || "Impossible d'enregistrer la page.");
-    window.setTimeout(() => setFacebookUrlNotice(null), 2500);
+    setPanelError("facebook", j?.error, "Impossible d'enregistrer la page Facebook.");
   }
 
 }, [fbPages, fbSelectedPageId, triggerGeneratorRefresh]);
@@ -1797,8 +1847,7 @@ const loadInstagramAccounts = useCallback(async () => {
       setInstagramUsername(String(only.username || ""));
       setInstagramUrl(only.username ? `https://www.instagram.com/${only.username}/` : "");
       triggerGeneratorRefresh();
-      setInstagramUrlNotice("Enregistré ✓");
-      window.setTimeout(() => setInstagramUrlNotice(null), 2200);
+      setPanelSuccess("instagram", "Compte Instagram enregistré.");
     }
   } catch (e: any) {
     setIgAccountsError(e?.message || "Impossible de charger vos comptes Instagram.");
@@ -1845,11 +1894,9 @@ const saveInstagramProfile = useCallback(async () => {
     if (j?.username) setInstagramUsername(String(j.username));
     if (j?.profileUrl) setInstagramUrl(String(j.profileUrl));
     triggerGeneratorRefresh();
-    setInstagramUrlNotice("Enregistré ✓");
-    window.setTimeout(() => setInstagramUrlNotice(null), 2200);
+    setPanelSuccess("instagram", "Compte Instagram enregistré.");
   } else {
-    setInstagramUrlNotice(j?.error || "Impossible d'enregistrer Instagram.");
-    window.setTimeout(() => setInstagramUrlNotice(null), 2500);
+    setPanelError("instagram", j?.error, "Impossible d'enregistrer Instagram.");
   }
 }, [igAccounts, igSelectedPageId, triggerGeneratorRefresh]);
 
@@ -1886,8 +1933,7 @@ const saveLinkedinProfileUrl = useCallback(async () => {
       raw.startsWith("https://www.linkedin.com/pub/") ||
       raw.startsWith("https://linkedin.com/pub/");
     if (!ok) {
-      setLinkedinUrlNotice("Lien LinkedIn invalide. Exemple : https://www.linkedin.com/in/ton-profil");
-      window.setTimeout(() => setLinkedinUrlNotice(null), 2800);
+      setPanelError("linkedin", "Lien LinkedIn invalide.", "Lien LinkedIn invalide. Exemple : https://www.linkedin.com/in/ton-profil", 3600);
       return;
     }
   }
@@ -1900,8 +1946,7 @@ const saveLinkedinProfileUrl = useCallback(async () => {
   });
 
   triggerGeneratorRefresh();
-  setLinkedinUrlNotice("Lien enregistré ✅");
-  window.setTimeout(() => setLinkedinUrlNotice(null), 1800);
+  setPanelSuccess("linkedin", "Lien LinkedIn enregistré.", 1800);
 }, [linkedinUrl, linkedinAccountConnected, linkedinConnected, linkedinDisplayName, updateRootSettingsKey, triggerGeneratorRefresh]);
 
 
@@ -1928,24 +1973,27 @@ const loadGmbAccountsAndLocations = useCallback(async () => {
 
 const saveGmbLocation = useCallback(async () => {
   if (!gmbAccountName || !gmbLocationName) return;
-  const picked = gmbLocations.find((l) => l.name === gmbLocationName);
-  const res = await fetch("/api/integrations/google-business/select-location", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      accountName: gmbAccountName,
-      locationName: gmbLocationName,
-      locationTitle: picked?.title || null,
-    }),
-  });
-  const js = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(js?.error || "Impossible d’enregistrer l’établissement");
+  try {
+    const picked = gmbLocations.find((l) => l.name === gmbLocationName);
+    const res = await fetch("/api/integrations/google-business/select-location", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accountName: gmbAccountName,
+        locationName: gmbLocationName,
+        locationTitle: picked?.title || null,
+      }),
+    });
+    const js = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(js?.error || "Impossible d’enregistrer l’établissement");
 
-  if (js?.url) setGmbUrl(String(js.url));
-  triggerGeneratorRefresh();
-  setGmbUrlNotice("Établissement enregistré ✅");
-  window.setTimeout(() => setGmbUrlNotice(null), 1800);
-}, [gmbAccountName, gmbLocationName, gmbLocations, triggerGeneratorRefresh]);
+    if (js?.url) setGmbUrl(String(js.url));
+    triggerGeneratorRefresh();
+    setPanelSuccess("gmb", "Établissement Google Business enregistré.", 1800);
+  } catch (error) {
+    setPanelError("gmb", error, "Impossible d'enregistrer l'établissement Google Business.");
+  }
+}, [gmbAccountName, gmbLocationName, gmbLocations, triggerGeneratorRefresh, setPanelError, setPanelSuccess]);
 
 
 const saveSiteWebSettings = useCallback(async () => {
@@ -3875,6 +3923,7 @@ const checkActivity = useCallback(async () => {
             igAccountsError={igAccountsError}
             instagramUrl={instagramUrl}
             instagramUrlNotice={instagramUrlNotice}
+            instagramUrlError={instagramUrlError}
             disconnectInstagramProfile={disconnectInstagramProfile}
           />
         )}
@@ -3892,6 +3941,7 @@ const checkActivity = useCallback(async () => {
             setLinkedinUrl={setLinkedinUrl}
             saveLinkedinProfileUrl={saveLinkedinProfileUrl}
             linkedinUrlNotice={linkedinUrlNotice}
+            linkedinUrlError={linkedinUrlError}
             setLinkedinUrlNotice={setLinkedinUrlNotice}
           />
         )}
@@ -3917,6 +3967,7 @@ const checkActivity = useCallback(async () => {
             gmbListError={gmbListError}
             gmbUrl={gmbUrl}
             gmbUrlNotice={gmbUrlNotice}
+            gmbUrlError={gmbUrlError}
             disconnectGmbBusiness={disconnectGmbBusiness}
           />
         )}
@@ -3940,6 +3991,7 @@ const checkActivity = useCallback(async () => {
             fbPagesError={fbPagesError}
             facebookUrl={facebookUrl}
             facebookUrlNotice={facebookUrlNotice}
+            facebookUrlError={facebookUrlError}
             disconnectFacebookPage={disconnectFacebookPage}
           />
         )}

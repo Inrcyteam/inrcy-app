@@ -28,17 +28,17 @@ const handler = async (req: Request) => {
     const html = String(formData.get("html") || "").trim();
 
     if (!accountId) {
-      return NextResponse.json({ error: "Missing 'accountId' (sending mailbox)" }, { status: 400 });
+      return NextResponse.json({ error: "Boîte d’envoi manquante." }, { status: 400 });
     }
     if (!to) {
-      return NextResponse.json({ error: "Missing 'to'" }, { status: 400 });
+      return NextResponse.json({ error: "Destinataire manquant." }, { status: 400 });
     }
 
     const acc: unknown = await loadImapAccount(accountId);
     const accRec = asRecord(acc);
     if (!accRec["ok"]) {
       return NextResponse.json(
-        { error: asString(accRec["error"]) || "Unauthorized" },
+        { error: asString(accRec["error"]) || "Accès non autorisé." },
         { status: asHttpStatus(accRec["status"], 401) }
       );
     }
@@ -72,7 +72,7 @@ const handler = async (req: Request) => {
     // Strict validation: IMAP alone is not enough, SMTP is required to send
     if (!smtp?.host || !smtp?.port || !smtp?.user || !smtp?.password) {
       return NextResponse.json(
-        { error: "SMTP config missing (host/port/user/password)" },
+        { error: "Configuration SMTP incomplète." },
         { status: 400 }
       );
     }

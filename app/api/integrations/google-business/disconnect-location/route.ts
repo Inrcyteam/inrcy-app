@@ -5,7 +5,7 @@ import { clearAllToolCaches } from "@/lib/statsCache";
 export async function POST() {
   const supabase = await createSupabaseServer();
   const { data: authData, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !authData?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  if (authErr || !authData?.user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
 
   const userId = authData.user.id;
   const { error } = await supabase

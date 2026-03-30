@@ -42,7 +42,7 @@ export async function GET(request: Request) {
   const redirectUri = redirectFromEnv || `${appOrigin}/api/integrations/google-stats/callback`;
 
   if (!clientId) {
-    return NextResponse.json({ error: "Missing GOOGLE_CLIENT_ID" }, { status: 500 });
+    return NextResponse.json({ error: "Configuration Google incomplète côté serveur." }, { status: 500 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -57,10 +57,10 @@ export async function GET(request: Request) {
   const siteUrlFromQuery = searchParams.get("siteUrl") || "";
 
   if (!isAllowedSource(source)) {
-    return NextResponse.json({ error: "Invalid source" }, { status: 400 });
+    return NextResponse.json({ error: "Source invalide." }, { status: 400 });
   }
   if (!isAllowedProduct(product)) {
-    return NextResponse.json({ error: "Invalid product" }, { status: 400 });
+    return NextResponse.json({ error: "Produit invalide." }, { status: 400 });
   }
 
   // "mode=activate" => we will resolve GA4+GSC automatically from the configured site URL.
@@ -82,7 +82,7 @@ if (mode === "activate") {
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
     }
     const userId = authData.user.id;
 

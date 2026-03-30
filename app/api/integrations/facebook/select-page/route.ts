@@ -15,11 +15,11 @@ export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServer();
     const { data: auth, error } = await supabase.auth.getUser();
-    if (error || !auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (error || !auth?.user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
     const userId = auth.user.id;
     const body = await req.json().catch(() => null);
-    if (!body) return NextResponse.json({ error: "Bad payload" }, { status: 400 });
+    if (!body) return NextResponse.json({ error: "Données invalides." }, { status: 400 });
     const bodyRec = asRecord(body);
 
     const pageId = String(asString(bodyRec["pageId"]) || "").trim();
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const pageAccessToken = String(asString(bodyRec["pageAccessToken"]) || "").trim();
 
     if (!pageId || !pageAccessToken) {
-      return NextResponse.json({ error: "Missing pageId/pageAccessToken" }, { status: 400 });
+      return NextResponse.json({ error: "Page Facebook incomplète." }, { status: 400 });
     }
 
     // Read existing meta so we don't lose meta.user_access_token, page_url, etc.

@@ -91,7 +91,7 @@ const handler = async (_req: Request) => {
   try {
     const secret = process.env.INRCY_WIDGETS_SIGNING_SECRET;
     if (!secret) {
-      return NextResponse.json({ ok: false, error: "Missing INRCY_WIDGETS_SIGNING_SECRET" }, { status: 500 });
+      return NextResponse.json({ ok: false, error: "Configuration du widget incomplète côté serveur." }, { status: 500 });
     }
 
     const { searchParams } = new URL(_req.url);

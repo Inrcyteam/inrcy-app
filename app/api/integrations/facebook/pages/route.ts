@@ -21,7 +21,7 @@ export async function GET() {
   try {
     const supabase = await createSupabaseServer();
     const { data: auth, error } = await supabase.auth.getUser();
-    if (error || !auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (error || !auth?.user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
     const userId = auth.user.id;
 
@@ -34,9 +34,9 @@ export async function GET() {
       .eq("product", "facebook")
       .maybeSingle();
 
-    if (integErr) return NextResponse.json({ error: "DB error" }, { status: 500 });
+    if (integErr) return NextResponse.json({ error: "Erreur de base de données." }, { status: 500 });
     if (!integ || (integ.status !== "connected" && integ.status !== "account_connected") || !integ.access_token_enc) {
-      return NextResponse.json({ error: "Facebook non connecté" }, { status: 400 });
+      return NextResponse.json({ error: "Compte Facebook non connecté." }, { status: 400 });
     }
 
     // access_token_enc may be a PAGE token after selection.
@@ -50,7 +50,7 @@ export async function GET() {
         "",
     ).trim();
     const userToken = tryDecryptToken(userTokenRaw);
-    if (!userToken) return NextResponse.json({ error: "Facebook token manquant" }, { status: 400 });
+    if (!userToken) return NextResponse.json({ error: "Jeton Facebook manquant." }, { status: 400 });
 
     const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
       fields: "id,name,access_token",

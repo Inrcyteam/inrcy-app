@@ -107,7 +107,7 @@ export async function POST(req: Request) {
   try {
     evt = JSON.parse(payload);
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: "JSON invalide." }, { status: 400 });
   }
 
   const updateSubscriptionRow = async (

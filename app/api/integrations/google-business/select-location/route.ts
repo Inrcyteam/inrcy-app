@@ -7,11 +7,11 @@ export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServer();
     const { data: auth, error } = await supabase.auth.getUser();
-    if (error || !auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (error || !auth?.user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
     const userId = auth.user.id;
     const body = await req.json().catch(() => null);
-    if (!body) return NextResponse.json({ error: "Bad payload" }, { status: 400 });
+    if (!body) return NextResponse.json({ error: "Données invalides." }, { status: 400 });
 
     const accountName = String(body.accountName || "").trim(); // "accounts/123"
     const locationName = String(body.locationName || "").trim(); // "locations/456"
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     const gmbUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationTitle || locationName)}`;
 
     if (!accountName || !locationName) {
-      return NextResponse.json({ error: "Missing accountName/locationName" }, { status: 400 });
+      return NextResponse.json({ error: "Établissement Google Business incomplet." }, { status: 400 });
     }
 
     const { error: upErr } = await supabase

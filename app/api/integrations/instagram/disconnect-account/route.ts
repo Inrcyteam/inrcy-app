@@ -11,7 +11,7 @@ export async function POST() {
   const supabase = await createSupabaseServer();
   const { data: authData, error: authErr } = await supabase.auth.getUser();
   const user = authData?.user;
-  if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (authErr || !user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
   await supabaseAdmin.from("integrations").delete().eq("user_id", user.id).eq("provider", "instagram");
   try {

@@ -10,12 +10,12 @@ export async function POST(req: Request) {
     error: authErr,
   } = await supabase.auth.getUser();
 
-  if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (authErr || !user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
   const body = await req.json().catch(() => null);
   const orgId = String(body?.orgId || "");
   const orgName = body?.orgName ? String(body.orgName) : null;
-  if (!orgId) return NextResponse.json({ error: "Missing orgId" }, { status: 400 });
+  if (!orgId) return NextResponse.json({ error: "Organisation manquante." }, { status: 400 });
 
   const orgUrn = `urn:li:organization:${orgId}`;
 

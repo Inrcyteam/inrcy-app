@@ -71,6 +71,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ subject, body_text: bodyText, ctx, links });
   } catch (_e) {
-    return NextResponse.json({ error: "Bad request" }, { status: 400 });
+    return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 }

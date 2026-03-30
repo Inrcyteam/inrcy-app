@@ -2,6 +2,7 @@
 
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
+import StatusMessage from "./StatusMessage";
 
 export default function GoogleBusinessPanel(props: any) {
   const {
@@ -22,6 +23,7 @@ export default function GoogleBusinessPanel(props: any) {
     gmbListError,
     gmbUrl,
     gmbUrlNotice,
+    gmbUrlError,
     disconnectGmbBusiness
   } = props;
 
@@ -237,7 +239,8 @@ export default function GoogleBusinessPanel(props: any) {
             </a>
           </div>
 
-          {gmbUrlNotice && <div className={styles.successNote}>{gmbUrlNotice}</div>}
+          {gmbUrlNotice && <StatusMessage variant="success">{gmbUrlNotice}</StatusMessage>}
+          {gmbUrlError && <StatusMessage variant="error">{gmbUrlError}</StatusMessage>}
         </div>
       ) : null}
 

@@ -2,6 +2,7 @@
 
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
+import StatusMessage from "./StatusMessage";
 import SiteActusWidgetCode from "./SiteActusWidgetCode";
 import SaveIcon from "./SaveIcon";
 
@@ -155,7 +156,7 @@ export default function SiteInrcyPanel(props: any) {
             Voir le site
           </a>
         </div>
-        {siteInrcyUrlNotice && <div className={styles.successNote}>{siteInrcyUrlNotice}</div>}
+        {siteInrcyUrlNotice && <StatusMessage variant="success">{siteInrcyUrlNotice}</StatusMessage>}
       </div>
       <div
         style={{
@@ -247,7 +248,7 @@ export default function SiteInrcyPanel(props: any) {
           )}
         </div>
       </div>
-      {siteInrcyGa4Notice && <div className={styles.successNote}>{siteInrcyGa4Notice}</div>}
+      {siteInrcyGa4Notice && <StatusMessage variant="success">{siteInrcyGa4Notice}</StatusMessage>}
       <div
         style={{
           border: "1px solid rgba(255,255,255,0.12)",
@@ -317,7 +318,7 @@ export default function SiteInrcyPanel(props: any) {
           )}
         </div>
       </div>
-      {siteInrcyGscNotice && <div className={styles.successNote}>{siteInrcyGscNotice}</div>}
+      {siteInrcyGscNotice && <StatusMessage variant="success">{siteInrcyGscNotice}</StatusMessage>}
       <div
         style={{
           border: "1px solid rgba(255,255,255,0.12)",

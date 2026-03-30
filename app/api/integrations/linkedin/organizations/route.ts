@@ -26,7 +26,7 @@ export async function GET() {
     error: authErr,
   } = await supabase.auth.getUser();
 
-  if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (authErr || !user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
   const { data: rows } = await supabase
     .from("integrations")
@@ -43,7 +43,7 @@ export async function GET() {
   const rowRec = asRecord(row);
   const tokRaw = String(rowRec["access_token_enc"] || "");
   const tok = tryDecryptToken(tokRaw) || "";
-  if (!tok) return NextResponse.json({ error: "LinkedIn not connected" }, { status: 400 });
+  if (!tok) return NextResponse.json({ error: "Compte LinkedIn non connecté." }, { status: 400 });
 
   // Try to list organizations where the user is admin (best-effort; may require app review/scopes)
   try {

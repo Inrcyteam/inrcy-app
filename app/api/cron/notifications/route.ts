@@ -384,7 +384,7 @@ async function maybeSendDigestEmail(userId: string, items: NotificationDigestIte
 
 export async function GET(req: Request) {
   if (!isAuthorizedCron(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
   }
 
   const { data, error } = await supabaseAdmin

@@ -69,7 +69,7 @@ export async function GET(req: Request) {
   const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";
   if (!cronSecret) {
     return NextResponse.json(
-      { error: "Missing cron secret env (VERCEL_CRON_SECRET or CRON_SECRET)" },
+      { error: "Secret cron manquant côté serveur." },
       { status: 500 }
     );
   }
@@ -78,7 +78,7 @@ export async function GET(req: Request) {
   const gotBearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   const gotHeader = req.headers.get("x-cron-secret") || "";
   if (gotBearer !== cronSecret && gotHeader !== cronSecret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
   }
 
   const now = new Date();

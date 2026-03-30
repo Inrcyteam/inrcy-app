@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/google-business/callback`;
 
   if (!clientId) {
-    return NextResponse.json({ error: "Missing GOOGLE_CLIENT_ID" }, { status: 500 });
+    return NextResponse.json({ error: "Configuration Google incomplète côté serveur." }, { status: 500 });
   }
 
   const { searchParams } = new URL(request.url);

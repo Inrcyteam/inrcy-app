@@ -22,18 +22,18 @@ function isPrivateIp(ip: string): boolean {
 
 function validateHost(input: string): string {
   const host = String(input || "").trim();
-  if (!host) throw new Error("Host manquant");
-  if (host.includes("/") || host.includes("\\")) throw new Error("Host invalide");
-  if (!/^[a-z0-9.-]+$/i.test(host)) throw new Error("Host invalide");
+  if (!host) throw new Error("Hôte IMAP/SMTP manquant.");
+  if (host.includes("/") || host.includes("\\")) throw new Error("Hôte IMAP/SMTP invalide.");
+  if (!/^[a-z0-9.-]+$/i.test(host)) throw new Error("Hôte IMAP/SMTP invalide.");
 
   const lower = host.toLowerCase();
   if (lower === "localhost" || lower.endsWith(".local") || lower.endsWith(".internal")) {
-    throw new Error("Host interdit");
+    throw new Error("Hôte IMAP/SMTP non autorisé.");
   }
 
   const ipVersion = net.isIP(host);
   if (ipVersion && isPrivateIp(host)) {
-    throw new Error("Host interdit");
+    throw new Error("Hôte IMAP/SMTP non autorisé.");
   }
 
   return host;
@@ -41,14 +41,14 @@ function validateHost(input: string): string {
 
 function validatePort(n: number, fallback: number): number {
   const p = Number.isFinite(n) ? Math.trunc(n) : fallback;
-  if (p < 1 || p > 65535) throw new Error("Port invalide");
+  if (p < 1 || p > 65535) throw new Error("Port invalide.");
   return p;
 }
 
 const handler = async (req: Request) => {
   const supabase = await createSupabaseServer();
   const { data: userData } = await supabase.auth.getUser();
-  if (!userData?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userData?.user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
   try {
     const body = await req.json().catch(() => ({}));

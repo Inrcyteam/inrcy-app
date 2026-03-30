@@ -11,6 +11,7 @@ import PromoModal from "./components/PromoModal";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
+import StatusMessage from "../_components/StatusMessage";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type ActiveModal = null | "publish" | "reviews" | "promo";
@@ -410,7 +411,7 @@ useEffect(() => {
             <div className={styles.subtitle} style={{ maxWidth: 420, margin: "0 auto 14px auto" }}>
               Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés.
             </div>
-            <div className={styles.successNote} style={{ marginTop: 0, fontSize: 14 }}>C'est parfait, votre communication est lancée.</div>
+            <StatusMessage variant="success" style={{ marginTop: 0, fontSize: 14 }}>C'est parfait, votre communication est lancée.</StatusMessage>
           </div>
         </div>
       )}

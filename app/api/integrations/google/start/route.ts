@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     // Avoid redirecting to Google with client_id=undefined (hard to debug)
     return NextResponse.json(
       {
-        error: "Missing GOOGLE_CLIENT_ID env var",
+        error: "Configuration Google incomplète côté serveur.",
         hint:
           "Set GOOGLE_CLIENT_ID (and GOOGLE_CLIENT_SECRET) in your deployment environment. " +
           "Also add the redirect URI in Google Cloud Console: " +

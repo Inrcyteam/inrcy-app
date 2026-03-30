@@ -18,7 +18,7 @@ async function refreshAccessToken(refreshToken: string, scope?: string | null) {
   const clientId = process.env.MICROSOFT_CLIENT_ID;
   const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    return { ok: false, status: 500, data: { error: "Missing MICROSOFT_* env" } };
+    return { ok: false, status: 500, data: { error: "Configuration Outlook incomplète côté serveur." } };
   }
 
   const fallbackScope = [
@@ -72,10 +72,10 @@ const handler = async (req: Request) => {
     const text = String(formData.get("text") || "");
 
     if (!accountId) {
-      return NextResponse.json({ error: "Missing 'accountId' (sending mailbox)" }, { status: 400 });
+      return NextResponse.json({ error: "Boîte d’envoi manquante." }, { status: 400 });
     }
     if (!to) {
-      return NextResponse.json({ error: "Missing 'to'" }, { status: 400 });
+      return NextResponse.json({ error: "Destinataire manquant." }, { status: 400 });
     }
 
     const { data: account, error: accErr } = await supabase
@@ -89,7 +89,7 @@ const handler = async (req: Request) => {
       .single();
 
     if (accErr || !account) {
-      return NextResponse.json({ error: "Microsoft mail account not found" }, { status: 404 });
+      return NextResponse.json({ error: "Boîte Outlook introuvable." }, { status: 404 });
     }
 
     // Supabase row typing may be '{}' depending on generated types.
@@ -106,7 +106,7 @@ const handler = async (req: Request) => {
     const scopesRaw = asString(settingsRec["scopes_raw"]);
 
     if (!accessToken) {
-      return NextResponse.json({ error: "Missing access token" }, { status: 500 });
+      return NextResponse.json({ error: "Jeton d’accès manquant." }, { status: 500 });
     }
 
     // refresh si expiré
@@ -146,7 +146,7 @@ const handler = async (req: Request) => {
 
     if (!graphRes.ok) {
       const details = await graphRes.text().catch(() => "");
-      return NextResponse.json({ error: "Microsoft send failed", details }, { status: 500 });
+      return NextResponse.json({ error: "Envoi Outlook impossible pour le moment.", details }, { status: 500 });
     }
 
     // --- iNr'Send history (Supabase) ---

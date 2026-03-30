@@ -32,7 +32,7 @@ function fmtDate(iso: string) {
 }
 
 export async function GET(req: Request) {
-  if (!isAuthorizedCron(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isAuthorizedCron(req)) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
   const now = new Date();
   const horizon = new Date(now.getTime() + 48 * 3600 * 1000).toISOString();

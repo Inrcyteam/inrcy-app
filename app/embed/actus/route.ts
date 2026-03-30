@@ -27,17 +27,17 @@ function b64urlDecodeToBuffer(s: string) {
 
 function verifyWidgetToken(token: string, secret: string): WidgetTokenPayload {
   const parts = token.split(".");
-  if (parts.length !== 2) throw new Error("Invalid token format");
+  if (parts.length !== 2) throw new Error("Format du jeton invalide");
   const [body, sig] = parts;
   const expected = b64urlEncode(crypto.createHmac("sha256", secret).update(body).digest());
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error("Invalid token signature");
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error("Signature du jeton invalide");
 
   const payload = JSON.parse(b64urlDecodeToBuffer(body).toString("utf8")) as WidgetTokenPayload;
-  if (!payload || payload.v !== 1) throw new Error("Invalid token payload");
+  if (!payload || payload.v !== 1) throw new Error("Contenu du jeton invalide");
   const now = Math.floor(Date.now() / 1000);
-  if (payload.exp && now > payload.exp) throw new Error("Token expired");
+  if (payload.exp && now > payload.exp) throw new Error("Jeton expiré");
   return payload;
 }
 
@@ -69,7 +69,7 @@ async function fetchArticles(domain: string, source: string, limit: number) {
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing SUPABASE env: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) throw new Error("Configuration Supabase incomplète côté serveur.");
 
   const supabase = createClient(url, key, { auth: { persistSession: false } });
   const { data, error } = await supabase
@@ -114,7 +114,7 @@ export async function GET(req: Request) {
     if (!token) return htmlResponse(renderEmbedHtml({ title, articles: [], layout, font, theme, frameId }), 401, domain);
 
     const signingSecret = process.env.INRCY_WIDGETS_SIGNING_SECRET;
-    if (!signingSecret) throw new Error("Missing INRCY_WIDGETS_SIGNING_SECRET");
+    if (!signingSecret) throw new Error("Configuration du widget incomplète côté serveur.");
 
     const tok = verifyWidgetToken(token, signingSecret);
     const tokDomain = normalizeWidgetDomain(tok.domain);

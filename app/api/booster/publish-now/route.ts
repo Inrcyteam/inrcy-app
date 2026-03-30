@@ -269,7 +269,7 @@ export async function POST(req: Request) {
     const rl = await enforceRateLimit({ name: "booster_publish", identifier: userId, limit: 20, window: "1 m" });
     if (rl) return rl;
 const body = await req.json().catch(() => null);
-    if (!body) return NextResponse.json({ error: "Bad payload" }, { status: 400 });
+    if (!body) return NextResponse.json({ error: "Données invalides." }, { status: 400 });
 
     const channels = (Array.isArray(body.channels) ? body.channels : []) as ChannelKey[];
     const post = (body.post || {}) as PostPayload;

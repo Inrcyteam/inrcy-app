@@ -44,7 +44,7 @@ function b64urlDecodeToBuffer(s: string) {
 
 function verifyWidgetToken(token: string, secret: string): WidgetTokenPayload {
   const parts = token.split(".");
-  if (parts.length !== 2) throw new Error("Invalid token format");
+  if (parts.length !== 2) throw new Error("Format du jeton invalide");
   const [body, sig] = parts;
 
   const expected = b64urlEncode(crypto.createHmac("sha256", secret).update(body).digest());
@@ -52,13 +52,13 @@ function verifyWidgetToken(token: string, secret: string): WidgetTokenPayload {
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-    throw new Error("Invalid token signature");
+    throw new Error("Signature du jeton invalide");
   }
 
   const payload = JSON.parse(b64urlDecodeToBuffer(body).toString("utf8")) as WidgetTokenPayload;
-  if (!payload || payload.v !== 1) throw new Error("Invalid token payload");
+  if (!payload || payload.v !== 1) throw new Error("Contenu du jeton invalide");
   const now = Math.floor(Date.now() / 1000);
-  if (payload.exp && now > payload.exp) throw new Error("Token expired");
+  if (payload.exp && now > payload.exp) throw new Error("Jeton expiré");
   return payload;
 }
 
@@ -101,7 +101,7 @@ function getSupabaseAdmin() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
     throw new Error(
-      "Missing SUPABASE env: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY"
+      "Configuration Supabase incomplète côté serveur."
     );
   }
   return createClient(url, key, { auth: { persistSession: false } });
@@ -123,7 +123,7 @@ export async function GET(req: Request) {
 
     if (!domain) {
       return NextResponse.json(
-        { ok: false, error: "Missing domain" },
+        { ok: false, error: "Domaine manquant." },
         { status: 400, headers: corsHeaders(req) }
       );
     }
@@ -143,7 +143,7 @@ export async function GET(req: Request) {
       searchParams.get("token") || req.headers.get("x-inrcy-widget-token") || "";
     if (!providedToken) {
       return NextResponse.json(
-        { ok: false, error: "Missing token" },
+        { ok: false, error: "Jeton manquant." },
         { status: 401, headers: corsHeaders(req) }
       );
     }
@@ -153,13 +153,13 @@ export async function GET(req: Request) {
     const tokSource = String(tok.source || "").trim();
     if (!tokDomain || tokDomain !== domain) {
       return NextResponse.json(
-        { ok: false, error: "Token/domain mismatch" },
+        { ok: false, error: "Le jeton ne correspond pas au domaine." },
         { status: 403, headers: corsHeaders(req) }
       );
     }
     if (!tokSource || tokSource !== source) {
       return NextResponse.json(
-        { ok: false, error: "Token/source mismatch" },
+        { ok: false, error: "Le jeton ne correspond pas à cette source." },
         { status: 403, headers: corsHeaders(req) }
       );
     }
@@ -168,7 +168,7 @@ export async function GET(req: Request) {
     const host = originHost(req);
     if (!host || host !== tokDomain) {
       return NextResponse.json(
-        { ok: false, error: "Origin not allowed" },
+        { ok: false, error: "Origine non autorisée." },
         { status: 403, headers: corsHeaders(req) }
       );
     }

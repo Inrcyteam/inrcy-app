@@ -11,7 +11,7 @@ export async function POST(req: Request) {
 const body = await req.json().catch(() => ({}));
   const accountId = String(body.accountId || "").trim();
 
-  if (!accountId) return NextResponse.json({ error: "Missing accountId" }, { status: 400 });
+  if (!accountId) return NextResponse.json({ error: "Identifiant de compte manquant." }, { status: 400 });
 
   const { error } = await supabase
     .from("mail_accounts")

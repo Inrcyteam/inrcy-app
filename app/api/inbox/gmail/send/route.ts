@@ -136,7 +136,7 @@ async function refreshAccessToken(refreshToken: string) {
   const clientId = process.env.GOOGLE_CLIENT_ID!;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
   if (!clientId || !clientSecret) {
-    return { ok: false, status: 500, data: { error: "Missing GOOGLE_* env" } };
+    return { ok: false, status: 500, data: { error: "Configuration Gmail incomplète côté serveur." } };
   }
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
@@ -228,10 +228,10 @@ const handler = async (req: Request) => {
   // A send action must always be tied to an explicit sending mailbox.
   // This prevents silent fallbacks to "first account" and avoids history rows with NULL integration_id.
   if (!accountId) {
-    return NextResponse.json({ error: "Missing 'accountId' (sending mailbox)" }, { status: 400 });
+    return NextResponse.json({ error: "Boîte d’envoi manquante." }, { status: 400 });
   }
 
-  if (!to) return NextResponse.json({ error: "Missing 'to'" }, { status: 400 });
+  if (!to) return NextResponse.json({ error: "Destinataire manquant." }, { status: 400 });
 
   let q = supabase
     .from("integrations")
@@ -247,7 +247,7 @@ const handler = async (req: Request) => {
   if (accErr) return NextResponse.json({ error: accErr.message }, { status: 500 });
 
   const account = accounts?.[0];
-  if (!account) return NextResponse.json({ error: "No Gmail connected" }, { status: 400 });
+  if (!account) return NextResponse.json({ error: "Aucun compte Gmail connecté." }, { status: 400 });
 
   // ... rest of file unchanged
 
@@ -259,7 +259,7 @@ const handler = async (req: Request) => {
   const refreshTokenPlain = tryDecryptToken(refreshTokenEnc);
 
   if (!accessTokenPlain) {
-    return NextResponse.json({ error: "Missing access token" }, { status: 400 });
+    return NextResponse.json({ error: "Jeton d’accès manquant." }, { status: 400 });
   }
 
   // on utilise un token en clair uniquement en mémoire
@@ -323,7 +323,7 @@ const handler = async (req: Request) => {
       await supabase.from("integrations").update({ status: "expired" }).eq("id", account.id);
     }
     return NextResponse.json(
-      { error: "Gmail send failed", gmailStatus: sendRes.status, gmailError: sendData },
+      { error: "Envoi Gmail impossible pour le moment.", gmailStatus: sendRes.status, gmailError: sendData },
       { status: 502 }
     );
   }

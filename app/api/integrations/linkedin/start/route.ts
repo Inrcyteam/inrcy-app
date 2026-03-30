@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
   const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/linkedin/callback`;
 
-  if (!clientId) return NextResponse.json({ error: "Missing LINKEDIN_CLIENT_ID" }, { status: 500 });
+  if (!clientId) return NextResponse.json({ error: "Configuration LinkedIn incomplète côté serveur." }, { status: 500 });
 
   const { searchParams } = new URL(request.url);
   const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=linkedin", "/dashboard?panel=linkedin");

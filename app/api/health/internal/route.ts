@@ -19,7 +19,7 @@ function assertInternalAuth(req: Request) {
   const token = req.headers.get("x-health-token") || "";
   const expected = requireEnv("HEALTHCHECK_TOKEN");
   if (!expected || token !== expected) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
   }
   return null;
 }

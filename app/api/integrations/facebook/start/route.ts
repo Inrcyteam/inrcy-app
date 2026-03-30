@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/facebook/callback`;
 
   if (!appId) {
-    return NextResponse.json({ error: "Missing FACEBOOK_APP_ID" }, { status: 500 });
+    return NextResponse.json({ error: "Configuration Facebook incomplète côté serveur." }, { status: 500 });
   }
 
   const { searchParams } = new URL(request.url);

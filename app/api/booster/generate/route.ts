@@ -108,7 +108,7 @@ const handler = async (req: Request) => {
     const body = (await req.json().catch(() => ({}))) as Payload;
     const idea = (body?.idea || "").trim();
     if (!idea) {
-      return NextResponse.json({ error: "Missing idea" }, { status: 400 });
+      return NextResponse.json({ error: "Idée manquante." }, { status: 400 });
     }
 
     const theme = allowedThemes.includes(body?.theme as BoosterTheme) ? (body.theme as BoosterTheme) : "information";
@@ -120,7 +120,7 @@ const handler = async (req: Request) => {
       )
     );
     if (!channels.length) {
-      return NextResponse.json({ error: "Missing channels" }, { status: 400 });
+      return NextResponse.json({ error: "Canaux manquants." }, { status: 400 });
     }
 
     const { data: profile } = await supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle();

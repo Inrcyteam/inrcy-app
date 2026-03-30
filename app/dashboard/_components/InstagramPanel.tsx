@@ -2,6 +2,7 @@
 
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
+import StatusMessage from "./StatusMessage";
 
 export default function InstagramPanel(props: any) {
   const {
@@ -19,6 +20,7 @@ export default function InstagramPanel(props: any) {
     igAccountsError,
     instagramUrl,
     instagramUrlNotice,
+    instagramUrlError,
     disconnectInstagramProfile
   } = props;
 
@@ -166,7 +168,7 @@ export default function InstagramPanel(props: any) {
               {instagramConnected ? "Déconnecter la page" : "Connecter"}
             </button>
           </div>
-          {igAccountsError && <div className={styles.errNote}>{igAccountsError}</div>}
+          {igAccountsError && <StatusMessage variant="error">{igAccountsError}</StatusMessage>}
         </div>
       ) : null}
 
@@ -218,7 +220,8 @@ export default function InstagramPanel(props: any) {
             </a>
           </div>
 
-          {instagramUrlNotice && <div className={styles.successNote}>{instagramUrlNotice}</div>}
+          {instagramUrlNotice && <StatusMessage variant="success">{instagramUrlNotice}</StatusMessage>}
+          {instagramUrlError && <StatusMessage variant="error">{instagramUrlError}</StatusMessage>}
 
           {instagramConnected ? (
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>

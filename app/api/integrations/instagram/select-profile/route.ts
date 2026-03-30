@@ -29,12 +29,12 @@ export async function POST(req: Request) {
     error: authErr,
   } = await supabase.auth.getUser();
 
-  if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (authErr || !user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
   const body = await req.json().catch(() => null);
   const bodyRec = asRecord(body);
   const pageId = String(bodyRec["pageId"] || "");
-  if (!pageId) return NextResponse.json({ error: "Missing pageId" }, { status: 400 });
+  if (!pageId) return NextResponse.json({ error: "Page manquante." }, { status: 400 });
 
   const { data: rows } = await supabase
     .from("integrations")
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
   const rowRec = asRecord(row);
   const userTokenRaw = String(rowRec["access_token_enc"] || "");
   const userToken = tryDecryptToken(userTokenRaw) || "";
-  if (!userToken) return NextResponse.json({ error: "Instagram account not connected" }, { status: 400 });
+  if (!userToken) return NextResponse.json({ error: "Compte Instagram non connecté." }, { status: 400 });
 
   // Get pages + tokens
   const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({

@@ -189,7 +189,7 @@ export async function GET(req: Request) {
         .update(payload)
         .eq("id", String(asRecord(existing)["id"]));
 
-      if (upErr) return fail("db_update_failed", "DB update failed");
+      if (upErr) return fail("db_update_failed", "La mise à jour a échoué.");
     } else {
       const { error: insErr } = await supabaseAdmin.from("integrations").insert(payload);
       if (insErr) return fail("db_insert_failed", "DB insert failed");

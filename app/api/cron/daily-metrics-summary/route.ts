@@ -283,7 +283,7 @@ async function releaseShardLock(shard: number, totalShards: number): Promise<voi
 
 export async function GET(req: Request) {
   if (!isAuthorizedCron(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
   }
 
   const url = new URL(req.url);

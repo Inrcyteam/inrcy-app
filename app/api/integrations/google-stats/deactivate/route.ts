@@ -19,12 +19,12 @@ export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    if (authErr || !authData?.user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
     const userId = authData.user.id;
 
     const body = asRecord((await req.json().catch(() => ({}))) as unknown);
     const source = asString(body["source"]) ?? "site_inrcy";
-    if (source !== "site_inrcy") return NextResponse.json({ error: "Invalid source" }, { status: 400 });
+    if (source !== "site_inrcy") return NextResponse.json({ error: "Source invalide." }, { status: 400 });
 
     await supabaseAdmin.from("integrations").update({ status: "disconnected", access_token_enc: null, refresh_token_enc: null, expires_at: null }).eq("user_id", userId).eq("provider", "google").eq("source", "site_inrcy").in("product", ["ga4", "gsc"]);
     try {

@@ -190,7 +190,7 @@ if (!tokenRes.ok || !tokenData.access_token) {
         .eq("id", String(asRecord(existing)["id"]));
 
       if (upErr) {
-        return fail("db_update_failed", "DB update failed");
+        return fail("db_update_failed", "La mise à jour a échoué.");
       }
     } else {
       const { error: insErr } = await supabaseAdmin.from("integrations").insert(payload);

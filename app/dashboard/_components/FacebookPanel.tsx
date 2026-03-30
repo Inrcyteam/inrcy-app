@@ -2,6 +2,7 @@
 
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
+import StatusMessage from "./StatusMessage";
 
 export default function FacebookPanel(props: any) {
   const {
@@ -20,6 +21,7 @@ export default function FacebookPanel(props: any) {
     fbPagesError,
     facebookUrl,
     facebookUrlNotice,
+    facebookUrlError,
     disconnectFacebookPage
   } = props;
 
@@ -177,7 +179,7 @@ export default function FacebookPanel(props: any) {
 		                    {facebookPageConnected ? "Déconnecter la page" : "Connecter la page"}
 		                  </button>
                     </div>
-                    {fbPagesError && <div className={styles.errNote}>{fbPagesError}</div>}
+                    {fbPagesError && <StatusMessage variant="error">{fbPagesError}</StatusMessage>}
                   </div>
                 ) : null}
 
@@ -228,7 +230,8 @@ export default function FacebookPanel(props: any) {
     	                    Voir la page
     	                  </a>
     	                </div>
-    	                {facebookUrlNotice && <div className={styles.successNote}>{facebookUrlNotice}</div>}
+    	                {facebookUrlNotice && <StatusMessage variant="success">{facebookUrlNotice}</StatusMessage>}
+		                {facebookUrlError && <StatusMessage variant="error">{facebookUrlError}</StatusMessage>}
 
     	                {facebookPageConnected ? (
     	                  <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>

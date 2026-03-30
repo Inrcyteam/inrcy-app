@@ -235,12 +235,12 @@ export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    if (authErr || !authData?.user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
 
     const body = asRecord((await req.json().catch(() => ({}))) as unknown);
     const source = asString(body["source"]) ?? "site_inrcy";
     if (source !== "site_inrcy") {
-      return NextResponse.json({ error: "Invalid source" }, { status: 400 });
+      return NextResponse.json({ error: "Source invalide." }, { status: 400 });
     }
 
     // siteUrl peut être fourni par le front ; sinon on le prend en DB
@@ -256,7 +256,7 @@ export async function POST(req: Request) {
 
     const parsed = extractDomainFromUrl(siteUrl);
     if (!parsed) {
-      return NextResponse.json({ error: "Site URL invalid or missing" }, { status: 400 });
+      return NextResponse.json({ error: "Lien du site manquant ou invalide." }, { status: 400 });
     }
 
     // ✅ Mode rented : on utilise le compte Google admin iNrCy (token global) pour activer le suivi.
@@ -311,7 +311,7 @@ let adminRefreshToken = "";
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     if (!clientId || !clientSecret) {
-      return NextResponse.json({ error: "Missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET" }, { status: 500 });
+      return NextResponse.json({ error: "Configuration Google incomplète côté serveur." }, { status: 500 });
     }
 
     // Refresh token -> access token (admin iNrCy)
@@ -329,7 +329,7 @@ let adminRefreshToken = "";
 
     const tokenData = (await tokenRes.json()) as TokenRefreshResponse;
     if (!tokenRes.ok || !tokenData.access_token) {
-      return NextResponse.json({ error: tokenData?.error_description || "Token refresh failed" }, { status: 500 });
+      return NextResponse.json({ error: tokenData?.error_description || "La reconnexion Google a échoué." }, { status: 500 });
     }
 
     const accessToken = tokenData.access_token;
@@ -404,7 +404,7 @@ let adminRefreshToken = "";
     const { error: upErr } = await supabase
       .from("inrcy_site_configs")
       .upsert({ user_id: authData.user.id, site_url: parsed.normalizedUrl, settings: next }, { onConflict: "user_id" });
-    if (upErr) return NextResponse.json({ error: "DB update failed" }, { status: 500 });
+    if (upErr) return NextResponse.json({ error: "La mise à jour a échoué." }, { status: 500 });
 
     // Invalider le cache stats pour rafraîchir immédiatement les KPI après activation.
     try {

@@ -14,13 +14,13 @@ export async function POST(req: Request) {
   try {
     const secret = requireEnv("ADMIN_SECRET");
     const got = req.headers.get("x-admin-secret") || "";
-    if (got !== secret) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (got !== secret) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const email = String(body?.email || "").trim().toLowerCase();
     const trialDays = Math.max(1, Number(optionalEnv("INRCY_TRIAL_DAYS", "30")) || 30);
 
-    if (!email) return NextResponse.json({ error: "Missing email" }, { status: 400 });
+    if (!email) return NextResponse.json({ error: "Email manquant." }, { status: 400 });
 
     const appUrl = getAppUrl(req) || requireEnv("NEXT_PUBLIC_APP_URL");
 

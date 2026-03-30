@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
   const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/instagram/callback`;
 
-  if (!appId) return NextResponse.json({ error: "Missing FACEBOOK_APP_ID" }, { status: 500 });
+  if (!appId) return NextResponse.json({ error: "Configuration Facebook incomplète côté serveur." }, { status: 500 });
 
   const { searchParams } = new URL(request.url);
   const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=instagram", "/dashboard?panel=instagram");
