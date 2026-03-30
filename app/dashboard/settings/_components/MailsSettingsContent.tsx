@@ -254,6 +254,36 @@ React.useEffect(() => {
   </div>
 )}
 
+{toast === "gmail_disconnected" && (
+  <div style={{ marginTop: 8, fontSize: 13, color: "#34d399" }}>
+    ✅ Boîte Gmail déconnectée.
+  </div>
+)}
+
+{toast === "outlook_disconnected" && (
+  <div style={{ marginTop: 8, fontSize: 13, color: "#34d399" }}>
+    ✅ Boîte Outlook déconnectée.
+  </div>
+)}
+
+{toast === "imap_disconnected" && (
+  <div style={{ marginTop: 8, fontSize: 13, color: "#34d399" }}>
+    ✅ Boîte IMAP déconnectée.
+  </div>
+)}
+
+{toast === "imap_test_ok" && (
+  <div style={{ marginTop: 8, fontSize: 13, color: "#34d399" }}>
+    ✅ Test de connexion réussi.
+  </div>
+)}
+
+{toast === "imap_connected" && (
+  <div style={{ marginTop: 8, fontSize: 13, color: "#34d399" }}>
+    ✅ Boîte IMAP connectée avec succès.
+  </div>
+)}
+
       </div>
 
       <div className="mailsSettings_cardsGrid">

@@ -1192,6 +1192,28 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
   useEffect(() => {
     const linked = searchParams.get("linked");
     const ok = searchParams.get("ok");
+    if (ok !== "1") return;
+
+    if (linked === "facebook") {
+      setPanelSuccess("facebook", "Compte Facebook connecté. Choisissez maintenant la page à utiliser.", 3200);
+      return;
+    }
+    if (linked === "instagram") {
+      setPanelSuccess("instagram", "Compte Instagram connecté. Choisissez maintenant le profil à utiliser.", 3200);
+      return;
+    }
+    if (linked === "linkedin") {
+      setPanelSuccess("linkedin", "Compte LinkedIn connecté.", 2600);
+      return;
+    }
+    if (linked === "gmb") {
+      setPanelSuccess("gmb", "Compte Google connecté. Choisissez maintenant votre établissement.", 3200);
+    }
+  }, [searchParams, setPanelSuccess]);
+
+  useEffect(() => {
+    const linked = searchParams.get("linked");
+    const ok = searchParams.get("ok");
     const error = searchParams.get("error");
     const message = searchParams.get("message");
     if (!linked || ok !== "0" || (!error && !message)) return;
@@ -1609,7 +1631,8 @@ const disconnectGmbAccount = useCallback(async () => {
   setGmbAccountEmail("");
   setGmbUrl("");
   await updateRootSettingsKey("gmb", { url: "", connected: false, accountEmail: "", resource_id: "" });
-}, [updateRootSettingsKey, triggerGeneratorRefresh]);
+  setPanelSuccess("gmb", "Compte Google déconnecté.");
+}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
 
 const disconnectGmbBusiness = useCallback(async () => {
   // Disconnect Google Business ONLY (keeps Google account connected)
@@ -1618,7 +1641,8 @@ const disconnectGmbBusiness = useCallback(async () => {
   setGmbUrl("");
   triggerGeneratorRefresh();
   await updateRootSettingsKey("gmb", { url: "", resource_id: "" });
-}, [updateRootSettingsKey, triggerGeneratorRefresh]);
+  setPanelSuccess("gmb", "Établissement Google Business déconnecté.");
+}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
 
 
   // Facebook pages (selection)
@@ -1669,7 +1693,8 @@ const disconnectFacebookAccount = useCallback(async () => {
 	  setFbPages([]);
 	  setFbSelectedPageId("");
 	  setFbSelectedPageName("");
-}, [updateRootSettingsKey, triggerGeneratorRefresh]);
+	  setPanelSuccess("facebook", "Compte Facebook déconnecté.");
+}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
 
 const disconnectFacebookPage = useCallback(async () => {
 	  await fetch("/api/integrations/facebook/disconnect-page", { method: "POST" });
@@ -1685,7 +1710,8 @@ const disconnectFacebookPage = useCallback(async () => {
 	  setFacebookUrl("");
 	  setFbSelectedPageId("");
 	  setFbSelectedPageName("");
-}, [updateRootSettingsKey, triggerGeneratorRefresh]);
+	  setPanelSuccess("facebook", "Page Facebook déconnectée.");
+}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
 const loadFacebookPages = useCallback(async () => {
 	  if (!facebookAccountConnected) return;
   setFbPagesLoading(true);
@@ -1805,7 +1831,8 @@ const disconnectInstagramAccount = useCallback(async () => {
     pageId: "",
     igId: "",
   });
-}, [updateRootSettingsKey, triggerGeneratorRefresh]);
+  setPanelSuccess("instagram", "Compte Instagram déconnecté.");
+}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
 
 const disconnectInstagramProfile = useCallback(async () => {
   await fetch("/api/integrations/instagram/disconnect-profile", { method: "POST" });
@@ -1822,7 +1849,8 @@ const disconnectInstagramProfile = useCallback(async () => {
     pageId: "",
     igId: "",
   });
-}, [updateRootSettingsKey, triggerGeneratorRefresh]);
+  setPanelSuccess("instagram", "Profil Instagram déconnecté.");
+}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
 
 const loadInstagramAccounts = useCallback(async () => {
   if (!instagramAccountConnected) return;
@@ -1919,7 +1947,8 @@ const disconnectLinkedinAccount = useCallback(async () => {
     displayName: "",
     url: "",
   });
-}, [updateRootSettingsKey, triggerGeneratorRefresh]);
+  setPanelSuccess("linkedin", "Compte LinkedIn déconnecté.");
+}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
 
 
 const saveLinkedinProfileUrl = useCallback(async () => {
