@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { defaultNotificationPreferences } from "@/lib/notifications";
+import { ensureNotificationPreferences } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 
@@ -9,15 +9,13 @@ export async function GET() {
   const { user, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
 
-  const defaults = defaultNotificationPreferences(user.id);
-  const { data, error } = await supabaseAdmin
-    .from("notification_preferences")
-    .upsert(defaults, { onConflict: "user_id", ignoreDuplicates: false })
-    .select("user_id, in_app_enabled, email_enabled, performance_enabled, action_enabled, information_enabled, digest_every_hours, updated_at")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ preferences: data });
+  try {
+    const preferences = await ensureNotificationPreferences(user.id);
+    return NextResponse.json({ preferences });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erreur";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function PUT(req: Request) {

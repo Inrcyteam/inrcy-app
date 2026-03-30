@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { optionalEnv, requireEnv } from "@/lib/env";
 import { getAppUrl } from "@/lib/stripeRest";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
+import { ensureNotificationPreferences } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 
@@ -33,6 +34,8 @@ export async function POST(req: Request) {
     const userId = invite.user.id;
     const now = new Date();
     const end = new Date(now.getTime() + trialDays * 24 * 3600 * 1000);
+
+    await ensureNotificationPreferences(userId);
 
     await supabaseAdmin
       .from("subscriptions")

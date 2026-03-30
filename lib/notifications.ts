@@ -1,5 +1,7 @@
 import "server-only";
 
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
 export type NotificationCategory = "performance" | "action" | "information";
 
 export type NotificationPreferenceRow = {
@@ -39,6 +41,25 @@ export function defaultNotificationPreferences(userId: string): NotificationPref
     information_enabled: true,
     digest_every_hours: 48,
   };
+}
+
+export async function ensureNotificationPreferences(userId: string) {
+  const payload = {
+    ...defaultNotificationPreferences(userId),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from("notification_preferences")
+    .upsert(payload, { onConflict: "user_id" })
+    .select("user_id, in_app_enabled, email_enabled, performance_enabled, action_enabled, information_enabled, digest_every_hours, created_at, updated_at")
+    .single();
+
+  if (error) {
+    throw new Error(`notification_preferences_upsert_failed:${error.message}`);
+  }
+
+  return data as NotificationPreferenceRow;
 }
 
 export function getCategoryLabel(category: NotificationCategory) {

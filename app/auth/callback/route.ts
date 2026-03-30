@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { safeInternalPath } from "@/lib/security";
+import { ensureNotificationPreferences } from "@/lib/notifications";
 
 export async function GET(req: Request) {
   const supabase = await createSupabaseServer();
@@ -23,7 +24,11 @@ export async function GET(req: Request) {
   // Exchanges the auth code for a session.
   const code = searchParams.get("code");
   if (code) {
-    await supabase.auth.exchangeCodeForSession(code);
+    const { data } = await supabase.auth.exchangeCodeForSession(code);
+    const userId = data?.user?.id;
+    if (userId) {
+      await ensureNotificationPreferences(userId).catch(() => null);
+    }
   }
 
   return NextResponse.redirect(new URL(nextParam, new URL(req.url).origin));

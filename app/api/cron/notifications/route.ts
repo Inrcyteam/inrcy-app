@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { buildNotificationDigestEmail, type NotificationDigestItem } from "@/lib/notificationDigestEmail";
 import { optionalEnv } from "@/lib/env";
+import { defaultNotificationPreferences } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,10 @@ type PrefRow = {
   action_enabled: boolean;
   information_enabled: boolean;
   digest_every_hours: number;
+};
+
+type UserIdRow = {
+  user_id: string;
 };
 
 type SnapshotRow = {
@@ -387,13 +392,43 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("notification_preferences")
-    .select("user_id, in_app_enabled, email_enabled, performance_enabled, action_enabled, information_enabled, digest_every_hours");
+  const [{ data: prefRows, error: prefError }, { data: profileRows, error: profileError }] = await Promise.all([
+    supabaseAdmin
+      .from("notification_preferences")
+      .select("user_id, in_app_enabled, email_enabled, performance_enabled, action_enabled, information_enabled, digest_every_hours"),
+    supabaseAdmin
+      .from("profiles")
+      .select("user_id"),
+  ]);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (prefError) return NextResponse.json({ error: prefError.message }, { status: 500 });
+  if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 });
 
-  const prefs = (data ?? []) as PrefRow[];
+  const prefMap = new Map<string, PrefRow>();
+  for (const row of (prefRows ?? []) as PrefRow[]) {
+    prefMap.set(row.user_id, row);
+  }
+
+  const userIds = new Set<string>();
+  for (const row of (profileRows ?? []) as UserIdRow[]) {
+    if (row.user_id) userIds.add(row.user_id);
+  }
+  for (const userId of prefMap.keys()) {
+    userIds.add(userId);
+  }
+
+  const prefs = Array.from(userIds).map((userId) => {
+    const existing = prefMap.get(userId);
+    if (existing) {
+      return {
+        ...defaultNotificationPreferences(userId),
+        ...existing,
+        digest_every_hours: Math.max(24, Math.min(168, existing.digest_every_hours || 48)),
+      } as PrefRow;
+    }
+    return defaultNotificationPreferences(userId);
+  });
+
   let generated = 0;
   let emailed = 0;
   const errors: Array<{ user_id: string; message: string }> = [];
