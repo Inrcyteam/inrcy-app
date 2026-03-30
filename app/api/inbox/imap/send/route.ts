@@ -106,7 +106,7 @@ const handler = async (req: Request) => {
     // Strict validation: IMAP alone is not enough, SMTP is required to send
     if (!smtp?.host || !smtp?.port || !smtp?.user || !smtp?.password) {
       return NextResponse.json(
-        { error: "Configuration SMTP incomplète." },
+        { error: "La configuration d'envoi de la messagerie est incomplète." },
         { status: 400 }
       );
     }

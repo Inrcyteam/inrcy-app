@@ -2056,7 +2056,7 @@ async function deleteDraftPermanently(id: string) {
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(reader.error ?? new Error("FileReader error"));
+      reader.onerror = () => reject(reader.error ?? new Error("Impossible de lire ce fichier."));
       reader.readAsDataURL(file);
     });
 

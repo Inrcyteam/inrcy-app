@@ -41,7 +41,7 @@ function validateHost(input: string): string {
 
 function validatePort(n: number, fallback: number): number {
   const p = Number.isFinite(n) ? Math.trunc(n) : fallback;
-  if (p < 1 || p > 65535) throw new Error("Port invalide.");
+  if (p < 1 || p > 65535) throw new Error("Le numéro de port renseigné n'est pas valide.");
   return p;
 }
 
@@ -65,7 +65,7 @@ const handler = async (req: Request) => {
     const smtp_starttls = !!body.smtp_starttls;
 
     if (!login || !password) {
-      return NextResponse.json({ error: "Identifiant et mot de passe requis" }, { status: 400 });
+      return NextResponse.json({ error: "Merci de renseigner l'identifiant et le mot de passe." }, { status: 400 });
     }
 
     const userId = userData.user.id;
@@ -98,10 +98,10 @@ const handler = async (req: Request) => {
       .select("id")
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: "Impossible d'enregistrer ce compte de messagerie pour le moment." }, { status: 500 });
     return NextResponse.json({ ok: true, id: data?.id });
   } catch (e: unknown) {
-    const msg = (e instanceof Error ? e.message : String(e)) || "Connexion impossible";
+    const msg = (e instanceof Error ? e.message : String(e)) || "Impossible de connecter cette messagerie pour le moment.";
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 };

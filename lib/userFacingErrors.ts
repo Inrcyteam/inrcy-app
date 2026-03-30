@@ -36,7 +36,7 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Une erre
     return "Cette action est déjà en cours ou a déjà été effectuée.";
   }
 
-  if (matches(message, ["422", "unprocessable", "invalid", "body json invalide", "bad request", "missing channels", "missing idea", "email manquant", "plan invalide", "aucune ligne importable", "renseigne ", "json invalide", "missing accountid", "missing to", "missing email", "missing domain", "missing token", "missing access token", "missing imageurl", "missing iguserid", "smtp config missing", "site url invalid or missing", "invalid token", "invalid source"])) {
+  if (matches(message, ["422", "unprocessable", "invalid", "body json invalide", "bad request", "missing channels", "missing idea", "email manquant", "plan invalide", "aucune ligne importable", "renseigne ", "json invalide", "missing accountid", "missing to", "missing email", "missing domain", "missing token", "missing access token", "missing imageurl", "missing iguserid", "smtp config missing", "site url invalid or missing", "invalid token", "invalid source", "filereader error", "impossible de lire ce fichier", "format du jeton invalide", "signature du jeton invalide", "contenu du jeton invalide", "lien d'accès est invalide", "port invalide", "numéro de port", "configuration smtp incomplète", "configuration d'envoi de la messagerie est incomplète"])) {
     return "Certaines informations sont manquantes ou incorrectes.";
   }
 

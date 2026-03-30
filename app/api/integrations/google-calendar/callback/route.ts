@@ -10,7 +10,7 @@ export async function GET() {
     {
       ok: false,
       error: "google_calendar_integration_removed",
-      message: "Google Agenda has been removed from iNrCy. Please use the iNrCy agenda.",
+      message: "L'ancienne connexion Google Agenda n'est plus disponible. Merci d'utiliser l'agenda iNrCy.",
     },
     { status: 410 }
   );

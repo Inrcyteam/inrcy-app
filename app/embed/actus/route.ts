@@ -27,15 +27,15 @@ function b64urlDecodeToBuffer(s: string) {
 
 function verifyWidgetToken(token: string, secret: string): WidgetTokenPayload {
   const parts = token.split(".");
-  if (parts.length !== 2) throw new Error("Format du jeton invalide");
+  if (parts.length !== 2) throw new Error("Le lien d'accès est invalide.");
   const [body, sig] = parts;
   const expected = b64urlEncode(crypto.createHmac("sha256", secret).update(body).digest());
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error("Signature du jeton invalide");
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error("Le lien d'accès est invalide.");
 
   const payload = JSON.parse(b64urlDecodeToBuffer(body).toString("utf8")) as WidgetTokenPayload;
-  if (!payload || payload.v !== 1) throw new Error("Contenu du jeton invalide");
+  if (!payload || payload.v !== 1) throw new Error("Le lien d'accès est invalide.");
   const now = Math.floor(Date.now() / 1000);
   if (payload.exp && now > payload.exp) throw new Error("Jeton expiré");
   return payload;
