@@ -47,7 +47,7 @@ async function uploadUnpublishedPhoto(params: {
       // Fetch the image server-side and upload bytes to Facebook
       const imgRes = await fetch(imageUrl, { cache: "no-store" });
       if (!imgRes.ok) {
-        return { ok: false, error: `Failed to fetch image (${imgRes.status})` };
+        return { ok: false, error: "Impossible de récupérer l’image pour la publication." };
       }
       const contentType = imgRes.headers.get("content-type") || "application/octet-stream";
       const ab = await imgRes.arrayBuffer();

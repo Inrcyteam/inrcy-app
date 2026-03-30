@@ -97,7 +97,7 @@ async function uploadLinkedInImage(params: {
 
   const { raw: initRaw, json: initJson } = await parseResponse(initRes);
   if (!initRes.ok) {
-    throw new Error(initJson?.message || initJson?.error || initRaw || `LinkedIn initializeUpload failed (${initRes.status})`);
+    throw new Error(initJson?.message || initJson?.error || initRaw || "Impossible d’envoyer l’image sur LinkedIn pour le moment.");
   }
 
   const uploadUrl = String(initJson?.value?.uploadUrl || "");
@@ -119,7 +119,7 @@ async function uploadLinkedInImage(params: {
 
   const uploadRaw = await uploadRes.text().catch(() => "");
   if (!uploadRes.ok) {
-    throw new Error(uploadRaw || `LinkedIn image upload failed (${uploadRes.status})`);
+    throw new Error(uploadRaw || "Impossible d’envoyer l’image sur LinkedIn pour le moment.");
   }
 
   return { imageUrn, initJson: initJson ?? initRaw, uploadRaw };

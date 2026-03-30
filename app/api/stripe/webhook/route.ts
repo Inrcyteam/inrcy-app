@@ -99,7 +99,7 @@ export async function POST(req: Request) {
   try {
     verifyStripeWebhookSignature(payload, sig);
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Invalid signature";
+    const msg = e instanceof Error ? e.message : "Une erreur est survenue pendant la validation du paiement.";
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
@@ -309,7 +309,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ received: true });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Webhook error";
+    const msg = e instanceof Error ? e.message : "Une erreur est survenue pendant la validation du paiement.";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

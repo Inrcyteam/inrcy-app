@@ -99,7 +99,7 @@ async function waitForContainerReady(params: {
 
   return {
     ok: false,
-    error: "Timeout : le media Instagram n'est pas passé à l'état FINISHED",
+    error: "Instagram met trop de temps à répondre. Merci de réessayer.",
     checks,
   };
 }
@@ -149,9 +149,9 @@ export async function instagramPublishPhoto(params: {
   const { igUserId, accessToken, caption, imageUrl } = params;
 
   try {
-    if (!igUserId) return { ok: false, error: "Missing igUserId" };
-    if (!accessToken) return { ok: false, error: "Missing accessToken" };
-    if (!imageUrl) return { ok: false, error: "Missing imageUrl" };
+    if (!igUserId) return { ok: false, error: "Certaines informations nécessaires à la publication Instagram sont manquantes." };
+    if (!accessToken) return { ok: false, error: "La connexion Instagram a expiré. Merci de reconnecter votre compte." };
+    if (!imageUrl) return { ok: false, error: "Ajoute au moins une image pour publier sur Instagram." };
 
     const { res: createRes, json: createJson } = await createInstagramImageContainer({
       igUserId,
@@ -219,7 +219,7 @@ export async function instagramPublishPhoto(params: {
     if (!mediaId) {
       return {
         ok: false,
-        error: "Instagram publish returned no id",
+        error: "La publication Instagram n’a pas pu être finalisée.",
         diagnostics: {
           containerId,
           createResponse: createJson,
@@ -240,7 +240,7 @@ export async function instagramPublishPhoto(params: {
       },
     };
   } catch (e: any) {
-    return { ok: false, error: e?.message || "Unknown Instagram publish error" };
+    return { ok: false, error: e?.message || "Une erreur est survenue lors de la publication Instagram." };
   }
 }
 
@@ -254,9 +254,9 @@ export async function instagramPublishCarousel(params: {
   const imageUrls = (params.imageUrls || []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, 10);
 
   try {
-    if (!igUserId) return { ok: false, error: "Missing igUserId" };
-    if (!accessToken) return { ok: false, error: "Missing accessToken" };
-    if (imageUrls.length === 0) return { ok: false, error: "Missing imageUrls" };
+    if (!igUserId) return { ok: false, error: "Certaines informations nécessaires à la publication Instagram sont manquantes." };
+    if (!accessToken) return { ok: false, error: "La connexion Instagram a expiré. Merci de reconnecter votre compte." };
+    if (imageUrls.length === 0) return { ok: false, error: "Ajoute au moins une image pour publier sur Instagram." };
     if (imageUrls.length === 1) {
       return instagramPublishPhoto({ igUserId, accessToken, caption, imageUrl: imageUrls[0] });
     }
@@ -388,7 +388,7 @@ export async function instagramPublishCarousel(params: {
     if (!mediaId) {
       return {
         ok: false,
-        error: "Instagram carousel publish returned no id",
+        error: "La publication Instagram n’a pas pu être finalisée.",
         diagnostics: {
           containerId,
           childContainerIds,

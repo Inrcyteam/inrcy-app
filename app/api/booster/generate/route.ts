@@ -192,7 +192,7 @@ const handler = async (req: Request) => {
 
     return NextResponse.json({ versions: safeVersions });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Server error";
+    const msg = e instanceof Error ? e.message : "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes.";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 };

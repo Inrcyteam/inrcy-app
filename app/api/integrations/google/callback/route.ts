@@ -126,7 +126,7 @@ export async function GET(req: Request) {
 if (!tokenRes.ok || !tokenData.access_token) {
   return fail(
     "token_exchange_failed",
-    tokenData.error_description || tokenData.error || "Token exchange failed"
+    tokenData.error_description || tokenData.error || "La connexion au compte a échoué. Merci de réessayer."
   );
 }
 
@@ -212,7 +212,7 @@ if (!tokenRes.ok || !tokenData.access_token) {
   } catch (e: unknown) {
     // No stack traces to clients in production.
     oauthCallbackException(req, "google", e, { error: "oauth_callback_failed", return_to: "/dashboard?panel=mails" });
-    const message = (e instanceof Error ? e.message : String(e)) || "Server error";
+    const message = (e instanceof Error ? e.message : String(e)) || "La connexion au compte a échoué. Merci de réessayer.";
     return NextResponse.redirect(new URL(`/dashboard?panel=mails&linked=google&ok=0&error=oauth_callback_failed&message=${encodeURIComponent(message.slice(0, 200))}`, origin));
   }
 }

@@ -11,7 +11,7 @@ export async function GET(req: Request) {
 
   if (!clientId || !redirectUri) {
     return NextResponse.json(
-      { error: "Missing MICROSOFT_CLIENT_ID or MICROSOFT_REDIRECT_URI" },
+      { error: "La connexion Outlook n’est pas disponible pour le moment." },
       { status: 500 }
     );
   }

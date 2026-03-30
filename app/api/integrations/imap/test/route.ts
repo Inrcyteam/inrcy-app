@@ -34,7 +34,7 @@ export const POST = withApi(async (req: Request) => {
       return NextResponse.json({ error: "Identifiant et mot de passe requis" }, { status: 400 });
     }
     if (!imap_host || !smtp_host) {
-      return NextResponse.json({ error: "IMAP/SMTP host requis" }, { status: 400 });
+      return NextResponse.json({ error: "Merci de renseigner l’adresse du serveur de messagerie entrant et sortant." }, { status: 400 });
     }
 
     // IMAP connect

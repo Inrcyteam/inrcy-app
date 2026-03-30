@@ -485,7 +485,7 @@ const body = await req.json().catch(() => null);
           const fbMeta = asRecord(fb["meta"]);
           const fbExpired = isExpired(fb["expires_at"]) && !String(fbMeta["selected"] ?? "") && !pageId;
           if (String(fb["status"] ?? "") !== "connected" || !pageId || !pageToken || fbExpired) {
-            await setDelivery(ch, { status: "failed", error: fbExpired ? "Facebook expiré : reconnectez le compte." : "Facebook non configuré (page/token manquant)" });
+            await setDelivery(ch, { status: "failed", error: fbExpired ? "Facebook expiré : reconnectez le compte." : "Votre compte Facebook n’est pas encore correctement relié." });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
           }
@@ -517,7 +517,7 @@ const body = await req.json().catch(() => null);
           const igMeta = asRecord(ig["meta"]);
           const igExpired = isExpired(ig["expires_at"]) && !String(igMeta["page_id"] ?? "") && !igUserId;
           if (String(ig["status"] ?? "") !== "connected" || !igUserId || !igToken || igExpired) {
-            await setDelivery(ch, { status: "failed", error: igExpired ? "Instagram expiré : reconnectez le compte puis re-sélectionnez le profil Instagram." : "Instagram non configuré (compte/token manquant)" });
+            await setDelivery(ch, { status: "failed", error: igExpired ? "Instagram expiré : reconnectez le compte puis re-sélectionnez le profil Instagram." : "Votre compte Instagram n’est pas encore correctement relié." });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
           }
@@ -563,7 +563,7 @@ const body = await req.json().catch(() => null);
           const authorUrn = String(li["resource_id"] ?? "");
           const liExpired = isExpired(li["expires_at"]);
           if (String(li["status"] ?? "") !== "connected" || !accessToken || !authorUrn || liExpired) {
-            await setDelivery(ch, { status: "failed", error: liExpired ? "LinkedIn expiré : reconnectez le compte." : "LinkedIn non configuré (token/auteur manquant)" });
+            await setDelivery(ch, { status: "failed", error: liExpired ? "LinkedIn expiré : reconnectez le compte." : "Votre compte LinkedIn n’est pas encore correctement relié." });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
           }
@@ -631,14 +631,14 @@ const body = await req.json().catch(() => null);
           const accountName = String(gmbMeta["account"] ?? "");
           const gmbExpired = isExpired(gmb["expires_at"]);
           if (String(gmb["status"] ?? "") !== "connected" || !locationName || !accountName || gmbExpired) {
-            await setDelivery(ch, { status: "failed", error: gmbExpired ? "Google Business expiré : reconnectez le compte." : "Google Business non configuré (compte/location manquant)" });
+            await setDelivery(ch, { status: "failed", error: gmbExpired ? "Google Business expiré : reconnectez le compte." : "Votre fiche Google Business n’est pas encore correctement reliée." });
             results[ch] = { ok: false, error: "not_configured" };
             continue;
           }
 
           const tok = await getGmbToken();
           if (!tok?.accessToken) {
-            await setDelivery(ch, { status: "failed", error: "Token Google invalide/expiré" });
+            await setDelivery(ch, { status: "failed", error: "La connexion Google a expiré. Merci de reconnecter votre compte." });
             results[ch] = { ok: false, error: "token" };
             continue;
           }

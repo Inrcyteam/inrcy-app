@@ -129,7 +129,7 @@ export async function GET(req: Request) {
 
     const tokenData = (await tokenRes.json().catch(() => ({}))) as TokenResponse;
     if (!tokenRes.ok || !tokenData.access_token) {
-      return fail("token_exchange_failed", asString(asRecord(tokenData)["error_description"]) || asString(asRecord(tokenData)["error"]) || "Token exchange failed");
+      return fail("token_exchange_failed", asString(asRecord(tokenData)["error_description"]) || asString(asRecord(tokenData)["error"]) || "La connexion au compte a échoué. Merci de réessayer.");
     }
 
     // Fetch /me
@@ -138,12 +138,12 @@ export async function GET(req: Request) {
     });
     const me = (await meRes.json().catch(() => ({}))) as GraphMe;
     if (!meRes.ok) {
-      return fail("graph_me_failed", "Graph /me failed");
+      return fail("graph_me_failed", "Impossible de récupérer les informations du compte Microsoft.");
     }
 
     const email = (me.mail || me.userPrincipalName || "").toLowerCase();
     if (!email) {
-      return fail("email_resolution_failed", "Unable to resolve email for Microsoft account");
+      return fail("email_resolution_failed", "Impossible de retrouver l’adresse e-mail du compte Microsoft.");
     }
 
     // Preserve refresh token if not returned (rare but possible)

@@ -559,7 +559,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           const token = tryDecryptToken(String(fbRow["access_token_enc"]));
-          if (!token) throw new Error("Facebook access token manquant ou invalide.");
+          if (!token) throw new Error("La connexion Facebook a expiré ou n’est plus valide.");
           sourcesStatus.facebook.metrics = await fbFetchDailyInsights(
             token,
             String(fbRow["resource_id"]),
@@ -587,7 +587,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           const token = tryDecryptToken(String(igRow["access_token_enc"]));
-          if (!token) throw new Error("Instagram access token manquant ou invalide.");
+          if (!token) throw new Error("La connexion Instagram a expiré ou n’est plus valide.");
           sourcesStatus.instagram.metrics = await igFetchDailyInsights(token, String(igRow["resource_id"]), start, end);
         } catch (e) {
           sourcesStatus.instagram.metrics = { error: e instanceof Error ? e.message : String(e) };
@@ -608,7 +608,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       } else if (sourcesStatus.linkedin.connected && liRow["access_token_enc"] && !isExpired(liRow["expires_at"])) {
         try {
           const token = tryDecryptToken(String(liRow["access_token_enc"]));
-          if (!token) throw new Error("LinkedIn access token manquant ou invalide.");
+          if (!token) throw new Error("La connexion LinkedIn a expiré ou n’est plus valide.");
           // Resolve first admin org if needed
           const orgUrn = String(asRecord(liRow["meta"])["org_urn"] || "");
           const resolvedOrgUrn = orgUrn || (await liResolveFirstAdminOrgUrn(token));

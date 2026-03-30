@@ -142,7 +142,7 @@ export async function GET(req: Request) {
 
     const tokenData = (await tokenRes.json()) as TokenResponse;
     if (!tokenRes.ok) {
-      return fail("token_exchange_failed", "Token exchange failed");
+      return fail("token_exchange_failed", "La connexion au compte a échoué. Merci de réessayer.");
     }
 
     const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {

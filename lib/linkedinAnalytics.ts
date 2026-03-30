@@ -181,7 +181,7 @@ export async function liFetchOrgAnalytics(
   start: Date,
   end: Date
 ): Promise<LinkedInMetrics> {
-  if (!orgUrn) throw new Error("LinkedIn org_urn manquant.");
+  if (!orgUrn) throw new Error("Le compte LinkedIn n’est pas correctement configuré.");
 
   const settled = await Promise.allSettled([
     liFetchOrgShareStats(accessToken, orgUrn, start, end),

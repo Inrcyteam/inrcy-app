@@ -465,7 +465,7 @@ async function replaceChannelDelivery(params: {
     const fb = asRecord(fbRow);
     const pageId = String(fb.resource_id ?? "");
     const pageToken = tryDecryptToken(String(fb.access_token_enc ?? "")) || "";
-    if (String(fb.status ?? "") !== "connected" || !pageId || !pageToken) throw new Error("Facebook non configuré.");
+    if (String(fb.status ?? "") !== "connected" || !pageId || !pageToken) throw new Error("Votre compte Facebook n’est pas encore correctement relié.");
     if (previousExternalId) {
       try {
         await updateFacebookPost(previousExternalId, pageToken, canonMessage);
@@ -483,7 +483,7 @@ async function replaceChannelDelivery(params: {
     const ig = asRecord(igRow);
     const igUserId = String(ig.resource_id ?? "");
     const igToken = tryDecryptToken(String(ig.access_token_enc ?? "")) || "";
-    if (String(ig.status ?? "") !== "connected" || !igUserId || !igToken) throw new Error("Instagram non configuré.");
+    if (String(ig.status ?? "") !== "connected" || !igUserId || !igToken) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
     const instagramImages = instagramImageUrls.filter(Boolean).slice(0, 10);
     if (!instagramImages.length) throw new Error("Instagram nécessite au moins 1 image.");
     if (previousExternalId) await deleteInstagramMedia(previousExternalId, igToken);
@@ -508,7 +508,7 @@ async function replaceChannelDelivery(params: {
     const li = asRecord(liRow);
     const accessToken = tryDecryptToken(String(li.access_token_enc ?? "")) || "";
     const authorUrn = String(asRecord(li.meta).org_urn ?? li.resource_id ?? "");
-    if (String(li.status ?? "") !== "connected" || !accessToken || !authorUrn) throw new Error("LinkedIn non configuré.");
+    if (String(li.status ?? "") !== "connected" || !accessToken || !authorUrn) throw new Error("Votre compte LinkedIn n’est pas encore correctement relié.");
     if (previousExternalId) await deleteLinkedInPost(previousExternalId, accessToken);
     const linkedInImages = socialFeedImageUrls.filter(Boolean).slice(0, 20);
     const resp = linkedInImages.length > 1
@@ -525,9 +525,9 @@ async function replaceChannelDelivery(params: {
     const meta = asRecord(gmb.meta);
     const accountName = String(meta.account ?? "");
     const locationName = String(gmb.resource_id ?? "");
-    if (String(gmb.status ?? "") !== "connected" || !accountName || !locationName) throw new Error("Google Business non configuré.");
+    if (String(gmb.status ?? "") !== "connected" || !accountName || !locationName) throw new Error("Votre fiche Google Business n’est pas encore correctement reliée.");
     const token = await getGmbToken();
-    if (!token?.accessToken) throw new Error("Token Google Business invalide.");
+    if (!token?.accessToken) throw new Error("La connexion Google a expiré. Merci de reconnecter votre compte.");
     if (previousExternalId) await deleteGmbPost(previousExternalId, token.accessToken);
     const resp = await gmbCreateLocalPost({
       accessToken: token.accessToken,
@@ -567,28 +567,28 @@ async function removeChannelDelivery(params: {
 
   if (channel === "facebook") {
     const token = tryDecryptToken(String(asRecord(fbRow).access_token_enc ?? "")) || "";
-    if (!token) throw new Error("Facebook non configuré.");
+    if (!token) throw new Error("Votre compte Facebook n’est pas encore correctement relié.");
     if (previousExternalId) await deleteFacebookPost(previousExternalId, token);
     return;
   }
 
   if (channel === "instagram") {
     const token = tryDecryptToken(String(asRecord(igRow).access_token_enc ?? "")) || "";
-    if (!token) throw new Error("Instagram non configuré.");
+    if (!token) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
     if (previousExternalId) await deleteInstagramMedia(previousExternalId, token);
     return;
   }
 
   if (channel === "linkedin") {
     const token = tryDecryptToken(String(asRecord(liRow).access_token_enc ?? "")) || "";
-    if (!token) throw new Error("LinkedIn non configuré.");
+    if (!token) throw new Error("Votre compte LinkedIn n’est pas encore correctement relié.");
     if (previousExternalId) await deleteLinkedInPost(previousExternalId, token);
     return;
   }
 
   if (channel === "gmb") {
     const token = await getGmbToken();
-    if (!token?.accessToken) throw new Error("Token Google Business invalide.");
+    if (!token?.accessToken) throw new Error("La connexion Google a expiré. Merci de reconnecter votre compte.");
     if (previousExternalId) await deleteGmbPost(previousExternalId, token.accessToken);
   }
 }
