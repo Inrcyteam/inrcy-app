@@ -8,6 +8,7 @@ import { loadImapAccount } from "@/lib/imapAccount";
 import { appendRawMessage, type ImapConfig } from "@/lib/imapClient";
 import { withApi } from "@/lib/observability/withApi";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
+import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 
 
 // IMAP + SMTP require Node.js runtime (Edge runtime can't open raw TCP sockets)
@@ -18,14 +19,51 @@ const handler = async (req: Request) => {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
     const userId = user.id;
-    const formData = await req.formData();
-    const accountId = String(formData.get("accountId") || "").trim();
-    const sendItemId = String(formData.get("sendItemId") || "").trim();
-    const sendType = String(formData.get("type") || "mail").trim() || "mail";
-    const to = String(formData.get("to") || "").trim();
-    const subject = String(formData.get("subject") || "(sans objet)");
-    const text = String(formData.get("text") || "");
-    const html = String(formData.get("html") || "").trim();
+    const ct = req.headers.get("content-type") || "";
+    let accountId = "";
+    let sendItemId = "";
+    let sendType = "mail";
+    let to = "";
+    let subject = "(sans objet)";
+    let text = "";
+    let html = "";
+    let attachmentRefs: ReturnType<typeof parseMailAttachmentRefs> = [];
+    let attachments: Array<{ filename: string; content: Buffer; contentType?: string }> = [];
+
+    if (ct.includes("multipart/form-data")) {
+      const formData = await req.formData();
+      accountId = String(formData.get("accountId") || "").trim();
+      sendItemId = String(formData.get("sendItemId") || "").trim();
+      sendType = String(formData.get("type") || "mail").trim() || "mail";
+      to = String(formData.get("to") || "").trim();
+      subject = String(formData.get("subject") || "(sans objet)");
+      text = String(formData.get("text") || "");
+      html = String(formData.get("html") || "").trim();
+
+      const files = formData.getAll("files") as File[];
+      attachments = await Promise.all(
+        (files || [])
+          .filter((f) => f && typeof asRecord(f)["arrayBuffer"] === "function")
+          .map(async (f) => {
+            const ab = await f.arrayBuffer();
+            return {
+              filename: f.name || "piece-jointe",
+              content: Buffer.from(ab),
+              contentType: f.type || undefined,
+            };
+          })
+      );
+    } else {
+      const body = await req.json().catch(() => ({}));
+      accountId = String(body.accountId || "").trim();
+      sendItemId = String(body.sendItemId || "").trim();
+      sendType = String(body.type || "mail").trim() || "mail";
+      to = String(body.to || "").trim();
+      subject = String(body.subject || "(sans objet)");
+      text = String(body.text || "");
+      html = String(body.html || "").trim();
+      attachmentRefs = parseMailAttachmentRefs(body.attachments);
+    }
 
     if (!accountId) {
       return NextResponse.json({ error: "Boîte d’envoi manquante." }, { status: 400 });
@@ -43,19 +81,15 @@ const handler = async (req: Request) => {
       );
     }
 
-    const files = formData.getAll("files") as File[];
-    const attachments = await Promise.all(
-      (files || [])
-        .filter((f) => f && typeof asRecord(f)["arrayBuffer"] === "function")
-        .map(async (f) => {
-          const ab = await f.arrayBuffer();
-          return {
-            filename: f.name || "piece-jointe",
-            content: Buffer.from(ab),
-            contentType: f.type || undefined,
-          };
-        })
-    );
+
+    if (attachmentRefs.length > 0) {
+      const downloaded = await downloadMailAttachmentRefs(supabase, attachmentRefs);
+      attachments = downloaded.map((item) => ({
+        filename: item.filename,
+        content: item.content,
+        contentType: item.mimeType || undefined,
+      }));
+    }
 
     // loadImapAccount() returns { smtp: { user, password, host, port, secure, starttls } }
     const smtp = asRecord(accRec["smtp"]);

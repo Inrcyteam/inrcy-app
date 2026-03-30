@@ -105,6 +105,14 @@ type MailAccount = {
   status: string;
 };
 
+type ComposeAttachmentRef = {
+  bucket: string;
+  path: string;
+  name: string;
+  type?: string | null;
+  size?: number | null;
+};
+
 type SendItem = {
   id: string;
   integration_id: string | null;
@@ -978,6 +986,8 @@ export default function MailboxClient() {
   const [subject, setSubject] = useState("");
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [composeAttachments, setComposeAttachments] = useState<ComposeAttachmentRef[]>([]);
+  const [attachBusy, setAttachBusy] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
@@ -1046,6 +1056,40 @@ export default function MailboxClient() {
     setTo(next.join(", "));
   }
 
+  function makeAttachmentPath(fileName: string) {
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]+/g, "-");
+    const rand = Math.random().toString(36).slice(2, 10);
+    return `mail-attachments/${Date.now()}-${rand}-${safeName}`;
+  }
+
+  async function uploadComposeFiles(nextFiles: File[]) {
+    if (!nextFiles.length) return [] as ComposeAttachmentRef[];
+    setAttachBusy(true);
+    try {
+      const uploaded: ComposeAttachmentRef[] = [];
+      for (const file of nextFiles) {
+        const path = makeAttachmentPath(file.name || "piece-jointe");
+        const { error } = await supabase.storage.from(ATTACH_BUCKET).upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type || "application/octet-stream",
+        });
+        if (error) throw error;
+        uploaded.push({
+          bucket: ATTACH_BUCKET,
+          path,
+          name: file.name || "piece-jointe",
+          type: file.type || "application/octet-stream",
+          size: file.size || null,
+        });
+      }
+      return uploaded;
+    } finally {
+      setAttachBusy(false);
+    }
+  }
+
+
   // Recherche dans l'historique iNr'Send
   const [historyQuery, setHistoryQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1103,6 +1147,7 @@ export default function MailboxClient() {
     setSubject("");
     setText("");
     setFiles([]);
+    setComposeAttachments([]);
     setCrmPickerOpen(false);
   }
 
@@ -1563,38 +1608,26 @@ const subTitle = firstNonEmpty(
     // Open the modal.
     setComposeOpen(true);
 
-    // If we have an attachment key, download it and prefill as File.
-    // Guard against re-downloading the same key on re-renders.
+    // If we have an attachment key, reference the existing storage object directly.
+    // This avoids re-uploading the binary through the mail send endpoint.
     const run = async () => {
       if (!attachKey) return;
       if (lastAttachKeyRef.current === attachKey) return;
       lastAttachKeyRef.current = attachKey;
 
-      try {
-        const { data, error } = await supabase.storage.from(ATTACH_BUCKET).download(attachKey);
-        if (error || !data) throw error || new Error("download_failed");
+      const inferredName = attachName || attachKey.split("/").pop() || "document.pdf";
+      setComposeAttachments((prev) => {
+        const already = prev.some((f) => f.bucket === ATTACH_BUCKET && f.path === attachKey);
+        if (already) return prev;
+        return [{ bucket: ATTACH_BUCKET, path: attachKey, name: inferredName, type: "application/pdf", size: null }, ...prev];
+      });
 
-        const inferredName = attachName || attachKey.split("/").pop() || "document.pdf";
-        const blob = data instanceof Blob ? data : new Blob([data as any]);
-        const file = new File([blob], inferredName, { type: blob.type || "application/pdf" });
-        setFiles((prev) => {
-          // Avoid duplicates
-          const already = prev.some((f) => f.name === file.name && f.size === file.size);
-          return already ? prev : [file, ...prev];
-        });
-
-        // Helpful default subject if the caller didn't prefill it.
-        setSubject((prev) => {
-          if (prev?.trim()) return prev;
-          if (nextType === "facture") return `Facture ${inferredName.replace(/\.pdf$/i, "")}`;
-          if (nextType === "devis") return `Devis ${inferredName.replace(/\.pdf$/i, "")}`;
-          return prev;
-        });
-      } catch (e) {
-        console.error("Attachment prefill failed", e);
-        // Non-blocking: user can still send a mail without the attachment.
-        setToast("Impossible de charger la pièce jointe automatiquement.");
-      }
+      setSubject((prev) => {
+        if (prev?.trim()) return prev;
+        if (nextType === "facture") return `Facture ${inferredName.replace(/\.pdf$/i, "")}`;
+        if (nextType === "devis") return `Devis ${inferredName.replace(/\.pdf$/i, "")}`;
+        return prev;
+      });
     };
 
     void run();
@@ -1865,22 +1898,28 @@ async function deleteDraftPermanently(id: string) {
       setToast("Ajoute au moins un destinataire.");
       return;
     }
+    if (attachBusy) {
+      setToast("Patiente pendant le chargement des pièces jointes.");
+      return;
+    }
     setSendBusy(true);
     try {
-      const fd = new FormData();
-      fd.set("accountId", selectedAccount.id);
-      fd.set("to", recipients);
-      fd.set("subject", subject.trim() || "(sans objet)");
-      fd.set("text", text || "");
-      // iNr'Send = envoi simple (texte). On garde le champ côté API pour compatibilité,
-      // mais on n'expose pas d'éditeur HTML dans l'UI.
-      fd.set("html", "");
-      fd.set("type", composeType);
-      if (draftId) fd.set("sendItemId", draftId);
+      const payload = {
+        accountId: selectedAccount.id,
+        to: recipients,
+        subject: subject.trim() || "(sans objet)",
+        text: text || "",
+        html: "",
+        type: composeType,
+        ...(draftId ? { sendItemId: draftId } : {}),
+        attachments: composeAttachments,
+      };
 
-      for (const f of files) fd.append("files", f);
-
-      const res = await fetch(providerSendEndpoint(selectedAccount.provider), { method: "POST", body: fd });
+      const res = await fetch(providerSendEndpoint(selectedAccount.provider), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setToast(data?.error || "Erreur d’envoi");
@@ -3384,9 +3423,27 @@ async function deleteDraftPermanently(id: string) {
                       id={fileInputId}
                       type="file"
                       multiple
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const next = Array.from(e.target.files || []);
                         setFiles(next);
+                        if (!next.length) return;
+                        try {
+                          const uploaded = await uploadComposeFiles(next);
+                          setComposeAttachments((prev) => {
+                            const merged = [...prev];
+                            for (const item of uploaded) {
+                              const exists = merged.some((x) => x.bucket === item.bucket && x.path === item.path);
+                              if (!exists) merged.push(item);
+                            }
+                            return merged;
+                          });
+                        } catch (err) {
+                          console.error("Attachment upload failed", err);
+                          setToast("Impossible de préparer la pièce jointe.");
+                        } finally {
+                          e.currentTarget.value = "";
+                          setFiles([]);
+                        }
                       }}
                       className={styles.hiddenFileInput}
                     />
@@ -3396,19 +3453,19 @@ async function deleteDraftPermanently(id: string) {
                         📎 Joindre
                       </label>
                       <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                        {files.length > 0 ? `${files.length} fichier(s)` : "Aucun fichier"}
+                        {composeAttachments.length > 0 ? `${composeAttachments.length} fichier(s)` : attachBusy ? "Préparation des fichiers..." : "Aucun fichier"}
                       </span>
                     </div>
 
-                    {files.length > 0 ? (
+                    {composeAttachments.length > 0 ? (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {files.map((f, idx) => (
-                          <span key={idx} className={styles.fileChip} title={f.name}>
+                        {composeAttachments.map((f, idx) => (
+                          <span key={`${f.bucket}:${f.path}:${idx}`} className={styles.fileChip} title={f.name}>
                             {f.name}
                             <button
                               type="button"
                               className={styles.fileChipRemove}
-                              onClick={() => setFiles((prev) => prev.filter((_, i) => i !== idx))}
+                              onClick={() => setComposeAttachments((prev) => prev.filter((_, i) => i !== idx))}
                               aria-label={`Retirer ${f.name}`}
                             >
                               ✕

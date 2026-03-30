@@ -4,6 +4,7 @@ import { withApi } from "@/lib/observability/withApi";
 import { fetchWithRetry } from "@/lib/observability/fetch";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
 import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
+import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 
 // Microsoft Graph mail send requires Node.js runtime in most deployments.
 export const runtime = "nodejs";
@@ -63,13 +64,33 @@ const handler = async (req: Request) => {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
     const userId = user.id;
-    const formData = await req.formData();
-    const accountId = String(formData.get("accountId") || "").trim();
-    const sendItemId = String(formData.get("sendItemId") || "").trim();
-    const sendType = String(formData.get("type") || "mail").trim() || "mail";
-    const to = String(formData.get("to") || "").trim();
-    const subject = String(formData.get("subject") || "(sans objet)");
-    const text = String(formData.get("text") || "");
+    const ct = req.headers.get("content-type") || "";
+    let accountId = "";
+    let sendItemId = "";
+    let sendType = "mail";
+    let to = "";
+    let subject = "(sans objet)";
+    let text = "";
+    let attachmentRefs: ReturnType<typeof parseMailAttachmentRefs> = [];
+
+    if (ct.includes("multipart/form-data")) {
+      const formData = await req.formData();
+      accountId = String(formData.get("accountId") || "").trim();
+      sendItemId = String(formData.get("sendItemId") || "").trim();
+      sendType = String(formData.get("type") || "mail").trim() || "mail";
+      to = String(formData.get("to") || "").trim();
+      subject = String(formData.get("subject") || "(sans objet)");
+      text = String(formData.get("text") || "");
+    } else {
+      const body = await req.json().catch(() => ({}));
+      accountId = String(body.accountId || "").trim();
+      sendItemId = String(body.sendItemId || "").trim();
+      sendType = String(body.type || "mail").trim() || "mail";
+      to = String(body.to || "").trim();
+      subject = String(body.subject || "(sans objet)");
+      text = String(body.text || "");
+      attachmentRefs = parseMailAttachmentRefs(body.attachments);
+    }
 
     if (!accountId) {
       return NextResponse.json({ error: "Boîte d’envoi manquante." }, { status: 400 });
@@ -125,6 +146,15 @@ const handler = async (req: Request) => {
       }
     }
 
+    const graphAttachments = attachmentRefs.length > 0
+      ? (await downloadMailAttachmentRefs(supabase, attachmentRefs)).map((item) => ({
+          "@odata.type": "#microsoft.graph.fileAttachment",
+          name: item.filename,
+          contentType: item.mimeType || "application/octet-stream",
+          contentBytes: item.content.toString("base64"),
+        }))
+      : [];
+
     const graphRes = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
       method: "POST",
       headers: {
@@ -139,6 +169,7 @@ const handler = async (req: Request) => {
             content: textToHtml(text),
           },
           toRecipients: [{ emailAddress: { address: to } }],
+          ...(graphAttachments.length > 0 ? { attachments: graphAttachments } : {}),
         },
         saveToSentItems: true,
       }),

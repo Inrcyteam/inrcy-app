@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 import { withApi } from "@/lib/observability/withApi";
+import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -187,6 +188,7 @@ const handler = async (req: Request) => {
   let inReplyTo = "";
   let references = "";
   const attachments: Attachment[] = [];
+  let attachmentRefs: ReturnType<typeof parseMailAttachmentRefs> = [];
 
   const ct = req.headers.get("content-type") || "";
   if (ct.includes("multipart/form-data")) {
@@ -223,6 +225,7 @@ const handler = async (req: Request) => {
     threadId = String(body.threadId || "");
     inReplyTo = String(body.inReplyTo || "");
     references = String(body.references || "");
+    attachmentRefs = parseMailAttachmentRefs(body.attachments);
   }
 
   // A send action must always be tied to an explicit sending mailbox.
@@ -281,6 +284,17 @@ const handler = async (req: Request) => {
         .from("integrations")
         .update({ access_token_enc: encryptToken(accessToken), expires_at: expiresAt, status: "connected" })
         .eq("id", account.id);
+    }
+  }
+
+  if (attachmentRefs.length > 0) {
+    const downloaded = await downloadMailAttachmentRefs(supabase, attachmentRefs);
+    for (const item of downloaded) {
+      attachments.push({
+        filename: item.filename,
+        mimeType: item.mimeType || "application/octet-stream",
+        contentBase64: item.content.toString("base64"),
+      });
     }
   }
 
