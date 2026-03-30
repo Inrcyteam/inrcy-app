@@ -18,6 +18,7 @@ type ActiveModal = null | "publish" | "reviews" | "promo";
 export default function BoosterPage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [active, setActive] = useState<ActiveModal>(null);
+  const [publishSuccessOpen, setPublishSuccessOpen] = useState(false);
 
   const searchParams = useSearchParams();
 
@@ -375,6 +376,45 @@ useEffect(() => {
       </div>
 
       {/* Modales plein écran */}
+
+
+      {publishSuccessOpen && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          display: "grid",
+          placeItems: "center",
+          background: "rgba(3, 8, 20, 0.52)",
+          zIndex: 70,
+          padding: 16,
+        }}>
+          <div className={styles.blockCard} style={{
+            width: "min(520px, 100%)",
+            textAlign: "center",
+            position: "relative",
+            boxShadow: "0 30px 80px rgba(0,0,0,0.40)",
+            border: "1px solid rgba(34,197,94,0.28)",
+            background: "linear-gradient(180deg, rgba(12,18,32,0.98), rgba(10,14,24,0.98))",
+          }}>
+            <button
+              type="button"
+              onClick={() => setPublishSuccessOpen(false)}
+              aria-label="Fermer"
+              className={styles.secondaryBtn}
+              style={{ position: "absolute", top: 14, right: 14, minWidth: 42, padding: "0 12px" }}
+            >
+              ✕
+            </button>
+            <div style={{ fontSize: 42, marginBottom: 8 }}>🎉</div>
+            <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Publication envoyée avec succès</div>
+            <div className={styles.subtitle} style={{ maxWidth: 420, margin: "0 auto 14px auto" }}>
+              Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés.
+            </div>
+            <div className={styles.successNote} style={{ marginTop: 0, fontSize: 14 }}>C'est parfait, votre communication est lancée.</div>
+          </div>
+        </div>
+      )}
+
       {active && (
         <BaseModal
           title={
@@ -388,6 +428,7 @@ useEffect(() => {
               styles={styles}
               onClose={() => setActive(null)}
               trackEvent={trackEvent}
+              onPublishSuccess={() => setPublishSuccessOpen(true)}
             />
           )}
           {active === "reviews" && <ReviewModal styles={styles} onClose={() => setActive(null)} />}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import stylesDash from "../../dashboard/dashboard.module.css";
 import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/dashboard/_components/ChannelImageRetouchTool";
 
@@ -408,16 +409,19 @@ export default function PublishModal({
   styles,
   onClose,
   trackEvent,
+  onPublishSuccess,
 }: {
   styles: typeof stylesDash;
   onClose: () => void;
   trackEvent: (type: "publish", payload: Record<string, any>) => Promise<any>;
+  onPublishSuccess?: () => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [idea, setIdea] = useState("");
   const [theme, setTheme] = useState<ThemeKey>("");
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState("");
+  const [publishError, setPublishError] = useState("");
   const [postsByChannel, setPostsByChannel] = useState<Partial<Record<ChannelKey, ChannelPost>>>({});
   const [activeCard, setActiveCard] = useState<DisplayKey>("site");
   const [isMobile, setIsMobile] = useState(false);
@@ -643,7 +647,7 @@ export default function PublishModal({
 
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setGenError(json?.error || "Erreur IA");
+        setGenError("La génération n'a pas pu aboutir. Merci de réessayer.");
         return;
       }
 
@@ -660,7 +664,7 @@ export default function PublishModal({
         ...(sitePost ? { inrcy_site: sitePost, site_web: sitePost } : {}),
       });
     } catch {
-      setGenError("Erreur réseau");
+      setGenError("Connexion impossible pour le moment. Merci de réessayer.");
     } finally {
       setGenerating(false);
     }
@@ -728,7 +732,7 @@ export default function PublishModal({
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(reader.error ?? new Error("FileReader error"));
+      reader.onerror = () => reject(reader.error ?? new Error("Impossible de lire cette image."));
       reader.readAsDataURL(file);
     });
 
@@ -950,24 +954,24 @@ export default function PublishModal({
 
   const onPublish = async () => {
     if (saving) return;
-    setGenError("");
+    setPublishError("");
     setImgError("");
 
     if (!selectedChannels.length) {
-      setGenError("Sélectionnez au moins 1 canal.");
+      setPublishError("Sélectionnez au moins 1 canal.");
       return;
     }
 
     const missingContent = selectedChannels.find((ch) => !String((ch === "inrcy_site" || ch === "site_web" ? getDisplayPost("site") : postsByChannel[ch])?.content || "").trim());
     if (missingContent) {
-      setGenError(`Le contenu est vide pour ${CHANNEL_LABELS[missingContent]}.`);
+      setPublishError(`Le contenu est vide pour ${CHANNEL_LABELS[missingContent]}.`);
       return;
     }
 
     if (selectedChannels.includes("instagram")) {
       const instagramImages = channelImageEditors.instagram?.imageKeys || [];
       if (!instagramImages.length) {
-        setImgError("Instagram nécessite au moins 1 image sélectionnée.");
+        setImgError("Ajoutez au moins 1 image pour publier sur Instagram.");
         return;
       }
     }
@@ -979,7 +983,7 @@ export default function PublishModal({
       );
 
       if (images.length && (!imagePayloads.length || imagePayloads.some((p) => !p.dataUrl.startsWith("data:")))) {
-        setImgError("Impossible de convertir une ou plusieurs images (format non supporté).");
+        setImgError("Impossible de préparer une ou plusieurs images. Vérifiez leur format puis réessayez.");
         return;
       }
 
@@ -999,9 +1003,10 @@ export default function PublishModal({
         imageSettingsByChannel: channelSettings,
       });
 
+      onPublishSuccess?.();
       onClose();
     } catch (e) {
-      setGenError(e instanceof Error ? e.message : "La publication a échoué.");
+      setPublishError(getSimpleFrenchErrorMessage(e, "La publication n'a pas pu être envoyée. Merci de réessayer."));
     } finally {
       setSaving(false);
     }
@@ -1269,10 +1274,13 @@ export default function PublishModal({
       />
 
 
-      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-        <button type="button" className={styles.primaryBtn} onClick={onPublish} disabled={saving}>
-          {saving ? "Publication..." : "Publier"}
-        </button>
+      <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+          <button type="button" className={styles.primaryBtn} onClick={onPublish} disabled={saving}>
+            {saving ? "Publication..." : "Publier"}
+          </button>
+        </div>
+        {publishError ? <div className={styles.errNote} style={{ marginTop: 0, textAlign: "right", maxWidth: 440 }}>{publishError}</div> : null}
       </div>
     </div>
   );

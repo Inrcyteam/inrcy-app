@@ -143,6 +143,7 @@ export default function AgendaClient() {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const [cursorMonth, setCursorMonth] = useState<Date>(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
@@ -555,7 +556,7 @@ body: JSON.stringify({
 
     setCrmAddFeedback("Ajouté au CRM ✅");
   } catch (e: any) {
-    setCrmAddFeedback(e?.message ?? "Erreur");
+    setCrmAddFeedback(getSimpleFrenchErrorMessage(e, "Impossible d'ajouter ce contact au CRM."));
   }
 }
 
@@ -570,6 +571,7 @@ function buildIso(dateOnly: string, hhmm: string) {
 async function submitRdv() {
   setRdvSaving(true);
   setRdvError(null);
+  setSuccess(null);
   try {
     // Doit pouvoir s'enregistrer même si aucun champ n'est rempli → on applique des valeurs par défaut.
     const safeSummary = rdvSummary.trim() || "Évènement";
@@ -640,8 +642,9 @@ async function submitRdv() {
 
     setRdvOpen(false);
     await loadEventsForMonth(cursorMonth);
+    setSuccess(rdvMode === "create" ? "Rendez-vous ajouté." : "Rendez-vous modifié.");
   } catch (e: any) {
-    setRdvError(e?.message ?? "Erreur");
+    setRdvError(getSimpleFrenchErrorMessage(e, rdvMode === "create" ? "Impossible de créer le rendez-vous." : "Impossible de modifier le rendez-vous."));
   } finally {
     setRdvSaving(false);
   }
@@ -651,14 +654,16 @@ async function deleteRdv() {
   if (!rdvEventId) return;
   setRdvSaving(true);
   setRdvError(null);
+  setSuccess(null);
   try {
     const r = await fetch(`/api/calendar/events?id=${encodeURIComponent(rdvEventId)}`, { method: "DELETE" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de supprimer") : getSimpleFrenchErrorMessage(j?.error, "Impossible de supprimer"));
     setRdvOpen(false);
     await loadEventsForMonth(cursorMonth);
+    setSuccess("Rendez-vous supprimé.");
   } catch (e: any) {
-    setRdvError(e?.message ?? "Erreur");
+    setRdvError(getSimpleFrenchErrorMessage(e, "Impossible de supprimer ce rendez-vous."));
   } finally {
     setRdvSaving(false);
   }
@@ -673,7 +678,7 @@ async function deleteEventById(id: string) {
     await loadEventsForMonth(cursorMonth);
   } catch (e: any) {
     // Affiche l'erreur dans la modale si elle est ouverte, sinon en haut
-    const msg = e?.message ?? "Erreur";
+    const msg = getSimpleFrenchErrorMessage(e, "Impossible de supprimer ce rendez-vous.");
     if (rdvOpen) setRdvError(msg);
     else setError(msg);
   }
@@ -702,7 +707,7 @@ async function deleteEventById(id: string) {
     setLoading(false);
 
     if (!r.ok || !j.ok) {
-      setError(j?.error ?? "Impossible de charger l’agenda");
+      setError(getSimpleFrenchErrorMessage(j?.error, "Impossible de charger l’agenda."));
       return;
     }
     setEvents(Array.isArray(j.events) ? j.events : []);
@@ -955,6 +960,7 @@ async function deleteEventById(id: string) {
 
               <div className={styles.calendar}>
                 {error && <div className={styles.empty}>{error}</div>}
+                {success && <div style={{ color: "#22c55e", fontWeight: 800, marginBottom: 10 }}>{success}</div>}
 
                 <div className={styles.dowRow}>
                   {[

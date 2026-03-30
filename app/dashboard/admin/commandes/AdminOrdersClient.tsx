@@ -4,6 +4,7 @@ import styles from "./adminOrders.module.css";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type OrderStatus = "pending" | "processed";
 type OrderMethod = "EUR" | "UI";
@@ -42,6 +43,7 @@ export default function AdminOrdersClient() {
   const [refreshing, setRefreshing] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("pending");
   const [q, setQ] = useState("");
@@ -81,7 +83,7 @@ export default function AdminOrdersClient() {
 
         setRows((data as any) ?? []);
       } catch (e: any) {
-        setError(e?.message || "Impossible de charger les commandes");
+        setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les commandes."));
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -98,6 +100,7 @@ export default function AdminOrdersClient() {
     async (id: string) => {
       setSavingId(id);
       setError(null);
+      setSuccess(null);
       try {
         const { error: upErr } = await supabase
           .from("boutique_orders")
@@ -107,8 +110,9 @@ export default function AdminOrdersClient() {
         if (upErr) throw upErr;
 
         setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: "processed" } : r)));
+        setSuccess("Commande mise à jour.");
       } catch (e: any) {
-        setError(e?.message || "Impossible de mettre à jour le statut");
+        setError(getSimpleFrenchErrorMessage(e, "Impossible de mettre à jour le statut."));
       } finally {
         setSavingId(null);
       }
@@ -173,6 +177,7 @@ export default function AdminOrdersClient() {
         </div>
 
         {error ? <div className={styles.error}>{error}</div> : null}
+        {success ? <div style={{ color: "#22c55e", fontWeight: 800, marginBottom: 10 }}>{success}</div> : null}
 
         <div className={styles.card}>
           {loading ? (

@@ -36,7 +36,7 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Une erre
     return "Cette action est déjà en cours ou a déjà été effectuée.";
   }
 
-  if (matches(message, ["422", "unprocessable", "invalid", "body json invalide", "bad request", "missing channels", "missing idea", "email manquant", "plan invalide", "aucune ligne importable", "renseigne ", "json invalide"])) {
+  if (matches(message, ["422", "unprocessable", "invalid", "body json invalide", "bad request", "missing channels", "missing idea", "email manquant", "plan invalide", "aucune ligne importable", "renseigne ", "json invalide", "missing accountid", "missing to", "missing email", "missing domain", "missing token", "missing access token", "missing imageurl", "missing iguserid", "smtp config missing", "site url invalid or missing", "invalid token", "invalid source"])) {
     return "Certaines informations sont manquantes ou incorrectes.";
   }
 
@@ -52,7 +52,7 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Une erre
     return "Le lien n'est plus valide ou l'envoi est temporairement limité. Merci de réessayer dans quelques minutes.";
   }
 
-  if (matches(message, ["photo upload failed", "facebook feed post failed", "linkedin publish failed", "gmb create post error", "instagram", "publish error", "performance api error", "runreport failed", "gsc query failed"])) {
+  if (matches(message, ["photo upload failed", "facebook feed post failed", "linkedin publish failed", "gmb create post error", "instagram", "publish error", "performance api error", "runreport failed", "gsc query failed", "microsoft send failed", "imap send failed", "token refresh failed", "db update failed", "google business", "facebook", "linkedin", "mail account not found"])) {
     return "L'action demandée n'a pas pu être finalisée pour le moment. Merci de réessayer.";
   }
 
@@ -68,7 +68,7 @@ export async function getSimpleFrenchApiError(res: Response, fallback?: string):
     const contentType = res.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
       const json = await res.clone().json().catch(() => null) as any;
-      return getSimpleFrenchErrorMessage(json?.error || json?.message || `${res.status}`, fallbackForStatus(res.status, fallback));
+      return getSimpleFrenchErrorMessage(json?.user_message || json?.error || json?.message || `${res.status}`, fallbackForStatus(res.status, fallback));
     }
     const text = await res.clone().text().catch(() => "");
     return getSimpleFrenchErrorMessage(text || `${res.status}`, fallbackForStatus(res.status, fallback));
@@ -109,5 +109,5 @@ function matches(message: string, needles: string[]) {
 }
 
 function looksTechnical(raw: string) {
-  return /(^http\s?\d+$)|(<!doctype|<html|stack|trace|sql|postgres|supabase|oauth|jwt|token|unexpected token|syntaxerror|typeerror|referenceerror|\{.*\}|\[object object\])/i.test(raw);
+  return /(^http\s?\d+$)|(<!doctype|<html|stack|trace|sql|postgres|supabase|oauth|jwt|token|unexpected token|syntaxerror|typeerror|referenceerror|filereader|openai_api_key|access token|client_secret|client_id|\{.*\}|\[object object\])/i.test(raw);
 }

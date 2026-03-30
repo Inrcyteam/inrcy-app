@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import styles from "../../_documents/documents.module.css";
 import dash from "../../dashboard.module.css";
 import {
@@ -95,6 +96,7 @@ export default function NewFacturePage() {
   const [crmLoading, setCrmLoading] = useState(false);
   const [crmError, setCrmError] = useState<string | null>(null);
   const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
+  const [formMessage, setFormMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
   const [crmOpen, setCrmOpen] = useState(false);
   const crmSelectRef = useRef<HTMLDivElement | null>(null);
@@ -146,13 +148,13 @@ export default function NewFacturePage() {
         const json = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          throw new Error(json?.error || "Impossible de charger les contacts CRM");
+          throw new Error(getSimpleFrenchErrorMessage(json?.error, "Impossible de charger les contacts CRM."));
         }
 
         const contacts: CrmContact[] = Array.isArray(json?.contacts) ? json.contacts : [];
         if (!cancelled) setCrmContacts(contacts);
       } catch (e: any) {
-        if (!cancelled) setCrmError(e?.message || "Erreur CRM");
+        if (!cancelled) setCrmError(getSimpleFrenchErrorMessage(e, "Impossible de charger les contacts CRM."));
       } finally {
         if (!cancelled) setCrmLoading(false);
       }
@@ -397,7 +399,7 @@ export default function NewFacturePage() {
 
     if (error) {
       console.error(error);
-      alert("Impossible de sauvegarder pour le moment.");
+      setFormMessage({ type: "error", text: "Impossible de sauvegarder pour le moment." });
       return;
     }
 
@@ -422,6 +424,7 @@ export default function NewFacturePage() {
 
     await refreshSaves();
     setDraftsOpen(true);
+    setFormMessage({ type: "success", text: "Sauvegarde effectuée." });
   };
 
   const openDraft = (d: FactureDraft) => {
@@ -513,13 +516,13 @@ export default function NewFacturePage() {
       error: userErr,
     } = await supabase.auth.getUser();
     if (userErr || !user) {
-      alert("Vous devez être connecté pour envoyer par mail.");
+      setFormMessage({ type: "error", text: "Vous devez être connecté pour envoyer par mail." });
       return;
     }
 
     const pdfBlob = await buildPdfBlob();
     if (!pdfBlob) {
-      alert("Impossible de générer le PDF pour le moment.");
+      setFormMessage({ type: "error", text: "Impossible de générer le PDF pour le moment." });
       return;
     }
 
@@ -532,7 +535,7 @@ export default function NewFacturePage() {
 
     if (upErr) {
       console.error(upErr);
-      alert("Upload du PDF impossible (Supabase Storage).");
+      setFormMessage({ type: "error", text: "Impossible de préparer le document pour l’envoi." });
       return;
     }
 
@@ -556,6 +559,12 @@ export default function NewFacturePage() {
         <div className={styles.panel}>
          <div className={styles.panelHeaderStack}>
   <h1>Créer une facture</h1>
+
+            {formMessage ? (
+              <div style={{ marginTop: 10, color: formMessage.type === "success" ? "#22c55e" : "#ef4444", fontWeight: 800, fontSize: 13 }}>
+                {formMessage.text}
+              </div>
+            ) : null}
 
   <div className={styles.panelHeaderActions}>
     <button
@@ -880,7 +889,7 @@ export default function NewFacturePage() {
             onClick={async () => {
               const to = (clientEmail || "").trim();
               if (!to) {
-                alert("Ajoute d'abord un email client pour envoyer un mail.");
+                setFormMessage({ type: "error", text: "Ajoute d'abord un email client pour envoyer un mail." });
                 return;
               }
 

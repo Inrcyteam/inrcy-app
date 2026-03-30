@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { getSimpleFrenchApiError } from "@/lib/userFacingErrors";
 
 type Preferences = {
@@ -107,7 +108,7 @@ export default function NotificationsSettingsContent() {
         setError(null);
       } catch (e: any) {
         if (!alive) return;
-        setError(e?.message || "Impossible de charger les notifications");
+        setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les notifications."));
       } finally {
         if (alive) setLoading(false);
       }
@@ -132,7 +133,7 @@ export default function NotificationsSettingsContent() {
       setNotice("Préférences enregistrées.");
       setError(null);
     } catch (e: any) {
-      setError(e?.message || "Sauvegarde impossible");
+      setError(getSimpleFrenchErrorMessage(e, "Sauvegarde impossible."));
     } finally {
       setSaving(false);
     }

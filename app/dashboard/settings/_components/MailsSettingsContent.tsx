@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { getSimpleFrenchApiError } from "@/lib/userFacingErrors";
+import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type MailAccount = {
   id: string;
@@ -179,7 +179,7 @@ React.useEffect(() => {
         setError(null);
       } catch (e: any) {
         if (!alive) return;
-        setError(e?.message || "Erreur inconnue");
+        setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les réglages mail."));
       } finally {
         if (!alive) return;
         setLoading(false);
@@ -321,7 +321,7 @@ React.useEffect(() => {
                 </>
               ) : (
                 <>
-                  <Btn label="Voir statut" onClick={() => alert(`Statut: ${acc.status}`)} disabled={loading} />
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)", marginTop: 4 }}>Statut : {acc.status === "connected" ? "Connectée" : acc.status === "expired" ? "À reconnecter" : acc.status}</div>
                   <Btn
   label={busyDisconnect === acc.id ? "Déconnexion…" : "Déconnecter"}
   disabled={loading || busyDisconnect === acc.id}
@@ -341,7 +341,7 @@ React.useEffect(() => {
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
-        throw new Error(await getSimpleFrenchApiError(r, "Erreur de déconnexion"));
+        throw new Error(await getSimpleFrenchApiError(r, "Impossible de déconnecter cette boîte mail."));
       }
       setToast(acc.provider === "gmail" ? "gmail_disconnected" : acc.provider === "microsoft" ? "outlook_disconnected" : "imap_disconnected");
       // refresh status
@@ -349,7 +349,7 @@ React.useEffect(() => {
       const data = await res.json();
       setMailAccounts(data.mailAccounts || []);
     } catch (e: any) {
-      setToast(e?.message || "Erreur déconnexion Gmail");
+      setToast(getSimpleFrenchErrorMessage(e, "Impossible de déconnecter cette boîte mail."));
     } finally {
       setBusyDisconnect(null);
     }
@@ -555,7 +555,7 @@ React.useEffect(() => {
                       setImapFormError(null);
                       setToast("imap_test_ok");
                     } catch (e: any) {
-                      setImapFormError(e?.message || "Test impossible");
+                      setImapFormError(getSimpleFrenchErrorMessage(e, "Test impossible pour le moment."));
                     } finally {
                       setImapTestBusy(false);
                     }
@@ -603,7 +603,7 @@ React.useEffect(() => {
                       setMailAccounts(data.mailAccounts || []);
                       setToast("imap_connected");
                     } catch (e: any) {
-                      setImapFormError(e?.message || "Connexion impossible");
+                      setImapFormError(getSimpleFrenchErrorMessage(e, "Connexion impossible pour le moment."));
                     } finally {
                       setImapConnectBusy(false);
                     }

@@ -1,5 +1,6 @@
 "use client";
 
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { ACTIVITY_SECTOR_OPTIONS, decodeBusinessSector, encodeBusinessSector } from "@/lib/activitySectors";
@@ -324,7 +325,7 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
       setTimeout(() => setSaved(false), 2500);
       onActivitySaved?.();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Erreur lors de l'enregistrement.");
+      setError(getSimpleFrenchErrorMessage(e, "Impossible d'enregistrer cette activité."));
     } finally {
       setSaving(false);
     }

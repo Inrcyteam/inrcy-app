@@ -256,6 +256,7 @@ export default function CRMClient() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [query, setQuery] = useState("");
@@ -296,6 +297,7 @@ export default function CRMClient() {
   async function loadContacts() {
     setLoading(true);
     setError(null);
+  setSuccess(null);
     try {
       const r = await fetch("/api/crm/contacts", { method: "GET" });
       const j = await r.json().catch(() => ({}));
@@ -309,7 +311,7 @@ export default function CRMClient() {
       }));
       setContacts(merged);
     } catch (e: any) {
-      setError(e?.message || "Erreur");
+      setError(getSimpleFrenchErrorMessage(e, "Impossible de charger le CRM."));
     } finally {
       setLoading(false);
     }
@@ -562,7 +564,8 @@ async function importContacts(rows: any[]) {
     .filter((r) => r.display_name || r.email || r.phone || r.last_name || r.company_name);
 
   if (cleaned.length === 0) {
-    alert("Aucune ligne exploitable trouvée dans le fichier.");
+    setError("Aucune ligne exploitable trouvée dans le fichier.");
+    setSuccess(null);
     return;
   }
 
@@ -577,9 +580,9 @@ async function importContacts(rows: any[]) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Import impossible."));
     await loadContacts();
-    alert(`✅ Import terminé : ${j?.inserted ?? cleaned.length} contact(s)`);
+    setSuccess(`Import terminé : ${j?.inserted ?? cleaned.length} contact(s).`);
   } catch (e: any) {
-    setError(e?.message || "Erreur import");
+    setError(getSimpleFrenchErrorMessage(e, "Import impossible."));
   } finally {
     setImporting(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -810,8 +813,9 @@ const exportCsv = () => {
         }
       }
       startNew();
+      setSuccess(editingId ? "Contact mis à jour." : "Contact ajouté.");
     } catch (e: any) {
-      setError(e?.message || "Erreur");
+      setError(getSimpleFrenchErrorMessage(e, "Impossible de charger le CRM."));
     } finally {
       setSaving(false);
     }
@@ -839,8 +843,9 @@ const exportCsv = () => {
       await loadContacts();
       setSelectedContactIds(new Set());
       if (editingId && ids.includes(editingId)) startNew();
+      setSuccess(n > 1 ? "Contacts supprimés." : "Contact supprimé.");
     } catch (e: any) {
-      setError(e?.message || "Erreur");
+      setError(getSimpleFrenchErrorMessage(e, "Impossible de charger le CRM."));
     } finally {
       setSaving(false);
     }
@@ -857,8 +862,9 @@ const exportCsv = () => {
       if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de supprimer."));
       await loadContacts();
       if (editingId === id) startNew();
+      setSuccess("Contact supprimé.");
     } catch (e: any) {
-      setError(e?.message || "Erreur");
+      setError(getSimpleFrenchErrorMessage(e, "Impossible de charger le CRM."));
     } finally {
       setSaving(false);
     }
@@ -990,6 +996,8 @@ const exportCsv = () => {
         </div>
 
         {error ? <div className={styles.error}>{error}</div> : null}
+            {success ? <div style={{ color: "#22c55e", fontWeight: 800, marginTop: 8 }}>{success}</div> : null}
+        {success ? <div style={{ color: "#22c55e", fontWeight: 800, marginTop: 8 }}>{success}</div> : null}
 
                 
 <div className={styles.formGrid}>
@@ -1510,7 +1518,7 @@ const exportCsv = () => {
       try {
         await handleImportFile(f);
       } catch (err: any) {
-        setError(err?.message || "Import impossible.");
+        setError(getSimpleFrenchErrorMessage(err, "Import impossible."));
         setImporting(false);
       }
     }}
