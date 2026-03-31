@@ -31,7 +31,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Page Facebook incomplète." }, { status: 400 });
     }
 
-    // Read existing meta so we don't lose the user token required to list all managed pages.
+    // Read existing meta so we don't lose meta.user_access_token, page_url, etc.
     const { data: existing, error: readErr } = await supabaseAdmin
       .from("integrations")
       .select("meta")
@@ -46,16 +46,9 @@ export async function POST(req: Request) {
     const existingRec = asRecord(existing);
     const prevMeta = asRecord(existingRec["meta"]);
     const pageUrl = `https://www.facebook.com/${pageId}`;
-    const nextMeta = {
-      ...prevMeta,
-      selected: true,
-      picked: pageId,
-      page_url: pageUrl,
-      page_access_token_enc: encryptToken(pageAccessToken),
-    };
+    const nextMeta = { ...prevMeta, selected: true, page_url: pageUrl };
 
-    // Keep access_token_enc as the selected PAGE token for posting,
-    // while preserving the USER token inside meta.user_access_token_enc.
+    // Update integration with the selected page + PAGE token (required for posting).
     const { error: upErr } = await supabaseAdmin
       .from("integrations")
       .update({

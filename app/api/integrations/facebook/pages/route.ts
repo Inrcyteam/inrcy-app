@@ -28,7 +28,7 @@ export async function GET() {
 
     const { data: integ, error: integErr } = await supabaseAdmin
       .from("integrations")
-      .select("status,meta")
+      .select("access_token_enc,status,meta")
       .eq("user_id", userId)
       .eq("provider", "facebook")
       .eq("source", "facebook")
@@ -36,22 +36,22 @@ export async function GET() {
       .maybeSingle();
 
     if (integErr) return NextResponse.json({ error: "Impossible de récupérer la connexion Facebook pour le moment." }, { status: 500 });
-    if (!integ || (integ.status !== "connected" && integ.status !== "account_connected")) {
+    if (!integ || (integ.status !== "connected" && integ.status !== "account_connected") || !integ.access_token_enc) {
       return NextResponse.json({ error: "Compte Facebook non connecté." }, { status: 400 });
     }
 
+    // access_token_enc may be a PAGE token after selection.
+    // For /me/accounts we need the USER token (stored in meta.user_access_token).
     const integRec = asRecord(integ);
     const metaRec = asRecord(integRec["meta"]);
-
-    // IMPORTANT:
-    // /me/accounts must always use the FACEBOOK USER token, not a selected PAGE token.
-    // access_token_enc on the integration row may contain a page token after page selection,
-    // so we intentionally do NOT fall back to it here.
-    const userTokenRaw = String(asString(metaRec["user_access_token_enc"]) || asString(metaRec["user_access_token"]) || "").trim();
+    const userTokenRaw = String(
+      asString(metaRec["user_access_token_enc"]) ||
+        asString(metaRec["user_access_token"]) ||
+        asString(integRec["access_token_enc"]) ||
+        "",
+    ).trim();
     const userToken = tryDecryptToken(userTokenRaw);
-    if (!userToken) {
-      return NextResponse.json({ error: "La connexion Facebook doit être relancée pour récupérer vos pages." }, { status: 400 });
-    }
+    if (!userToken) return NextResponse.json({ error: "La connexion Facebook doit être relancée pour récupérer vos pages." }, { status: 400 });
 
     const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
       fields: "id,name,access_token",
