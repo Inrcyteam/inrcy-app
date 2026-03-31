@@ -80,14 +80,15 @@ export async function getSubscriptionContext(userId: string): Promise<Subscripti
       .maybeSingle(),
     supabaseAdmin
       .from("profiles")
-      .select("contact_email")
+      .select("admin_email, contact_email")
       .eq("user_id", userId)
       .maybeSingle(),
     supabaseAdmin.auth.admin.getUserById(userId).catch(() => null),
   ]);
 
-  const authEmail = authRes?.data?.user?.email ?? null;
+  const authEmail = authRes?.data?.user?.email?.trim() ?? null;
   const accountEmail =
+    (profileRow as { admin_email?: string | null } | null)?.admin_email?.trim() ||
     (subRow as { contact_email?: string | null } | null)?.contact_email?.trim() ||
     authEmail ||
     null;

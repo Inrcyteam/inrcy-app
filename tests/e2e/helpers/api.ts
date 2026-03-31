@@ -45,3 +45,12 @@ export function expectJsonOk(result: BrowserFetchResult) {
   expect(result.contentType).toContain('application/json');
   return result.json;
 }
+
+export type JsonObject = { [key: string]: JsonValue };
+
+export function asObject(value: JsonValue): JsonObject {
+  expect(value).not.toBeNull();
+  expect(Array.isArray(value)).toBeFalsy();
+  expect(typeof value).toBe('object');
+  return value as JsonObject;
+}

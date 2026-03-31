@@ -6,6 +6,7 @@ import { buildTrialReminderEmail } from "@/lib/txTemplates";
 import { getAppUrl, stripeGet } from "@/lib/stripeRest";
 import { deleteUserAccountEverywhere } from "@/lib/deleteUserAccount";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
+import { computeTrialDatesFromStartDate, TRIAL_REMINDER_OFFSETS } from "@/lib/trialSubscription";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,7 @@ type StripeSubscriptionListResponse = { data?: StripeSubscriptionSummary[] };
 type TrialRow = {
   user_id: string;
   contact_email: string | null;
+  start_date?: string | null;
   trial_start_at: string | null;
   trial_end_at: string | null;
   plan: string | null;
@@ -27,6 +29,12 @@ type TrialRow = {
   stripe_price_id?: string | null;
   scheduled_plan?: string | null;
   last_trial_reminder_day: number | null;
+};
+
+type ProfileEmailRow = {
+  user_id: string;
+  admin_email?: string | null;
+  contact_email?: string | null;
 };
 
 type CancelledRow = {
@@ -82,33 +90,79 @@ export async function GET(req: Request) {
   }
 
   const now = new Date();
-  const reminderOffsets = [10, 6, 3, 1];
+  const reminderOffsets = [...TRIAL_REMINDER_OFFSETS];
 
   const { data: trials, error: tErr } = await supabaseAdmin
     .from("subscriptions")
     .select(
-      "user_id, contact_email, trial_start_at, trial_end_at, plan, stripe_subscription_id, stripe_customer_id, stripe_price_id, scheduled_plan, last_trial_reminder_day"
+      "user_id, contact_email, start_date, trial_start_at, trial_end_at, plan, stripe_subscription_id, stripe_customer_id, stripe_price_id, scheduled_plan, last_trial_reminder_day"
     )
-    .eq("plan", "Trial")
-    .is("stripe_subscription_id", null);
+    .eq("plan", "Trial");
 
   if (tErr) return NextResponse.json({ error: tErr.message }, { status: 500 });
 
+  const trialUserIds = ((trials || []) as TrialRow[]).map((row) => row.user_id);
+  const profileEmails = new Map<string, ProfileEmailRow>();
+
+  if (trialUserIds.length > 0) {
+    const { data: profiles, error: pErr } = await supabaseAdmin
+      .from("profiles")
+      .select("user_id, admin_email, contact_email")
+      .in("user_id", trialUserIds);
+
+    if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
+
+    for (const profile of (profiles || []) as ProfileEmailRow[]) {
+      profileEmails.set(profile.user_id, profile);
+    }
+  }
+
   let sent = 0;
+  let repairedTrialDates = 0;
+
   for (const s of (trials || []) as TrialRow[]) {
-    const end = s.trial_end_at ? new Date(s.trial_end_at) : null;
+    let trialStartAt = s.trial_start_at;
+    let trialEndAt = s.trial_end_at;
+
+    if (!trialEndAt && s.start_date) {
+      const repaired = computeTrialDatesFromStartDate(s.start_date);
+      trialStartAt = trialStartAt ?? repaired.trialStartAt;
+      trialEndAt = repaired.trialEndAt;
+
+      const { error: repairError } = await supabaseAdmin
+        .from("subscriptions")
+        .update({
+          trial_start_at: trialStartAt,
+          trial_end_at: trialEndAt,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", s.user_id);
+
+      if (repairError) {
+        return NextResponse.json({ error: repairError.message }, { status: 500 });
+      }
+
+      repairedTrialDates++;
+    }
+
+    const end = trialEndAt ? new Date(trialEndAt) : null;
     if (!end) continue;
 
     const nowDay = new Date(`${ymd(now)}T00:00:00.000Z`);
     const endDay = new Date(`${ymd(end)}T00:00:00.000Z`);
     const daysUntilEnd = Math.round((endDay.getTime() - nowDay.getTime()) / (24 * 3600 * 1000));
-    if (!reminderOffsets.includes(daysUntilEnd)) continue;
+    if (!reminderOffsets.includes(daysUntilEnd as (typeof reminderOffsets)[number])) continue;
 
     const already = Number(s.last_trial_reminder_day || 0);
-    const reminderMarker = 100 - daysUntilEnd; // stable ascending marker for J-10/J-6/J-3/J-1
+    const reminderMarker = 100 - daysUntilEnd;
     if (already >= reminderMarker) continue;
 
-    const to = s.contact_email;
+    const profile = profileEmails.get(s.user_id);
+    const to =
+      profile?.admin_email?.trim() ||
+      profile?.contact_email?.trim() ||
+      s.contact_email?.trim() ||
+      null;
     if (!to) continue;
 
     const subject = daysUntilEnd === 1 ? "iNrCy — Votre essai se termine demain" : "iNrCy — Votre essai se termine bientôt";
@@ -122,7 +176,11 @@ export async function GET(req: Request) {
     await sendTxMail({ to, subject, text, html });
     await supabaseAdmin
       .from("subscriptions")
-      .update({ last_trial_reminder_day: reminderMarker, last_reminder_at: new Date().toISOString() })
+      .update({
+        contact_email: to,
+        last_trial_reminder_day: reminderMarker,
+        last_reminder_at: new Date().toISOString(),
+      })
       .eq("user_id", s.user_id);
 
     sent++;
@@ -142,6 +200,13 @@ export async function GET(req: Request) {
   let deletedTrialAccounts = 0;
 
   for (const s of (maybeExpired || []) as TrialRow[]) {
+    const profile = profileEmails.get(s.user_id);
+    const accountEmail =
+      profile?.admin_email?.trim() ||
+      profile?.contact_email?.trim() ||
+      s.contact_email?.trim() ||
+      null;
+
     const end = s.trial_end_at ? new Date(s.trial_end_at) : null;
     if (!end) continue;
 
@@ -168,7 +233,7 @@ export async function GET(req: Request) {
       type: "trial_account_deleted",
       source: "cron.billing.trial-expiry",
       userId: s.user_id,
-      accountEmail: s.contact_email,
+      accountEmail,
       plan: s.plan,
       trialEndAt: s.trial_end_at,
       stripeCustomerId: s.stripe_customer_id ?? null,
@@ -193,6 +258,13 @@ export async function GET(req: Request) {
   let deletedCancelledAccounts = 0;
 
   for (const s of (cancelledRows || []) as CancelledRow[]) {
+    const profile = profileEmails.get(s.user_id);
+    const accountEmail =
+      profile?.admin_email?.trim() ||
+      profile?.contact_email?.trim() ||
+      s.contact_email?.trim() ||
+      null;
+
     if (!s.end_date) continue;
     const deleteAt = new Date(`${s.end_date}T23:59:59.999Z`);
     if (now < deleteAt) continue;
@@ -209,7 +281,7 @@ export async function GET(req: Request) {
       type: "cancelled_account_deleted",
       source: "cron.billing.cancelled-expiry",
       userId: s.user_id,
-      accountEmail: s.contact_email,
+      accountEmail,
       plan: s.plan,
       status: s.status,
       stripeCustomerId: s.stripe_customer_id,
@@ -226,6 +298,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     sent,
+    repaired_trial_dates: repairedTrialDates,
     deleted_trial_accounts: deletedTrialAccounts,
     deleted_cancelled_accounts: deletedCancelledAccounts,
   });

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { login } from './helpers/auth';
-import { apiGET } from './helpers/api';
+import { apiGET, asObject } from './helpers/api';
 
 const email = process.env.E2E_EMAIL;
 const password = process.env.E2E_PASSWORD;
@@ -15,10 +15,11 @@ test.describe('booster api', () => {
 
     expect([200].includes(res.status), `HTTP ${res.status}\n${res.text}`).toBeTruthy();
     expect(res.contentType || '').toContain('application/json');
-    expect(res.json).toBeTruthy();
-    expect(res.json).toHaveProperty('channels');
+    const json = asObject(res.json);
+    expect(json).toBeTruthy();
+    expect(json).toHaveProperty('channels');
 
-    const channels = res.json.channels;
+    const channels = asObject(json.channels);
     expect(typeof channels).toBe('object');
 
     for (const key of ['inrcy_site', 'site_web', 'gmb', 'facebook', 'instagram', 'linkedin']) {
@@ -33,11 +34,12 @@ test.describe('booster api', () => {
 
     expect([200].includes(res.status), `HTTP ${res.status}\n${res.text}`).toBeTruthy();
     expect(res.contentType || '').toContain('application/json');
-    expect(res.json).toBeTruthy();
+    const json = asObject(res.json);
+    expect(json).toBeTruthy();
 
-    expect(res.json).toHaveProperty('range_days');
-    expect(res.json).toHaveProperty('publish');
-    expect(res.json).toHaveProperty('review_mail');
-    expect(res.json).toHaveProperty('promo_mail');
+    expect(json).toHaveProperty('range_days');
+    expect(json).toHaveProperty('publish');
+    expect(json).toHaveProperty('review_mail');
+    expect(json).toHaveProperty('promo_mail');
   });
 });

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { login } from './helpers/auth';
-import { apiGET } from './helpers/api';
+import { apiGET, asObject } from './helpers/api';
 
 const email = process.env.E2E_EMAIL;
 const password = process.env.E2E_PASSWORD;
@@ -15,8 +15,9 @@ test.describe('calendar api', () => {
 
     expect([200].includes(res.status), `HTTP ${res.status}\n${res.text}`).toBeTruthy();
     expect(res.contentType || '').toContain('application/json');
-    expect(res.json).toBeTruthy();
-    expect(res.json).toHaveProperty('connected', true);
+    const json = asObject(res.json);
+    expect(json).toBeTruthy();
+    expect(json).toHaveProperty('connected', true);
   });
 
   test('calendar events returns valid payload for a date range', async ({ page }) => {
@@ -37,10 +38,11 @@ test.describe('calendar api', () => {
 
     expect([200].includes(res.status), `HTTP ${res.status}\n${res.text}`).toBeTruthy();
     expect(res.contentType || '').toContain('application/json');
-    expect(res.json).toBeTruthy();
+    const json = asObject(res.json);
+    expect(json).toBeTruthy();
 
-    expect(res.json).toHaveProperty('ok', true);
-    expect(res.json).toHaveProperty('events');
-    expect(Array.isArray(res.json.events)).toBeTruthy();
+    expect(json).toHaveProperty('ok', true);
+    expect(json).toHaveProperty('events');
+    expect(Array.isArray(json.events)).toBeTruthy();
   });
 });

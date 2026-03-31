@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { optionalEnv, requireEnv } from "@/lib/env";
+import { requireEnv } from "@/lib/env";
 import { getAppUrl } from "@/lib/stripeRest";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
 import { ensureNotificationPreferences } from "@/lib/notifications";
+import { ensureTrialSubscription } from "@/lib/trialSubscription";
 
 export const runtime = "nodejs";
 
@@ -20,7 +21,6 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const email = String(body?.email || "").trim().toLowerCase();
-    const trialDays = Math.max(1, Number(optionalEnv("INRCY_TRIAL_DAYS", "30")) || 30);
 
     if (!email) return NextResponse.json({ error: "Email manquant." }, { status: 400 });
 
@@ -33,34 +33,19 @@ export async function POST(req: Request) {
     if (invErr) throw new Error(invErr.message);
 
     const userId = invite.user.id;
-    const now = new Date();
-    const end = new Date(now.getTime() + trialDays * 24 * 3600 * 1000);
 
     await ensureNotificationPreferences(userId);
-
-    await supabaseAdmin
-      .from("subscriptions")
-      .upsert({
-        user_id: userId,
-        plan: "Trial",
-        status: "trialing",
-        monthly_price_eur: 0,
-        start_date: now.toISOString().slice(0, 10),
-        contact_email: email,
-        trial_start_at: now.toISOString(),
-        trial_end_at: end.toISOString(),
-        scheduled_plan: null,
-        updated_at: new Date().toISOString(),
-      });
+    const { trialDays, start, end } = await ensureTrialSubscription(userId, email);
 
     await sendAdminSubscriptionAlertForUser({
       type: "trial_started",
       source: "admin.create-trial",
       userId,
       accountEmail: email,
+      profileContactEmail: email,
       plan: "Trial",
       status: "trialing",
-      trialStartAt: now.toISOString(),
+      trialStartAt: start.toISOString(),
       trialEndAt: end.toISOString(),
       note: `Invitation envoyée pour un essai de ${trialDays} jours.`,
     }).catch(() => null);

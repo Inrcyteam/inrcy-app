@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { login } from './helpers/auth';
-import { apiGET } from './helpers/api';
+import { apiGET, asObject } from './helpers/api';
 
 const email = process.env.E2E_EMAIL;
 const password = process.env.E2E_PASSWORD;
@@ -16,9 +16,10 @@ test.describe('account export', () => {
     expect([200].includes(res.status), `HTTP ${res.status}\n${res.text}`).toBeTruthy();
     expect(res.contentType || '').toContain('application/json');
 
-    expect(res.json).toBeTruthy();
-    expect(res.json).toHaveProperty('exported_at');
-    expect(res.json).toHaveProperty('data');
-    expect(Array.isArray(res.json.data)).toBeTruthy();
+    const json = asObject(res.json);
+    expect(json).toBeTruthy();
+    expect(json).toHaveProperty('exported_at');
+    expect(json).toHaveProperty('data');
+    expect(Array.isArray(json.data)).toBeTruthy();
   });
 });

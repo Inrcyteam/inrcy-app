@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { optionalEnv, requireEnv } from "@/lib/env";
+import { requireEnv } from "@/lib/env";
 import { getAppUrl, stripePost } from "@/lib/stripeRest";
+import { computeTrialDatesFromStartDate, getTrialDays } from "@/lib/trialSubscription";
 
 export const runtime = "nodejs";
 
@@ -13,7 +14,13 @@ type SubscriptionRow = {
   status?: string | null;
   plan?: string | null;
   start_date?: string | null;
+  trial_start_at?: string | null;
   trial_end_at?: string | null;
+  contact_email?: string | null;
+};
+
+type ProfileRow = {
+  admin_email?: string | null;
   contact_email?: string | null;
 };
 
@@ -40,12 +47,12 @@ export async function POST(req: Request) {
     const userId = user.id;
     const body: unknown = await req.json().catch(() => ({}));
     const wantedPlan = String((body as { plan?: unknown } | null | undefined)?.plan || "Starter");
-    const trialDays = Math.max(1, Number(optionalEnv("INRCY_TRIAL_DAYS", "30")) || 30);
+    const trialDays = getTrialDays();
 
     const priceIdByPlan: Record<string, string | undefined> = {
       Starter: requireEnv("STRIPE_PRICE_STARTER_ID"),
       Accel: requireEnv("STRIPE_PRICE_ACCEL_ID"),
-      Speed: optionalEnv("STRIPE_PRICE_SPEED_ID") || optionalEnv("STRIPE_PRICE_FULL_ID"),
+      Speed: requireEnv("STRIPE_PRICE_SPEED_ID") || requireEnv("STRIPE_PRICE_FULL_ID"),
     };
 
     const priceId = priceIdByPlan[wantedPlan];
@@ -53,20 +60,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "L’offre sélectionnée est invalide." }, { status: 400 });
     }
 
-    const { data: sub, error: subErr } = await supabase
-      .from("subscriptions")
-      .select("stripe_customer_id, stripe_subscription_id, status, plan, start_date, trial_end_at, contact_email")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const [{ data: sub, error: subErr }, { data: profile, error: profileErr }] = await Promise.all([
+      supabase
+        .from("subscriptions")
+        .select("stripe_customer_id, stripe_subscription_id, status, plan, start_date, trial_start_at, trial_end_at, contact_email")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("admin_email, contact_email")
+        .eq("user_id", userId)
+        .maybeSingle(),
+    ]);
 
     if (subErr) throw new Error(subErr.message);
+    if (profileErr) throw new Error(profileErr.message);
 
     const row = sub as SubscriptionRow | null | undefined;
+    const profileRow = profile as ProfileRow | null | undefined;
     const appUrl = getAppUrl(req) || requireEnv("NEXT_PUBLIC_APP_URL");
 
+    let trialStartAt = row?.trial_start_at ?? undefined;
     let trialEndAt = row?.trial_end_at ?? undefined;
     if (!trialEndAt) {
-      const startYmd = row?.start_date ?? undefined;
+      const startYmd = row?.start_date ?? (trialStartAt ? trialStartAt.slice(0, 10) : undefined);
       if (!startYmd) {
         return NextResponse.json(
           { error: "Période d'essai introuvable. L'abonnement est indisponible." },
@@ -74,14 +91,18 @@ export async function POST(req: Request) {
         );
       }
 
-      const start = new Date(`${startYmd}T00:00:00.000Z`);
-      const computed = new Date(start);
-      computed.setDate(computed.getDate() + trialDays);
-      trialEndAt = computed.toISOString();
+      const computed = computeTrialDatesFromStartDate(startYmd, trialDays);
+      trialStartAt = trialStartAt ?? computed.trialStartAt;
+      trialEndAt = computed.trialEndAt;
 
       await supabaseAdmin
         .from("subscriptions")
-        .update({ trial_end_at: trialEndAt })
+        .update({
+          start_date: startYmd,
+          trial_start_at: trialStartAt,
+          trial_end_at: trialEndAt,
+          updated_at: new Date().toISOString(),
+        })
         .eq("user_id", userId);
     }
 
@@ -111,7 +132,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const email = row?.contact_email || user.email;
+    const email =
+      profileRow?.admin_email?.trim() ||
+      profileRow?.contact_email?.trim() ||
+      row?.contact_email?.trim() ||
+      user.email ||
+      null;
     if (!email) {
       return NextResponse.json({ error: "Adresse email manquante." }, { status: 400 });
     }
@@ -131,7 +157,7 @@ export async function POST(req: Request) {
 
       await supabaseAdmin
         .from("subscriptions")
-        .update({ stripe_customer_id: customerId })
+        .update({ stripe_customer_id: customerId, contact_email: email, updated_at: new Date().toISOString() })
         .eq("user_id", userId);
     }
 
@@ -158,6 +184,7 @@ export async function POST(req: Request) {
       .update({
         stripe_price_id: priceId,
         scheduled_plan: wantedPlan,
+        contact_email: email,
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", userId);
