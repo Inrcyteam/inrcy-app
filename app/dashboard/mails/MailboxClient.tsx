@@ -1000,6 +1000,8 @@ export default function MailboxClient() {
   const [toast, setToast] = useState<string | null>(null);
   const [signaturePreview, setSignaturePreview] = useState("Cordialement,");
   const [signatureEnabled, setSignatureEnabled] = useState(true);
+  const [signatureImageUrl, setSignatureImageUrl] = useState("");
+  const [signatureImageWidth, setSignatureImageWidth] = useState(400);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
 
 
@@ -1150,12 +1152,13 @@ export default function MailboxClient() {
     return c;
   }, [items]);
 
-  function resetCompose() {
+  function resetCompose(nextType: SendType = "mail") {
     setDraftId(null);
-    setComposeType("mail");
+    setComposeType(nextType);
     setTo("");
     setSubject("");
-    setText("");
+    const signature = signatureEnabled ? signaturePreview : "";
+    setText(buildDefaultMailText({ kind: nextType, signature }));
     setFiles([]);
     setComposeAttachments([]);
     setCrmPickerOpen(false);
@@ -1189,6 +1192,8 @@ export default function MailboxClient() {
       if (!res.ok) return;
       setSignatureEnabled(j?.enabled !== false);
       setSignaturePreview(String(j?.preview || "").trim() || "Cordialement,");
+      setSignatureImageUrl(String(j?.imageUrl || ""));
+      setSignatureImageWidth(Number(j?.imageWidth || 400) || 400);
     } catch {
       // keep fallback signature
     }
@@ -1613,7 +1618,7 @@ const subTitle = firstNonEmpty(
 
     if (toParam) setTo(toParam);
     if (subjParam) setSubject(subjParam);
-    if (textParam) setText(textParam);
+    if (textParam) setText(applySignaturePreview(textParam, signatureEnabled ? signaturePreview : ""));
 
     // If the caller didn't provide a subject/body, we inject a friendly default template.
     // This keeps the connected tools consistent (CRM/Devis/Factures all go through iNr'SEND compose).
@@ -1732,6 +1737,17 @@ const subTitle = firstNonEmpty(
 
     run();
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!composeOpen) return;
+    setText((prev) => {
+      const base = String(prev || "");
+      if (!base.trim()) {
+        return buildDefaultMailText({ kind: composeType, signature: signatureEnabled ? signaturePreview : "" });
+      }
+      return signatureEnabled ? applySignaturePreview(base, signaturePreview) : base;
+    });
+  }, [composeOpen, composeType, signatureEnabled, signaturePreview]);
 
   async function loadCrmContacts() {
     if (crmLoading) return;
@@ -2376,7 +2392,7 @@ async function deleteDraftPermanently(id: string) {
                   <button
                     className={styles.toolbarBtn}
                     onClick={() => {
-                      resetCompose();
+                      resetCompose("mail");
                       setComposeOpen(true);
                     }}
                     type="button"
@@ -3437,6 +3453,25 @@ async function deleteDraftPermanently(id: string) {
                   <label style={{ display: "grid", gap: 6 }}>
                     <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Message (texte)</span>
                     <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} style={textareaStyle} />
+                    {signatureEnabled && signatureImageUrl ? (
+                      <div
+                        style={{
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          background: "rgba(255,255,255,0.04)",
+                          padding: 10,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)", marginBottom: 8 }}>
+                          Image de signature ajoutée automatiquement au mail :
+                        </div>
+                        <img
+                          src={signatureImageUrl}
+                          alt="Signature automatique"
+                          style={{ width: `${signatureImageWidth}px`, maxWidth: "100%", maxHeight: 220, objectFit: "contain", borderRadius: 10, display: "block" }}
+                        />
+                      </div>
+                    ) : null}
                   </label>
 
                   <label style={{ display: "grid", gap: 6 }}>

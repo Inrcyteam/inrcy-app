@@ -14,6 +14,9 @@ export async function GET() {
     enabled: settings.enabled,
     template: settings.template,
     preview: rendered.signatureText,
+    imagePath: settings.imagePath,
+    imageUrl: settings.imageUrl,
+    imageWidth: settings.imageWidth,
     defaults: {
       template: DEFAULT_INRSEND_SIGNATURE_TEMPLATE,
       variables: [
@@ -40,6 +43,10 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const enabled = asRecord(body).enabled !== false;
   const template = asString(asRecord(body).template)?.trim() || DEFAULT_INRSEND_SIGNATURE_TEMPLATE;
+  const imagePath = asString(asRecord(body).imagePath)?.trim() || "";
+  const imageUrl = asString(asRecord(body).imageUrl)?.trim() || "";
+  const imageWidthRaw = Number(asString(asRecord(body).imageWidth) || 400);
+  const imageWidth = Number.isFinite(imageWidthRaw) ? Math.max(180, Math.min(600, imageWidthRaw)) : 400;
 
   const { data: cfgRow } = await (supabase as any).from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
   const currentSettings = asRecord(asRecord(cfgRow).settings);
@@ -49,6 +56,9 @@ export async function POST(req: Request) {
       ...asRecord(currentSettings.inrsend),
       signature_enabled: enabled,
       signature_template: template,
+      signature_image_path: imagePath,
+      signature_image_url: imageUrl,
+      signature_image_width: imageWidth,
     },
   };
 
@@ -61,5 +71,5 @@ export async function POST(req: Request) {
   }
 
   const rendered = await buildInrSendSignature({ supabase: supabase as any, userId: user.id });
-  return NextResponse.json({ ok: true, enabled, template, preview: rendered.signatureText });
+  return NextResponse.json({ ok: true, enabled, template, imagePath, imageUrl: rendered.imageUrl, imageWidth, preview: rendered.signatureText });
 }

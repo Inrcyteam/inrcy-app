@@ -4,7 +4,7 @@ import { enforceRateLimit } from "@/lib/rateLimit";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 import { withApi } from "@/lib/observability/withApi";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
-import { applyAutoSignatureToText, buildInrSendSignature } from "@/lib/inrsendSignature";
+import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml } from "@/lib/inrsendSignature";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -255,6 +255,7 @@ const handler = async (req: Request) => {
 
   const signatureSettings = await buildInrSendSignature({ supabase: supabase as any, userId, account });
   const finalText = applyAutoSignatureToText(text || "", signatureSettings.signatureText);
+  const finalHtml = applyAutoSignatureToHtml(html || textToSimpleHtml(text || ""), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
 
 
   // ✅ tokens (chiffrés en DB)
@@ -305,7 +306,7 @@ const handler = async (req: Request) => {
     to,
     subject,
     text: finalText,
-    html,
+    html: finalHtml,
     inReplyTo: inReplyTo || undefined,
     references: references || undefined,
     attachments,

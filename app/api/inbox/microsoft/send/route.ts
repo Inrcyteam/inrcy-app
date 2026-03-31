@@ -5,7 +5,7 @@ import { fetchWithRetry } from "@/lib/observability/fetch";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
 import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
-import { applyAutoSignatureToText, buildInrSendSignature } from "@/lib/inrsendSignature";
+import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml } from "@/lib/inrsendSignature";
 
 // Microsoft Graph mail send requires Node.js runtime in most deployments.
 export const runtime = "nodejs";
@@ -116,6 +116,7 @@ const handler = async (req: Request) => {
 
     const signatureSettings = await buildInrSendSignature({ supabase: supabase as any, userId, account });
     const finalText = applyAutoSignatureToText(text || "", signatureSettings.signatureText);
+    const finalHtml = applyAutoSignatureToHtml(textToSimpleHtml(text || ""), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
 
     // Supabase row typing may be '{}' depending on generated types.
     // Parse defensively from unknown to avoid Next.js build-time type errors.
@@ -170,7 +171,7 @@ const handler = async (req: Request) => {
           subject,
           body: {
             contentType: "HTML",
-            content: textToHtml(finalText),
+            content: finalHtml,
           },
           toRecipients: [{ emailAddress: { address: to } }],
           ...(graphAttachments.length > 0 ? { attachments: graphAttachments } : {}),

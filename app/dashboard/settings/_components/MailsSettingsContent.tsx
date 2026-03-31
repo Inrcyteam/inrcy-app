@@ -108,6 +108,77 @@ function ProviderLabel(p: MailAccount["provider"]) {
   return p === "gmail" ? "Gmail" : p === "imap" ? "IMAP" : "Microsoft";
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Impossible de lire l’image."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Impossible de charger l’image."));
+    img.src = dataUrl;
+  });
+}
+
+async function prepareSignatureImage(file: File): Promise<string> {
+  const allowed = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"];
+  if (!allowed.includes(file.type)) {
+    throw new Error("Format d’image non pris en charge. Utilisez PNG, JPG, WEBP, GIF ou SVG.");
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("Image trop lourde. Choisissez un fichier inférieur à 5 Mo.");
+  }
+
+  const sourceDataUrl = await readFileAsDataUrl(file);
+  if (file.type === "image/svg+xml" || file.type === "image/gif") {
+    return sourceDataUrl;
+  }
+
+  const img = await loadImageFromDataUrl(sourceDataUrl);
+  const maxWidth = 600;
+  const targetWidth = Math.min(img.width || maxWidth, maxWidth);
+  const scale = targetWidth / Math.max(img.width || targetWidth, 1);
+  const targetHeight = Math.max(1, Math.round((img.height || targetWidth) * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Impossible de préparer l’image.");
+  ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+  const preferredType = file.type === "image/png" ? "image/png" : "image/jpeg";
+  const quality = preferredType === "image/jpeg" ? 0.9 : undefined;
+  const output = canvas.toDataURL(preferredType, quality);
+
+  if (output.length > 950000) {
+    throw new Error("Image encore trop lourde après optimisation. Choisissez une image plus légère.");
+  }
+
+  return output;
+}
+
+async function dataUrlToFile(dataUrl: string, fallbackName: string): Promise<File> {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  const ext = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : blob.type === "image/gif" ? "gif" : blob.type === "image/svg+xml" ? "svg" : "jpg";
+  return new File([blob], `${fallbackName}.${ext}`, { type: blob.type || "image/jpeg" });
+}
+
+const SIGNATURE_WIDTH_OPTIONS = [
+  { value: 300, label: "Petit (300 px)" },
+  { value: 400, label: "Normal (400 px)" },
+  { value: 500, label: "Grand (500 px)" },
+  { value: 600, label: "Très grand (600 px)" },
+];
+
 export default function MailsSettingsContent() {
   const [loading, setLoading] = React.useState(true);
   const [mailAccounts, setMailAccounts] = React.useState<MailAccount[]>([]);
@@ -120,7 +191,12 @@ export default function MailsSettingsContent() {
 Tél : {{telephone}}
 Email : {{email}}`);
   const [signaturePreview, setSignaturePreview] = React.useState("");
+  const [signatureImageUrl, setSignatureImageUrl] = React.useState("");
+  const [signatureImagePath, setSignatureImagePath] = React.useState("");
   const [signatureBusy, setSignatureBusy] = React.useState(false);
+  const [signatureImageWidth, setSignatureImageWidth] = React.useState(400);
+  const [signatureToast, setSignatureToast] = React.useState<string | null>(null);
+  const signatureFileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // --- IMAP (slot 4 only) ---
   type ImapPresetKey = "ovh" | "ionos" | "orange" | "sfr" | "other";
@@ -192,6 +268,9 @@ React.useEffect(() => {
 Tél : {{telephone}}
 Email : {{email}}`));
           setSignaturePreview(String(sigData?.preview || ""));
+          setSignatureImagePath(String(sigData?.imagePath || ""));
+          setSignatureImageUrl(String(sigData?.imageUrl || ""));
+          setSignatureImageWidth(Number(sigData?.imageWidth || 400) || 400);
         }
         setError(null);
       } catch (e: any) {
@@ -301,90 +380,8 @@ Email : {{email}}`));
   </div>
 )}
 
-{toast === "signature_saved" && (
-  <div style={{ marginTop: 8, fontSize: 13, color: "#34d399" }}>
-    ✅ Signature automatique enregistrée.
-  </div>
-)}
 
       </div>
-
-      <GlassCard
-        title="Signature automatique"
-        subtitle="Cette signature est ajoutée automatiquement à la fin des mails iNr’Send. Vous pouvez utiliser les variables {{nom_complet}}, {{nom_entreprise}}, {{telephone}}, {{email}}, {{adresse}}, {{code_postal}}, {{ville}}, {{boite_mail}}."
-      >
-        <div style={{ display: "grid", gap: 10, width: "100%" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.82)" }}>
-            <input
-              type="checkbox"
-              checked={signatureEnabled}
-              onChange={(e) => setSignatureEnabled(e.target.checked)}
-            />
-            Activer la signature automatique
-          </label>
-
-          <textarea
-            value={signatureTemplate}
-            onChange={(e) => setSignatureTemplate(e.target.value)}
-            rows={6}
-            style={{
-              width: "100%",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(255,255,255,0.06)",
-              padding: "10px 12px",
-              color: "rgba(255,255,255,0.92)",
-              resize: "vertical",
-            }}
-          />
-
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-            Aperçu actuel :
-          </div>
-          <pre
-            style={{
-              margin: 0,
-              whiteSpace: "pre-wrap",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "rgba(255,255,255,0.04)",
-              padding: "10px 12px",
-              color: "rgba(255,255,255,0.86)",
-              fontFamily: "inherit",
-              fontSize: 13,
-            }}
-          >
-            {signatureEnabled ? (signaturePreview || "Aperçu indisponible pour le moment.") : "Signature automatique désactivée."}
-          </pre>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <Btn
-              label={signatureBusy ? "Enregistrement…" : "Sauvegarder la signature"}
-              disabled={signatureBusy}
-              onClick={async () => {
-                try {
-                  setSignatureBusy(true);
-                  const res = await fetch("/api/inrsend/signature", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ enabled: signatureEnabled, template: signatureTemplate }),
-                  });
-                  const data = await res.json().catch(() => ({}));
-                  if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible d’enregistrer la signature."));
-                  setSignatureEnabled(data?.enabled !== false);
-                  setSignatureTemplate(String(data?.template || signatureTemplate));
-                  setSignaturePreview(String(data?.preview || ""));
-                  setToast("signature_saved");
-                } catch (e: any) {
-                  setToast(getSimpleFrenchErrorMessage(e, "Impossible d’enregistrer la signature."));
-                } finally {
-                  setSignatureBusy(false);
-                }
-              }}
-            />
-          </div>
-        </div>
-      </GlassCard>
 
       <div className="mailsSettings_cardsGrid">
         {slots.map((i) => {
@@ -492,6 +489,232 @@ Email : {{email}}`));
         })}
 
       </div>
+
+
+      <GlassCard
+        title="Signature automatique"
+        subtitle="Cette signature est ajoutée automatiquement à la fin des mails iNr’Send. Vous pouvez utiliser les variables {{nom_complet}}, {{nom_entreprise}}, {{telephone}}, {{email}}, {{adresse}}, {{code_postal}}, {{ville}}, {{boite_mail}} et importer une image qui sera ajoutée automatiquement en bas des mails."
+      >
+        <div style={{ display: "grid", gap: 10, width: "100%" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.82)" }}>
+            <input
+              type="checkbox"
+              checked={signatureEnabled}
+              onChange={(e) => setSignatureEnabled(e.target.checked)}
+            />
+            Activer la signature automatique
+          </label>
+
+          {signatureToast ? (
+            <div style={{ fontSize: 13, color: signatureToast.startsWith("✅") ? "#34d399" : "#fbbf24" }}>
+              {signatureToast}
+            </div>
+          ) : null}
+
+          <textarea
+            value={signatureTemplate}
+            onChange={(e) => setSignatureTemplate(e.target.value)}
+            rows={6}
+            style={{
+              width: "100%",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(255,255,255,0.06)",
+              padding: "10px 12px",
+              color: "rgba(255,255,255,0.92)",
+              resize: "vertical",
+            }}
+          />
+
+          <div style={{ display: "grid", gap: 8 }}>
+            <label style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+              Image de signature (optionnel)
+            </label>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.06)",
+                  padding: "10px 12px",
+                  color: "rgba(255,255,255,0.92)",
+                  cursor: signatureBusy ? "not-allowed" : "pointer",
+                  opacity: signatureBusy ? 0.6 : 1,
+                }}
+              >
+                Importer une image
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                  disabled={signatureBusy}
+                  style={{ display: "none" }}
+                  ref={signatureFileInputRef}
+                  onChange={async (e) => {
+                    const input = e.currentTarget;
+                    const file = input.files?.[0];
+                    if (!file) return;
+                    try {
+                      setSignatureBusy(true);
+                      setSignatureToast(null);
+                      const prepared = await prepareSignatureImage(file);
+                      const preparedFile = await dataUrlToFile(prepared, file.name.replace(/\.[^.]+$/, "") || "signature");
+                      const formData = new FormData();
+                      formData.append("file", preparedFile);
+                      const res = await fetch("/api/inrsend/signature-image", { method: "POST", body: formData });
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible d’importer cette image."));
+                      setSignatureImagePath(String(data?.imagePath || ""));
+                      setSignatureImageUrl(String(data?.imageUrl || ""));
+                      setSignatureToast("✅ Image insérée. Pensez à sauvegarder la signature.");
+                    } catch (err: any) {
+                      setSignatureToast(`⚠️ ${getSimpleFrenchErrorMessage(err, "Impossible d’importer cette image.")}`);
+                    } finally {
+                      if (input) input.value = "";
+                      setSignatureBusy(false);
+                    }
+                  }}
+                />
+              </label>
+              {signatureImageUrl ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setSignatureBusy(true);
+                      if (signatureImagePath) {
+                        await fetch("/api/inrsend/signature-image", {
+                          method: "DELETE",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ imagePath: signatureImagePath }),
+                        });
+                      }
+                      setSignatureImagePath("");
+                      setSignatureImageUrl("");
+                      setSignatureToast("✅ Image retirée.");
+                    } catch (err: any) {
+                      setSignatureToast(`⚠️ ${getSimpleFrenchErrorMessage(err, "Impossible de retirer cette image.")}`);
+                    } finally {
+                      setSignatureBusy(false);
+                    }
+                  }}
+                  disabled={signatureBusy}
+                  style={{
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.03)",
+                    padding: "10px 12px",
+                    color: "rgba(255,255,255,0.88)",
+                    cursor: signatureBusy ? "not-allowed" : "pointer",
+                    opacity: signatureBusy ? 0.6 : 1,
+                  }}
+                >
+                  Retirer l’image
+                </button>
+              ) : null}
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.56)" }}>
+              La signature est ajoutée automatiquement en bas des envois iNr’Send.
+            </div>
+
+            <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
+              <label style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                Taille de l’image de signature
+              </label>
+              <select
+                value={String(signatureImageWidth)}
+                onChange={(e) => setSignatureImageWidth(Number(e.target.value || 400))}
+                style={{
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "#ffffff",
+                  padding: "10px 12px",
+                  color: "#111111",
+                  appearance: "auto",
+                  WebkitAppearance: "menulist",
+                }}
+              >
+                {SIGNATURE_WIDTH_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value} style={{ background: "#ffffff", color: "#111111" }}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.56)" }}>
+                La taille choisie sera utilisée automatiquement dans les emails.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+            Aperçu actuel :
+          </div>
+          <div
+            style={{
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(255,255,255,0.04)",
+              padding: "10px 12px",
+              color: "rgba(255,255,255,0.86)",
+              fontSize: 13,
+            }}
+          >
+            <pre
+              style={{
+                margin: 0,
+                whiteSpace: "pre-wrap",
+                color: "rgba(255,255,255,0.86)",
+                fontFamily: "inherit",
+                fontSize: 13,
+              }}
+            >
+              {signatureEnabled ? (signaturePreview || "Aperçu indisponible pour le moment.") : "Signature automatique désactivée."}
+            </pre>
+            {signatureEnabled && signatureImageUrl ? (
+              <div style={{ marginTop: 12 }}>
+                <img
+                  src={signatureImageUrl}
+                  alt="Aperçu image de signature"
+                  style={{ width: `${signatureImageWidth}px`, maxWidth: "100%", maxHeight: 220, objectFit: "contain", borderRadius: 10, display: "block" }}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Btn
+              label={signatureBusy ? "Enregistrement…" : "Sauvegarder la signature"}
+              disabled={signatureBusy}
+              onClick={async () => {
+                try {
+                  setSignatureBusy(true);
+                  const res = await fetch("/api/inrsend/signature", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ enabled: signatureEnabled, template: signatureTemplate, imagePath: signatureImagePath, imageUrl: signatureImageUrl, imageWidth: signatureImageWidth }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible d’enregistrer la signature."));
+                  setSignatureEnabled(data?.enabled !== false);
+                  setSignatureTemplate(String(data?.template || signatureTemplate));
+                  setSignatureImagePath(String(data?.imagePath || signatureImagePath));
+                  setSignatureImageUrl(String(data?.imageUrl || ""));
+                  setSignaturePreview(String(data?.preview || ""));
+                  setSignatureImageWidth(Number(data?.imageWidth || signatureImageWidth) || 400);
+                  setSignatureToast("✅ Signature enregistrée.");
+                } catch (e: any) {
+                  setSignatureToast(`⚠️ ${getSimpleFrenchErrorMessage(e, "Impossible d’enregistrer la signature.")}`);
+                } finally {
+                  setSignatureBusy(false);
+                }
+              }}
+            />
+          </div>
+        </div>
+      </GlassCard>
 
       {imapModalOpen && (
         <div

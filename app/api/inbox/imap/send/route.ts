@@ -9,7 +9,7 @@ import { appendRawMessage, type ImapConfig } from "@/lib/imapClient";
 import { withApi } from "@/lib/observability/withApi";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
-import { applyAutoSignatureToText, buildInrSendSignature } from "@/lib/inrsendSignature";
+import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml } from "@/lib/inrsendSignature";
 
 
 // IMAP + SMTP require Node.js runtime (Edge runtime can't open raw TCP sockets)
@@ -85,6 +85,7 @@ const handler = async (req: Request) => {
 
     const signatureSettings = await buildInrSendSignature({ supabase: supabase as any, userId, account: accRec });
     const finalText = applyAutoSignatureToText(text || "", signatureSettings.signatureText);
+    const finalHtml = applyAutoSignatureToHtml(html || textToSimpleHtml(text || ""), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
 
     if (attachmentRefs.length > 0) {
       const downloaded = await downloadMailAttachmentRefs(supabase, attachmentRefs);
@@ -141,6 +142,7 @@ const handler = async (req: Request) => {
       to,
       subject,
       text: finalText,
+      html: finalHtml,
       attachments,
     });
 
@@ -153,6 +155,7 @@ const handler = async (req: Request) => {
           to,
           subject,
           text: finalText,
+          html: finalHtml,
           attachments,
           // Keep a simple, widely supported encoding
           date: new Date(),
@@ -181,7 +184,7 @@ const handler = async (req: Request) => {
       to_emails: to,
       subject: subject || null,
       body_text: finalText || null,
-      body_html: html || null,
+      body_html: finalHtml || null,
       provider: "imap",
       provider_message_id: info?.messageId || null,
       provider_thread_id: null,
