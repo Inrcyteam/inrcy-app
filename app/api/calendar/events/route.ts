@@ -86,7 +86,7 @@ async function createAgendaConfirmationNotification(userId: string, title: strin
     category: "information",
     kind: "agenda_event_saved",
     title: "Rendez-vous enregistré dans iNrCalendar",
-    body: `“${title || "Rendez-vous"}” est bien positionné pour le ${whenLabel}. Les rappels in-app et email seront envoyés automatiquement avant l’échéance.`,
+    body: `“${title || "Rendez-vous"}” est bien positionné pour le ${whenLabel}. Un rappel in-app sera envoyé automatiquement avant l’échéance et les rappels email partiront 24h avant puis 2h avant au pro ainsi qu’au contact lié au rendez-vous lorsqu’un email est renseigné.`,
     cta_label: "Ouvrir l’agenda",
     cta_url: "/dashboard/agenda",
     dedupe_key: `agenda_saved:${userId}:${title}:${startAt}`,

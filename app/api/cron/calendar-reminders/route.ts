@@ -5,6 +5,18 @@ import { optionalEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
 
+const EMAIL_REMINDER_OFFSETS_MINUTES = [1440, 120] as const;
+
+type RecipientKind = "pro" | "contact";
+
+type RecipientInfo = {
+  kind: RecipientKind;
+  email: string;
+  label: string;
+  firstName?: string | null;
+  companyName?: string | null;
+};
+
 function isAuthorizedCron(req: Request) {
   const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";
   if (!cronSecret) return false;
@@ -29,6 +41,130 @@ function fmtDate(iso: string) {
   return Number.isFinite(d.getTime())
     ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeStyle: "short" }).format(d)
     : iso;
+}
+
+function normalizeEmail(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function offsetLabel(minutes: number) {
+  if (minutes === 1440) return "24h avant";
+  if (minutes === 120) return "2h avant";
+  if (minutes % 60 === 0) return `${minutes / 60}h avant`;
+  return `${minutes} min avant`;
+}
+
+async function getProRecipient(userId: string): Promise<RecipientInfo | null> {
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("contact_email, first_name, company_legal_name")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const row = safeObj(profile);
+  const profileEmail = normalizeEmail(row.contact_email);
+  if (profileEmail) {
+    return {
+      kind: "pro",
+      email: profileEmail,
+      label: "pro",
+      firstName: typeof row.first_name === "string" ? row.first_name : null,
+      companyName: typeof row.company_legal_name === "string" ? row.company_legal_name : null,
+    };
+  }
+
+  const adminUser = await supabaseAdmin.auth.admin.getUserById(userId).catch(() => null);
+  const authEmail = normalizeEmail(adminUser?.data?.user?.email);
+  if (!authEmail) return null;
+
+  return {
+    kind: "pro",
+    email: authEmail,
+    label: "pro",
+    firstName: typeof row.first_name === "string" ? row.first_name : null,
+    companyName: typeof row.company_legal_name === "string" ? row.company_legal_name : null,
+  };
+}
+
+function getContactRecipient(meta: Record<string, unknown>): RecipientInfo | null {
+  const contact = safeObj(safeObj(meta.inrcy).contact);
+  const email = normalizeEmail(contact.email);
+  if (!email) return null;
+  return {
+    kind: "contact",
+    email,
+    label: "client",
+    firstName: typeof contact.first_name === "string" ? contact.first_name : null,
+    companyName: typeof contact.company_name === "string" ? contact.company_name : null,
+  };
+}
+
+function buildRecipients(pro: RecipientInfo | null, contact: RecipientInfo | null) {
+  const unique = new Map<string, RecipientInfo>();
+  for (const recipient of [pro, contact]) {
+    if (!recipient?.email) continue;
+    if (unique.has(recipient.email)) continue;
+    unique.set(recipient.email, recipient);
+  }
+  return Array.from(unique.values());
+}
+
+function getRecipientSentAt(reminders: Record<string, unknown>, kind: RecipientKind, offsetMinutes: number) {
+  const sentAtByRecipient = safeObj(reminders.emailSentAtByRecipient);
+  const sentAtByOffset = safeObj(sentAtByRecipient[kind]);
+  const current = sentAtByOffset[String(offsetMinutes)];
+  if (typeof current === "string" && current.trim()) return current;
+
+  if (offsetMinutes === 1440 && typeof reminders.lastEmailReminderAt === "string" && reminders.lastEmailReminderAt.trim()) {
+    return reminders.lastEmailReminderAt;
+  }
+
+  return null;
+}
+
+function markRecipientSent(
+  reminders: Record<string, unknown>,
+  kind: RecipientKind,
+  offsetMinutes: number,
+  sentAtIso: string,
+) {
+  const sentAtByRecipient = safeObj(reminders.emailSentAtByRecipient);
+  const sentAtByOffset = safeObj(sentAtByRecipient[kind]);
+
+  return {
+    ...reminders,
+    emailSentAtByRecipient: {
+      ...sentAtByRecipient,
+      [kind]: {
+        ...sentAtByOffset,
+        [String(offsetMinutes)]: sentAtIso,
+      },
+    },
+    lastEmailReminderAt: offsetMinutes === 1440 ? sentAtIso : reminders.lastEmailReminderAt ?? null,
+  };
+}
+
+function buildReminderMail(row: { title: string | null; description: string | null; location: string | null; start_at: string | null }, offsetMinutes: number, recipient: RecipientInfo) {
+  const greetingName = (recipient.firstName || recipient.companyName || "").trim();
+  const greeting = greetingName ? `Bonjour ${greetingName},` : "Bonjour,";
+  const subject = `Rappel de rendez-vous ${offsetLabel(offsetMinutes)} — ${row.title || "iNrCalendar"}`;
+  const intro = recipient.kind === "pro"
+    ? `Petit rappel : votre rendez-vous "${row.title || "Rendez-vous"}" est prévu le ${fmtDate(String(row.start_at))}.`
+    : `Petit rappel : votre rendez-vous "${row.title || "Rendez-vous"}" est prévu le ${fmtDate(String(row.start_at))}.`;
+
+  const text = [
+    greeting,
+    "",
+    intro,
+    row.location ? `Lieu : ${row.location}` : "",
+    row.description ? `Détails : ${row.description}` : "",
+    "",
+    `Rappel envoyé automatiquement par iNrCalendar (${offsetLabel(offsetMinutes)}).`,
+  ].filter(Boolean).join("\n");
+
+  const html = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#0f172a"><p>${greeting}</p><p>Petit rappel : votre rendez-vous <b>${String(row.title || "Rendez-vous")}</b> est prévu le <b>${fmtDate(String(row.start_at))}</b>.</p>${row.location ? `<p><b>Lieu :</b> ${String(row.location)}</p>` : ""}${row.description ? `<p><b>Détails :</b> ${String(row.description)}</p>` : ""}<p>Rappel envoyé automatiquement par iNrCalendar (${offsetLabel(offsetMinutes)}).</p></div>`;
+
+  return { subject, text, html };
 }
 
 export async function GET(req: Request) {
@@ -60,11 +196,10 @@ export async function GET(req: Request) {
     if (minutesUntil < 0) continue;
 
     const inAppMinutesBefore = asNumber(reminders.inAppMinutesBefore, 120);
-    const emailMinutesBefore = asNumber(reminders.emailMinutesBefore, 1440);
     const lastInAppReminderAt = typeof reminders.lastInAppReminderAt === "string" ? reminders.lastInAppReminderAt : null;
-    const lastEmailReminderAt = typeof reminders.lastEmailReminderAt === "string" ? reminders.lastEmailReminderAt : null;
 
-    let nextMeta = meta;
+    let nextMeta: Record<string, unknown> = meta;
+    let nextReminders: Record<string, unknown> = reminders;
     let dirty = false;
 
     if (!lastInAppReminderAt && minutesUntil <= inAppMinutesBefore) {
@@ -81,30 +216,41 @@ export async function GET(req: Request) {
       });
       if (!notificationError) {
         inAppSent += 1;
-        nextMeta = { ...nextMeta, reminders: { ...reminders, lastInAppReminderAt: now.toISOString(), lastEmailReminderAt } };
+        nextReminders = { ...nextReminders, lastInAppReminderAt: now.toISOString() };
+        nextMeta = { ...nextMeta, reminders: nextReminders };
         dirty = true;
       }
     }
 
-    if (smtpConfigured && !lastEmailReminderAt && minutesUntil <= emailMinutesBefore) {
-      const contact = safeObj(safeObj(meta.inrcy).contact);
-      const recipient = String(contact.email || "").trim();
-      if (recipient) {
-        const subject = `Rappel de rendez-vous — ${row.title || "iNrCalendar"}`;
-        const text = [
-          `Bonjour,`,
-          "",
-          `Petit rappel : votre rendez-vous "${row.title || "Rendez-vous"}" est prévu le ${fmtDate(String(row.start_at))}.`,
-          row.location ? `Lieu : ${row.location}` : "",
-          row.description ? `Détails : ${row.description}` : "",
-          "",
-          "Message envoyé automatiquement par iNrCalendar.",
-        ].filter(Boolean).join(`\n`);
-        const html = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#0f172a"><p>Bonjour,</p><p>Petit rappel : votre rendez-vous <b>${String(row.title || "Rendez-vous")}</b> est prévu le <b>${fmtDate(String(row.start_at))}</b>.</p>${row.location ? `<p><b>Lieu :</b> ${String(row.location)}</p>` : ""}${row.description ? `<p><b>Détails :</b> ${String(row.description)}</p>` : ""}<p>Message envoyé automatiquement par iNrCalendar.</p></div>`;
-        await sendTxMail({ to: recipient, subject, text, html }).catch(() => null);
-        emailSent += 1;
-        nextMeta = { ...nextMeta, reminders: { ...safeObj(nextMeta.reminders), lastEmailReminderAt: now.toISOString(), lastInAppReminderAt: safeObj(nextMeta.reminders).lastInAppReminderAt ?? lastInAppReminderAt } };
-        dirty = true;
+    if (smtpConfigured) {
+      const proRecipient = await getProRecipient(String(row.user_id));
+      const contactRecipient = getContactRecipient(meta);
+      const recipients = buildRecipients(proRecipient, contactRecipient);
+
+      for (const offsetMinutes of EMAIL_REMINDER_OFFSETS_MINUTES) {
+        if (minutesUntil > offsetMinutes) continue;
+
+        for (const recipient of recipients) {
+          const alreadySentAt = getRecipientSentAt(nextReminders, recipient.kind, offsetMinutes);
+          if (alreadySentAt) continue;
+
+          const mail = buildReminderMail(row, offsetMinutes, recipient);
+          try {
+            await sendTxMail({ to: recipient.email, subject: mail.subject, text: mail.text, html: mail.html });
+            emailSent += 1;
+            nextReminders = markRecipientSent(nextReminders, recipient.kind, offsetMinutes, now.toISOString());
+            nextMeta = { ...nextMeta, reminders: nextReminders };
+            dirty = true;
+          } catch (mailError) {
+            console.error("[calendar-reminders] sendTxMail failed", {
+              eventId: row.id,
+              recipient: recipient.email,
+              kind: recipient.kind,
+              offsetMinutes,
+              error: mailError,
+            });
+          }
+        }
       }
     }
 
