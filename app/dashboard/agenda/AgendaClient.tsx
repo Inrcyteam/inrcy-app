@@ -1186,6 +1186,7 @@ async function deleteEventById(id: string) {
             <div className={styles.modalHeader}>
               <div style={{ fontWeight: 950 }}>
                 {rdvMode === "create" ? "Nouvel évènement" : "Modifier l’évènement"}
+        <p className="text-xs text-white/60 mt-1">Des emails de rappels sont envoyés 24h et 2h avant l'évènement (client également si email renseigné)</p>
               </div>
               <button className={styles.btnGhost} onClick={() => setRdvOpen(false)} aria-label="Fermer">
                 ✕
