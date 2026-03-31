@@ -399,7 +399,7 @@ export default function NewFacturePage() {
 
     if (error) {
       console.error(error);
-      setFormMessage({ type: "error", text: "Impossible de sauvegarder pour le moment." });
+      setFormMessage({ type: "error", text: "Impossible d’enregistrer cette facture pour le moment." });
       return;
     }
 
@@ -522,7 +522,7 @@ export default function NewFacturePage() {
 
     const pdfBlob = await buildPdfBlob();
     if (!pdfBlob) {
-      setFormMessage({ type: "error", text: "Impossible de générer le PDF pour le moment." });
+      setFormMessage({ type: "error", text: "Impossible de générer le PDF de cette facture pour le moment." });
       return;
     }
 
@@ -535,7 +535,7 @@ export default function NewFacturePage() {
 
     if (upErr) {
       console.error(upErr);
-      setFormMessage({ type: "error", text: "Impossible de préparer le document pour l’envoi." });
+      setFormMessage({ type: "error", text: "Impossible de préparer cette facture pour l’envoi." });
       return;
     }
 

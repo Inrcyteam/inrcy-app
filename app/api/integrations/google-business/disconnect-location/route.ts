@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 export async function POST() {
   const supabase = await createSupabaseServer();
@@ -16,7 +17,7 @@ export async function POST() {
     .eq("source", "gmb")
     .eq("product", "gmb");
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return jsonUserFacingError(error, { status: 500 });
   await clearAllToolCaches(supabase, userId);
   return NextResponse.json({ ok: true });
 }

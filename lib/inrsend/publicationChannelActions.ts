@@ -8,6 +8,8 @@ import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText } 
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { randomUUID } from "crypto";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
@@ -74,7 +76,7 @@ function buildInstagramCaption(title: string, content: string, cta: string, hash
 }
 
 function errMessage(e: unknown, fallback: string) {
-  return e instanceof Error ? e.message : fallback;
+  return getSimpleFrenchErrorMessage(e, fallback);
 }
 
 function dataUrlToBuffer(dataUrl: string) {
@@ -681,18 +683,18 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       const params = await context.params;
       const publicationId = String(params.publicationId || "").trim();
-      if (!publicationId) return NextResponse.json({ error: "Paramètres invalides." }, { status: 400 });
+      if (!publicationId) return jsonUserFacingError("Paramètres invalides.", { status: 400, code: "invalid_input" });
 
       const body = (await req.json().catch(() => null)) as JsonRecord | null;
-      if (!body) return NextResponse.json({ error: "Bad payload" }, { status: 400 });
+      if (!body) return jsonUserFacingError("Bad payload", { status: 400, code: "invalid_payload" });
 
       const ctx = await loadPublicationContext(user.id, publicationId);
-      if (!ctx) return NextResponse.json({ error: "Publication introuvable." }, { status: 404 });
+      if (!ctx) return jsonUserFacingError("Publication introuvable.", { status: 404, code: "publication_not_found" });
 
       const results = asRecord(ctx.eventPayload.results);
       const channelResult = asRecord(results[channel]);
       if (isDeletedResult(channelResult)) {
-        return NextResponse.json({ error: "Ce canal est déjà supprimé." }, { status: 409 });
+        return jsonUserFacingError("Ce canal est déjà supprimé.", { status: 409, code: "channel_already_deleted" });
       }
 
       const currentPost = getChannelPost(ctx.eventPayload, ctx.publication, channel);
@@ -705,7 +707,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
           : currentPost.hashtags,
       };
 
-      if (!nextPost.content) return NextResponse.json({ error: "Le contenu est vide." }, { status: 400 });
+      if (!nextPost.content) return jsonUserFacingError("Le contenu est vide.", { status: 400, code: "empty_content" });
 
       const retainedImages = Array.isArray(body.retainedImages)
         ? body.retainedImages.map((value: unknown) => String(value || "").trim()).filter(Boolean)
@@ -721,7 +723,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
             .filter((value) => value.dataUrl)
         : [];
       if (retainedImages.length + newImages.length > 5) {
-        return NextResponse.json({ error: "Maximum 5 images par publication." }, { status: 400 });
+        return jsonUserFacingError("Maximum 5 images par publication.", { status: 400, code: "too_many_images" });
       }
 
       const imageSet = await updatePublicationImages({
@@ -758,7 +760,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       return NextResponse.json({ ok: true, publication_id: publicationId, channel, external_id: replaceResult.externalId, payload: nextPayload });
     } catch (e: unknown) {
-      return NextResponse.json({ error: errMessage(e, "Erreur") }, { status: 500 });
+      return jsonUserFacingError(e, { status: 500, fallback: "La modification de la publication a échoué.", code: "publication_update_failed" });
     }
   }
 
@@ -769,10 +771,10 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       const params = await context.params;
       const publicationId = String(params.publicationId || "").trim();
-      if (!publicationId) return NextResponse.json({ error: "Paramètres invalides." }, { status: 400 });
+      if (!publicationId) return jsonUserFacingError("Paramètres invalides.", { status: 400, code: "invalid_input" });
 
       const ctx = await loadPublicationContext(user.id, publicationId);
-      if (!ctx) return NextResponse.json({ error: "Publication introuvable." }, { status: 404 });
+      if (!ctx) return jsonUserFacingError("Publication introuvable.", { status: 404, code: "publication_not_found" });
 
       const body = (await req.json().catch(() => ({}))) as JsonRecord;
       const results = asRecord(ctx.eventPayload.results);
@@ -792,7 +794,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload: nextPayload });
     } catch (e: unknown) {
-      return NextResponse.json({ error: errMessage(e, "Erreur") }, { status: 500 });
+      return jsonUserFacingError(e, { status: 500, fallback: "La suppression de la publication a échoué.", code: "publication_delete_failed" });
     }
   }
 

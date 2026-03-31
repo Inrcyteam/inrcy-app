@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { DEFAULT_INRSEND_SIGNATURE_TEMPLATE, buildInrSendSignature, getInrSendSignatureSettings } from "@/lib/inrsendSignature";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 export async function GET() {
   const { supabase, user, errorResponse } = await requireUser();
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
     .upsert({ user_id: user.id, settings: nextSettings }, { onConflict: "user_id" });
 
   if (error) {
-    return NextResponse.json({ error: error.message || "Impossible d’enregistrer la signature." }, { status: 500 });
+    return jsonUserFacingError(error, { status: 500, fallback: "Impossible d’enregistrer la signature." });
   }
 
   const rendered = await buildInrSendSignature({ supabase: supabase as any, userId: user.id });

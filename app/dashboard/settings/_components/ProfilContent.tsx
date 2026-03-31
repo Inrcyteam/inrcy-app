@@ -273,7 +273,7 @@ export default function ProfilContent({
     const { data, error: signError } = await supabase.storage.from("logos").createSignedUrl(path, 60 * 60 * 24 * 7);
 
     if (signError || !data?.signedUrl) {
-      throw new Error(signError?.message || "Erreur création URL signée");
+      throw new Error(getSimpleFrenchErrorMessage(signError, "Impossible de préparer le logo pour le moment."));
     }
 
     return { path, signedUrl: data.signedUrl };
@@ -367,7 +367,7 @@ export default function ProfilContent({
     } catch (err: any) {
       console.error(err);
       setSaved(false);
-      setGlobalError(err?.message || "Erreur inconnue.");
+      setGlobalError(getSimpleFrenchErrorMessage(err, "Impossible d’enregistrer le profil."));
     }
   };
 

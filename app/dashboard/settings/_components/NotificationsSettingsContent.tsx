@@ -133,7 +133,7 @@ export default function NotificationsSettingsContent() {
       setNotice("Préférences enregistrées.");
       setError(null);
     } catch (e: any) {
-      setError(getSimpleFrenchErrorMessage(e, "Sauvegarde impossible."));
+      setError(getSimpleFrenchErrorMessage(e, "Impossible d’enregistrer les préférences de notification."));
     } finally {
       setSaving(false);
     }

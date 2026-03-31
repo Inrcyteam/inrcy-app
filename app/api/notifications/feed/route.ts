@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { toNotificationPayload, type NotificationRow } from "@/lib/notifications";
@@ -29,7 +30,7 @@ export async function GET(req: Request) {
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return jsonUserFacingError(error, { status: 500 });
 
   const rows = data ?? [];
 

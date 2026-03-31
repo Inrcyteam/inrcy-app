@@ -5,6 +5,7 @@ import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type TokenResponse = {
@@ -54,7 +55,7 @@ export async function GET(req: Request) {
       finalUrl.searchParams.set("linked", "google");
       finalUrl.searchParams.set("ok", "0");
       finalUrl.searchParams.set("error", error);
-      if (message) finalUrl.searchParams.set("message", message.slice(0, 200));
+      if (message) finalUrl.searchParams.set("message", getSimpleFrenchErrorMessage(message, "La connexion n'a pas pu être finalisée.").slice(0, 200));
       const res = NextResponse.redirect(finalUrl);
       res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
       return res;
@@ -73,7 +74,7 @@ export async function GET(req: Request) {
       resUrl.searchParams.set("linked", "google");
       resUrl.searchParams.set("ok", "0");
       resUrl.searchParams.set("error", oauthError || "missing_code");
-      if (oauthErrorDescription) resUrl.searchParams.set("message", oauthErrorDescription.slice(0, 200));
+      if (oauthErrorDescription) resUrl.searchParams.set("message", getSimpleFrenchErrorMessage(oauthErrorDescription, "La connexion n'a pas pu être finalisée.").slice(0, 200));
       const res = NextResponse.redirect(resUrl);
       res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
       return res;
@@ -212,7 +213,7 @@ if (!tokenRes.ok || !tokenData.access_token) {
   } catch (e: unknown) {
     // No stack traces to clients in production.
     oauthCallbackException(req, "google", e, { error: "oauth_callback_failed", return_to: "/dashboard?panel=mails" });
-    const message = (e instanceof Error ? e.message : String(e)) || "La connexion au compte a échoué. Merci de réessayer.";
+    const message = getSimpleFrenchErrorMessage(e, "La connexion au compte a échoué. Merci de réessayer.");
     return NextResponse.redirect(new URL(`/dashboard?panel=mails&linked=google&ok=0&error=oauth_callback_failed&message=${encodeURIComponent(message.slice(0, 200))}`, origin));
   }
 }

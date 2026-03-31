@@ -88,7 +88,7 @@ export default function RgpdContent({ mode = "page" }: Props) {
       window.URL.revokeObjectURL(url);
       setDone("Export généré et téléchargé.");
     } catch (e: any) {
-      setErr(e?.message || "Erreur export");
+      setErr(getSimpleFrenchErrorMessage(e, "Impossible de préparer l’export de vos données."));
     } finally {
       setBusy(null);
     }
@@ -114,7 +114,7 @@ export default function RgpdContent({ mode = "page" }: Props) {
       // Redirect to home/login.
       window.location.href = "/";
     } catch (e: any) {
-      setErr(e?.message || "Erreur suppression");
+      setErr(getSimpleFrenchErrorMessage(e, "Impossible de supprimer votre compte pour le moment."));
     } finally {
       setBusy(null);
     }

@@ -99,7 +99,7 @@ export async function GET(req: Request) {
     )
     .eq("plan", "Trial");
 
-  if (tErr) return NextResponse.json({ error: tErr.message }, { status: 500 });
+  if (tErr) return NextResponse.json({ error: "Impossible de vérifier les essais en cours pour le moment." }, { status: 500 });
 
   const trialUserIds = ((trials || []) as TrialRow[]).map((row) => row.user_id);
   const profileEmails = new Map<string, ProfileEmailRow>();
@@ -110,7 +110,7 @@ export async function GET(req: Request) {
       .select("user_id, admin_email, contact_email")
       .in("user_id", trialUserIds);
 
-    if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
+    if (pErr) return NextResponse.json({ error: "Impossible de récupérer les coordonnées des comptes concernés pour le moment." }, { status: 500 });
 
     for (const profile of (profiles || []) as ProfileEmailRow[]) {
       profileEmails.set(profile.user_id, profile);
@@ -139,7 +139,7 @@ export async function GET(req: Request) {
         .eq("user_id", s.user_id);
 
       if (repairError) {
-        return NextResponse.json({ error: repairError.message }, { status: 500 });
+        return NextResponse.json({ error: "Impossible de mettre à jour les dates d'essai pour le moment." }, { status: 500 });
       }
 
       repairedTrialDates++;
@@ -194,7 +194,7 @@ export async function GET(req: Request) {
     .eq("plan", "Trial")
     .is("stripe_subscription_id", null);
 
-  if (eErr) return NextResponse.json({ error: eErr.message }, { status: 500 });
+  if (eErr) return NextResponse.json({ error: "Impossible de vérifier les comptes d'essai expirés pour le moment." }, { status: 500 });
 
   const deleteAfterDays = Number(optionalEnv("INRCY_TRIAL_DELETE_AFTER_DAYS", "1"));
   let deletedTrialAccounts = 0;
@@ -253,7 +253,7 @@ export async function GET(req: Request) {
     .not("stripe_subscription_id", "is", null)
     .not("end_date", "is", null);
 
-  if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
+  if (cErr) return NextResponse.json({ error: "Impossible de vérifier les résiliations arrivées à échéance pour le moment." }, { status: 500 });
 
   let deletedCancelledAccounts = 0;
 

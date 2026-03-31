@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptSecret } from "@/lib/imapCrypto";
 import net from "net";
@@ -48,7 +49,7 @@ function validatePort(n: number, fallback: number): number {
 const handler = async (req: Request) => {
   const supabase = await createSupabaseServer();
   const { data: userData } = await supabase.auth.getUser();
-  if (!userData?.user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
+  if (!userData?.user) return jsonUserFacingError("Accès non autorisé.", { status: 401, code: "auth_required" });
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -65,7 +66,7 @@ const handler = async (req: Request) => {
     const smtp_starttls = !!body.smtp_starttls;
 
     if (!login || !password) {
-      return NextResponse.json({ error: "Merci de renseigner l'identifiant et le mot de passe." }, { status: 400 });
+      return jsonUserFacingError("Merci de renseigner l'identifiant et le mot de passe.", { status: 400, code: "invalid_input" });
     }
 
     const userId = userData.user.id;
@@ -98,11 +99,10 @@ const handler = async (req: Request) => {
       .select("id")
       .single();
 
-    if (error) return NextResponse.json({ error: "Impossible d'enregistrer ce compte de messagerie pour le moment." }, { status: 500 });
+    if (error) return jsonUserFacingError("Impossible d'enregistrer ce compte de messagerie pour le moment.", { status: 500, code: "imap_save_failed" });
     return NextResponse.json({ ok: true, id: data?.id });
   } catch (e: unknown) {
-    const msg = (e instanceof Error ? e.message : String(e)) || "Impossible de connecter cette messagerie pour le moment.";
-    return NextResponse.json({ error: msg }, { status: 400 });
+    return jsonUserFacingError(e, { status: 400, fallback: "Impossible de connecter cette messagerie pour le moment.", code: "imap_connect_failed" });
   }
 };
 

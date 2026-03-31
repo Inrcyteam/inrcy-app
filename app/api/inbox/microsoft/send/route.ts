@@ -111,7 +111,7 @@ const handler = async (req: Request) => {
       .single();
 
     if (accErr || !account) {
-      return NextResponse.json({ error: "Boîte Outlook introuvable." }, { status: 404 });
+      return NextResponse.json({ error: "La boîte Outlook sélectionnée est introuvable." }, { status: 404 });
     }
 
     const signatureSettings = await buildInrSendSignature({ supabase: supabase as any, userId, account });

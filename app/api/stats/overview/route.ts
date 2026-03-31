@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import type { StatsSourceKey } from "@/lib/googleStats";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
@@ -416,7 +418,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
               for (const c of channels) localChannels.set(c.channel, (localChannels.get(c.channel) || 0) + c.sessions);
             } catch (e) {
               entry.connected.ga4 = false;
-              entry.ga4 = { propertyId: s.ga4Property, error: e instanceof Error ? e.message : String(e) };
+              entry.ga4 = { propertyId: s.ga4Property, error: getSimpleFrenchErrorMessage(e, "Impossible de récupérer les statistiques GA4 pour le moment.") };
             }
           }
         }
@@ -450,7 +452,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
               }
             } catch (e) {
               entry.connected.gsc = false;
-              entry.gsc = { property: s.gscProperty, error: e instanceof Error ? e.message : String(e) };
+              entry.gsc = { property: s.gscProperty, error: getSimpleFrenchErrorMessage(e, "Impossible de récupérer les statistiques Search Console pour le moment.") };
             }
           }
         }
@@ -567,7 +569,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
             end
           );
         } catch (e) {
-         sourcesStatus.facebook.metrics = { error: e instanceof Error ? e.message : String(e) };
+         sourcesStatus.facebook.metrics = { error: getSimpleFrenchErrorMessage(e, "Impossible de récupérer les statistiques Facebook pour le moment.") };
         }
       } else {
         sourcesStatus.facebook.metrics = null;
@@ -590,7 +592,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           if (!token) throw new Error("La connexion Instagram a expiré ou n’est plus valide.");
           sourcesStatus.instagram.metrics = await igFetchDailyInsights(token, String(igRow["resource_id"]), start, end);
         } catch (e) {
-          sourcesStatus.instagram.metrics = { error: e instanceof Error ? e.message : String(e) };
+          sourcesStatus.instagram.metrics = { error: getSimpleFrenchErrorMessage(e, "Impossible de récupérer les statistiques Instagram pour le moment.") };
         }
       } else {
         sourcesStatus.instagram.metrics = null;
@@ -616,7 +618,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           sourcesStatus.linkedin.metrics = await liFetchOrgAnalytics(token, resolvedOrgUrn, start, end);
         } catch (e) {
-          sourcesStatus.linkedin.metrics = { error: e instanceof Error ? e.message : String(e) };
+          sourcesStatus.linkedin.metrics = { error: getSimpleFrenchErrorMessage(e, "Impossible de récupérer les statistiques LinkedIn pour le moment.") };
         }
       } else {
         sourcesStatus.linkedin.metrics = null;
@@ -666,7 +668,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           try {
             sourcesStatus.gmb.metrics = await gmbFetchDailyMetricsNormalized(accessToken, loc, start, end);
           } catch (e) {
-            sourcesStatus.gmb.metrics = { error: (e instanceof Error ? e.message : String(e)) || "Impossible de récupérer les statistiques pour le moment.", location: loc };
+            sourcesStatus.gmb.metrics = { error: getSimpleFrenchErrorMessage(e, "Impossible de récupérer les statistiques Google Business pour le moment."), location: loc };
           }
         } else {
           sourcesStatus.gmb.metrics = null;
@@ -755,6 +757,6 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
   // NOTE: Turbopack/SWC can be picky about type annotations in catch clauses.
   // We keep the variable untyped (it is effectively `unknown`), then narrow.
   } catch (e) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes." }, { status: 500 });
+    return jsonUserFacingError(e, { status: 500 });
   }
 }

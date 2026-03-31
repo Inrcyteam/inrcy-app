@@ -10,13 +10,15 @@ import { instagramPublishCarousel, instagramPublishPhoto } from "@/lib/instagram
 import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
 type JsonRecord = Record<string, unknown>;
 const asRecord = (v: unknown): JsonRecord =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as JsonRecord) : {};
-const errMessage = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
+const errMessage = (e: unknown, fallback: string) => getSimpleFrenchErrorMessage(e, fallback);
 
 function slugify(input: string): string {
   return String(input || "")
@@ -327,7 +329,7 @@ const body = await req.json().catch(() => null);
     // Optional hard fail if user selected images but none uploaded
     if (images.length > 0 && uploadedUrls.length === 0) {
       return NextResponse.json(
-        { ok: false, error: "Images sélectionnées mais upload Supabase impossible.", uploadErrors },
+        { ok: false, error: "Les images sélectionnées n'ont pas pu être envoyées. Merci de réessayer.", uploadErrors },
         { status: 400 }
       );
     }
@@ -346,7 +348,7 @@ const body = await req.json().catch(() => null);
     });
 
     if (pubErr) {
-      return NextResponse.json({ error: pubErr.message, uploadErrors }, { status: 500 });
+      return NextResponse.json({ error: "Impossible d'enregistrer la publication pour le moment.", uploadErrors }, { status: 500 });
     }
 
     // 3) Create deliveries
@@ -421,13 +423,13 @@ const body = await req.json().catch(() => null);
           // can consume to display the article.
           const targetUrl = ch === "inrcy_site" ? inrcySiteUrl : siteWebUrl;
           if (ch === "inrcy_site" && (ownership === "none" || !targetUrl)) {
-            await setDelivery(ch, { status: "failed", error: "Site iNrCy non connecté (ownership/url manquants)" });
-            results[ch] = { ok: false, error: "not_configured" };
+            await setDelivery(ch, { status: "failed", error: "Le site iNrCy n'est pas encore correctement configuré." });
+            results[ch] = { ok: false, error: "Le site iNrCy n'est pas encore correctement configuré." };
             continue;
           }
           if (ch === "site_web" && !targetUrl) {
-            await setDelivery(ch, { status: "failed", error: "Site web non connecté (url manquante)" });
-            results[ch] = { ok: false, error: "not_configured" };
+            await setDelivery(ch, { status: "failed", error: "Le site web n'est pas encore correctement configuré." });
+            results[ch] = { ok: false, error: "Le site web n'est pas encore correctement configuré." };
             continue;
           }
 
@@ -464,8 +466,8 @@ const body = await req.json().catch(() => null);
           });
 
           if (artErr) {
-            await setDelivery(ch, { status: "failed", error: `Impossible de créer l'article (${artErr.message})` });
-            results[ch] = { ok: false, error: artErr.message };
+            await setDelivery(ch, { status: "failed", error: "Impossible de créer l'article pour le moment." });
+            results[ch] = { ok: false, error: "Impossible de créer l'article pour le moment." };
             continue;
           }
 
@@ -486,7 +488,7 @@ const body = await req.json().catch(() => null);
           const fbExpired = isExpired(fb["expires_at"]) && !String(fbMeta["selected"] ?? "") && !pageId;
           if (String(fb["status"] ?? "") !== "connected" || !pageId || !pageToken || fbExpired) {
             await setDelivery(ch, { status: "failed", error: fbExpired ? "Facebook expiré : reconnectez le compte." : "Votre compte Facebook n’est pas encore correctement relié." });
-            results[ch] = { ok: false, error: "not_configured" };
+            results[ch] = { ok: false, error: "Le compte Facebook n'est pas encore correctement connecté." };
             continue;
           }
 
@@ -518,7 +520,7 @@ const body = await req.json().catch(() => null);
           const igExpired = isExpired(ig["expires_at"]) && !String(igMeta["page_id"] ?? "") && !igUserId;
           if (String(ig["status"] ?? "") !== "connected" || !igUserId || !igToken || igExpired) {
             await setDelivery(ch, { status: "failed", error: igExpired ? "Instagram expiré : reconnectez le compte puis re-sélectionnez le profil Instagram." : "Votre compte Instagram n’est pas encore correctement relié." });
-            results[ch] = { ok: false, error: "not_configured" };
+            results[ch] = { ok: false, error: "Le compte Instagram n'est pas encore correctement connecté." };
             continue;
           }
 
@@ -526,7 +528,7 @@ const body = await req.json().catch(() => null);
           const instagramImages = (getChannelImageSet(ch).instagramPublishableUrls.length ? getChannelImageSet(ch).instagramPublishableUrls : instagramImageUrls).filter(Boolean).slice(0, 10);
           if (!instagramImages.length) {
             await setDelivery(ch, { status: "failed", error: "Instagram nécessite au moins 1 image" });
-            results[ch] = { ok: false, error: "missing_image" };
+            results[ch] = { ok: false, error: "Instagram a besoin d'au moins une image pour publier." };
             continue;
           }
 
@@ -564,7 +566,7 @@ const body = await req.json().catch(() => null);
           const liExpired = isExpired(li["expires_at"]);
           if (String(li["status"] ?? "") !== "connected" || !accessToken || !authorUrn || liExpired) {
             await setDelivery(ch, { status: "failed", error: liExpired ? "LinkedIn expiré : reconnectez le compte." : "Votre compte LinkedIn n’est pas encore correctement relié." });
-            results[ch] = { ok: false, error: "not_configured" };
+            results[ch] = { ok: false, error: "Le compte LinkedIn n'est pas encore correctement connecté." };
             continue;
           }
 
@@ -632,14 +634,14 @@ const body = await req.json().catch(() => null);
           const gmbExpired = isExpired(gmb["expires_at"]);
           if (String(gmb["status"] ?? "") !== "connected" || !locationName || !accountName || gmbExpired) {
             await setDelivery(ch, { status: "failed", error: gmbExpired ? "Google Business expiré : reconnectez le compte." : "Votre fiche Google Business n’est pas encore correctement reliée." });
-            results[ch] = { ok: false, error: "not_configured" };
+            results[ch] = { ok: false, error: "Le compte Google Business n'est pas encore correctement connecté." };
             continue;
           }
 
           const tok = await getGmbToken();
           if (!tok?.accessToken) {
             await setDelivery(ch, { status: "failed", error: "La connexion Google a expiré. Merci de reconnecter votre compte." });
-            results[ch] = { ok: false, error: "token" };
+            results[ch] = { ok: false, error: "La connexion Google a expiré. Merci de reconnecter votre compte." };
             continue;
           }
 
@@ -661,7 +663,7 @@ const body = await req.json().catch(() => null);
 
         results[ch] = { ok: false, error: "unsupported_channel" };
       } catch (e: unknown) {
-        const msg = errMessage(e, "Erreur");
+        const msg = errMessage(e, "L'action n'a pas pu être finalisée.");
         await setDelivery(ch, { status: "failed", error: msg });
         results[ch] = { ok: false, error: msg };
       }
@@ -722,7 +724,7 @@ const body = await req.json().catch(() => null);
       results,
     });
   } catch (e: unknown) {
-    return NextResponse.json({ error: errMessage(e, "Erreur") }, { status: 500 });
+    return jsonUserFacingError(e, { status: 500, fallback: "L'action n'a pas pu être finalisée.", code: "publish_now_failed" });
   }
 }
 

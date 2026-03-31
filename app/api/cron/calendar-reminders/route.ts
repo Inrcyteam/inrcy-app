@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { optionalEnv } from "@/lib/env";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 export const runtime = "nodejs";
 
@@ -182,7 +183,7 @@ export async function GET(req: Request) {
     .order("start_at", { ascending: true })
     .limit(500);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return jsonUserFacingError(error, { status: 500 });
 
   let inAppSent = 0;
   let emailSent = 0;

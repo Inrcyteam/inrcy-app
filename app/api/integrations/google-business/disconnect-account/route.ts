@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -21,7 +22,7 @@ export async function POST() {
     .eq("source", "gmb")
     .eq("product", "gmb");
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return jsonUserFacingError(error, { status: 500 });
   try {
     const { data } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
     const current = asRecord(asRecord(data)["settings"]);

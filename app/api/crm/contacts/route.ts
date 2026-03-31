@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 
 type Category = "particulier" | "professionnel" | "collectivite_publique";
@@ -36,7 +37,7 @@ export async function GET() {
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
+    return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
   }
 
   const { data, error } = await supabase
@@ -46,7 +47,7 @@ export async function GET() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return jsonUserFacingError(error, { status: 500 });
   }
 
   return NextResponse.json({ contacts: data ?? [] });
@@ -57,7 +58,7 @@ export async function POST(req: Request) {
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
+    return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
   }
 
 const body = await req.json().catch(() => ({}));
@@ -98,7 +99,7 @@ if (Array.isArray(body?.contacts)) {
   const { error } = await supabase.from("crm_contacts").insert(payloads);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return jsonUserFacingError(error, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, inserted: payloads.length });
@@ -138,7 +139,7 @@ if (Array.isArray(body?.contacts)) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return jsonUserFacingError(error, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, id: data?.id });
@@ -149,7 +150,7 @@ export async function PUT(req: Request) {
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
+    return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
   }
 
 const body = await req.json().catch(() => ({}));
@@ -188,13 +189,13 @@ if (Array.isArray(body?.contacts)) {
   const { error } = await supabase.from("crm_contacts").insert(payloads);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return jsonUserFacingError(error, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, inserted: payloads.length });
 }
   const id = cleanString(body.id);
-  if (!id) return NextResponse.json({ error: "Identifiant manquant." }, { status: 400 });
+  if (!id) return NextResponse.json({ error: "L'identifiant du contact est manquant." }, { status: 400 });
 
   const fromDisplay = parseDisplayName(body.display_name);
 
@@ -223,7 +224,7 @@ if (Array.isArray(body?.contacts)) {
     .eq("user_id", userData.user.id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return jsonUserFacingError(error, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });
@@ -234,12 +235,12 @@ export async function DELETE(req: Request) {
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
+    return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
   }
 
   const url = new URL(req.url);
   const id = url.searchParams.get("id")?.trim();
-  if (!id) return NextResponse.json({ error: "Identifiant manquant." }, { status: 400 });
+  if (!id) return NextResponse.json({ error: "L'identifiant du contact est manquant." }, { status: 400 });
 
   const { error } = await supabase
     .from("crm_contacts")
@@ -249,7 +250,7 @@ export async function DELETE(req: Request) {
     .eq("user_id", userData.user.id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return jsonUserFacingError(error, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

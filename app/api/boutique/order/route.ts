@@ -61,7 +61,7 @@ export async function POST(req: Request) {
   const supabase = await createSupabaseServer();
   const { data: userData, error: userErr } = await supabase.auth.getUser();
   if (userErr || !userData?.user) {
-    return NextResponse.json({ ok: false, error: "Non authentifié." }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
   }
 
   const user = userData.user;

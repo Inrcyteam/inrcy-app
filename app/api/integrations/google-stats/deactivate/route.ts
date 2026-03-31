@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -19,12 +20,12 @@ export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
+    if (authErr || !authData?.user) return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
     const userId = authData.user.id;
 
     const body = asRecord((await req.json().catch(() => ({}))) as unknown);
     const source = asString(body["source"]) ?? "site_inrcy";
-    if (source !== "site_inrcy") return NextResponse.json({ error: "Source invalide." }, { status: 400 });
+    if (source !== "site_inrcy") return NextResponse.json({ error: "La source demandée n'est pas reconnue." }, { status: 400 });
 
     await supabaseAdmin.from("integrations").update({ status: "disconnected", access_token_enc: null, refresh_token_enc: null, expires_at: null }).eq("user_id", userId).eq("provider", "google").eq("source", "site_inrcy").in("product", ["ga4", "gsc"]);
     try {
@@ -39,6 +40,6 @@ export async function POST(req: Request) {
     await clearAllToolCaches(supabase, userId);
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Une erreur est survenue. Merci de réessayer." }, { status: 500 });
+    return jsonUserFacingError(e, { status: 500 });
   }
 }

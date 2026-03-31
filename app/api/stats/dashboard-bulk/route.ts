@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { jsonUserFacingError } from '@/lib/apiUserFacingErrors';
 import { createSupabaseServer } from '@/lib/supabaseServer';
 import {
   fetchCubeOverviews,
@@ -69,9 +70,6 @@ export async function GET(req: Request) {
         : undefined,
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: (e instanceof Error ? e.message : String(e)) || 'Le service est momentanément indisponible.' },
-      { status: 500 }
-    );
+    return jsonUserFacingError(e, { status: 500 });
   }
 }

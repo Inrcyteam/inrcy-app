@@ -188,7 +188,7 @@ export default function DashboardClient() {
       setNotificationsError(null);
     } catch (e: any) {
       if (requestSeq !== notificationsRequestSeqRef.current) return;
-      setNotificationsError(e?.message || "Notifications indisponibles");
+      setNotificationsError(getSimpleFrenchErrorMessage(e, "Impossible de charger les notifications pour le moment."));
     } finally {
       if (requestSeq === notificationsRequestSeqRef.current) {
         setNotificationsLoading(false);
@@ -223,7 +223,7 @@ export default function DashboardClient() {
     setNotifications((current) => current.filter((item) => item.id !== id));
     try {
       const res = await fetch(`/api/notifications/${id}`, { method: "DELETE", credentials: "include" });
-      if (!res.ok) throw new Error(`Erreur ${res.status}`);
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible de supprimer cette notification."));
     } catch {
       setNotifications(previous);
     }
@@ -1255,7 +1255,7 @@ const activateSiteInrcyTracking = useCallback(async () => {
 
   if (!res) {
     setSiteInrcyTrackingBusy(false);
-    setSiteInrcySettingsError("Impossible de joindre le serveur.");
+    setSiteInrcySettingsError("Connexion au serveur impossible pour le moment. Merci de réessayer.");
     return;
   }
 
@@ -1303,7 +1303,7 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
 
   if (!res) {
     setSiteInrcyTrackingBusy(false);
-    setSiteInrcySettingsError("Impossible de joindre le serveur.");
+    setSiteInrcySettingsError("Connexion au serveur impossible pour le moment. Merci de réessayer.");
     return;
   }
 
@@ -1340,7 +1340,7 @@ const disconnectGoogleStats = useCallback(
 
     if (!res || !res.ok) {
       const msg = !res
-        ? "Impossible de joindre le serveur."
+        ? "Connexion au serveur impossible pour le moment. Merci de réessayer."
         : getSimpleFrenchErrorMessage(String(res.status));
       if (source === "site_inrcy") setSiteInrcySettingsError(getSimpleFrenchErrorMessage(msg));
       else setSiteWebSettingsError(getSimpleFrenchErrorMessage(msg));
@@ -1718,8 +1718,8 @@ const loadFacebookPages = useCallback(async () => {
   setFbPagesError(null);
   try {
     const r = await fetch("/api/integrations/facebook/pages", { cache: "no-store" });
+    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger vos pages Facebook."));
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j?.error || "Erreur");
     const pages = Array.isArray(j.pages) ? j.pages : [];
     setFbPages(pages);
 
@@ -1752,7 +1752,7 @@ const loadFacebookPages = useCallback(async () => {
       }
     }
   } catch (e: any) {
-    setFbPagesError(e?.message || "Impossible de charger vos pages Facebook.");
+    setFbPagesError(getSimpleFrenchErrorMessage(e, "Impossible de charger vos pages Facebook."));
   } finally {
     setFbPagesLoading(false);
   }
@@ -1858,8 +1858,8 @@ const loadInstagramAccounts = useCallback(async () => {
   setIgAccountsError(null);
   try {
     const r = await fetch("/api/integrations/instagram/accounts", { cache: "no-store" });
+    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger vos comptes Instagram."));
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j?.error || "Erreur");
     setIgAccounts(j.accounts || []);
     if (!igSelectedPageId && (j.accounts?.[0]?.page_id)) setIgSelectedPageId(j.accounts[0].page_id);
 
@@ -1878,7 +1878,7 @@ const loadInstagramAccounts = useCallback(async () => {
       setPanelSuccess("instagram", "Compte Instagram enregistré.");
     }
   } catch (e: any) {
-    setIgAccountsError(e?.message || "Impossible de charger vos comptes Instagram.");
+    setIgAccountsError(getSimpleFrenchErrorMessage(e, "Impossible de charger vos comptes Instagram."));
   } finally {
     setIgAccountsLoading(false);
   }
@@ -1986,15 +1986,15 @@ const loadGmbAccountsAndLocations = useCallback(async () => {
   setGmbListError(null);
   try {
     const r = await fetch(`/api/integrations/google-business/locations`, { cache: "no-store" });
+    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger vos pages Facebook."));
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j?.error || "Erreur");
     setGmbAccounts(j.accounts || []);
     setGmbAccountName(j.accountName || "");
     setGmbLocations(j.locations || []);
     if (j.locationsError) setGmbListError(j.locationsError);
     if (!gmbLocationName && j.locations?.[0]?.name) setGmbLocationName(j.locations[0].name);
   } catch (e: any) {
-    setGmbListError(e?.message || "Impossible de charger les établissements Google Business.");
+    setGmbListError(getSimpleFrenchErrorMessage(e, "Impossible de charger les établissements Google Business."));
   } finally {
     setGmbLoadingList(false);
   }

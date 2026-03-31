@@ -301,7 +301,7 @@ export default function CRMClient() {
     try {
       const r = await fetch("/api/crm/contacts", { method: "GET" });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger le CRM."));
+      if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger les contacts du CRM."));
       const base = Array.isArray(j?.contacts) ? j.contacts : [];
       // Merge local notes/important (if backend doesn't provide them yet)
       const merged = base.map((c: any) => ({
@@ -311,7 +311,7 @@ export default function CRMClient() {
       }));
       setContacts(merged);
     } catch (e: any) {
-      setError(getSimpleFrenchErrorMessage(e, "Impossible de charger le CRM."));
+      setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les contacts du CRM."));
     } finally {
       setLoading(false);
     }
@@ -815,7 +815,7 @@ const exportCsv = () => {
       startNew();
       setSuccess(editingId ? "Contact mis à jour." : "Contact ajouté.");
     } catch (e: any) {
-      setError(getSimpleFrenchErrorMessage(e, "Impossible de charger le CRM."));
+      setError(getSimpleFrenchErrorMessage(e, editingId ? "Impossible de mettre à jour ce contact." : "Impossible d’ajouter ce contact."));
     } finally {
       setSaving(false);
     }
@@ -845,7 +845,7 @@ const exportCsv = () => {
       if (editingId && ids.includes(editingId)) startNew();
       setSuccess(n > 1 ? "Contacts supprimés." : "Contact supprimé.");
     } catch (e: any) {
-      setError(getSimpleFrenchErrorMessage(e, "Impossible de charger le CRM."));
+      setError(getSimpleFrenchErrorMessage(e, n > 1 ? "Impossible de supprimer les contacts sélectionnés." : "Impossible de supprimer ce contact."));
     } finally {
       setSaving(false);
     }
@@ -864,7 +864,7 @@ const exportCsv = () => {
       if (editingId === id) startNew();
       setSuccess("Contact supprimé.");
     } catch (e: any) {
-      setError(getSimpleFrenchErrorMessage(e, "Impossible de charger le CRM."));
+      setError(getSimpleFrenchErrorMessage(e, "Impossible de supprimer ce contact."));
     } finally {
       setSaving(false);
     }

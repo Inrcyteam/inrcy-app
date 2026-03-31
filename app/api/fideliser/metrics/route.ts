@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -34,7 +35,7 @@ const sinceMonth = daysAgoISO(days);
     .gte("created_at", sinceMonth)
     .order("created_at", { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return jsonUserFacingError(error, { status: 500 });
 
   const events = (rows ?? []) as EventRow[];
 

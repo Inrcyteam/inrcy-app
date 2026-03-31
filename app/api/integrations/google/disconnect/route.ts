@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 /**
  * Déconnecte un compte Gmail (supprime la ligne integrations).
@@ -22,7 +23,7 @@ const body = await req.json().catch(() => ({}));
     .eq("category", "mail");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return jsonUserFacingError(error, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 
 type BoosterEventType = "publish" | "review_mail" | "promo_mail";
@@ -24,7 +25,7 @@ const body = await req.json().catch(() => ({}));
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return jsonUserFacingError(error, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });

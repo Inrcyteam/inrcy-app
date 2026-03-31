@@ -1,5 +1,6 @@
 
 import { NextResponse } from "next/server";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { sendTxMail } from "@/lib/txMailer";
 import { requireUser } from "@/lib/requireUser";
 
@@ -92,8 +93,7 @@ export async function POST(req: Request): Promise<Response> {
 
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Impossible d'envoyer l'email.";
-    console.error("[referrals] sendTxMail failed:", message, e);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    console.error("[referrals] sendTxMail failed:", e);
+    return jsonUserFacingError(e, { status: 500, fallback: "Impossible d'envoyer l'email pour le moment.", extra: { ok: false } });
   }
 }

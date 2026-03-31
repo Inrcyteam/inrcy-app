@@ -1,3 +1,4 @@
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { asRecord } from "@/lib/tsSafe";
@@ -7,7 +8,7 @@ export async function GET() {
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
+    return jsonUserFacingError("Non authentifié.", { status: 401 });
   }
 
   const userId = userData.user.id;
@@ -35,7 +36,7 @@ export async function GET() {
 
 
   if (mailError) {
-    return NextResponse.json({ error: mailError.message }, { status: 500 });
+    return jsonUserFacingError(mailError, { status: 500, fallback: "Impossible de charger vos comptes de messagerie pour le moment." });
   }
 
   return NextResponse.json({

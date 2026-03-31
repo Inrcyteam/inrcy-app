@@ -1,6 +1,6 @@
 "use client";
 
-import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -216,7 +216,7 @@ useEffect(() => {
 
         setSub(data as SubData);
       } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "Erreur inconnue.");
+        setErr(getSimpleFrenchErrorMessage(e, "Impossible de charger l’abonnement."));
       } finally {
         setLoading(false);
       }
@@ -412,8 +412,9 @@ useEffect(() => {
         // Default plan is Starter. If you later add a pack picker UI, send { plan: "Accel" } etc.
         body: JSON.stringify({ plan: "Starter" }),
       });
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Le paiement n’a pas pu être lancé pour le moment."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.url) throw new Error(json?.error || "Impossible de démarrer le paiement.");
+      if (!json?.url) throw new Error("Le paiement n’a pas pu être lancé pour le moment.");
       window.location.href = json.url;
     } catch (e: unknown) {
       setBillingMsg(getSimpleFrenchErrorMessage(e, "Le paiement n’a pas pu être lancé pour le moment."));
@@ -432,8 +433,8 @@ useEffect(() => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({}),
       });
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "La résiliation n’a pas pu être enregistrée pour le moment."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || "Impossible de résilier.");
       setBillingMsg(json?.warning || "La résiliation a bien été programmée avec un préavis d’un mois. Un email a été envoyé à iNrCy.");
       await fetchSubscription();
       setBillingBusy(false);
@@ -454,13 +455,13 @@ useEffect(() => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({}),
       });
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible d’annuler la résiliation programmée pour le moment."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || "Impossible d'annuler la résiliation.");
-      setBillingMsg("La résiliation programmée a bien été annulée.");
+      setBillingMsg(json?.message || "La résiliation programmée a bien été annulée.");
       await fetchSubscription();
       setBillingBusy(false);
     } catch (e: unknown) {
-      setBillingMsg(getSimpleFrenchErrorMessage(e, "Cette action n’a pas pu être finalisée pour le moment."));
+      setBillingMsg(getSimpleFrenchErrorMessage(e, "Impossible d’annuler la résiliation programmée pour le moment."));
       setBillingBusy(false);
     }
   };

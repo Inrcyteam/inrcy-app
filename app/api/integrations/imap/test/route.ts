@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildUserFacingErrorBody, jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import nodemailer from "nodemailer";
 import { withImap } from "@/lib/imapClient";
 import { requireUser } from "@/lib/requireUser";
@@ -24,17 +25,17 @@ export const POST = withApi(async (req: Request) => {
 
     // Basic input validation (avoid abuse and weird payloads)
     if (login.length > 320 || password.length > 2048) {
-      return NextResponse.json({ error: "Paramètres invalides" }, { status: 400 });
+      return jsonUserFacingError("Paramètres invalides", { status: 400, code: "invalid_input" });
     }
     if (imap_host.length > 255 || smtp_host.length > 255) {
-      return NextResponse.json({ error: "Paramètres invalides" }, { status: 400 });
+      return jsonUserFacingError("Paramètres invalides", { status: 400, code: "invalid_input" });
     }
 
     if (!login || !password) {
-      return NextResponse.json({ error: "Identifiant et mot de passe requis" }, { status: 400 });
+      return jsonUserFacingError("Identifiant et mot de passe requis", { status: 400, code: "invalid_input" });
     }
     if (!imap_host || !smtp_host) {
-      return NextResponse.json({ error: "Merci de renseigner l’adresse du serveur de messagerie entrant et sortant." }, { status: 400 });
+      return jsonUserFacingError("Merci de renseigner l’adresse du serveur de messagerie entrant et sortant.", { status: 400, code: "invalid_input" });
     }
 
     // IMAP connect
@@ -66,6 +67,6 @@ tls: process.env.NODE_ENV === "development"
     // Don't leak provider/internal error details in production.
     const generic = "Test IMAP/SMTP impossible";
     const detail = process.env.NODE_ENV === "development" ? ((e instanceof Error ? e.message : String(e)) || generic) : undefined;
-    return NextResponse.json({ error: generic, detail }, { status: 400 });
+    return NextResponse.json({ ...buildUserFacingErrorBody(generic, { status: 400, code: "imap_test_failed" }), detail }, { status: 400 });
   }
 }, { route: "/api/integrations/imap/test" });

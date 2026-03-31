@@ -7,7 +7,7 @@ import Image from "next/image";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
-import { getSimpleFrenchApiError } from "@/lib/userFacingErrors";
+import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -1035,7 +1035,7 @@ useEffect(() => {
     } catch (e: any) {
       if (cancelled) return;
 
-      const msg = e?.message || "Erreur inconnue";
+      const msg = getSimpleFrenchErrorMessage(e, "Impossible de charger les statistiques pour le moment.");
       setDataByCube((prev) => {
         const updated: any = { ...prev };
         for (const k of keys) {
@@ -1399,7 +1399,7 @@ function Cube({
         </div>
       </div>
 
-      {model.error ? <div className={styles.error}>Erreur : {model.error}</div> : null}
+      {model.error ? <div className={styles.error}>{getSimpleFrenchErrorMessage(model.error, "Impossible de charger les statistiques pour le moment.")}</div> : null}
 
       {/* Actions always visible (compact) */}
       <div className={styles.actionCompact}>

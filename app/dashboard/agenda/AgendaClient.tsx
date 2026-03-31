@@ -258,10 +258,16 @@ function composeAddressLine(street: string, postal: string, city: string) {
 
 async function loadContacts() {
   setContactsLoading(true);
-  const r = await fetch("/api/crm/contacts").catch(() => null);
-  const j = r ? await r.json().catch(() => ({})) : {};
-  setContacts(Array.isArray((j as any)?.contacts) ? (j as any).contacts : []);
-  setContactsLoading(false);
+  try {
+    const r = await fetch("/api/crm/contacts");
+    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger les contacts du CRM."));
+    const j = await r.json().catch(() => ({}));
+    setContacts(Array.isArray((j as any)?.contacts) ? (j as any).contacts : []);
+  } catch (e: any) {
+    setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les contacts du CRM."));
+  } finally {
+    setContactsLoading(false);
+  }
 }
 
 function toDateOnly(d: Date) {
@@ -629,7 +635,7 @@ async function submitRdv() {
         body: JSON.stringify(payload),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de créer le rendez-vous") : getSimpleFrenchErrorMessage(j?.error, "Impossible de créer le rendez-vous"));
+      if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de créer le rendez-vous.") : getSimpleFrenchErrorMessage(j?.error, "Impossible de créer le rendez-vous."));
     } else {
       const r = await fetch(`/api/calendar/events?id=${encodeURIComponent(rdvEventId)}`, {
         method: "PATCH",
@@ -637,7 +643,7 @@ async function submitRdv() {
         body: JSON.stringify(payload),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de modifier le rendez-vous") : getSimpleFrenchErrorMessage(j?.error, "Impossible de modifier le rendez-vous"));
+      if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de modifier le rendez-vous.") : getSimpleFrenchErrorMessage(j?.error, "Impossible de modifier le rendez-vous."));
     }
 
     setRdvOpen(false);
@@ -658,7 +664,7 @@ async function deleteRdv() {
   try {
     const r = await fetch(`/api/calendar/events?id=${encodeURIComponent(rdvEventId)}`, { method: "DELETE" });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de supprimer") : getSimpleFrenchErrorMessage(j?.error, "Impossible de supprimer"));
+    if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de supprimer ce rendez-vous.") : getSimpleFrenchErrorMessage(j?.error, "Impossible de supprimer ce rendez-vous."));
     setRdvOpen(false);
     await loadEventsForMonth(cursorMonth);
     setSuccess("Rendez-vous supprimé.");
@@ -674,7 +680,7 @@ async function deleteEventById(id: string) {
   try {
     const r = await fetch(`/api/calendar/events?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de supprimer") : getSimpleFrenchErrorMessage(j?.error, "Impossible de supprimer"));
+    if (!r.ok || !j.ok) throw new Error(!r.ok ? await getSimpleFrenchApiError(r, "Impossible de supprimer ce rendez-vous.") : getSimpleFrenchErrorMessage(j?.error, "Impossible de supprimer ce rendez-vous."));
     await loadEventsForMonth(cursorMonth);
   } catch (e: any) {
     // Affiche l'erreur dans la modale si elle est ouverte, sinon en haut
@@ -689,28 +695,39 @@ async function deleteEventById(id: string) {
     setLoading(true);
     setError(null);
 
-    const monthStart = startOfMonth(monthDate);
-    const monthEnd = endOfMonth(monthDate);
-    const gridStart = startOfWeekMonday(monthStart);
-    const gridEnd = endOfWeekSunday(monthEnd);
+    try {
+      const monthStart = startOfMonth(monthDate);
+      const monthEnd = endOfMonth(monthDate);
+      const gridStart = startOfWeekMonday(monthStart);
+      const gridEnd = endOfWeekSunday(monthEnd);
 
-    // timeMax exclusif côté Google : on ajoute 1 jour au dernier jour inclus
-    const timeMin = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate(), 0, 0, 0, 0);
-    const timeMax = addDays(new Date(gridEnd.getFullYear(), gridEnd.getMonth(), gridEnd.getDate(), 0, 0, 0, 0), 1);
+      // timeMax exclusif côté Google : on ajoute 1 jour au dernier jour inclus
+      const timeMin = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate(), 0, 0, 0, 0);
+      const timeMax = addDays(new Date(gridEnd.getFullYear(), gridEnd.getMonth(), gridEnd.getDate(), 0, 0, 0, 0), 1);
 
-    const r = await fetch(
-      `/api/calendar/events?timeMin=${encodeURIComponent(timeMin.toISOString())}&timeMax=${encodeURIComponent(
-        timeMax.toISOString()
-      )}`
-    );
-    const j = await r.json().catch(() => ({}));
-    setLoading(false);
+      const r = await fetch(
+        `/api/calendar/events?timeMin=${encodeURIComponent(timeMin.toISOString())}&timeMax=${encodeURIComponent(
+          timeMax.toISOString()
+        )}`
+      );
 
-    if (!r.ok || !j.ok) {
-      setError(getSimpleFrenchErrorMessage(j?.error, "Impossible de charger l’agenda."));
-      return;
+      if (!r.ok) {
+        setError(await getSimpleFrenchApiError(r, "Impossible de charger l’agenda."));
+        return;
+      }
+
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) {
+        setError(getSimpleFrenchErrorMessage(j?.error, "Impossible de charger l’agenda."));
+        return;
+      }
+
+      setEvents(Array.isArray(j.events) ? j.events : []);
+    } catch (e: any) {
+      setError(getSimpleFrenchErrorMessage(e, "Impossible de charger l’agenda."));
+    } finally {
+      setLoading(false);
     }
-    setEvents(Array.isArray(j.events) ? j.events : []);
   }
 
   useEffect(() => {

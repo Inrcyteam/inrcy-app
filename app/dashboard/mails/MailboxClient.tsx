@@ -12,6 +12,7 @@ import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
 import { createClient } from "@/lib/supabaseClient";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/dashboard/_components/ChannelImageRetouchTool";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 
 const pillBtn: React.CSSProperties = {
@@ -1905,7 +1906,7 @@ async function deleteDraftPermanently(id: string) {
       .eq("user_id", userId);
 
     if (error) {
-      setToast("Impossible de supprimer ce brouillon pour le moment.");
+      setToast("Impossible de supprimer ce brouillon pour le moment. Merci de réessayer.");
       return;
     }
 
@@ -2161,7 +2162,7 @@ async function deleteDraftPermanently(id: string) {
       setDetailsEditMode(false);
       await loadHistory();
     } catch (e: any) {
-      setDetailsActionError(e?.message || "Modification impossible.");
+      setDetailsActionError(getSimpleFrenchErrorMessage(e, "Impossible de modifier cette publication pour le moment."));
     } finally {
       setDetailsActionBusy(false);
     }
@@ -2190,7 +2191,7 @@ async function deleteDraftPermanently(id: string) {
       await loadHistory();
       setDetailsChannelKey(channel);
     } catch (e: any) {
-      setDetailsActionError(e?.message || "Suppression impossible.");
+      setDetailsActionError(getSimpleFrenchErrorMessage(e, "Impossible de supprimer cette publication pour le moment."));
     } finally {
       setDetailsActionBusy(false);
     }
@@ -2668,7 +2669,7 @@ async function deleteDraftPermanently(id: string) {
                                 {detailsItem.status === "draft"
                                   ? "Brouillon"
                                   : detailsItem.status === "error"
-                                  ? "Erreur"
+                                  ? "En échec"
                                   : detailsItem.sent_at
                                   ? `Envoyé • ${new Date(detailsItem.sent_at).toLocaleString()}`
                                   : `Historique • ${new Date(detailsItem.created_at).toLocaleString()}`}
@@ -2751,7 +2752,7 @@ async function deleteDraftPermanently(id: string) {
 
                           {detailsItem.error ? (
                             <div className={styles.detailsError}>
-                              <b>Erreur :</b> {detailsItem.error}
+                              <b>Détail :</b> {detailsItem.error}
                             </div>
                           ) : null}
                         </section>

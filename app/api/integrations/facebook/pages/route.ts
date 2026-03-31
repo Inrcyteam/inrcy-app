@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 type FbPage = { id: string; name?: string; access_token?: string };
 
@@ -27,30 +28,30 @@ export async function GET() {
 
     const { data: integ, error: integErr } = await supabaseAdmin
       .from("integrations")
-      .select("access_token_enc,status,meta")
+      .select("status,meta")
       .eq("user_id", userId)
       .eq("provider", "facebook")
       .eq("source", "facebook")
       .eq("product", "facebook")
       .maybeSingle();
 
-    if (integErr) return NextResponse.json({ error: "Erreur de base de données." }, { status: 500 });
-    if (!integ || (integ.status !== "connected" && integ.status !== "account_connected") || !integ.access_token_enc) {
+    if (integErr) return NextResponse.json({ error: "Impossible de récupérer la connexion Facebook pour le moment." }, { status: 500 });
+    if (!integ || (integ.status !== "connected" && integ.status !== "account_connected")) {
       return NextResponse.json({ error: "Compte Facebook non connecté." }, { status: 400 });
     }
 
-    // access_token_enc may be a PAGE token after selection.
-    // For /me/accounts we need the USER token (stored in meta.user_access_token).
     const integRec = asRecord(integ);
     const metaRec = asRecord(integRec["meta"]);
-    const userTokenRaw = String(
-      asString(metaRec["user_access_token_enc"]) ||
-        asString(metaRec["user_access_token"]) ||
-        asString(integRec["access_token_enc"]) ||
-        "",
-    ).trim();
+
+    // IMPORTANT:
+    // /me/accounts must always use the FACEBOOK USER token, not a selected PAGE token.
+    // access_token_enc on the integration row may contain a page token after page selection,
+    // so we intentionally do NOT fall back to it here.
+    const userTokenRaw = String(asString(metaRec["user_access_token_enc"]) || asString(metaRec["user_access_token"]) || "").trim();
     const userToken = tryDecryptToken(userTokenRaw);
-    if (!userToken) return NextResponse.json({ error: "Jeton Facebook manquant." }, { status: 400 });
+    if (!userToken) {
+      return NextResponse.json({ error: "La connexion Facebook doit être relancée pour récupérer vos pages." }, { status: 400 });
+    }
 
     const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
       fields: "id,name,access_token",
@@ -62,6 +63,6 @@ export async function GET() {
 
     return NextResponse.json({ pages });
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Erreur" }, { status: 500 });
+    return jsonUserFacingError(e, { status: 500 });
   }
 }

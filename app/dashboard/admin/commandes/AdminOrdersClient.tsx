@@ -112,7 +112,7 @@ export default function AdminOrdersClient() {
         setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: "processed" } : r)));
         setSuccess("Commande mise à jour.");
       } catch (e: any) {
-        setError(getSimpleFrenchErrorMessage(e, "Impossible de mettre à jour le statut."));
+        setError(getSimpleFrenchErrorMessage(e, "Impossible de mettre à jour le statut de la commande."));
       } finally {
         setSavingId(null);
       }

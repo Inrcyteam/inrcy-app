@@ -378,7 +378,7 @@ export default function NewDevisPage() {
 
     if (error) {
       console.error(error);
-      setFormMessage({ type: "error", text: "Impossible de sauvegarder pour le moment." });
+      setFormMessage({ type: "error", text: "Impossible d’enregistrer ce devis pour le moment." });
       return;
     }
 
@@ -501,7 +501,7 @@ export default function NewDevisPage() {
 
     const pdfBlob = await buildPdfBlob();
     if (!pdfBlob) {
-      setFormMessage({ type: "error", text: "Impossible de générer le PDF pour le moment." });
+      setFormMessage({ type: "error", text: "Impossible de générer le PDF de ce devis pour le moment." });
       return;
     }
 
@@ -514,7 +514,7 @@ export default function NewDevisPage() {
 
     if (upErr) {
       console.error(upErr);
-      setFormMessage({ type: "error", text: "Impossible de préparer le document pour l’envoi." });
+      setFormMessage({ type: "error", text: "Impossible de préparer ce devis pour l’envoi." });
       return;
     }
 

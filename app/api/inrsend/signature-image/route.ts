@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { asRecord, asString } from "@/lib/tsSafe";
 
 const BUCKET = "booster";
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
   });
 
   if (upload.error) {
-    return NextResponse.json({ error: upload.error.message || "Impossible d’envoyer l’image." }, { status: 500 });
+    return jsonUserFacingError(upload.error, { status: 500, fallback: "Impossible d’envoyer l’image pour le moment." });
   }
 
   const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);

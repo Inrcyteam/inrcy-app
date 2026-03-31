@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 
 /**
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
     .eq("category", "mail");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return jsonUserFacingError(error, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

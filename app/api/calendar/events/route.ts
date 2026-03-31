@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 /**
  * Agenda iNrCy NATIF (sans Google Calendar)
@@ -118,7 +119,7 @@ export async function GET(req: Request) {
     .order("start_at", { ascending: true })
     .limit(500);
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
 
   const events = (data ?? []).map((e: Record<string, unknown>) => ({
     id: e.id,
@@ -182,7 +183,7 @@ export async function POST(req: Request) {
     .select("id")
     .single();
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
   await createAgendaConfirmationNotification(user.id, String(body.summary ?? "(Sans titre)"), startAt).catch(() => null);
   return NextResponse.json({ ok: true, id: data?.id });
 }
@@ -228,7 +229,7 @@ export async function PATCH(req: Request) {
 
   const { error } = await supabase.from("agenda_events").update(patch).eq("id", id).eq("user_id", user.id);
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
   await createAgendaConfirmationNotification(user.id, String(body.summary ?? "(Sans titre)"), String(patch.start_at ?? body.start ?? "")).catch(() => null);
   return NextResponse.json({ ok: true });
 }
@@ -242,6 +243,6 @@ export async function DELETE(req: Request) {
   if (!id) return bad("id requis");
 
   const { error } = await supabase.from("agenda_events").delete().eq("id", id).eq("user_id", user.id);
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
   return NextResponse.json({ ok: true });
 }

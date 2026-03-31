@@ -167,10 +167,10 @@ async function fetchUserTable(
     if (opts?.orderBy) q = q.order(opts.orderBy, { ascending: !opts.desc });
     if (opts?.limit) q = q.limit(opts.limit);
     const { data, error } = await q;
-    if (error) return { table, rows: [], error: error.message };
+    if (error) return { table, rows: [], error: "Impossible de récupérer cette partie de vos données pour le moment." };
     return { table, rows: (data ?? []).map((row) => sanitizeRow(table, row)) };
   } catch (e: unknown) {
-    return { table, rows: [], error: e instanceof Error ? e.message : "unknown" };
+    return { table, rows: [], error: "Impossible de récupérer cette partie de vos données pour le moment." };
   }
 }
 

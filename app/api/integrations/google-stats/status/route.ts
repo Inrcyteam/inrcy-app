@@ -5,7 +5,7 @@ import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 export async function GET(request: Request) {
   const supabase = await createSupabaseServer();
   const { data: authData, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !authData?.user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
+  if (authErr || !authData?.user) return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
   const source = searchParams.get("source");

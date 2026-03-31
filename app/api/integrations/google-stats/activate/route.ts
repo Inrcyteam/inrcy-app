@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -235,12 +236,12 @@ export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
+    if (authErr || !authData?.user) return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
 
     const body = asRecord((await req.json().catch(() => ({}))) as unknown);
     const source = asString(body["source"]) ?? "site_inrcy";
     if (source !== "site_inrcy") {
-      return NextResponse.json({ error: "Source invalide." }, { status: 400 });
+      return NextResponse.json({ error: "La source demandée n'est pas reconnue." }, { status: 400 });
     }
 
     // siteUrl peut être fourni par le front ; sinon on le prend en DB
@@ -413,6 +414,6 @@ let adminRefreshToken = "";
 
     return NextResponse.json({ ok: true, ga4: ga4Resolved, gsc: { property: gscResolved } });
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Une erreur est survenue. Merci de réessayer." }, { status: 500 });
+    return jsonUserFacingError(e, { status: 500 });
   }
 }

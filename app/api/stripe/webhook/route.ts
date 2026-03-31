@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { verifyStripeWebhookSignature } from "@/lib/stripeRest";
 import { optionalEnv } from "@/lib/env";
@@ -99,8 +100,7 @@ export async function POST(req: Request) {
   try {
     verifyStripeWebhookSignature(payload, sig);
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Une erreur est survenue pendant la validation du paiement.";
-    return NextResponse.json({ error: msg }, { status: 400 });
+    return jsonUserFacingError(e, { status: 400, fallback: "Une erreur est survenue pendant la validation du paiement." });
   }
 
   let evt: StripeEvent;
@@ -309,7 +309,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ received: true });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Une erreur est survenue pendant la validation du paiement.";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return jsonUserFacingError(e, { status: 500, fallback: "Une erreur est survenue pendant la validation du paiement." });
   }
 }

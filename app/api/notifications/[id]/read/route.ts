@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -16,6 +17,6 @@ export async function POST(_: Request, ctx: { params: Promise<{ id: string }> })
     .eq("user_id", user.id)
     .is("read_at", null);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return jsonUserFacingError(error, { status: 500 });
   return NextResponse.json({ ok: true });
 }

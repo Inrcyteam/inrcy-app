@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type Props = {
   mode?: "page" | "drawer";
@@ -59,7 +60,7 @@ export default function AccountContent({ mode: _mode = "page" }: Props) {
           );
         }
       } catch (e: unknown) {
-        setMsg(e instanceof Error ? e.message : "Erreur inconnue");
+        setMsg(getSimpleFrenchErrorMessage(e, "Impossible de charger votre compte."));
       } finally {
         setLoading(false);
       }
@@ -142,7 +143,7 @@ export default function AccountContent({ mode: _mode = "page" }: Props) {
       setNewPassword("");
       setConfirm("");
     } catch (e: unknown) {
-      setMsg(e instanceof Error ? e.message : "Erreur lors de la mise à jour du mot de passe");
+      setMsg(getSimpleFrenchErrorMessage(e, "Impossible de mettre à jour le mot de passe."));
     } finally {
       setBusy(false);
     }

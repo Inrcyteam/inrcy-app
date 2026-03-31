@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { getGmbToken, gmbListAccounts, gmbListLocationsWithFallback } from "@/lib/googleBusiness";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 export async function GET(req: Request) {
   try {
@@ -23,13 +25,13 @@ export async function GET(req: Request) {
       try {
         locations = await gmbListLocationsWithFallback(tok.accessToken, accountName);
       } catch (e: unknown) {
-        locationsError = (e instanceof Error ? e.message : String(e)) || String(e);
+        locationsError = getSimpleFrenchErrorMessage(e, "Impossible de charger les établissements pour ce compte.");
         locations = [];
       }
     }
 
     return NextResponse.json({ accounts, accountName, locations, locationsError });
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Erreur" }, { status: 500 });
+    return jsonUserFacingError(e, { status: 500 });
   }
 }

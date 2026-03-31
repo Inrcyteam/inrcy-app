@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildUserFacingErrorBody } from "@/lib/apiUserFacingErrors";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
@@ -58,7 +59,7 @@ function verifyWidgetToken(token: string, secret: string): WidgetTokenPayload {
   const payload = JSON.parse(b64urlDecodeToBuffer(body).toString("utf8")) as WidgetTokenPayload;
   if (!payload || payload.v !== 1) throw new Error("Le lien d'accès est invalide.");
   const now = Math.floor(Date.now() / 1000);
-  if (payload.exp && now > payload.exp) throw new Error("Jeton expiré");
+  if (payload.exp && now > payload.exp) throw new Error("Le lien ou l'accès a expiré. Merci de recommencer.");
   return payload;
 }
 
@@ -123,7 +124,7 @@ export async function GET(req: Request) {
 
     if (!domain) {
       return NextResponse.json(
-        { ok: false, error: "Domaine manquant." },
+        { ok: false, error: "Le domaine du site est manquant." },
         { status: 400, headers: corsHeaders(req) }
       );
     }
@@ -143,7 +144,7 @@ export async function GET(req: Request) {
       searchParams.get("token") || req.headers.get("x-inrcy-widget-token") || "";
     if (!providedToken) {
       return NextResponse.json(
-        { ok: false, error: "Jeton manquant." },
+        { ok: false, error: "Le lien d'accès est incomplet ou invalide." },
         { status: 401, headers: corsHeaders(req) }
       );
     }
@@ -221,7 +222,7 @@ export async function GET(req: Request) {
     );
   } catch (e: unknown) {
     return NextResponse.json(
-      { ok: false, error: (e instanceof Error ? e.message : String(e)) || "Impossible de charger les actualités pour le moment." },
+      { ok: false, ...buildUserFacingErrorBody(e, { status: 500, fallback: "Impossible de charger les actualités pour le moment." }) },
       { status: 500, headers: corsHeaders(req) }
     );
   }

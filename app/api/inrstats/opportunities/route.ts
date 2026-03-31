@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server';
+import { jsonUserFacingError } from '@/lib/apiUserFacingErrors';
 import { computeOpportunitiesFromOverviews, fetchCubeOverviews, invalidateOverviewCache, toInrstatsSnapshot } from '@/lib/metrics/computeMetrics';
-
-function safeErrorMessage(e: unknown, fallback = 'Une erreur est survenue. Merci de réessayer.') {
-  if (e instanceof Error && typeof e.message === 'string' && e.message.trim()) return e.message;
-  const s = String(e ?? '').trim();
-  return s || fallback;
-}
 
 export async function GET(request: Request) {
   try {
@@ -42,9 +37,9 @@ export async function GET(request: Request) {
 
     return NextResponse.json(result);
   } catch (e: unknown) {
-    return NextResponse.json(
-      { error: 'inrstats_opportunities_failed', message: safeErrorMessage(e) },
-      { status: 500 }
-    );
+    return jsonUserFacingError(e, {
+      status: 500,
+      fallback: "Impossible de charger les opportunités pour le moment.",
+    });
   }
 }

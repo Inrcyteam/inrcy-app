@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptToken as _encryptToken } from "@/lib/oauthCrypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
@@ -380,7 +381,7 @@ export async function GET(req: Request) {
       finalUrl.searchParams.set("linked", "stats");
       finalUrl.searchParams.set("ok", "0");
       finalUrl.searchParams.set("error", error);
-      if (message) finalUrl.searchParams.set("message", message.slice(0, 200));
+      if (message) finalUrl.searchParams.set("message", getSimpleFrenchErrorMessage(message, "La connexion n'a pas pu être finalisée.").slice(0, 200));
       return clearStateCookie(NextResponse.redirect(finalUrl));
     };
 
@@ -420,7 +421,7 @@ export async function GET(req: Request) {
       finalUrl.searchParams.set("ok", "0");
       finalUrl.searchParams.set("error", oauthError || "missing_code");
       finalUrl.searchParams.set("linked", product);
-      if (oauthErrorDescription) finalUrl.searchParams.set("message", oauthErrorDescription.slice(0, 200));
+      if (oauthErrorDescription) finalUrl.searchParams.set("message", getSimpleFrenchErrorMessage(oauthErrorDescription, "La connexion n'a pas pu être finalisée.").slice(0, 200));
       return clearStateCookie(NextResponse.redirect(finalUrl));
     }
 
@@ -719,7 +720,7 @@ if (domain && tokenData.access_token) {
     const fallbackUrl = new URL("/dashboard/stats", origin);
     fallbackUrl.searchParams.set("ok", "0");
     fallbackUrl.searchParams.set("error", "oauth_callback_failed");
-    const msg = ((e instanceof Error ? e.message : String(e)) || "Une erreur est survenue. Merci de réessayer.").slice(0, 200);
+    const msg = getSimpleFrenchErrorMessage(e).slice(0, 200);
     if (msg) fallbackUrl.searchParams.set("message", msg);
     return NextResponse.redirect(fallbackUrl);
   }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildUserFacingErrorBody } from "@/lib/apiUserFacingErrors";
 import crypto from "crypto";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { withApi } from "@/lib/observability/withApi";
@@ -99,10 +100,10 @@ const handler = async (_req: Request) => {
     const source = (searchParams.get("source") || "").trim();
 
     if (!domain) {
-      return NextResponse.json({ ok: false, error: "Domaine manquant." }, { status: 400, headers: corsHeaders(null) });
+      return NextResponse.json({ ok: false, error: "Le domaine du site est manquant." }, { status: 400, headers: corsHeaders(null) });
     }
     if (source !== "inrcy_site" && source !== "site_web") {
-      return NextResponse.json({ ok: false, error: "Source invalide." }, { status: 400, headers: corsHeaders(null) });
+      return NextResponse.json({ ok: false, error: "La source demandée n'est pas reconnue." }, { status: 400, headers: corsHeaders(null) });
     }
 
     // CORS hard-binding (widgets) + dashboard allowlist (issuing tokens from app.inrcy.com).
@@ -159,7 +160,7 @@ const handler = async (_req: Request) => {
     } = await supabase.auth.getUser();
 
     if (userErr || !user) {
-      return NextResponse.json({ ok: false, error: "Non authentifié." }, { status: 401, headers: corsHeaders(allowOrigin) });
+      return NextResponse.json({ ok: false, error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401, headers: corsHeaders(allowOrigin) });
     }
 
     // User-based limiter (protect costs + prevent a single account from hammering).
@@ -223,7 +224,10 @@ const handler = async (_req: Request) => {
   } catch (e: unknown) {
     // We can't reliably know the correct origin in this catch (it may have failed before parsing),
     // so keep CORS conservative.
-    return NextResponse.json({ ok: false, error: (e instanceof Error ? e.message : String(e)) || "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes." }, { status: 500, headers: corsHeaders(null) });
+    return NextResponse.json(
+      { ok: false, ...buildUserFacingErrorBody(e, { status: 500, fallback: "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes." }) },
+      { status: 500, headers: corsHeaders(null) }
+    );
   }
 };
 

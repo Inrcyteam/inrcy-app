@@ -41,7 +41,6 @@ export const DELETE = withApi(async () => {
           {
             ok: false,
             error: "Suppression partielle. Certaines opérations n'ont pas pu être terminées automatiquement.",
-            details: errors,
           },
           { status: 500 }
         );
@@ -97,7 +96,6 @@ export const DELETE = withApi(async () => {
       {
         ok: false,
         error: "Suppression partielle. Certaines données n'ont pas pu être supprimées automatiquement.",
-        details: errors,
       },
       { status: 500 }
     );

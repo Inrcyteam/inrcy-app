@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { jsonUserFacingError } from '@/lib/apiUserFacingErrors';
 import { computeOpportunitiesFromOverviews, fetchCubeOverviews } from '@/lib/metrics/computeMetrics';
 
 export async function GET(request: Request) {
@@ -15,9 +16,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json(computeOpportunitiesFromOverviews(overviews, days));
   } catch (e: unknown) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : String(e) || 'Une erreur est survenue. Merci de réessayer.' },
-      { status: 500 }
-    );
+    return jsonUserFacingError(e, { status: 500 });
   }
 }

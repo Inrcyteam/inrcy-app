@@ -73,7 +73,7 @@ export async function enforceRateLimit(config: RateLimitConfig): Promise<NextRes
     const retryAfterSec = Math.max(1, Math.ceil(res.reset / 1000));
     return NextResponse.json(
       {
-        error: "Rate limit exceeded",
+        error: "Trop de tentatives en peu de temps. Merci de réessayer dans quelques instants.",
         name: config.name,
         limit: config.limit,
         window: config.window,
@@ -137,7 +137,7 @@ export async function enforceQuota(config: QuotaConfig): Promise<NextResponse | 
 
     return NextResponse.json(
       {
-        error: "Quota exceeded",
+        error: "Le quota de cette action a été atteint. Merci de réessayer plus tard.",
         name: config.name,
         limit: config.limit,
         periodSeconds: config.periodSeconds,

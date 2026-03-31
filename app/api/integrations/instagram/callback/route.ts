@@ -6,6 +6,7 @@ import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type TokenResponse = {
@@ -55,7 +56,7 @@ export async function GET(req: Request) {
       finalUrl.searchParams.set("linked", "instagram");
       finalUrl.searchParams.set("ok", "0");
       finalUrl.searchParams.set("error", error);
-      if (message) finalUrl.searchParams.set("message", message.slice(0, 200));
+      if (message) finalUrl.searchParams.set("message", getSimpleFrenchErrorMessage(message, "La connexion n'a pas pu être finalisée.").slice(0, 200));
       return clearStateCookie(NextResponse.redirect(finalUrl));
     };
 
@@ -70,7 +71,7 @@ export async function GET(req: Request) {
       finalUrl.searchParams.set("linked", "instagram");
       finalUrl.searchParams.set("ok", "0");
       if (fbErrorCode) finalUrl.searchParams.set("reason", String(fbErrorCode));
-      if (fbErrorMsg) finalUrl.searchParams.set("message", String(fbErrorMsg).slice(0, 200));
+      if (fbErrorMsg) finalUrl.searchParams.set("message", getSimpleFrenchErrorMessage(fbErrorMsg, "La connexion n'a pas pu être finalisée.").slice(0, 200));
       return clearStateCookie(NextResponse.redirect(finalUrl));
     }
 
@@ -196,7 +197,7 @@ if (upsertErr) return fail("db_upsert_failed", "Le service est momentanément in
     finalUrl.searchParams.set("linked", "instagram");
     finalUrl.searchParams.set("ok", "0");
     finalUrl.searchParams.set("error", "oauth_callback_failed");
-    const msg = ((e instanceof Error ? e.message : String(e)) || "Une erreur est survenue. Merci de réessayer.").slice(0, 200);
+    const msg = getSimpleFrenchErrorMessage(e).slice(0, 200);
     if (msg) finalUrl.searchParams.set("message", msg);
     return NextResponse.redirect(finalUrl);
   }

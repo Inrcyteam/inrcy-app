@@ -5,7 +5,7 @@ export async function loadImapAccount(accountId: string) {
   const supabase = await createSupabaseServer();
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    return { error: "Non authentifié." as const, status: 401 };
+    return { error: "Votre session a expiré. Merci de vous reconnecter." as const, status: 401 };
   }
 
   const { data, error } = await supabase
@@ -18,7 +18,7 @@ export async function loadImapAccount(accountId: string) {
     .single();
 
   if (error || !data) {
-    return { error: "Compte IMAP introuvable" as const, status: 404 };
+    return { error: "Ce compte mail est introuvable." as const, status: 404 };
   }
 
   const settings: any = (data as any).settings ?? {};

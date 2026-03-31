@@ -336,7 +336,7 @@ Email : {{email}}`));
         </div>
 
         <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-          {loading ? "Chargement…" : error ? `Erreur : ${error}` : `Boîtes connectées : ${oauthAccounts.length + (imapAccount ? 1 : 0)}/4`}
+          {loading ? "Chargement…" : error ? error : `Boîtes connectées : ${oauthAccounts.length + (imapAccount ? 1 : 0)}/4`}
         </div>
 {toast === "already_connected" && (
   <div style={{ marginTop: 8, fontSize: 13, color: "#fbbf24" }}>
@@ -585,11 +585,12 @@ Email : {{email}}`));
                     try {
                       setSignatureBusy(true);
                       if (signatureImagePath) {
-                        await fetch("/api/inrsend/signature-image", {
+                        const res = await fetch("/api/inrsend/signature-image", {
                           method: "DELETE",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ imagePath: signatureImagePath }),
                         });
+                        if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible de retirer cette image."));
                       }
                       setSignatureImagePath("");
                       setSignatureImageUrl("");

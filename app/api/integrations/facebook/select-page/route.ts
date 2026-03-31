@@ -4,6 +4,7 @@ import { clearAllToolCaches } from "@/lib/statsCache";
 import { encryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Page Facebook incomplète." }, { status: 400 });
     }
 
-    // Read existing meta so we don't lose meta.user_access_token, page_url, etc.
+    // Read existing meta so we don't lose the user token required to list all managed pages.
     const { data: existing, error: readErr } = await supabaseAdmin
       .from("integrations")
       .select("meta")
@@ -45,9 +46,16 @@ export async function POST(req: Request) {
     const existingRec = asRecord(existing);
     const prevMeta = asRecord(existingRec["meta"]);
     const pageUrl = `https://www.facebook.com/${pageId}`;
-    const nextMeta = { ...prevMeta, selected: true, page_url: pageUrl };
+    const nextMeta = {
+      ...prevMeta,
+      selected: true,
+      picked: pageId,
+      page_url: pageUrl,
+      page_access_token_enc: encryptToken(pageAccessToken),
+    };
 
-    // Update integration with the selected page + PAGE token (required for posting).
+    // Keep access_token_enc as the selected PAGE token for posting,
+    // while preserving the USER token inside meta.user_access_token_enc.
     const { error: upErr } = await supabaseAdmin
       .from("integrations")
       .update({
@@ -92,6 +100,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, pageUrl });
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Erreur" }, { status: 500 });
+    return jsonUserFacingError(e, { status: 500 });
   }
 }

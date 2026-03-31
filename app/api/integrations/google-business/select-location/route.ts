@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { asRecord } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 export async function POST(req: Request) {
   try {
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
       .eq("source", "gmb")
       .eq("product", "gmb");
 
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+    if (upErr) return jsonUserFacingError(upErr, { status: 500 });
 
     // Mirror to pro_tools_configs for UI
     try {
@@ -57,6 +58,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, url: gmbUrl });
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) || "Erreur" }, { status: 500 });
+    return jsonUserFacingError(e, { status: 500 });
   }
 }
