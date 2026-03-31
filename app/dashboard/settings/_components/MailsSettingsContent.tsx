@@ -114,6 +114,13 @@ export default function MailsSettingsContent() {
   const [error, setError] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<string | null>(null);
   const [busyDisconnect, setBusyDisconnect] = React.useState<string | null>(null);
+  const [signatureEnabled, setSignatureEnabled] = React.useState(true);
+  const [signatureTemplate, setSignatureTemplate] = React.useState(`{{nom_complet}}
+{{nom_entreprise}}
+Tél : {{telephone}}
+Email : {{email}}`);
+  const [signaturePreview, setSignaturePreview] = React.useState("");
+  const [signatureBusy, setSignatureBusy] = React.useState(false);
 
   // --- IMAP (slot 4 only) ---
   type ImapPresetKey = "ovh" | "ionos" | "orange" | "sfr" | "other";
@@ -173,9 +180,19 @@ React.useEffect(() => {
           throw new Error(await getSimpleFrenchApiError(res));
         }
         const data = await res.json();
+        const sigRes = await fetch("/api/inrsend/signature", { cache: "no-store" }).catch(() => null);
+        const sigData = sigRes ? await sigRes.json().catch(() => ({})) : {};
         if (!alive) return;
 
         setMailAccounts(data.mailAccounts || []);
+        if (sigRes?.ok) {
+          setSignatureEnabled(sigData?.enabled !== false);
+          setSignatureTemplate(String(sigData?.template || `{{nom_complet}}
+{{nom_entreprise}}
+Tél : {{telephone}}
+Email : {{email}}`));
+          setSignaturePreview(String(sigData?.preview || ""));
+        }
         setError(null);
       } catch (e: any) {
         if (!alive) return;
@@ -284,7 +301,90 @@ React.useEffect(() => {
   </div>
 )}
 
+{toast === "signature_saved" && (
+  <div style={{ marginTop: 8, fontSize: 13, color: "#34d399" }}>
+    ✅ Signature automatique enregistrée.
+  </div>
+)}
+
       </div>
+
+      <GlassCard
+        title="Signature automatique"
+        subtitle="Cette signature est ajoutée automatiquement à la fin des mails iNr’Send. Vous pouvez utiliser les variables {{nom_complet}}, {{nom_entreprise}}, {{telephone}}, {{email}}, {{adresse}}, {{code_postal}}, {{ville}}, {{boite_mail}}."
+      >
+        <div style={{ display: "grid", gap: 10, width: "100%" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.82)" }}>
+            <input
+              type="checkbox"
+              checked={signatureEnabled}
+              onChange={(e) => setSignatureEnabled(e.target.checked)}
+            />
+            Activer la signature automatique
+          </label>
+
+          <textarea
+            value={signatureTemplate}
+            onChange={(e) => setSignatureTemplate(e.target.value)}
+            rows={6}
+            style={{
+              width: "100%",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(255,255,255,0.06)",
+              padding: "10px 12px",
+              color: "rgba(255,255,255,0.92)",
+              resize: "vertical",
+            }}
+          />
+
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+            Aperçu actuel :
+          </div>
+          <pre
+            style={{
+              margin: 0,
+              whiteSpace: "pre-wrap",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(255,255,255,0.04)",
+              padding: "10px 12px",
+              color: "rgba(255,255,255,0.86)",
+              fontFamily: "inherit",
+              fontSize: 13,
+            }}
+          >
+            {signatureEnabled ? (signaturePreview || "Aperçu indisponible pour le moment.") : "Signature automatique désactivée."}
+          </pre>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Btn
+              label={signatureBusy ? "Enregistrement…" : "Sauvegarder la signature"}
+              disabled={signatureBusy}
+              onClick={async () => {
+                try {
+                  setSignatureBusy(true);
+                  const res = await fetch("/api/inrsend/signature", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ enabled: signatureEnabled, template: signatureTemplate }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible d’enregistrer la signature."));
+                  setSignatureEnabled(data?.enabled !== false);
+                  setSignatureTemplate(String(data?.template || signatureTemplate));
+                  setSignaturePreview(String(data?.preview || ""));
+                  setToast("signature_saved");
+                } catch (e: any) {
+                  setToast(getSimpleFrenchErrorMessage(e, "Impossible d’enregistrer la signature."));
+                } finally {
+                  setSignatureBusy(false);
+                }
+              }}
+            />
+          </div>
+        </div>
+      </GlassCard>
 
       <div className="mailsSettings_cardsGrid">
         {slots.map((i) => {

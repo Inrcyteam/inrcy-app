@@ -11,11 +11,12 @@ export async function POST(req: Request) {
   if (!accountId) return NextResponse.json({ error: "Identifiant de compte manquant." }, { status: 400 });
 
   const { error } = await supabase
-    .from("mail_accounts")
+    .from("integrations")
     .delete()
     .eq("id", accountId)
     .eq("user_id", userData.user.id)
-    .eq("provider", "imap");
+    .eq("provider", "imap")
+    .eq("category", "mail");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

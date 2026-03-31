@@ -5,6 +5,7 @@ import { fetchWithRetry } from "@/lib/observability/fetch";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
 import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
+import { applyAutoSignatureToText, buildInrSendSignature } from "@/lib/inrsendSignature";
 
 // Microsoft Graph mail send requires Node.js runtime in most deployments.
 export const runtime = "nodejs";
@@ -113,6 +114,9 @@ const handler = async (req: Request) => {
       return NextResponse.json({ error: "Boîte Outlook introuvable." }, { status: 404 });
     }
 
+    const signatureSettings = await buildInrSendSignature({ supabase: supabase as any, userId, account });
+    const finalText = applyAutoSignatureToText(text || "", signatureSettings.signatureText);
+
     // Supabase row typing may be '{}' depending on generated types.
     // Parse defensively from unknown to avoid Next.js build-time type errors.
     const accRec = asRecord(account);
@@ -166,7 +170,7 @@ const handler = async (req: Request) => {
           subject,
           body: {
             contentType: "HTML",
-            content: textToHtml(text),
+            content: textToHtml(finalText),
           },
           toRecipients: [{ emailAddress: { address: to } }],
           ...(graphAttachments.length > 0 ? { attachments: graphAttachments } : {}),
@@ -188,7 +192,7 @@ const handler = async (req: Request) => {
       status: "sent",
       to_emails: to,
       subject: subject || null,
-      body_text: text || null,
+      body_text: finalText || null,
       body_html: null,
       provider: "microsoft",
       provider_message_id: null,

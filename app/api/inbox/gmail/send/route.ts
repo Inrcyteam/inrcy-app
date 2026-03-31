@@ -4,6 +4,7 @@ import { enforceRateLimit } from "@/lib/rateLimit";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 import { withApi } from "@/lib/observability/withApi";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
+import { applyAutoSignatureToText, buildInrSendSignature } from "@/lib/inrsendSignature";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -252,7 +253,9 @@ const handler = async (req: Request) => {
   const account = accounts?.[0];
   if (!account) return NextResponse.json({ error: "Aucun compte Gmail connecté." }, { status: 400 });
 
-  // ... rest of file unchanged
+  const signatureSettings = await buildInrSendSignature({ supabase: supabase as any, userId, account });
+  const finalText = applyAutoSignatureToText(text || "", signatureSettings.signatureText);
+
 
   // ✅ tokens (chiffrés en DB)
   const accessTokenEnc: string | null = asString(asRecord(account)["access_token_enc"]);
@@ -301,7 +304,7 @@ const handler = async (req: Request) => {
   const raw = buildMimeMessage({
     to,
     subject,
-    text,
+    text: finalText,
     html,
     inReplyTo: inReplyTo || undefined,
     references: references || undefined,
@@ -350,7 +353,7 @@ const handler = async (req: Request) => {
     status: "sent",
     to_emails: to,
     subject: subject || null,
-    body_text: text || null,
+    body_text: finalText || null,
     body_html: html || null,
     provider: "gmail",
     provider_message_id: sendData?.id || null,

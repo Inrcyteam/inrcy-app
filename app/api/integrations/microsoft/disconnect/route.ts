@@ -20,11 +20,12 @@ export async function POST(req: Request) {
   }
 
   const { error } = await supabase
-    .from("mail_accounts")
+    .from("integrations")
     .delete()
     .eq("id", accountId)
     .eq("user_id", auth.user.id)
-    .eq("provider", "microsoft");
+    .eq("provider", "microsoft")
+    .eq("category", "mail");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -39,12 +39,22 @@ function safeDecode(v: string): string {
   }
 }
 
-function buildDefaultMailText(opts: { kind: SendType; name?: string; docRef?: string }): string {
+function applySignaturePreview(text: string, signature: string): string {
+  const base = String(text || "").trimEnd();
+  const sig = String(signature || "").trim();
+  if (!sig) return base;
+  if (!base) return sig;
+  if (base.replace(/\r\n/g, "\n").trim().endsWith(sig.replace(/\r\n/g, "\n").trim())) return base;
+  return `${base}\n\n${sig}`;
+}
+
+function buildDefaultMailText(opts: { kind: SendType; name?: string; docRef?: string; signature?: string }): string {
   const name = (opts.name || "").trim();
   const hello = name ? `Bonjour ${name},` : "Bonjour,";
 
   const ref = (opts.docRef || "").trim();
   const refPart = ref ? ` ${ref}` : "";
+  const closing = opts.signature?.trim() || "Cordialement,";
 
   if (opts.kind === "facture") {
     return [
@@ -54,7 +64,7 @@ function buildDefaultMailText(opts: { kind: SendType; name?: string; docRef?: st
       "",
       "Je reste à votre disposition si besoin.",
       "",
-      "Cordialement,",
+      closing,
     ].join("\n");
   }
 
@@ -66,20 +76,18 @@ function buildDefaultMailText(opts: { kind: SendType; name?: string; docRef?: st
       "",
       "Je reste disponible pour toute question ou modification.",
       "",
-      "Cordialement,",
+      closing,
     ].join("\n");
   }
 
-  // mail (CRM / generic)
   return [
     hello,
     "",
     "Je me permets de vous contacter.",
     "",
-    "Cordialement,",
+    closing,
   ].join("\n");
 }
-
 // iNrSend : centre d'historique des envois + envoi simple de mails.
 type Folder =
   | "mails"
@@ -990,6 +998,8 @@ export default function MailboxClient() {
   const [attachBusy, setAttachBusy] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [signaturePreview, setSignaturePreview] = useState("Cordialement,");
+  const [signatureEnabled, setSignatureEnabled] = useState(true);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
 
 
@@ -1170,6 +1180,18 @@ export default function MailboxClient() {
     const connected = accounts.filter((a) => a.status === "connected");
     const defaultId = connected[0]?.id || accounts[0]?.id || "";
     setSelectedAccountId((prev) => prev || defaultId);
+  }
+
+  async function loadSignature() {
+    try {
+      const res = await fetch("/api/inrsend/signature", { cache: "no-store" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      setSignatureEnabled(j?.enabled !== false);
+      setSignaturePreview(String(j?.preview || "").trim() || "Cordialement,");
+    } catch {
+      // keep fallback signature
+    }
   }
 
   async function loadHistory() {
@@ -1559,7 +1581,7 @@ const subTitle = firstNonEmpty(
       enquetes: "enquetes",
     };
     if (q && allowed[q]) setFolder(allowed[q]);
-  }, [searchParams]);
+  }, [searchParams, signatureEnabled, signaturePreview]);
 
   // Open compose + prefill basic fields from URL params.
   // Used by:
@@ -1602,7 +1624,7 @@ const subTitle = firstNonEmpty(
       else if (nameParam) setSubject((prev) => (prev?.trim() ? prev : `Message pour ${nameParam}`));
     }
     if (!textParam?.trim()) {
-      setText((prev) => (prev?.trim() ? prev : buildDefaultMailText({ kind: nextType, name: nameParam, docRef })));
+      setText((prev) => (prev?.trim() ? prev : buildDefaultMailText({ kind: nextType, name: nameParam, docRef, signature: signatureEnabled ? signaturePreview : "" })));
     }
 
     // Open the modal.
@@ -1631,7 +1653,7 @@ const subTitle = firstNonEmpty(
     };
 
     void run();
-  }, [searchParams]);
+  }, [searchParams, signatureEnabled, signaturePreview]);
 
   // Prefill compose modal from template modules (Booster / Fidéliser).
   // Usage:
@@ -1692,15 +1714,15 @@ const subTitle = firstNonEmpty(
           if (j?.subject) setSubject(String(j.subject));
           else if (preSubject) setSubject(preSubject);
 
-          if (j?.body_text) setText(String(j.body_text));
-          else if (preText) setText(preText);
+          if (j?.body_text) setText(applySignaturePreview(String(j.body_text), signatureEnabled ? signaturePreview : ""));
+          else if (preText) setText(applySignaturePreview(preText, signatureEnabled ? signaturePreview : ""));
         } catch {
           if (preSubject) setSubject(preSubject);
-          if (preText) setText(preText);
+          if (preText) setText(applySignaturePreview(preText, signatureEnabled ? signaturePreview : ""));
         }
       } else {
         if (preSubject) setSubject(preSubject);
-        if (preText) setText(preText);
+        if (preText) setText(applySignaturePreview(preText, signatureEnabled ? signaturePreview : ""));
       }
 
       setComposeType("mail");
