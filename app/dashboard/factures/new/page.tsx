@@ -194,10 +194,10 @@ export default function NewFacturePage() {
   }, [crmOpen]);
 
 
-  const [status, setStatus] = useState<DocRecord["status"] | "en_attente_paiement" | "">("brouillon");
+  const [status, setStatus] = useState<DocRecord["status"] | "en_attente_paiement" | "">("");
 
   const [paymentMethod, setPaymentMethod] =
-    useState<(typeof PAYMENT_METHODS)[number]["key"]>("virement");
+    useState<(typeof PAYMENT_METHODS)[number]["key"]>("");
 
   const [paymentDetails, setPaymentDetails] = useState("");
   const [notes, setNotes] = useState("");
@@ -595,8 +595,8 @@ export default function NewFacturePage() {
         dd.setDate(dd.getDate() + 30);
         setDueDate(dd.toISOString().slice(0, 10));
 
-        setStatus("brouillon");
-        setPaymentMethod("virement");
+        setStatus("");
+        setPaymentMethod("");
         setPaymentDetails("");
         setNotes("");
 

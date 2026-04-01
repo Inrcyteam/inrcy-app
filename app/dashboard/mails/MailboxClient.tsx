@@ -839,6 +839,73 @@ function isVideoAttachment(att: { name: string; type?: string | null; url?: stri
   return type.startsWith("video/") || /\.(mp4|mov|webm|ogg|m4v)$/.test(raw);
 }
 
+function folderTheme(f: Folder): React.CSSProperties {
+  const themes: Record<Folder, { start: string; end: string; glow: string; border: string }> = {
+    mails: {
+      start: "rgba(56,189,248,0.30)",
+      end: "rgba(167,139,250,0.26)",
+      glow: "rgba(56,189,248,0.30)",
+      border: "rgba(56,189,248,0.42)",
+    },
+    factures: {
+      start: "rgba(251,146,60,0.30)",
+      end: "rgba(244,114,182,0.22)",
+      glow: "rgba(251,146,60,0.26)",
+      border: "rgba(251,146,60,0.40)",
+    },
+    devis: {
+      start: "rgba(167,139,250,0.30)",
+      end: "rgba(56,189,248,0.24)",
+      glow: "rgba(167,139,250,0.28)",
+      border: "rgba(167,139,250,0.42)",
+    },
+    publications: {
+      start: "rgba(244,114,182,0.28)",
+      end: "rgba(251,146,60,0.22)",
+      glow: "rgba(244,114,182,0.26)",
+      border: "rgba(244,114,182,0.40)",
+    },
+    recoltes: {
+      start: "rgba(56,189,248,0.26)",
+      end: "rgba(34,197,94,0.20)",
+      glow: "rgba(56,189,248,0.26)",
+      border: "rgba(56,189,248,0.38)",
+    },
+    offres: {
+      start: "rgba(251,146,60,0.28)",
+      end: "rgba(167,139,250,0.22)",
+      glow: "rgba(251,146,60,0.24)",
+      border: "rgba(251,146,60,0.38)",
+    },
+    informations: {
+      start: "rgba(56,189,248,0.24)",
+      end: "rgba(244,114,182,0.18)",
+      glow: "rgba(56,189,248,0.24)",
+      border: "rgba(56,189,248,0.34)",
+    },
+    suivis: {
+      start: "rgba(34,197,94,0.22)",
+      end: "rgba(56,189,248,0.20)",
+      glow: "rgba(34,197,94,0.20)",
+      border: "rgba(34,197,94,0.34)",
+    },
+    enquetes: {
+      start: "rgba(244,114,182,0.26)",
+      end: "rgba(167,139,250,0.24)",
+      glow: "rgba(244,114,182,0.24)",
+      border: "rgba(244,114,182,0.36)",
+    },
+  };
+
+  const theme = themes[f];
+  return {
+    ["--folder-accent-start" as any]: theme.start,
+    ["--folder-accent-end" as any]: theme.end,
+    ["--folder-accent-glow" as any]: theme.glow,
+    ["--folder-accent-border" as any]: theme.border,
+  } as React.CSSProperties;
+}
+
 function folderLabel(f: Folder) {
   switch (f) {
     case "mails":
@@ -2313,6 +2380,7 @@ async function deleteDraftPermanently(id: string) {
                     <button
                       key={f}
                       className={`${styles.mobileFolderBtn} ${active ? styles.mobileFolderBtnActive : ""}`}
+                      style={folderTheme(f)}
                       onClick={() => {
                         updateFolder(f);
                         setMobileFoldersOpen(false);
@@ -2352,6 +2420,7 @@ async function deleteDraftPermanently(id: string) {
                   <button
                     key={f}
                     className={`${styles.folderTabBtn} ${active ? styles.folderTabBtnActive : ""}`}
+                    style={folderTheme(f)}
                     onClick={() => updateFolder(f)}
                     type="button"
                     title={folderLabel(f)}

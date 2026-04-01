@@ -55,6 +55,15 @@ type SocialSnapshot = {
   linkedin: { connected: boolean };
 };
 
+type LiveSourcesSnapshot = {
+  site_inrcy: { connected: SiteConn };
+  site_web: { connected: SiteConn };
+  gmb: { connected: boolean; metrics: unknown | null };
+  facebook: { connected: boolean };
+  instagram: { connected: boolean };
+  linkedin: { connected: boolean };
+};
+
 type SiteSettings = {
   ga4?: { property_id?: string; measurement_id?: string };
   gsc?: { property?: string };
@@ -206,14 +215,16 @@ const channelStatesPromise = getChannelConnectionStates(supabase, userId, {
   integrations: Array.isArray(integrationsAll) ? integrationsAll : [],
 });
 
-async function fetchSocialStatus() {
+async function fetchLiveSourcesStatus() {
   const states = await channelStatesPromise;
   return {
+    site_inrcy: { connected: { ga4: states.site_inrcy.ga4, gsc: states.site_inrcy.gsc } },
+    site_web: { connected: { ga4: states.site_web.ga4, gsc: states.site_web.gsc } },
     gmb: { connected: states.gmb.connected, metrics: null },
     facebook: { connected: states.facebook.connected },
     instagram: { connected: states.instagram.connected },
     linkedin: { connected: states.linkedin.connected },
-  } satisfies SocialSnapshot;
+  } satisfies LiveSourcesSnapshot;
 }
 
 // ---- Cache (anti-quota Google) ----
@@ -259,6 +270,22 @@ async function buildConnectionsKey() {
     }
   } catch {}
 
+  // 3) persisted site settings must also invalidate the cache, otherwise
+  // iNrStats can keep an old disconnected snapshot even after the bubble saved
+  // GA4/GSC ids successfully.
+  try {
+    const inrcyGa4Cfg = asRecord(asRecord(inrcySettings)["ga4"]);
+    const inrcyGscCfg = asRecord(asRecord(inrcySettings)["gsc"]);
+    const proSiteWebCfg = asRecord(asRecord(proSettings)["site_web"]);
+    const webGa4Cfg = asRecord(proSiteWebCfg["ga4"]);
+    const webGscCfg = asRecord(proSiteWebCfg["gsc"]);
+    keyParts.push(`profile:ownership=${inrcySiteOwnership}:site=${String(asRecord(profileRow)["inrcy_site_url"] ?? "")}`);
+    keyParts.push(`inrcy:ga4:${String(inrcyGa4Cfg["property_id"] ?? "")}:${String(inrcyGa4Cfg["measurement_id"] ?? "")}`);
+    keyParts.push(`inrcy:gsc:${String(inrcyGscCfg["property"] ?? "")}`);
+    keyParts.push(`site_web:ga4:${String(webGa4Cfg["property_id"] ?? "")}:${String(webGa4Cfg["measurement_id"] ?? "")}`);
+    keyParts.push(`site_web:gsc:${String(webGscCfg["property"] ?? "")}`);
+  } catch {}
+
   // Tracking toggle impacts GA4/GSC visibility (avoid serving stale cached payload)
   keyParts.push(`inrcyTrackingEnabled:${inrcyTrackingEnabled ? "1" : "0"}`);
 
@@ -283,10 +310,10 @@ if (!fresh) try {
     .maybeSingle();
   if (asRecord(cacheHit)["payload"]) {
       const payload = asRecord(asRecord(cacheHit)["payload"]);
-      // Rehydrate social connection flags to avoid stale/missing keys in cached payloads.
+      // Rehydrate all live connection flags to avoid stale/missing keys in cached payloads.
       try {
-        const social = await fetchSocialStatus();
-        payload["sources"] = { ...asRecord(payload["sources"]), ...social };
+        const liveSources = await fetchLiveSourcesStatus();
+        payload["sources"] = { ...asRecord(payload["sources"]), ...liveSources };
       } catch {}
       return NextResponse.json(payload);
   }
@@ -308,10 +335,10 @@ if (!fresh) try {
 
   if (asRecord(legacyHit)["charge_utile"]) {
     const payload = asRecord(asRecord(legacyHit)["charge_utile"]);
-    // Rehydrate social connection flags to avoid stale/missing keys in legacy cached payloads.
+    // Rehydrate all live connection flags to avoid stale/missing keys in legacy cached payloads.
     try {
-      const social = await fetchSocialStatus();
-      payload["sources"] = { ...asRecord(payload["sources"]), ...social };
+      const liveSources = await fetchLiveSourcesStatus();
+      payload["sources"] = { ...asRecord(payload["sources"]), ...liveSources };
     } catch {}
     return NextResponse.json(payload, {
       headers: fresh
