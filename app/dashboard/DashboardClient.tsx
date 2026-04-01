@@ -726,10 +726,10 @@ const loadSiteInrcy = useCallback(async () => {
     facebookAccountEmail: fbObj?.userEmail ?? "",
     fbSelectedPageId: fbObj?.pageId ?? "",
     fbSelectedPageName: fbObj?.pageName ?? "",
-    siteInrcyGa4Connected: false,
-    siteInrcyGscConnected: false,
-    siteWebGa4Connected: false,
-    siteWebGscConnected: false,
+    siteInrcyGa4Connected: !!(ga4MeasurementIdValue || ga4PropertyIdValue),
+    siteInrcyGscConnected: !!gscPropertyValue,
+    siteWebGa4Connected: !!((siteWebObj as any)?.ga4?.measurement_id || (siteWebObj as any)?.ga4?.property_id),
+    siteWebGscConnected: !!((siteWebObj as any)?.gsc?.property),
   };
 
   try {
@@ -739,10 +739,10 @@ const loadSiteInrcy = useCallback(async () => {
     if (requestSeq !== siteConfigRequestSeqRef.current) return;
 
     if (states) {
-      nextState.siteInrcyGa4Connected = !!states?.site_inrcy?.ga4;
-      nextState.siteInrcyGscConnected = !!states?.site_inrcy?.gsc;
-      nextState.siteWebGa4Connected = !!states?.site_web?.ga4;
-      nextState.siteWebGscConnected = !!states?.site_web?.gsc;
+      nextState.siteInrcyGa4Connected = Boolean(states?.site_inrcy?.ga4 || ga4MeasurementIdValue || ga4PropertyIdValue);
+      nextState.siteInrcyGscConnected = Boolean(states?.site_inrcy?.gsc || gscPropertyValue);
+      nextState.siteWebGa4Connected = Boolean(states?.site_web?.ga4 || (siteWebObj as any)?.ga4?.measurement_id || (siteWebObj as any)?.ga4?.property_id);
+      nextState.siteWebGscConnected = Boolean(states?.site_web?.gsc || (siteWebObj as any)?.gsc?.property);
 
       nextState.gmbConnected = !!states?.gmb?.connected;
       nextState.gmbAccountConnected = !!states?.gmb?.accountConnected;

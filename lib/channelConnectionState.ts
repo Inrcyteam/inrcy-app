@@ -106,11 +106,16 @@ function isConnectedGoogleStat(rows: IntegrationLite[], source: "site_inrcy" | "
   const row = latestIntegration(rows, "google", source, product);
   const status = asString(row.status);
 
-  // Important: the dashboard may run with a user-scoped server client where token
-  // columns are hidden or nulled by RLS/column grants. Do not require encrypted
-  // token columns to render the visual "Connecté" state; rely on persisted
-  // integration status + saved settings, and keep the expiry guard when present.
-  return status === "connected" && !isExpired(row.expires_at);
+  // UX rule for the dashboard:
+  // - if the IDs/settings are persisted, the tool should visually appear connected
+  //   even when the latest integration row is temporarily missing, stale, or not yet
+  //   visible through the query path used by this request.
+  // - when an integration row exists and is explicitly expired/disconnected, honor it.
+  if (!Object.keys(row).length) return true;
+  if (status === "disconnected") return false;
+  if (isExpired(row.expires_at)) return false;
+  if (!status) return true;
+  return status === "connected" || status === "account_connected";
 }
 
 export async function getChannelConnectionStates(
