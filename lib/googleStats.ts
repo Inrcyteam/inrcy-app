@@ -105,6 +105,29 @@ async function legacyOverrideDisconnected(
   return false;
 }
 
+async function selectLatestGoogleIntegration(
+  supabase: any,
+  userId: string,
+  source: StatsSourceKey,
+  product: StatsProductKey
+): Promise<GoogleTokenRow | null> {
+  const { data, error } = await supabase
+    .from("integrations")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("provider", "google")
+    .eq("source", source)
+    .eq("product", product)
+    .eq("status", "connected")
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  if (error) throw new Error("Lecture des données impossible pour le moment.");
+  const rows = Array.isArray(data) ? (data as GoogleTokenRow[]) : [];
+  return rows[0] ?? null;
+}
+
 export async function getGoogleTokenFor(
   source: StatsSourceKey,
   product: "ga4" | "gsc",
@@ -124,20 +147,8 @@ export async function getGoogleTokenFor(
     return null;
   }
 
-  const { data, error } = await supabase
-    .from("integrations")
-    .select("*")
-    .eq("user_id", effectiveUserId)
-    .eq("provider", "google")
-    .eq("source", source)
-    .eq("product", product)
-    .eq("status", "connected")
-    .maybeSingle();
-
-  if (error) throw new Error("Lecture des données impossible pour le moment.");
-  if (!data) return null;
-
-  const row = data as unknown as GoogleTokenRow;
+  const row = await selectLatestGoogleIntegration(supabase, effectiveUserId, source, product);
+  if (!row) return null;
   const usesAdmin = Boolean((row as any)?.meta?.uses_admin);
 
   let refreshToken = tryDecryptToken(row.refresh_token_enc);
@@ -418,20 +429,8 @@ export async function getGoogleTokenForAnyGoogle(
     return null;
   }
 
-  const { data, error } = await supabase
-    .from("integrations")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("provider", "google")
-    .eq("source", source)
-    .eq("product", product)
-    .eq("status", "connected")
-    .maybeSingle();
-
-  if (error) throw new Error("Lecture des données impossible pour le moment.");
-  if (!data) return null;
-
-  const row = data as unknown as GoogleTokenRow;
+  const row = await selectLatestGoogleIntegration(supabase, userId, source, product);
+  if (!row) return null;
 
   const refreshToken = tryDecryptToken(row.refresh_token_enc);
   if (!refreshToken) return null;

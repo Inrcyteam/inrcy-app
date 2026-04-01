@@ -906,6 +906,17 @@ function folderTheme(f: Folder): React.CSSProperties {
   } as React.CSSProperties;
 }
 
+function toolbarActionTheme(f: Folder): React.CSSProperties {
+  const base = folderTheme(f) as React.CSSProperties & Record<string, string>;
+  return {
+    ["--toolbar-cta-start" as any]: String(base["--folder-accent-start"] || "rgba(56,189,248,0.26)"),
+    ["--toolbar-cta-end" as any]: String(base["--folder-accent-end"] || "rgba(167,139,250,0.22)"),
+    ["--toolbar-cta-glow" as any]: String(base["--folder-accent-glow"] || "rgba(56,189,248,0.16)"),
+    ["--toolbar-cta-border" as any]: String(base["--folder-accent-border"] || "rgba(56,189,248,0.42)"),
+  } as React.CSSProperties;
+}
+
+
 function folderLabel(f: Folder) {
   switch (f) {
     case "mails":
@@ -2455,12 +2466,18 @@ async function deleteDraftPermanently(id: string) {
               <div className={styles.toolbarActions}>
                 {/* 🔁 Inversion demandée : bouton d'action passe à droite, à la place de Filtrer */}
                 {toolCfg.href ? (
-                  <Link className={styles.toolbarBtn} href={toolCfg.href} title={toolCfg.label}>
+                  <Link
+                    className={`${styles.toolbarBtn} ${styles.toolbarBtnCta}`}
+                    style={toolbarActionTheme(folder)}
+                    href={toolCfg.href}
+                    title={toolCfg.label}
+                  >
                     {toolCfg.label}
                   </Link>
                 ) : (
                   <button
-                    className={styles.toolbarBtn}
+                    className={`${styles.toolbarBtn} ${styles.toolbarBtnCta}`}
+                    style={toolbarActionTheme(folder)}
                     onClick={() => {
                       resetCompose("mail");
                       setComposeOpen(true);
