@@ -50,13 +50,35 @@ function safeJsonParse<T>(s: unknown, fallback: T): T {
 
 function normalizeDomainFromUrl(raw: string): string | null {
   try {
-    const u = new URL(raw);
+    const input = /^(https?:\/\/)/i.test(String(raw || "")) ? String(raw) : `https://${String(raw || "")}`;
+    const u = new URL(input);
     if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    const host = (u.hostname || "").toLowerCase().replace(/^www\./, "");
+    const host = (u.hostname || "").toLowerCase().replace(/^www\./, "").replace(/\.$/, "");
     return host || null;
   } catch {
     return null;
   }
+}
+
+function normalizeComparableDomain(raw: string): string | null {
+  const host = normalizeDomainFromUrl(raw);
+  return host ? host.replace(/^www\./, "") : null;
+}
+
+function domainsLooselyMatch(left: string, right: string) {
+  const a = normalizeComparableDomain(left);
+  const b = normalizeComparableDomain(right);
+  if (!a || !b) return false;
+  return a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
+}
+
+function buildReturnUrl(origin: string, returnTo: string, params: Record<string, string | null | undefined>) {
+  const finalUrl = new URL(returnTo, origin);
+  for (const [k, v] of Object.entries(params)) {
+    if (v == null || v === "") continue;
+    finalUrl.searchParams.set(k, v);
+  }
+  return finalUrl;
 }
 
 async function gaAdminFetch<T>(accessToken: string, url: string): Promise<T> {
@@ -146,15 +168,26 @@ function extractPropertyId(propertyName: string): string | null {
 
 function pickGa4Match(domain: string, candidates: Array<{ propertyId: string; measurementId?: string; defaultUri?: string }>) {
   if (candidates.length === 0) return { ok: false as const, reason: "Aucune propriété GA4 ne correspond à ce domaine." };
-  if (candidates.length > 1) {
+
+  const exactMatches = candidates.filter((c) => c.defaultUri && normalizeComparableDomain(c.defaultUri) === normalizeComparableDomain(domain));
+  const narrowed = exactMatches.length > 0 ? exactMatches : candidates;
+
+  const uniq = new Map<string, { propertyId: string; measurementId?: string; defaultUri?: string }>();
+  for (const c of narrowed) {
+    if (!c.propertyId) continue;
+    if (!uniq.has(c.propertyId)) uniq.set(c.propertyId, c);
+  }
+  const uniqueCandidates = Array.from(uniq.values());
+
+  if (uniqueCandidates.length > 1) {
     return {
       ok: false as const,
       reason:
         "Plusieurs propriétés GA4 correspondent à ce domaine. Pour éviter une incohérence, l'application bloque la connexion. (Nettoie / unifie les propriétés GA4 ou contacte le support.)",
     };
   }
-  const c = candidates[0]!;
-  if (!c.propertyId) return { ok: false as const, reason: "Impossible d'extraire le Property ID GA4." };
+  const c = uniqueCandidates[0]!;
+  if (!c?.propertyId) return { ok: false as const, reason: "Impossible d'extraire le Property ID GA4." };
   return { ok: true as const, propertyId: c.propertyId, measurementId: c.measurementId ?? null };
 }
 
@@ -176,15 +209,16 @@ async function resolveGa4FromDomain(accessToken: string, domain: string) {
       const defaultUri = asString(web["defaultUri"]);
       const measurementId = asString(web["measurementId"]) ?? undefined;
 
-      if (!defaultUri) continue;
-      const d = normalizeDomainFromUrl(String(defaultUri));
-      if (!d) continue;
+      const comparableDefaultUri = defaultUri ? normalizeComparableDomain(String(defaultUri)) : null;
+      const comparableDisplayName = p.displayName ? normalizeComparableDomain(String(p.displayName)) : null;
+      const comparableTarget = normalizeComparableDomain(domain);
+      if (!comparableTarget) continue;
 
-      const dNorm = d.replace(/^www\./, "");
-      const target = domain.replace(/^www\./, "");
-
-      if (dNorm === target) {
-        matches.push({ propertyId: pid, measurementId, defaultUri });
+      if (
+        (comparableDefaultUri && domainsLooselyMatch(comparableDefaultUri, comparableTarget)) ||
+        (comparableDisplayName && domainsLooselyMatch(comparableDisplayName, comparableTarget))
+      ) {
+        matches.push({ propertyId: pid, measurementId, defaultUri: defaultUri ?? undefined });
       }
     }
   }
@@ -222,7 +256,10 @@ async function resolveGscFromDomain(accessToken: string, domain: string, siteUrl
   if (exactScDomain) return exactScDomain.siteUrl;
 
   // Try URL-prefix properties
-  const normalizedTarget = domain.replace(/^www\./, "");
+  const normalizedTarget = normalizeComparableDomain(domain);
+  if (!normalizedTarget) {
+    throw new Error("Le domaine du site est invalide pour Search Console.");
+  }
   const urlCandidates = entries
     .map((e) => String(e.siteUrl))
     .filter((u) => u.startsWith("http://") || u.startsWith("https://"));
@@ -237,8 +274,8 @@ async function resolveGscFromDomain(accessToken: string, domain: string, siteUrl
   // Otherwise match by hostname
   for (const u of urlCandidates) {
     try {
-      const host = new URL(u).hostname.toLowerCase().replace(/^www\./, "");
-      if (host === normalizedTarget) return u;
+      const host = normalizeComparableDomain(u);
+      if (host && domainsLooselyMatch(host, normalizedTarget)) return u;
     } catch {}
   }
 
@@ -251,17 +288,16 @@ async function resolveGscFromDomain(accessToken: string, domain: string, siteUrl
 async function validateGa4Binding(accessToken: string, domain: string, propertyId: string, measurementId?: string | null) {
   const propertyName = `properties/${propertyId}`;
   const streams = await fetchDataStreams(accessToken, propertyName);
-  const target = domain.replace(/^www\./, "");
+  const target = normalizeComparableDomain(domain);
+  if (!target) return { ok: false as const };
   for (const s of streams) {
     const sr = asRecord(s);
     if (String(asString(sr["type"]) || "").toUpperCase() !== "WEB_DATA_STREAM") continue;
     const web = asRecord(sr["webStreamData"]);
     const mid = asString(web["measurementId"]);
     const defaultUri = asString(web["defaultUri"]);
-    const d = defaultUri ? normalizeDomainFromUrl(String(defaultUri)) : null;
-    if (!d) continue;
-    const dNorm = d.replace(/^www\./, "");
-    if (dNorm !== target) continue;
+    const d = defaultUri ? normalizeComparableDomain(String(defaultUri)) : null;
+    if (!d || !domainsLooselyMatch(d, target)) continue;
     if (measurementId && String(mid || "").trim() !== String(measurementId).trim()) continue;
     return { ok: true as const, measurementId: mid ?? null };
   }
@@ -269,14 +305,15 @@ async function validateGa4Binding(accessToken: string, domain: string, propertyI
 }
 
 function validateGscPropertyAgainstDomain(domain: string, property: string) {
-  const d = domain.replace(/^www\./, "").toLowerCase();
+  const d = normalizeComparableDomain(domain);
   const p = String(property || "").trim().toLowerCase();
   if (!p) return false;
+  if (!d) return false;
   if (p === `sc-domain:${d}`) return true;
   if (p.startsWith("http://") || p.startsWith("https://")) {
     try {
-      const host = new URL(p).hostname.toLowerCase().replace(/^www\./, "");
-      return host === d;
+      const host = normalizeComparableDomain(p);
+      return !!host && domainsLooselyMatch(host, d);
     } catch {
       return false;
     }
@@ -359,52 +396,49 @@ async function upsertGoogleIntegration(opts: {
 }
 
 export async function GET(req: Request) {
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+  const urlObj = new URL(req.url);
+  const stateRaw = urlObj.searchParams.get("state");
+  const stateCheck = verifyOAuthState<{ source?: string; product?: string; mode?: string; domain?: string; siteUrl?: string }>(req, "google_stats", stateRaw);
+  const returnTo = safeInternalPath(stateCheck.returnTo || "/dashboard?panel=stats", "/dashboard?panel=stats");
+  const clearStateCookie = (res: NextResponse) => {
+    if (stateCheck.cookieName) {
+      res.cookies.set(stateCheck.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+    }
+    return res;
+  };
+  const redirectBack = (params: Record<string, string | null | undefined>) => clearStateCookie(NextResponse.redirect(buildReturnUrl(origin, returnTo, params)));
+
   try {
-    const urlObj = new URL(req.url);
     const code = urlObj.searchParams.get("code");
-    const stateRaw = urlObj.searchParams.get("state");
     const oauthError = urlObj.searchParams.get("error");
     const oauthErrorDescription = urlObj.searchParams.get("error_description");
 
-    const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
-    const invalidStateUrl = new URL("/dashboard/stats?ok=0&error=oauth_state", origin);
-
-    const st = verifyOAuthState<{ source?: string; product?: string; mode?: string; domain?: string; siteUrl?: string }>(req, "google_stats", stateRaw);
-    const clearStateCookie = (res: NextResponse) => {
-      res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
-      return res;
-    };
-
-    const fail = (error: string, message?: string) => {
-      oauthCallbackEvent(req, { provider: "google_stats", outcome: "failed", error, message, return_to: returnTo, capture_in_sentry: true });
-      const finalUrl = new URL(returnTo, origin);
-      finalUrl.searchParams.set("linked", "stats");
-      finalUrl.searchParams.set("ok", "0");
-      finalUrl.searchParams.set("error", error);
-      if (message) finalUrl.searchParams.set("message", getSimpleFrenchErrorMessage(message, "La connexion n'a pas pu être finalisée.").slice(0, 200));
-      return clearStateCookie(NextResponse.redirect(finalUrl));
-    };
-
-    if (!st.ok) {
-      oauthCallbackEvent(req, { provider: "google_stats", outcome: "state_invalid", error: st.reason, return_to: "/dashboard/stats", capture_in_sentry: true });
-      return clearStateCookie(NextResponse.redirect(invalidStateUrl));
+    if (!stateCheck.ok) {
+      oauthCallbackEvent(req, { provider: "google_stats", outcome: "state_invalid", error: stateCheck.reason, return_to: returnTo, capture_in_sentry: true });
+      return redirectBack({ linked: "stats", ok: "0", error: "oauth_state" });
     }
 
-    const state = st.state;
+    const state = stateCheck.state;
     const sourceRaw = asString(state["source"]) ?? "";
     const productRaw = asString(state["product"]) ?? "";
-    const returnTo = safeInternalPath(st.returnTo || "/dashboard/stats", "/dashboard/stats");
-    oauthCallbackEvent(req, { provider: "google_stats", outcome: "started", return_to: returnTo });
-    const mode = asString(state["mode"]);
     const domainFromState = asString(state["domain"]);
     const siteUrlFromState = asString(state["siteUrl"]);
 
+    oauthCallbackEvent(req, { provider: "google_stats", outcome: "started", return_to: returnTo });
+
+    const fail = (error: string, message?: string) => {
+      oauthCallbackEvent(req, { provider: "google_stats", outcome: "failed", error, message, return_to: returnTo, capture_in_sentry: true });
+      return redirectBack({
+        linked: productRaw || "stats",
+        ok: "0",
+        error,
+        message: message ? getSimpleFrenchErrorMessage(message, "La connexion n'a pas pu être finalisée.").slice(0, 200) : undefined,
+      });
+    };
+
     if (!sourceRaw || !isAllowedSource(sourceRaw) || !productRaw || !isAllowedProduct(productRaw)) {
-      oauthCallbackEvent(req, { provider: "google_stats", outcome: "failed", error: "invalid_state", return_to: returnTo, capture_in_sentry: true });
-      const finalUrl = new URL(returnTo, origin);
-      finalUrl.searchParams.set("ok", "0");
-      finalUrl.searchParams.set("error", "invalid_state");
-      return clearStateCookie(NextResponse.redirect(finalUrl));
+      return fail("invalid_state");
     }
 
     const source: AllowedSource = sourceRaw;
@@ -416,33 +450,35 @@ export async function GET(req: Request) {
     const redirectUri = redirectFromEnv || `${origin}/api/integrations/google-stats/callback`;
 
     if (oauthError || !code) {
-      oauthCallbackEvent(req, { provider: "google_stats", outcome: oauthError === "access_denied" ? "cancelled" : "failed", error: oauthError || "missing_code", message: oauthErrorDescription || undefined, return_to: returnTo, capture_in_sentry: oauthError !== "access_denied" });
-      const finalUrl = new URL(returnTo, origin);
-      finalUrl.searchParams.set("ok", "0");
-      finalUrl.searchParams.set("error", oauthError || "missing_code");
-      finalUrl.searchParams.set("linked", product);
-      if (oauthErrorDescription) finalUrl.searchParams.set("message", getSimpleFrenchErrorMessage(oauthErrorDescription, "La connexion n'a pas pu être finalisée.").slice(0, 200));
-      return clearStateCookie(NextResponse.redirect(finalUrl));
+      oauthCallbackEvent(req, {
+        provider: "google_stats",
+        outcome: oauthError === "access_denied" ? "cancelled" : "failed",
+        error: oauthError || "missing_code",
+        message: oauthErrorDescription || undefined,
+        return_to: returnTo,
+        capture_in_sentry: oauthError !== "access_denied",
+      });
+      return redirectBack({
+        linked: product,
+        ok: "0",
+        error: oauthError || "missing_code",
+        message: oauthErrorDescription ? getSimpleFrenchErrorMessage(oauthErrorDescription, "La connexion n'a pas pu être finalisée.").slice(0, 200) : undefined,
+      });
     }
 
     if (!clientId || !clientSecret) {
       oauthCallbackEvent(req, { provider: "google_stats", outcome: "config_error", error: "oauth_config_missing", return_to: returnTo, capture_in_sentry: true });
-      return NextResponse.redirect(new URL("/dashboard/stats?panel=stats&linked=stats&ok=0&error=oauth_config_missing", origin));
+      return redirectBack({ linked: product, ok: "0", error: "oauth_config_missing" });
     }
 
-    // Use session client only to read the current user (auth cookies).
     const sessionSupabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await sessionSupabase.auth.getUser();
     if (authErr || !authData?.user) {
       oauthCallbackEvent(req, { provider: "google_stats", outcome: "not_authenticated", error: "not_authenticated", return_to: returnTo });
-      const finalUrl = new URL(returnTo, origin);
-      finalUrl.searchParams.set("ok", "0");
-      finalUrl.searchParams.set("error", "not_authenticated");
-      return clearStateCookie(NextResponse.redirect(finalUrl));
+      return redirectBack({ linked: product, ok: "0", error: "not_authenticated" });
     }
     const userId = authData.user.id;
 
-    // Rate limit OAuth callbacks (prevents abuse + accidental double-callbacks)
     const rlUser = await enforceRateLimit({
       name: `oauth_google_stats_cb_${product}`,
       identifier: userId,
@@ -460,10 +496,8 @@ export async function GET(req: Request) {
     });
     if (rlIp) return rlIp;
 
-    // Use admin client for DB writes/reads to avoid RLS issues in OAuth callbacks.
     const supabase = supabaseAdmin;
 
-    // Exchange code -> tokens
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -481,7 +515,6 @@ export async function GET(req: Request) {
       return fail("token_exchange_failed", "La connexion au compte a échoué. Merci de réessayer.");
     }
 
-    // Userinfo
     const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
@@ -491,106 +524,10 @@ export async function GET(req: Request) {
       return fail("userinfo_failed", "Impossible de récupérer les informations du compte.");
     }
 
-    // Default behavior: connect the requested product only.
-    // Activation behavior: connect BOTH ga4 & gsc + resolve correct bindings from configured domain.
-    if (mode === "activate") {
-      const domain = String(domainFromState || "").trim().toLowerCase().replace(/^www\./, "");
-      if (!domain) {
-        return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=missing_domain`, origin));
-      }
-      if (!tokenData.access_token) {
-        return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=missing_access_token`, origin));
-      }
-
-      // Upsert both integrations with the same token payload
-      await upsertGoogleIntegration({ supabase, userId, source, product: "ga4", tokenData, userInfo });
-      await upsertGoogleIntegration({ supabase, userId, source, product: "gsc", tokenData, userInfo });
-
-      // Resolve GA4 + GSC to match the configured domain
-      const [ga4Resolved, gscResolved] = await Promise.all([
-        resolveGa4FromDomain(tokenData.access_token, domain),
-        resolveGscFromDomain(tokenData.access_token, domain, siteUrlFromState || null),
-      ]);
-
-      // Persist the binding in DB (nouveau schéma)
-// - site_inrcy -> inrcy_site_configs.settings
-// - site_web -> pro_tools_configs.settings.site_web
-
-const [inrcyCfgRes, proCfgRes] = await Promise.all([
-  supabase.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle(),
-  supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
-]);
-
-const nowIso = new Date().toISOString();
-// NOTE: SiteSettings has only optional fields, so an empty object is a valid fallback.
-// Using `null` breaks TS in production builds (null not assignable to SiteSettings).
-const inrcyDataRec = asRecord(inrcyCfgRes.data);
-const proDataRec = asRecord(proCfgRes.data);
-
-const inrcySettings = safeJsonParse<SiteSettings>(inrcyDataRec["settings"], {});
-// pro_tools_configs.settings is a JSON blob; treat it as an object map.
-const proSettings = safeJsonParse<Record<string, unknown>>(proDataRec["settings"], {});
-
-if (source === "site_inrcy") {
-  const next: SiteSettings = { ...(inrcySettings ?? {}) };
-  next.ga4 = { ...(next.ga4 ?? {}), property_id: ga4Resolved.propertyId, measurement_id: ga4Resolved.measurementId ?? undefined, verified_at: nowIso };
-  next.gsc = { ...(next.gsc ?? {}), property: gscResolved, verified_at: nowIso };
-
-  const { error: upErr } = await supabase
-    .from("inrcy_site_configs")
-    .upsert({ user_id: userId, settings: next }, { onConflict: "user_id" });
-  if (upErr) {
-    return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=db_update_settings`, origin));
-  }
-} else {
-  const nextPro: Record<string, unknown> = { ...(proSettings ?? {}) };
-  const siteWeb = asRecord(nextPro["site_web"]);
-  const siteWebGa4 = asRecord(siteWeb["ga4"]);
-  const siteWebGsc = asRecord(siteWeb["gsc"]);
-
-  const nextSiteWeb: Record<string, unknown> = {
-    ...siteWeb,
-    url: siteUrlFromState || (asString(siteWeb["url"]) ?? ""),
-    ga4: {
-      ...siteWebGa4,
-      property_id: ga4Resolved.propertyId,
-      measurement_id: ga4Resolved.measurementId ?? undefined,
-      verified_at: nowIso,
-    },
-    gsc: {
-      ...siteWebGsc,
-      property: gscResolved,
-      verified_at: nowIso,
-    },
-  };
-
-  nextPro["site_web"] = nextSiteWeb;
-
-  const { error: upErr } = await supabase
-    .from("pro_tools_configs")
-    .upsert({ user_id: userId, settings: nextPro }, { onConflict: "user_id" });
-  if (upErr) {
-    return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=db_update_settings`, origin));
-  }
-}
-
-oauthCallbackEvent(req, { provider: "google_stats", outcome: "success", user_id: userId, return_to: returnTo, product, mode: "activate" });
-return clearStateCookie(NextResponse.redirect(new URL(`${returnTo}&activated=1&ok=1`, origin)));
-    }
-
-    // Non-activate: connect one product, but enforce / auto-resolve bindings for the configured site when possible.
-    await upsertGoogleIntegration({ supabase, userId, source, product, tokenData, userInfo });
-
-    // If we have a domain (passed from UI or activation flow), we can auto-resolve and/or enforce coherence.
-    const domain = String(domainFromState || "").trim().toLowerCase().replace(/^www\./, "");
+    const domain = normalizeComparableDomain(String(domainFromState || "").trim());
     const siteUrlHint = String(siteUrlFromState || "").trim();
 
-    
-if (domain && tokenData.access_token) {
-      // Nouveau schéma :
-      // - site_inrcy -> inrcy_site_configs.settings
-      // - site_web -> pro_tools_configs.settings.site_web
-
+    if (domain && tokenData.access_token) {
       const [inrcyCfgRes, proCfgRes] = await Promise.all([
         supabase.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle(),
         supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
@@ -603,7 +540,6 @@ if (domain && tokenData.access_token) {
       if (source === "site_web") {
         const nextPro: Record<string, unknown> = { ...(proSettings ?? {}) };
         const siteWebNext: Record<string, unknown> = { ...asRecord(nextPro["site_web"]) };
-        // Prefer state hint (user just typed it), otherwise keep stored
         if (siteUrlHint) siteWebNext["url"] = siteUrlHint;
         nextPro["site_web"] = siteWebNext;
 
@@ -615,34 +551,36 @@ if (domain && tokenData.access_token) {
           if (existingPid) {
             const v = await validateGa4Binding(tokenData.access_token, domain, existingPid, existingMid || null);
             if (!v.ok) {
-              if (!existingMid) {
-                const resolved = await resolveGa4FromDomain(tokenData.access_token, domain);
-                siteWebNext["ga4"] = { ...existingGa4, property_id: resolved.propertyId, measurement_id: resolved.measurementId ?? undefined, verified_at: nowIso };
-              } else {
-                return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=ga4_mismatch_domain`, origin));
-              }
-            } else {
-              if (!existingMid && v.measurementId) {
-                siteWebNext["ga4"] = { ...existingGa4, measurement_id: v.measurementId, verified_at: nowIso };
-              }
+              const resolved = await resolveGa4FromDomain(tokenData.access_token, domain);
+              siteWebNext["ga4"] = {
+                ...existingGa4,
+                property_id: resolved.propertyId,
+                measurement_id: resolved.measurementId ?? undefined,
+                verified_at: nowIso,
+              };
+            } else if (!existingMid && v.measurementId) {
+              siteWebNext["ga4"] = { ...existingGa4, measurement_id: v.measurementId, verified_at: nowIso };
             }
           } else {
             const resolved = await resolveGa4FromDomain(tokenData.access_token, domain);
-            siteWebNext["ga4"] = { ...existingGa4, property_id: resolved.propertyId, measurement_id: resolved.measurementId ?? undefined, verified_at: nowIso };
+            siteWebNext["ga4"] = {
+              ...existingGa4,
+              property_id: resolved.propertyId,
+              measurement_id: resolved.measurementId ?? undefined,
+              verified_at: nowIso,
+            };
           }
-        }
-
-        if (product === "gsc") {
+        } else {
           const existingGsc = asRecord(siteWebNext["gsc"]);
           const existingProp = (asString(existingGsc["property"]) ?? "").trim();
 
           if (existingProp) {
             if (!validateGscPropertyAgainstDomain(domain, existingProp)) {
-              return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=gsc_mismatch_domain`, origin));
-            }
-            const gscOk = await resolveGscFromDomain(tokenData.access_token, domain, siteUrlHint || null).catch(() => null);
-            if (!gscOk) {
-              return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=gsc_not_accessible`, origin));
+              const resolvedProp = await resolveGscFromDomain(tokenData.access_token, domain, siteUrlHint || null);
+              siteWebNext["gsc"] = { ...existingGsc, property: resolvedProp, verified_at: nowIso };
+            } else {
+              const gscOk = await resolveGscFromDomain(tokenData.access_token, domain, siteUrlHint || null).catch(() => null);
+              if (!gscOk) return fail("gsc_not_accessible", "La propriété Search Console de ce domaine n'est pas accessible avec ce compte Google.");
             }
           } else {
             const resolvedProp = await resolveGscFromDomain(tokenData.access_token, domain, siteUrlHint || null);
@@ -653,10 +591,8 @@ if (domain && tokenData.access_token) {
         const { error: upErr } = await supabase
           .from("pro_tools_configs")
           .upsert({ user_id: userId, settings: nextPro }, { onConflict: "user_id" });
-        if (upErr) {
-          return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=db_update_settings`, origin));
-        }
-	      } else {
+        if (upErr) return fail("db_update_settings", "Impossible d'enregistrer la configuration du site web.");
+      } else {
         const next: SiteSettings = { ...(inrcySettings ?? {}) };
 
         if (product === "ga4") {
@@ -667,34 +603,36 @@ if (domain && tokenData.access_token) {
           if (existingPid) {
             const v = await validateGa4Binding(tokenData.access_token, domain, existingPid, existingMid || null);
             if (!v.ok) {
-              if (!existingMid) {
-                const resolved = await resolveGa4FromDomain(tokenData.access_token, domain);
-                next.ga4 = { ...(next.ga4 ?? {}), property_id: resolved.propertyId, measurement_id: resolved.measurementId ?? undefined, verified_at: nowIso };
-              } else {
-                return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=ga4_mismatch_domain`, origin));
-              }
-            } else {
-              if (!existingMid && v.measurementId) {
-                next.ga4 = { ...(next.ga4 ?? {}), measurement_id: v.measurementId, verified_at: nowIso };
-              }
+              const resolved = await resolveGa4FromDomain(tokenData.access_token, domain);
+              next.ga4 = {
+                ...(next.ga4 ?? {}),
+                property_id: resolved.propertyId,
+                measurement_id: resolved.measurementId ?? undefined,
+                verified_at: nowIso,
+              };
+            } else if (!existingMid && v.measurementId) {
+              next.ga4 = { ...(next.ga4 ?? {}), measurement_id: v.measurementId, verified_at: nowIso };
             }
           } else {
             const resolved = await resolveGa4FromDomain(tokenData.access_token, domain);
-            next.ga4 = { ...(next.ga4 ?? {}), property_id: resolved.propertyId, measurement_id: resolved.measurementId ?? undefined, verified_at: nowIso };
+            next.ga4 = {
+              ...(next.ga4 ?? {}),
+              property_id: resolved.propertyId,
+              measurement_id: resolved.measurementId ?? undefined,
+              verified_at: nowIso,
+            };
           }
-        }
-
-        if (product === "gsc") {
+        } else {
           const existingGsc = next.gsc ?? {};
           const existingProp = String(existingGsc?.property || "").trim();
 
           if (existingProp) {
             if (!validateGscPropertyAgainstDomain(domain, existingProp)) {
-              return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=gsc_mismatch_domain`, origin));
-            }
-            const gscOk = await resolveGscFromDomain(tokenData.access_token, domain, siteUrlHint || null).catch(() => null);
-            if (!gscOk) {
-              return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=gsc_not_accessible`, origin));
+              const resolvedProp = await resolveGscFromDomain(tokenData.access_token, domain, siteUrlHint || null);
+              next.gsc = { ...(next.gsc ?? {}), property: resolvedProp, verified_at: nowIso };
+            } else {
+              const gscOk = await resolveGscFromDomain(tokenData.access_token, domain, siteUrlHint || null).catch(() => null);
+              if (!gscOk) return fail("gsc_not_accessible", "La propriété Search Console de ce domaine n'est pas accessible avec ce compte Google.");
             }
           } else {
             const resolvedProp = await resolveGscFromDomain(tokenData.access_token, domain, siteUrlHint || null);
@@ -705,23 +643,17 @@ if (domain && tokenData.access_token) {
         const { error: upErr } = await supabase
           .from("inrcy_site_configs")
           .upsert({ user_id: userId, settings: next }, { onConflict: "user_id" });
-        if (upErr) {
-          return NextResponse.redirect(new URL(`${returnTo}&ok=0&error=db_update_settings`, origin));
-        }
+        if (upErr) return fail("db_update_settings", "Impossible d'enregistrer la configuration du site iNrCy.");
       }
     }
 
-    oauthCallbackEvent(req, { provider: "google_stats", outcome: "success", user_id: userId, return_to: returnTo, product });
-    return clearStateCookie(NextResponse.redirect(new URL(`${returnTo}&linked=${product}&ok=1`, origin)));
+    await upsertGoogleIntegration({ supabase, userId, source, product, tokenData, userInfo });
 
+    oauthCallbackEvent(req, { provider: "google_stats", outcome: "success", user_id: userId, return_to: returnTo, product });
+    return redirectBack({ linked: product, ok: "1" });
   } catch (e: unknown) {
-    oauthCallbackException(req, "google_stats", e, { error: "oauth_callback_failed", return_to: "/dashboard/stats" });
-    const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
-    const fallbackUrl = new URL("/dashboard/stats", origin);
-    fallbackUrl.searchParams.set("ok", "0");
-    fallbackUrl.searchParams.set("error", "oauth_callback_failed");
-    const msg = getSimpleFrenchErrorMessage(e).slice(0, 200);
-    if (msg) fallbackUrl.searchParams.set("message", msg);
-    return NextResponse.redirect(fallbackUrl);
+    oauthCallbackException(req, "google_stats", e, { error: "oauth_callback_failed", return_to: returnTo });
+    const message = getSimpleFrenchErrorMessage(e).slice(0, 200);
+    return redirectBack({ linked: "stats", ok: "0", error: "oauth_callback_failed", message: message || undefined });
   }
 }

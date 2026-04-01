@@ -102,8 +102,8 @@ function isConnectedGoogleStat(rows: IntegrationLite[], source: "site_inrcy" | "
   const row = latestIntegration(rows, "google", source, product);
   const status = asString(row.status);
   const integrationConnected = status === "connected" && !isExpired(row.expires_at) && (hasTruthyString(row.access_token_enc) || hasTruthyString(row.refresh_token_enc));
-  if (integrationConnected) return true;
-  return hasGoogleSetting(fallbackSettingsNode, product);
+  const settingsConnected = hasGoogleSetting(fallbackSettingsNode, product);
+  return integrationConnected && settingsConnected;
 }
 
 export async function getChannelConnectionStates(

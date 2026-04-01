@@ -540,12 +540,14 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     const channelStates = await channelStatesPromise;
 
     // source commune des états de connexion
-    sourcesStatus.site_inrcy.connected = channelStates.site_inrcy.connected
-      ? { ga4: true, gsc: true }
-      : { ga4: false, gsc: false };
-    sourcesStatus.site_web.connected = channelStates.site_web.connected
-      ? { ga4: true, gsc: true }
-      : { ga4: false, gsc: false };
+    sourcesStatus.site_inrcy.connected = {
+      ga4: channelStates.site_inrcy.ga4,
+      gsc: channelStates.site_inrcy.gsc,
+    };
+    sourcesStatus.site_web.connected = {
+      ga4: channelStates.site_web.ga4,
+      gsc: channelStates.site_web.gsc,
+    };
 
         // Facebook: connected if a page has been selected (resource_id)
     try {

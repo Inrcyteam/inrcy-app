@@ -48,8 +48,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const source = searchParams.get("source") || "";
   const product = searchParams.get("product") || "";
-  const force = searchParams.get("force") || "";
-  const mode = searchParams.get("mode") || (force === "1" ? "activate" : "");
+  const mode = searchParams.get("mode") || "";
   const returnTo = safeInternalPath(searchParams.get("returnTo") || `/dashboard?panel=${encodeURIComponent(source)}`, `/dashboard?panel=${encodeURIComponent(source)}`);
 
   // Optional: if the UI passes a siteUrl (user just typed it), embed domain in OAuth state
@@ -63,7 +62,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Produit invalide." }, { status: 400 });
   }
 
-  // "mode=activate" => we will resolve GA4+GSC automatically from the configured site URL.
+  // Legacy support: only explicit mode=activate triggers the dual activation flow.
   // We embed the domain in the OAuth state so the callback can enforce coherence.
   let domain: string | null = null;
   let siteUrl: string | null = null;

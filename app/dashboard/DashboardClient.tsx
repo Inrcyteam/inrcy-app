@@ -1010,7 +1010,6 @@ const connectSiteInrcyGa4 = useCallback(() => {
   const qp = new URLSearchParams({
     source: "site_inrcy",
     product: "ga4",
-    force: "1",
     siteUrl,
   });
   // L'OAuth stats est séparé de l'OAuth Gmail (mails).
@@ -1030,15 +1029,11 @@ const connectSiteInrcyGsc = useCallback(() => {
   const qp = new URLSearchParams({
     source: "site_inrcy",
     product: "gsc",
-    force: "1",
     siteUrl,
   });
   window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
 }, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl]);
 
-// ✅ Mode rented : déclenche une activation "serveur" (sans saisie d'IDs)
-// - Si un token Google existe déjà côté Supabase, l'API résout GA4 + GSC via le domaine et remplit les settings.
-// - Sinon, on bascule sur le flow OAuth "activate".
 const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     const requestSeq = ++kpisRequestSeqRef.current;
     const fresh = options?.fresh === true;
@@ -2105,11 +2100,10 @@ const connectSiteWebGa4 = useCallback(() => {
     setSiteWebSettingsError("Renseigne le lien du site avant de connecter Google Analytics.");
     return;
   }
-  // ✅ UX: si les champs GA4 sont vides, on auto-résout après OAuth à partir du domaine du site.
+  // Connexion GA4 seule : la résolution se fait uniquement pour GA4.
   const qp = new URLSearchParams({
     source: "site_web",
     product: "ga4",
-    force: "1",
     siteUrl,
   });
   window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
@@ -2121,11 +2115,10 @@ const connectSiteWebGsc = useCallback(() => {
     setSiteWebSettingsError("Renseigne le lien du site avant de connecter Search Console.");
     return;
   }
-  // ✅ UX: si la propriété GSC est vide, on auto-résout après OAuth à partir du domaine du site.
+  // Connexion GSC seule : la résolution se fait uniquement pour GSC.
   const qp = new URLSearchParams({
     source: "site_web",
     product: "gsc",
-    force: "1",
     siteUrl,
   });
   window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
