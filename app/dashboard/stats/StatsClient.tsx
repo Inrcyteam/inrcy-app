@@ -519,39 +519,25 @@ if (cubeKey === "site_inrcy") {
     };
   }
 
-  // En mode RENTED, la connexion est "globale" (Suivi) et passe par le compte admin iNrCy.
-  if (ownership === "rented") {
-    const ok = !!c?.ga4 && !!c?.gsc;
-    if (!ok) {
-      return {
-        key: "connect",
-        title: "Activer",
-        detail: "Active le suivi du site iNrCy (GA4 + Search Console) via iNrCy.",
-        href: "/dashboard?panel=site_inrcy",
-        pill: "Connexion",
-      };
-    }
-    // Déjà activé: on propose une action business plutôt qu'une connexion
-  } else {
-    // Sold / autres: connexion classique GA4 puis GSC par le compte du pro
-    if (!c?.ga4) {
-      return {
-        key: "connect",
-        title: "Connecter GA4",
-        detail: "Pour analyser vos visiteurs et leur comportement.",
-        href: "/dashboard?panel=site_inrcy",
-        pill: "Connexion",
-      };
-    }
-    if (!c?.gsc) {
-      return {
-        key: "connect",
-        title: "Connecter Google Search Console",
-        detail: "Pour lire les intentions de recherche (mots-clés).",
-        href: "/dashboard?panel=site_inrcy",
-        pill: "Connexion",
-      };
-    }
+  // Site iNrCy : on gère maintenant GA4 et GSC séparément dans iNrStats,
+  // exactement comme pour Site Web, quel que soit le mode de propriété.
+  if (!c?.ga4) {
+    return {
+      key: "connect",
+      title: "Connecter GA4",
+      detail: "Pour analyser vos visiteurs et leur comportement.",
+      href: "/dashboard?panel=site_inrcy",
+      pill: "Connexion",
+    };
+  }
+  if (!c?.gsc) {
+    return {
+      key: "connect",
+      title: "Connecter Google Search Console",
+      detail: "Pour lire les intentions de recherche (mots-clés).",
+      href: "/dashboard?panel=site_inrcy",
+      pill: "Connexion",
+    };
   }
 }
 
@@ -1137,9 +1123,7 @@ const connections =
   key === "site_inrcy"
     ? inrcyDisconnected
       ? { ga4: false, gsc: false }
-      : inrcyOwnership === "rented"
-        ? { main: !!ov.sources?.site_inrcy?.connected?.ga4 && !!ov.sources?.site_inrcy?.connected?.gsc, ga4: !!ov.sources?.site_inrcy?.connected?.ga4, gsc: !!ov.sources?.site_inrcy?.connected?.gsc }
-        : { ga4: !!ov.sources?.site_inrcy?.connected?.ga4, gsc: !!ov.sources?.site_inrcy?.connected?.gsc }
+      : { ga4: !!ov.sources?.site_inrcy?.connected?.ga4, gsc: !!ov.sources?.site_inrcy?.connected?.gsc }
     : key === "site_web"
       ? { ga4: !!ov.sources?.site_web?.connected?.ga4, gsc: !!ov.sources?.site_web?.connected?.gsc }
       : key === "gmb"
@@ -1347,16 +1331,13 @@ function Cube({
 }) {
   const [open, setOpen] = useState(false);
   const isSite = model.key === "site_inrcy" || model.key === "site_web";
-  const isRentedInrcy = model.key === "site_inrcy" && model.inrcyOwnership === "rented";
 
   const action = (model as any).action ?? ({ key: "connect", title: "Connexion", detail: "", href: "#", pill: "Connexion" } as const);
   const pill = (action as any)?.pill ?? "Connexion";
   const pillKey = String(pill).toLowerCase();
 
   const connectionOk = isSite
-    ? isRentedInrcy
-      ? !!model.connections.ga4 && !!model.connections.gsc
-      : !!model.connections.ga4 || !!model.connections.gsc
+    ? !!model.connections.ga4 || !!model.connections.gsc
     : !!model.connections.main;
 
   return (
@@ -1376,14 +1357,10 @@ function Cube({
         <div className={styles.cubeBadges}>
           <div className={styles.pills}>
             {isSite ? (
-              isRentedInrcy ? (
-                <StatusPill ok={connectionOk} label={connectionOk ? "Connecté" : "Déconnecté"} />
-              ) : (
-                <>
-                  <StatusPill ok={!!model.connections.ga4} label="GA4" />
-                  <StatusPill ok={!!model.connections.gsc} label="GSC" />
-                </>
-              )
+              <>
+                <StatusPill ok={!!model.connections.ga4} label="GA4" />
+                <StatusPill ok={!!model.connections.gsc} label="GSC" />
+              </>
             ) : (
               <StatusPill ok={!!model.connections.main} label={model.connections.main ? "Connecté" : "Déconnecté"} />
             )}
