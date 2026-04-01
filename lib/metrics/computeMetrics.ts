@@ -105,7 +105,7 @@ export function isCubeConnected(cube: CubeKey, ov: Overview): boolean {
   const sources = safeObj(ov?.sources);
   if (cube === 'site_inrcy' || cube === 'site_web') {
     const conn = safeObj(safeObj(sources[cube]).connected);
-    return Boolean(conn.ga4) && Boolean(conn.gsc);
+    return Boolean(conn.ga4) || Boolean(conn.gsc);
   }
   return Boolean(safeObj(sources[cube]).connected);
 }
