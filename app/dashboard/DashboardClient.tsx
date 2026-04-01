@@ -1444,10 +1444,11 @@ const saveSiteInrcyUrl = useCallback(async () => {
 
   setSiteInrcySettingsError(null);
   setSiteInrcySavedUrl(url);
-  triggerGeneratorRefresh();
   setSiteInrcyUrlNotice("✅ Lien du site enregistré");
+  triggerGeneratorRefresh();
+  window.setTimeout(() => setSiteInrcyUrlNotice("✅ Lien du site enregistré"), 50);
   window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
-}, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl]);
+}, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl, triggerGeneratorRefresh]);
 
 // =========================
 // ✅ Site web (indépendant)
