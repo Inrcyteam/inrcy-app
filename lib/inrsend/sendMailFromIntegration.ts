@@ -88,11 +88,13 @@ async function refreshMicrosoftAccessToken(refreshToken: string, scope?: string 
   return { ok: res.ok, status: res.status, data };
 }
 
-function buildSimpleGmailRaw(to: string, subject: string, text: string, html: string) {
+function buildSimpleGmailRaw(from: string, to: string, subject: string, text: string, html: string) {
   const altBoundary = `inr_alt_${Date.now()}`;
   const headers = [
+    from ? `From: ${from}` : "",
     `To: ${to}`,
     `Subject: ${subject}`,
+    `Date: ${new Date().toUTCString()}`,
     "MIME-Version: 1.0",
     `Content-Type: multipart/alternative; boundary=\"${altBoundary}\"`,
   ];
@@ -114,7 +116,7 @@ function buildSimpleGmailRaw(to: string, subject: string, text: string, html: st
     "",
   ].join("\r\n");
 
-  return toBase64Url(headers.join("\r\n") + "\r\n\r\n" + parts);
+  return toBase64Url(headers.filter(Boolean).join("\r\n") + "\r\n\r\n" + parts);
 }
 
 async function sendViaGmail(account: Record<string, unknown>, to: string, subject: string, text: string, html: string) {
@@ -133,7 +135,8 @@ async function sendViaGmail(account: Record<string, unknown>, to: string, subjec
     }
   }
 
-  const raw = buildSimpleGmailRaw(to, subject, text, html);
+  const from = asString(account.account_email) || "";
+  const raw = buildSimpleGmailRaw(from, to, subject, text, html);
   let sendRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },

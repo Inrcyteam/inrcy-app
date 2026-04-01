@@ -95,7 +95,9 @@ async function getProRecipient(userId: string): Promise<RecipientInfo | null> {
 }
 
 function getContactRecipient(meta: Record<string, unknown>): RecipientInfo | null {
-  const contact = safeObj(safeObj(meta.inrcy).contact);
+  const rootContact = safeObj(meta.contact);
+  const nestedContact = safeObj(safeObj(meta.inrcy).contact);
+  const contact = Object.keys(nestedContact).length ? nestedContact : rootContact;
   const email = normalizeEmail(contact.email);
   if (!email) return null;
   return {
@@ -109,7 +111,9 @@ function getContactRecipient(meta: Record<string, unknown>): RecipientInfo | nul
 
 
 function getReminderMailAccountId(meta: Record<string, unknown>) {
-  const reminders = safeObj(meta.reminders);
+  const rootReminders = safeObj(meta.reminders);
+  const nestedReminders = safeObj(safeObj(meta.inrcy).reminders);
+  const reminders = Object.keys(rootReminders).length ? rootReminders : nestedReminders;
   const value = reminders.mailAccountId;
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
@@ -137,7 +141,14 @@ function getRecipientSentAt(reminders: Record<string, unknown>, kind: RecipientK
   const current = sentAtByOffset[String(offsetMinutes)];
   if (typeof current === "string" && current.trim()) return current;
 
-  if (offsetMinutes === 1440 && typeof reminders.lastEmailReminderAt === "string" && reminders.lastEmailReminderAt.trim()) {
+  // Backward compatibility: older events only stored a global 24h marker.
+  // We only treat it as the pro marker so client reminders are not skipped.
+  if (
+    kind === "pro" &&
+    offsetMinutes === 1440 &&
+    typeof reminders.lastEmailReminderAt === "string" &&
+    reminders.lastEmailReminderAt.trim()
+  ) {
     return reminders.lastEmailReminderAt;
   }
 
@@ -320,19 +331,38 @@ export async function GET(req: Request) {
 
         const mail = buildReminderMail(row, offsetMinutes, recipient);
         try {
+          let sent = false;
+
           if (recipient.kind === "contact" && selectedMailAccountId) {
-            await sendMailFromIntegration({
-              userId: String(row.user_id),
-              accountId: selectedMailAccountId,
-              to: recipient.email,
-              subject: mail.subject,
-              text: mail.text,
-              html: mail.html,
-            });
-          } else {
+            try {
+              await sendMailFromIntegration({
+                userId: String(row.user_id),
+                accountId: selectedMailAccountId,
+                to: recipient.email,
+                subject: mail.subject,
+                text: mail.text,
+                html: mail.html,
+              });
+              sent = true;
+            } catch (integrationError) {
+              console.error("[calendar-reminders] inrsend delivery failed, fallback to iNrCy", {
+                eventId: row.id,
+                recipient: recipient.email,
+                kind: recipient.kind,
+                offsetMinutes,
+                accountId: selectedMailAccountId,
+                error: integrationError,
+              });
+            }
+          }
+
+          if (!sent) {
             if (!smtpConfigured) continue;
             await sendTxMail({ to: recipient.email, subject: mail.subject, text: mail.text, html: mail.html });
+            sent = true;
           }
+
+          if (!sent) continue;
 
           emailSent += 1;
           nextReminders = markRecipientSent(nextReminders, recipient.kind, offsetMinutes, now.toISOString());
@@ -344,7 +374,7 @@ export async function GET(req: Request) {
             recipient: recipient.email,
             kind: recipient.kind,
             offsetMinutes,
-            via: recipient.kind === "contact" && selectedMailAccountId ? "inrsend" : "inrcy",
+            via: recipient.kind === "contact" && selectedMailAccountId ? "inrsend-or-fallback" : "inrcy",
             error: mailError,
           });
         }
