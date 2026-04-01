@@ -1,4 +1,5 @@
 import { asRecord, asString } from "@/lib/tsSafe";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -99,11 +100,17 @@ function hasGoogleSetting(settingsNode: unknown, product: "ga4" | "gsc") {
 }
 
 function isConnectedGoogleStat(rows: IntegrationLite[], source: "site_inrcy" | "site_web", product: "ga4" | "gsc", fallbackSettingsNode?: unknown) {
+  const settingsConnected = hasGoogleSetting(fallbackSettingsNode, product);
+  if (!settingsConnected) return false;
+
   const row = latestIntegration(rows, "google", source, product);
   const status = asString(row.status);
-  const integrationConnected = status === "connected" && !isExpired(row.expires_at) && (hasTruthyString(row.access_token_enc) || hasTruthyString(row.refresh_token_enc));
-  const settingsConnected = hasGoogleSetting(fallbackSettingsNode, product);
-  return integrationConnected && settingsConnected;
+
+  // Important: the dashboard may run with a user-scoped server client where token
+  // columns are hidden or nulled by RLS/column grants. Do not require encrypted
+  // token columns to render the visual "Connecté" state; rely on persisted
+  // integration status + saved settings, and keep the expiry guard when present.
+  return status === "connected" && !isExpired(row.expires_at);
 }
 
 export async function getChannelConnectionStates(
@@ -128,9 +135,9 @@ export async function getChannelConnectionStates(
         supabase.from("profiles").select("inrcy_site_ownership,inrcy_site_url").eq("user_id", userId).maybeSingle(),
         supabase.from("inrcy_site_configs").select("site_url,settings").eq("user_id", userId).maybeSingle(),
         supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
-        supabase
+        supabaseAdmin
           .from("integrations")
-          .select("provider,source,product,status,resource_id,resource_label,resource_url,display_name,email_address,expires_at,access_token_enc,refresh_token_enc,meta,updated_at,created_at")
+          .select("provider,source,product,status,resource_id,resource_label,resource_url,display_name,email_address,expires_at,meta,updated_at,created_at")
           .eq("user_id", userId),
       ]);
 
