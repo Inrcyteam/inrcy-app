@@ -48,6 +48,7 @@ function bad(msg: string, status = 400) {
 type ReminderMeta = {
   inAppMinutesBefore?: number;
   emailMinutesBefore?: number;
+  mailAccountId?: string | null;
   lastInAppReminderAt?: string | null;
   lastEmailReminderAt?: string | null;
 };
@@ -62,9 +63,13 @@ function buildAgendaMeta(input: unknown, previous?: unknown) {
   const prevReminders = safeObj(prev.reminders);
   const nextReminders = safeObj(next.reminders);
 
+  const nextMailAccountId = typeof nextReminders.mailAccountId === "string" ? nextReminders.mailAccountId.trim() : nextReminders.mailAccountId === null ? null : undefined;
+  const prevMailAccountId = typeof prevReminders.mailAccountId === "string" ? prevReminders.mailAccountId.trim() : prevReminders.mailAccountId === null ? null : undefined;
+
   const reminders: ReminderMeta = {
     inAppMinutesBefore: Number(nextReminders.inAppMinutesBefore ?? prevReminders.inAppMinutesBefore ?? 120),
     emailMinutesBefore: Number(nextReminders.emailMinutesBefore ?? prevReminders.emailMinutesBefore ?? 1440),
+    mailAccountId: nextMailAccountId !== undefined ? (nextMailAccountId || null) : (prevMailAccountId || null),
     lastInAppReminderAt: typeof prevReminders.lastInAppReminderAt === "string" ? prevReminders.lastInAppReminderAt : null,
     lastEmailReminderAt: typeof prevReminders.lastEmailReminderAt === "string" ? prevReminders.lastEmailReminderAt : null,
   };
@@ -76,10 +81,16 @@ function buildAgendaMeta(input: unknown, previous?: unknown) {
   };
 }
 
+const AGENDA_TIMEZONE = "Europe/Paris";
+
 async function createAgendaConfirmationNotification(userId: string, title: string, startAt: string) {
   const when = new Date(startAt);
   const whenLabel = Number.isFinite(when.getTime())
-    ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(when)
+    ? new Intl.DateTimeFormat("fr-FR", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: AGENDA_TIMEZONE,
+      }).format(when)
     : "bientôt";
 
   await supabaseAdmin.from("notifications").insert({

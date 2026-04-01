@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { optionalEnv } from "@/lib/env";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
 
 export const runtime = "nodejs";
 
@@ -37,10 +38,16 @@ function asNumber(value: unknown, fallback: number) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
+const AGENDA_TIMEZONE = "Europe/Paris";
+
 function fmtDate(iso: string) {
   const d = new Date(iso);
   return Number.isFinite(d.getTime())
-    ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeStyle: "short" }).format(d)
+    ? new Intl.DateTimeFormat("fr-FR", {
+        dateStyle: "full",
+        timeStyle: "short",
+        timeZone: AGENDA_TIMEZONE,
+      }).format(d)
     : iso;
 }
 
@@ -100,6 +107,20 @@ function getContactRecipient(meta: Record<string, unknown>): RecipientInfo | nul
   };
 }
 
+
+function getReminderMailAccountId(meta: Record<string, unknown>) {
+  const reminders = safeObj(meta.reminders);
+  const value = reminders.mailAccountId;
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function getSelectedMailAccountIdFromSettings(settings: unknown) {
+  const root = safeObj(settings);
+  const inrcalendar = safeObj(root.inrcalendar);
+  const value = inrcalendar.selected_mail_account_id;
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
 function buildRecipients(pro: RecipientInfo | null, contact: RecipientInfo | null) {
   const unique = new Map<string, RecipientInfo>();
   for (const recipient of [pro, contact]) {
@@ -145,13 +166,25 @@ function markRecipientSent(
   };
 }
 
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function buildReminderMail(row: { title: string | null; description: string | null; location: string | null; start_at: string | null }, offsetMinutes: number, recipient: RecipientInfo) {
   const greetingName = (recipient.firstName || recipient.companyName || "").trim();
   const greeting = greetingName ? `Bonjour ${greetingName},` : "Bonjour,";
   const subject = `Rappel de rendez-vous ${offsetLabel(offsetMinutes)} — ${row.title || "iNrCalendar"}`;
+  const eventTitle = String(row.title || "Rendez-vous");
+  const formattedDate = fmtDate(String(row.start_at));
+  const reminderLabel = offsetLabel(offsetMinutes);
   const intro = recipient.kind === "pro"
-    ? `Petit rappel : votre rendez-vous "${row.title || "Rendez-vous"}" est prévu le ${fmtDate(String(row.start_at))}.`
-    : `Petit rappel : votre rendez-vous "${row.title || "Rendez-vous"}" est prévu le ${fmtDate(String(row.start_at))}.`;
+    ? `Petit rappel : votre rendez-vous "${eventTitle}" est prévu le ${formattedDate}.`
+    : `Petit rappel : votre rendez-vous "${eventTitle}" est prévu le ${formattedDate}.`;
 
   const text = [
     greeting,
@@ -160,10 +193,49 @@ function buildReminderMail(row: { title: string | null; description: string | nu
     row.location ? `Lieu : ${row.location}` : "",
     row.description ? `Détails : ${row.description}` : "",
     "",
-    `Rappel envoyé automatiquement par iNrCalendar (${offsetLabel(offsetMinutes)}).`,
+    `Ce rappel vous est envoyé automatiquement par iNrCalendar (${reminderLabel}).`,
   ].filter(Boolean).join("\n");
 
-  const html = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#0f172a"><p>${greeting}</p><p>Petit rappel : votre rendez-vous <b>${String(row.title || "Rendez-vous")}</b> est prévu le <b>${fmtDate(String(row.start_at))}</b>.</p>${row.location ? `<p><b>Lieu :</b> ${String(row.location)}</p>` : ""}${row.description ? `<p><b>Détails :</b> ${String(row.description)}</p>` : ""}<p>Rappel envoyé automatiquement par iNrCalendar (${offsetLabel(offsetMinutes)}).</p></div>`;
+  const safeTitle = escapeHtml(eventTitle);
+  const safeGreeting = escapeHtml(greeting);
+  const safeDate = escapeHtml(formattedDate);
+  const safeLocation = row.location ? escapeHtml(row.location) : "";
+  const safeDescription = row.description ? escapeHtml(row.description).replace(/\n/g, "<br />") : "";
+  const safeReminderLabel = escapeHtml(reminderLabel);
+
+  const html = `
+  <div style="margin:0;padding:32px 16px;background:linear-gradient(135deg,#081225 0%,#101935 55%,#1f1740 100%);font-family:Arial,sans-serif;color:#e5eefc;">
+    <div style="max-width:640px;margin:0 auto;">
+      <div style="margin-bottom:16px;color:#cbd5e1;font-size:13px;letter-spacing:.08em;text-transform:uppercase;">iNrCy · iNrCalendar</div>
+      <div style="background:rgba(9,15,30,.88);border:1px solid rgba(148,163,184,.18);border-radius:24px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.35);">
+        <div style="padding:28px 28px 16px;background:linear-gradient(135deg,rgba(56,189,248,.16),rgba(168,85,247,.16));border-bottom:1px solid rgba(148,163,184,.14);">
+          <div style="display:inline-block;padding:7px 12px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;font-weight:700;letter-spacing:.04em;color:#dbeafe;">RAPPEL ${safeReminderLabel.toUpperCase()}</div>
+          <h1 style="margin:16px 0 8px;font-size:28px;line-height:1.2;color:#ffffff;">${safeTitle}</h1>
+          <p style="margin:0;font-size:15px;line-height:1.7;color:#cbd5e1;">${safeGreeting}<br />Nous vous confirmons votre rendez-vous prévu le <strong style="color:#ffffff;">${safeDate}</strong>.</p>
+        </div>
+
+        <div style="padding:24px 28px 8px;">
+          <div style="background:rgba(15,23,42,.66);border:1px solid rgba(148,163,184,.14);border-radius:18px;padding:18px 18px 4px;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+              <tr>
+                <td style="padding:0 0 14px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;">Date et heure</td>
+              </tr>
+              <tr>
+                <td style="padding:0 0 18px;font-size:18px;font-weight:700;color:#ffffff;">${safeDate}</td>
+              </tr>
+              ${safeLocation ? `<tr><td style="padding:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;">Lieu</td></tr><tr><td style="padding:0 0 18px;font-size:15px;line-height:1.6;color:#e2e8f0;">${safeLocation}</td></tr>` : ""}
+              ${safeDescription ? `<tr><td style="padding:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;">Détails</td></tr><tr><td style="padding:0 0 18px;font-size:15px;line-height:1.7;color:#e2e8f0;">${safeDescription}</td></tr>` : ""}
+            </table>
+          </div>
+        </div>
+
+        <div style="padding:8px 28px 28px;">
+          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#cbd5e1;">Merci de prévoir quelques minutes d’avance si nécessaire. En cas d’imprévu, pensez à prévenir votre contact dès que possible.</p>
+          <p style="margin:0;font-size:12px;line-height:1.7;color:#94a3b8;">Ce rappel vous est envoyé automatiquement par iNrCalendar (${safeReminderLabel}).</p>
+        </div>
+      </div>
+    </div>
+  </div>`;
 
   return { subject, text, html };
 }
@@ -187,6 +259,7 @@ export async function GET(req: Request) {
 
   let inAppSent = 0;
   let emailSent = 0;
+  const userMailAccountCache = new Map<string, string>();
 
   for (const row of data ?? []) {
     const meta = safeObj(row.meta);
@@ -223,34 +296,57 @@ export async function GET(req: Request) {
       }
     }
 
-    if (smtpConfigured) {
-      const proRecipient = await getProRecipient(String(row.user_id));
-      const contactRecipient = getContactRecipient(meta);
-      const recipients = buildRecipients(proRecipient, contactRecipient);
+    const proRecipient = await getProRecipient(String(row.user_id));
+    const contactRecipient = getContactRecipient(meta);
+    const recipients = buildRecipients(proRecipient, contactRecipient);
 
-      for (const offsetMinutes of EMAIL_REMINDER_OFFSETS_MINUTES) {
-        if (minutesUntil > offsetMinutes) continue;
+    let selectedMailAccountId = getReminderMailAccountId(meta);
+    if (!selectedMailAccountId) {
+      if (userMailAccountCache.has(String(row.user_id))) {
+        selectedMailAccountId = userMailAccountCache.get(String(row.user_id)) || "";
+      } else {
+        const { data: cfg } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", String(row.user_id)).maybeSingle();
+        selectedMailAccountId = getSelectedMailAccountIdFromSettings(cfg?.settings);
+        userMailAccountCache.set(String(row.user_id), selectedMailAccountId);
+      }
+    }
 
-        for (const recipient of recipients) {
-          const alreadySentAt = getRecipientSentAt(nextReminders, recipient.kind, offsetMinutes);
-          if (alreadySentAt) continue;
+    for (const offsetMinutes of EMAIL_REMINDER_OFFSETS_MINUTES) {
+      if (minutesUntil > offsetMinutes) continue;
 
-          const mail = buildReminderMail(row, offsetMinutes, recipient);
-          try {
-            await sendTxMail({ to: recipient.email, subject: mail.subject, text: mail.text, html: mail.html });
-            emailSent += 1;
-            nextReminders = markRecipientSent(nextReminders, recipient.kind, offsetMinutes, now.toISOString());
-            nextMeta = { ...nextMeta, reminders: nextReminders };
-            dirty = true;
-          } catch (mailError) {
-            console.error("[calendar-reminders] sendTxMail failed", {
-              eventId: row.id,
-              recipient: recipient.email,
-              kind: recipient.kind,
-              offsetMinutes,
-              error: mailError,
+      for (const recipient of recipients) {
+        const alreadySentAt = getRecipientSentAt(nextReminders, recipient.kind, offsetMinutes);
+        if (alreadySentAt) continue;
+
+        const mail = buildReminderMail(row, offsetMinutes, recipient);
+        try {
+          if (recipient.kind === "contact" && selectedMailAccountId) {
+            await sendMailFromIntegration({
+              userId: String(row.user_id),
+              accountId: selectedMailAccountId,
+              to: recipient.email,
+              subject: mail.subject,
+              text: mail.text,
+              html: mail.html,
             });
+          } else {
+            if (!smtpConfigured) continue;
+            await sendTxMail({ to: recipient.email, subject: mail.subject, text: mail.text, html: mail.html });
           }
+
+          emailSent += 1;
+          nextReminders = markRecipientSent(nextReminders, recipient.kind, offsetMinutes, now.toISOString());
+          nextMeta = { ...nextMeta, reminders: nextReminders };
+          dirty = true;
+        } catch (mailError) {
+          console.error("[calendar-reminders] reminder send failed", {
+            eventId: row.id,
+            recipient: recipient.email,
+            kind: recipient.kind,
+            offsetMinutes,
+            via: recipient.kind === "contact" && selectedMailAccountId ? "inrsend" : "inrcy",
+            error: mailError,
+          });
         }
       }
     }

@@ -48,6 +48,17 @@ type DayEvent = EventItem & {
   endDate: Date | null;
 };
 
+type MailAccountOption = {
+  id: string;
+  provider: "gmail" | "microsoft" | "imap" | string;
+  email_address: string;
+  display_name: string | null;
+};
+
+function providerLabel(provider: string) {
+  return provider === "gmail" ? "Gmail" : provider === "microsoft" ? "Microsoft" : provider === "imap" ? "IMAP" : provider;
+}
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -197,6 +208,12 @@ const [rdvNewContactNotes, setRdvNewContactNotes] = useState<string>("");
 const [crmAddFeedback, setCrmAddFeedback] = useState<string>("");
 const [rdvSaving, setRdvSaving] = useState(false);
 const [rdvError, setRdvError] = useState<string | null>(null);
+const [rdvExistingContact, setRdvExistingContact] = useState<any | null>(null);
+const [mailAccounts, setMailAccounts] = useState<MailAccountOption[]>([]);
+const [agendaMailAccountId, setAgendaMailAccountId] = useState<string>("");
+const [agendaMailLoading, setAgendaMailLoading] = useState(false);
+const [agendaMailSaving, setAgendaMailSaving] = useState(false);
+const [agendaMailError, setAgendaMailError] = useState<string | null>(null);
 
 // Auto-remplissage des champs suivants quand un contact CRM est sélectionné
 useEffect(() => {
@@ -230,6 +247,7 @@ useEffect(() => {
   setRdvNewContactImportant(Boolean(c.important));
   setRdvNewContactNotes((c.notes ?? "").trim());
   setCrmAddFeedback("");
+  setRdvExistingContact(null);
 }, [rdvContactId, contacts]);
 
 
@@ -254,6 +272,75 @@ function composeAddressLine(street: string, postal: string, city: string) {
   return [s, tail].filter(Boolean).join(", ").trim();
 }
 
+async function loadAgendaMailSettings() {
+  setAgendaMailLoading(true);
+  setAgendaMailError(null);
+  try {
+    const r = await fetch("/api/calendar/settings");
+    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger la boîte d’envoi agenda."));
+    const j = await r.json().catch(() => ({}));
+    setMailAccounts(Array.isArray((j as any)?.accounts) ? (j as any).accounts : []);
+    setAgendaMailAccountId(String((j as any)?.selectedMailAccountId || ""));
+  } catch (e: any) {
+    setAgendaMailError(getSimpleFrenchErrorMessage(e, "Impossible de charger la boîte d’envoi agenda."));
+  } finally {
+    setAgendaMailLoading(false);
+  }
+}
+
+async function saveAgendaMailAccount(nextId: string) {
+  const previousId = agendaMailAccountId;
+  setAgendaMailAccountId(nextId);
+  setAgendaMailSaving(true);
+  setAgendaMailError(null);
+  try {
+    const r = await fetch("/api/calendar/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selectedMailAccountId: nextId }),
+    });
+    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible d’enregistrer la boîte d’envoi agenda."));
+  } catch (e: any) {
+    setAgendaMailAccountId(previousId);
+    setAgendaMailError(getSimpleFrenchErrorMessage(e, "Impossible d’enregistrer la boîte d’envoi agenda."));
+  } finally {
+    setAgendaMailSaving(false);
+  }
+}
+
+function hydrateContactFields(contact: any | null) {
+  const raw = contact && typeof contact === "object" ? contact : null;
+  const displayName = String(raw?.display_name ?? "").trim();
+  const firstName = String(raw?.first_name ?? "").trim();
+  const lastName = String(raw?.last_name ?? "").trim();
+  const companyName = String(raw?.company_name ?? "").trim();
+  const address = String(raw?.address ?? "").trim();
+  const city = String(raw?.city ?? "").trim();
+  const postalCode = String(raw?.postal_code ?? "").trim();
+
+  setRdvNewContactName(displayName || buildCrmDisplayName(firstName, lastName, companyName));
+  setRdvNewContactFirstName(firstName);
+  setRdvNewContactCompany(companyName);
+  setRdvNewContactEmail(String(raw?.email ?? "").trim());
+  setRdvNewContactPhone(String(raw?.phone ?? "").trim());
+  setRdvNewContactAddress(address);
+  setRdvNewContactCity(city);
+  setRdvNewContactPostal(postalCode);
+  setRdvNewContactSiren(String(raw?.siren ?? "").trim());
+  setRdvNewContactCategory((raw?.category as any) || "particulier");
+  setRdvNewContactType((raw?.contact_type as any) || "prospect");
+  setRdvNewContactImportant(Boolean(raw?.important));
+  setRdvNewContactNotes(String(raw?.notes ?? "").trim());
+
+  if (!rdvContactId) {
+    setRdvAddrStreet(address);
+    setRdvAddrCity(city);
+    setRdvAddrPostal(postalCode);
+    if (!rdvLocation.trim()) {
+      setRdvLocation(composeAddressLine(address, postalCode, city));
+    }
+  }
+}
 
 
 async function loadContacts() {
@@ -330,6 +417,7 @@ function openCreateRdv(date: Date) {
   setIntType(viewKind === "intervention" ? "" : "");
   setIntStatus("confirmé");
   setIntReference("");
+  setRdvExistingContact(null);
   setRdvContactId("");
   setRdvNewContactName("");
   setRdvNewContactFirstName("");
@@ -339,6 +427,11 @@ function openCreateRdv(date: Date) {
   setRdvNewContactAddress("");
   setRdvNewContactCity("");
   setRdvNewContactPostal("");
+  setRdvNewContactSiren("");
+  setRdvNewContactCategory("particulier");
+  setRdvNewContactType("prospect");
+  setRdvNewContactImportant(false);
+  setRdvNewContactNotes("");
 setRdvError(null);
   setRdvOpen(true);
 }
@@ -346,7 +439,8 @@ setRdvError(null);
 function openEditRdv(ev: DayEvent) {
   setRdvMode("edit");
   setRdvEventId(ev.id);
-  const k = (ev as any)?.inrcy?.kind === "agenda" ? "agenda" : "intervention";
+  const rawMeta = ((ev as any)?.inrcy && typeof (ev as any).inrcy === "object") ? (ev as any).inrcy : {};
+  const k = rawMeta?.kind === "agenda" ? "agenda" : "intervention";
   setRdvKind(k);
   setRdvSummary(ev.summary || (k === "intervention" ? "Intervention" : "Rendez-vous"));
 
@@ -362,8 +456,10 @@ function openEditRdv(ev: DayEvent) {
   setRdvEnd(endH);
 
   setRdvLocation(ev.location ?? "");
+  setRdvNotes(typeof ev.description === "string" ? ev.description : "");
+
   // Tentative de reconstitution d'une adresse structurée si disponible
-  const meta = (ev as any)?.inrcy?.intervention ?? null;
+  const meta = rawMeta?.intervention ?? null;
   const addr = (meta as any)?.address;
   if (addr && typeof addr === "object") {
     setRdvAddrStreet(String(addr.street ?? ""));
@@ -379,13 +475,16 @@ function openEditRdv(ev: DayEvent) {
     setRdvAddrPostal("");
     setRdvAddrCity("");
   }
-  setRdvNotes("");
 
   setIntType(String(meta?.type ?? ""));
   setIntStatus(String(meta?.status ?? "confirmé"));
   setIntReference(String(meta?.reference ?? ""));
 
+  const existingContact = rawMeta?.contact && typeof rawMeta.contact === "object" ? rawMeta.contact : null;
+  setRdvExistingContact(existingContact);
   setRdvContactId("");
+  hydrateContactFields(existingContact);
+
   setRdvError(null);
   setRdvOpen(true);
 }
@@ -450,7 +549,9 @@ async function ensureContact(): Promise<null | {
   const city = rdvNewContactCity.trim();
   const postal_code = rdvNewContactPostal.trim();
 
-  if (!rawDisplayName && !email && !phone && !address) return null;
+  if (!rawDisplayName && !email && !phone && !address) {
+    return rdvExistingContact && typeof rdvExistingContact === "object" ? rdvExistingContact : null;
+  }
 
   const display_name = rawDisplayName || "Nouveau contact";
 
@@ -595,7 +696,7 @@ async function submitRdv() {
       dt.setMinutes(dt.getMinutes() + 60);
       endIso = dt.toISOString();
     }
-    const contact = await ensureContact();
+    const contact = (await ensureContact()) ?? (rdvMode === "edit" ? rdvExistingContact : null);
 
     const coordsLocation = composeAddressLine(rdvNewContactAddress.trim(), rdvNewContactPostal.trim(), rdvNewContactCity.trim());
     const structuredLocation = (rdvLocation.trim() || coordsLocation).trim();
@@ -610,6 +711,9 @@ async function submitRdv() {
       inrcy: {
         kind: rdvKind,
         contact: contact ?? undefined,
+        reminders: {
+          mailAccountId: agendaMailAccountId || undefined,
+        },
         intervention:
           rdvKind === "intervention"
             ? {
@@ -734,6 +838,7 @@ async function deleteEventById(id: string) {
     // Initial load
     loadEventsForMonth(cursorMonth);
     loadContacts();
+    loadAgendaMailSettings();
   }, []);
 
   useEffect(() => {
@@ -1068,6 +1173,32 @@ async function deleteEventById(id: string) {
                   ＋ Évènement
                 </button>
                 <div className={styles.sideDivider} />
+                <div style={{ width: "100%", marginTop: 12 }}>
+                  <div className={styles.label} style={{ marginBottom: 6 }}>Boîte client iNr’Send</div>
+                  <select
+                    className={styles.input}
+                    value={agendaMailAccountId}
+                    onChange={(e) => saveAgendaMailAccount(e.target.value)}
+                    disabled={agendaMailLoading || agendaMailSaving}
+                  >
+                    <option value="">— Envoi client depuis iNrCy —</option>
+                    {mailAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {providerLabel(acc.provider)} — {acc.display_name || acc.email_address}
+                      </option>
+                    ))}
+                  </select>
+                  <div className={styles.eventSub} style={{ marginTop: 6 }}>
+                    {agendaMailLoading
+                      ? "Chargement des boîtes…"
+                      : agendaMailSaving
+                      ? "Enregistrement…"
+                      : agendaMailAccountId
+                      ? "Les rappels clients partiront de cette boîte via iNr’Send avec la signature automatique."
+                      : "Aucune boîte sélectionnée : les rappels clients restent envoyés depuis iNrCy."}
+                  </div>
+                  {agendaMailError ? <div className={styles.eventSub} style={{ marginTop: 6, color: "#fca5a5" }}>{agendaMailError}</div> : null}
+                </div>
               </div>
 
               <div className={styles.sidebarBody}>
