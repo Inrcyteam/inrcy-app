@@ -8,6 +8,7 @@ import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { decideAction } from "@/lib/decision/decisionEngine";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -1235,6 +1236,26 @@ const provenance = buildProvenance(key, ov);
       const q = computeQuality(key, ov);
       const insights = buildInsights(key, ov, q.score);
       let action = recommendAction(key, ov, q.score);
+
+      const decision = decideAction({
+        opportunities: opp30,
+        quality: q.score,
+        metrics: {
+          audience: 1,
+          engagement: 1,
+          traffic: safeNum(ov?.totals?.sessions)
+        }
+      });
+
+      // Override action dynamically (non-breaking)
+      if (decision) {
+        action = {
+          ...action,
+          title: decision.action.charAt(0).toUpperCase() + decision.action.slice(1),
+          detail: decision.reason,
+          pill: decision.mode === "booster" ? "Booster" : "Fidéliser"
+        };
+      }
 
       // Pendant le chargement initial (aucun overview réel), on affiche un CTA neutre.
       if (state.loading && !hasRealOverview) {
