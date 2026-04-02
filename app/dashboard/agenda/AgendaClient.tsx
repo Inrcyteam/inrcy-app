@@ -122,6 +122,22 @@ function formatTime(d: Date) {
   return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(d);
 }
 
+function formatDateEuropean(value: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
+  if (!m) return "JJ/MM/AAAA";
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function buildQuarterHourOptions() {
+  const out: string[] = [];
+  for (let hour = 0; hour < 24; hour += 1) {
+    for (let minute = 0; minute < 60; minute += 15) {
+      out.push(`${pad2(hour)}:${pad2(minute)}`);
+    }
+  }
+  return out;
+}
+
 function accentFor(id: string) {
   // petit hash déterministe → look iNrCy sans dépendre de Google colors
   let h = 0;
@@ -214,6 +230,9 @@ const [agendaMailAccountId, setAgendaMailAccountId] = useState<string>("");
 const [agendaMailLoading, setAgendaMailLoading] = useState(false);
 const [agendaMailSaving, setAgendaMailSaving] = useState(false);
 const [agendaMailError, setAgendaMailError] = useState<string | null>(null);
+const quarterHourOptions = useMemo(() => buildQuarterHourOptions(), []);
+const startTimeOptions = useMemo(() => (quarterHourOptions.includes(rdvStart) ? quarterHourOptions : [rdvStart, ...quarterHourOptions.filter((value) => value !== rdvStart)]), [quarterHourOptions, rdvStart]);
+const endTimeOptions = useMemo(() => (quarterHourOptions.includes(rdvEnd) ? quarterHourOptions : [rdvEnd, ...quarterHourOptions.filter((value) => value !== rdvEnd)]), [quarterHourOptions, rdvEnd]);
 
 // Auto-remplissage des champs suivants quand un contact CRM est sélectionné
 useEffect(() => {
@@ -1383,15 +1402,33 @@ async function deleteEventById(id: string) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
                 <div className={styles.field}>
                   <div className={styles.label}>Date</div>
-                  <input className={styles.input} value={rdvDate} onChange={(e) => setRdvDate(e.target.value)} placeholder="YYYY-MM-DD" />
+                  <input
+                    className={styles.input}
+                    type="date"
+                    lang="fr-FR"
+                    value={rdvDate}
+                    onChange={(e) => setRdvDate(e.target.value)}
+                    placeholder="JJ/MM/AAAA"
+                  />
+                  <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                    Format affiché : {formatDateEuropean(rdvDate)}
+                  </div>
                 </div>
                 <div className={styles.field}>
                   <div className={styles.label}>Début</div>
-                  <input className={styles.input} value={rdvStart} onChange={(e) => setRdvStart(e.target.value)} placeholder="09:00" />
+                  <select className={styles.input} value={rdvStart} onChange={(e) => setRdvStart(e.target.value)}>
+                    {startTimeOptions.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className={styles.field}>
                   <div className={styles.label}>Fin</div>
-                  <input className={styles.input} value={rdvEnd} onChange={(e) => setRdvEnd(e.target.value)} placeholder="10:00" />
+                  <select className={styles.input} value={rdvEnd} onChange={(e) => setRdvEnd(e.target.value)}>
+                    {endTimeOptions.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

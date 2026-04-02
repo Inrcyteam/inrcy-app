@@ -148,16 +148,16 @@ export default function NotificationsSettingsContent() {
       <div style={{ ...CARD_STYLE, background: "linear-gradient(90deg, rgba(56,189,248,0.16), rgba(167,139,250,0.12), rgba(244,114,182,0.10))" }}>
         <div style={{ fontSize: 16, fontWeight: 950, color: "rgba(255,255,255,0.95)" }}>Notifications iNrCy</div>
         <div style={{ marginTop: 6, color: "rgba(255,255,255,0.72)", fontSize: 13, lineHeight: 1.6 }}>
-          Votre cloche vous pousse les bonnes actions au bon moment. Nous regroupons les relances par catégorie et nous limitons le rythme à <b>une vague toutes les 48 h</b> pour garder un cockpit vivant sans vous saturer. Les mêmes signaux utiles vous sont aussi envoyés par email dans un format digest iNrCy, dès qu'une nouvelle vague est générée.
+          Votre cloche vous aide à ne rien rater. iNrCy regroupe les rappels pour éviter de vous déranger trop souvent, avec en général <b>une vague toutes les 48 h</b>. Vous pouvez aussi recevoir le même résumé par email.
         </div>
         <div style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 8, borderRadius: 999, padding: "8px 12px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", fontSize: 12, color: "rgba(255,255,255,0.88)" }}>
           <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: "rgba(34,197,94,0.95)" }} />
           Rythme actuel : toutes les {prefs.digest_every_hours} h
         </div>
         <div style={{ marginTop: 12, display: "grid", gap: 8, color: "rgba(255,255,255,0.8)", fontSize: 13, lineHeight: 1.6 }}>
-          <div>• <b>Performance</b> : traction, demandes générées, opportunités activables.</div>
-          <div>• <b>Action</b> : canaux à brancher, boosters à lancer, dernier pas à faire.</div>
-          <div>• <b>Information</b> : état du cockpit, conseils de progression, rappels utiles.</div>
+          <div>• <b>Performance</b> : demandes reçues, potentiel à relancer, résultats à suivre.</div>
+          <div>• <b>Action</b> : actions simples à faire maintenant pour avancer.</div>
+          <div>• <b>Information</b> : rappels utiles et conseils pour garder votre iNrCy bien réglé.</div>
         </div>
       </div>
 
@@ -170,7 +170,7 @@ export default function NotificationsSettingsContent() {
       />
       <ToggleRow
         title="Email digest iNrCy"
-        subtitle="Reçoit un beau résumé iNrCy par email lorsqu’une nouvelle vague utile est générée. Désactivez-le ici si vous ne voulez garder que la cloche."
+        subtitle="Recevez aussi le résumé iNrCy par email. Désactivez-le ici si vous préférez garder seulement la cloche dans l’application."
         checked={prefs.email_enabled}
         onChange={(checked) => updatePrefs({ ...prefs, email_enabled: checked })}
         accent="rgba(167,139,250,0.12)"
@@ -178,21 +178,21 @@ export default function NotificationsSettingsContent() {
 
       <ToggleRow
         title="Performance"
-        subtitle="+X opportunités activables, demandes générées cette semaine, signaux de traction à transformer en business."
+        subtitle="Résumé des demandes reçues, des contacts à relancer et du potentiel à transformer en chiffre d’affaires."
         checked={prefs.performance_enabled}
         onChange={(checked) => updatePrefs({ ...prefs, performance_enabled: checked })}
         accent="rgba(56,189,248,0.12)"
       />
       <ToggleRow
         title="Action"
-        subtitle="Connecter un canal, lancer un booster, rouvrir un levier prêt à produire. Les notifications les plus orientées passage à l’action."
+        subtitle="Les prochaines actions utiles à faire : connecter un canal, lancer un booster ou finaliser ce qui est prêt."
         checked={prefs.action_enabled}
         onChange={(checked) => updatePrefs({ ...prefs, action_enabled: checked })}
         accent="rgba(244,114,182,0.12)"
       />
       <ToggleRow
         title="Information"
-        subtitle="État de votre cockpit, rappels doux, points de passage utiles pour garder iNrCy en mouvement sans vous noyer."
+        subtitle="Des rappels simples pour suivre votre cockpit et garder iNrCy actif sans vous surcharger."
         checked={prefs.information_enabled}
         onChange={(checked) => updatePrefs({ ...prefs, information_enabled: checked })}
         accent="rgba(251,146,60,0.12)"
