@@ -667,6 +667,7 @@ function getDecisionInput(
 
     return {
       channelType: "social" as const,
+      channelKey: cubeKey,
       connected,
       opportunities: opp30,
       quality: qualityScore,
@@ -695,6 +696,7 @@ function getDecisionInput(
 
     return {
       channelType: "gmb" as const,
+      channelKey: cubeKey,
       connected: !!ov?.sources?.gmb?.connected,
       opportunities: opp30,
       quality: qualityScore,
@@ -717,6 +719,7 @@ function getDecisionInput(
 
   return {
     channelType: "website" as const,
+    channelKey: cubeKey,
     connected: cubeKey === "site_inrcy"
       ? !!ov?.sources?.site_inrcy?.connected?.ga4 || !!ov?.sources?.site_inrcy?.connected?.gsc
       : !!ov?.sources?.site_web?.connected?.ga4 || !!ov?.sources?.site_web?.connected?.gsc,
