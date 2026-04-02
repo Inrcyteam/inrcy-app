@@ -30,9 +30,9 @@ type Overview = {
     site_inrcy: { connected: { ga4: boolean; gsc: boolean } };
     site_web: { connected: { ga4: boolean; gsc: boolean } };
     gmb: { connected: boolean; metrics: any | null };
-    facebook: { connected: boolean };
-    instagram: { connected: boolean };
-    linkedin: { connected: boolean };
+    facebook: { connected: boolean; metrics?: any | null };
+    instagram: { connected: boolean; metrics?: any | null };
+    linkedin: { connected: boolean; metrics?: any | null };
   };
   identities?: Partial<Record<CubeKey, { label?: string | null; url?: string | null }>>;
 };
@@ -473,26 +473,58 @@ function buildProvenance(cubeKey: CubeKey, ov: Overview) {
   }
 
   if (cubeKey === "facebook") {
-    // Placeholder until we fetch Meta Insights.
+    const m = ov?.sources?.facebook?.metrics;
+    const audience =
+      safeNum(m?.totals?.post_impressions_sum) ||
+      safeNum(m?.totals?.fan_count) ||
+      safeNum(m?.totals?.followers_count) ||
+      safeNum(m?.totals?.page_views_total);
+    const interactions =
+      safeNum(m?.totals?.page_engaged_users) +
+      safeNum(m?.totals?.post_engaged_users_sum) +
+      safeNum(m?.totals?.page_website_clicks_logged_in_unique) +
+      safeNum(m?.totals?.page_call_phone_clicks_logged_in_unique) +
+      safeNum(m?.totals?.page_get_directions_clicks_logged_in_unique);
+    const total = audience + interactions;
     return [
-      { label: "Audience", value: 1, colorVar: "--cSocial" },
-      { label: "Interactions", value: 1, colorVar: "--cGoogle" },
+      { label: "Audience", value: total > 0 ? audience : 1, colorVar: "--cSocial" },
+      { label: "Interactions", value: total > 0 ? interactions : 1, colorVar: "--cGoogle" },
     ];
   }
 
   if (cubeKey === "instagram") {
-    // Placeholder until we fetch Meta Insights.
+    const m = ov?.sources?.instagram?.metrics;
+    const audience =
+      safeNum(m?.totals?.reach) +
+      safeNum(m?.totals?.profile_views) +
+      safeNum(m?.totals?.follower_count);
+    const engagement =
+      safeNum(m?.totals?.website_clicks) +
+      safeNum(m?.totals?.phone_call_clicks) +
+      safeNum(m?.totals?.email_contacts) +
+      safeNum(m?.totals?.text_message_clicks) +
+      safeNum(m?.totals?.get_directions_clicks) +
+      safeNum(m?.totals?.get_direction_clicks);
+    const total = audience + engagement;
     return [
-      { label: "Audience", value: 1, colorVar: "--cSocial" },
-      { label: "Engagement", value: 1, colorVar: "--cGoogle" },
+      { label: "Audience", value: total > 0 ? audience : 1, colorVar: "--cSocial" },
+      { label: "Engagement", value: total > 0 ? engagement : 1, colorVar: "--cGoogle" },
     ];
   }
 
   if (cubeKey === "linkedin") {
-    // LinkedIn (stats simples): lecture "business".
+    const m = ov?.sources?.linkedin?.metrics;
+    const impressions =
+      safeNum(m?.totals?.impressionCount) +
+      safeNum(m?.totals?.uniqueImpressionsCount) +
+      safeNum(m?.totals?.pageViews);
+    const clicks =
+      safeNum(m?.totals?.clickCount) +
+      safeNum(m?.totals?.pageClicks);
+    const total = impressions + clicks;
     return [
-      { label: "Impressions", value: 1, colorVar: "--cSocial" },
-      { label: "Clics", value: 1, colorVar: "--cGoogle" },
+      { label: "Impressions", value: total > 0 ? impressions : 1, colorVar: "--cSocial" },
+      { label: "Clics", value: total > 0 ? clicks : 1, colorVar: "--cGoogle" },
     ];
   }
 
