@@ -13,6 +13,7 @@ export default function SiteWebPanel(props: any) {
     siteWebUrl,
     setSiteWebUrl,
     saveSiteWebUrl,
+    deleteSiteWebUrl,
     draftSiteWebUrlMeta,
     siteWebUrlNotice,
     siteWebGa4Connected,
@@ -99,7 +100,9 @@ export default function SiteWebPanel(props: any) {
           <input
             value={siteWebUrl}
             onChange={(e) => setSiteWebUrl(e.target.value)}
+            disabled={hasSiteWebUrl}
             placeholder="https://votre-site.fr"
+            title={hasSiteWebUrl ? "Supprimez d'abord le lien enregistré pour en saisir un nouveau." : undefined}
             style={{
               flex: "1 1 280px",
               minWidth: 220,
@@ -110,18 +113,33 @@ export default function SiteWebPanel(props: any) {
               padding: "10px 12px",
               color: "white",
               outline: "none",
+              cursor: hasSiteWebUrl ? "not-allowed" : "text",
+              opacity: hasSiteWebUrl ? 0.7 : 1,
             }}
           />
 
-          <button
-            type="button"
-            className={`${styles.actionBtn} ${styles.iconBtn}`}
-            onClick={saveSiteWebUrl}
-            title="Enregistrer le lien"
-            aria-label="Enregistrer le lien"
-          >
-            <SaveIcon />
-          </button>
+          {hasSiteWebUrl ? (
+            <button
+              type="button"
+              className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+              onClick={deleteSiteWebUrl}
+              title="Supprimer le lien"
+              aria-label="Supprimer le lien"
+              style={{ minWidth: 44, paddingInline: 0, fontSize: 22, fontWeight: 900, lineHeight: 1 }}
+            >
+              ×
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`${styles.actionBtn} ${styles.iconBtn}`}
+              onClick={saveSiteWebUrl}
+              title="Enregistrer le lien"
+              aria-label="Enregistrer le lien"
+            >
+              <SaveIcon />
+            </button>
+          )}
 
           <a
             href={draftSiteWebUrlMeta?.normalizedUrl || "#"}

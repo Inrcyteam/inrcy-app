@@ -1534,28 +1534,14 @@ const disconnectAllGoogleStatsForSource = useCallback(
 // ✅ Enregistrer le lien du site iNrCy (inrcy_site_configs.site_url)
 const saveSiteInrcyUrl = useCallback(async () => {
   if (siteInrcyOwnership === "none") return;
+  if (siteInrcySavedUrl.trim()) return;
 
   const rawUrl = siteInrcyUrl.trim();
-  const savedNormalized = normalizeSiteUrl(siteInrcySavedUrl.trim());
   const nextNormalized = rawUrl ? normalizeSiteUrl(rawUrl) : null;
 
   if (rawUrl && !nextNormalized) {
     setSiteInrcySettingsError("Renseigne un vrai lien de site (ex: https://monsite.fr) avant d'enregistrer.");
     return;
-  }
-
-  const savedNormalizedUrl = savedNormalized?.normalizedUrl ?? "";
-  const nextNormalizedUrl = nextNormalized?.normalizedUrl ?? "";
-  const isRemovingExistingUrl = !rawUrl && !!savedNormalizedUrl;
-  const isChangingExistingUrl = !!savedNormalizedUrl && !!nextNormalizedUrl && savedNormalizedUrl !== nextNormalizedUrl;
-  const shouldConfirmLinkChange = isRemovingExistingUrl || isChangingExistingUrl;
-
-  if (shouldConfirmLinkChange) {
-    const ok = window.confirm(
-      "Modifier ou supprimer ce lien va déconnecter automatiquement Google Analytics et Google Search Console pour la bulle Site iNrCy. Continuer ?"
-    );
-    if (!ok) return;
-    await disconnectAllGoogleStatsForSource("site_inrcy");
   }
 
   const valueToSave = nextNormalized?.normalizedUrl ?? "";
@@ -1576,28 +1562,50 @@ const saveSiteInrcyUrl = useCallback(async () => {
   setSiteInrcySettingsError(null);
   setSiteInrcyUrl(valueToSave);
   setSiteInrcySavedUrl(valueToSave);
-  if (!valueToSave) setShowSiteInrcyWidgetCode(false);
-  const notice = shouldConfirmLinkChange
-    ? valueToSave
-      ? "✅ Lien du site enregistré. GA4 et Search Console ont été déconnectés."
-      : "✅ Lien du site supprimé. GA4 et Search Console ont été déconnectés."
-    : valueToSave
-      ? "✅ Lien du site enregistré"
-      : "✅ Lien du site supprimé";
-  setSiteInrcyUrlNotice(notice);
+  setSiteInrcyUrlNotice(valueToSave ? "✅ Lien du site enregistré" : null);
+  triggerGeneratorRefresh();
+  if (valueToSave) {
+    window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
+  }
+}, [normalizeSiteUrl, siteInrcyOwnership, siteInrcySavedUrl, siteInrcyUrl, triggerGeneratorRefresh]);
+
+const deleteSiteInrcyUrl = useCallback(async () => {
+  if (siteInrcyOwnership === "none") return;
+  if (!siteInrcySavedUrl.trim()) return;
+
+  const ok = window.confirm(
+    "Supprimer ce lien va déconnecter automatiquement Google Analytics et Google Search Console pour la bulle Site iNrCy. Continuer ?"
+  );
+  if (!ok) return;
+
+  await disconnectAllGoogleStatsForSource("site_inrcy");
+
+  const supabase = createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (!user) return;
+
+  const { error } = await supabase
+    .from("inrcy_site_configs")
+    .upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" });
+  if (error) {
+    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
+    return;
+  }
+
+  setSiteInrcySettingsError(null);
+  setSiteInrcyUrl("");
+  setSiteInrcySavedUrl("");
+  setShowSiteInrcyWidgetCode(false);
+  setSiteInrcyUrlNotice("✅ Lien du site supprimé. GA4 et Search Console ont été déconnectés.");
   triggerGeneratorRefresh();
   window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
-}, [
-  disconnectAllGoogleStatsForSource,
-  normalizeSiteUrl,
-  siteInrcyOwnership,
-  siteInrcySavedUrl,
-  siteInrcyUrl,
-  triggerGeneratorRefresh,
-]);
+}, [disconnectAllGoogleStatsForSource, siteInrcyOwnership, siteInrcySavedUrl, triggerGeneratorRefresh]);
 
 // ✅ Enregistrer uniquement le lien du site web (settings.site_web.url)
 const saveSiteWebUrl = useCallback(async () => {
+  if (siteWebSavedUrl.trim()) return;
+
   let parsed: any;
   try {
     parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
@@ -1607,29 +1615,11 @@ const saveSiteWebUrl = useCallback(async () => {
   }
 
   const rawUrl = siteWebUrl.trim();
-  const savedNormalized = normalizeSiteUrl(siteWebSavedUrl.trim());
   const nextNormalized = rawUrl ? normalizeSiteUrl(rawUrl) : null;
 
   if (rawUrl && !nextNormalized) {
     setSiteWebSettingsError("Renseigne un vrai lien de site (ex: https://monsite.fr) avant d'enregistrer.");
     return;
-  }
-
-  const savedNormalizedUrl = savedNormalized?.normalizedUrl ?? "";
-  const nextNormalizedUrl = nextNormalized?.normalizedUrl ?? "";
-  const isRemovingExistingUrl = !rawUrl && !!savedNormalizedUrl;
-  const isChangingExistingUrl = !!savedNormalizedUrl && !!nextNormalizedUrl && savedNormalizedUrl !== nextNormalizedUrl;
-  const shouldConfirmLinkChange = isRemovingExistingUrl || isChangingExistingUrl;
-
-  if (shouldConfirmLinkChange) {
-    const ok = window.confirm(
-      "Modifier ou supprimer ce lien va déconnecter automatiquement Google Analytics et Google Search Console pour la bulle Site web. Continuer ?"
-    );
-    if (!ok) return;
-    await disconnectAllGoogleStatsForSource("site_web");
-    parsed = parsed && typeof parsed === "object" ? { ...parsed } : {};
-    delete parsed.ga4;
-    delete parsed.gsc;
   }
 
   const valueToSave = nextNormalized?.normalizedUrl ?? "";
@@ -1640,26 +1630,43 @@ const saveSiteWebUrl = useCallback(async () => {
   await updateSiteWebSettings(parsed);
   setSiteWebUrl(valueToSave);
   setSiteWebSavedUrl(valueToSave);
-  if (!valueToSave) setShowSiteWebWidgetCode(false);
   triggerGeneratorRefresh();
-  const notice = shouldConfirmLinkChange
-    ? valueToSave
-      ? "✅ Lien du site enregistré. GA4 et Search Console ont été déconnectés."
-      : "✅ Lien du site supprimé. GA4 et Search Console ont été déconnectés."
-    : valueToSave
-      ? "✅ Lien du site enregistré"
-      : "✅ Lien du site supprimé";
-  setSiteWebUrlNotice(notice);
+  setSiteWebUrlNotice(valueToSave ? "✅ Lien du site enregistré" : null);
+  if (valueToSave) {
+    window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
+  }
+}, [normalizeSiteUrl, siteWebSavedUrl, siteWebSettingsText, siteWebUrl, triggerGeneratorRefresh, updateSiteWebSettings]);
+
+const deleteSiteWebUrl = useCallback(async () => {
+  if (!siteWebSavedUrl.trim()) return;
+
+  const ok = window.confirm(
+    "Supprimer ce lien va déconnecter automatiquement Google Analytics et Google Search Console pour la bulle Site web. Continuer ?"
+  );
+  if (!ok) return;
+
+  await disconnectAllGoogleStatsForSource("site_web");
+
+  let parsed: any;
+  try {
+    parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
+  } catch {
+    parsed = {};
+  }
+  parsed = parsed && typeof parsed === "object" ? { ...parsed } : {};
+  delete parsed.url;
+  delete parsed.domain;
+  delete parsed.ga4;
+  delete parsed.gsc;
+
+  await updateSiteWebSettings(parsed);
+  setSiteWebUrl("");
+  setSiteWebSavedUrl("");
+  setShowSiteWebWidgetCode(false);
+  triggerGeneratorRefresh();
+  setSiteWebUrlNotice("✅ Lien du site supprimé. GA4 et Search Console ont été déconnectés.");
   window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
-}, [
-  disconnectAllGoogleStatsForSource,
-  normalizeSiteUrl,
-  siteWebSavedUrl,
-  siteWebSettingsText,
-  siteWebUrl,
-  triggerGeneratorRefresh,
-  updateSiteWebSettings,
-]);
+}, [disconnectAllGoogleStatsForSource, siteWebSavedUrl, siteWebSettingsText, triggerGeneratorRefresh, updateSiteWebSettings]);
 
 const resetSiteInrcyAll = useCallback(async () => {
   if (!confirm("Réinitialiser la configuration (lien + GA4 + Search Console) ?")) return;
@@ -3981,6 +3988,7 @@ const checkActivity = useCallback(async () => {
             siteInrcyUrl={siteInrcyUrl}
             setSiteInrcyUrl={setSiteInrcyUrl}
             saveSiteInrcyUrl={saveSiteInrcyUrl}
+            deleteSiteInrcyUrl={deleteSiteInrcyUrl}
             draftSiteInrcyUrlMeta={draftSiteInrcyUrlMeta}
             siteInrcyUrlNotice={siteInrcyUrlNotice}
             siteInrcyGa4Connected={siteInrcyGa4Connected}
@@ -4020,6 +4028,7 @@ const checkActivity = useCallback(async () => {
             siteWebUrl={siteWebUrl}
             setSiteWebUrl={setSiteWebUrl}
             saveSiteWebUrl={saveSiteWebUrl}
+            deleteSiteWebUrl={deleteSiteWebUrl}
             draftSiteWebUrlMeta={draftSiteWebUrlMeta}
             siteWebUrlNotice={siteWebUrlNotice}
             siteWebGa4Connected={siteWebGa4Connected}

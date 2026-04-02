@@ -15,6 +15,7 @@ export default function SiteInrcyPanel(props: any) {
     siteInrcyUrl,
     setSiteInrcyUrl,
     saveSiteInrcyUrl,
+    deleteSiteInrcyUrl,
     draftSiteInrcyUrlMeta,
     siteInrcyUrlNotice,
     siteInrcyGa4Connected,
@@ -120,8 +121,9 @@ export default function SiteInrcyPanel(props: any) {
           <input
             value={siteInrcyUrl}
             onChange={(e) => setSiteInrcyUrl(e.target.value)}
-            disabled={siteInrcyOwnership === "none"}
+            disabled={siteInrcyOwnership === "none" || hasSiteInrcyUrl}
             placeholder="https://..."
+            title={hasSiteInrcyUrl ? "Supprimez d'abord le lien enregistré pour en saisir un nouveau." : undefined}
             style={{
               flex: "1 1 280px",
               minWidth: 220,
@@ -132,19 +134,35 @@ export default function SiteInrcyPanel(props: any) {
               padding: "10px 12px",
               color: siteInrcyOwnership === "none" ? "rgba(255,255,255,0.75)" : "white",
               outline: "none",
+              cursor: siteInrcyOwnership === "none" || hasSiteInrcyUrl ? "not-allowed" : "text",
+              opacity: hasSiteInrcyUrl ? 0.7 : 1,
             }}
           />
 
-          <button
-            type="button"
-            className={`${styles.actionBtn} ${styles.iconBtn}`}
-            onClick={saveSiteInrcyUrl}
-            disabled={siteInrcyOwnership === "none"}
-            title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Enregistrer le lien"}
-            aria-label="Enregistrer le lien"
-          >
-            <SaveIcon />
-          </button>
+          {hasSiteInrcyUrl ? (
+            <button
+              type="button"
+              className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+              onClick={deleteSiteInrcyUrl}
+              disabled={siteInrcyOwnership === "none"}
+              title="Supprimer le lien"
+              aria-label="Supprimer le lien"
+              style={{ minWidth: 44, paddingInline: 0, fontSize: 22, fontWeight: 900, lineHeight: 1 }}
+            >
+              ×
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`${styles.actionBtn} ${styles.iconBtn}`}
+              onClick={saveSiteInrcyUrl}
+              disabled={siteInrcyOwnership === "none"}
+              title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Enregistrer le lien"}
+              aria-label="Enregistrer le lien"
+            >
+              <SaveIcon />
+            </button>
+          )}
 
           <a
             href={draftSiteInrcyUrlMeta?.normalizedUrl || "#"}
