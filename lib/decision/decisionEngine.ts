@@ -46,11 +46,8 @@ export type DecisionResult = {
 type ScoreCard = Record<ActionType, number>;
 
 type ProvenanceSummary = {
-  total: number;
   dominantLabel: string;
   dominantShare: number;
-  secondLabel: string;
-  secondShare: number;
   googleShare: number;
   directShare: number;
   socialShare: number;
@@ -71,9 +68,15 @@ function clamp(value: number, min = 0, max = 1) {
   return Math.max(min, Math.min(max, value));
 }
 
-function norm(value: number, ref: number) {
-  if (ref <= 0) return 0;
-  return clamp(value / ref);
+function emptyScores(): ScoreCard {
+  return {
+    publier: 0,
+    offrir: 0,
+    recolter: 0,
+    informer: 0,
+    suivre: 0,
+    enqueter: 0,
+  };
 }
 
 function add(scores: ScoreCard, action: ActionType, points: number) {
@@ -94,7 +97,6 @@ function buildProvenanceSummary(entries?: DecisionInput["provenance"]): Provenan
   const total = safeEntries.reduce((sum, entry) => sum + entry.value, 0);
   const sorted = [...safeEntries].sort((a, b) => b.value - a.value);
   const dominant = sorted[0] || { label: "", value: 0 };
-  const second = sorted[1] || { label: "", value: 0 };
 
   const share = (matcher: (label: string) => boolean) => {
     if (total <= 0) return 0;
@@ -103,15 +105,9 @@ function buildProvenanceSummary(entries?: DecisionInput["provenance"]): Provenan
     );
   };
 
-  const dominantShare = total > 0 ? clamp(dominant.value / total) : 0;
-  const secondShare = total > 0 ? clamp(second.value / total) : 0;
-
   return {
-    total,
     dominantLabel: dominant.label,
-    dominantShare,
-    secondLabel: second.label,
-    secondShare,
+    dominantShare: total > 0 ? clamp(dominant.value / total) : 0,
     googleShare: share((label) => label.includes("google")),
     directShare: share((label) => label.includes("direct")),
     socialShare: share((label) => label.includes("social")),
@@ -120,18 +116,7 @@ function buildProvenanceSummary(entries?: DecisionInput["provenance"]): Provenan
     audienceShare: share((label) => label.includes("audience") || label.includes("impression")),
     interactionShare: share((label) => label.includes("interaction") || label.includes("engagement")),
     clickShare: share((label) => label.includes("clic")),
-    balanced: dominantShare <= 0.65 && secondShare >= 0.2,
-  };
-}
-
-function emptyScores(): ScoreCard {
-  return {
-    publier: 0,
-    offrir: 0,
-    recolter: 0,
-    informer: 0,
-    suivre: 0,
-    enqueter: 0,
+    balanced: total > 0 ? dominant.value / total <= 0.65 : false,
   };
 }
 
@@ -146,31 +131,25 @@ const ACTION_PRIORITY: Record<ActionType, number> = {
 
 function sortRanking(scores: ScoreCard): RankedAction[] {
   return (Object.entries(scores) as Array<[ActionType, number]>)
-    .map(([action, score]) => ({ action, score: Math.round(clamp(score, 0, 100)) }))
+    .map(([action, score]) => ({ action, score: Math.max(0, Math.round(score)) }))
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       return ACTION_PRIORITY[b.action] - ACTION_PRIORITY[a.action];
     });
 }
 
-function bestAction(scores: ScoreCard): ActionType {
-  return sortRanking(scores)[0]?.action || "publier";
-}
-
-function normalizeScores(scores: ScoreCard): ScoreCard {
-  const values = Object.values(scores);
-  const max = Math.max(1, ...values);
-  const normalized = emptyScores();
-  (Object.keys(scores) as ActionType[]).forEach((action) => {
-    normalized[action] = Math.round((scores[action] / max) * 100);
-  });
-  return normalized;
-}
-
 function confidenceFromRanking(ranking: RankedAction[]): number {
   const first = ranking[0]?.score ?? 0;
   const second = ranking[1]?.score ?? 0;
-  return Math.round(clamp((first - second) / 35, 0, 1) * 100);
+  return Math.round(clamp((first - second) / 5, 0, 1) * 100);
+}
+
+function selectAction(mode: ModeType, scores: ScoreCard): ActionType {
+  const allowed: ActionType[] = mode === "booster" ? ["publier", "recolter", "offrir"] : ["informer", "suivre", "enqueter"];
+  return allowed.sort((a, b) => {
+    if (scores[b] !== scores[a]) return scores[b] - scores[a];
+    return ACTION_PRIORITY[b] - ACTION_PRIORITY[a];
+  })[0];
 }
 
 function makeReason(action: ActionType, channelType: ChannelType, p: ProvenanceSummary, opp: number, quality: number) {
@@ -178,268 +157,201 @@ function makeReason(action: ActionType, channelType: ChannelType, p: ProvenanceS
   const dominant = p.dominantLabel ? ` La provenance dominante est « ${p.dominantLabel} ». ` : " ";
 
   if (action === "publier") {
-    return `Le ${channelLabel} manque encore de mouvement visible.${dominant}Les signaux de présence restent trop faibles : il faut relancer la visibilité du canal.`;
+    return `Le ${channelLabel} n'active pas encore assez d'opportunités (${opp}).${dominant}La priorité est de relancer la visibilité et le mouvement du canal.`;
   }
   if (action === "offrir") {
-    return `Le ${channelLabel} capte déjà de l'attention et le potentiel est réel (${opp} opportunités).${dominant}Le bon levier est maintenant une offre claire, simple et immédiatement activable.`;
+    return `Le ${channelLabel} capte déjà de l'attention mais transforme encore trop peu.${dominant}Il faut pousser une offre claire, visible et immédiatement actionnable.`;
   }
   if (action === "recolter") {
-    return `Le ${channelLabel} génère de la visibilité mais manque encore de preuves concrètes pour rassurer.${dominant}Il faut récolter avis, retours, cas clients ou preuves sociales.`;
+    return `Le ${channelLabel} montre déjà des signaux utiles mais manque de preuves pour rassurer et convertir.${dominant}Il faut récolter avis, retours ou cas clients.`;
   }
   if (action === "informer") {
-    return `Le ${channelLabel} est sain (qualité ${quality}/100) et peut nourrir la relation.${dominant}Informer régulièrement consolidera la confiance avant la prochaine prise de contact.`;
+    return `Le ${channelLabel} fonctionne déjà correctement (${opp} opportunités, qualité ${quality}/100).${dominant}Le bon levier est d'informer régulièrement pour entretenir la relation.`;
   }
   if (action === "suivre") {
-    return `Le ${channelLabel} génère déjà des signaux business exploitables.${dominant}Le bon levier est maintenant le suivi : relance, réponse, remerciement et conversion.`;
+    return `Le ${channelLabel} fonctionne déjà et génère des signaux business exploitables.${dominant}La priorité est maintenant le suivi : réponse, relance, remerciement et conversion.`;
   }
-  return `Le ${channelLabel} montre des signaux utiles mais encore contradictoires.${dominant}Avant d'accélérer, il faut enquêter pour comprendre ce qui bloque, ce qui manque ou ce qui détourne l'intention.`;
+  return `Le ${channelLabel} génère des opportunités mais les signaux restent contradictoires.${dominant}Avant d'accélérer, il faut enquêter pour comprendre ce qui bloque.`;
 }
 
-function websiteRawScores(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
-  const scores = emptyScores();
-  const traffic = n(input.metrics?.traffic);
-  const engagement = n(input.metrics?.engagement);
-  const intent = n(input.metrics?.intent);
-  const conversions = n(input.metrics?.conversions);
-  const visibility = n(input.metrics?.visibility);
+function detectMode(input: DecisionInput, p: ProvenanceSummary): ModeType {
   const opp = n(input.opportunities);
   const quality = n(input.quality);
-  const isInrcySite = input.channelKey === "site_inrcy";
+  const traffic = n(input.metrics?.traffic);
+  const engagement = n(input.metrics?.engagement);
+  const audience = n(input.metrics?.audience);
+  const conversions = n(input.metrics?.conversions);
+  const visibility = n(input.metrics?.visibility);
+  const intent = n(input.metrics?.intent);
 
-  const trafficN = norm(traffic, isInrcySite ? 90 : 120);
-  const visibilityN = norm(visibility, 1200);
-  const engagementN = norm(engagement, 60);
-  const intentN = norm(intent, 8);
-  const conversionN = norm(conversions, 10);
-  const oppN = norm(opp, 18);
-  const qualityN = clamp(quality / 100);
-
-  const hasTraffic = trafficN >= 0.3;
-  const hasStrongTraffic = trafficN >= 0.6;
-  const hasIntent = intentN >= 0.3;
-  const hasConversions = conversions > 0;
-  const lowConversions = conversionN < 0.12;
-  const highOpp = oppN >= 0.45;
-  const strongOpp = oppN >= 0.7;
-  const goodQuality = qualityN >= 0.68;
-  const mediumQuality = qualityN >= 0.5;
-  const lowQuality = qualityN < 0.5;
-  const directDominant = p.directShare >= 0.45;
-  const searchDriven = p.googleShare + p.searchShare >= 0.4;
-  const contradiction =
-    (hasTraffic && !hasConversions ? 0.55 : 0) +
-    (directDominant && !hasIntent ? 0.25 : 0) +
-    (hasStrongTraffic && lowConversions ? 0.35 : 0) +
-    (mediumQuality && p.dominantShare >= 0.7 ? 0.2 : 0);
-
-  add(scores, "publier", 1.2);
-  add(scores, "offrir", 1.2);
-  add(scores, "recolter", 1.0);
-  add(scores, "informer", 0.9);
-  add(scores, "suivre", 1.0);
-  add(scores, "enqueter", 0.9);
-
-  if (!hasTraffic) add(scores, "publier", 3.4);
-  if (visibilityN < 0.25) add(scores, "publier", 1.8);
-  if (p.socialShare >= 0.25) add(scores, "publier", 0.9);
-
-  if (highOpp) add(scores, "offrir", 2.2);
-  if (strongOpp) add(scores, "offrir", 0.9);
-  if (hasTraffic) add(scores, "offrir", 1.2);
-  if (hasIntent) add(scores, "offrir", 1.7);
-  if (lowConversions) add(scores, "offrir", 1.4);
-  if (searchDriven) add(scores, "offrir", 0.9);
-
-  if (visibilityN >= 0.35) add(scores, "recolter", 1.4);
-  if (searchDriven) add(scores, "recolter", 1.1);
-  if (p.socialShare >= 0.2) add(scores, "recolter", 0.7);
-  if (lowConversions) add(scores, "recolter", 1.3);
-  if (qualityN >= 0.55) add(scores, "recolter", 0.6);
-
-  if (goodQuality) add(scores, "informer", 1.9);
-  if (p.balanced) add(scores, "informer", 1.0);
-  if (directDominant) add(scores, "informer", 0.9);
-  if (engagementN >= 0.45) add(scores, "informer", 0.8);
-  if (hasConversions) add(scores, "informer", 0.8);
-  if (!strongOpp) add(scores, "informer", 0.4);
-
-  if (hasConversions) add(scores, "suivre", 3.4);
-  if (directDominant) add(scores, "suivre", 1.6);
-  if (hasIntent) add(scores, "suivre", 1.2);
-  if (goodQuality) add(scores, "suivre", 1.0);
-  if (engagementN >= 0.45) add(scores, "suivre", 0.6);
-
-  if (contradiction > 0) add(scores, "enqueter", 3.2 * contradiction);
-  if (highOpp && lowConversions) add(scores, "enqueter", 1.8);
-  if (hasStrongTraffic && !hasConversions) add(scores, "enqueter", 2.0);
-  if (!hasIntent && hasTraffic) add(scores, "enqueter", 0.8);
-  if (lowQuality) add(scores, "enqueter", 1.5);
-  if (!isInrcySite && mediumQuality && highOpp && !hasConversions) add(scores, "enqueter", 1.3);
-
-  if (isInrcySite && goodQuality && directDominant) add(scores, "suivre", 1.0);
-  if (isInrcySite && goodQuality) add(scores, "informer", 0.5);
-  if (!isInrcySite && mediumQuality && highOpp && !hasConversions) {
-    add(scores, "suivre", -1.5);
-    add(scores, "offrir", -0.4);
+  if (input.channelType === "website") {
+    return opp >= 5 ? "fideliser" : "booster";
   }
 
-  return scores;
+  if (input.channelType === "gmb") {
+    const localDemand = visibility >= 250 || conversions >= 3 || p.mapsShare >= 0.4 || p.googleShare >= 0.5;
+    const localHealthy = opp >= 4 && localDemand && quality >= 50;
+    return localHealthy ? "fideliser" : "booster";
+  }
+
+  const socialHealthy =
+    opp >= 6 &&
+    (
+      engagement >= 20 ||
+      audience >= 150 ||
+      conversions >= 2 ||
+      visibility >= 300 ||
+      p.interactionShare >= 0.35
+    );
+
+  if (socialHealthy) return "fideliser";
+
+  const hasSocialMotion = engagement >= 10 || audience >= 100 || visibility >= 200 || p.audienceShare >= 0.4;
+  return hasSocialMotion && opp >= 8 && quality >= 55 ? "fideliser" : "booster";
 }
 
-function socialRawScores(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
+function scoreBooster(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
   const scores = emptyScores();
+  const quality = n(input.quality);
+  const opp = n(input.opportunities);
   const audience = n(input.metrics?.audience);
   const engagement = n(input.metrics?.engagement);
-  const conversions = n(input.metrics?.conversions);
-  const visibility = n(input.metrics?.visibility);
-  const opp = n(input.opportunities);
-  const quality = n(input.quality);
-  const isLinkedIn = input.channelKey === "linkedin";
-
-  const audienceN = norm(audience, isLinkedIn ? 1200 : 4000);
-  const engagementN = norm(engagement, isLinkedIn ? 45 : 120);
-  const conversionN = norm(conversions, isLinkedIn ? 4 : 12);
-  const visibilityN = norm(visibility, isLinkedIn ? 1500 : 4000);
-  const oppN = norm(opp, 20);
-  const qualityN = clamp(quality / 100);
-
-  const activeAudience = audienceN >= 0.35 || visibilityN >= 0.35;
-  const engaged = engagementN >= 0.25;
-  const strongEngagement = engagementN >= 0.55;
-  const hasConversions = conversions > 0;
-  const lowConversions = conversionN < 0.12;
-  const highOpp = oppN >= 0.45;
-  const goodQuality = qualityN >= 0.62;
-  const contradiction =
-    (activeAudience && !engaged ? 0.5 : 0) +
-    (strongEngagement && !hasConversions ? 0.35 : 0) +
-    (p.audienceShare >= 0.75 && p.interactionShare <= 0.1 ? 0.25 : 0);
-
-  addMany(scores, ["publier", "offrir", "recolter", "informer", "suivre", "enqueter"], 0.9);
-
-  if (!activeAudience) add(scores, "publier", 3.1);
-  if (!engaged) add(scores, "publier", 1.7);
-  if (p.audienceShare >= 0.45) add(scores, "publier", 0.9);
-  if (highOpp && !engaged) add(scores, "publier", 0.8);
-
-  if (highOpp) add(scores, "offrir", 2.1);
-  if (engaged) add(scores, "offrir", 1.2);
-  if (activeAudience) add(scores, "offrir", 1.0);
-  if (lowConversions) add(scores, "offrir", 1.5);
-  if (p.interactionShare >= 0.35) add(scores, "offrir", 0.8);
-
-  if (activeAudience) add(scores, "recolter", 1.8);
-  if (engaged) add(scores, "recolter", 1.4);
-  if (lowConversions) add(scores, "recolter", 1.3);
-  if (p.audienceShare + p.interactionShare >= 0.55) add(scores, "recolter", 1.0);
-  if (goodQuality) add(scores, "recolter", 0.5);
-
-  if (goodQuality) add(scores, "informer", 1.8);
-  if (engaged) add(scores, "informer", 1.1);
-  if (p.balanced) add(scores, "informer", 0.9);
-  if (hasConversions) add(scores, "informer", 0.7);
-  if (!highOpp) add(scores, "informer", 0.5);
-
-  if (hasConversions) add(scores, "suivre", 3.4);
-  if (strongEngagement) add(scores, "suivre", 1.1);
-  if (goodQuality) add(scores, "suivre", 0.9);
-  if (p.interactionShare >= 0.35 || p.clickShare >= 0.2) add(scores, "suivre", 0.9);
-
-  if (contradiction > 0) add(scores, "enqueter", 3.0 * contradiction);
-  if (activeAudience && !engaged) add(scores, "enqueter", 1.5);
-  if (strongEngagement && !hasConversions && highOpp) add(scores, "enqueter", 1.2);
-  if (qualityN < 0.45) add(scores, "enqueter", 1.2);
-
-  return scores;
-}
-
-function gmbRawScores(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
-  const scores = emptyScores();
   const traffic = n(input.metrics?.traffic);
   const conversions = n(input.metrics?.conversions);
+  const intent = n(input.metrics?.intent);
   const visibility = n(input.metrics?.visibility);
-  const opp = n(input.opportunities);
-  const quality = n(input.quality);
 
-  const trafficN = norm(traffic, 35);
-  const conversionN = norm(conversions, 35);
-  const visibilityN = norm(visibility, 5000);
-  const oppN = norm(opp, 35);
-  const qualityN = clamp(quality / 100);
+  addMany(scores, ["publier", "recolter", "offrir"], 1);
 
-  const visible = visibilityN >= 0.25;
-  const actionsPresent = conversionN >= 0.18;
-  const lowActions = conversionN < 0.1;
-  const highOpp = oppN >= 0.35;
-  const mapsDriven = p.mapsShare >= 0.35;
-  const searchDriven = p.searchShare >= 0.35;
-  const contradiction =
-    (visible && lowActions ? 0.65 : 0) +
-    (mapsDriven && !actionsPresent ? 0.2 : 0) +
-    (searchDriven && !actionsPresent ? 0.2 : 0);
+  if (input.channelType === "website") {
+    if (opp <= 2) add(scores, "publier", 4);
+    else if (opp <= 4) add(scores, "publier", 2);
 
-  addMany(scores, ["publier", "offrir", "recolter", "informer", "suivre", "enqueter"], 0.8);
+    if (quality < 70) add(scores, "publier", 2);
+    if (quality < 60) add(scores, "publier", 3);
+    if (quality < 55) add(scores, "offrir", 1);
 
-  if (!visible) add(scores, "publier", 3.2);
-  if (trafficN < 0.2) add(scores, "publier", 1.4);
-  if (mapsDriven || searchDriven) add(scores, "publier", 0.6);
+    if (traffic > 0 && conversions <= 0) add(scores, "offrir", 4);
+    if (intent > 0 && conversions <= 0) add(scores, "offrir", 3);
+    if (p.googleShare + p.searchShare >= 0.45) add(scores, "offrir", 2);
+    if (p.directShare >= 0.4 && conversions <= 0) add(scores, "offrir", 1);
 
-  if (highOpp) add(scores, "offrir", 2.1);
-  if (visible) add(scores, "offrir", 1.2);
-  if (lowActions) add(scores, "offrir", 1.6);
-  if (searchDriven) add(scores, "offrir", 1.0);
+    if (traffic > 0 && quality >= 65 && conversions <= 0) add(scores, "recolter", 2);
+    if (conversions > 0 && conversions < 3) add(scores, "recolter", 1);
+  }
 
-  if (visible) add(scores, "recolter", 2.0);
-  if (mapsDriven || searchDriven) add(scores, "recolter", 1.2);
-  if (lowActions) add(scores, "recolter", 1.3);
-  if (qualityN >= 0.55) add(scores, "recolter", 0.6);
+  if (input.channelType === "social") {
+    if (opp <= 3) add(scores, "publier", 3);
+    if (audience < 120 || visibility < 150) add(scores, "publier", 3);
+    if (quality < 55) add(scores, "publier", 2);
+    if (p.audienceShare >= 0.45) add(scores, "publier", 2);
 
-  if (qualityN >= 0.68) add(scores, "informer", 1.7);
-  if (actionsPresent) add(scores, "informer", 0.8);
-  if (p.balanced) add(scores, "informer", 0.9);
-  if (!highOpp) add(scores, "informer", 0.5);
+    if (engagement > 0 && conversions <= 0) add(scores, "recolter", 3);
+    if (engagement >= 8 && audience >= 120 && conversions <= 1) add(scores, "recolter", 2);
+    if (p.interactionShare >= 0.35) add(scores, "recolter", 2);
 
-  if (actionsPresent) add(scores, "suivre", 3.2);
-  if (trafficN >= 0.35) add(scores, "suivre", 1.0);
-  if (qualityN >= 0.65) add(scores, "suivre", 0.9);
-  if (p.clickShare >= 0.2) add(scores, "suivre", 0.8);
+    if ((engagement >= 12 || traffic > 0) && conversions <= 0) add(scores, "offrir", 2);
+    if (p.clickShare >= 0.25) add(scores, "offrir", 2);
+  }
 
-  if (contradiction > 0) add(scores, "enqueter", 3.2 * contradiction);
-  if (visible && lowActions && highOpp) add(scores, "enqueter", 1.8);
-  if (qualityN < 0.55) add(scores, "enqueter", 1.0);
-  if (mapsDriven !== searchDriven && p.dominantShare >= 0.75) add(scores, "enqueter", 0.8);
+  if (input.channelType === "gmb") {
+    if (opp <= 2) add(scores, "publier", 3);
+    if (visibility < 220) add(scores, "publier", 3);
+    if (quality < 55) add(scores, "publier", 1);
+
+    if (visibility >= 220 && conversions <= 1) add(scores, "recolter", 3);
+    if (p.mapsShare >= 0.45 && conversions <= 1) add(scores, "recolter", 2);
+
+    if (conversions > 0 && conversions < 4) add(scores, "offrir", 3);
+    if (p.searchShare >= 0.35 || p.googleShare >= 0.45) add(scores, "offrir", 2);
+  }
 
   return scores;
 }
 
-function buildRawScores(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
-  if (input.channelType === "social") return socialRawScores(input, p);
-  if (input.channelType === "gmb") return gmbRawScores(input, p);
-  return websiteRawScores(input, p);
+function scoreFideliser(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
+  const scores = emptyScores();
+  const quality = n(input.quality);
+  const opp = n(input.opportunities);
+  const audience = n(input.metrics?.audience);
+  const engagement = n(input.metrics?.engagement);
+  const traffic = n(input.metrics?.traffic);
+  const conversions = n(input.metrics?.conversions);
+  const intent = n(input.metrics?.intent);
+  const visibility = n(input.metrics?.visibility);
+
+  addMany(scores, ["informer", "suivre", "enqueter"], 1);
+
+  if (input.channelType === "website") {
+    if (opp >= 10) add(scores, "suivre", 2);
+    if (conversions > 0) add(scores, "suivre", 4);
+    if (quality >= 70) add(scores, "suivre", 2);
+    if (p.directShare >= 0.35 || p.googleShare >= 0.35) add(scores, "suivre", 1);
+
+    if (quality >= 65 && conversions <= 0 && engagement > 0) add(scores, "informer", 2);
+    if (p.balanced) add(scores, "informer", 1);
+
+    const contradictorySignals = (traffic > 30 && conversions <= 0) || (intent > 0 && conversions <= 0) || (p.directShare >= 0.4 && conversions <= 0);
+    if (contradictorySignals) add(scores, "enqueter", 4);
+    if (quality < 70 && contradictorySignals) add(scores, "enqueter", 2);
+  }
+
+  if (input.channelType === "social") {
+    if (opp >= 8) add(scores, "suivre", 1);
+    if (engagement >= 20 || conversions >= 2) add(scores, "suivre", 4);
+    if (p.interactionShare >= 0.35) add(scores, "suivre", 1);
+
+    if (audience >= 150 && engagement >= 8 && conversions <= 1) add(scores, "informer", 3);
+    if (p.audienceShare >= 0.4 && engagement >= 8) add(scores, "informer", 1);
+
+    if (audience >= 200 && engagement < 8) add(scores, "enqueter", 4);
+    if (visibility >= 300 && conversions <= 0 && engagement < 10) add(scores, "enqueter", 2);
+  }
+
+  if (input.channelType === "gmb") {
+    if (opp >= 5) add(scores, "suivre", 1);
+    if (conversions >= 3) add(scores, "suivre", 4);
+    if (p.mapsShare >= 0.4 && conversions >= 2) add(scores, "suivre", 1);
+
+    if (visibility >= 250 && conversions >= 2) add(scores, "informer", 2);
+    if (p.balanced) add(scores, "informer", 1);
+
+    if (visibility >= 250 && conversions <= 1) add(scores, "enqueter", 4);
+    if (p.mapsShare >= 0.45 && conversions <= 1) add(scores, "enqueter", 1);
+  }
+
+  return scores;
 }
 
 export function decideAction(input: DecisionInput): DecisionResult {
-  if (input?.connected === false) {
+  if (input.connected === false) {
     return {
       mode: "booster",
       action: "publier",
-      reason: "Canal non connecté ou inactif : il faut d'abord le brancher pour pouvoir l'exploiter.",
+      reason: "Le canal n'est pas encore connecté : commencez par l'activer pour pouvoir exploiter ses données.",
       confidence: 100,
-      ranking: [{ action: "publier", score: 100 }],
+      ranking: [
+        { action: "publier", score: 100 },
+        { action: "offrir", score: 0 },
+        { action: "recolter", score: 0 },
+      ],
     };
   }
 
-  const p = buildProvenanceSummary(input?.provenance);
-  const rawScores = buildRawScores(input, p);
-  const scores = normalizeScores(rawScores);
-  const ranking = sortRanking(scores);
-  const action = bestAction(scores);
-  const mode: ModeType = action === "publier" || action === "offrir" || action === "recolter" ? "booster" : "fideliser";
+  const p = buildProvenanceSummary(input.provenance);
+  const mode = detectMode(input, p);
+  const rawScores = mode === "booster" ? scoreBooster(input, p) : scoreFideliser(input, p);
+  const action = selectAction(mode, rawScores);
+  const ranking = sortRanking(rawScores).filter((entry) =>
+    mode === "booster"
+      ? ["publier", "recolter", "offrir"].includes(entry.action)
+      : ["informer", "suivre", "enqueter"].includes(entry.action),
+  );
 
   return {
     mode,
     action,
-    reason: makeReason(action, input.channelType, p, Math.round(n(input.opportunities)), Math.round(n(input.quality))),
+    reason: makeReason(action, input.channelType, p, n(input.opportunities), n(input.quality)),
     confidence: confidenceFromRanking(ranking),
     ranking,
   };
