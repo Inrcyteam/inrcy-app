@@ -1002,8 +1002,12 @@ if (cubeKey === "site_web") {
   });
 }
 
-function buildInsights(cubeKey: CubeKey, ov: Overview, qualityScore: number) {
+function buildInsights(cubeKey: CubeKey, ov: Overview, qualityScore: number, decision?: DecisionResult) {
   const insights: string[] = [];
+
+  if (decision?.businessLecture?.length) {
+    return decision.businessLecture.slice(0, 4);
+  }
 
   if (cubeKey === "facebook") {
     if (!ov?.sources?.facebook?.connected) {
@@ -1427,13 +1431,15 @@ const provenance = buildProvenance(key, ov);
       const opp30 = summaryOpp.byCube[key] ?? computeOpportunity30(key, ov);
 
       const q = computeQuality(key, ov);
-      const insights = buildInsights(key, ov, q.score);
       let action = recommendAction(key, ov, q.score);
+      let decision: DecisionResult | undefined;
 
       if (action.key !== "connect" && action.key !== "loading") {
-        const decision = decideAction(getDecisionInput(key, ov, q.score, opp30, provenance));
+        decision = decideAction(getDecisionInput(key, ov, q.score, opp30, provenance));
         action = actionFromDecision(action, decision);
       }
+
+      const insights = buildInsights(key, ov, q.score, decision);
 
       // Pendant le chargement initial (aucun overview réel), on affiche un CTA neutre.
       if (state.loading && !hasRealOverview) {

@@ -39,6 +39,7 @@ export type DecisionResult = {
   mode: ModeType;
   action: ActionType;
   reason: string;
+  businessLecture?: string[];
   confidence?: number;
   ranking?: RankedAction[];
 };
@@ -323,12 +324,250 @@ function scoreFideliser(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
   return scores;
 }
 
+
+
+function formatPct(value: number) {
+  return `${Math.round(clamp(value, 0, 1) * 100)}%`;
+}
+
+function channelLabel(channelType: ChannelType) {
+  if (channelType === "website") return "site";
+  if (channelType === "social") return "réseau";
+  return "fiche Google Business";
+}
+
+function buildBusinessLecture(input: DecisionInput, action: ActionType, mode: ModeType, p: ProvenanceSummary): string[] {
+  const opp = n(input.opportunities);
+  const quality = n(input.quality);
+  const audience = n(input.metrics?.audience);
+  const engagement = n(input.metrics?.engagement);
+  const traffic = n(input.metrics?.traffic);
+  const conversions = n(input.metrics?.conversions);
+  const intent = n(input.metrics?.intent);
+  const visibility = n(input.metrics?.visibility);
+
+  const lines: string[] = [];
+  const label = channelLabel(input.channelType);
+  const dominant = p.dominantLabel ? `La provenance dominante est « ${p.dominantLabel} » (${formatPct(p.dominantShare)}).` : "";
+
+  if (input.channelType === "website") {
+    if (mode === "booster") {
+      if (action === "publier") {
+        lines.push(
+          opp <= 2
+            ? `Le ${label} active encore peu d'opportunités (${opp}) : il faut d'abord recréer du mouvement.`
+            : `Le ${label} reste en phase de relance : il faut encore densifier sa présence avant de chercher à fidéliser.`
+        );
+        if (quality < 60) {
+          lines.push(`La qualité perçue reste faible (${quality}/100) : la structure n'aide pas encore assez la conversion.`);
+        } else if (quality < 72) {
+          lines.push(`La structure est exploitable (${quality}/100), mais elle manque encore d'impact pour accélérer seule.`);
+        }
+        if (traffic <= 20 && visibility <= 100) {
+          lines.push("Le volume de trafic et de visibilité reste léger : publier aide à regagner de l'exposition.");
+        } else if (dominant) {
+          lines.push(dominant.replace("La provenance dominante", "Aujourd'hui, la provenance dominante"));
+        }
+        lines.push("Publier est donc le levier prioritaire pour remettre le canal en mouvement avant de pousser une offre plus forte.");
+      }
+
+      if (action === "offrir") {
+        lines.push(`Le ${label} capte déjà un minimum d'attention mais transforme encore trop peu.`);
+        if (traffic > 0) {
+          lines.push(`Le trafic existe (${Math.round(traffic)} sessions) mais les signaux de conversion restent limités (${Math.round(conversions)}).`);
+        } else if (intent > 0) {
+          lines.push(`Des signaux d'intention existent (${Math.round(intent)}) sans débouché clair côté conversion.`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Une offre plus claire, plus visible et plus immédiate est le meilleur levier pour déclencher le contact.");
+      }
+
+      if (action === "recolter") {
+        lines.push(`Le ${label} commence à être crédible, mais il manque encore des preuves pour rassurer.`);
+        if (traffic > 0 || conversions > 0) {
+          lines.push(`Le canal montre déjà des signaux réels (trafic ${Math.round(traffic)}, conversions ${Math.round(conversions)}) qui méritent d'être appuyés.`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Récolter des avis, retours ou cas clients aidera à transformer plus vite l'attention déjà captée.");
+      }
+    } else {
+      if (action === "suivre") {
+        lines.push(`Le ${label} fonctionne déjà : le volume d'opportunités (${opp}) justifie une logique de fidélisation.`);
+        if (conversions > 0) {
+          lines.push(`Des signaux business existent déjà (${Math.round(conversions)} conversions / points de contact) : il faut désormais les suivre et les relancer.`);
+        } else if (traffic > 30) {
+          lines.push(`Le canal reçoit déjà du trafic exploitable (${Math.round(traffic)} sessions) et la qualité reste solide (${quality}/100).`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Le bon levier est donc le suivi : réponse rapide, relance, remerciement et transformation des demandes.");
+      }
+
+      if (action === "enqueter") {
+        lines.push(`Le ${label} produit des opportunités (${opp}), mais les signaux restent contradictoires.`);
+        if (traffic > 30 && conversions <= 0) {
+          lines.push(`Le trafic est là (${Math.round(traffic)} sessions) sans conversion suffisante (${Math.round(conversions)}) : un blocage subsiste dans le parcours.`);
+        } else if (intent > 0 && conversions <= 0) {
+          lines.push(`De l'intention est détectée (${Math.round(intent)}) mais elle ne se transforme pas encore en prise de contact.`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Avant d'accélérer, il faut enquêter : clarifier l'offre, la zone, les déclencheurs et le parcours de contact.");
+      }
+
+      if (action === "informer") {
+        lines.push(`Le ${label} est déjà exploitable (${opp} opportunités, qualité ${quality}/100), sans urgence de correction majeure.`);
+        if (traffic > 0) {
+          lines.push(`Le canal continue de vivre avec un trafic utile (${Math.round(traffic)} sessions) mais sans pic de conversion immédiat.`);
+        }
+        if (p.balanced) {
+          lines.push("La provenance est assez équilibrée, ce qui favorise un travail régulier de présence et d'information.");
+        } else if (dominant) {
+          lines.push(dominant);
+        }
+        lines.push("Informer régulièrement permet donc d'entretenir la confiance, rester présent et préparer les prochaines demandes.");
+      }
+    }
+  }
+
+  if (input.channelType === "social") {
+    if (mode === "booster") {
+      if (action === "publier") {
+        lines.push(`Le ${label} n'a pas encore assez de mouvement pour produire une dynamique stable.`);
+        if (visibility > 0 || audience > 0) {
+          lines.push(`La présence existe (${Math.round(Math.max(visibility, audience))} signaux de portée/audience), mais elle reste trop peu activée.`);
+        }
+        if (engagement <= 5) {
+          lines.push(`L'engagement reste très faible (${Math.round(engagement)}) : le canal manque surtout de régularité visible.`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Publier est donc l'action prioritaire pour relancer la visibilité, créer du rythme et rouvrir le canal.");
+      }
+
+      if (action === "recolter") {
+        lines.push(`Le ${label} capte déjà de l'attention, mais il transforme encore peu cette attention en réassurance concrète.`);
+        lines.push(`Les interactions existent (${Math.round(engagement)}), alors que les conversions restent limitées (${Math.round(conversions)}).`);
+        if (dominant) lines.push(dominant);
+        lines.push("Récolter des avis, témoignages ou preuves sociales est le meilleur levier pour crédibiliser ce qui fonctionne déjà.");
+      }
+
+      if (action === "offrir") {
+        lines.push(`Le ${label} commence à créer des signaux utiles, mais le passage à l'action reste trop faible.`);
+        if (engagement > 0 || traffic > 0) {
+          lines.push(`Il y a déjà de l'activité (${Math.round(engagement)} engagements, ${Math.round(traffic)} trafic) sans offre assez déclenchante.`);
+        }
+        if (p.clickShare >= 0.25) {
+          lines.push("Une part non négligeable de la provenance vient déjà des clics : le canal est prêt pour une proposition plus directe.");
+        } else if (dominant) {
+          lines.push(dominant);
+        }
+        lines.push("Offrir permet ici de transformer l'attention sociale en intention concrète de prise de contact.");
+      }
+    } else {
+      if (action === "suivre") {
+        lines.push(`Le ${label} fonctionne déjà suffisamment pour passer en logique de fidélisation.`);
+        if (engagement >= 20 || conversions >= 2) {
+          lines.push(`Les signaux d'activité sont déjà solides (${Math.round(engagement)} engagements, ${Math.round(conversions)} conversions).`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Le bon levier est désormais le suivi : répondre, relancer, remercier et convertir la communauté active.");
+      }
+
+      if (action === "enqueter") {
+        lines.push(`Le ${label} est visible, mais la mécanique sociale ne convertit pas encore correctement.`);
+        if (audience >= 200 && engagement < 8) {
+          lines.push(`L'audience est présente (${Math.round(audience)}) alors que l'engagement reste faible (${Math.round(engagement)}) : il y a un décalage à comprendre.`);
+        } else if (visibility >= 300 && conversions <= 0) {
+          lines.push(`La visibilité est réelle (${Math.round(visibility)}) mais ne débouche pas sur de conversion (${Math.round(conversions)}).`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Il faut donc enquêter sur le contenu, le message, l'offre ou la cible avant d'insister davantage.");
+      }
+
+      if (action === "informer") {
+        lines.push(`Le ${label} est suffisamment vivant pour nourrir la relation plutôt que simplement chercher de la portée brute.`);
+        if (audience >= 150) {
+          lines.push(`L'audience est déjà installée (${Math.round(audience)}), avec assez de présence pour travailler la continuité.`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Informer régulièrement aide ici à garder le canal chaud, rester crédible et préparer les prochaines conversions.");
+      }
+    }
+  }
+
+  if (input.channelType === "gmb") {
+    if (mode === "booster") {
+      if (action === "publier") {
+        lines.push("La fiche locale a encore besoin d'être animée pour gagner en présence dans son bassin local.");
+        if (visibility < 220) {
+          lines.push(`La visibilité locale reste limitée (${Math.round(visibility)}) pour enclencher un vrai flux de demandes.`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Publier régulièrement sur Google Business est le levier le plus simple pour relancer la visibilité locale.");
+      }
+
+      if (action === "recolter") {
+        lines.push("La fiche locale commence à être vue, mais elle manque encore de preuves pour rassurer et faire passer à l'action.");
+        if (visibility >= 220) {
+          lines.push(`La visibilité existe déjà (${Math.round(visibility)}), alors que les conversions restent faibles (${Math.round(conversions)}).`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Récolter des avis est ici l'action la plus rentable pour renforcer la crédibilité locale.");
+      }
+
+      if (action === "offrir") {
+        lines.push("La fiche locale génère déjà quelques signaux, mais elle peut encore mieux orienter vers une demande concrète.");
+        if (conversions > 0) {
+          lines.push(`Des interactions existent déjà (${Math.round(conversions)}) : une offre ou un message plus direct peut les amplifier.`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Mettre en avant une offre, une disponibilité ou un avantage clair aide à convertir la visibilité locale plus vite.");
+      }
+    } else {
+      if (action === "suivre") {
+        lines.push("La fiche locale fonctionne déjà : elle capte des signaux business qu'il faut maintenant exploiter rapidement.");
+        if (conversions >= 3) {
+          lines.push(`Les conversions locales sont déjà présentes (${Math.round(conversions)}) : le suivi commercial devient prioritaire.`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Le bon levier est donc le suivi des appels, clics site et demandes issues de la fiche.");
+      }
+
+      if (action === "enqueter") {
+        lines.push("La fiche locale est visible, mais cette visibilité ne se transforme pas encore assez en demandes utiles.");
+        if (visibility >= 250 && conversions <= 1) {
+          lines.push(`Le décalage est net entre visibilité (${Math.round(visibility)}) et conversions (${Math.round(conversions)}).`);
+        }
+        if (dominant) lines.push(dominant);
+        lines.push("Il faut enquêter sur la fiche, les catégories, les contenus et les éléments de réassurance avant d'accélérer.");
+      }
+
+      if (action === "informer") {
+        lines.push("La fiche locale est déjà saine : l'enjeu est surtout de rester présente et cohérente dans le temps.");
+        if (visibility >= 250 && conversions >= 2) {
+          lines.push(`Les signaux locaux sont bons (${Math.round(visibility)} impressions, ${Math.round(conversions)} interactions).`);
+        }
+        if (p.balanced) {
+          lines.push("La répartition entre Search et Maps reste équilibrée, ce qui favorise une animation régulière.");
+        } else if (dominant) {
+          lines.push(dominant);
+        }
+        lines.push("Informer régulièrement permet de maintenir la confiance locale sans forcer inutilement le canal.");
+      }
+    }
+  }
+
+  return lines.filter(Boolean).slice(0, 4);
+}
+
 export function decideAction(input: DecisionInput): DecisionResult {
   if (input.connected === false) {
     return {
       mode: "booster",
       action: "publier",
       reason: "Le canal n'est pas encore connecté : commencez par l'activer pour pouvoir exploiter ses données.",
+      businessLecture: [
+        "Le canal n'est pas encore branché : aucune lecture business fiable n'est possible tant qu'il reste déconnecté.",
+        "La priorité absolue est donc l'activation du canal pour commencer à capter ses premiers signaux.",
+      ],
       confidence: 100,
       ranking: [
         { action: "publier", score: 100 },
@@ -352,6 +591,7 @@ export function decideAction(input: DecisionInput): DecisionResult {
     mode,
     action,
     reason: makeReason(action, input.channelType, p, n(input.opportunities), n(input.quality)),
+    businessLecture: buildBusinessLecture(input, action, mode, p),
     confidence: confidenceFromRanking(ranking),
     ranking,
   };
