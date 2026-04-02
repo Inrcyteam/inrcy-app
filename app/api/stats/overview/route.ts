@@ -5,6 +5,7 @@ import type { StatsSourceKey } from "@/lib/googleStats";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { decodeBusinessSector } from "@/lib/activitySectors";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -189,15 +190,20 @@ const hasInrcySite = inrcySiteOwnership !== "none";
 // Load settings from the new schema:
 // - site_inrcy -> inrcy_site_configs.settings
 // - site_web -> pro_tools_configs.settings.site_web
-const [inrcyCfgRes, proCfgRes] = await Promise.all([
+const [inrcyCfgRes, proCfgRes, businessProfileRes] = await Promise.all([
   supabase.from("inrcy_site_configs").select("site_url,settings").eq("user_id", userId).maybeSingle(),
   supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
+  supabase.from("business_profiles").select("sector").eq("user_id", userId).maybeSingle(),
 ]);
 
 // NOTE: SiteSettings has only optional fields, so an empty object is a valid fallback.
 // Using `null` breaks TS in production builds (null not assignable to SiteSettings).
 const inrcySettings = safeJsonParse<SiteSettings>(asRecord(inrcyCfgRes.data)["settings"], {});
 const proSettings = safeJsonParse<Record<string, unknown>>(asRecord(proCfgRes.data)["settings"], {});
+
+
+const rawBusinessSector = String(asRecord(businessProfileRes.data)["sector"] ?? "").trim();
+const decodedBusinessSector = decodeBusinessSector(rawBusinessSector);
 
 // Flag: en mode rented, on peut couper uniquement la couche iNrCy (sans débrancher GA4/GSC)
 const inrcyTrackingEnabled = Boolean(asRecord(inrcySettings)["inrcy_tracking_enabled"] ?? true);
@@ -287,6 +293,7 @@ async function buildConnectionsKey() {
 
   // Tracking toggle impacts GA4/GSC visibility (avoid serving stale cached payload)
   keyParts.push(`inrcyTrackingEnabled:${inrcyTrackingEnabled ? "1" : "0"}`);
+  keyParts.push(`business:sector=${decodedBusinessSector.sectorCategory}:profession=${decodedBusinessSector.profession}`);
 
   return keyParts.join("|") || "none";
 }
@@ -747,6 +754,10 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       topPages,
       channels,
       topQueries,
+      business: {
+        sectorCategory: decodedBusinessSector.sectorCategory || null,
+        profession: decodedBusinessSector.profession || null,
+      },
       sources: sourcesStatus,
       note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook, Instagram, LinkedIn.",
     };

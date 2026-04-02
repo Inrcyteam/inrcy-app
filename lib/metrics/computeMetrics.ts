@@ -5,6 +5,7 @@ export type CubeKey = 'site_inrcy' | 'site_web' | 'gmb' | 'facebook' | 'instagra
 
 export type Overview = {
   days: number;
+  business?: { sectorCategory?: string; profession?: string };
   totals?: {
     users?: number;
     sessions?: number;
@@ -85,6 +86,59 @@ function logNorm(x: number, ref: number) {
   const xx = Math.max(0, x);
   const rr = Math.max(1, ref);
   return clamp(Math.log1p(xx) / Math.log1p(rr), 0, 1);
+}
+
+
+type GscOpportunitySectorConfig = {
+  impressionRef: number;
+  clickRef: number;
+  intentRef: number;
+  ctrTarget: number;
+  bonusWeight: number;
+  directIntentFactor: number;
+  visibilityWeight: number;
+  trafficWeight: number;
+  intentWeight: number;
+  ctrWeight: number;
+  minImpressionsForCtr: number;
+};
+
+const DEFAULT_GSC_OPPORTUNITY_CONFIG: GscOpportunitySectorConfig = {
+  impressionRef: 120,
+  clickRef: 8,
+  intentRef: 3,
+  ctrTarget: 0.05,
+  bonusWeight: 0.35,
+  directIntentFactor: 0.10,
+  visibilityWeight: 0.20,
+  trafficWeight: 0.20,
+  intentWeight: 0.40,
+  ctrWeight: 0.20,
+  minImpressionsForCtr: 150,
+};
+
+const GSC_OPPORTUNITY_CONFIG_BY_SECTOR: Record<string, Partial<GscOpportunitySectorConfig>> = {
+  artisan_btp: { impressionRef: 80, clickRef: 5, intentRef: 1.8, ctrTarget: 0.045, bonusWeight: 0.44, directIntentFactor: 0.16 },
+  sante: { impressionRef: 90, clickRef: 5, intentRef: 2, ctrTarget: 0.05, bonusWeight: 0.42, directIntentFactor: 0.15 },
+  medecine_douce: { impressionRef: 90, clickRef: 5, intentRef: 2, ctrTarget: 0.048, bonusWeight: 0.41, directIntentFactor: 0.15 },
+  immobilier: { impressionRef: 85, clickRef: 5, intentRef: 1.8, ctrTarget: 0.045, bonusWeight: 0.45, directIntentFactor: 0.16 },
+  services_particuliers: { impressionRef: 85, clickRef: 5, intentRef: 1.8, ctrTarget: 0.045, bonusWeight: 0.43, directIntentFactor: 0.15 },
+  transport: { impressionRef: 85, clickRef: 5, intentRef: 1.8, ctrTarget: 0.045, bonusWeight: 0.43, directIntentFactor: 0.15 },
+  juridique: { impressionRef: 75, clickRef: 4, intentRef: 1.5, ctrTarget: 0.05, bonusWeight: 0.46, directIntentFactor: 0.17 },
+  finance: { impressionRef: 75, clickRef: 4, intentRef: 1.5, ctrTarget: 0.05, bonusWeight: 0.45, directIntentFactor: 0.16 },
+  hotel_restaurant: { impressionRef: 140, clickRef: 10, intentRef: 3.5, ctrTarget: 0.04, bonusWeight: 0.32, directIntentFactor: 0.09 },
+  commerce_boutique: { impressionRef: 130, clickRef: 9, intentRef: 3.2, ctrTarget: 0.04, bonusWeight: 0.31, directIntentFactor: 0.09 },
+  automobile: { impressionRef: 100, clickRef: 6, intentRef: 2.2, ctrTarget: 0.045, bonusWeight: 0.39, directIntentFactor: 0.13 },
+  communication: { impressionRef: 160, clickRef: 12, intentRef: 4, ctrTarget: 0.035, bonusWeight: 0.28, directIntentFactor: 0.08 },
+  services_entreprises: { impressionRef: 140, clickRef: 10, intentRef: 3.5, ctrTarget: 0.038, bonusWeight: 0.30, directIntentFactor: 0.09 },
+  evenementiel: { impressionRef: 130, clickRef: 9, intentRef: 3, ctrTarget: 0.04, bonusWeight: 0.34, directIntentFactor: 0.11 },
+  animalier: { impressionRef: 105, clickRef: 6, intentRef: 2.2, ctrTarget: 0.045, bonusWeight: 0.38, directIntentFactor: 0.12 },
+  autre: { impressionRef: 110, clickRef: 7, intentRef: 2.6, ctrTarget: 0.045, bonusWeight: 0.35, directIntentFactor: 0.10 },
+};
+
+function getGscOpportunityConfig(sectorCategory?: string | null): GscOpportunitySectorConfig {
+  const overrides = GSC_OPPORTUNITY_CONFIG_BY_SECTOR[String(sectorCategory || '').trim()] || {};
+  return { ...DEFAULT_GSC_OPPORTUNITY_CONFIG, ...overrides };
 }
 
 export function getTotalMetric(metrics: unknown, keys: string[]): number {
@@ -268,6 +322,8 @@ export function computeOpportunityPerDayWeb(ov: Overview) {
   const totals = ov.totals || {};
   const sessions = safeNum(totals.sessions);
   const clicks = safeNum(totals.clicks);
+  const impressions = safeNum(totals.impressions);
+  const ctr = clamp(safeNum(totals.ctr), 0, 1);
   const engagementRate = clamp(safeNum(totals.engagementRate), 0, 1);
   const avgSessionDurationSec = safeNum(totals.avgSessionDuration);
   const directShare = directShareFromChannels(ov, sessions);
@@ -279,7 +335,34 @@ export function computeOpportunityPerDayWeb(ov: Overview) {
   const intentScore = clamp((intentClicks / baseDays) / 3, 0, 1);
   const durationScore = clamp(avgSessionDurationSec / 180, 0, 1);
   const baseIndex = 0.45 * trafficScore + 0.30 * intentScore + 0.15 * engagementRate + 0.10 * durationScore;
-  const rawPerDay = ((sessions / baseDays) * 0.08 + (clicks / baseDays) * 0.10 + (intentClicks / baseDays) * 0.32 + (contactViews / baseDays) * 0.05) * (0.65 + baseIndex) * (0.85 + clamp(directShare / 0.65, 0, 1) * 0.20);
+  let rawPerDay = ((sessions / baseDays) * 0.08 + (clicks / baseDays) * 0.10 + (intentClicks / baseDays) * 0.32 + (contactViews / baseDays) * 0.05) * (0.65 + baseIndex) * (0.85 + clamp(directShare / 0.65, 0, 1) * 0.20);
+
+  const sources = safeObj(ov.sources);
+  const siteInrcyConn = safeObj(safeObj(sources.site_inrcy).connected);
+  const siteWebConn = safeObj(safeObj(sources.site_web).connected);
+  const gscConnected = Boolean(siteInrcyConn.gsc) || Boolean(siteWebConn.gsc);
+
+  if (gscConnected && (impressions > 0 || clicks > 0 || intentClicks > 0)) {
+    const cfg = getGscOpportunityConfig(ov.business?.sectorCategory);
+    const gscImpressionsPerDay = impressions / baseDays;
+    const gscClicksPerDay = clicks / baseDays;
+    const gscIntentClicksPerDay = intentClicks / baseDays;
+
+    const visibilityN = logNorm(gscImpressionsPerDay, cfg.impressionRef);
+    const trafficN = logNorm(gscClicksPerDay, cfg.clickRef);
+    const intentN = logNorm(gscIntentClicksPerDay, cfg.intentRef);
+    const ctrOppN = impressions >= cfg.minImpressionsForCtr ? clamp((cfg.ctrTarget - ctr) / Math.max(0.01, cfg.ctrTarget), 0, 1) : 0;
+
+    const gscBonusIndex =
+      cfg.visibilityWeight * visibilityN +
+      cfg.trafficWeight * trafficN +
+      cfg.intentWeight * intentN +
+      cfg.ctrWeight * ctrOppN;
+
+    const gscBasePerDay = 0.10 * visibilityN + 0.12 * trafficN + 0.22 * intentN + 0.08 * ctrOppN;
+    rawPerDay = (rawPerDay + gscBasePerDay + gscIntentClicksPerDay * cfg.directIntentFactor) * (1 + gscBonusIndex * cfg.bonusWeight);
+  }
+
   return clamp(rawPerDay, 0, 999);
 }
 
