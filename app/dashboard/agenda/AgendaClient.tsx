@@ -1474,7 +1474,7 @@ async function deleteEventById(id: string) {
                   </div>
                 </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
+              <div className={styles.dateTimeRow} style={{ marginTop: 10 }}>
                 <div className={styles.field}>
                   <div className={styles.label}>Date</div>
                   <input

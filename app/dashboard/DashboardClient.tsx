@@ -1412,36 +1412,23 @@ const disconnectSiteInrcyGsc = useCallback(() => {
   void disconnectGoogleStats("site_inrcy", "gsc");
 }, [disconnectGoogleStats, siteInrcyOwnership]);
 
-// ✅ Enregistrer le lien du site iNrCy (inrcy_site_configs.site_url)
-const saveSiteInrcyUrl = useCallback(async () => {
-  if (siteInrcyOwnership === "none") return;
-  const url = siteInrcyUrl.trim();
-  const normalized = normalizeSiteUrl(url);
-  if (!normalized) {
-    setSiteInrcySettingsError("Renseigne un vrai lien de site (ex: https://monsite.fr) avant d'enregistrer.");
-    return;
-  }
 
-  const supabase = createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData?.user;
-  if (!user) return;
+// ✅ Réinitialisation globale (lien + GA4 + GSC)
+const resetGoogleStats = useCallback(async (source: GoogleSource) => {
+  await Promise.all([
+    fetch("/api/integrations/google-stats/disconnect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source, product: "ga4" }),
+    }).catch(() => null),
+    fetch("/api/integrations/google-stats/disconnect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source, product: "gsc" }),
+    }).catch(() => null),
+  ]);
+}, []);
 
-  const { error } = await supabase
-    .from("inrcy_site_configs")
-    .upsert({ user_id: user.id, site_url: url }, { onConflict: "user_id" });
-  if (error) {
-    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
-    return;
-  }
-
-  setSiteInrcySettingsError(null);
-  setSiteInrcySavedUrl(url);
-  setSiteInrcyUrlNotice("✅ Lien du site enregistré");
-  triggerGeneratorRefresh();
-  window.setTimeout(() => setSiteInrcyUrlNotice("✅ Lien du site enregistré"), 50);
-  window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
-}, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl, triggerGeneratorRefresh]);
 
 // =========================
 // ✅ Site web (indépendant)
@@ -1485,48 +1472,194 @@ const updateSiteWebSettings = useCallback(
   []
 );
 
+const disconnectAllGoogleStatsForSource = useCallback(
+  async (source: GoogleSource) => {
+    await resetGoogleStats(source);
+
+    if (source === "site_inrcy") {
+      let nextSettings: any = {};
+      try {
+        const parsed = siteInrcySettingsText?.trim() ? JSON.parse(siteInrcySettingsText) : {};
+        nextSettings = removeGoogleProductFromSettings(removeGoogleProductFromSettings(parsed, "ga4"), "gsc");
+      } catch {
+        nextSettings = {};
+      }
+      await updateSiteInrcySettings(nextSettings);
+      setGa4MeasurementId("");
+      setGa4PropertyId("");
+      setGscProperty("");
+      setSiteInrcyGa4Connected(false);
+      setSiteInrcyGscConnected(false);
+      setSiteInrcyGa4Notice("Google Analytics déconnecté automatiquement.");
+      setSiteInrcyGscNotice("Search Console déconnecté automatiquement.");
+      setSiteInrcySettingsError(null);
+      window.setTimeout(() => {
+        setSiteInrcyGa4Notice(null);
+        setSiteInrcyGscNotice(null);
+      }, 2500);
+      return;
+    }
+
+    let nextSettings: any = {};
+    try {
+      const parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
+      nextSettings = removeGoogleProductFromSettings(removeGoogleProductFromSettings(parsed, "ga4"), "gsc");
+    } catch {
+      nextSettings = {};
+    }
+    await updateSiteWebSettings(nextSettings);
+    setSiteWebGa4MeasurementId("");
+    setSiteWebGa4PropertyId("");
+    setSiteWebGscProperty("");
+    setSiteWebGa4Connected(false);
+    setSiteWebGscConnected(false);
+    setSiteWebGa4Notice("Google Analytics déconnecté automatiquement.");
+    setSiteWebGscNotice("Search Console déconnecté automatiquement.");
+    setSiteWebSettingsError(null);
+    window.setTimeout(() => {
+      setSiteWebGa4Notice(null);
+      setSiteWebGscNotice(null);
+    }, 2500);
+  },
+  [
+    removeGoogleProductFromSettings,
+    resetGoogleStats,
+    siteInrcySettingsText,
+    siteWebSettingsText,
+    updateSiteInrcySettings,
+    updateSiteWebSettings,
+  ]
+);
+
+// ✅ Enregistrer le lien du site iNrCy (inrcy_site_configs.site_url)
+const saveSiteInrcyUrl = useCallback(async () => {
+  if (siteInrcyOwnership === "none") return;
+
+  const rawUrl = siteInrcyUrl.trim();
+  const savedNormalized = normalizeSiteUrl(siteInrcySavedUrl.trim());
+  const nextNormalized = rawUrl ? normalizeSiteUrl(rawUrl) : null;
+
+  if (rawUrl && !nextNormalized) {
+    setSiteInrcySettingsError("Renseigne un vrai lien de site (ex: https://monsite.fr) avant d'enregistrer.");
+    return;
+  }
+
+  const savedNormalizedUrl = savedNormalized?.normalizedUrl ?? "";
+  const nextNormalizedUrl = nextNormalized?.normalizedUrl ?? "";
+  const isRemovingExistingUrl = !rawUrl && !!savedNormalizedUrl;
+  const isChangingExistingUrl = !!savedNormalizedUrl && !!nextNormalizedUrl && savedNormalizedUrl !== nextNormalizedUrl;
+  const shouldConfirmLinkChange = isRemovingExistingUrl || isChangingExistingUrl;
+
+  if (shouldConfirmLinkChange) {
+    const ok = window.confirm(
+      "Modifier ou supprimer ce lien va déconnecter automatiquement Google Analytics et Google Search Console pour la bulle Site iNrCy. Continuer ?"
+    );
+    if (!ok) return;
+    await disconnectAllGoogleStatsForSource("site_inrcy");
+  }
+
+  const valueToSave = nextNormalized?.normalizedUrl ?? "";
+
+  const supabase = createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (!user) return;
+
+  const { error } = await supabase
+    .from("inrcy_site_configs")
+    .upsert({ user_id: user.id, site_url: valueToSave }, { onConflict: "user_id" });
+  if (error) {
+    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
+    return;
+  }
+
+  setSiteInrcySettingsError(null);
+  setSiteInrcyUrl(valueToSave);
+  setSiteInrcySavedUrl(valueToSave);
+  if (!valueToSave) setShowSiteInrcyWidgetCode(false);
+  const notice = shouldConfirmLinkChange
+    ? valueToSave
+      ? "✅ Lien du site enregistré. GA4 et Search Console ont été déconnectés."
+      : "✅ Lien du site supprimé. GA4 et Search Console ont été déconnectés."
+    : valueToSave
+      ? "✅ Lien du site enregistré"
+      : "✅ Lien du site supprimé";
+  setSiteInrcyUrlNotice(notice);
+  triggerGeneratorRefresh();
+  window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
+}, [
+  disconnectAllGoogleStatsForSource,
+  normalizeSiteUrl,
+  siteInrcyOwnership,
+  siteInrcySavedUrl,
+  siteInrcyUrl,
+  triggerGeneratorRefresh,
+]);
+
 // ✅ Enregistrer uniquement le lien du site web (settings.site_web.url)
 const saveSiteWebUrl = useCallback(async () => {
   let parsed: any;
   try {
     parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
   } catch {
-    setSiteWebSettingsError("JSON invalide. Vérifie la syntaxe (guillemets, virgules, accolades…)." );
+    setSiteWebSettingsError("JSON invalide. Vérifie la syntaxe (guillemets, virgules, accolades…).");
     return;
   }
 
-  const url = siteWebUrl.trim();
-  const normalized = normalizeSiteUrl(url);
-  if (!normalized) {
+  const rawUrl = siteWebUrl.trim();
+  const savedNormalized = normalizeSiteUrl(siteWebSavedUrl.trim());
+  const nextNormalized = rawUrl ? normalizeSiteUrl(rawUrl) : null;
+
+  if (rawUrl && !nextNormalized) {
     setSiteWebSettingsError("Renseigne un vrai lien de site (ex: https://monsite.fr) avant d'enregistrer.");
     return;
   }
 
-  parsed.url = url;
-  parsed.domain = normalized.hostname;
+  const savedNormalizedUrl = savedNormalized?.normalizedUrl ?? "";
+  const nextNormalizedUrl = nextNormalized?.normalizedUrl ?? "";
+  const isRemovingExistingUrl = !rawUrl && !!savedNormalizedUrl;
+  const isChangingExistingUrl = !!savedNormalizedUrl && !!nextNormalizedUrl && savedNormalizedUrl !== nextNormalizedUrl;
+  const shouldConfirmLinkChange = isRemovingExistingUrl || isChangingExistingUrl;
+
+  if (shouldConfirmLinkChange) {
+    const ok = window.confirm(
+      "Modifier ou supprimer ce lien va déconnecter automatiquement Google Analytics et Google Search Console pour la bulle Site web. Continuer ?"
+    );
+    if (!ok) return;
+    await disconnectAllGoogleStatsForSource("site_web");
+    parsed = parsed && typeof parsed === "object" ? { ...parsed } : {};
+    delete parsed.ga4;
+    delete parsed.gsc;
+  }
+
+  const valueToSave = nextNormalized?.normalizedUrl ?? "";
+  parsed.url = valueToSave;
+  if (nextNormalized?.hostname) parsed.domain = nextNormalized.hostname;
+  else delete parsed.domain;
 
   await updateSiteWebSettings(parsed);
-  setSiteWebSavedUrl(url);
+  setSiteWebUrl(valueToSave);
+  setSiteWebSavedUrl(valueToSave);
+  if (!valueToSave) setShowSiteWebWidgetCode(false);
   triggerGeneratorRefresh();
-  setSiteWebUrlNotice("✅ Lien du site enregistré");
+  const notice = shouldConfirmLinkChange
+    ? valueToSave
+      ? "✅ Lien du site enregistré. GA4 et Search Console ont été déconnectés."
+      : "✅ Lien du site supprimé. GA4 et Search Console ont été déconnectés."
+    : valueToSave
+      ? "✅ Lien du site enregistré"
+      : "✅ Lien du site supprimé";
+  setSiteWebUrlNotice(notice);
   window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
-}, [normalizeSiteUrl, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
-
-// ✅ Réinitialisation globale (lien + GA4 + GSC)
-const resetGoogleStats = useCallback(async (source: GoogleSource) => {
-  await Promise.all([
-    fetch("/api/integrations/google-stats/disconnect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, product: "ga4" }),
-    }).catch(() => null),
-    fetch("/api/integrations/google-stats/disconnect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, product: "gsc" }),
-    }).catch(() => null),
-  ]);
-}, []);
+}, [
+  disconnectAllGoogleStatsForSource,
+  normalizeSiteUrl,
+  siteWebSavedUrl,
+  siteWebSettingsText,
+  siteWebUrl,
+  triggerGeneratorRefresh,
+  updateSiteWebSettings,
+]);
 
 const resetSiteInrcyAll = useCallback(async () => {
   if (!confirm("Réinitialiser la configuration (lien + GA4 + Search Console) ?")) return;

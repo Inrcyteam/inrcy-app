@@ -610,6 +610,29 @@
 .textarea{width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.04);padding:10px 12px;color:white;outline:none;min-height:110px;resize:vertical}
 
 
+
+.dateTimeRow{
+  display:grid;
+  grid-template-columns: minmax(0,0.84fr) minmax(0,1fr) minmax(0,1fr);
+  gap:10px;
+}
+
+.dateTimeRow > *{
+  min-width:0;
+}
+
+@media (max-width: 640px){
+  .dateTimeRow{
+    grid-template-columns: minmax(0,0.78fr) minmax(0,1fr) minmax(0,1fr);
+  }
+
+  .dateTimeRow input[type="date"]{
+    font-size:14px;
+    padding-left:10px;
+    padding-right:10px;
+  }
+}
+
 /* --- Contact/Coordonnées block (Agenda ↔ CRM) --- */
 .contactRow{
   display:flex;
@@ -981,4 +1004,9 @@
 
 .timeDropdownOptionActive{
   background:rgba(77,163,255,0.24);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
 }
