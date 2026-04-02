@@ -8,7 +8,7 @@ import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
-import { decideAction } from "@/lib/decision/decisionEngine";
+import { decideAction, type DecisionResult } from "@/lib/decision/decisionEngine";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -553,22 +553,8 @@ function computeQuality(cubeKey: CubeKey, ov: Overview) {
     return { score: 70, ...qualityLabel(70) };
   }
 
-  if (cubeKey === "facebook") {
-    const connected = !!ov?.sources?.facebook?.connected;
-    if (!connected) return { score: 0, ...qualityLabel(0) };
-    return { score: 60, ...qualityLabel(60) };
-  }
-
-  if (cubeKey === "instagram") {
-    const connected = !!ov?.sources?.instagram?.connected;
-    if (!connected) return { score: 0, ...qualityLabel(0) };
-    return { score: 62, ...qualityLabel(62) };
-  }
-
-  if (cubeKey === "linkedin") {
-    const connected = !!ov?.sources?.linkedin?.connected;
-    if (!connected) return { score: 0, ...qualityLabel(0) };
-    return { score: 58, ...qualityLabel(58) };
+  if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin") {
+    return computeSocialQuality(cubeKey, ov);
   }
 
   // websites: quality = engagement + structure + intent
@@ -596,6 +582,210 @@ function computeQuality(cubeKey: CubeKey, ov: Overview) {
 
   score = clamp(score, 15, 95);
   return { score, ...qualityLabel(score) };
+}
+
+
+function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin", ov: Overview) {
+  const m =
+    cubeKey === "facebook"
+      ? ov?.sources?.facebook?.metrics
+      : cubeKey === "instagram"
+        ? ov?.sources?.instagram?.metrics
+        : ov?.sources?.linkedin?.metrics;
+
+  const audience =
+    cubeKey === "facebook"
+      ? safeNum(m?.totals?.fan_count) + safeNum(m?.totals?.followers_count) + safeNum(m?.totals?.post_impressions_sum)
+      : cubeKey === "instagram"
+        ? safeNum(m?.totals?.follower_count) + safeNum(m?.totals?.reach) + safeNum(m?.totals?.profile_views)
+        : safeNum(m?.totals?.followerCount) + safeNum(m?.totals?.pageViews) + safeNum(m?.totals?.uniqueImpressionsCount);
+
+  const engagement =
+    cubeKey === "facebook"
+      ? safeNum(m?.totals?.page_engaged_users) + safeNum(m?.totals?.post_engaged_users_sum) + safeNum(m?.totals?.reactions) + safeNum(m?.totals?.comments) + safeNum(m?.totals?.shares)
+      : cubeKey === "instagram"
+        ? safeNum(m?.totals?.likes) + safeNum(m?.totals?.comments) + safeNum(m?.totals?.shares) + safeNum(m?.totals?.replies) + safeNum(m?.totals?.saves)
+        : safeNum(m?.totals?.engagementCount) + safeNum(m?.totals?.reactionCount) + safeNum(m?.totals?.commentCount) + safeNum(m?.totals?.shareCount);
+
+  const conversions =
+    cubeKey === "facebook"
+      ? safeNum(m?.totals?.page_website_clicks_logged_in_unique) + safeNum(m?.totals?.page_call_phone_clicks_logged_in_unique) + safeNum(m?.totals?.page_get_directions_clicks_logged_in_unique)
+      : cubeKey === "instagram"
+        ? safeNum(m?.totals?.website_clicks) + safeNum(m?.totals?.phone_call_clicks) + safeNum(m?.totals?.email_contacts) + safeNum(m?.totals?.text_message_clicks) + safeNum(m?.totals?.get_directions_clicks) + safeNum(m?.totals?.get_direction_clicks)
+        : safeNum(m?.totals?.clickCount) + safeNum(m?.totals?.pageClicks);
+
+  const visibility =
+    cubeKey === "facebook"
+      ? safeNum(m?.totals?.post_impressions_sum) + safeNum(m?.totals?.page_impressions)
+      : cubeKey === "instagram"
+        ? safeNum(m?.totals?.impressions) + safeNum(m?.totals?.reach)
+        : safeNum(m?.totals?.impressionCount) + safeNum(m?.totals?.uniqueImpressionsCount);
+
+  return { audience, engagement, conversions, visibility };
+}
+
+function computeSocialQuality(cubeKey: "facebook" | "instagram" | "linkedin", ov: Overview) {
+  const connected =
+    cubeKey === "facebook"
+      ? !!ov?.sources?.facebook?.connected
+      : cubeKey === "instagram"
+        ? !!ov?.sources?.instagram?.connected
+        : !!ov?.sources?.linkedin?.connected;
+  if (!connected) return { score: 0, ...qualityLabel(0) };
+
+  const { audience, engagement, conversions, visibility } = getSocialMetrics(cubeKey, ov);
+  const exposureBase =
+    cubeKey === "instagram" ? 2500 : cubeKey === "linkedin" ? 1200 : 3000;
+  const engagementBase =
+    cubeKey === "instagram" ? 120 : cubeKey === "linkedin" ? 45 : 90;
+  const conversionBase =
+    cubeKey === "instagram" ? 6 : cubeKey === "linkedin" ? 3 : 5;
+
+  const s1 = logNorm(Math.max(visibility, audience), exposureBase);
+  const s2 = logNorm(engagement, engagementBase);
+  const s3 = logNorm(conversions, conversionBase);
+
+  const score = clamp(Math.round((s1 * 0.35 + s2 * 0.35 + s3 * 0.30) * 100), 18, 92);
+  return { score, ...qualityLabel(score) };
+}
+
+function getDecisionInput(
+  cubeKey: CubeKey,
+  ov: Overview,
+  qualityScore: number,
+  opp30: number,
+  provenance: Array<{ label: string; value: number; colorVar: string }>,
+) {
+  if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin") {
+    const metrics = getSocialMetrics(cubeKey, ov);
+    const connected =
+      cubeKey === "facebook"
+        ? !!ov?.sources?.facebook?.connected
+        : cubeKey === "instagram"
+          ? !!ov?.sources?.instagram?.connected
+          : !!ov?.sources?.linkedin?.connected;
+
+    return {
+      channelType: "social" as const,
+      connected,
+      opportunities: opp30,
+      quality: qualityScore,
+      metrics: {
+        audience: metrics.audience,
+        engagement: metrics.engagement,
+        conversions: metrics.conversions,
+        visibility: metrics.visibility,
+      },
+      provenance: provenance.map((entry) => ({ label: entry.label, value: entry.value })),
+    };
+  }
+
+  if (cubeKey === "gmb") {
+    const m = ov?.sources?.gmb?.metrics;
+    const visibility =
+      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) +
+      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_MOBILE_MAPS) +
+      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_DESKTOP_SEARCH) +
+      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_MOBILE_SEARCH);
+
+    const conversions =
+      safeNum(m?.totals?.WEBSITE_CLICKS) +
+      safeNum(m?.totals?.CALL_CLICKS) +
+      safeNum(m?.totals?.DIRECTION_REQUESTS);
+
+    return {
+      channelType: "gmb" as const,
+      connected: !!ov?.sources?.gmb?.connected,
+      opportunities: opp30,
+      quality: qualityScore,
+      metrics: {
+        traffic: conversions,
+        conversions,
+        visibility,
+      },
+      provenance: provenance.map((entry) => ({ label: entry.label, value: entry.value })),
+    };
+  }
+
+  const queries = Array.isArray(ov.topQueries) ? ov.topQueries : [];
+  const topPages = Array.isArray(ov.topPages) ? ov.topPages : [];
+  const intentClicks = queries.filter((q) => isIntentQuery(q.query)).reduce((s, q) => s + safeNum(q.clicks), 0);
+  const contactViews = topPages.filter((p) => pageKind(p.path) === "contact").reduce((s, p) => s + safeNum(p.views), 0);
+  const traffic = safeNum(ov?.totals?.sessions);
+  const visibility = safeNum(ov?.totals?.impressions);
+  const engagement = Math.round((safeNum(ov?.totals?.engagementRate) || 0) * 100);
+
+  return {
+    channelType: "website" as const,
+    connected: cubeKey === "site_inrcy"
+      ? !!ov?.sources?.site_inrcy?.connected?.ga4 || !!ov?.sources?.site_inrcy?.connected?.gsc
+      : !!ov?.sources?.site_web?.connected?.ga4 || !!ov?.sources?.site_web?.connected?.gsc,
+    opportunities: opp30,
+    quality: qualityScore,
+    metrics: {
+      traffic,
+      intent: intentClicks,
+      conversions: contactViews,
+      engagement,
+      visibility,
+    },
+    provenance: provenance.map((entry) => ({ label: entry.label, value: entry.value })),
+  };
+}
+
+function actionFromDecision(baseAction: CubeModel["action"], decision: DecisionResult): CubeModel["action"] {
+  const map: Record<DecisionResult["action"], CubeModel["action"]> = {
+    publier: {
+      key: "booster_publier",
+      title: "Publier",
+      detail: decision.reason,
+      href: "/dashboard/booster?action=publish",
+      pill: "Booster",
+      effort: { level: "faible", label: "Effort faible • 5 min" },
+    },
+    offrir: {
+      key: "booster_promotion",
+      title: "Offrir",
+      detail: decision.reason,
+      href: "/dashboard/booster?action=promo",
+      pill: "Booster",
+      effort: { level: "moyen", label: "Effort moyen • 15 min" },
+    },
+    recolter: {
+      key: "booster_avis",
+      title: "Récolter",
+      detail: decision.reason,
+      href: "/dashboard/booster?action=reviews",
+      pill: "Booster",
+      effort: { level: "moyen", label: "Effort moyen • 10 min" },
+    },
+    informer: {
+      key: "fideliser_informer",
+      title: "Informer",
+      detail: decision.reason,
+      href: "/dashboard/fideliser?action=inform",
+      pill: "Fidéliser",
+      effort: { level: "moyen", label: "Effort moyen • 15 min" },
+    },
+    suivre: {
+      key: "fideliser_remercier",
+      title: "Suivre",
+      detail: decision.reason,
+      href: "/dashboard/fideliser?action=thanks",
+      pill: "Fidéliser",
+      effort: { level: "faible", label: "Effort faible • 2 min" },
+    },
+    enqueter: {
+      key: "fideliser_satisfaction",
+      title: "Enquêter",
+      detail: decision.reason,
+      href: "/dashboard/fideliser?action=satisfaction",
+      pill: "Fidéliser",
+      effort: { level: "faible", label: "Effort faible • 3 min" },
+    },
+  };
+
+  return { ...baseAction, ...map[decision.action] };
 }
 
 function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): CubeModel["action"] {
@@ -1237,24 +1427,9 @@ const provenance = buildProvenance(key, ov);
       const insights = buildInsights(key, ov, q.score);
       let action = recommendAction(key, ov, q.score);
 
-      const decision = decideAction({
-        opportunities: opp30,
-        quality: q.score,
-        metrics: {
-          audience: 1,
-          engagement: 1,
-          traffic: safeNum(ov?.totals?.sessions)
-        }
-      });
-
-      // Override action dynamically (non-breaking)
-      if (decision) {
-        action = {
-          ...action,
-          title: decision.action.charAt(0).toUpperCase() + decision.action.slice(1),
-          detail: decision.reason,
-          pill: decision.mode === "booster" ? "Booster" : "Fidéliser"
-        };
+      if (action.key !== "connect" && action.key !== "loading") {
+        const decision = decideAction(getDecisionInput(key, ov, q.score, opp30, provenance));
+        action = actionFromDecision(action, decision);
       }
 
       // Pendant le chargement initial (aucun overview réel), on affiche un CTA neutre.
