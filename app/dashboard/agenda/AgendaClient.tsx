@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import styles from "./agenda.module.css";
@@ -136,6 +136,81 @@ function buildQuarterHourOptions() {
     }
   }
   return out;
+}
+
+
+
+type TimeDropdownProps = {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+};
+
+function TimeDropdown({ value, options, onChange }: TimeDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target;
+      if (rootRef.current && target instanceof Node && !rootRef.current.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className={styles.timeDropdown} ref={rootRef}>
+      <button
+        type="button"
+        className={`${styles.input} ${styles.timeDropdownTrigger}`}
+        onClick={() => setOpen((prev) => !prev)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span>{value}</span>
+        <span className={styles.timeDropdownChevron} aria-hidden="true">▾</span>
+      </button>
+
+      {open && (
+        <div className={styles.timeDropdownMenu} role="listbox" aria-label="Choisir un horaire">
+          {options.map((option) => {
+            const isActive = option === value;
+            return (
+              <button
+                key={option}
+                type="button"
+                role="option"
+                aria-selected={isActive}
+                className={`${styles.timeDropdownOption} ${isActive ? styles.timeDropdownOptionActive : ""}`}
+                onClick={() => {
+                  onChange(option);
+                  setOpen(false);
+                }}
+              >
+                {option}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function accentFor(id: string) {
@@ -1410,25 +1485,14 @@ async function deleteEventById(id: string) {
                     onChange={(e) => setRdvDate(e.target.value)}
                     placeholder="JJ/MM/AAAA"
                   />
-                  <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-                    Format affiché : {formatDateEuropean(rdvDate)}
-                  </div>
                 </div>
                 <div className={styles.field}>
                   <div className={styles.label}>Début</div>
-                  <select className={styles.input} value={rdvStart} onChange={(e) => setRdvStart(e.target.value)}>
-                    {startTimeOptions.map((value) => (
-                      <option key={value} value={value}>{value}</option>
-                    ))}
-                  </select>
+                  <TimeDropdown value={rdvStart} options={startTimeOptions} onChange={setRdvStart} />
                 </div>
                 <div className={styles.field}>
                   <div className={styles.label}>Fin</div>
-                  <select className={styles.input} value={rdvEnd} onChange={(e) => setRdvEnd(e.target.value)}>
-                    {endTimeOptions.map((value) => (
-                      <option key={value} value={value}>{value}</option>
-                    ))}
-                  </select>
+                  <TimeDropdown value={rdvEnd} options={endTimeOptions} onChange={setRdvEnd} />
                 </div>
               </div>
 
