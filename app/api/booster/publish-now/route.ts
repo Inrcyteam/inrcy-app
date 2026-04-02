@@ -12,6 +12,7 @@ import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { hasActiveInrcySite } from "@/lib/inrcySite";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
@@ -374,7 +375,7 @@ const body = await req.json().catch(() => null);
 
     // Internal channel configuration (URLs)
     const [profileRes, inrcyCfgRes, proCfgRes] = await Promise.all([
-      supabaseAdmin.from("profiles").select("inrcy_site_ownership,inrcy_site_url").eq("user_id", userId).maybeSingle(),
+      supabaseAdmin.from("profiles").select("inrcy_site_ownership").eq("user_id", userId).maybeSingle(),
       supabaseAdmin.from("inrcy_site_configs").select("site_url").eq("user_id", userId).maybeSingle(),
       supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
     ]);
@@ -385,7 +386,7 @@ const body = await req.json().catch(() => null);
     const proSiteWeb = asRecord(proSettings["site_web"]);
 
     const ownership = String(profile["inrcy_site_ownership"] ?? "none");
-    const inrcySiteUrl = String(profile["inrcy_site_url"] ?? inrcyCfg["site_url"] ?? "").trim();
+    const inrcySiteUrl = String(inrcyCfg["site_url"] ?? "").trim();
     const siteWebUrl = String(proSiteWeb["url"] ?? "").trim();
 
     const externalImageUrls = (publishableUrls.length ? publishableUrls : uploadedUrls).slice(0, 5);
@@ -422,7 +423,7 @@ const body = await req.json().catch(() => null);
           // This creates a record that your iNrCy site renderer (or your pro's website connector)
           // can consume to display the article.
           const targetUrl = ch === "inrcy_site" ? inrcySiteUrl : siteWebUrl;
-          if (ch === "inrcy_site" && (ownership === "none" || !targetUrl)) {
+          if (ch === "inrcy_site" && (!hasActiveInrcySite(ownership) || !targetUrl)) {
             await setDelivery(ch, { status: "failed", error: "Le site iNrCy n'est pas encore correctement configuré." });
             results[ch] = { ok: false, error: "Le site iNrCy n'est pas encore correctement configuré." };
             continue;

@@ -32,6 +32,7 @@ import NotificationsSettingsContent from "./settings/_components/NotificationsSe
 
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
+import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants";
@@ -638,7 +639,7 @@ const loadSiteInrcy = useCallback(async () => {
 
   const profileRes = await supabase
     .from("profiles")
-    .select("inrcy_site_ownership,inrcy_site_url")
+    .select("inrcy_site_ownership")
     .eq("user_id", user.id)
     .maybeSingle();
   if (requestSeq !== siteConfigRequestSeqRef.current) return;
@@ -665,7 +666,7 @@ const loadSiteInrcy = useCallback(async () => {
   type SettingsRow = { settings?: any | null } | null;
   const proSettingsObj = (proCfg as SettingsRow)?.settings ?? {};
 
-  const siteInrcyUrlValue = ((inrcyCfg?.site_url ?? profile?.inrcy_site_url ?? "") as string).trim();
+  const siteInrcyUrlValue = (inrcyCfg?.site_url as string | undefined ?? "").trim();
   const siteInrcyContactEmailValue = (inrcyCfg?.contact_email ?? "") as string;
   const inrcySettingsObj = inrcyCfg?.settings ?? {};
   let siteInrcySettingsTextValue = "{}";
@@ -828,7 +829,7 @@ useEffect(() => {
   loadSiteInrcy();
 }, [loadSiteInrcy]);
 
-const canAccessSiteInrcy = siteInrcyOwnership !== "none";
+const canAccessSiteInrcy = hasActiveInrcySite(siteInrcyOwnership);
 const savedSiteInrcyUrlMeta = normalizeSiteUrl(siteInrcySavedUrl);
 const savedSiteWebUrlMeta = normalizeSiteUrl(siteWebSavedUrl);
 const draftSiteInrcyUrlMeta = normalizeSiteUrl(siteInrcyUrl);
@@ -843,7 +844,7 @@ const hasSiteWebUrl = !!savedSiteWebUrlMeta;
 const canConnectSiteInrcyGoogle = canConfigureSite && hasSiteInrcyUrl;
 const canConnectSiteWebGoogle = hasSiteWebUrl;
 
-const siteInrcyAllGreen = siteInrcyOwnership !== "none" && hasSiteInrcyUrl && siteInrcyGa4Connected && siteInrcyGscConnected;
+const siteInrcyAllGreen = hasActiveInrcySite(siteInrcyOwnership) && hasSiteInrcyUrl && siteInrcyGa4Connected && siteInrcyGscConnected;
 const siteWebAllGreen = hasSiteWebUrl && siteWebGa4Connected && siteWebGscConnected;
 const profileCompleted = !profileIncomplete;
 const activityCompleted = !activityIncomplete;
@@ -1229,7 +1230,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
   }, [panel, searchParams, setPanelError]);
 
 const activateSiteInrcyTracking = useCallback(async () => {
-  if (siteInrcyOwnership !== "rented") {
+  if (!isManagedInrcySite(siteInrcyOwnership)) {
     setSiteInrcySettingsError("Activation indisponible : cette action est réservée au mode rented.");
     return;
   }
@@ -1282,7 +1283,7 @@ const activateSiteInrcyTracking = useCallback(async () => {
 
 // ✅ Mode rented : désactive le suivi (GA4+GSC) et nettoie les settings.
 const deactivateSiteInrcyTracking = useCallback(async () => {
-  if (siteInrcyOwnership !== "rented") {
+  if (!isManagedInrcySite(siteInrcyOwnership)) {
     setSiteInrcySettingsError("Désactivation indisponible : cette action est réservée au mode rented.");
     return;
   }
@@ -1426,17 +1427,9 @@ const saveSiteInrcyUrl = useCallback(async () => {
   const user = authData?.user;
   if (!user) return;
 
-  const [cfgRes, profileRes] = await Promise.all([
-    supabase
-      .from("inrcy_site_configs")
-      .upsert({ user_id: user.id, site_url: url }, { onConflict: "user_id" }),
-    supabase
-      .from("profiles")
-      .update({ inrcy_site_url: url })
-      .eq("user_id", user.id),
-  ]);
-
-  const error = cfgRes.error ?? profileRes.error;
+  const { error } = await supabase
+    .from("inrcy_site_configs")
+    .upsert({ user_id: user.id, site_url: url }, { onConflict: "user_id" });
   if (error) {
     setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
     return;
@@ -1547,10 +1540,7 @@ const resetSiteInrcyAll = useCallback(async () => {
   const { data: authData } = await supabase.auth.getUser();
   const user = authData?.user;
   if (user) {
-    await Promise.all([
-      supabase.from("inrcy_site_configs").upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" }),
-      supabase.from("profiles").update({ inrcy_site_url: "" }).eq("user_id", user.id),
-    ]);
+    await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" });
   }
 
   setSiteInrcyUrl("");
@@ -2462,7 +2452,7 @@ const checkActivity = useCallback(async () => {
     // ✅ Pastilles (statuts) dynamiques selon tes règles
     const { status: bubbleStatus, text: bubbleStatusText } = (() => {
       if (m.key === "site_inrcy") {
-        if (siteInrcyOwnership === "none") return { status: "coming" as ModuleStatus, text: "Aucun site" };
+        if (!hasActiveInrcySite(siteInrcyOwnership)) return { status: "coming" as ModuleStatus, text: "Aucun site" };
         const hasUrl = !!siteInrcyUrl?.trim();
         const connectedCount = (hasUrl ? 1 : 0) + (siteInrcyGa4Connected ? 1 : 0) + (siteInrcyGscConnected ? 1 : 0);
         const allGreen = connectedCount === 3;

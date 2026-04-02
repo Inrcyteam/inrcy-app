@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
+import { hasActiveInrcySite } from "@/lib/inrcySite";
 
 type AwardBody = {
   actionKey: string;
@@ -48,7 +49,7 @@ type TurboSupabaseLike = {
   };
 };
 
-type TurboProfileRow = { inrcy_site_ownership?: string | null; inrcy_site_url?: string | null };
+type TurboProfileRow = { inrcy_site_ownership?: string | null };
 type TurboInrcyConfigRow = { site_url?: string | null };
 type TurboProConfigRow = { settings?: { site_web?: { url?: string | null } } | null };
 
@@ -64,7 +65,7 @@ function badRequest(message: string) {
 async function getTurboMultiplier(supabase: TurboSupabaseLike, userId: string) {
   // Reprise de la logique de /api/booster/connected-channels (source of truth)
   const [profileRes, inrcyCfgRes, proCfgRes, integRes] = await Promise.all([
-    supabase.from("profiles").select("inrcy_site_ownership,inrcy_site_url").eq("user_id", userId).maybeSingle(),
+    supabase.from("profiles").select("inrcy_site_ownership").eq("user_id", userId).maybeSingle(),
     supabase.from("inrcy_site_configs").select("site_url").eq("user_id", userId).maybeSingle(),
     supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
     supabase
@@ -82,7 +83,7 @@ async function getTurboMultiplier(supabase: TurboSupabaseLike, userId: string) {
   const siteWebUrl = String(siteWebSettings["url"] ?? "").trim();
 
   const ownership = String(profile.inrcy_site_ownership ?? "none");
-  const inrcyUrl = String(profile.inrcy_site_url ?? inrcyCfg.site_url ?? "").trim();
+  const inrcyUrl = String(inrcyCfg.site_url ?? "").trim();
 
   const rows = (integRes.data ?? []) as Array<{ provider: string; status: string; resource_id: string | null; source?: string | null; product?: string | null }>;
 
@@ -93,7 +94,7 @@ async function getTurboMultiplier(supabase: TurboSupabaseLike, userId: string) {
   };
 
   const channels = {
-    site_inrcy: ownership !== "none" && !!inrcyUrl && hasGoogleStats("site_inrcy"),
+    site_inrcy: hasActiveInrcySite(ownership) && !!inrcyUrl && hasGoogleStats("site_inrcy"),
     site_web: !!siteWebUrl && hasGoogleStats("site_web"),
     gmb: rows.some((r) => r.provider === "google" && r.status === "connected" && !!r.resource_id),
     facebook: rows.some((r) => r.provider === "facebook" && r.status === "connected" && !!r.resource_id),

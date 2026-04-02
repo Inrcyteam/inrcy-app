@@ -4,6 +4,7 @@ import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import type { StatsSourceKey } from "@/lib/googleStats";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
+import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 function asRecord(v: unknown): Record<string, unknown> {
@@ -179,12 +180,12 @@ export async function GET(request: Request) {
 // Ownership du site iNrCy : utile pour l'UI (rented => connexion globale "Suivi")
 const { data: profileRow } = await supabase
   .from("profiles")
-  .select("inrcy_site_ownership,inrcy_site_url")
+  .select("inrcy_site_ownership")
   .eq("user_id", userId)
   .maybeSingle();
 
 const inrcySiteOwnership = String(asRecord(profileRow)["inrcy_site_ownership"] ?? "none");
-const hasInrcySite = inrcySiteOwnership !== "none";
+const hasInrcySite = hasActiveInrcySite(inrcySiteOwnership);
 
     
 // Load settings from the new schema:
@@ -284,7 +285,8 @@ async function buildConnectionsKey() {
     const proSiteWebCfg = asRecord(asRecord(proSettings)["site_web"]);
     const webGa4Cfg = asRecord(proSiteWebCfg["ga4"]);
     const webGscCfg = asRecord(proSiteWebCfg["gsc"]);
-    keyParts.push(`profile:ownership=${inrcySiteOwnership}:site=${String(asRecord(profileRow)["inrcy_site_url"] ?? "")}`);
+    keyParts.push(`profile:ownership=${inrcySiteOwnership}`);
+    keyParts.push(`inrcy:site_url=${String(asRecord(inrcyCfgRes.data)["site_url"] ?? "")}`);
     keyParts.push(`inrcy:ga4:${String(inrcyGa4Cfg["property_id"] ?? "")}:${String(inrcyGa4Cfg["measurement_id"] ?? "")}`);
     keyParts.push(`inrcy:gsc:${String(inrcyGscCfg["property"] ?? "")}`);
     keyParts.push(`site_web:ga4:${String(webGa4Cfg["property_id"] ?? "")}:${String(webGa4Cfg["measurement_id"] ?? "")}`);

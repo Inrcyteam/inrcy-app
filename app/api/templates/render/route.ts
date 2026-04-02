@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { renderWithContext, buildDefaultContext } from "@/lib/templateEngine";
 import { asRecord } from "@/lib/tsSafe";
+import { hasActiveInrcySite } from "@/lib/inrcySite";
 
 // POST /api/templates/render
 // Body: { template_key?: string, subject_override?: string, body_override?: string }
@@ -34,12 +35,12 @@ export async function POST(req: Request) {
 
     // --- Links logic (priority: iNrCy site > site web ; plus Facebook if connected)
     const ownership = String(profile["inrcy_site_ownership"] ?? "none");
-    const inrcyUrl = String(profile["inrcy_site_url"] ?? asRecord(inrcyCfgRes.data)["site_url"] ?? "").trim();
+    const inrcyUrl = String(asRecord(inrcyCfgRes.data)["site_url"] ?? "").trim();
 
     const proSettings = asRecord(asRecord(proCfgRes.data)["settings"]);
     const siteWebUrl = String(asRecord(asRecord(proSettings)["site_web"])["url"] ?? "").trim();
 
-    const hasInrcySite = ownership !== "none" && !!inrcyUrl;
+    const hasInrcySite = hasActiveInrcySite(ownership) && !!inrcyUrl;
     const siteUrl = hasInrcySite ? inrcyUrl : siteWebUrl;
 
     let facebookUrl = "";

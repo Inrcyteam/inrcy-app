@@ -1,5 +1,6 @@
 import { asRecord, asString } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { hasActiveInrcySite } from "@/lib/inrcySite";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -137,7 +138,7 @@ export async function getChannelConnectionStates(
         Promise.resolve({ data: preload?.integrations ?? [] }),
       ])
     : await Promise.all([
-        supabase.from("profiles").select("inrcy_site_ownership,inrcy_site_url").eq("user_id", userId).maybeSingle(),
+        supabase.from("profiles").select("inrcy_site_ownership").eq("user_id", userId).maybeSingle(),
         supabase.from("inrcy_site_configs").select("site_url,settings").eq("user_id", userId).maybeSingle(),
         supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
         supabaseAdmin
@@ -155,7 +156,8 @@ export async function getChannelConnectionStates(
   const rows = Array.isArray(rowsRaw) ? (rowsRaw as IntegrationLite[]) : [];
 
   const ownership = asString(profile.inrcy_site_ownership) || "none";
-  const inrcyUrl = (asString(profile.inrcy_site_url) || asString(inrcyCfg.site_url) || "").trim();
+  const inrcyHasSite = hasActiveInrcySite(ownership);
+  const inrcyUrl = (asString(inrcyCfg?.site_url) || "").trim();
   const siteWeb = asRecord(settings.site_web);
   const siteWebUrl = (asString(siteWeb.url) || "").trim();
 
@@ -210,10 +212,10 @@ export async function getChannelConnectionStates(
 
   return {
     site_inrcy: {
-      connected: ownership !== "none" && !!inrcyUrl && inrcyGa4 && inrcyGsc,
+      connected: inrcyHasSite && !!inrcyUrl && inrcyGa4 && inrcyGsc,
       url: inrcyUrl || null,
-      ga4: ownership !== "none" && inrcyGa4,
-      gsc: ownership !== "none" && inrcyGsc,
+      ga4: inrcyHasSite && inrcyGa4,
+      gsc: inrcyHasSite && inrcyGsc,
     },
     site_web: {
       connected: !!siteWebUrl && webGa4 && webGsc,
