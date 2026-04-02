@@ -28,10 +28,17 @@ export type DecisionInput = {
   }>;
 };
 
+export type RankedAction = {
+  action: ActionType;
+  score: number; // 0..100
+};
+
 export type DecisionResult = {
   mode: ModeType;
   action: ActionType;
   reason: string;
+  confidence?: number; // 0..100
+  ranking?: RankedAction[];
 };
 
 type ScoreCard = Record<ActionType, number>;
@@ -118,11 +125,42 @@ function emptyScores(): ScoreCard {
   };
 }
 
+const ACTION_PRIORITY: Record<ActionType, number> = {
+  suivre: 6,
+  offrir: 5,
+  recolter: 4,
+  enqueter: 3,
+  informer: 2,
+  publier: 1,
+};
+
+function sortRanking(scores: ScoreCard): RankedAction[] {
+  return (Object.entries(scores) as Array<[ActionType, number]>)
+    .map(([action, score]) => ({ action, score: Math.round(clamp(score, 0, 100)) }))
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return ACTION_PRIORITY[b.action] - ACTION_PRIORITY[a.action];
+    });
+}
+
 function bestAction(scores: ScoreCard): ActionType {
-  return (Object.entries(scores).sort((a, b) => {
-    if (b[1] !== a[1]) return b[1] - a[1];
-    return a[0].localeCompare(b[0]);
-  })[0]?.[0] || "publier") as ActionType;
+  return sortRanking(scores)[0]?.action || "publier";
+}
+
+function normalizeScores(scores: ScoreCard): ScoreCard {
+  const values = Object.values(scores);
+  const max = Math.max(1, ...values);
+  const normalized = emptyScores();
+  (Object.keys(scores) as ActionType[]).forEach((action) => {
+    normalized[action] = Math.round((scores[action] / max) * 100);
+  });
+  return normalized;
+}
+
+function confidenceFromRanking(ranking: RankedAction[]): number {
+  const first = ranking[0]?.score ?? 0;
+  const second = ranking[1]?.score ?? 0;
+  return Math.round(clamp((first - second) / 40, 0, 1) * 100);
 }
 
 function makeReason(action: ActionType, channelType: ChannelType, p: ProvenanceSummary, opp: number, quality: number) {
@@ -147,7 +185,7 @@ function makeReason(action: ActionType, channelType: ChannelType, p: ProvenanceS
   return `Le ${channelLabel} montre des signaux utiles mais encore contradictoires.${dominant}Avant d'accélérer, il faut enquêter pour comprendre ce qui bloque ou ce qui manque.`;
 }
 
-function scoreWebsite(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
+function websiteRawScores(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
   const scores = emptyScores();
   const traffic = n(input.metrics?.traffic);
   const engagement = n(input.metrics?.engagement);
@@ -164,59 +202,57 @@ function scoreWebsite(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
   const conversionN = norm(conversions, 12);
   const oppN = norm(opp, 18);
   const qualityN = clamp(quality / 100);
+  const contradiction = (Math.abs(engagementN - conversionN) + Math.abs(intentN - conversionN)) / 2;
 
   scores.publier =
-    1.8 * (1 - trafficN) +
-    1.5 * (1 - visibilityN) +
-    0.8 * (1 - engagementN) +
-    0.5 * p.socialShare +
+    1.9 * (1 - trafficN) +
+    1.4 * (1 - visibilityN) +
+    0.7 * (1 - engagementN) +
+    0.7 * p.socialShare +
     0.4 * (1 - oppN);
 
   scores.offrir =
-    1.4 * trafficN +
-    1.5 * intentN +
-    1.6 * oppN +
-    0.7 * p.googleShare +
-    0.7 * p.searchShare +
-    1.8 * (1 - conversionN);
+    1.2 * trafficN +
+    1.6 * intentN +
+    1.7 * oppN +
+    0.8 * (p.googleShare + p.searchShare) +
+    1.9 * (1 - conversionN);
 
   scores.recolter =
-    1.3 * visibilityN +
+    1.4 * visibilityN +
     0.8 * trafficN +
-    1.9 * (1 - conversionN) +
-    0.9 * (p.googleShare + p.searchShare + p.socialShare) +
-    0.6 * qualityN;
+    1.7 * (1 - conversionN) +
+    0.8 * (p.googleShare + p.searchShare + p.socialShare) +
+    0.7 * qualityN;
 
   scores.informer =
     0.9 * trafficN +
     0.8 * engagementN +
-    0.8 * intentN +
-    1.2 * qualityN +
+    0.6 * intentN +
+    1.3 * qualityN +
     0.8 * (p.balanced ? 1 : 0) +
-    0.5 * p.directShare +
-    0.6 * conversionN;
+    0.8 * p.directShare +
+    0.5 * conversionN;
 
   scores.suivre =
-    1.5 * conversionN +
-    1.2 * intentN +
-    1.1 * qualityN +
-    1.0 * p.directShare +
-    0.6 * engagementN +
-    0.4 * trafficN;
+    1.7 * conversionN +
+    1.1 * intentN +
+    1.2 * qualityN +
+    1.1 * p.directShare +
+    0.5 * engagementN +
+    0.3 * trafficN;
 
   scores.enqueter =
-    1.5 * trafficN +
-    1.0 * visibilityN +
-    1.2 * oppN +
-    0.9 * Math.abs(engagementN - conversionN) +
-    0.8 * Math.abs(intentN - conversionN) +
-    0.6 * p.dominantShare +
-    0.7 * (1 - qualityN);
+    1.4 * contradiction +
+    1.0 * oppN +
+    0.8 * p.dominantShare +
+    0.9 * (1 - qualityN) +
+    0.6 * trafficN;
 
   return scores;
 }
 
-function scoreSocial(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
+function socialRawScores(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
   const scores = emptyScores();
   const audience = n(input.metrics?.audience);
   const engagement = n(input.metrics?.engagement);
@@ -231,57 +267,57 @@ function scoreSocial(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
   const visibilityN = norm(visibility, 4000);
   const oppN = norm(opp, 20);
   const qualityN = clamp(quality / 100);
+  const contradiction = Math.abs(engagementN - conversionN);
 
   scores.publier =
     1.8 * (1 - visibilityN) +
     1.4 * (1 - engagementN) +
-    0.9 * (1 - audienceN) +
-    0.4 * (1 - oppN) +
-    0.4 * p.audienceShare;
+    0.8 * (1 - audienceN) +
+    0.5 * p.audienceShare +
+    0.5 * (1 - oppN);
 
   scores.offrir =
-    1.2 * visibilityN +
+    1.0 * visibilityN +
     1.3 * engagementN +
-    1.9 * oppN +
+    2.0 * oppN +
     1.8 * (1 - conversionN) +
     0.8 * p.interactionShare +
     0.5 * audienceN;
 
   scores.recolter =
-    1.4 * visibilityN +
+    1.5 * visibilityN +
     1.1 * engagementN +
     1.5 * (1 - conversionN) +
-    0.9 * p.audienceShare +
-    0.9 * p.interactionShare +
-    0.5 * qualityN;
+    1.0 * p.audienceShare +
+    1.0 * p.interactionShare +
+    0.6 * qualityN;
 
   scores.informer =
     1.1 * audienceN +
     1.0 * engagementN +
-    0.8 * conversionN +
-    1.1 * qualityN +
+    0.7 * conversionN +
+    1.2 * qualityN +
     0.7 * (p.balanced ? 1 : 0) +
-    0.5 * oppN;
-
-  scores.suivre =
-    1.7 * conversionN +
-    1.1 * engagementN +
-    1.1 * qualityN +
-    0.9 * p.interactionShare +
     0.4 * oppN;
 
+  scores.suivre =
+    1.8 * conversionN +
+    1.0 * engagementN +
+    1.1 * qualityN +
+    0.9 * p.interactionShare +
+    0.5 * oppN;
+
   scores.enqueter =
-    1.2 * visibilityN +
-    1.0 * audienceN +
-    1.0 * oppN +
-    1.1 * Math.abs(engagementN - conversionN) +
+    1.4 * contradiction +
+    1.0 * visibilityN +
+    0.8 * oppN +
     0.9 * p.dominantShare +
-    0.8 * (1 - qualityN);
+    0.9 * (1 - qualityN);
 
   return scores;
 }
 
-function scoreGmb(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
+function gmbRawScores(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
   const scores = emptyScores();
   const traffic = n(input.metrics?.traffic);
   const conversions = n(input.metrics?.conversions);
@@ -294,50 +330,57 @@ function scoreGmb(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
   const visibilityN = norm(visibility, 5000);
   const oppN = norm(opp, 35);
   const qualityN = clamp(quality / 100);
+  const contradiction = Math.abs(trafficN - conversionN);
 
   scores.publier =
     1.8 * (1 - visibilityN) +
-    1.3 * (1 - trafficN) +
+    1.2 * (1 - trafficN) +
     0.7 * (1 - oppN) +
-    0.6 * p.mapsShare;
+    0.7 * p.mapsShare;
 
   scores.offrir =
-    1.2 * visibilityN +
-    1.0 * trafficN +
-    1.8 * oppN +
-    1.7 * (1 - conversionN) +
-    0.8 * p.searchShare;
+    1.0 * visibilityN +
+    1.1 * trafficN +
+    1.9 * oppN +
+    1.8 * (1 - conversionN) +
+    0.9 * p.searchShare;
 
   scores.recolter =
-    1.7 * visibilityN +
-    1.0 * trafficN +
-    1.6 * (1 - conversionN) +
-    0.9 * (p.searchShare + p.mapsShare) +
-    0.5 * qualityN;
+    1.8 * visibilityN +
+    0.9 * trafficN +
+    1.4 * (1 - conversionN) +
+    1.0 * (p.searchShare + p.mapsShare) +
+    0.6 * qualityN;
 
   scores.informer =
-    0.9 * visibilityN +
-    0.7 * trafficN +
+    0.8 * visibilityN +
+    0.8 * trafficN +
     0.7 * conversionN +
-    1.0 * qualityN +
+    1.1 * qualityN +
     0.8 * (p.balanced ? 1 : 0) +
     0.6 * oppN;
 
   scores.suivre =
-    1.8 * conversionN +
-    1.0 * trafficN +
+    1.9 * conversionN +
+    0.9 * trafficN +
     1.0 * qualityN +
     0.8 * p.clickShare +
     0.5 * p.directShare;
 
   scores.enqueter =
-    1.2 * visibilityN +
-    1.2 * oppN +
-    1.0 * Math.abs(trafficN - conversionN) +
-    0.8 * p.dominantShare +
-    0.8 * (1 - qualityN);
+    1.4 * contradiction +
+    1.0 * oppN +
+    0.9 * p.dominantShare +
+    0.8 * (1 - qualityN) +
+    0.6 * visibilityN;
 
   return scores;
+}
+
+function buildRawScores(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
+  if (input.channelType === "social") return socialRawScores(input, p);
+  if (input.channelType === "gmb") return gmbRawScores(input, p);
+  return websiteRawScores(input, p);
 }
 
 export function decideAction(input: DecisionInput): DecisionResult {
@@ -346,20 +389,15 @@ export function decideAction(input: DecisionInput): DecisionResult {
       mode: "booster",
       action: "publier",
       reason: "Canal non connecté ou inactif : il faut d'abord le brancher pour pouvoir l'exploiter.",
+      confidence: 100,
+      ranking: [{ action: "publier", score: 100 }],
     };
   }
 
   const p = buildProvenanceSummary(input?.provenance);
-  let scores = emptyScores();
-
-  if (input.channelType === "social") {
-    scores = scoreSocial(input, p);
-  } else if (input.channelType === "gmb") {
-    scores = scoreGmb(input, p);
-  } else {
-    scores = scoreWebsite(input, p);
-  }
-
+  const rawScores = buildRawScores(input, p);
+  const scores = normalizeScores(rawScores);
+  const ranking = sortRanking(scores);
   const action = bestAction(scores);
   const mode: ModeType = action === "publier" || action === "offrir" || action === "recolter" ? "booster" : "fideliser";
 
@@ -367,5 +405,7 @@ export function decideAction(input: DecisionInput): DecisionResult {
     mode,
     action,
     reason: makeReason(action, input.channelType, p, Math.round(n(input.opportunities)), Math.round(n(input.quality))),
+    confidence: confidenceFromRanking(ranking),
+    ranking,
   };
 }
