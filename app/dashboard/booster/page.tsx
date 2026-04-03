@@ -13,18 +13,27 @@ import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
 import StatusMessage from "../_components/StatusMessage";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { WEEKLY_GOALS, clampProgress, getGoalCopy } from "@/lib/weeklyGoals";
 
 type ActiveModal = null | "publish" | "reviews" | "promo";
+
+type WeeklySummary = {
+  turbo?: { multiplier: number; connectedCount: number; totalChannels: number };
+  missions?: {
+    createActu?: { done: boolean; gained: number; projected: number };
+    weeklyFeatureUse?: { done: boolean; gained: number; projected: number };
+  };
+};
 
 export default function BoosterPage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [active, setActive] = useState<ActiveModal>(null);
   const [publishSuccessOpen, setPublishSuccessOpen] = useState(false);
+  const [metrics, setMetrics] = useState<any>(null);
+  const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
 
   const searchParams = useSearchParams();
 
-  // Deep-link support: /dashboard/booster?action=publish|reviews|promo
-  // (aliases FR acceptés pour compat: publier|recolter|offrir)
   useEffect(() => {
     const a = (searchParams?.get("action") || "").toLowerCase();
     const normalized =
@@ -34,144 +43,177 @@ export default function BoosterPage() {
     }
   }, [searchParams]);
 
-  const [metrics, setMetrics] = useState<any>(null);
-
   const refreshMetrics = async () => {
-  try {
-    const res = await fetch("/api/booster/metrics?days=30", { cache: "no-store" as any });
-    if (!res.ok) return;
-    const json = await res.json();
-    setMetrics(json);
-  } catch {
-    // ignore
-  }
-};
-
-const trackEvent = async (
-  type: "publish" | "review_mail" | "promo_mail",
-  payload: Record<string, any>
-) => {
-  const isoWeekId = () => {
-    const d = new Date();
-    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    const dayNum = date.getUTCDay() || 7;
-    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-    const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-    return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
-  };
-
-  const award = async (actionKey: string, amount: number, sourceId: string, label?: string) => {
     try {
-      await fetch("/api/loyalty/award", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actionKey,
-          amount,
-          sourceId,
-          label: label ?? null,
-          meta: { origin: "booster", type },
-        }),
-      });
+      const [metricsRes, summaryRes] = await Promise.all([
+        fetch("/api/booster/metrics?days=30", { cache: "no-store" as any }),
+        fetch("/api/loyalty/weekly-summary", { cache: "no-store" as any }),
+      ]);
+      if (metricsRes.ok) setMetrics(await metricsRes.json());
+      if (summaryRes.ok) setWeeklySummary(await summaryRes.json());
     } catch {
       // ignore
     }
   };
 
-  try {
-    // Publish: on envoie directement vers l'API "publish-now" (création publication + queue + metrics)
-    if (type === "publish") {
-      const res = await fetch("/api/booster/publish-now", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(await getSimpleFrenchApiError(res, "La publication a échoué."));
+  const trackEvent = async (
+    type: "publish" | "review_mail" | "promo_mail",
+    payload: Record<string, any>
+  ) => {
+    const isoWeekId = () => {
+      const d = new Date();
+      const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      const dayNum = date.getUTCDay() || 7;
+      date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+      const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+      return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+    };
+
+    const award = async (actionKey: string, amount: number, sourceId: string, label?: string) => {
+      try {
+        await fetch("/api/loyalty/award", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            actionKey,
+            amount,
+            sourceId,
+            label: label ?? null,
+            meta: { origin: "booster", type },
+          }),
+        });
+      } catch {
+        // ignore
+      }
+    };
+
+    try {
+      if (type === "publish") {
+        const res = await fetch("/api/booster/publish-now", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(await getSimpleFrenchApiError(res, "La publication a échoué."));
+        }
+
+        const failed = Object.entries((json?.results || {}) as Record<string, any>).filter(([, value]) => value && value.ok === false);
+        if (failed.length) {
+          const detail = failed.map(([channel, value]) => `${channel}: ${String((value as any)?.error || "erreur")}`).join(" | ");
+          throw new Error(getSimpleFrenchErrorMessage(detail, "La publication a échoué."));
+        }
+
+        await award("create_actu", 10, `week-${isoWeekId()}`, "Actu créée");
+        return json;
       }
 
-      const failed = Object.entries((json?.results || {}) as Record<string, any>).filter(([, value]) => value && value.ok === false);
-      if (failed.length) {
-        const detail = failed.map(([channel, value]) => `${channel}: ${String((value as any)?.error || "erreur")}`).join(" | ");
-        throw new Error(getSimpleFrenchErrorMessage(detail, "La publication a échoué."));
-      }
-
-      // ✅ 10 UI pour une actu (1 fois / semaine)
-      await award("create_actu", 10, `week-${isoWeekId()}`, "Actu créée");
-      return json;
-    } else {
       await fetch("/api/booster/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, payload }),
       });
-
-      // ✅ 10 UI pour l'utilisation de Booster/Fidéliser (1 fois / semaine)
       await award("weekly_feature_use", 10, `week-${isoWeekId()}`, "Utilisation Booster/Fidéliser");
+    } finally {
+      await refreshMetrics();
     }
-  } finally {
-    // Refresh even if the call fails, to keep UI in sync
-    await refreshMetrics();
-  }
-};
+  };
 
-useEffect(() => {
-  refreshMetrics();
-}, []);
+  useEffect(() => {
+    refreshMetrics();
+  }, []);
 
-    const data = useMemo(() => {
+  const data = useMemo(() => {
     const publish = metrics?.publish ?? {};
     const review = metrics?.review_mail ?? {};
     const promo = metrics?.promo_mail ?? {};
 
     const n = (v: any) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+    const turbo = weeklySummary?.turbo?.multiplier ?? 1;
+    const featureMissionDone = Boolean(weeklySummary?.missions?.weeklyFeatureUse?.done);
+    const createActuDone = Boolean(weeklySummary?.missions?.createActu?.done);
+    const missionProjected = Number(weeklySummary?.missions?.weeklyFeatureUse?.projected ?? Math.round(10 * turbo));
+    const actuProjected = Number(weeklySummary?.missions?.createActu?.projected ?? Math.round(10 * turbo));
+    const featureGained = Number(weeklySummary?.missions?.weeklyFeatureUse?.gained ?? 0);
+    const actuGained = Number(weeklySummary?.missions?.createActu?.gained ?? 0);
+    const totalEarned = actuGained + featureGained;
 
-    const publishMonth = n(publish.month);
-    const reviewMonth = n(review.month);
-    const promoMonth = n(promo.month);
+    const publishWeek = n(publish.week);
+    const reviewWeek = n(review.week);
+    const promoWeek = n(promo.week);
 
-    const statusFromMonth = (m: number) =>
-      m >= 3
-        ? { label: "Souvent utilisé", color: "green" as const }
-        : { label: "Peu utilisé", color: "orange" as const };
+    const buildStatus = (done: number, goal: number) => {
+      const copy = getGoalCopy(done, goal);
+      return { label: copy.short, color: copy.tone, helper: copy.hint, ctaHint: copy.action };
+    };
+
+    const buildMissionReward = (doneThisCard: number, missionDone: boolean, projected: number, gained: number) => {
+      if (missionDone) {
+        if (doneThisCard > 0) return `${gained} UI gagnés`;
+        return `Mission UI déjà sécurisée`;
+      }
+      return `+${projected} UI × multiplicateur`;
+    };
+
+    const buildMissionHelper = (doneThisCard: number, missionDone: boolean, fallback: string) => {
+      if (missionDone && doneThisCard <= 0) return "Cette action reste utile, mais ne rapporte plus d’UI cette semaine.";
+      return fallback;
+    };
 
     const publishChannels = publish.channels ?? {};
     const pc = (k: string) => n(publishChannels?.[k]);
 
+    const actions = [
+      {
+        key: "publish" as const,
+        title: "Publier",
+        desc: "Publications, contenus, chantiers. Diffusez sur 1 ou plusieurs canaux.",
+        accent: "cyan" as const,
+        cta: "Publier",
+        status: (() => { const s = buildStatus(publishWeek, WEEKLY_GOALS.booster.publish); return { ...s, helper: buildMissionHelper(publishWeek, createActuDone, s.helper) }; })(),
+        reward: buildMissionReward(publishWeek, createActuDone, actuProjected, actuGained),
+      },
+      {
+        key: "reviews" as const,
+        title: "Récolter",
+        desc: "Créez un mail clair. Sélectionnez des contacts CRM. Lancez.",
+        accent: "purple" as const,
+        cta: "Demander",
+        status: (() => { const s = buildStatus(reviewWeek, WEEKLY_GOALS.booster.reviews); return { ...s, helper: buildMissionHelper(reviewWeek, featureMissionDone, s.helper) }; })(),
+        reward: buildMissionReward(reviewWeek, featureMissionDone, missionProjected, featureGained),
+      },
+      {
+        key: "promo" as const,
+        title: "Offrir",
+        desc: "Mettez en avant une offre. Choisissez un modèle. Envoyez aux bons contacts.",
+        accent: "pink" as const,
+        cta: "Envoyer",
+        status: (() => { const s = buildStatus(promoWeek, WEEKLY_GOALS.booster.promo); return { ...s, helper: buildMissionHelper(promoWeek, featureMissionDone, s.helper) }; })(),
+        reward: buildMissionReward(promoWeek, featureMissionDone, missionProjected, featureGained),
+      },
+    ];
+
     return {
-      actions: [
-        {
-          key: "publish" as const,
-          title: "Publier",
-          desc: "Publications, contenus, chantiers. Diffusez sur 1 ou plusieurs canaux.",
-          accent: "cyan" as const,
-          cta: "Publier",
-          status: statusFromMonth(publishMonth),
-        },
-        {
-          key: "reviews" as const,
-          title: "Récolter",
-          desc: "Créez un mail clair. Sélectionnez des contacts CRM. Lancez.",
-          accent: "purple" as const,
-          cta: "Demander",
-          status: statusFromMonth(reviewMonth),
-        },
-        {
-          key: "promo" as const,
-          title: "Offrir",
-          desc: "Mettez en avant une offre. Choisissez un modèle. Envoyez aux bons contacts.",
-          accent: "pink" as const,
-          cta: "Envoyer",
-          status: statusFromMonth(promoMonth),
-        },
-      ],
+      turbo,
+      missions: {
+        totalAvailable: actuProjected + missionProjected,
+        totalEarned,
+        completedCount: Number(createActuDone) + Number(featureMissionDone),
+        featureDone: featureMissionDone,
+        createActuDone,
+        projectedFeature: missionProjected,
+        projectedActu: actuProjected,
+      },
+      actions,
       metrics: [
         {
           title: "Publications",
-          month: publishMonth,
-          week: n(publish.week),
+          month: n(publish.month),
+          week: publishWeek,
+          goal: WEEKLY_GOALS.booster.publish,
+          status: buildStatus(publishWeek, WEEKLY_GOALS.booster.publish),
           channels: [
             { name: "Site iNrCy", value: pc("inrcy_site") },
             { name: "Site web", value: pc("site_web") },
@@ -183,8 +225,10 @@ useEffect(() => {
         },
         {
           title: "Mails Récolter",
-          month: reviewMonth,
-          week: n(review.week),
+          month: n(review.month),
+          week: reviewWeek,
+          goal: WEEKLY_GOALS.booster.reviews,
+          status: buildStatus(reviewWeek, WEEKLY_GOALS.booster.reviews),
           channels: [
             { name: "Envoyés", value: n(review.sent) },
             { name: "Ouverts", value: n(review.opened) },
@@ -194,8 +238,10 @@ useEffect(() => {
         },
         {
           title: "Mails Promo",
-          month: promoMonth,
-          week: n(promo.week),
+          month: n(promo.month),
+          week: promoWeek,
+          goal: WEEKLY_GOALS.booster.promo,
+          status: buildStatus(promoWeek, WEEKLY_GOALS.booster.promo),
           channels: [
             { name: "Envoyés", value: n(promo.sent) },
             { name: "Ouverts", value: n(promo.opened) },
@@ -206,37 +252,35 @@ useEffect(() => {
       ],
       tips: [
         {
-          title: "Rythme",
+          title: "Pour mieux Publier",
           lines: [
-            { left: "1 post / semaine", right: "≈ + visibilité" },
-            { left: "Chantiers avant/après", right: "Top confiance" },
-            { left: "Photo + 3 lignes", right: "Simple" },
+            { left: "1 post / semaine", right: "Rythme minimum" },
+            { left: "Avant / après chantier", right: "Confiance" },
+            { left: "Photo + 3 lignes", right: "Rapide à lancer" },
           ],
         },
         {
-          title: "Récolter",
+          title: "Pour mieux Récolter",
           lines: [
             { left: "Envoyer à J+1", right: "Meilleur taux" },
             { left: "10 contacts ciblés", right: "Plus d’avis" },
-            { left: "1 relance", right: "x1.4" },
+            { left: "1 relance simple", right: "x1.4" },
           ],
         },
         {
-          title: "Offrir",
+          title: "Pour mieux Offrir",
           lines: [
-            { left: "Offre courte (7 jours)", right: "Décision rapide" },
+            { left: "Offre courte 7 jours", right: "Décision rapide" },
             { left: "1 CTA clair", right: "Plus de clics" },
-            { left: "Segmenter la liste", right: "Pertinent" },
+            { left: "Segmenter la liste", right: "Plus pertinent" },
           ],
         },
       ],
     };
-  }, [metrics]);
-
+  }, [metrics, weeklySummary]);
 
   return (
     <main className={`${styles.page} ${b.page}`}>
-      {/* BLUR du Booster quand une modale est ouverte */}
       <div
         style={{
           filter: active ? "blur(10px)" : "none",
@@ -249,16 +293,10 @@ useEffect(() => {
         <div className={b.container}>
           <header className={b.headerRow}>
             <div className={b.titleLine}>
-              <span aria-hidden style={{ fontSize: 28 }}>
-                🚀
-              </span>
+              <span aria-hidden className={b.titleIcon}>🚀</span>
               <div className={styles.title}>Booster</div>
             </div>
-
-            <div className={b.tagline}>
-              Faites décoller votre activité. <strong>3 actions</strong>, maintenant.
-            </div>
-
+            <div className={b.tagline}>Faites décoller votre activité. <strong>3 actions</strong>, maintenant.</div>
             <div className={b.closeWrap}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <HelpButton onClick={() => setHelpOpen(true)} title="Aide Booster" />
@@ -268,170 +306,93 @@ useEffect(() => {
           </header>
 
           <HelpModal open={helpOpen} title="Booster" onClose={() => setHelpOpen(false)}>
-            <p style={{ marginTop: 0 }}>
-              Booster est l’outil principal pour développer votre activité.
-            </p>
+            <p style={{ marginTop: 0 }}>Booster est l’outil principal pour développer votre activité.</p>
             <ul style={{ margin: 0, paddingLeft: 18 }}>
-              <li>Communiquez efficacement et rapidement sur vos canaux.</li>
-              <li>Lancez des actions en quelques minutes, sans vous disperser.</li>
-              <li>Objectif : générer plus d’opportunités et de clients.</li>
+              <li>Communiquez vite sur vos canaux.</li>
+              <li>Débloquez vos UI hebdomadaires avec le multiplicateur Turbo UI.</li>
+              <li>Gardez un rythme simple, visible et motivant.</li>
             </ul>
           </HelpModal>
 
-<div className={b.desktopOnly}>
-  {/* Triangles (non cliquables) */}
-  <section className={b.triRow} aria-hidden>
-    <div className={[b.triItem, b.triCyan].join(" ")}>
-      <div className={b.triLabel}>PUBLIER</div>
-    </div>
-    <div className={[b.triItem, b.triPurple].join(" ")}>
-      <div className={b.triLabel}>RÉCOLTER</div>
-    </div>
-    <div className={[b.triItem, b.triPink].join(" ")}>
-      <div className={b.triLabel}>OFFRIR</div>
-    </div>
-  </section>
+          <details className={[styles.blockCard, b.missionAccordion].join(" ")}>
+            <summary className={b.missionSummary}>
+              <div className={b.missionSummaryLeft}>
+                <div className={b.heroEyebrow}>Missions de la semaine</div>
+              </div>
+              <div className={b.missionSummaryCenter}>Turbo UI ×{data.turbo} · Jusqu’à +{data.missions.totalAvailable} UI</div>
+              <div className={b.missionSummaryMeta}>
+                <div className={b.heroScore}>+{data.missions.totalEarned} UI</div>
+                <span className={b.missionToggle}>Voir le détail <span className={b.missionChev} aria-hidden>▾</span></span>
+              </div>
+            </summary>
+            <div className={b.missionBody}>
+              <div className={b.heroMeta}><span>{data.missions.completedCount}/2 missions validées</span><span>{weeklySummary?.turbo?.connectedCount ?? 0}/{weeklySummary?.turbo?.totalChannels ?? 6} canaux connectés</span><span>Gains boostés par le multiplicateur</span></div>
+              <div className={b.heroMissionGrid}>
+                <MissionPill title="Créer une actu" done={data.missions.createActuDone} reward={data.missions.projectedActu} turbo={data.turbo} />
+                <MissionPill title="Utiliser Booster / Fidéliser" done={data.missions.featureDone} reward={data.missions.projectedFeature} turbo={data.turbo} />
+              </div>
+            </div>
+          </details>
 
-  <section className={b.grid3}>
-    {data.actions.map((a) => (
-      <ActionCard
-        key={a.key}
-        styles={styles}
-        accent={a.accent}
-        title={a.title}
-        desc={a.desc}
-        cta={a.cta}
-        status={a.status}
-        onClick={() => setActive(a.key)}
-      />
-    ))}
-  </section>
+          <div className={b.desktopOnly}>
+            <section className={b.triRow} aria-hidden>
+              <div className={[b.triItem, b.triCyan].join(" ")}><div className={b.triLabel}>PUBLIER</div></div>
+              <div className={[b.triItem, b.triPurple].join(" ")}><div className={b.triLabel}>RÉCOLTER</div></div>
+              <div className={[b.triItem, b.triPink].join(" ")}><div className={b.triLabel}>OFFRIR</div></div>
+            </section>
 
-  <section className={b.grid3} style={{ marginTop: 8 }}>
-    {data.metrics.map((m) => (
-      <MetricCard
-        key={m.title}
-        styles={styles}
-        title={m.title}
-        month={m.month}
-        week={m.week}
-        channels={m.channels}
-      />
-    ))}
-  </section>
+            <section className={b.grid3}>
+              {data.actions.map((a) => (
+                <ActionCard key={a.key} styles={styles} accent={a.accent} title={a.title} desc={a.desc} cta={a.cta} status={a.status} reward={a.reward} onClick={() => setActive(a.key)} />
+              ))}
+            </section>
 
-  <section className={b.grid3} style={{ marginTop: 8 }}>
-    {data.tips.map((t) => (
-      <TipCard key={t.title} styles={styles} title={t.title} lines={t.lines} />
-    ))}
-  </section>
-</div>
-
-{/* Mobile: empiler Action -> Stats -> Conseils (accordéons fermés par défaut) */}
-<section className={b.mobileOnly}>
-  {data.actions.map((a, idx) => {
-    const m = data.metrics[idx];
-    const tip = data.tips[idx];
-    return (
-      <div key={a.key} className={b.mobileGroup}>
-        <ActionCard
-          styles={styles}
-          accent={a.accent}
-          title={a.title}
-          desc={a.desc}
-          cta={a.cta}
-          status={a.status}
-          onClick={() => setActive(a.key)}
-        />
-
-        <details className={b.accordion}>
-          <summary className={b.accordionSummary}>
-            <span>📊 Stats</span>
-            <span className={b.chev}>▾</span>
-          </summary>
-          <div className={b.accordionBody}>
-            <MetricCard
-              styles={styles}
-              title={m.title}
-              month={m.month}
-              week={m.week}
-              channels={m.channels}
-            />
+            <section className={b.grid3} style={{ marginTop: 8 }}>
+              {data.metrics.map((m, idx) => (
+                <div key={m.title} className={b.stackCard}>
+                  <MetricCard styles={styles} title={m.title} month={m.month} week={m.week} goal={m.goal} channels={m.channels} status={m.status} />
+                  <TipAccordion styles={styles} title={data.tips[idx].title} lines={data.tips[idx].lines} />
+                </div>
+              ))}
+            </section>
           </div>
-        </details>
 
-        <details className={b.accordion}>
-          <summary className={b.accordionSummary}>
-            <span>💡 Conseils</span>
-            <span className={b.chev}>▾</span>
-          </summary>
-          <div className={b.accordionBody}>
-            <TipCard styles={styles} title={tip.title} lines={tip.lines} />
-          </div>
-        </details>
-      </div>
-    );
-  })}
-</section>
+          <section className={b.mobileOnly}>
+            {data.actions.map((a, idx) => {
+              const m = data.metrics[idx];
+              const tip = data.tips[idx];
+              return (
+                <div key={a.key} className={b.mobileGroup}>
+                  <ActionCard styles={styles} accent={a.accent} title={a.title} desc={a.desc} cta={a.cta} status={a.status} reward={a.reward} onClick={() => setActive(a.key)} />
+                  <details className={b.accordion}>
+                    <summary className={b.accordionSummary}><span>📊 Progression</span><span className={b.chev}>▾</span></summary>
+                    <div className={b.accordionBody}>
+                      <MetricCard styles={styles} title={m.title} month={m.month} week={m.week} goal={m.goal} channels={m.channels} status={m.status} />
+                    </div>
+                  </details>
+                  <TipAccordion styles={styles} title={tip.title} lines={tip.lines} />
+                </div>
+              );
+            })}
+          </section>
         </div>
       </div>
 
-      {/* Modales plein écran */}
-
-
       {publishSuccessOpen && (
-        <div style={{
-          position: "fixed",
-          inset: 0,
-          display: "grid",
-          placeItems: "center",
-          background: "rgba(3, 8, 20, 0.52)",
-          zIndex: 70,
-          padding: 16,
-        }}>
-          <div className={styles.blockCard} style={{
-            width: "min(520px, 100%)",
-            textAlign: "center",
-            position: "relative",
-            boxShadow: "0 30px 80px rgba(0,0,0,0.40)",
-            border: "1px solid rgba(34,197,94,0.28)",
-            background: "linear-gradient(180deg, rgba(12,18,32,0.98), rgba(10,14,24,0.98))",
-          }}>
-            <button
-              type="button"
-              onClick={() => setPublishSuccessOpen(false)}
-              aria-label="Fermer"
-              className={styles.secondaryBtn}
-              style={{ position: "absolute", top: 14, right: 14, minWidth: 42, padding: "0 12px" }}
-            >
-              ✕
-            </button>
+        <div style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center", background: "rgba(3, 8, 20, 0.52)", zIndex: 70, padding: 16 }}>
+          <div className={styles.blockCard} style={{ width: "min(520px, 100%)", textAlign: "center", position: "relative", boxShadow: "0 30px 80px rgba(0,0,0,0.40)", border: "1px solid rgba(34,197,94,0.28)", background: "linear-gradient(180deg, rgba(12,18,32,0.98), rgba(10,14,24,0.98))" }}>
+            <button type="button" onClick={() => setPublishSuccessOpen(false)} aria-label="Fermer" className={styles.secondaryBtn} style={{ position: "absolute", top: 14, right: 14, minWidth: 42, padding: "0 12px" }}>✕</button>
             <div style={{ fontSize: 42, marginBottom: 8 }}>🎉</div>
             <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Publication envoyée avec succès</div>
-            <div className={styles.subtitle} style={{ maxWidth: 420, margin: "0 auto 14px auto" }}>
-              Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés.
-            </div>
-            <StatusMessage variant="success" style={{ marginTop: 0, fontSize: 14 }}>C'est parfait, votre communication est lancée.</StatusMessage>
+            <div className={styles.subtitle} style={{ maxWidth: 420, margin: "0 auto 14px auto" }}>Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés.</div>
+            <StatusMessage variant="success" style={{ marginTop: 0, fontSize: 14 }}>C&apos;est parfait, votre communication est lancée.</StatusMessage>
           </div>
         </div>
       )}
 
       {active && (
-        <BaseModal
-          title={
-            active === "publish" ? "Publier" : active === "reviews" ? "Récolter" : "Offrir"
-          }
-          moduleLabel="Module Booster"
-          onClose={() => setActive(null)}
-        >
-          {active === "publish" && (
-            <PublishModal
-              styles={styles}
-              onClose={() => setActive(null)}
-              trackEvent={trackEvent}
-              onPublishSuccess={() => setPublishSuccessOpen(true)}
-            />
-          )}
+        <BaseModal title={active === "publish" ? "Publier" : active === "reviews" ? "Récolter" : "Offrir"} moduleLabel="Module Booster" onClose={() => setActive(null)}>
+          {active === "publish" && <PublishModal styles={styles} onClose={() => setActive(null)} trackEvent={trackEvent} onPublishSuccess={() => setPublishSuccessOpen(true)} />}
           {active === "reviews" && <ReviewModal styles={styles} onClose={() => setActive(null)} />}
           {active === "promo" && <PromoModal styles={styles} onClose={() => setActive(null)} />}
         </BaseModal>
@@ -440,137 +401,76 @@ useEffect(() => {
   );
 }
 
-function ActionCard({
-  styles,
-  accent,
-  title,
-  desc,
-  cta,
-  status,
-  onClick,
-}: {
-  styles: Record<string, string>;
-  accent: "cyan" | "purple" | "pink" | "orange";
-  title: string;
-  desc: string;
-  cta: string;
-  status: { label: string; color: "green" | "orange" };
-  onClick: () => void;
-}) {
-  const dotClass = status.color === "green" ? "dotGreen" : "dotOrange";
-
+function MissionPill({ title, done, reward, turbo }: { title: string; done: boolean; reward: number; turbo: number }) {
   return (
-    <article
-      className={[styles.moduleCard, styles[`accent_${accent}`], b.actionCard].join(" ")}
-      style={{ cursor: "pointer" }}
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onClick();
-      }}
-    >
-      <div className={styles.moduleGlow} />
+    <div className={[b.missionPill, done ? b.missionDone : b.missionTodo].join(" ")}>
+      <div>
+        <div className={b.missionTitle}>{title}</div>
+        <div className={b.missionSubtitle}>{done ? "Mission validée" : `+${reward} UI avec ×${turbo}`}</div>
+      </div>
+      <div className={[b.missionState, done ? b.missionStateDone : b.missionStateTodo].join(" ")}>{done ? "Fait" : "À faire"}</div>
+    </div>
+  );
+}
 
+function ActionCard({ styles, accent, title, desc, cta, status, reward, onClick }: any) {
+  const toneClass = status.color === "green" ? b.toneGreen : status.color === "orange" ? b.toneOrange : b.toneRed;
+  return (
+    <article className={[styles.moduleCard, styles[`accent_${accent}`], b.actionCard].join(" ")}>
+      <div className={styles.moduleGlow} />
       <div className={b.actionTop}>
         <div className={b.actionMiniTitle}>{title}</div>
-        <div className={b.status} title="Usage">
-          <span className={[b.dot, b[dotClass]].join(" ")} aria-hidden />
-          <span>{status.label}</span>
-        </div>
+        <div className={[b.status, toneClass].join(" ")}><span className={[b.dot, b[`dot${status.color.charAt(0).toUpperCase()}${status.color.slice(1)}`]].join(" ")} aria-hidden /><span>{status.label}</span></div>
       </div>
-
       <div className={b.actionCenter}>
         <div className={[styles.moduleDesc, b.actionDesc].join(" ")}>{desc}</div>
+        <div className={b.actionReward}>{reward}</div>
+        <div className={b.actionHelper}>{status.helper}</div>
       </div>
-
       <div className={b.actionBtnWrap}>
-        <button
-          type="button"
-          className={[styles.primaryBtn, b.actionBtn].join(" ")}
-          onClick={(e) => {
-            e.stopPropagation();
-            onClick();
-          }}
-        >
-          {cta}
-        </button>
+        <button type="button" className={[styles.primaryBtn, b.actionBtn].join(" ")} onClick={onClick}>{cta}</button>
       </div>
     </article>
   );
 }
 
-function MetricCard({
-  styles,
-  title,
-  month,
-  week,
-  channels,
-}: {
-  styles: Record<string, string>;
-  title: string;
-  month: number;
-  week: number;
-  channels: { name: string; value: number }[];
-}) {
-  const objectif = Math.max(week, 3) + 2;
-
+function MetricCard({ styles, title, month, week, goal, channels, status }: any) {
+  const paddedChannels = [...channels, ...Array.from({ length: Math.max(0, 6 - channels.length) }, (_, idx) => ({ name: `__empty_${idx}`, value: "", empty: true }))];
+  const progress = clampProgress(week, goal);
+  const toneClass = status.color === "green" ? b.toneGreen : status.color === "orange" ? b.toneOrange : b.toneRed;
   return (
     <div className={[styles.blockCard, b.metricCard].join(" ")}>
       <div className={b.cardTopRow}>
-        <div className={styles.blockTitle}>{title}</div>
-        <div className={b.pill}>Ce mois</div>
-      </div>
-
-      {/* bulle + semaine/objectifs sur la même ligne */}
-      <div className={b.metricLine}>
-        <div className={b.metricBubble}>{month}</div>
-
-        <div className={b.metricPills}>
-          <span className={b.pill}>Semaine: {week}</span>
-          <span className={b.pill}>Objectif: {objectif}</span>
+        <div>
+          <div className={styles.blockTitle}>{title}</div>
+          <div className={b.progressLabel}>Progression hebdo</div>
         </div>
+        <div className={b.pill}>Ce mois : {month}</div>
       </div>
-
+      <div className={b.metricLine}>
+        <div className={b.metricBubble}>{week}/{goal}</div>
+        <div className={[b.progressState, toneClass].join(" ")}>{status.label}</div>
+      </div>
+      <div className={b.progressBar}><div className={[b.progressFill, toneClass].join(" ")} style={{ width: `${progress * 100}%` }} /></div>
+      <div className={b.progressHint}>{status.helper}</div>
       <div className={b.channelGridCompact}>
-        {channels.map((c) => (
-          <div key={c.name} className={b.channelItemCompact}>
-            <span>{c.name}</span>
-            <span className={b.channelCount}>{c.value}</span>
-          </div>
-        ))}
+        {paddedChannels.map((c: any) => <div key={c.name} className={[b.channelItemCompact, c.empty ? b.channelItemPlaceholder : ""].join(" ")} aria-hidden={c.empty ? true : undefined}><span>{c.name}</span><span className={b.channelCount}>{c.value}</span></div>)}
       </div>
     </div>
   );
 }
 
-function TipCard({
-  styles,
-  title,
-  lines,
-}: {
-  styles: Record<string, string>;
-  title: string;
-  lines: { left: string; right: string }[];
-}) {
+function TipAccordion({ styles, title, lines }: any) {
   return (
-    <div className={[styles.blockCard, b.tipCard].join(" ")}>
-      <div className={b.cardTopRow}>
-        <div>
-          <div className={styles.blockTitle}>Conseil</div>
-          <div className={styles.subtitle}>{title}</div>
-        </div>
-        <div className={b.pill}>À faire</div>
-      </div>
-
-      <div className={b.tipListCompact}>
-        {lines.map((l, idx) => (
-          <div key={idx} className={b.tipLineCompact}>
-            <span>{l.left}</span>
-            <span className={b.tipBadge}>{l.right}</span>
+    <details className={b.accordion}>
+      <summary className={b.accordionSummary}><span>💡 {title}</span><span className={b.chev}>▾</span></summary>
+      <div className={b.accordionBody}>
+        <div className={[styles.blockCard, b.tipCard].join(" ")}>
+          <div className={b.tipListCompact}>
+            {lines.map((l: any, idx: number) => <div key={idx} className={b.tipLineCompact}><span>{l.left}</span><span className={b.tipBadge}>{l.right}</span></div>)}
           </div>
-        ))}
+        </div>
       </div>
-    </div>
+    </details>
   );
 }

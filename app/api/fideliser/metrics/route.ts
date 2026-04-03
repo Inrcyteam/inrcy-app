@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
+import { getIsoWeekStart, getIsoWeekId } from "@/lib/weeklyGoals";
+
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -22,10 +24,10 @@ export async function GET(req: Request) {
   const days = Math.max(1, Math.min(90, Number(url.searchParams.get("days") ?? 30)));
 
   const { supabase, user, errorResponse } = await requireUser();
-    if (errorResponse) return errorResponse;
-    const userId = user.id;
-const sinceMonth = daysAgoISO(days);
-  const sinceWeek = daysAgoISO(7);
+  if (errorResponse) return errorResponse;
+  const userId = user.id;
+  const sinceMonth = daysAgoISO(days);
+  const sinceWeek = getIsoWeekStart();
 
   const { data: rows, error } = await supabase
     .from("app_events")
@@ -49,7 +51,7 @@ const sinceMonth = daysAgoISO(days);
   const thanks_mail = init();
   const satisfaction_mail = init();
 
-  const isWeek = (iso: string) => new Date(iso).toISOString() >= sinceWeek;
+  const isWeek = (iso: string) => new Date(iso) >= sinceWeek;
 
   for (const e of events) {
     const inWeek = isWeek(e.created_at);
@@ -76,6 +78,8 @@ const sinceMonth = daysAgoISO(days);
 
   return NextResponse.json({
     range_days: days,
+    week_id: getIsoWeekId(),
+    week_start: sinceWeek.toISOString(),
     newsletter_mail: {
       month: newsletter_mail.month,
       week: newsletter_mail.week,

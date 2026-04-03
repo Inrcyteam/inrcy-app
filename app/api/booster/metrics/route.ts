@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
+import { getIsoWeekStart, getIsoWeekId } from "@/lib/weeklyGoals";
 
 type JsonRecord = Record<string, unknown>;
 const asRecord = (v: unknown): JsonRecord =>
@@ -23,10 +24,11 @@ export async function GET(req: Request) {
   const days = Math.max(1, Math.min(90, Number(url.searchParams.get("days") ?? 30)));
 
   const { supabase, user, errorResponse } = await requireUser();
-    if (errorResponse) return errorResponse;
-    const userId = user.id;
-const sinceMonth = daysAgoISO(days);
-  const sinceWeek = daysAgoISO(7);
+  if (errorResponse) return errorResponse;
+  const userId = user.id;
+
+  const sinceMonth = daysAgoISO(days);
+  const sinceWeek = getIsoWeekStart();
 
   const { data: rows, error } = await supabase
     .from("app_events")
@@ -51,7 +53,7 @@ const sinceMonth = daysAgoISO(days);
   const review_mail = init();
   const promo_mail = init();
 
-  const isWeek = (iso: string) => new Date(iso).toISOString() >= sinceWeek;
+  const isWeek = (iso: string) => new Date(iso) >= sinceWeek;
 
   for (const e of events) {
     const payload = asRecord(e.payload);
@@ -72,20 +74,20 @@ const sinceMonth = daysAgoISO(days);
     if (e.type === "review_mail") {
       review_mail.month += 1;
       if (inWeek) review_mail.week += 1;
-      const recipients = Number(payload["recipients"] ?? 0);
-      review_mail.sent += recipients;
+      review_mail.sent += Number(payload["recipients"] ?? 0);
     }
 
     if (e.type === "promo_mail") {
       promo_mail.month += 1;
       if (inWeek) promo_mail.week += 1;
-      const recipients = Number(payload["recipients"] ?? 0);
-      promo_mail.sent += recipients;
+      promo_mail.sent += Number(payload["recipients"] ?? 0);
     }
   }
 
   return NextResponse.json({
     range_days: days,
+    week_id: getIsoWeekId(),
+    week_start: sinceWeek.toISOString(),
     publish: {
       month: publish.month,
       week: publish.week,
