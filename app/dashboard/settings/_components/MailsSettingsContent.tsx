@@ -20,6 +20,13 @@ type MessengerAccount = {
   created_at: string;
 } | null;
 
+const MAIL_ACCOUNTS_UPDATED_EVENT = "inrsend:mail-accounts-updated";
+
+function dispatchMailAccountsUpdated() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(MAIL_ACCOUNTS_UPDATED_EVENT));
+}
+
 function GlassCard({
   title,
   subtitle,
@@ -185,6 +192,15 @@ export default function MailsSettingsContent() {
   const [error, setError] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<string | null>(null);
   const [busyDisconnect, setBusyDisconnect] = React.useState<string | null>(null);
+  const refreshMailAccounts = React.useCallback(async (notify = false) => {
+    const res = await fetch("/api/integrations/status", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible de charger les boîtes mail."));
+    setMailAccounts(data.mailAccounts || []);
+    if (notify) dispatchMailAccountsUpdated();
+    return data.mailAccounts || [];
+  }, []);
+
   const [signatureEnabled, setSignatureEnabled] = React.useState(true);
   const [signatureTemplate, setSignatureTemplate] = React.useState(`{{nom_complet}}
 {{nom_entreprise}}
@@ -200,8 +216,7 @@ Email : {{email}}`);
 
   // --- IMAP (slot 4 only) ---
   type ImapPresetKey = "ovh" | "ionos" | "orange" | "sfr" | "other";
-  const IMAP_PRESETS: Record<ImapPresetKey, {
-    label: string;
+  type ImapSettings = {
     imap_host: string;
     imap_port: number;
     imap_secure: boolean;
@@ -209,19 +224,24 @@ Email : {{email}}`);
     smtp_port: number;
     smtp_secure: boolean;
     smtp_starttls: boolean;
-  }> = {
+  };
+  type ImapSecurityMode = "ssl" | "none";
+  type SmtpSecurityMode = "ssl" | "starttls" | "none";
+  const IMAP_PRESETS: Record<ImapPresetKey, {
+    label: string;
+  } & ImapSettings> = {
     ovh: { label: "OVH", imap_host: "ssl0.ovh.net", imap_port: 993, imap_secure: true, smtp_host: "smtp.mail.ovh.net", smtp_port: 465, smtp_secure: true, smtp_starttls: false },
     ionos: { label: "IONOS", imap_host: "imap.ionos.com", imap_port: 993, imap_secure: true, smtp_host: "smtp.ionos.com", smtp_port: 587, smtp_secure: false, smtp_starttls: true },
     orange: { label: "Orange", imap_host: "imap.orange.fr", imap_port: 993, imap_secure: true, smtp_host: "smtp.orange.fr", smtp_port: 465, smtp_secure: true, smtp_starttls: false },
     sfr: { label: "SFR", imap_host: "imap.sfr.fr", imap_port: 993, imap_secure: true, smtp_host: "smtp.sfr.fr", smtp_port: 465, smtp_secure: true, smtp_starttls: false },
-    other: { label: "Autre (manuel)", imap_host: "", imap_port: 993, imap_secure: true, smtp_host: "", smtp_port: 587, smtp_secure: false, smtp_starttls: true },
+    other: { label: "Autre fournisseur", imap_host: "", imap_port: 993, imap_secure: true, smtp_host: "", smtp_port: 587, smtp_secure: false, smtp_starttls: true },
   };
 
   const [imapModalOpen, setImapModalOpen] = React.useState(false);
   const [imapPresetKey, setImapPresetKey] = React.useState<ImapPresetKey>("ovh");
   const [imapLogin, setImapLogin] = React.useState("");
   const [imapPassword, setImapPassword] = React.useState("");
-  const [imapCustom, setImapCustom] = React.useState({
+  const [imapCustom, setImapCustom] = React.useState<ImapSettings>({
     imap_host: "",
     imap_port: 993,
     imap_secure: true,
@@ -230,9 +250,81 @@ Email : {{email}}`);
     smtp_secure: false,
     smtp_starttls: true,
   });
+  const [imapShowPassword, setImapShowPassword] = React.useState(false);
   const [imapTestBusy, setImapTestBusy] = React.useState(false);
   const [imapConnectBusy, setImapConnectBusy] = React.useState(false);
   const [imapFormError, setImapFormError] = React.useState<string | null>(null);
+  const [imapAssistMessage, setImapAssistMessage] = React.useState<string | null>(null);
+
+  const smtpSecurityModeFromSettings = React.useCallback((settings: ImapSettings): SmtpSecurityMode => {
+    if (settings.smtp_secure) return "ssl";
+    if (settings.smtp_starttls) return "starttls";
+    return "none";
+  }, []);
+
+  const applySmtpSecurityMode = React.useCallback((settings: ImapSettings, mode: SmtpSecurityMode): ImapSettings => ({
+    ...settings,
+    smtp_secure: mode === "ssl",
+    smtp_starttls: mode === "starttls",
+  }), []);
+
+  const suggestSmtpSecurityForPort = React.useCallback((port: number): { mode: SmtpSecurityMode; message: string | null } | null => {
+    if (port === 465) {
+      return { mode: "ssl", message: "Configuration recommandée appliquée : port 465 → SSL/TLS." };
+    }
+    if (port === 587) {
+      return { mode: "starttls", message: "Configuration recommandée appliquée : port 587 → STARTTLS." };
+    }
+    return null;
+  }, []);
+
+  const applyImapPreset = React.useCallback((key: ImapPresetKey) => {
+    const preset = IMAP_PRESETS[key];
+    setImapCustom({
+      imap_host: preset.imap_host,
+      imap_port: preset.imap_port,
+      imap_secure: preset.imap_secure,
+      smtp_host: preset.smtp_host,
+      smtp_port: preset.smtp_port,
+      smtp_secure: preset.smtp_secure,
+      smtp_starttls: preset.smtp_starttls,
+    });
+    setImapAssistMessage(
+      key === "other"
+        ? "Autre fournisseur sélectionné : renseignez vos paramètres librement."
+        : `Réglages recommandés chargés pour ${IMAP_PRESETS[key].label}. Vous pouvez les modifier.`
+    );
+  }, []);
+
+  const imapFieldStyle: React.CSSProperties = {
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.06)",
+    padding: "10px 12px",
+    color: "rgba(255,255,255,0.92)",
+  };
+
+  const imapSelectStyle: React.CSSProperties = {
+    ...imapFieldStyle,
+    background: "#ffffff",
+    color: "#111827",
+  };
+
+  const [isMobileImapLayout, setIsMobileImapLayout] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 640px)");
+    const update = () => setIsMobileImapLayout(media.matches);
+    update();
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", update);
+      return () => media.removeEventListener("change", update);
+    }
+    media.addListener(update);
+    return () => media.removeListener(update);
+  }, []);
+
 React.useEffect(() => {
   const url = new URL(window.location.href);
   const t = url.searchParams.get("toast");
@@ -250,12 +342,7 @@ React.useEffect(() => {
     (async () => {
       try {
         setLoading(true);
-        const res = await fetch("/api/integrations/status");
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          throw new Error(await getSimpleFrenchApiError(res));
-        }
-        const data = await res.json();
+        const data = { mailAccounts: await refreshMailAccounts(false) };
         const sigRes = await fetch("/api/inrsend/signature", { cache: "no-store" }).catch(() => null);
         const sigData = sigRes ? await sigRes.json().catch(() => ({})) : {};
         if (!alive) return;
@@ -432,15 +519,8 @@ Email : {{email}}`));
                         setImapLogin("");
                         setImapPassword("");
                         setImapPresetKey("ovh");
-                        setImapCustom({
-                          imap_host: "",
-                          imap_port: 993,
-                          imap_secure: true,
-                          smtp_host: "",
-                          smtp_port: 587,
-                          smtp_secure: false,
-                          smtp_starttls: true,
-                        });
+                        applyImapPreset("ovh");
+                        setImapShowPassword(false);
                         setImapModalOpen(true);
                       }}
                     />
@@ -471,10 +551,7 @@ Email : {{email}}`));
         throw new Error(await getSimpleFrenchApiError(r, "Impossible de déconnecter cette boîte mail."));
       }
       setToast(acc.provider === "gmail" ? "gmail_disconnected" : acc.provider === "microsoft" ? "outlook_disconnected" : "imap_disconnected");
-      // refresh status
-      const res = await fetch("/api/integrations/status");
-      const data = await res.json();
-      setMailAccounts(data.mailAccounts || []);
+      await refreshMailAccounts(true);
     } catch (e: any) {
       setToast(getSimpleFrenchErrorMessage(e, "Impossible de déconnecter cette boîte mail."));
     } finally {
@@ -730,10 +807,6 @@ Email : {{email}}`));
             padding: 16,
             zIndex: 1000,
           }}
-          onClick={() => {
-            if (imapTestBusy || imapConnectBusy) return;
-            setImapModalOpen(false);
-          }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -751,7 +824,7 @@ Email : {{email}}`));
               <div>
                 <div style={{ fontSize: 16, fontWeight: 950 }}>Connexion IMAP (boîte 4)</div>
                 <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>
-                  Choisissez un fournisseur (prérempli), saisissez votre <b>identifiant</b> et votre <b>mot de passe</b>, puis lancez le test.
+                  Choisissez un fournisseur (prérempli), saisissez votre <b>identifiant</b> et votre <b>mot de passe</b>, puis cliquez sur <b>Connecter</b>.
                 </div>
               </div>
               <button
@@ -776,17 +849,15 @@ Email : {{email}}`));
                 <label style={{ fontSize: 12, opacity: 0.8 }}>Fournisseur</label>
                 <select
                   value={imapPresetKey}
-                  onChange={(e) => setImapPresetKey(e.target.value as ImapPresetKey)}
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.06)",
-                    padding: "10px 12px",
-                    color: "rgba(255,255,255,0.92)",
+                  onChange={(e) => {
+                    const nextKey = e.target.value as ImapPresetKey;
+                    setImapPresetKey(nextKey);
+                    applyImapPreset(nextKey);
                   }}
+                  style={imapSelectStyle}
                 >
                   {Object.entries(IMAP_PRESETS).map(([k, v]) => (
-                    <option key={k} value={k}>
+                    <option key={k} value={k} style={{ background: "#ffffff", color: "#111827" }}>
                       {v.label}
                     </option>
                   ))}
@@ -799,84 +870,205 @@ Email : {{email}}`));
                   value={imapLogin}
                   onChange={(e) => setImapLogin(e.target.value)}
                   placeholder="contact@domaine.fr"
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.06)",
-                    padding: "10px 12px",
-                    color: "rgba(255,255,255,0.92)",
-                  }}
+                  style={imapFieldStyle}
                 />
               </div>
 
               <div style={{ display: "grid", gap: 6 }}>
                 <label style={{ fontSize: 12, opacity: 0.8 }}>Mot de passe (ou mot de passe d’application)</label>
-                <input
-                  value={imapPassword}
-                  onChange={(e) => setImapPassword(e.target.value)}
-                  type="password"
-                  placeholder="••••••••"
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.06)",
-                    padding: "10px 12px",
-                    color: "rgba(255,255,255,0.92)",
-                  }}
-                />
+                <div style={{ position: "relative" }}>
+                  <input
+                    value={imapPassword}
+                    onChange={(e) => setImapPassword(e.target.value)}
+                    type={imapShowPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    style={{ ...imapFieldStyle, width: "100%", paddingRight: 48 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setImapShowPassword((v) => !v)}
+                    aria-label={imapShowPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                    title={imapShowPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                    style={{
+                      position: "absolute",
+                      right: 8,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      border: "none",
+                      background: "transparent",
+                      color: "rgba(255,255,255,0.82)",
+                      cursor: "pointer",
+                      fontSize: 18,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {imapShowPassword ? "🙈" : "👁️"}
+                  </button>
+                </div>
               </div>
 
-              {imapPresetKey === "other" && (
-                <div style={{ display: "grid", gap: 10, marginTop: 4 }}>
-                  <div style={{ fontSize: 12, opacity: 0.75 }}>Réglages manuels</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 120px", gap: 8 }}>
-                    <input
-                      value={imapCustom.imap_host}
-                      onChange={(e) => setImapCustom((p) => ({ ...p, imap_host: e.target.value }))}
-                      placeholder="IMAP host (ex: imap.domaine.fr)"
-                      style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.06)", padding: "10px 12px", color: "rgba(255,255,255,0.92)" }}
-                    />
-                    <input
-                      value={imapCustom.imap_port}
-                      onChange={(e) => setImapCustom((p) => ({ ...p, imap_port: Number(e.target.value || 0) }))}
-                      placeholder="993"
-                      type="number"
-                      style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.06)", padding: "10px 12px", color: "rgba(255,255,255,0.92)" }}
-                    />
-                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, opacity: 0.85 }}>
-                      <input
-                        type="checkbox"
-                        checked={imapCustom.imap_secure}
-                        onChange={(e) => setImapCustom((p) => ({ ...p, imap_secure: e.target.checked }))}
-                      />
-                      SSL
-                    </label>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 120px", gap: 8 }}>
-                    <input
-                      value={imapCustom.smtp_host}
-                      onChange={(e) => setImapCustom((p) => ({ ...p, smtp_host: e.target.value }))}
-                      placeholder="SMTP host (ex: smtp.domaine.fr)"
-                      style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.06)", padding: "10px 12px", color: "rgba(255,255,255,0.92)" }}
-                    />
-                    <input
-                      value={imapCustom.smtp_port}
-                      onChange={(e) => setImapCustom((p) => ({ ...p, smtp_port: Number(e.target.value || 0) }))}
-                      placeholder="587"
-                      type="number"
-                      style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.06)", padding: "10px 12px", color: "rgba(255,255,255,0.92)" }}
-                    />
-                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, opacity: 0.85 }}>
-                      <input
-                        type="checkbox"
-                        checked={imapCustom.smtp_starttls}
-                        onChange={(e) => setImapCustom((p) => ({ ...p, smtp_starttls: e.target.checked }))}
-                      />
-                      STARTTLS
-                    </label>
-                  </div>
+              <div style={{ display: "grid", gap: 10, marginTop: 4 }}>
+                <div style={{ fontSize: 12, opacity: 0.8 }}>
+                  {imapPresetKey === "other"
+                    ? "Autre fournisseur : renseignez vos paramètres librement."
+                    : `Réglages préremplis pour ${IMAP_PRESETS[imapPresetKey].label} — tous les champs restent modifiables.`}
                 </div>
-              )}
+                {imapAssistMessage ? (
+                  <div style={{ fontSize: 12, color: "#93c5fd" }}>{imapAssistMessage}</div>
+                ) : null}
+                {isMobileImapLayout ? (
+                  <>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <input
+                        value={imapCustom.imap_host}
+                        onChange={(e) => setImapCustom((p) => ({ ...p, imap_host: e.target.value }))}
+                        placeholder="Serveur IMAP (ex: imap.domaine.fr)"
+                        style={imapFieldStyle}
+                      />
+                      <div style={{ display: "grid", gridTemplateColumns: "96px minmax(0,1fr)", gap: 8 }}>
+                        <input
+                          value={imapCustom.imap_port}
+                          onChange={(e) => setImapCustom((p) => ({ ...p, imap_port: Number(e.target.value || 0) }))}
+                          placeholder="993"
+                          type="number"
+                          style={imapFieldStyle}
+                        />
+                        <select
+                          value={imapCustom.imap_secure ? "ssl" : "none"}
+                          onChange={(e) => {
+                            const mode = e.target.value as ImapSecurityMode;
+                            setImapCustom((p) => ({ ...p, imap_secure: mode === "ssl" }));
+                          }}
+                          style={{ ...imapSelectStyle, minWidth: 0 }}
+                        >
+                          <option value="ssl" style={{ background: "#ffffff", color: "#111827" }}>Sécurité IMAP : SSL/TLS</option>
+                          <option value="none" style={{ background: "#ffffff", color: "#111827" }}>Sécurité IMAP : aucune</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <input
+                        value={imapCustom.smtp_host}
+                        onChange={(e) => setImapCustom((p) => ({ ...p, smtp_host: e.target.value }))}
+                        placeholder="Serveur SMTP (ex: smtp.domaine.fr)"
+                        style={imapFieldStyle}
+                      />
+                      <div style={{ display: "grid", gridTemplateColumns: "96px minmax(0,1fr)", gap: 8 }}>
+                        <input
+                          value={imapCustom.smtp_port}
+                          onChange={(e) => {
+                            const port = Number(e.target.value || 0);
+                            setImapCustom((p) => {
+                              const next = { ...p, smtp_port: port };
+                              const suggestion = suggestSmtpSecurityForPort(port);
+                              if (!suggestion) return next;
+                              return applySmtpSecurityMode(next, suggestion.mode);
+                            });
+                            const suggestion = suggestSmtpSecurityForPort(port);
+                            setImapAssistMessage(suggestion?.message || null);
+                          }}
+                          placeholder="587"
+                          type="number"
+                          style={imapFieldStyle}
+                        />
+                        <select
+                          value={smtpSecurityModeFromSettings(imapCustom)}
+                          onChange={(e) => {
+                            const mode = e.target.value as SmtpSecurityMode;
+                            setImapCustom((p) => applySmtpSecurityMode(p, mode));
+                            setImapAssistMessage(
+                              mode === "ssl"
+                                ? "Sécurité SMTP réglée sur SSL/TLS. Recommandé le plus souvent avec le port 465."
+                                : mode === "starttls"
+                                ? "Sécurité SMTP réglée sur STARTTLS. Recommandé le plus souvent avec le port 587."
+                                : "Sécurité SMTP personnalisée : aucun chiffrement sélectionné."
+                            );
+                          }}
+                          style={{ ...imapSelectStyle, minWidth: 0 }}
+                        >
+                          <option value="ssl" style={{ background: "#ffffff", color: "#111827" }}>Sécurité SMTP : SSL/TLS</option>
+                          <option value="starttls" style={{ background: "#ffffff", color: "#111827" }}>Sécurité SMTP : STARTTLS</option>
+                          <option value="none" style={{ background: "#ffffff", color: "#111827" }}>Sécurité SMTP : aucune</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,0.86fr) 96px minmax(220px,0.64fr)", gap: 8 }}>
+                      <input
+                        value={imapCustom.imap_host}
+                        onChange={(e) => setImapCustom((p) => ({ ...p, imap_host: e.target.value }))}
+                        placeholder="IMAP host (ex: imap.domaine.fr)"
+                        style={imapFieldStyle}
+                      />
+                      <input
+                        value={imapCustom.imap_port}
+                        onChange={(e) => setImapCustom((p) => ({ ...p, imap_port: Number(e.target.value || 0) }))}
+                        placeholder="993"
+                        type="number"
+                        style={imapFieldStyle}
+                      />
+                      <select
+                        value={imapCustom.imap_secure ? "ssl" : "none"}
+                        onChange={(e) => {
+                          const mode = e.target.value as ImapSecurityMode;
+                          setImapCustom((p) => ({ ...p, imap_secure: mode === "ssl" }));
+                        }}
+                        style={{ ...imapSelectStyle, minWidth: 0 }}
+                      >
+                        <option value="ssl" style={{ background: "#ffffff", color: "#111827" }}>Sécurité IMAP : SSL/TLS</option>
+                        <option value="none" style={{ background: "#ffffff", color: "#111827" }}>Sécurité IMAP : aucune</option>
+                      </select>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,0.86fr) 96px minmax(220px,0.64fr)", gap: 8 }}>
+                      <input
+                        value={imapCustom.smtp_host}
+                        onChange={(e) => setImapCustom((p) => ({ ...p, smtp_host: e.target.value }))}
+                        placeholder="SMTP host (ex: smtp.domaine.fr)"
+                        style={imapFieldStyle}
+                      />
+                      <input
+                        value={imapCustom.smtp_port}
+                        onChange={(e) => {
+                          const port = Number(e.target.value || 0);
+                          setImapCustom((p) => {
+                            const next = { ...p, smtp_port: port };
+                            const suggestion = suggestSmtpSecurityForPort(port);
+                            if (!suggestion) return next;
+                            return applySmtpSecurityMode(next, suggestion.mode);
+                          });
+                          const suggestion = suggestSmtpSecurityForPort(port);
+                          setImapAssistMessage(suggestion?.message || null);
+                        }}
+                        placeholder="587"
+                        type="number"
+                        style={imapFieldStyle}
+                      />
+                      <select
+                        value={smtpSecurityModeFromSettings(imapCustom)}
+                        onChange={(e) => {
+                          const mode = e.target.value as SmtpSecurityMode;
+                          setImapCustom((p) => applySmtpSecurityMode(p, mode));
+                          setImapAssistMessage(
+                            mode === "ssl"
+                              ? "Sécurité SMTP réglée sur SSL/TLS. Recommandé le plus souvent avec le port 465."
+                              : mode === "starttls"
+                              ? "Sécurité SMTP réglée sur STARTTLS. Recommandé le plus souvent avec le port 587."
+                              : "Sécurité SMTP personnalisée : aucun chiffrement sélectionné."
+                          );
+                        }}
+                        style={{ ...imapSelectStyle, minWidth: 0 }}
+                      >
+                        <option value="ssl" style={{ background: "#ffffff", color: "#111827" }}>Sécurité SMTP : SSL/TLS</option>
+                        <option value="starttls" style={{ background: "#ffffff", color: "#111827" }}>Sécurité SMTP : STARTTLS</option>
+                        <option value="none" style={{ background: "#ffffff", color: "#111827" }}>Sécurité SMTP : aucune</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+              </div>
 
               {imapFormError && (
                 <div style={{ fontSize: 13, color: "#fbbf24" }}>⚠️ {imapFormError}</div>
@@ -893,52 +1085,8 @@ Email : {{email}}`));
                         setImapFormError("Saisis identifiant et mot de passe.");
                         return;
                       }
-                      setImapTestBusy(true);
-                      const preset = imapPresetKey === "other" ? imapCustom : IMAP_PRESETS[imapPresetKey];
-                      const r = await fetch("/api/integrations/imap/test", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          login: imapLogin.trim(),
-                          password: imapPassword,
-                          ...preset,
-                        }),
-                      });
-                      const j = await r.json().catch(() => ({}));
-                      if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Test impossible"));
-                      setImapFormError(null);
-                      setToast("imap_test_ok");
-                    } catch (e: any) {
-                      setImapFormError(getSimpleFrenchErrorMessage(e, "Test impossible pour le moment."));
-                    } finally {
-                      setImapTestBusy(false);
-                    }
-                  }}
-                  style={{
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.06)",
-                    color: "rgba(255,255,255,0.92)",
-                    padding: "10px 12px",
-                    cursor: "pointer",
-                    opacity: imapTestBusy || imapConnectBusy ? 0.6 : 1,
-                  }}
-                >
-                  {imapTestBusy ? "Test…" : "Tester"}
-                </button>
-
-                <button
-                  type="button"
-                  disabled={imapTestBusy || imapConnectBusy}
-                  onClick={async () => {
-                    try {
-                      setImapFormError(null);
-                      if (!imapLogin.trim() || !imapPassword) {
-                        setImapFormError("Saisis identifiant et mot de passe.");
-                        return;
-                      }
                       setImapConnectBusy(true);
-                      const preset = imapPresetKey === "other" ? imapCustom : IMAP_PRESETS[imapPresetKey];
+                      const preset = imapCustom;
                       const r = await fetch("/api/integrations/imap/connect", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -951,10 +1099,7 @@ Email : {{email}}`));
                       const j = await r.json().catch(() => ({}));
                       if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Connexion impossible"));
                       setImapModalOpen(false);
-                      // refresh
-                      const res = await fetch("/api/integrations/status");
-                      const data = await res.json();
-                      setMailAccounts(data.mailAccounts || []);
+                      await refreshMailAccounts(true);
                       setToast("imap_connected");
                     } catch (e: any) {
                       setImapFormError(getSimpleFrenchErrorMessage(e, "Connexion impossible pour le moment."));

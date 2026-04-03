@@ -2,22 +2,22 @@ import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { encryptSecret } from "@/lib/imapCrypto";
+import nodemailer from "nodemailer";
 import net from "net";
 import { withApi } from "@/lib/observability/withApi";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { withImap } from "@/lib/imapClient";
 
 function isPrivateIp(ip: string): boolean {
-  // IPv4 private ranges
   if (/^10\./.test(ip)) return true;
   if (/^127\./.test(ip)) return true;
   if (/^169\.254\./.test(ip)) return true;
   if (/^192\.168\./.test(ip)) return true;
   if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)) return true;
   if (ip === "0.0.0.0") return true;
-  // IPv6 loopback / local
   if (ip === "::1") return true;
-  if (/^fc/i.test(ip) || /^fd/i.test(ip)) return true; // unique local
-  if (/^fe80:/i.test(ip)) return true; // link-local
+  if (/^fc/i.test(ip) || /^fd/i.test(ip)) return true;
+  if (/^fe80:/i.test(ip)) return true;
   return false;
 }
 
@@ -46,6 +46,27 @@ function validatePort(n: number, fallback: number): number {
   return p;
 }
 
+function isCertificateError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /self-signed certificate|certificate chain|unable to verify the first certificate|unable to get local issuer certificate|certificate has expired|certificate not yet valid/i.test(message);
+}
+
+function translateMailConnectionError(error: unknown, fallback = "Connexion impossible pour le moment."): string {
+  const message = error instanceof Error ? error.message : String(error || "");
+  const lower = message.toLowerCase();
+
+  if (isCertificateError(error)) {
+    return "Le serveur mail présente un certificat SSL non reconnu. La connexion sécurisée IMAP a été refusée.";
+  }
+  if (/authentication failed|invalid login|535 5\.7\.1|username and password not accepted|login failed/i.test(lower)) {
+    return "Identifiant ou mot de passe incorrect pour ce serveur mail.";
+  }
+  if (/econnrefused|enotfound|getaddrinfo|server is unreachable|connection timeout|timed out/i.test(lower)) {
+    return "Impossible de joindre le serveur mail. Vérifiez l'adresse du serveur et le port.";
+  }
+  return fallback;
+}
+
 const handler = async (req: Request) => {
   const supabase = await createSupabaseServer();
   const { data: userData } = await supabase.auth.getUser();
@@ -69,12 +90,41 @@ const handler = async (req: Request) => {
       return jsonUserFacingError("Merci de renseigner l'identifiant et le mot de passe.", { status: 400, code: "invalid_input" });
     }
 
-    const userId = userData.user.id;
+    try {
+      await withImap(
+        { user: login, password, host: imap_host, port: imap_port, secure: imap_secure },
+        async (client) => {
+          await client.mailboxOpen("INBOX");
+          return true;
+        }
+      );
+    } catch (imapError) {
+      if (isCertificateError(imapError)) {
+        await withImap(
+          { user: login, password, host: imap_host, port: imap_port, secure: imap_secure, tls: { rejectUnauthorized: false } },
+          async (client) => {
+            await client.mailboxOpen("INBOX");
+            return true;
+          }
+        );
+      } else {
+        throw imapError;
+      }
+    }
 
-    // Only 1 IMAP account per user
+    const transport = nodemailer.createTransport({
+      host: smtp_host,
+      port: smtp_port,
+      secure: smtp_secure,
+      auth: { user: login, pass: password },
+      requireTLS: smtp_starttls,
+      tls: process.env.NODE_ENV === "development" ? { rejectUnauthorized: false } : undefined,
+    });
+    await transport.verify();
+
+    const userId = userData.user.id;
     await supabaseAdmin.from("integrations").delete().eq("user_id", userId).eq("category", "mail").eq("provider", "imap");
 
-    // Store the encrypted password in refresh_token_enc (NOT inside settings)
     const password_enc = encryptSecret(password);
 
     const { data, error } = await supabaseAdmin
@@ -102,7 +152,12 @@ const handler = async (req: Request) => {
     if (error) return jsonUserFacingError("Impossible d'enregistrer ce compte de messagerie pour le moment.", { status: 500, code: "imap_save_failed" });
     return NextResponse.json({ ok: true, id: data?.id });
   } catch (e: unknown) {
-    return jsonUserFacingError(e, { status: 400, fallback: "Impossible de connecter cette messagerie pour le moment.", code: "imap_connect_failed" });
+    return jsonUserFacingError(translateMailConnectionError(e, "Connexion impossible pour le moment."), {
+      status: 400,
+      fallback: "Connexion impossible pour le moment.",
+      code: "imap_connect_failed",
+      extra: process.env.NODE_ENV === "development" ? { technical_error: e instanceof Error ? e.message : String(e || "") } : undefined,
+    });
   }
 };
 

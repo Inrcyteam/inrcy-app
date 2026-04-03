@@ -114,6 +114,8 @@ type MailAccount = {
   status: string;
 };
 
+const MAIL_ACCOUNTS_UPDATED_EVENT = "inrsend:mail-accounts-updated";
+
 type ComposeAttachmentRef = {
   bucket: string;
   path: string;
@@ -1271,7 +1273,10 @@ export default function MailboxClient() {
 
     const connected = accounts.filter((a) => a.status === "connected");
     const defaultId = connected[0]?.id || accounts[0]?.id || "";
-    setSelectedAccountId((prev) => prev || defaultId);
+    const accountIds = new Set(accounts.map((a) => String(a?.id || "")).filter(Boolean));
+
+    setSelectedAccountId((prev) => (prev && accountIds.has(prev) ? prev : defaultId));
+    setFilterAccountId((prev) => (prev && accountIds.has(prev) ? prev : ""));
   }
 
   async function loadSignature() {
@@ -1627,6 +1632,21 @@ const subTitle = firstNonEmpty(
       await loadHistory();
     })();
   }, []);
+
+  useEffect(() => {
+    const handleMailAccountsUpdated = async () => {
+      await loadAccounts();
+      await loadHistory();
+    };
+
+    window.addEventListener(MAIL_ACCOUNTS_UPDATED_EVENT, handleMailAccountsUpdated as EventListener);
+    return () => window.removeEventListener(MAIL_ACCOUNTS_UPDATED_EVENT, handleMailAccountsUpdated as EventListener);
+  }, []);
+
+  useEffect(() => {
+    if (!composeOpen) return;
+    void loadAccounts();
+  }, [composeOpen]);
 
   // UX recherche: Ctrl/Cmd+K pour ouvrir, Esc pour fermer (sans perdre la saisie)
   useEffect(() => {
@@ -3302,21 +3322,19 @@ async function deleteDraftPermanently(id: string) {
                   <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                     <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)" }}>Boîte d’envoi :</div>
                     <select
+                      className={styles.selectDark}
                       value={selectedAccountId}
                       onChange={(e) => setSelectedAccountId(e.target.value)}
                       style={{
-                        background: "rgba(0,0,0,0.22)",
-                        border: "1px solid rgba(255,255,255,0.18)",
-                        color: "rgba(255,255,255,0.9)",
-                        borderRadius: 12,
-                        padding: "8px 10px",
                         width: "min(520px, 100%)",
                         flex: "1 1 280px",
                         minWidth: 0,
+                        paddingRight: 36,
+                        boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
                       }}
                     >
                       {mailAccounts.map((a) => (
-                        <option key={a.id} value={a.id}>
+                        <option key={a.id} value={a.id} style={{ background: "#ffffff", color: "#0b1020" }}>
                           {(a.display_name ? `${a.display_name} — ` : "") + a.email_address + ` (${a.provider})`}
                         </option>
                       ))}

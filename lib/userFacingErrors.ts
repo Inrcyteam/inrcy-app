@@ -16,6 +16,14 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette ac
     return "Connexion au serveur impossible pour le moment. Merci de réessayer.";
   }
 
+  if (matches(message, ["self-signed certificate", "self signed certificate", "certificate chain", "unable to verify the first certificate", "unable to get local issuer certificate", "hostname/ip does not match certificate", "certificate has expired", "certificate not yet valid"])) {
+    return "Le serveur mail présente un certificat SSL non reconnu. Vérifiez les réglages du serveur ou réessayez avec la tolérance SSL activée.";
+  }
+
+  if (matches(message, ["authentication failed", "invalid login", "invalid credentials for smtp", "username and password not accepted", "535 5.7.1", "login failed"])) {
+    return "Identifiant ou mot de passe incorrect pour ce serveur mail.";
+  }
+
   if (matches(message, ["timeout", "timed out", "deadline exceeded", "aborterror"])) {
     return "Le serveur met trop de temps à répondre. Merci de réessayer.";
   }

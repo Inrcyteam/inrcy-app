@@ -5,9 +5,21 @@ import { withImap } from "@/lib/imapClient";
 import { requireUser } from "@/lib/requireUser";
 import { withApi } from "@/lib/observability/withApi";
 
+function isCertificateError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /self-signed certificate|certificate chain|unable to verify the first certificate|unable to get local issuer certificate|certificate has expired|certificate not yet valid/i.test(message);
+}
+
+function translateMailConnectionError(error: unknown, fallback = "Test IMAP/SMTP impossible") {
+  const message = error instanceof Error ? error.message : String(error || "");
+  const lower = message.toLowerCase();
+  if (isCertificateError(error)) return "Le serveur mail présente un certificat SSL non reconnu. La connexion sécurisée IMAP a été refusée.";
+  if (/authentication failed|invalid login|535 5\.7\.1|username and password not accepted|login failed/i.test(lower)) return "Identifiant ou mot de passe incorrect pour ce serveur mail.";
+  if (/econnrefused|enotfound|getaddrinfo|server is unreachable|connection timeout|timed out/i.test(lower)) return "Impossible de joindre le serveur mail. Vérifiez l'adresse du serveur et le port.";
+  return fallback;
+}
+
 export const POST = withApi(async (req: Request) => {
-  // This endpoint is intentionally protected: it accepts email credentials for connectivity checks.
-  // Never allow it to be called anonymously.
   const { errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -23,7 +35,6 @@ export const POST = withApi(async (req: Request) => {
     const smtp_secure = !!body.smtp_secure;
     const smtp_starttls = !!body.smtp_starttls;
 
-    // Basic input validation (avoid abuse and weird payloads)
     if (login.length > 320 || password.length > 2048) {
       return jsonUserFacingError("Paramètres invalides", { status: 400, code: "invalid_input" });
     }
@@ -38,35 +49,42 @@ export const POST = withApi(async (req: Request) => {
       return jsonUserFacingError("Merci de renseigner l’adresse du serveur de messagerie entrant et sortant.", { status: 400, code: "invalid_input" });
     }
 
-    // IMAP connect
-    await withImap(
-      { user: login, password, host: imap_host, port: imap_port, secure: imap_secure },
-      async (client) => {
-        await client.mailboxOpen("INBOX");
-        return true;
+    try {
+      await withImap(
+        { user: login, password, host: imap_host, port: imap_port, secure: imap_secure },
+        async (client) => {
+          await client.mailboxOpen("INBOX");
+          return true;
+        }
+      );
+    } catch (imapError) {
+      if (isCertificateError(imapError)) {
+        await withImap(
+          { user: login, password, host: imap_host, port: imap_port, secure: imap_secure, tls: { rejectUnauthorized: false } },
+          async (client) => {
+            await client.mailboxOpen("INBOX");
+            return true;
+          }
+        );
+      } else {
+        throw imapError;
       }
-    );
+    }
 
-    // SMTP verify
     const transport = nodemailer.createTransport({
       host: smtp_host,
       port: smtp_port,
       secure: smtp_secure,
       auth: { user: login, pass: password },
       requireTLS: smtp_starttls,
-
-tls: process.env.NODE_ENV === "development"
-  ? { rejectUnauthorized: false }
-  : undefined,
-
+      tls: process.env.NODE_ENV === "development" ? { rejectUnauthorized: false } : undefined,
     });
     await transport.verify();
 
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
-    // Don't leak provider/internal error details in production.
-    const generic = "Test IMAP/SMTP impossible";
-    const detail = process.env.NODE_ENV === "development" ? ((e instanceof Error ? e.message : String(e)) || generic) : undefined;
-    return NextResponse.json({ ...buildUserFacingErrorBody(generic, { status: 400, code: "imap_test_failed" }), detail }, { status: 400 });
+    const friendly = translateMailConnectionError(e, "Test IMAP/SMTP impossible");
+    const detail = process.env.NODE_ENV === "development" ? ((e instanceof Error ? e.message : String(e)) || friendly) : undefined;
+    return NextResponse.json({ ...buildUserFacingErrorBody(friendly, { status: 400, code: "imap_test_failed" }), detail }, { status: 400 });
   }
 }, { route: "/api/integrations/imap/test" });

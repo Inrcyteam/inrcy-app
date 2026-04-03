@@ -7,6 +7,9 @@ export type ImapConfig = {
   host: string;
   port: number;
   secure: boolean;
+  tls?: {
+    rejectUnauthorized?: boolean;
+  };
 };
 
 type SpecialUse = "\\Sent" | "\\Drafts" | "\\Junk" | "\\Trash";
@@ -41,13 +44,11 @@ async function resolveMailbox(client: ImapFlow, folder: string): Promise<string>
   try {
     const list = await client.list();
 
-    // SPECIAL-USE (quand dispo)
     const hit = list.find(
       (mb: any) => Array.isArray(mb.specialUse) && mb.specialUse.includes(wanted)
     );
     if (hit?.path) return String(hit.path);
 
-    // Heuristiques (quand SPECIAL-USE n’est pas exposé)
     const paths = list
       .map((mb: any) => String(mb.path || ""))
       .filter(Boolean);
@@ -94,6 +95,7 @@ export async function withImap<T>(
     secure: cfg.secure,
     auth: { user: cfg.user, pass: cfg.password },
     logger: false,
+    tls: cfg.tls,
   });
 
   await client.connect();
