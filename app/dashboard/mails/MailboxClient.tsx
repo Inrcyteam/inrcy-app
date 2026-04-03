@@ -968,6 +968,16 @@ function pill(provider?: string | null) {
   return { label: provider || "Mail", cls: styles.badgeDefault };
 }
 
+function listGridTemplateColumns(folder: Folder) {
+  if (folder === "factures" || folder === "devis") {
+    return "minmax(0, 520px) minmax(180px, 240px) auto";
+  }
+  if (folder === "publications") {
+    return "minmax(0, 360px) minmax(240px, 1fr) auto";
+  }
+  return "minmax(0, 380px) minmax(180px, 280px) auto";
+}
+
 export default function MailboxClient() {
   const [helpOpen, setHelpOpen] = useState(false);
   const router = useRouter();
@@ -990,6 +1000,7 @@ export default function MailboxClient() {
   const [detailsEditMode, setDetailsEditMode] = useState(false);
   const [detailsActionBusy, setDetailsActionBusy] = useState(false);
   const [detailsActionError, setDetailsActionError] = useState<string | null>(null);
+  const [detailsSourceDocPayload, setDetailsSourceDocPayload] = useState<any | null>(null);
   const [publicationEditForm, setPublicationEditForm] = useState<PublicationEditForm>({ title: "", content: "", cta: "", hashtags: "" });
   const [publicationEditImagesByChannel, setPublicationEditImagesByChannel] = useState<Record<string, PublicationChannelImagesState>>({});
   const [publicationRetouchChannelKey, setPublicationRetouchChannelKey] = useState<string | null>(null);
@@ -1516,6 +1527,48 @@ const subTitle = firstNonEmpty(
   const detailsPayload = useMemo(() => {
     return detailsItem && detailsItem.source !== "send_items" ? (((detailsItem as any)?.raw?.payload || null) as any) : null;
   }, [detailsItem]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!detailsOpen || !detailsItem || detailsItem.source !== "send_items") {
+      setDetailsSourceDocPayload(null);
+      return;
+    }
+
+    const saveId = (detailsItem as any)?.raw?.source_doc_save_id;
+    const sourceType = (detailsItem as any)?.raw?.source_doc_type;
+    if (!saveId || !sourceType) {
+      setDetailsSourceDocPayload(null);
+      return;
+    }
+
+    const loadSourceDocPayload = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        if (!cancelled) setDetailsSourceDocPayload(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("doc_saves")
+        .select("payload")
+        .eq("id", saveId)
+        .eq("user_id", user.id)
+        .eq("type", sourceType)
+        .maybeSingle();
+
+      if (!cancelled) {
+        setDetailsSourceDocPayload(error ? null : (data?.payload || null));
+      }
+    };
+
+    void loadSourceDocPayload();
+    return () => {
+      cancelled = true;
+    };
+  }, [detailsOpen, detailsItem, supabase]);
 
   const detailsChannelEntries = useMemo(() => {
     if (!detailsItem || detailsItem.source === "send_items") return [] as ChannelPublication[];
@@ -2611,11 +2664,25 @@ async function deleteDraftPermanently(id: string) {
 <div className={styles.scrollArea}>
               {loading ? (
                 <div style={{ padding: 14, color: "rgba(255,255,255,0.75)" }}>Chargement…</div>
-              ) : visibleItems.length === 0 ? (
-                <div style={{ padding: 14, color: "rgba(255,255,255,0.65)" }}>Aucun élément.</div>
               ) : (
                 <div className={styles.list}>
-                  {visibleItems.map((it) => {
+                  <div className={styles.listHeader}>
+                    <div
+                      className={styles.listHeaderGrid}
+                      style={{ gridTemplateColumns: listGridTemplateColumns(folder) }}
+                    >
+                      <div className={styles.listHeaderCell}>Objet</div>
+                      <div
+                        className={`${styles.listHeaderCell} ${styles.listHeaderCellCenter} ${folder === "publications" ? styles.listHeaderCellPublications : ""}`}
+                      >
+                        {folder === "publications" ? "Canaux" : "Boîte d’envoi"}
+                      </div>
+                      <div className={`${styles.listHeaderCell} ${styles.listHeaderCellRight}`}>Date · Heure</div>
+                    </div>
+                  </div>
+                  {visibleItems.length === 0 ? (
+                    <div style={{ padding: 14, color: "rgba(255,255,255,0.65)" }}>Aucun élément.</div>
+                  ) : visibleItems.map((it) => {
                     const active = it.id === selectedId;
                     const p = pill(it.provider);
 
@@ -2650,9 +2717,9 @@ async function deleteDraftPermanently(id: string) {
                           }
                         }}
                       >
-                        <div className={styles.itemTop}>
+                        <div className={styles.itemTop} style={{ gridTemplateColumns: listGridTemplateColumns(folder) }}>
                           <div className={styles.fromRow}>
-                            <div className={styles.from}>{(it.title || "(sans objet)").slice(0, 70)}</div>
+                            <div className={styles.from} title={it.title || "(sans objet)"}>{it.title || "(sans objet)"}</div>
                             <span className={`${styles.badge} ${p.cls}`}>{p.label}</span>
                           </div>
 
@@ -2765,8 +2832,11 @@ async function deleteDraftPermanently(id: string) {
                     : null;
                   const activePublicationDeleted = isDeletedChannelResult(activePublicationResult);
                   const activeParts = activePublicationEntry?.parts || defaultParts;
+                  const sourceDocAttachments = detailsItem.source === "send_items"
+                    ? extractAttachmentsFromPayload(detailsSourceDocPayload)
+                    : [];
                   const attachmentCandidates = detailsItem.source === "send_items"
-                    ? [...(detailsItem.attachments || [])]
+                    ? [...(detailsItem.attachments || []), ...sourceDocAttachments]
                     : [...(activeParts.attachments || [])];
                   const dedupedAttachments = attachmentCandidates.filter((att, idx, arr) => {
                     const key = `${att.url || ""}|${att.name || ""}`;
