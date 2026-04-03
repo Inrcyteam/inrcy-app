@@ -69,6 +69,9 @@ const handler = async (req: Request) => {
     let accountId = "";
     let sendItemId = "";
     let sendType = "mail";
+    let sourceDocSaveId = "";
+    let sourceDocType = "";
+    let sourceDocNumber = "";
     let to = "";
     let subject = "(sans objet)";
     let text = "";
@@ -79,6 +82,9 @@ const handler = async (req: Request) => {
       accountId = String(formData.get("accountId") || "").trim();
       sendItemId = String(formData.get("sendItemId") || "").trim();
       sendType = String(formData.get("type") || "mail").trim() || "mail";
+      sourceDocSaveId = String(formData.get("sourceDocSaveId") || "").trim();
+      sourceDocType = String(formData.get("sourceDocType") || "").trim();
+      sourceDocNumber = String(formData.get("sourceDocNumber") || "").trim();
       to = String(formData.get("to") || "").trim();
       subject = String(formData.get("subject") || "(sans objet)");
       text = String(formData.get("text") || "");
@@ -87,6 +93,9 @@ const handler = async (req: Request) => {
       accountId = String(body.accountId || "").trim();
       sendItemId = String(body.sendItemId || "").trim();
       sendType = String(body.type || "mail").trim() || "mail";
+    sourceDocSaveId = String(body.sourceDocSaveId || "").trim();
+    sourceDocType = String(body.sourceDocType || "").trim();
+    sourceDocNumber = String(body.sourceDocNumber || "").trim();
       to = String(body.to || "").trim();
       subject = String(body.subject || "(sans objet)");
       text = String(body.text || "");
@@ -197,6 +206,9 @@ const handler = async (req: Request) => {
       body_html: null,
       provider: "microsoft",
       provider_message_id: null,
+      source_doc_save_id: sourceDocSaveId || null,
+      source_doc_type: sourceDocType || null,
+      source_doc_number: sourceDocNumber || null,
       provider_thread_id: null,
       sent_at: new Date().toISOString(),
       error: null,

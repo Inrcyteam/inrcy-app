@@ -186,6 +186,9 @@ const handler = async (req: Request) => {
   let accountId = "";
   let sendItemId = "";
   let sendType = "mail";
+  let sourceDocSaveId = "";
+  let sourceDocType = "";
+  let sourceDocNumber = "";
   let inReplyTo = "";
   let references = "";
   const attachments: Attachment[] = [];
@@ -197,6 +200,9 @@ const handler = async (req: Request) => {
     accountId = String(fd.get("accountId") || "").trim();
     sendItemId = String(fd.get("sendItemId") || "").trim();
     sendType = String(fd.get("type") || "mail").trim() || "mail";
+    sourceDocSaveId = String(fd.get("sourceDocSaveId") || "").trim();
+    sourceDocType = String(fd.get("sourceDocType") || "").trim();
+    sourceDocNumber = String(fd.get("sourceDocNumber") || "").trim();
     to = String(fd.get("to") || "").trim();
     subject = String(fd.get("subject") || "").trim() || "(sans objet)";
     text = String(fd.get("text") || "");
@@ -219,6 +225,9 @@ const handler = async (req: Request) => {
     accountId = String(body.accountId || "").trim();
     sendItemId = String(body.sendItemId || "").trim();
     sendType = String(body.type || "mail").trim() || "mail";
+    sourceDocSaveId = String(body.sourceDocSaveId || "").trim();
+    sourceDocType = String(body.sourceDocType || "").trim();
+    sourceDocNumber = String(body.sourceDocNumber || "").trim();
     to = String(body.to || "").trim();
     subject = String(body.subject || "").trim() || "(sans objet)";
     text = String(body.text || "");
@@ -355,9 +364,12 @@ const handler = async (req: Request) => {
     to_emails: to,
     subject: subject || null,
     body_text: finalText || null,
-    body_html: html || null,
+    body_html: finalHtml || null,
     provider: "gmail",
     provider_message_id: sendData?.id || null,
+    source_doc_save_id: sourceDocSaveId || null,
+    source_doc_type: sourceDocType || null,
+    source_doc_number: sourceDocNumber || null,
     provider_thread_id: sendData?.threadId || null,
     sent_at: new Date().toISOString(),
     error: null,

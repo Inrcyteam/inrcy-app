@@ -275,7 +275,20 @@ export default function NewFacturePage() {
     };
   };
 
-  const SAVES_LIMIT = 30;
+  type DevisSnapshot = {
+    number: string;
+    docDateISO: string;
+    clientName: string;
+    clientAddress: string;
+    clientEmail: string;
+    validityDays: number;
+    lines: LineItem[];
+    discountKind: DiscountKind | "";
+    discountValue: number;
+    discountDetails: string;
+  };
+
+  const SAVES_LIMIT = 20;
   const SAVES_TYPE = "facture" as const;
 
   const [draftsOpen, setDraftsOpen] = useState(false);
@@ -336,6 +349,140 @@ export default function NewFacturePage() {
     void refreshSaves();
   }, []);
 
+  const applyDraftSnapshot = (s: FactureDraft["snapshot"]) => {
+    setNumber(s.number);
+    setInvoiceDate(s.invoiceDate);
+    setDueDate(s.dueDate);
+    setClientName(s.clientName);
+    setClientAddress(s.clientAddress);
+    setClientEmail(s.clientEmail);
+    setStatus(s.status);
+    setPaymentMethod(s.paymentMethod);
+    setPaymentDetails(s.paymentDetails);
+    setNotes(s.notes);
+    setLines(s.lines);
+    setDiscountKind(s.discountKind);
+    setDiscountValue(s.discountValue);
+    setDiscountDetails(s.discountDetails || "");
+  };
+
+  useEffect(() => {
+    const saveId = searchParams.get("saveId") || searchParams.get("docSaveId") || "";
+    if (!saveId) return;
+
+    let cancelled = false;
+
+    const loadRequestedSave = async () => {
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
+      if (userErr || !user) return;
+
+      const { data, error } = await supabase
+        .from("doc_saves")
+        .select("id,payload")
+        .eq("id", saveId)
+        .eq("user_id", user.id)
+        .eq("type", SAVES_TYPE)
+        .maybeSingle();
+
+      if (error) {
+        console.error(error);
+        if (!cancelled) setFormMessage({ type: "error", text: "Impossible de réouvrir cette facture." });
+        return;
+      }
+
+      if (!data?.payload) {
+        if (!cancelled) setFormMessage({ type: "error", text: "Facture introuvable." });
+        return;
+      }
+
+      if (!cancelled) {
+        applyDraftSnapshot(data.payload as FactureDraft["snapshot"]);
+        setFormMessage({ type: "success", text: "Facture réouverte depuis iNrSend." });
+      }
+    };
+
+    void loadRequestedSave();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, supabase]);
+
+
+  useEffect(() => {
+    const existingSaveId = searchParams.get("saveId") || searchParams.get("docSaveId") || "";
+    if (existingSaveId) return;
+
+    const devisSaveId = searchParams.get("fromDevisSaveId") || searchParams.get("devisSaveId") || "";
+    if (!devisSaveId) return;
+
+    let cancelled = false;
+
+    const loadDevisForConversion = async () => {
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
+      if (userErr || !user) return;
+
+      const { data, error } = await supabase
+        .from("doc_saves")
+        .select("id,payload")
+        .eq("id", devisSaveId)
+        .eq("user_id", user.id)
+        .eq("type", "devis")
+        .maybeSingle();
+
+      if (error) {
+        console.error(error);
+        if (!cancelled) setFormMessage({ type: "error", text: "Impossible de charger ce devis pour la conversion." });
+        return;
+      }
+
+      const devis = data?.payload as DevisSnapshot | undefined;
+      if (!devis) {
+        if (!cancelled) setFormMessage({ type: "error", text: "Devis introuvable pour la conversion." });
+        return;
+      }
+
+      const now = new Date();
+      const due = new Date(now);
+      due.setDate(due.getDate() + 30);
+
+      if (!cancelled) {
+        setNumber(generateNumber("FAC"));
+        setInvoiceDate(now.toISOString().slice(0, 10));
+        setDueDate(due.toISOString().slice(0, 10));
+        setClientName(devis.clientName || "");
+        setClientAddress(devis.clientAddress || "");
+        setClientEmail(devis.clientEmail || "");
+        setStatus("");
+        setPaymentMethod("");
+        setPaymentDetails("");
+        setNotes(`Facture créée depuis le devis ${devis.number || devisSaveId}.`);
+        setLines(Array.isArray(devis.lines) && devis.lines.length
+          ? devis.lines.map((line: LineItem, index: number) => ({
+              ...line,
+              id: line?.id || `l_${index + 1}`,
+            }))
+          : [{ id: "l_1", label: "Prestation", qty: 1, unitPrice: 120, vatRate: vatDispense ? 0 : 20 }]);
+        setDiscountKind(devis.discountKind || "");
+        setDiscountValue(Number(devis.discountValue) || 0);
+        setDiscountDetails(devis.discountDetails || "");
+        setFormMessage({ type: "success", text: `Facture préremplie depuis le devis ${devis.number || "sélectionné"}.` });
+      }
+    };
+
+    void loadDevisForConversion();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, supabase, vatDispense]);
+
   const addLine = () =>
     setLines((prev) => [
       ...prev,
@@ -357,7 +504,7 @@ export default function NewFacturePage() {
     );
 
 
-  const saveDraft = async () => {
+  const saveDraft = async (options?: { silent?: boolean }) => {
     const finalNumber = number || generateNumber("FAC");
     if (!number) setNumber(finalNumber);
 
@@ -390,12 +537,12 @@ export default function NewFacturePage() {
       snapshot.number ||
       "Sauvegarde";
 
-    const { error } = await supabase.from("doc_saves").insert({
+    const { data: insertedSave, error } = await supabase.from("doc_saves").insert({
       user_id: user.id,
       type: SAVES_TYPE,
       name: autoName,
       payload: snapshot,
-    });
+    }).select("id").single();
 
     if (error) {
       console.error(error);
@@ -423,26 +570,16 @@ export default function NewFacturePage() {
     }
 
     await refreshSaves();
-    setDraftsOpen(true);
-    setFormMessage({ type: "success", text: "Facture enregistrée." });
+    if (!options?.silent) {
+      setDraftsOpen(true);
+      setFormMessage({ type: "success", text: "Facture enregistrée." });
+    }
+
+    return insertedSave?.id as string | undefined;
   };
 
   const openDraft = (d: FactureDraft) => {
-    const s = d.snapshot;
-    setNumber(s.number);
-    setInvoiceDate(s.invoiceDate);
-    setDueDate(s.dueDate);
-    setClientName(s.clientName);
-    setClientAddress(s.clientAddress);
-    setClientEmail(s.clientEmail);
-    setStatus(s.status);
-    setPaymentMethod(s.paymentMethod);
-    setPaymentDetails(s.paymentDetails);
-    setNotes(s.notes);
-    setLines(s.lines);
-    setDiscountKind(s.discountKind);
-    setDiscountValue(s.discountValue);
-    setDiscountDetails(s.discountDetails || "");
+    applyDraftSnapshot(d.snapshot);
     setDraftsOpen(false);
   };
 
@@ -520,6 +657,12 @@ export default function NewFacturePage() {
       return;
     }
 
+    const docSaveId = await saveDraft({ silent: true });
+    if (!docSaveId) {
+      setFormMessage({ type: "error", text: "Veuillez d’abord sauvegarder cette facture avant l’envoi." });
+      return;
+    }
+
     const pdfBlob = await buildPdfBlob();
     if (!pdfBlob) {
       setFormMessage({ type: "error", text: "Impossible de générer le PDF de cette facture pour le moment." });
@@ -546,6 +689,9 @@ export default function NewFacturePage() {
     params.set("attachName", safeName);
     if (clientName?.trim()) params.set("clientName", clientName.trim());
     params.set("type", "facture");
+    params.set("docSaveId", docSaveId);
+    params.set("docType", "facture");
+    params.set("docNumber", number || safeName.replace(/\.pdf$/i, ""));
     router.push(`/dashboard/mails?${params.toString()}`);
   };
 
@@ -881,7 +1027,7 @@ export default function NewFacturePage() {
           <button type="button" onClick={addLine}>
             + Ajouter une ligne
           </button>
-          <button type="button" onClick={saveDraft}>
+          <button type="button" onClick={() => { void saveDraft(); }}>
             Sauvegarder
           </button>
           <button

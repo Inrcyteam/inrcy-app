@@ -325,6 +325,52 @@ export default function NewDevisPage() {
     void refreshSaves();
   }, []);
 
+
+  useEffect(() => {
+    const saveId = searchParams.get("saveId") || searchParams.get("docSaveId") || "";
+    if (!saveId) return;
+
+    let cancelled = false;
+
+    const loadRequestedSave = async () => {
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
+      if (userErr || !user) return;
+
+      const { data, error } = await supabase
+        .from("doc_saves")
+        .select("id,payload")
+        .eq("id", saveId)
+        .eq("user_id", user.id)
+        .eq("type", SAVES_TYPE)
+        .maybeSingle();
+
+      if (error) {
+        console.error(error);
+        if (!cancelled) setFormMessage({ type: "error", text: "Impossible de réouvrir ce devis." });
+        return;
+      }
+
+      if (!data?.payload) {
+        if (!cancelled) setFormMessage({ type: "error", text: "Devis introuvable." });
+        return;
+      }
+
+      if (!cancelled) {
+        applyDraftSnapshot(data.payload as DevisDraft["snapshot"]);
+        setFormMessage({ type: "success", text: "Devis réouvert depuis iNrSend." });
+      }
+    };
+
+    void loadRequestedSave();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, supabase]);
+
   const addLine = () =>
     setLines((prev) => [
       ...prev,
@@ -340,7 +386,7 @@ export default function NewDevisPage() {
   const updateLine = (id: string, patch: Partial<LineItem>) =>
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
 
-  const saveDraft = async () => {
+  const saveDraft = async (options?: { silent?: boolean }) => {
     const finalNumber = number || generateNumber("DEV");
     if (!number) setNumber(finalNumber);
 
@@ -369,12 +415,12 @@ export default function NewDevisPage() {
       snapshot.number ||
       "Sauvegarde";
 
-    const { error } = await supabase.from("doc_saves").insert({
+    const { data: insertedSave, error } = await supabase.from("doc_saves").insert({
       user_id: user.id,
       type: SAVES_TYPE,
       name: autoName,
       payload: snapshot,
-    });
+    }).select("id").single();
 
     if (error) {
       console.error(error);
@@ -401,12 +447,15 @@ export default function NewDevisPage() {
     }
 
     await refreshSaves();
-    setDraftsOpen(true);
-    setFormMessage({ type: "success", text: "Devis enregistré." });
+    if (!options?.silent) {
+      setDraftsOpen(true);
+      setFormMessage({ type: "success", text: "Devis enregistré." });
+    }
+
+    return insertedSave?.id as string | undefined;
   };
 
-  const openDraft = (d: DevisDraft) => {
-    const s = d.snapshot;
+  const applyDraftSnapshot = (s: DevisDraft["snapshot"]) => {
     setNumber(s.number);
     setDocDateISO(s.docDateISO);
     setClientName(s.clientName);
@@ -417,6 +466,20 @@ export default function NewDevisPage() {
     setDiscountKind(s.discountKind);
     setDiscountValue(s.discountValue);
     setDiscountDetails(s.discountDetails || "");
+  };
+
+  const convertCurrentDevisToInvoice = async () => {
+    const devisSaveId = await saveDraft({ silent: true });
+    if (!devisSaveId) {
+      setFormMessage({ type: "error", text: "Impossible de préparer ce devis pour la conversion." });
+      return;
+    }
+
+    router.push(`/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent(devisSaveId)}`);
+  };
+
+  const openDraft = (d: DevisDraft) => {
+    applyDraftSnapshot(d.snapshot);
     setDraftsOpen(false);
   };
 
@@ -499,6 +562,12 @@ export default function NewDevisPage() {
       return;
     }
 
+    const docSaveId = await saveDraft({ silent: true });
+    if (!docSaveId) {
+      setFormMessage({ type: "error", text: "Veuillez d’abord sauvegarder ce devis avant l’envoi." });
+      return;
+    }
+
     const pdfBlob = await buildPdfBlob();
     if (!pdfBlob) {
       setFormMessage({ type: "error", text: "Impossible de générer le PDF de ce devis pour le moment." });
@@ -525,6 +594,9 @@ export default function NewDevisPage() {
     params.set("attachName", safeName);
     if (clientName?.trim()) params.set("clientName", clientName.trim());
     params.set("type", "devis");
+    params.set("docSaveId", docSaveId);
+    params.set("docType", "devis");
+    params.set("docNumber", number || safeName.replace(/\.pdf$/i, ""));
     router.push(`/dashboard/mails?${params.toString()}`);
   };
 
@@ -625,7 +697,7 @@ export default function NewDevisPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontWeight: 750, fontSize: 16 }}>Sauvegardes (max 10)</div>
+                  <div style={{ fontWeight: 750, fontSize: 16 }}>Sauvegardes (max 20)</div>
                   <button type="button" className={styles.closeBtn} onClick={() => setDraftsOpen(false)}>
                     Fermer
                   </button>
@@ -662,6 +734,9 @@ export default function NewDevisPage() {
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                             <button type="button" onClick={() => openDraft(d)}>
                               Ouvrir
+                            </button>
+                            <button type="button" onClick={() => router.push(`/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent(d.id)}`)}>
+                              → Facture
                             </button>
                             <button type="button" onClick={() => deleteDraft(d.id)}>
                               Supprimer
@@ -777,7 +852,10 @@ export default function NewDevisPage() {
             <button type="button" onClick={addLine}>
               + Ajouter une ligne
             </button>
-            <button type="button" onClick={saveDraft}>Sauvegarder</button>
+            <button type="button" onClick={() => { void saveDraft(); }}>Sauvegarder</button>
+            <button type="button" onClick={() => void convertCurrentDevisToInvoice()}>
+              → Convertir en facture
+            </button>
             <button
               type="button"
               onClick={async () => {

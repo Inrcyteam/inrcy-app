@@ -135,6 +135,9 @@ type SendItem = {
   provider_message_id: string | null;
   // present in DB (used by Gmail), but not always selected previously
   provider_thread_id?: string | null;
+  source_doc_save_id?: string | null;
+  source_doc_type?: "devis" | "facture" | null;
+  source_doc_number?: string | null;
   error: string | null;
   sent_at: string | null;
   created_at: string;
@@ -168,6 +171,7 @@ type OutboxItem = {
   channels?: string[];
   attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null }[];
   raw?: any;
+  reopenHref?: string | null;
 };
 
 type PublicationParts = {
@@ -1075,6 +1079,9 @@ export default function MailboxClient() {
   const [files, setFiles] = useState<File[]>([]);
   const [composeAttachments, setComposeAttachments] = useState<ComposeAttachmentRef[]>([]);
   const [attachBusy, setAttachBusy] = useState(false);
+  const [composeSourceDocSaveId, setComposeSourceDocSaveId] = useState<string>("");
+  const [composeSourceDocType, setComposeSourceDocType] = useState<"devis" | "facture" | "">("");
+  const [composeSourceDocNumber, setComposeSourceDocNumber] = useState<string>("");
   const [sendBusy, setSendBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [signaturePreview, setSignaturePreview] = useState("Cordialement,");
@@ -1234,6 +1241,9 @@ export default function MailboxClient() {
   function resetCompose(nextType: SendType = "mail") {
     setDraftId(null);
     setComposeType(nextType);
+    setComposeSourceDocSaveId("");
+    setComposeSourceDocType("");
+    setComposeSourceDocNumber("");
     setTo("");
     setSubject("");
     const signature = signatureEnabled ? signaturePreview : "";
@@ -1307,7 +1317,7 @@ export default function MailboxClient() {
         supabase
           .from("send_items")
           .select(
-            "id, integration_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, provider_thread_id, error, sent_at, created_at, updated_at"
+            "id, integration_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, provider_thread_id, source_doc_save_id, source_doc_type, source_doc_number, error, sent_at, created_at, updated_at"
           )
           .eq("user_id", userId)
           .in("status", ["sent", "draft"])
@@ -1353,6 +1363,9 @@ export default function MailboxClient() {
             subject: x.subject,
             to: x.to_emails,
             raw: x,
+            reopenHref: x.source_doc_save_id && x.source_doc_type
+              ? `/dashboard/${x.source_doc_type === "facture" ? "factures" : "devis"}/new?saveId=${encodeURIComponent(x.source_doc_save_id)}`
+              : null,
           };
         })
         .filter(Boolean) as OutboxItem[];
@@ -1688,12 +1701,18 @@ const subTitle = firstNonEmpty(
     // Determine composer type (optional).
     // If not provided explicitly, we infer it from the attachment path.
     const typeParam = (searchParams?.get("type") || searchParams?.get("sendType") || "").toLowerCase();
+    const sourceDocSaveIdParam = safeDecode(searchParams?.get("docSaveId") || searchParams?.get("sourceDocSaveId") || "").trim();
+    const sourceDocTypeParam = (safeDecode(searchParams?.get("docType") || searchParams?.get("sourceDocType") || "").trim().toLowerCase());
+    const sourceDocNumberParam = safeDecode(searchParams?.get("docNumber") || searchParams?.get("sourceDocNumber") || "").trim();
     let nextType: SendType = "mail";
     if (typeParam === "facture") nextType = "facture";
     else if (typeParam === "devis") nextType = "devis";
     else if (attachKey.includes("/factures/") || attachKey.includes("/facture/")) nextType = "facture";
     else if (attachKey.includes("/devis/")) nextType = "devis";
     setComposeType(nextType);
+    setComposeSourceDocSaveId(sourceDocSaveIdParam);
+    setComposeSourceDocType(sourceDocTypeParam === "facture" || sourceDocTypeParam === "devis" ? (sourceDocTypeParam as "facture" | "devis") : "");
+    setComposeSourceDocNumber(sourceDocNumberParam || (attachName || attachKey.split("/").pop() || "").replace(/\.pdf$/i, ""));
 
     if (toParam) setTo(toParam);
     if (subjParam) setSubject(subjParam);
@@ -1936,6 +1955,9 @@ const subTitle = firstNonEmpty(
       body_text: text || null,
       body_html: null,
       provider: selectedAccount?.provider || null,
+      source_doc_save_id: composeSourceDocSaveId || null,
+      source_doc_type: composeSourceDocType || null,
+      source_doc_number: composeSourceDocNumber || null,
     };
 
     if (draftId) {
@@ -2030,6 +2052,9 @@ async function deleteDraftPermanently(id: string) {
         type: composeType,
         ...(draftId ? { sendItemId: draftId } : {}),
         attachments: composeAttachments,
+        sourceDocSaveId: composeSourceDocSaveId || undefined,
+        sourceDocType: composeSourceDocType || undefined,
+        sourceDocNumber: composeSourceDocNumber || undefined,
       };
 
       const res = await fetch(providerSendEndpoint(selectedAccount.provider), {
@@ -2764,20 +2789,48 @@ async function deleteDraftPermanently(id: string) {
                           </div>
 
                           {detailsItem.source === "send_items" ? (
-                            <div className={styles.metaGrid}>
-                              <div className={styles.metaRow}>
-                                <div className={styles.metaKey}>Boîte d’envoi</div>
-                                <div className={styles.metaVal}>{detailsAccountLabel || "—"}</div>
+                            <>
+                              <div className={styles.metaGrid}>
+                                <div className={styles.metaRow}>
+                                  <div className={styles.metaKey}>Boîte d’envoi</div>
+                                  <div className={styles.metaVal}>{detailsAccountLabel || "—"}</div>
+                                </div>
+                                <div className={styles.metaRow}>
+                                  <div className={styles.metaKey}>Destinataires</div>
+                                  <div className={styles.metaVal}>{splitList(detailsItem.to || detailsItem.target).join(", ") || "—"}</div>
+                                </div>
+                                <div className={styles.metaRow}>
+                                  <div className={styles.metaKey}>Objet</div>
+                                  <div className={styles.metaVal}>{detailsItem.subject || detailsItem.title || "—"}</div>
+                                </div>
+                                <div className={styles.metaRow}>
+                                  <div className={styles.metaKey}>Document source</div>
+                                  <div className={styles.metaVal}>{(detailsItem as any).raw?.source_doc_number || "—"}</div>
+                                </div>
                               </div>
-                              <div className={styles.metaRow}>
-                                <div className={styles.metaKey}>Destinataires</div>
-                                <div className={styles.metaVal}>{splitList(detailsItem.to || detailsItem.target).join(", ") || "—"}</div>
-                              </div>
-                              <div className={styles.metaRow}>
-                                <div className={styles.metaKey}>Objet</div>
-                                <div className={styles.metaVal}>{detailsItem.subject || detailsItem.title || "—"}</div>
-                              </div>
-                            </div>
+                              {(detailsItem.reopenHref || ((detailsItem as any).raw?.source_doc_type === "devis" && (detailsItem as any).raw?.source_doc_save_id)) ? (
+                                <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+                                  {detailsItem.reopenHref ? (
+                                    <button
+                                      type="button"
+                                      className={styles.btnGhost}
+                                      onClick={() => router.push(detailsItem.reopenHref || "/dashboard/mails")}
+                                    >
+                                      Réouvrir dans l’outil
+                                    </button>
+                                  ) : null}
+                                  {(detailsItem as any).raw?.source_doc_type === "devis" && (detailsItem as any).raw?.source_doc_save_id ? (
+                                    <button
+                                      type="button"
+                                      className={styles.btnGhost}
+                                      onClick={() => router.push(`/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent((detailsItem as any).raw.source_doc_save_id)}`)}
+                                    >
+                                      Créer la facture
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </>
                           ) : (
                             <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
                               <div className={styles.detailPillsWrap}>
