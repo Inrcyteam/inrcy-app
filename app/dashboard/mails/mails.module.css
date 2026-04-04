@@ -883,15 +883,23 @@
   }
   .itemTop {
     grid-template-columns: 1fr;
-    gap: 6px;
+    gap: 8px;
     align-items: start;
   }
   .itemMid {
-    text-align: left;
-    pointer-events: none;
+    display: none;
+  }
+  .fromRow {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .from {
+    min-width: 0;
+    flex: 1 1 auto;
   }
   .itemRight {
     justify-content: space-between;
+    width: 100%;
   }
 }
 
@@ -5092,26 +5100,27 @@ width: 100%;
   gap: 10px;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid var(--folder-accent-border, rgba(255,255,255,0.16));
-  background: linear-gradient(135deg, var(--folder-accent-start, rgba(56,189,248,0.20)), var(--folder-accent-end, rgba(167,139,250,0.18)));
+  border: 1px solid rgba(255,255,255,0.14);
+  background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
   color: rgba(255,255,255,0.98);
   font-weight: 850;
   cursor: pointer;
   box-shadow: 0 12px 26px rgba(0,0,0,0.20), 0 0 0 1px rgba(255,255,255,0.04) inset;
-  transition: transform .15s ease, filter .15s ease, box-shadow .15s ease, border-color .15s ease;
+  transition: transform .15s ease, filter .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
 }
 
 .mobileFolderBtn:hover{
   transform: translateY(-1px);
-  filter: saturate(1.08) brightness(1.04);
+  background: linear-gradient(135deg, rgba(255,255,255,0.11), rgba(255,255,255,0.06));
+  border-color: rgba(255,255,255,0.20);
   box-shadow: 0 16px 30px rgba(0,0,0,0.24), 0 0 0 1px rgba(255,255,255,0.06) inset;
 }
 
 .mobileFolderBtnActive{
   border-color: rgba(56,189,248,0.62);
   background:
-    radial-gradient(circle at top left, rgba(56,189,248,0.28), transparent 48%),
-    linear-gradient(135deg, rgba(24,58,138,0.94) 0%, rgba(27,72,163,0.96) 24%, rgba(31,157,255,0.90) 52%, rgba(126,87,255,0.92) 76%, rgba(201,108,255,0.88) 100%);
+    radial-gradient(circle at top left, rgba(56,189,248,0.34), transparent 48%),
+    linear-gradient(135deg, rgba(24,58,138,0.96) 0%, rgba(27,72,163,0.98) 24%, rgba(31,157,255,0.92) 52%, rgba(126,87,255,0.94) 76%, rgba(201,108,255,0.90) 100%);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.16),
     0 0 0 1px rgba(255,255,255,0.07),
@@ -5126,6 +5135,11 @@ width: 100%;
   background: rgba(255,255,255,0.18);
   color: rgba(255,255,255,0.99);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.mobileFolderBtn .badgeCount{
+  border-color: rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.92);
 }
 @media (max-width: 820px){
   .hamburgerBtn{ display:inline-flex; }
