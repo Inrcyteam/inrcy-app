@@ -1613,7 +1613,7 @@ const provenance = buildProvenance(key, ov);
         <div className={styles.summaryMain}>
           <span
             className={styles.summaryValueBubble}
-            aria-label={`+${fmtInt(centralPotential30)} opportunités à activer pour générer plus de clients`}
+            aria-label={`+${fmtInt(centralPotential30)} opportunités à activer pour générer + de clients et + de CA potentiel`}
           >
             <span className={styles.summaryValue}>+{fmtInt(centralPotential30)}</span>
           </span>

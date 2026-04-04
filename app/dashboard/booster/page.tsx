@@ -300,6 +300,7 @@ export default function BoosterPage() {
             <div className={b.closeWrap}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <HelpButton onClick={() => setHelpOpen(true)} title="Aide Booster" />
+                <ResponsiveActionButton desktopLabel="Fidéliser" mobileIcon="Fidéliser" href="/dashboard/fideliser" ariaLabel="Aller vers Fidéliser" title="Fidéliser" />
                 <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" />
               </div>
             </div>
