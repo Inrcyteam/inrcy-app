@@ -67,6 +67,7 @@ export default function NewFacturePage() {
     window.scrollTo(0, 0);
   }, []);
 
+
   // PDF → Supabase Storage (PJ iNrbox)
   const ATTACH_BUCKET = "inrbox_attachments";
   const previewRef = useRef<HTMLDivElement | null>(null);
@@ -294,6 +295,19 @@ export default function NewFacturePage() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [drafts, setDrafts] = useState<FactureDraft[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (!draftsOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const previousTouchAction = document.body.style.touchAction;
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.touchAction = previousTouchAction;
+    };
+  }, [draftsOpen]);
 
   const cleanupOldSaves = async () => {
     const {
@@ -704,7 +718,12 @@ export default function NewFacturePage() {
         {/* Formulaire */}
         <div className={styles.panel}>
          <div className={styles.panelHeaderStack}>
-  <h1>Créer une facture</h1>
+  <div className={styles.panelHeaderTopRow}>
+    <h1>Créer une facture</h1>
+    <button type="button" className={styles.closeBtn} onClick={() => router.push("/dashboard")}>
+      Fermer
+    </button>
+  </div>
 
             {formMessage ? (
               <div style={{ marginTop: 10, color: formMessage.type === "success" ? "#22c55e" : "#ef4444", fontWeight: 800, fontSize: 13 }}>
@@ -722,6 +741,13 @@ export default function NewFacturePage() {
       }}
     >
       Sauvegardes
+    </button>
+    <button
+      type="button"
+      className={styles.closeBtn}
+      onClick={() => router.push("/dashboard/devis/new")}
+    >
+      Devis
     </button>
     <button
       type="button"
@@ -756,13 +782,6 @@ export default function NewFacturePage() {
       Réinitialiser
     </button>
 
-    <button
-      className={styles.closeBtn}
-      onClick={() => router.push("/dashboard")}
-    >
-      <span className={styles.closeText}>Fermer</span>
-      <span className={styles.closeIcon}>✕</span>
-    </button>
   </div>
 </div>
 
@@ -776,23 +795,28 @@ export default function NewFacturePage() {
               background: "rgba(0,0,0,0.55)",
               zIndex: 9999,
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-start",
               justifyContent: "center",
-              padding: 16,
+              padding: "clamp(12px, 4vh, 32px) 16px",
+              overflowY: "auto",
             }}
             onClick={() => setDraftsOpen(false)}
           >
             <div
               style={{
                 width: "min(720px, 100%)",
+                maxHeight: "min(86vh, 860px)",
+                overflowY: "auto",
+                overscrollBehavior: "contain",
+                WebkitOverflowScrolling: "touch",
                 background: "#111",
                 border: "1px solid rgba(255,255,255,0.14)",
                 borderRadius: 16,
-                padding: 14,
+                padding: 0,
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, position: "sticky", top: 0, zIndex: 2, padding: "14px 14px 10px", background: "#111", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
                 <div style={{ fontWeight: 750, fontSize: 16 }}>Sauvegardes (max 20)</div>
                 <button type="button" className={styles.closeBtn} onClick={() => setDraftsOpen(false)}>
                   Fermer
@@ -800,9 +824,9 @@ export default function NewFacturePage() {
               </div>
 
               {drafts.length === 0 ? (
-                <div style={{ marginTop: 12, opacity: 0.85 }}>Aucune facture sauvegardée.</div>
+                <div style={{ padding: 14, opacity: 0.85 }}>Aucune facture sauvegardée.</div>
               ) : (
-                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                <div style={{ padding: 14, display: "grid", gap: 10 }}>
                   {drafts.map((d) => {
                     const label = d.snapshot.number || "(Sans numéro)";
                     const who = d.snapshot.clientName?.trim() ? ` — ${d.snapshot.clientName.trim()}` : "";

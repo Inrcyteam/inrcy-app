@@ -109,11 +109,37 @@
   padding-bottom: 12px;
 }
 
-.panelHeaderActions {
+.panelHeaderTopRow {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panelHeaderTopRow h1 {
+  margin: 0;
+  min-width: 0;
+}
+
+.panelHeaderTopRow .closeBtn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.panelHeaderActions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  justify-content: flex-end;
-  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.panelHeaderActions > * {
+  min-width: 0;
+}
+
+.panelHeaderActions .closeBtn {
+  width: 100%;
+  white-space: nowrap;
 }
 
 /* ✅ Impression: masquer les champs de saisie, garder uniquement le résultat */

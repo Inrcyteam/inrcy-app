@@ -75,6 +75,7 @@ export default function NewDevisPage() {
     window.scrollTo(0, 0);
   }, []);
 
+
   // PDF → Supabase Storage (PJ iNrbox)
   const ATTACH_BUCKET = "inrbox_attachments";
   const previewRef = useRef<HTMLDivElement | null>(null);
@@ -271,6 +272,19 @@ export default function NewDevisPage() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [drafts, setDrafts] = useState<DevisDraft[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (!draftsOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const previousTouchAction = document.body.style.touchAction;
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.touchAction = previousTouchAction;
+    };
+  }, [draftsOpen]);
 
   const cleanupOldSaves = async () => {
     const {
@@ -615,7 +629,12 @@ export default function NewDevisPage() {
         {/* Formulaire */}
         <div className={styles.panel}>
           <div className={styles.panelHeaderStack}>
-            <h1>Créer un devis</h1>
+            <div className={styles.panelHeaderTopRow}>
+              <h1>Créer un devis</h1>
+              <button type="button" className={styles.closeBtn} onClick={() => router.push("/dashboard")}>
+                Fermer
+              </button>
+            </div>
 
             {formMessage ? (
               <div style={{ marginTop: 10, color: formMessage.type === "success" ? "#22c55e" : "#ef4444", fontWeight: 800, fontSize: 13 }}>
@@ -633,6 +652,13 @@ export default function NewDevisPage() {
                 }}
               >
                 Sauvegardes
+              </button>
+              <button
+                type="button"
+                className={styles.closeBtn}
+                onClick={() => router.push("/dashboard/factures/new")}
+              >
+                Factures
               </button>
               <button
                 type="button"
@@ -663,10 +689,6 @@ export default function NewDevisPage() {
                 Réinitialiser
               </button>
 
-              <button className={styles.closeBtn} onClick={() => router.push("/dashboard")}>
-                <span className={styles.closeText}>Fermer</span>
-                <span className={styles.closeIcon}>✕</span>
-              </button>
             </div>
           </div>
 
@@ -680,23 +702,28 @@ export default function NewDevisPage() {
                 background: "rgba(0,0,0,0.55)",
                 zIndex: 9999,
                 display: "flex",
-                alignItems: "center",
+                alignItems: "flex-start",
                 justifyContent: "center",
-                padding: 18,
+                padding: "clamp(12px, 4vh, 32px) 18px",
+                overflowY: "auto",
               }}
               onClick={() => setDraftsOpen(false)}
             >
               <div
                 style={{
                   width: "min(720px, 100%)",
+                  maxHeight: "min(86vh, 860px)",
+                  overflowY: "auto",
+                  overscrollBehavior: "contain",
+                  WebkitOverflowScrolling: "touch",
                   background: "#0b1220",
                   border: "1px solid rgba(255,255,255,0.12)",
                   borderRadius: 16,
-                  padding: 14,
+                  padding: 0,
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", position: "sticky", top: 0, zIndex: 2, padding: "14px 14px 10px", background: "#0b1220", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
                   <div style={{ fontWeight: 750, fontSize: 16 }}>Sauvegardes (max 20)</div>
                   <button type="button" className={styles.closeBtn} onClick={() => setDraftsOpen(false)}>
                     Fermer
@@ -704,9 +731,9 @@ export default function NewDevisPage() {
                 </div>
 
                 {drafts.length === 0 ? (
-                  <div style={{ marginTop: 12, opacity: 0.85 }}>Aucune sauvegarde pour l’instant.</div>
+                  <div style={{ padding: 14, opacity: 0.85 }}>Aucune sauvegarde pour l’instant.</div>
                 ) : (
-                  <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                  <div style={{ padding: 14, display: "grid", gap: 8 }}>
                     {drafts.map((d) => {
                       const s = d.snapshot;
                       const label = `${s.number || "(sans numéro)"} — ${s.clientName || "Client"}`;
