@@ -1617,7 +1617,7 @@ const provenance = buildProvenance(key, ov);
           >
             <span className={styles.summaryValue}>+{fmtInt(centralPotential30)}</span>
           </span>
-          <span className={styles.summaryLabel}>opportunités à activer pour générer plus de clients</span>
+          <span className={styles.summaryLabel}>opportunités à activer pour générer + de clients et + de CA potentiel</span>
           <span className={styles.summarySub}>projection sur 30 jours si actions menées</span>
         </div>
         <div className={styles.summaryModules}>
