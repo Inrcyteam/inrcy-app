@@ -15,6 +15,11 @@ type BulkResponse = {
   period: number;
   overviews: Partial<Record<CubeKey, Overview>>;
   opportunities: ReturnType<typeof toInrstatsSnapshot>;
+  profile: {
+    lead_conversion_rate: number;
+    avg_basket: number;
+  };
+  estimatedByCube: Record<CubeKey, number>;
   meta: {
     source: 'api/stats/dashboard-bulk';
     generatedAt: string;
@@ -50,10 +55,32 @@ export async function GET(req: Request) {
 
     const opportunities = toInrstatsSnapshot(computeOpportunitiesFromOverviews(overviews, period));
 
+    const { data: profileRow } = await supabase
+      .from('profiles')
+      .select('lead_conversion_rate, avg_basket')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    const leadConversionRate = Number(profileRow?.lead_conversion_rate ?? 0);
+    const avgBasket = Number(profileRow?.avg_basket ?? 0);
+    const estimatedByCube: Record<CubeKey, number> = {
+      site_inrcy: Math.round((opportunities.byCube.site_inrcy || 0) * (leadConversionRate / 100) * avgBasket),
+      site_web: Math.round((opportunities.byCube.site_web || 0) * (leadConversionRate / 100) * avgBasket),
+      gmb: Math.round((opportunities.byCube.gmb || 0) * (leadConversionRate / 100) * avgBasket),
+      facebook: Math.round((opportunities.byCube.facebook || 0) * (leadConversionRate / 100) * avgBasket),
+      instagram: Math.round((opportunities.byCube.instagram || 0) * (leadConversionRate / 100) * avgBasket),
+      linkedin: Math.round((opportunities.byCube.linkedin || 0) * (leadConversionRate / 100) * avgBasket),
+    };
+
     const payload: BulkResponse = {
       period,
       overviews,
       opportunities,
+      profile: {
+        lead_conversion_rate: Number.isFinite(leadConversionRate) ? leadConversionRate : 0,
+        avg_basket: Number.isFinite(avgBasket) ? avgBasket : 0,
+      },
+      estimatedByCube,
       meta: {
         source: 'api/stats/dashboard-bulk',
         generatedAt: new Date().toISOString(),

@@ -110,7 +110,11 @@
   color: var(--muted);
   font-weight: 800;
   line-height: 1.35;
+  white-space: nowrap;
 }
+
+.taglineDesktop { display: inline-flex; }
+.taglineMobile { display: none; }
 
 .closeBtn {
   padding: 9px 12px;
@@ -280,6 +284,150 @@
   border-color: rgba(255, 255, 255, 0.22);
   background: rgba(255, 255, 255, 0.06);
 }
+
+.summaryActionsWrap {
+  width: 100%;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.summaryActionsToggle {
+  appearance: none;
+  border: 1px solid rgba(110, 218, 255, 0.34);
+  background:
+    radial-gradient(120% 160% at 15% 20%, rgba(56, 189, 248, 0.26), transparent 55%),
+    radial-gradient(120% 160% at 85% 80%, rgba(217, 70, 239, 0.24), transparent 58%),
+    linear-gradient(135deg, rgba(31, 94, 255, 0.24), rgba(120, 68, 255, 0.24));
+  color: rgba(255, 255, 255, 0.98);
+  font-weight: 900;
+  padding: 10px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(34, 197, 248, 0.16), 0 8px 24px rgba(157, 78, 255, 0.16);
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+
+.summaryActionsToggle:hover {
+  transform: translateY(-1px);
+  border-color: rgba(110, 218, 255, 0.5);
+  box-shadow: 0 14px 34px rgba(34, 197, 248, 0.22), 0 12px 30px rgba(157, 78, 255, 0.22);
+  filter: brightness(1.04);
+}
+
+.summaryActionsPanel {
+  width: min(100%, 980px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.summaryActionItem {
+  text-align: left;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(157, 78, 255, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.summaryActionTopRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.summaryActionLeft {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.summaryActionBadge {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(157, 78, 255, 0.16));
+  border: 1px solid rgba(93, 207, 255, 0.28);
+  color: rgba(255, 255, 255, 0.94);
+  font-weight: 900;
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.12);
+}
+
+.summaryActionTitleBlock {
+  min-width: 0;
+  flex: 1;
+}
+
+.summaryActionTitleRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.summaryActionTitle {
+  color: rgba(255, 255, 255, 0.98);
+  font-weight: 900;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.summaryActionOpp {
+  color: rgba(191, 219, 254, 0.92);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.summaryActionKicker {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.summaryActionRevenueBubble {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(244, 114, 182, 0.22), rgba(157, 78, 255, 0.24));
+  border: 1px solid rgba(128, 217, 255, 0.36);
+  color: #fff;
+  font-weight: 950;
+  font-size: 22px;
+  line-height: 1;
+  box-shadow: 0 10px 30px rgba(93, 207, 255, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  white-space: nowrap;
+}
+
+.summaryActionRevenueGhost {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.78);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.summaryActionMeta {
+  margin-top: 10px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 
 .grid {
   display: grid;
@@ -486,31 +634,35 @@
 */
 @media (max-width: 900px) {
   .header {
-    gap: 10px;
+    gap: 8px;
   }
 
   .headerTop {
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px 10px;
   }
 
-  /* Le logo doit rester sur la même ligne que les actions */
   .brand {
-    flex: 1 1 auto;
     min-width: 0;
-    flex-direction: row;
     align-items: center;
     gap: 10px;
   }
 
-  .tagline {
-    font-size: 12px;
-    white-space: normal;
+  .taglineDesktop {
+    display: none;
+  }
+
+  .taglineMobile {
+    display: block;
+    width: 100%;
+    margin-top: 0;
+    font-size: 11px;
+    line-height: 1.25;
+    white-space: nowrap;
     overflow: visible;
     text-overflow: clip;
-    max-width: 100%;
   }
 
   /* En responsive : bouton = icône X uniquement */
@@ -524,6 +676,8 @@
 
   /* Les actions restent dans le flux, sans positionnement absolu */
   .headerActions {
+    grid-column: 2;
+    grid-row: 1;
     flex: 0 0 auto;
     width: auto;
     position: static;
@@ -531,6 +685,10 @@
     pointer-events: auto;
     gap: 8px;
     margin-left: auto;
+  }
+
+  .headerCloseControls {
+    flex-wrap: nowrap;
   }
 
   .headerPills {
@@ -630,6 +788,10 @@
 
   .brand {
     gap: 8px;
+  }
+
+  .taglineMobile {
+    font-size: 10.5px;
   }
 
   .period {
@@ -1044,4 +1206,67 @@
 .actionBtn:focus-visible {
   outline: 2px solid rgba(56, 189, 248, 0.55);
   outline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  .summaryMain {
+    gap: 8px;
+  }
+  .summaryLabel {
+    display: block;
+    width: 100%;
+  }
+  .summarySub {
+    display: block;
+    width: 100%;
+  }
+  .summaryActionsPanel {
+    padding: 10px;
+  }
+  .summaryActionItem {
+    padding: 12px;
+  }
+  .summaryActionTopRow {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: start;
+    gap: 10px 10px;
+  }
+  .summaryActionLeft {
+    display: contents;
+  }
+  .summaryActionBadge {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+  }
+  .summaryActionRevenueBubble,
+  .summaryActionRevenueGhost {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: start;
+    justify-self: end;
+    font-size: 18px;
+    padding: 8px 12px;
+  }
+  .summaryActionTitleBlock {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+  }
+  .summaryActionTitle {
+    font-size: 16px;
+  }
+  .summaryActionTitleRow {
+    gap: 6px;
+  }
+  .summaryActionKicker {
+    margin-top: 2px;
+    font-size: 13px;
+  }
+  .summaryActionMeta {
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.45;
+  }
 }

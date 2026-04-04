@@ -48,6 +48,11 @@ type StatsBulkResponse = {
     total?: number;
     byCube?: Partial<Record<CubeKey, number>>;
   };
+  profile?: {
+    lead_conversion_rate?: number;
+    avg_basket?: number;
+  };
+  estimatedByCube?: Partial<Record<CubeKey, number>>;
 };
 
 type ActionKey =
@@ -1140,7 +1145,7 @@ export default function StatsClient() {
   };
 
   // ✅ Période globale (7j / 30j) pour éviter un mix incohérent entre blocs.
-  const [period, setPeriod] = useState<Period>(30);
+  const period: Period = 30;
 
   const [dataByCube, setDataByCube] = useState<Record<CubeKey, { ov: Overview | null; loading: boolean; error?: string }>>({
     site_inrcy: { ov: null, loading: true },
@@ -1156,6 +1161,11 @@ export default function StatsClient() {
     total: 0,
     byCube: { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0 },
   });
+  const [summaryProfile, setSummaryProfile] = useState<{ lead_conversion_rate: number; avg_basket: number }>({ lead_conversion_rate: 0, avg_basket: 0 });
+  const [summaryEstimatedByCube, setSummaryEstimatedByCube] = useState<Record<CubeKey, number>>({
+    site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0,
+  });
+  const [summaryActionsOpen, setSummaryActionsOpen] = useState(false);
 
   // In-memory cache to avoid duplicate fetch bursts (React strict-mode/dev & quick navigations)
   const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
@@ -1209,6 +1219,18 @@ export default function StatsClient() {
           linkedin: safeNum(byCubePartial.linkedin),
         } as Record<CubeKey, number>,
       },
+      profile: {
+        lead_conversion_rate: safeNum(json?.profile?.lead_conversion_rate),
+        avg_basket: safeNum(json?.profile?.avg_basket),
+      },
+      estimatedByCube: {
+        site_inrcy: safeNum(json?.estimatedByCube?.site_inrcy),
+        site_web: safeNum(json?.estimatedByCube?.site_web),
+        gmb: safeNum(json?.estimatedByCube?.gmb),
+        facebook: safeNum(json?.estimatedByCube?.facebook),
+        instagram: safeNum(json?.estimatedByCube?.instagram),
+        linkedin: safeNum(json?.estimatedByCube?.linkedin),
+      } as Record<CubeKey, number>,
     };
   };
 
@@ -1311,6 +1333,8 @@ useEffect(() => {
         return updated;
       });
       setSummaryOpp({ loading: false, total: next.summary.total, byCube: next.summary.byCube });
+      setSummaryProfile(next.profile);
+      setSummaryEstimatedByCube(next.estimatedByCube);
     } catch (e: any) {
       if (cancelled) return;
 
@@ -1489,6 +1513,57 @@ const provenance = buildProvenance(key, ov);
   const centralPotential30 = summaryOpp.total;
   const centralByCube = summaryOpp.byCube;
 
+  const summaryActionItems = useMemo(() => {
+    const actionCopy: Record<CubeKey, { label: string; kicker: string; motive: string; badge: string }> = {
+      facebook: {
+        label: 'Publier sur Facebook',
+        kicker: 'Relancez votre visibilité locale',
+        motive: 'Une publication ciblée peut remettre votre activité en mouvement et générer de nouvelles demandes rapidement.',
+        badge: 'Booster',
+      },
+      instagram: {
+        label: 'Publier sur Instagram',
+        kicker: 'Réactivez votre visibilité de marque',
+        motive: 'Du contenu récent et régulier peut transformer plus d’attention en prises de contact concrètes.',
+        badge: 'Booster',
+      },
+      linkedin: {
+        label: 'Publier sur LinkedIn',
+        kicker: 'Renforcez votre crédibilité pro',
+        motive: 'Une prise de parole visible peut faire émerger de nouvelles opportunités professionnelles.',
+        badge: 'Publier',
+      },
+      site_web: {
+        label: 'Optimiser votre site',
+        kicker: 'Transformez plus de visiteurs en prospects',
+        motive: 'Quelques ajustements ciblés peuvent augmenter le rendement commercial de votre site rapidement.',
+        badge: 'Fidéliser',
+      },
+      site_inrcy: {
+        label: 'Optimiser votre site iNrCy',
+        kicker: 'Accélérez une machine déjà lancée',
+        motive: 'Votre générateur tourne déjà : quelques optimisations peuvent faire monter le chiffre plus vite.',
+        badge: 'Fidéliser',
+      },
+      gmb: {
+        label: 'Activer Google Business',
+        kicker: 'Débloquez un potentiel local immédiat',
+        motive: 'Vous laissez probablement passer des demandes locales : ce canal mérite d’être activé en priorité.',
+        badge: 'Connexion',
+      },
+    };
+
+    const items = [
+      { key: 'facebook' as CubeKey, opportunities: centralByCube.facebook, revenue: summaryEstimatedByCube.facebook },
+      { key: 'instagram' as CubeKey, opportunities: centralByCube.instagram, revenue: summaryEstimatedByCube.instagram },
+      { key: 'linkedin' as CubeKey, opportunities: centralByCube.linkedin, revenue: summaryEstimatedByCube.linkedin },
+      { key: 'site_web' as CubeKey, opportunities: centralByCube.site_web, revenue: summaryEstimatedByCube.site_web },
+      { key: 'site_inrcy' as CubeKey, opportunities: centralByCube.site_inrcy, revenue: summaryEstimatedByCube.site_inrcy },
+      { key: 'gmb' as CubeKey, opportunities: centralByCube.gmb, revenue: summaryEstimatedByCube.gmb },
+    ].map((item) => ({ ...item, ...actionCopy[item.key] }));
+
+    return items.filter((item) => item.opportunities > 0 || item.key === 'gmb');
+  }, [centralByCube, summaryEstimatedByCube]);
 
   return (
     <div className={styles.page}>
@@ -1502,12 +1577,12 @@ const provenance = buildProvenance(key, ov);
               height={64}
               priority
             />
+            <div className={`${styles.tagline} ${styles.taglineDesktop}`}>Vos données analysées en mode business.</div>
           </div>
 
           <div className={styles.headerActions}>
             <div className={styles.headerCloseControls}>
               <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Stats" />
-              <PeriodSelect value={period} onChange={setPeriod} />
               <ResponsiveActionButton
                 desktopLabel={isRefreshing ? "Actualisation…" : "Actualiser"}
                 mobileIcon="↻"
@@ -1519,8 +1594,7 @@ const provenance = buildProvenance(key, ov);
             </div>
           </div>
         </div>
-
-        <div className={styles.tagline}>Vos données analysées en mode business.</div>
+        <div className={`${styles.tagline} ${styles.taglineMobile}`}>Vos données analysées en mode business.</div>
       </div>
 
       <HelpModal open={helpOpen} title="iNr’Stats" onClose={() => setHelpOpen(false)}>
@@ -1530,7 +1604,7 @@ const provenance = buildProvenance(key, ov);
         <ul style={{ margin: 0, paddingLeft: 18 }}>
           <li>Comprenez votre potentiel d’opportunités sur les 30 jours à venir.</li>
           <li>Identifiez les actions à mener pour capter ce potentiel.</li>
-          <li>Suivez l’évolution par canal et par période (7j / 30j).</li>
+          <li>Suivez l’évolution par canal et identifiez les actions à mener sur les 30 jours à venir.</li>
         </ul>
       </HelpModal>
 
@@ -1539,11 +1613,11 @@ const provenance = buildProvenance(key, ov);
         <div className={styles.summaryMain}>
           <span
             className={styles.summaryValueBubble}
-            aria-label={`+${fmtInt(centralPotential30)} opportunités activables`}
+            aria-label={`+${fmtInt(centralPotential30)} opportunités à activer pour générer plus de clients`}
           >
             <span className={styles.summaryValue}>+{fmtInt(centralPotential30)}</span>
           </span>
-          <span className={styles.summaryLabel}>opportunités activables</span>
+          <span className={styles.summaryLabel}>opportunités à activer pour générer plus de clients</span>
           <span className={styles.summarySub}>projection sur 30 jours si actions menées</span>
         </div>
         <div className={styles.summaryModules}>
@@ -1571,6 +1645,47 @@ const provenance = buildProvenance(key, ov);
             <span>LinkedIn</span>
             <b>+{fmtInt(centralByCube.linkedin)}</b>
           </button>
+        </div>
+        <div className={styles.summaryActionsWrap}>
+          <button
+            type="button"
+            className={styles.summaryActionsToggle}
+            onClick={() => setSummaryActionsOpen((prev) => !prev)}
+            aria-expanded={summaryActionsOpen}
+          >
+            {summaryActionsOpen ? "Masquer les actions" : "Voir les actions"}
+          </button>
+
+          {summaryActionsOpen ? (
+            <div className={styles.summaryActionsPanel}>
+              {summaryActionItems.map((item) => (
+                <div key={item.key} className={styles.summaryActionItem}>
+                  <div className={styles.summaryActionTopRow}>
+                    <div className={styles.summaryActionLeft}>
+                      <div className={styles.summaryActionBadge}>{item.badge}</div>
+                      <div className={styles.summaryActionTitleBlock}>
+                        <div className={styles.summaryActionTitleRow}>
+                          <span className={styles.summaryActionTitle}>{item.label}</span>
+                          {item.opportunities > 0 ? (
+                            <span className={styles.summaryActionOpp}>{fmtInt(item.opportunities)} opportunités à capter</span>
+                          ) : (
+                            <span className={styles.summaryActionOpp}>potentiel non exploité</span>
+                          )}
+                        </div>
+                        <div className={styles.summaryActionKicker}>{item.kicker}</div>
+                      </div>
+                    </div>
+                    {item.opportunities > 0 ? (
+                      <div className={styles.summaryActionRevenueBubble}>+{fmtInt(item.revenue)} €</div>
+                    ) : (
+                      <div className={styles.summaryActionRevenueGhost}>À activer</div>
+                    )}
+                  </div>
+                  <div className={styles.summaryActionMeta}>{item.motive}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
 
