@@ -17,6 +17,15 @@ type RecipientInfo = {
   label: string;
   firstName?: string | null;
   companyName?: string | null;
+  phone?: string | null;
+};
+
+type ReminderRow = {
+  title: string | null;
+  description: string | null;
+  location: string | null;
+  start_at: string | null;
+  end_at: string | null;
 };
 
 function isAuthorizedCron(req: Request) {
@@ -39,6 +48,10 @@ function asNumber(value: unknown, fallback: number) {
 }
 
 const AGENDA_TIMEZONE = "Europe/Paris";
+const APP_ORIGIN = optionalEnv("NEXT_PUBLIC_SITE_URL", optionalEnv("NEXT_PUBLIC_APP_URL", "https://app.inrcy.com")).replace(/\/$/, "");
+const INR_CALENDAR_LOGO_URL = `${APP_ORIGIN}/inrcalendar-logo.png`;
+const INRCY_LOGO_URL = `${APP_ORIGIN}/logo-inrcy.png`;
+const AGENDA_DASHBOARD_URL = `${APP_ORIGIN}/dashboard/agenda`;
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
@@ -51,8 +64,37 @@ function fmtDate(iso: string) {
     : iso;
 }
 
+function fmtDateOnly(iso: string | null | undefined) {
+  const d = new Date(String(iso || ""));
+  return Number.isFinite(d.getTime())
+    ? new Intl.DateTimeFormat("fr-FR", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        timeZone: AGENDA_TIMEZONE,
+      }).format(d)
+    : "-";
+}
+
+function fmtTimeOnly(iso: string | null | undefined) {
+  const d = new Date(String(iso || ""));
+  return Number.isFinite(d.getTime())
+    ? new Intl.DateTimeFormat("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: AGENDA_TIMEZONE,
+      }).format(d)
+    : "-";
+}
+
 function normalizeEmail(value: unknown) {
   return String(value || "").trim().toLowerCase();
+}
+
+function cleanString(value: unknown) {
+  const str = String(value || "").trim();
+  return str || "";
 }
 
 function offsetLabel(minutes: number) {
@@ -62,10 +104,21 @@ function offsetLabel(minutes: number) {
   return `${minutes} min avant`;
 }
 
+function subjectSafe(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[‘’]/g, "'")
+    .replace(/[–—]/g, "-")
+    .replace(/[^ -~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function getProRecipient(userId: string): Promise<RecipientInfo | null> {
   const { data: profile } = await supabaseAdmin
     .from("profiles")
-    .select("contact_email, first_name, company_legal_name")
+    .select("contact_email, first_name, company_legal_name, phone")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -78,6 +131,7 @@ async function getProRecipient(userId: string): Promise<RecipientInfo | null> {
       label: "pro",
       firstName: typeof row.first_name === "string" ? row.first_name : null,
       companyName: typeof row.company_legal_name === "string" ? row.company_legal_name : null,
+      phone: typeof row.phone === "string" ? row.phone : null,
     };
   }
 
@@ -91,24 +145,40 @@ async function getProRecipient(userId: string): Promise<RecipientInfo | null> {
     label: "pro",
     firstName: typeof row.first_name === "string" ? row.first_name : null,
     companyName: typeof row.company_legal_name === "string" ? row.company_legal_name : null,
+    phone: typeof row.phone === "string" ? row.phone : null,
+  };
+}
+
+function getContactDetails(meta: Record<string, unknown>) {
+  const rootContact = safeObj(meta.contact);
+  const nestedContact = safeObj(safeObj(meta.inrcy).contact);
+  const contact = Object.keys(nestedContact).length ? nestedContact : rootContact;
+  return {
+    email: normalizeEmail(contact.email),
+    firstName: typeof contact.first_name === "string" ? contact.first_name : null,
+    lastName: typeof contact.last_name === "string" ? contact.last_name : null,
+    companyName: typeof contact.company_name === "string" ? contact.company_name : null,
+    displayName: typeof contact.display_name === "string" ? contact.display_name : null,
+    phone: typeof contact.phone === "string" ? contact.phone : null,
+    address: typeof contact.address === "string" ? contact.address : null,
+    city: typeof contact.city === "string" ? contact.city : null,
+    postalCode: typeof contact.postal_code === "string" ? contact.postal_code : null,
+    notes: typeof contact.notes === "string" ? contact.notes : null,
   };
 }
 
 function getContactRecipient(meta: Record<string, unknown>): RecipientInfo | null {
-  const rootContact = safeObj(meta.contact);
-  const nestedContact = safeObj(safeObj(meta.inrcy).contact);
-  const contact = Object.keys(nestedContact).length ? nestedContact : rootContact;
-  const email = normalizeEmail(contact.email);
-  if (!email) return null;
+  const contact = getContactDetails(meta);
+  if (!contact.email) return null;
   return {
     kind: "contact",
-    email,
+    email: contact.email,
     label: "client",
-    firstName: typeof contact.first_name === "string" ? contact.first_name : null,
-    companyName: typeof contact.company_name === "string" ? contact.company_name : null,
+    firstName: contact.firstName,
+    companyName: contact.companyName,
+    phone: contact.phone,
   };
 }
-
 
 function getReminderMailAccountId(meta: Record<string, unknown>) {
   const rootReminders = safeObj(meta.reminders);
@@ -141,8 +211,6 @@ function getRecipientSentAt(reminders: Record<string, unknown>, kind: RecipientK
   const current = sentAtByOffset[String(offsetMinutes)];
   if (typeof current === "string" && current.trim()) return current;
 
-  // Backward compatibility: older events only stored a global 24h marker.
-  // We only treat it as the pro marker so client reminders are not skipped.
   if (
     kind === "pro" &&
     offsetMinutes === 1440 &&
@@ -186,67 +254,240 @@ function escapeHtml(value: unknown) {
     .replace(/'/g, "&#39;");
 }
 
-function buildReminderMail(row: { title: string | null; description: string | null; location: string | null; start_at: string | null }, offsetMinutes: number, recipient: RecipientInfo) {
-  const greetingName = (recipient.firstName || recipient.companyName || "").trim();
-  const greeting = greetingName ? `Bonjour ${greetingName},` : "Bonjour,";
-  const subject = `Rappel de rendez-vous ${offsetLabel(offsetMinutes)} — ${row.title || "iNrCalendar"}`;
-  const eventTitle = String(row.title || "Rendez-vous");
-  const formattedDate = fmtDate(String(row.start_at));
+function lineBreaksToHtml(value: string) {
+  return escapeHtml(value).replace(/\n/g, "<br />");
+}
+
+function buildDisplayName(args: { firstName?: string | null; lastName?: string | null; displayName?: string | null; companyName?: string | null; fallback?: string }) {
+  const displayName = cleanString(args.displayName);
+  if (displayName) return displayName;
+  const fullName = [cleanString(args.firstName), cleanString(args.lastName)].filter(Boolean).join(" ").trim();
+  if (fullName) return fullName;
+  const company = cleanString(args.companyName);
+  if (company) return company;
+  return args.fallback || "-";
+}
+
+function buildAddress(args: { location?: string | null; address?: string | null; city?: string | null; postalCode?: string | null }) {
+  const direct = cleanString(args.location);
+  if (direct) return direct;
+  const parts = [cleanString(args.address), [cleanString(args.postalCode), cleanString(args.city)].filter(Boolean).join(" ").trim()].filter(Boolean);
+  return parts.join(", ");
+}
+
+function buildMapsUrl(address: string) {
+  const clean = cleanString(address);
+  return clean ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(clean)}` : "";
+}
+
+function infoRow(label: string, value: string) {
+  const safeLabel = escapeHtml(label);
+  const safeValue = lineBreaksToHtml(value);
+  return `
+    <tr>
+      <td style="padding:0 0 16px 0;">
+        <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.4;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8fa4ca;">${safeLabel}</div>
+        <div style="height:6px;line-height:6px;font-size:0;">&nbsp;</div>
+        <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:#e7eefc;">${safeValue}</div>
+      </td>
+    </tr>`;
+}
+
+function ctaButton(label: string, href: string, variant: "primary" | "secondary" = "primary") {
+  const background = variant === "primary" ? "linear-gradient(135deg,#38bdf8 0%,#8b5cf6 52%,#ec4899 100%)" : "#16223f";
+  const color = "#ffffff";
+  return `
+    <a href="${escapeHtml(href)}" style="display:inline-block;padding:13px 18px;border-radius:12px;background:${background};color:${color};text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;margin:0 10px 10px 0;border:1px solid rgba(255,255,255,.08);">
+      ${escapeHtml(label)}
+    </a>`;
+}
+
+function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offsetMinutes: number, recipient: RecipientInfo, proRecipient: RecipientInfo | null) {
   const reminderLabel = offsetLabel(offsetMinutes);
+  const eventTitle = cleanString(row.title) || "Rendez-vous";
+  const contact = getContactDetails(meta);
+  const companyName = cleanString(proRecipient?.companyName) || "iNrCy";
+  const proName = buildDisplayName({ firstName: proRecipient?.firstName, companyName: proRecipient?.companyName, fallback: "Votre professionnel" });
+  const clientName = buildDisplayName({
+    firstName: contact.firstName,
+    lastName: contact.lastName,
+    displayName: contact.displayName,
+    companyName: contact.companyName,
+    fallback: "Client",
+  });
+  const greetingName = recipient.kind === "pro"
+    ? buildDisplayName({ firstName: recipient.firstName, companyName: recipient.companyName, fallback: "" })
+    : buildDisplayName({ firstName: recipient.firstName, companyName: recipient.companyName, fallback: "" });
+  const greeting = greetingName && greetingName !== "-" ? `Bonjour ${greetingName},` : "Bonjour,";
+  const dateLabel = fmtDateOnly(row.start_at);
+  const startTime = fmtTimeOnly(row.start_at);
+  const endTime = fmtTimeOnly(row.end_at);
+  const formattedDateTime = fmtDate(String(row.start_at || ""));
+  const address = buildAddress({ location: row.location, address: contact.address, city: contact.city, postalCode: contact.postalCode });
+  const notes = cleanString(row.description) || cleanString(contact.notes);
+  const phonePro = cleanString(proRecipient?.phone);
+  const phoneClient = cleanString(contact.phone);
+  const emailClient = cleanString(contact.email);
+  const mapsUrl = buildMapsUrl(address);
+
+  const subjectBase = recipient.kind === "pro"
+    ? `Rappel pro iNrCalendar ${reminderLabel} - ${clientName}`
+    : `Rappel de votre rendez-vous ${reminderLabel} - ${eventTitle}`;
+  const subject = subjectSafe(subjectBase) || "Rappel iNrCalendar";
+
   const intro = recipient.kind === "pro"
-    ? `Petit rappel : votre rendez-vous "${eventTitle}" est prévu le ${formattedDate}.`
-    : `Petit rappel : votre rendez-vous "${eventTitle}" est prévu le ${formattedDate}.`;
+    ? `Voici le rappel de votre rendez-vous prévu le ${formattedDateTime}.`
+    : `Nous vous confirmons votre rendez-vous prévu le ${formattedDateTime} avec ${companyName}.`;
+
+  const preheader = recipient.kind === "pro"
+    ? `${clientName} · ${dateLabel} · ${startTime}${endTime !== "-" ? ` - ${endTime}` : ""}`
+    : `${companyName} · ${dateLabel} · ${startTime}${endTime !== "-" ? ` - ${endTime}` : ""}`;
+
+  const title = recipient.kind === "pro" ? "Rendez-vous à venir" : "Votre rendez-vous approche";
+  const badgeLabel = `RAPPEL ${reminderLabel.toUpperCase()}`;
+  const sectionTitle = recipient.kind === "pro" ? "Vue terrain" : "Votre confirmation";
+
+  const rowsMain = recipient.kind === "pro"
+    ? [
+        infoRow("Client", clientName),
+        infoRow("Date", dateLabel),
+        infoRow("Horaire", `${startTime}${endTime !== "-" ? ` → ${endTime}` : ""}`),
+        address ? infoRow("Adresse", address) : "",
+        infoRow("Intitulé", eventTitle),
+      ].join("")
+    : [
+        infoRow("Date", dateLabel),
+        infoRow("Horaire", `${startTime}${endTime !== "-" ? ` → ${endTime}` : ""}`),
+        address ? infoRow("Adresse", address) : "",
+        infoRow("Intervenant", companyName),
+        phonePro ? infoRow("Téléphone", phonePro) : "",
+      ].join("");
+
+  const rowsSecondary = recipient.kind === "pro"
+    ? [
+        emailClient ? infoRow("Email client", emailClient) : "",
+        phoneClient ? infoRow("Téléphone client", phoneClient) : "",
+        notes ? infoRow("Notes / précisions", notes) : "",
+      ].join("")
+    : [
+        infoRow("Motif du rendez-vous", eventTitle),
+        notes ? infoRow("Informations utiles", notes) : infoRow("Informations utiles", "Merci de prévoir quelques minutes d’avance si nécessaire. En cas d’imprévu, contactez directement votre interlocuteur."),
+      ].join("");
+
+  const buttons = recipient.kind === "pro"
+    ? [
+        emailClient ? ctaButton("Contacter le client", `mailto:${emailClient}`) : "",
+        phoneClient ? ctaButton("Appeler le client", `tel:${phoneClient}`, "secondary") : "",
+        mapsUrl ? ctaButton("Ouvrir l’adresse", mapsUrl, "secondary") : "",
+      ].join("")
+    : [
+        phonePro ? ctaButton(`Contacter ${proName}`, `tel:${phonePro}`) : "",
+        mapsUrl ? ctaButton("Ouvrir l’adresse", mapsUrl, "secondary") : "",
+      ].join("");
+
+  const footerText = recipient.kind === "pro"
+    ? "Rappel automatique envoyé par iNr'Calendar, produit iNrCy. Retrouvez vos rendez-vous dans votre agenda."
+    : "Ce rappel vous est envoyé automatiquement par iNr'Calendar, un service iNrCy.";
+
+  const html = `<!doctype html>
+<html lang="fr">
+  <body style="margin:0;padding:0;background:#07111f;background-color:#07111f;">
+    <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">${escapeHtml(preheader)}</span>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#07111f;background-color:#07111f;">
+      <tr>
+        <td align="center" style="padding:26px 12px 34px 12px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:680px;border-collapse:separate;border-spacing:0;">
+            <tr>
+              <td style="padding:0 0 14px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0b1734" style="width:100%;border-collapse:separate;border-spacing:0;border-radius:28px;overflow:hidden;background-color:#0b1734;background-image:radial-gradient(circle at top left, rgba(56,189,248,.28), transparent 30%), radial-gradient(circle at top right, rgba(236,72,153,.22), transparent 28%), linear-gradient(135deg,#071224 0%, #0b1940 48%, #20103f 100%);box-shadow:0 32px 80px rgba(2,8,23,.34);">
+                  <tr>
+                    <td style="padding:24px 24px 14px 24px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
+                        <tr>
+                          <td align="left" valign="middle" style="padding:0 0 18px 0;">
+                            <img src="${escapeHtml(INR_CALENDAR_LOGO_URL)}" alt="iNr'Calendar" width="188" style="display:block;width:188px;max-width:100%;height:auto;border:0;outline:none;" />
+                          </td>
+                          <td align="right" valign="middle" style="padding:0 0 18px 0;">
+                            <img src="${escapeHtml(INRCY_LOGO_URL)}" alt="iNrCy" width="108" style="display:block;width:108px;max-width:100%;height:auto;border:0;outline:none;" />
+                          </td>
+                        </tr>
+                      </table>
+                      <div style="display:inline-block;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.10);color:#dbeafe;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;letter-spacing:.05em;">${escapeHtml(badgeLabel)}</div>
+                      <div style="height:16px;line-height:16px;font-size:0;">&nbsp;</div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:32px;line-height:1.15;color:#ffffff;font-weight:900;">${escapeHtml(title)}</div>
+                      <div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.75;color:rgba(255,255,255,.84);max-width:560px;">${escapeHtml(greeting)}<br />${escapeHtml(intro)}</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:0 24px 24px 24px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#0d1630;background-color:#0d1630;border:1px solid rgba(148,163,184,.14);border-radius:22px;overflow:hidden;">
+                        <tr>
+                          <td style="padding:22px 22px 10px 22px;">
+                            <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:1.3;color:#ffffff;font-weight:800;">${escapeHtml(sectionTitle)}</div>
+                            <div style="height:14px;line-height:14px;font-size:0;">&nbsp;</div>
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
+                              ${rowsMain}
+                            </table>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:0 24px 24px 24px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#101b38;background-color:#101b38;border:1px solid rgba(148,163,184,.12);border-radius:22px;overflow:hidden;">
+                        <tr>
+                          <td style="padding:20px 22px 10px 22px;">
+                            <div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.3;color:#ffffff;font-weight:800;">${recipient.kind === "pro" ? "Coordonnées & détails" : "Bon à savoir"}</div>
+                            <div style="height:14px;line-height:14px;font-size:0;">&nbsp;</div>
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
+                              ${rowsSecondary}
+                            </table>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:0 24px 16px 24px;">
+                      ${buttons || ""}
+                      ${recipient.kind === "pro" ? ctaButton("Ouvrir iNr'Calendar", AGENDA_DASHBOARD_URL, "secondary") : ""}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:0 24px 24px 24px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.75;color:#97a6c5;">
+                      ${escapeHtml(footerText)}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
 
   const text = [
     greeting,
     "",
+    title,
     intro,
-    row.location ? `Lieu : ${row.location}` : "",
-    row.description ? `Détails : ${row.description}` : "",
     "",
-    `Ce rappel vous est envoyé automatiquement par iNrCalendar (${reminderLabel}).`,
+    recipient.kind === "pro" ? `Client : ${clientName}` : `Intervenant : ${companyName}`,
+    `Date : ${dateLabel}`,
+    `Horaire : ${startTime}${endTime !== "-" ? ` -> ${endTime}` : ""}`,
+    address ? `Adresse : ${address}` : "",
+    `Intitulé : ${eventTitle}`,
+    recipient.kind === "pro" && emailClient ? `Email client : ${emailClient}` : "",
+    recipient.kind === "pro" && phoneClient ? `Téléphone client : ${phoneClient}` : "",
+    recipient.kind === "contact" && phonePro ? `Téléphone : ${phonePro}` : "",
+    notes ? `Informations : ${notes}` : "",
+    "",
+    footerText,
   ].filter(Boolean).join("\n");
-
-  const safeTitle = escapeHtml(eventTitle);
-  const safeGreeting = escapeHtml(greeting);
-  const safeDate = escapeHtml(formattedDate);
-  const safeLocation = row.location ? escapeHtml(row.location) : "";
-  const safeDescription = row.description ? escapeHtml(row.description).replace(/\n/g, "<br />") : "";
-  const safeReminderLabel = escapeHtml(reminderLabel);
-
-  const html = `
-  <div style="margin:0;padding:32px 16px;background:linear-gradient(135deg,#081225 0%,#101935 55%,#1f1740 100%);font-family:Arial,sans-serif;color:#e5eefc;">
-    <div style="max-width:640px;margin:0 auto;">
-      <div style="margin-bottom:16px;color:#cbd5e1;font-size:13px;letter-spacing:.08em;text-transform:uppercase;">iNrCy · iNrCalendar</div>
-      <div style="background:rgba(9,15,30,.88);border:1px solid rgba(148,163,184,.18);border-radius:24px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.35);">
-        <div style="padding:28px 28px 16px;background:linear-gradient(135deg,rgba(56,189,248,.16),rgba(168,85,247,.16));border-bottom:1px solid rgba(148,163,184,.14);">
-          <div style="display:inline-block;padding:7px 12px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;font-weight:700;letter-spacing:.04em;color:#dbeafe;">RAPPEL ${safeReminderLabel.toUpperCase()}</div>
-          <h1 style="margin:16px 0 8px;font-size:28px;line-height:1.2;color:#ffffff;">${safeTitle}</h1>
-          <p style="margin:0;font-size:15px;line-height:1.7;color:#cbd5e1;">${safeGreeting}<br />Nous vous confirmons votre rendez-vous prévu le <strong style="color:#ffffff;">${safeDate}</strong>.</p>
-        </div>
-
-        <div style="padding:24px 28px 8px;">
-          <div style="background:rgba(15,23,42,.66);border:1px solid rgba(148,163,184,.14);border-radius:18px;padding:18px 18px 4px;">
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
-              <tr>
-                <td style="padding:0 0 14px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;">Date et heure</td>
-              </tr>
-              <tr>
-                <td style="padding:0 0 18px;font-size:18px;font-weight:700;color:#ffffff;">${safeDate}</td>
-              </tr>
-              ${safeLocation ? `<tr><td style="padding:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;">Lieu</td></tr><tr><td style="padding:0 0 18px;font-size:15px;line-height:1.6;color:#e2e8f0;">${safeLocation}</td></tr>` : ""}
-              ${safeDescription ? `<tr><td style="padding:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;">Détails</td></tr><tr><td style="padding:0 0 18px;font-size:15px;line-height:1.7;color:#e2e8f0;">${safeDescription}</td></tr>` : ""}
-            </table>
-          </div>
-        </div>
-
-        <div style="padding:8px 28px 28px;">
-          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#cbd5e1;">Merci de prévoir quelques minutes d’avance si nécessaire. En cas d’imprévu, pensez à prévenir votre contact dès que possible.</p>
-          <p style="margin:0;font-size:12px;line-height:1.7;color:#94a3b8;">Ce rappel vous est envoyé automatiquement par iNrCalendar (${safeReminderLabel}).</p>
-        </div>
-      </div>
-    </div>
-  </div>`;
 
   return { subject, text, html };
 }
@@ -329,7 +570,7 @@ export async function GET(req: Request) {
         const alreadySentAt = getRecipientSentAt(nextReminders, recipient.kind, offsetMinutes);
         if (alreadySentAt) continue;
 
-        const mail = buildReminderMail(row, offsetMinutes, recipient);
+        const mail = buildReminderMail(row, meta, offsetMinutes, recipient, proRecipient);
         try {
           let sent = false;
 
