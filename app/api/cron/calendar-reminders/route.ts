@@ -406,17 +406,17 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
 
   const html = `<!doctype html>
 <html lang="fr">
-  <body style="margin:0;padding:0;background:#f4f7fb;background-color:#f4f7fb;">
+  <body style="margin:0;padding:0;background:#041126;background-color:#041126;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">${escapeHtml(preheader)}</span>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f4f7fb;background-color:#f4f7fb;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#041126" style="width:100%;background:#041126;background-color:#041126;">
       <tr>
         <td align="center" style="padding:26px 12px 34px 12px;">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:680px;border-collapse:separate;border-spacing:0;">
             <tr>
               <td style="padding:0 0 14px 0;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#ffffff" style="width:100%;border-collapse:separate;border-spacing:0;border-radius:28px;overflow:hidden;background-color:#ffffff;border:1px solid #dbe7f5;box-shadow:0 18px 45px rgba(15,23,42,.10);">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#071736" style="width:100%;border-collapse:separate;border-spacing:0;border-radius:28px;overflow:hidden;background:#071736;background-color:#071736;border:1px solid rgba(120,143,190,.22);box-shadow:0 24px 60px rgba(2,8,23,.45);">
                   <tr>
-                    <td style="padding:24px 24px 20px 24px;background:linear-gradient(135deg,#0b2450 0%, #12356b 56%, #2c1f6a 100%);">
+                    <td style="padding:24px 24px 20px 24px;background:#071736;background-color:#071736;background-image:linear-gradient(135deg,#0b2450 0%, #071736 52%, #2c1f6a 100%);">
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
                         <tr>
                           <td align="left" valign="middle" style="padding:0 0 18px 0;">
@@ -435,8 +435,8 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:0 24px 24px 24px;background:#ffffff;">
-                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#0d1630;background-color:#0d1630;border:1px solid rgba(148,163,184,.14);border-radius:22px;overflow:hidden;">
+                    <td style="padding:0 24px 24px 24px;background:#071736;background-color:#071736;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0d1630" style="width:100%;border-collapse:separate;border-spacing:0;background:#0d1630;background-color:#0d1630;border:1px solid rgba(148,163,184,.14);border-radius:22px;overflow:hidden;">
                         <tr>
                           <td style="padding:22px 22px 10px 22px;">
                             <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:1.3;color:#ffffff;font-weight:800;">${escapeHtml(sectionTitle)}</div>
@@ -450,8 +450,8 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:0 24px 24px 24px;background:#ffffff;">
-                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#101b38;background-color:#101b38;border:1px solid rgba(148,163,184,.12);border-radius:22px;overflow:hidden;">
+                    <td style="padding:0 24px 24px 24px;background:#071736;background-color:#071736;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#101b38" style="width:100%;border-collapse:separate;border-spacing:0;background:#101b38;background-color:#101b38;border:1px solid rgba(148,163,184,.12);border-radius:22px;overflow:hidden;">
                         <tr>
                           <td style="padding:20px 22px 10px 22px;">
                             <div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.3;color:#ffffff;font-weight:800;">${recipient.kind === "pro" ? "Coordonnées & détails" : "Bon à savoir"}</div>
@@ -465,13 +465,13 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:0 24px 16px 24px;background:#ffffff;">
+                    <td style="padding:0 24px 16px 24px;background:#071736;background-color:#071736;">
                       ${buttons || ""}
                       ${recipient.kind === "pro" ? ctaButton("Ouvrir iNr'Calendar", AGENDA_DASHBOARD_URL, "secondary") : ""}
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:0 24px 24px 24px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.75;color:#97a6c5;">
+                    <td style="padding:0 24px 24px 24px;background:#071736;background-color:#071736;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.75;color:#97a6c5;">
                       ${escapeHtml(footerText)}
                     </td>
                   </tr>
