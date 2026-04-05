@@ -153,6 +153,9 @@ function TimeDropdown({ value, options, onChange }: TimeDropdownProps) {
   useEffect(() => {
     if (!open) return;
 
+    const active = rootRef.current?.querySelector<HTMLElement>(`[data-time-option="${CSS.escape(value)}"]`);
+    active?.scrollIntoView({ block: "center" });
+
     const handlePointerDown = (event: MouseEvent | TouchEvent) => {
       const target = event.target;
       if (rootRef.current && target instanceof Node && !rootRef.current.contains(target)) {
@@ -198,6 +201,7 @@ function TimeDropdown({ value, options, onChange }: TimeDropdownProps) {
                 role="option"
                 aria-selected={isActive}
                 className={`${styles.timeDropdownOption} ${isActive ? styles.timeDropdownOptionActive : ""}`}
+                data-time-option={option}
                 onClick={() => {
                   onChange(option);
                   setOpen(false);

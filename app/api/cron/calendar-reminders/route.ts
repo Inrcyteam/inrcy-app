@@ -4,6 +4,8 @@ import { sendTxMail } from "@/lib/txMailer";
 import { optionalEnv } from "@/lib/env";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
+import fs from "node:fs";
+import path from "node:path";
 
 export const runtime = "nodejs";
 
@@ -49,9 +51,22 @@ function asNumber(value: unknown, fallback: number) {
 
 const AGENDA_TIMEZONE = "Europe/Paris";
 const APP_ORIGIN = optionalEnv("NEXT_PUBLIC_SITE_URL", optionalEnv("NEXT_PUBLIC_APP_URL", "https://app.inrcy.com")).replace(/\/$/, "");
-const INR_CALENDAR_LOGO_URL = `${APP_ORIGIN}/inrcalendar-logo.png`;
-const INRCY_LOGO_URL = `${APP_ORIGIN}/logo-inrcy.png`;
 const AGENDA_DASHBOARD_URL = `${APP_ORIGIN}/dashboard/agenda`;
+
+function readPublicImageDataUri(fileName: string, fallbackUrl: string) {
+  try {
+    const filePath = path.join(process.cwd(), "public", fileName);
+    const file = fs.readFileSync(filePath);
+    const ext = path.extname(fileName).toLowerCase();
+    const mime = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : ext === ".svg" ? "image/svg+xml" : "image/png";
+    return `data:${mime};base64,${file.toString("base64")}`;
+  } catch {
+    return fallbackUrl;
+  }
+}
+
+const INR_CALENDAR_LOGO_SRC = readPublicImageDataUri("inrcalendar-logo.png", `${APP_ORIGIN}/inrcalendar-logo.png`);
+const INRCY_LOGO_SRC = readPublicImageDataUri("logo-inrcy.png", `${APP_ORIGIN}/logo-inrcy.png`);
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
@@ -297,7 +312,7 @@ function ctaButton(label: string, href: string, variant: "primary" | "secondary"
   const background = variant === "primary" ? "linear-gradient(135deg,#38bdf8 0%,#8b5cf6 52%,#ec4899 100%)" : "#16223f";
   const color = "#ffffff";
   return `
-    <a href="${escapeHtml(href)}" style="display:inline-block;padding:13px 18px;border-radius:12px;background:${background};color:${color};text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;margin:0 10px 10px 0;border:1px solid rgba(255,255,255,.08);">
+    <a href="${escapeHtml(href)}" style="display:inline-block;padding:13px 18px;border-radius:12px;background:${background};color:${color};text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;margin:0 10px 10px 0;border:1px solid #d8e4f1;">
       ${escapeHtml(label)}
     </a>`;
 }
@@ -331,9 +346,9 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
   const mapsUrl = buildMapsUrl(address);
 
   const subjectBase = recipient.kind === "pro"
-    ? `Rappel pro iNrCalendar ${reminderLabel} - ${clientName}`
+    ? `Rappel pro iNr'Calendar ${reminderLabel} - ${clientName}`
     : `Rappel de votre rendez-vous ${reminderLabel} - ${eventTitle}`;
-  const subject = subjectSafe(subjectBase) || "Rappel iNrCalendar";
+  const subject = subjectSafe(subjectBase) || "Rappel iNr'Calendar";
 
   const intro = recipient.kind === "pro"
     ? `Voici le rappel de votre rendez-vous prévu le ${formattedDateTime}.`
@@ -391,36 +406,36 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
 
   const html = `<!doctype html>
 <html lang="fr">
-  <body style="margin:0;padding:0;background:#07111f;background-color:#07111f;">
+  <body style="margin:0;padding:0;background:#f4f7fb;background-color:#f4f7fb;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">${escapeHtml(preheader)}</span>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#07111f;background-color:#07111f;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f4f7fb;background-color:#f4f7fb;">
       <tr>
         <td align="center" style="padding:26px 12px 34px 12px;">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:680px;border-collapse:separate;border-spacing:0;">
             <tr>
               <td style="padding:0 0 14px 0;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0b1734" style="width:100%;border-collapse:separate;border-spacing:0;border-radius:28px;overflow:hidden;background-color:#0b1734;background-image:radial-gradient(circle at top left, rgba(56,189,248,.28), transparent 30%), radial-gradient(circle at top right, rgba(236,72,153,.22), transparent 28%), linear-gradient(135deg,#071224 0%, #0b1940 48%, #20103f 100%);box-shadow:0 32px 80px rgba(2,8,23,.34);">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#ffffff" style="width:100%;border-collapse:separate;border-spacing:0;border-radius:28px;overflow:hidden;background-color:#ffffff;border:1px solid #dbe7f5;box-shadow:0 18px 45px rgba(15,23,42,.10);">
                   <tr>
-                    <td style="padding:24px 24px 14px 24px;">
+                    <td style="padding:24px 24px 20px 24px;background:linear-gradient(135deg,#0b2450 0%, #12356b 56%, #2c1f6a 100%);">
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
                         <tr>
                           <td align="left" valign="middle" style="padding:0 0 18px 0;">
-                            <img src="${escapeHtml(INR_CALENDAR_LOGO_URL)}" alt="iNr'Calendar" width="188" style="display:block;width:188px;max-width:100%;height:auto;border:0;outline:none;" />
+                            <img src="${escapeHtml(INR_CALENDAR_LOGO_SRC)}" alt="iNr'Calendar" width="188" style="display:block;width:188px;max-width:100%;height:auto;border:0;outline:none;" />
                           </td>
                           <td align="right" valign="middle" style="padding:0 0 18px 0;">
-                            <img src="${escapeHtml(INRCY_LOGO_URL)}" alt="iNrCy" width="108" style="display:block;width:108px;max-width:100%;height:auto;border:0;outline:none;" />
+                            <img src="${escapeHtml(INRCY_LOGO_SRC)}" alt="iNrCy" width="108" style="display:block;width:108px;max-width:100%;height:auto;border:0;outline:none;" />
                           </td>
                         </tr>
                       </table>
-                      <div style="display:inline-block;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.10);color:#dbeafe;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;letter-spacing:.05em;">${escapeHtml(badgeLabel)}</div>
+                      <div style="display:inline-block;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.14);color:#dbeafe;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;letter-spacing:.05em;">${escapeHtml(badgeLabel)}</div>
                       <div style="height:16px;line-height:16px;font-size:0;">&nbsp;</div>
                       <div style="font-family:Arial,Helvetica,sans-serif;font-size:32px;line-height:1.15;color:#ffffff;font-weight:900;">${escapeHtml(title)}</div>
                       <div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>
-                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.75;color:rgba(255,255,255,.84);max-width:560px;">${escapeHtml(greeting)}<br />${escapeHtml(intro)}</div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.75;color:rgba(255,255,255,.88);max-width:560px;">${escapeHtml(greeting)}<br />${escapeHtml(intro)}</div>
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:0 24px 24px 24px;">
+                    <td style="padding:0 24px 24px 24px;background:#ffffff;">
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#0d1630;background-color:#0d1630;border:1px solid rgba(148,163,184,.14);border-radius:22px;overflow:hidden;">
                         <tr>
                           <td style="padding:22px 22px 10px 22px;">
@@ -435,7 +450,7 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:0 24px 24px 24px;">
+                    <td style="padding:0 24px 24px 24px;background:#ffffff;">
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#101b38;background-color:#101b38;border:1px solid rgba(148,163,184,.12);border-radius:22px;overflow:hidden;">
                         <tr>
                           <td style="padding:20px 22px 10px 22px;">
@@ -450,7 +465,7 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:0 24px 16px 24px;">
+                    <td style="padding:0 24px 16px 24px;background:#ffffff;">
                       ${buttons || ""}
                       ${recipient.kind === "pro" ? ctaButton("Ouvrir iNr'Calendar", AGENDA_DASHBOARD_URL, "secondary") : ""}
                     </td>
@@ -583,6 +598,7 @@ export async function GET(req: Request) {
                 subject: mail.subject,
                 text: mail.text,
                 html: mail.html,
+                includeAutoSignature: false,
               });
               sent = true;
             } catch (integrationError) {

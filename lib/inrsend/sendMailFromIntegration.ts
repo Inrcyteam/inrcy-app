@@ -266,6 +266,7 @@ export async function sendMailFromIntegration(params: {
   subject: string;
   text?: string;
   html?: string;
+  includeAutoSignature?: boolean;
 }) {
   const { userId, accountId, to, subject } = params;
   const accountQuery = await supabaseAdmin
@@ -283,11 +284,18 @@ export async function sendMailFromIntegration(params: {
   if (!provider || !account.id) throw new Error("Boîte d’envoi introuvable.");
   if (status !== "connected") throw new Error("Boîte d’envoi non connectée.");
 
-  const signature = await buildInrSendSignature({ supabase: supabaseAdmin as any, userId, account });
   const baseText = params.text || "";
   const baseHtml = params.html || textToSimpleHtml(baseText);
-  const finalText = applyAutoSignatureToText(baseText, signature.signatureText);
-  const finalHtml = applyAutoSignatureToHtml(baseHtml, signature.signatureText, signature.imageUrl, signature.imageWidth);
+  const includeAutoSignature = params.includeAutoSignature !== false;
+
+  let finalText = baseText;
+  let finalHtml = baseHtml;
+
+  if (includeAutoSignature) {
+    const signature = await buildInrSendSignature({ supabase: supabaseAdmin as any, userId, account });
+    finalText = applyAutoSignatureToText(baseText, signature.signatureText);
+    finalHtml = applyAutoSignatureToHtml(baseHtml, signature.signatureText, signature.imageUrl, signature.imageWidth);
+  }
 
   if (provider === "gmail") {
     await sendViaGmail(account, to, subject, finalText, finalHtml);
