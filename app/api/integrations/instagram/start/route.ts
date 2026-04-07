@@ -34,8 +34,7 @@ export async function GET(request: Request) {
       "instagram_basic",
       "instagram_manage_insights",
       "instagram_content_publish",
-      "instagram_manage_contents",
-      "business_management",
+      "instagram_manage_contents",      
     ].join(","),
   });
 
