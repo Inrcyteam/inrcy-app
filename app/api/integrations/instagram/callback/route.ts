@@ -43,7 +43,11 @@ export async function GET(req: Request) {
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
     const st = verifyOAuthState(req, "instagram", stateRaw);
-    const returnTo = safeInternalPath(st.returnTo || "/dashboard?panel=instagram", "/dashboard?panel=instagram");
+    const rawReturnTo = safeInternalPath(st.returnTo || "/dashboard?panel=instagram", "/dashboard?panel=instagram");
+    const returnToUrl = new URL(rawReturnTo, siteUrl);
+    const loginMode = returnToUrl.searchParams.get("ig_mode") === "business" ? "business" : "standard";
+    returnToUrl.searchParams.delete("ig_mode");
+    const returnTo = `${returnToUrl.pathname}${returnToUrl.search}`;
     oauthCallbackEvent(req, { provider: "instagram", outcome: "started", return_to: returnTo });
     const clearStateCookie = (res: NextResponse) => {
       res.cookies.set(st.cookieName, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
@@ -142,6 +146,17 @@ export async function GET(req: Request) {
     // Store as "account_connected" (selection later)
     // Upsert (robuste même si l’utilisateur reconnecte plusieurs fois)
 // Nécessite un UNIQUE INDEX sur (user_id, provider, source, product) côté Supabase.
+const encryptedToken = encryptToken(longUserToken);
+const { data: existingIntegration } = await supabaseAdmin
+  .from("integrations")
+  .select("meta")
+  .eq("user_id", userId)
+  .eq("provider", "instagram")
+  .eq("source", "instagram")
+  .eq("product", "instagram")
+  .maybeSingle();
+
+const previousMeta = asRecord(asRecord(existingIntegration)["meta"]);
 const payload: Record<string, unknown> = {
   user_id: userId,
   provider: "instagram",
@@ -149,12 +164,23 @@ const payload: Record<string, unknown> = {
   source: "instagram",
   product: "instagram",
   status: "account_connected",
-  access_token_enc: encryptToken(longUserToken),
+  access_token_enc: encryptedToken,
   refresh_token_enc: null,
   expires_at: expiresAt,
   resource_id: null,
   resource_label: null,
-  meta: { picked: "none", user_access_token_enc: encryptToken(longUserToken) },
+  meta: {
+    ...previousMeta,
+    picked: "none",
+    user_access_token_enc: encryptedToken,
+    standard_user_access_token_enc: loginMode === "standard"
+      ? encryptedToken
+      : asString(previousMeta["standard_user_access_token_enc"]) || null,
+    business_user_access_token_enc: loginMode === "business"
+      ? encryptedToken
+      : asString(previousMeta["business_user_access_token_enc"]) || null,
+    last_login_mode: loginMode,
+  },
 };
 
 const { error: upsertErr } = await supabaseAdmin

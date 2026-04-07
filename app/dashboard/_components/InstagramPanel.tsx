@@ -112,7 +112,7 @@ export default function InstagramPanel(props: any) {
           <ConnectionPill connected={instagramAccountConnected} />
         </div>
         <div className={styles.blockSub}>
-          Instagram nécessite un compte <strong>Business / Creator</strong> relié à une Page Facebook.
+          Instagram peut être connecté en <strong>standard</strong> ou en <strong>business via Facebook Business</strong>. Pour la sélection du profil, un compte <strong>Business / Creator</strong> relié à une Page Facebook reste nécessaire.
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -141,9 +141,14 @@ export default function InstagramPanel(props: any) {
               Déconnexion
             </button>
           ) : (
-            <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={startStandard}>
-              Connexion
-            </button>
+            <>
+              <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={startStandard}>
+                Connexion standard
+              </button>
+              <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={startBusiness}>
+                Connexion business
+              </button>
+            </>
           )}
         </div>
       </div>
