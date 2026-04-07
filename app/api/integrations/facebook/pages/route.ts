@@ -4,7 +4,7 @@ import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
-import { listAccessibleFacebookPages } from "@/lib/metaBusinessAssets";
+import { extractFacebookUserTokens, listAccessibleFacebookPagesFromTokens } from "@/lib/metaBusinessAssets";
 
 export async function GET() {
   try {
@@ -30,16 +30,11 @@ export async function GET() {
 
     const integRec = asRecord(integ);
     const metaRec = asRecord(integRec["meta"]);
-    const userTokenRaw = String(
-      asString(metaRec["user_access_token_enc"]) ||
-        asString(metaRec["user_access_token"]) ||
-        asString(integRec["access_token_enc"]) ||
-        "",
-    ).trim();
-    const userToken = tryDecryptToken(userTokenRaw);
-    if (!userToken) return NextResponse.json({ error: "La connexion Facebook doit être relancée pour récupérer vos pages." }, { status: 400 });
+    const encryptedTokens = extractFacebookUserTokens(metaRec, asString(integRec["access_token_enc"]) || null);
+    const userTokens = encryptedTokens.map((raw) => tryDecryptToken(raw)).filter((v): v is string => !!v);
+    if (!userTokens.length) return NextResponse.json({ error: "La connexion Facebook doit être relancée pour récupérer vos pages." }, { status: 400 });
 
-    const pages = await listAccessibleFacebookPages(userToken);
+    const pages = await listAccessibleFacebookPagesFromTokens(userTokens);
     return NextResponse.json({ pages });
   } catch (e: unknown) {
     return jsonUserFacingError(e, { status: 500 });

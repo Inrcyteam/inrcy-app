@@ -10,6 +10,7 @@ export default function FacebookPanel(props: any) {
     facebookAccountConnected,
     facebookAccountEmail,
     connectFacebookAccount,
+    connectFacebookBusinessAccount,
     disconnectFacebookAccount,
     fbPagesLoading,
     loadFacebookPages,
@@ -83,7 +84,7 @@ export default function FacebookPanel(props: any) {
     	                <div className={styles.blockTitle}>Compte connecté</div>
     	                <ConnectionPill connected={facebookAccountConnected} />
     	              </div>
-    	              <div className={styles.blockSub}>Ce compte Facebook sert à accéder à vos pages.</div>
+    	              <div className={styles.blockSub}>Ce compte Facebook peut cumuler un accès standard et un accès via portefeuille business.</div>
 
     	              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
     	                <input
@@ -105,13 +106,26 @@ export default function FacebookPanel(props: any) {
     	                />
 
     	                                {!facebookAccountConnected ? (
-	                  <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectFacebookAccount}>
-	                    Connecter Facebook
-	                  </button>
+	                  <>
+	                    <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectFacebookAccount}>
+	                      Connexion standard
+	                    </button>
+	                    <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={connectFacebookBusinessAccount}>
+	                      Connexion Business
+	                    </button>
+	                  </>
 	                ) : (
-	                  <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookAccount}>
-	                    Déconnecter Facebook
-	                  </button>
+	                  <>
+	                    <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={connectFacebookAccount}>
+	                      Ajouter accès standard
+	                    </button>
+	                    <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={connectFacebookBusinessAccount}>
+	                      Ajouter accès Business
+	                    </button>
+	                    <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookAccount}>
+	                      Tout déconnecter
+	                    </button>
+	                  </>
 	                )}
     	              </div>
     	            </div>

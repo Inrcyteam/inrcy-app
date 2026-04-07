@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
-import { listAccessibleFacebookPages } from "@/lib/metaBusinessAssets";
+import { extractFacebookUserTokens, listAccessibleFacebookPagesFromTokens } from "@/lib/metaBusinessAssets";
 
 export async function GET() {
   const supabase = await createSupabaseServer();
@@ -27,11 +27,11 @@ export async function GET() {
   const row = (rows?.[0] as unknown) ?? null;
   const rowRec = asRecord(row);
   const metaRec = asRecord(rowRec["meta"]);
-  const tokRaw = String(asString(metaRec["user_access_token_enc"]) || rowRec["access_token_enc"] || "");
-  const tok = tryDecryptToken(tokRaw);
-  if (!tok) return NextResponse.json({ error: "Compte Instagram non connecté." }, { status: 400 });
+  const encryptedTokens = extractFacebookUserTokens(metaRec, asString(rowRec["access_token_enc"]) || null);
+  const userTokens = encryptedTokens.map((raw) => tryDecryptToken(raw)).filter((v): v is string => !!v);
+  if (!userTokens.length) return NextResponse.json({ error: "Compte Instagram non connecté." }, { status: 400 });
 
-  const pages = await listAccessibleFacebookPages(tok);
+  const pages = await listAccessibleFacebookPagesFromTokens(userTokens);
   const accounts = pages
     .filter((page) => page.instagram_business_account?.id)
     .map((page) => ({

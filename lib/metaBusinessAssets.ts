@@ -177,3 +177,51 @@ export async function listAccessibleFacebookPages(userToken: string): Promise<Fa
 export function findAccessibleFacebookPage(pages: FacebookPageAsset[], pageId: string): FacebookPageAsset | null {
   return pages.find((page) => page.id === pageId) || null;
 }
+
+
+export function extractFacebookUserTokens(metaLike: unknown, fallbackTokenEnc?: string | null): string[] {
+  const meta = asRecord(metaLike);
+  const rawCandidates = [
+    asString(meta["standard_user_access_token_enc"]),
+    asString(meta["business_user_access_token_enc"]),
+    asString(meta["user_access_token_enc"]),
+    asString(meta["user_access_token"]),
+    asString(fallbackTokenEnc || null),
+  ].filter(Boolean) as string[];
+
+  const unique: string[] = [];
+  for (const raw of rawCandidates) {
+    if (!raw || unique.includes(raw)) continue;
+    unique.push(raw);
+  }
+  return unique;
+}
+
+export async function listAccessibleFacebookPagesFromTokens(userTokens: string[]): Promise<FacebookPageAsset[]> {
+  const merged = new Map<string, FacebookPageAsset>();
+  for (const token of userTokens) {
+    if (!token) continue;
+    try {
+      const pages = await listAccessibleFacebookPages(token);
+      for (const page of pages) {
+        const prev = merged.get(page.id);
+        if (!prev) {
+          merged.set(page.id, page);
+          continue;
+        }
+        merged.set(page.id, {
+          ...prev,
+          ...page,
+          name: page.name || prev.name,
+          access_token: page.access_token || prev.access_token,
+          business_id: page.business_id || prev.business_id,
+          business_name: page.business_name || prev.business_name,
+          instagram_business_account: page.instagram_business_account || prev.instagram_business_account || null,
+          source: prev.source === "me_accounts" ? prev.source : page.source,
+        });
+      }
+    } catch {}
+  }
+
+  return Array.from(merged.values()).sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id, "fr", { sensitivity: "base" }));
+}

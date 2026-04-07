@@ -66,7 +66,11 @@ export async function GET(req: Request) {
 
     // ✅ CSRF protection: verify state against HttpOnly cookie
     const st = verifyOAuthState(req, "facebook", stateRaw);
-    const returnTo = safeInternalPath(st.returnTo || "/dashboard?panel=facebook", "/dashboard?panel=facebook");
+    const rawReturnTo = safeInternalPath(st.returnTo || "/dashboard?panel=facebook", "/dashboard?panel=facebook");
+    const returnToUrl = new URL(rawReturnTo, siteUrl);
+    const loginMode = returnToUrl.searchParams.get("fb_mode") === "business" ? "business" : "standard";
+    returnToUrl.searchParams.delete("fb_mode");
+    const returnTo = `${returnToUrl.pathname}${returnToUrl.search}`;
     oauthCallbackEvent(req, { provider: "facebook", outcome: "started", return_to: returnTo });
 
     const clearStateCookie = (res: NextResponse) => {
@@ -213,7 +217,7 @@ export async function GET(req: Request) {
     // 5) Upsert into integrations
     const { data: existing, error: existingErr } = await supabaseAdmin
       .from("integrations")
-      .select("id")
+      .select("id,meta,resource_id,resource_label,access_token_enc,status")
       .eq("user_id", userId)
       .eq("provider", "facebook")
       .eq("source", "facebook")
@@ -224,34 +228,43 @@ export async function GET(req: Request) {
       return fail("db_read_failed", "Le service est momentanément indisponible. Merci de réessayer.");
     }
 
+    const existingRec = asRecord(existing);
+    const prevMeta = asRecord(existingRec["meta"]);
+    const encryptedUserToken = encryptToken(longUserToken);
+    const selectedPageId = asString(existingRec["resource_id"]) || null;
+    const selectedPageName = asString(existingRec["resource_label"]) || null;
+    const hasSelectedPage = !!selectedPageId;
+    const nextMeta: Record<string, unknown> = {
+      ...prevMeta,
+      picked: hasSelectedPage ? prevMeta["picked"] || "page" : "none",
+      pages_found: Math.max(Number(prevMeta["pages_found"] || 0), pages.length),
+      user_access_token: null,
+      user_access_token_enc: encryptedUserToken,
+      standard_user_access_token_enc: loginMode === "standard" ? encryptedUserToken : prevMeta["standard_user_access_token_enc"] || null,
+      business_user_access_token_enc: loginMode === "business" ? encryptedUserToken : prevMeta["business_user_access_token_enc"] || null,
+      page_url: prevMeta["page_url"] || null,
+      last_login_mode: loginMode,
+    };
+
     const payload: Record<string, unknown> = {
       user_id: userId,
       provider: "facebook",
       category: "social",
       source: "facebook",
       product: "facebook",
-      status: "account_connected",
+      status: hasSelectedPage ? (asString(existingRec["status"]) || "connected") : "account_connected",
       email_address: me.email ?? null,
       display_name: me.name ?? null,
       provider_account_id: me.id ?? null,
       scopes: "public_profile,email,pages_show_list,pages_manage_posts,pages_read_engagement,read_insights,business_management",
-      access_token_enc: encryptToken(tokenToStore),
+      access_token_enc: hasSelectedPage ? existingRec["access_token_enc"] || encryptToken(tokenToStore) : encryptToken(tokenToStore),
       refresh_token_enc: null,
-      // ✅ Keep track of expiration to avoid "silent" disconnects.
-      // Meta tokens are long-lived but still expire.
-      expires_at: expiresAt,
-      resource_id: null,
-      resource_label: null,
-      meta: {
-        picked: "none",
-        pages_found: pages.length,
-        user_access_token: null,
-        user_access_token_enc: encryptToken(longUserToken),
-        page_url: null,
-      },
+      expires_at: hasSelectedPage ? null : expiresAt,
+      resource_id: hasSelectedPage ? selectedPageId : null,
+      resource_label: hasSelectedPage ? selectedPageName : null,
+      meta: nextMeta,
     };
 
-    const existingRec = asRecord(existing);
     const existingId = asString(existingRec["id"]);
     if (existingId) {
       const { error: upErr } = await supabaseAdmin

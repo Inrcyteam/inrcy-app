@@ -1797,7 +1797,12 @@ const igAccountsAutoLoadRef = useRef(false);
   const [gmbListError, setGmbListError] = useState<string | null>(null);
 const connectFacebookAccount = useCallback(async () => {
   const returnTo = encodeURIComponent("/dashboard?panel=facebook");
-  window.location.href = `/api/integrations/facebook/start?returnTo=${returnTo}`;
+  window.location.href = `/api/integrations/facebook/start?returnTo=${returnTo}&mode=standard`;
+}, []);
+
+const connectFacebookBusinessAccount = useCallback(async () => {
+  const returnTo = encodeURIComponent("/dashboard?panel=facebook");
+  window.location.href = `/api/integrations/facebook/start?returnTo=${returnTo}&mode=business`;
 }, []);
 
 const disconnectFacebookAccount = useCallback(async () => {
@@ -4133,6 +4138,7 @@ const checkActivity = useCallback(async () => {
             facebookAccountConnected={facebookAccountConnected}
             facebookAccountEmail={facebookAccountEmail}
             connectFacebookAccount={connectFacebookAccount}
+            connectFacebookBusinessAccount={connectFacebookBusinessAccount}
             disconnectFacebookAccount={disconnectFacebookAccount}
             fbPagesLoading={fbPagesLoading}
             loadFacebookPages={loadFacebookPages}

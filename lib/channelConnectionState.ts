@@ -172,7 +172,7 @@ export async function getChannelConnectionStates(
   const fbHasSelectedPageToken = hasTruthyString(fbMeta.selected) || hasTruthyString(fb.resource_id);
   const fbExpired = isExpired(fb.expires_at) && !fbHasSelectedPageToken;
   const fbStatus = asString(fb.status);
-  const fbHasToken = hasTruthyString(fb.access_token_enc);
+  const fbHasToken = hasTruthyString(fb.access_token_enc) || hasTruthyString(fbMeta.standard_user_access_token_enc) || hasTruthyString(fbMeta.business_user_access_token_enc) || hasTruthyString(fbMeta.user_access_token_enc);
   const fbAccountConnected = Boolean(((fbStatus === "account_connected" || fbStatus === "connected") && !fbExpired && fbHasToken) || fbSettings.accountConnected);
   const fbResourceId = asString(fb.resource_id) || asString(fbSettings.pageId) || null;
   const fbResourceLabel = asString(fb.resource_label) || asString(fbSettings.pageName) || null;

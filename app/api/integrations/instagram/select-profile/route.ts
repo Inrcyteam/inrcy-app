@@ -4,7 +4,7 @@ import { clearAllToolCaches } from "@/lib/statsCache";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { findAccessibleFacebookPage, listAccessibleFacebookPages } from "@/lib/metaBusinessAssets";
+import { extractFacebookUserTokens, findAccessibleFacebookPage, listAccessibleFacebookPagesFromTokens } from "@/lib/metaBusinessAssets";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
@@ -40,11 +40,11 @@ export async function POST(req: Request) {
   const row = (rows?.[0] as unknown) ?? null;
   const rowRec = asRecord(row);
   const metaRec = asRecord(rowRec["meta"]);
-  const userTokenRaw = String(asString(metaRec["user_access_token_enc"]) || rowRec["access_token_enc"] || "");
-  const userToken = tryDecryptToken(userTokenRaw) || "";
-  if (!userToken) return NextResponse.json({ error: "Compte Instagram non connecté." }, { status: 400 });
+  const encryptedTokens = extractFacebookUserTokens(metaRec, asString(rowRec["access_token_enc"]) || null);
+  const userTokens = encryptedTokens.map((raw) => tryDecryptToken(raw)).filter((v): v is string => !!v);
+  if (!userTokens.length) return NextResponse.json({ error: "Compte Instagram non connecté." }, { status: 400 });
 
-  const pages = await listAccessibleFacebookPages(userToken);
+  const pages = await listAccessibleFacebookPagesFromTokens(userTokens);
   const page = findAccessibleFacebookPage(pages, pageId);
   if (!page) return NextResponse.json({ error: "Impossible de retrouver cette page Facebook." }, { status: 400 });
   if (!page.access_token) return NextResponse.json({ error: "Impossible de récupérer le token de cette page. Vérifiez les autorisations business." }, { status: 400 });
@@ -67,6 +67,8 @@ export async function POST(req: Request) {
         page_source: page.source,
         business_name: page.business_name || null,
         user_access_token_enc: metaRec["user_access_token_enc"] || rowRec["access_token_enc"],
+        standard_user_access_token_enc: metaRec["standard_user_access_token_enc"] || null,
+        business_user_access_token_enc: metaRec["business_user_access_token_enc"] || null,
       },
       updated_at: new Date().toISOString(),
     })
