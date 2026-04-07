@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
 import StatusMessage from "./StatusMessage";
@@ -26,10 +27,27 @@ export default function FacebookPanel(props: any) {
     disconnectFacebookPage
   } = props;
 
+  const [pendingMode, setPendingMode] = useState<null | "standard" | "business" | "disconnect">(null);
+
   const hasSelectedPageInList = Boolean(
     fbSelectedPageId && fbPages.some((p: { id: string; name?: string | null }) => p.id === fbSelectedPageId)
   );
   const selectedPageLabel = (fbSelectedPageName || facebookUrl || fbSelectedPageId || "").trim();
+
+  const startStandard = () => {
+    setPendingMode("standard");
+    connectFacebookAccount();
+  };
+
+  const startBusiness = () => {
+    setPendingMode("business");
+    connectFacebookBusinessAccount();
+  };
+
+  const disconnectAll = () => {
+    setPendingMode("disconnect");
+    disconnectFacebookAccount();
+  };
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -99,6 +117,29 @@ export default function FacebookPanel(props: any) {
               opacity: facebookAccountConnected ? 1 : 0.8,
             }}
           />
+        </div>
+
+        {pendingMode ? (
+          <StatusMessage variant="success">
+            Connexion en cours...
+          </StatusMessage>
+        ) : null}
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {facebookAccountConnected ? (
+            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectAll}>
+              Déconnexion
+            </button>
+          ) : (
+            <>
+              <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={startStandard}>
+                Connexion standard
+              </button>
+              <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={startBusiness}>
+                Connexion business
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -213,23 +254,6 @@ export default function FacebookPanel(props: any) {
         </div>
         {facebookUrlNotice && <StatusMessage variant="success">{facebookUrlNotice}</StatusMessage>}
         {facebookUrlError && <StatusMessage variant="error">{facebookUrlError}</StatusMessage>}
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {facebookAccountConnected ? (
-            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectFacebookAccount}>
-              Déconnexion
-            </button>
-          ) : (
-            <>
-              <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectFacebookAccount}>
-                Connexion standard
-              </button>
-              <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={connectFacebookBusinessAccount}>
-                Connexion business
-              </button>
-            </>
-          )}
-        </div>
       </div>
     </div>
   );
