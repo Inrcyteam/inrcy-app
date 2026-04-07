@@ -27,17 +27,17 @@ export default function FacebookPanel(props: any) {
     disconnectFacebookPage
   } = props;
 
-  const [pendingMode, setPendingMode] = useState<null | "standard" | "business" | "disconnect">(null);
+  const [pagePendingState, setPagePendingState] = useState<null | "connect" | "disconnect">(null);
 
   useEffect(() => {
-    if ((pendingMode === "standard" || pendingMode === "business") && facebookAccountConnected) {
-      setPendingMode(null);
+    if (pagePendingState === "connect" && facebookPageConnected) {
+      setPagePendingState(null);
       return;
     }
-    if (pendingMode === "disconnect" && !facebookAccountConnected && !facebookPageConnected) {
-      setPendingMode(null);
+    if (pagePendingState === "disconnect" && !facebookPageConnected) {
+      setPagePendingState(null);
     }
-  }, [pendingMode, facebookAccountConnected, facebookPageConnected]);
+  }, [pagePendingState, facebookPageConnected]);
 
   const hasSelectedPageInList = Boolean(
     fbSelectedPageId && fbPages.some((p: { id: string; name?: string | null }) => p.id === fbSelectedPageId)
@@ -45,18 +45,26 @@ export default function FacebookPanel(props: any) {
   const selectedPageLabel = (fbSelectedPageName || facebookUrl || fbSelectedPageId || "").trim();
 
   const startStandard = () => {
-    setPendingMode("standard");
     connectFacebookAccount();
   };
 
   const startBusiness = () => {
-    setPendingMode("business");
     connectFacebookBusinessAccount();
   };
 
   const disconnectAll = () => {
-    setPendingMode("disconnect");
+    setPagePendingState("disconnect");
     disconnectFacebookAccount();
+  };
+
+  const handlePageConnect = () => {
+    setPagePendingState("connect");
+    saveFacebookPage();
+  };
+
+  const handlePageDisconnect = () => {
+    setPagePendingState("disconnect");
+    disconnectFacebookPage();
   };
 
   return (
@@ -201,16 +209,16 @@ export default function FacebookPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${facebookPageConnected ? styles.disconnectBtn : styles.connectBtn}`}
-              onClick={facebookPageConnected ? disconnectFacebookPage : saveFacebookPage}
+              onClick={facebookPageConnected ? handlePageDisconnect : handlePageConnect}
               disabled={!fbSelectedPageId}
             >
               {facebookPageConnected ? "Déconnecter la page" : "Connecter la page"}
             </button>
           </div>
 
-          {pendingMode ? (
+          {pagePendingState ? (
             <StatusMessage variant="success">
-              {pendingMode === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
+              {pagePendingState === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
             </StatusMessage>
           ) : null}
           {fbPagesError && <StatusMessage variant="error">{fbPagesError}</StatusMessage>}

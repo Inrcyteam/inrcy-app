@@ -708,7 +708,18 @@
 .modalFooter{
   padding:12px 14px;
   border-top:1px solid rgba(255,255,255,0.12);
-  display:flex;align-items:center;justify-content:space-between;gap:12px;
+}
+
+.modalFooterActions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.modalFooterBtn{
+  min-width:140px;
 }
 
 .modalError{
@@ -1013,4 +1024,18 @@
 input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
   cursor: pointer;
+}
+
+
+@media (max-width: 640px){
+  .modalFooterActions{
+    display:grid;
+    grid-template-columns: 1fr;
+    width:100%;
+  }
+
+  .modalFooterBtn{
+    width:100%;
+    min-width:0;
+  }
 }

@@ -26,31 +26,39 @@ export default function InstagramPanel(props: any) {
     disconnectInstagramProfile
   } = props;
 
-  const [pendingMode, setPendingMode] = useState<null | "standard" | "business" | "disconnect">(null);
+  const [profilePendingState, setProfilePendingState] = useState<null | "connect" | "disconnect">(null);
 
   useEffect(() => {
-    if ((pendingMode === "standard" || pendingMode === "business") && instagramAccountConnected) {
-      setPendingMode(null);
+    if (profilePendingState === "connect" && instagramConnected) {
+      setProfilePendingState(null);
       return;
     }
-    if (pendingMode === "disconnect" && !instagramAccountConnected && !instagramConnected) {
-      setPendingMode(null);
+    if (profilePendingState === "disconnect" && !instagramConnected) {
+      setProfilePendingState(null);
     }
-  }, [pendingMode, instagramAccountConnected, instagramConnected]);
+  }, [profilePendingState, instagramConnected]);
 
   const startStandard = () => {
-    setPendingMode("standard");
     connectInstagramAccount();
   };
 
   const startBusiness = () => {
-    setPendingMode("business");
     connectInstagramBusinessAccount();
   };
 
   const disconnectAll = () => {
-    setPendingMode("disconnect");
+    setProfilePendingState("disconnect");
     disconnectInstagramAccount();
+  };
+
+  const handleProfileConnect = () => {
+    setProfilePendingState("connect");
+    saveInstagramProfile();
+  };
+
+  const handleProfileDisconnect = () => {
+    setProfilePendingState("disconnect");
+    disconnectInstagramProfile();
   };
 
   const displayAccountsError = !instagramConnected && !instagramAccountConnected ? null : igAccountsError;
@@ -193,16 +201,16 @@ export default function InstagramPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${instagramConnected ? styles.disconnectBtn : styles.connectBtn}`}
-              onClick={instagramConnected ? disconnectInstagramProfile : saveInstagramProfile}
+              onClick={instagramConnected ? handleProfileDisconnect : handleProfileConnect}
               disabled={!igSelectedPageId}
             >
               {instagramConnected ? "Déconnecter le compte" : "Connecter"}
             </button>
           </div>
 
-          {pendingMode ? (
+          {profilePendingState ? (
             <StatusMessage variant="success">
-              {pendingMode === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
+              {profilePendingState === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
             </StatusMessage>
           ) : null}
           {displayAccountsError && <StatusMessage variant="error">{displayAccountsError}</StatusMessage>}

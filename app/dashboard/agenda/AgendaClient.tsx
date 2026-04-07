@@ -1664,19 +1664,16 @@ async function deleteEventById(id: string) {
             </div>
 
             <div className={styles.modalFooter}>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div className={styles.modalFooterActions}>
                 {rdvMode === "edit" && (
-                  <button className={styles.btnDanger} onClick={deleteRdv} disabled={rdvSaving}>
+                  <button className={`${styles.btnDanger} ${styles.modalFooterBtn}`} onClick={deleteRdv} disabled={rdvSaving}>
                     Supprimer
                   </button>
                 )}
-              </div>
-
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <button className={styles.btnGhost} onClick={() => setRdvOpen(false)} disabled={rdvSaving}>
+                <button className={`${styles.btnGhost} ${styles.modalFooterBtn}`} onClick={() => setRdvOpen(false)} disabled={rdvSaving}>
                   Annuler
                 </button>
-                <button className={styles.btnPrimary} onClick={submitRdv} disabled={rdvSaving}>
+                <button className={`${styles.btnPrimary} ${styles.modalFooterBtn}`} onClick={submitRdv} disabled={rdvSaving}>
                   {rdvSaving ? "Enregistrement…" : "Enregistrer"}
                 </button>
               </div>
