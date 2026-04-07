@@ -2,17 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { cache: "no-store" });
-  const data = (await res.json()) as unknown;
-  if (!res.ok) {
-    const rec = asRecord(data);
-    const err = asRecord(rec["error"]);
-    throw new Error(asString(err["message"]) || `HTTP ${res.status}`);
-  }
-  return data as T;
-}
+import { listAccessibleFacebookPages } from "@/lib/metaBusinessAssets";
 
 export async function GET() {
   const supabase = await createSupabaseServer();
@@ -25,7 +15,7 @@ export async function GET() {
 
   const { data: rows } = await supabase
     .from("integrations")
-    .select("status,access_token_enc")
+    .select("status,access_token_enc,meta")
     .eq("user_id", user.id)
     .eq("provider", "instagram")
     .eq("source", "instagram")
@@ -36,43 +26,23 @@ export async function GET() {
 
   const row = (rows?.[0] as unknown) ?? null;
   const rowRec = asRecord(row);
-  const tokRaw = String(rowRec["access_token_enc"] || "");
+  const metaRec = asRecord(rowRec["meta"]);
+  const tokRaw = String(asString(metaRec["user_access_token_enc"]) || rowRec["access_token_enc"] || "");
   const tok = tryDecryptToken(tokRaw);
   if (!tok) return NextResponse.json({ error: "Compte Instagram non connecté." }, { status: 400 });
 
-  const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
-    fields: "id,name,access_token",
-    access_token: tok,
-  }).toString()}`;
+  const pages = await listAccessibleFacebookPages(tok);
+  const accounts = pages
+    .filter((page) => page.instagram_business_account?.id)
+    .map((page) => ({
+      page_id: page.id,
+      page_name: page.name || null,
+      ig_id: page.instagram_business_account?.id || "",
+      username: page.instagram_business_account?.username || "",
+      page_access_token: page.access_token || null,
+      source: page.source,
+      business_name: page.business_name || null,
+    }));
 
-  const pagesResp = await fetchJson<{ data?: Array<{ id: string; name?: string; access_token?: string }> }>(pagesUrl);
-  const pages = pagesResp.data || [];
-
-  const accounts = await Promise.all(
-    pages.map(async (p) => {
-      try {
-        const infoUrl = `https://graph.facebook.com/v20.0/${encodeURIComponent(p.id)}?${new URLSearchParams({
-          fields: "instagram_business_account{username,id}",
-          access_token: tok,
-        }).toString()}`;
-        const info = await fetchJson<unknown>(infoUrl);
-        const infoRec = asRecord(info);
-        const ig = asRecord(infoRec["instagram_business_account"]);
-        const igId = asString(ig["id"]);
-        if (!igId) return null;
-        return {
-          page_id: p.id,
-          page_name: p.name || null,
-          ig_id: igId,
-          username: String(asString(ig["username"]) || ""),
-          page_access_token: p.access_token || null,
-        };
-      } catch {
-        return null;
-      }
-    })
-  );
-
-  const filtered = accounts.filter(Boolean);
-  return NextResponse.json({ accounts: filtered });
+  return NextResponse.json({ accounts });
 }

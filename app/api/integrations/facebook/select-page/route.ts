@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
-import { encryptToken } from "@/lib/oauthCrypto";
+import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { findAccessibleFacebookPage, listAccessibleFacebookPages } from "@/lib/metaBusinessAssets";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
@@ -24,17 +25,11 @@ export async function POST(req: Request) {
     const bodyRec = asRecord(body);
 
     const pageId = String(asString(bodyRec["pageId"]) || "").trim();
-    const pageName = String(asString(bodyRec["pageName"]) || "").trim() || null;
-    const pageAccessToken = String(asString(bodyRec["pageAccessToken"]) || "").trim();
+    if (!pageId) return NextResponse.json({ error: "Page Facebook manquante." }, { status: 400 });
 
-    if (!pageId || !pageAccessToken) {
-      return NextResponse.json({ error: "Page Facebook incomplète." }, { status: 400 });
-    }
-
-    // Read existing meta so we don't lose meta.user_access_token, page_url, etc.
     const { data: existing, error: readErr } = await supabaseAdmin
       .from("integrations")
-      .select("meta")
+      .select("meta,access_token_enc")
       .eq("user_id", userId)
       .eq("provider", "facebook")
       .eq("source", "facebook")
@@ -45,16 +40,37 @@ export async function POST(req: Request) {
 
     const existingRec = asRecord(existing);
     const prevMeta = asRecord(existingRec["meta"]);
-    const pageUrl = `https://www.facebook.com/${pageId}`;
-    const nextMeta = { ...prevMeta, selected: true, page_url: pageUrl };
+    const userTokenRaw = String(
+      asString(prevMeta["user_access_token_enc"]) ||
+        asString(prevMeta["user_access_token"]) ||
+        asString(existingRec["access_token_enc"]) ||
+        "",
+    ).trim();
+    const userToken = tryDecryptToken(userTokenRaw);
+    if (!userToken) return NextResponse.json({ error: "La connexion Facebook doit être relancée." }, { status: 400 });
 
-    // Update integration with the selected page + PAGE token (required for posting).
+    const pages = await listAccessibleFacebookPages(userToken);
+    const page = findAccessibleFacebookPage(pages, pageId);
+    if (!page) return NextResponse.json({ error: "Cette page n'est pas accessible avec le compte connecté." }, { status: 400 });
+    if (!page.access_token) return NextResponse.json({ error: "Impossible de récupérer le token de cette page. Vérifiez les autorisations business." }, { status: 400 });
+
+    const pageName = page.name || null;
+    const pageUrl = `https://www.facebook.com/${pageId}`;
+    const nextMeta = {
+      ...prevMeta,
+      selected: true,
+      page_url: pageUrl,
+      page_source: page.source,
+      page_business_id: page.business_id || null,
+      page_business_name: page.business_name || null,
+    };
+
     const { error: upErr } = await supabaseAdmin
       .from("integrations")
       .update({
         resource_id: pageId,
         resource_label: pageName,
-        access_token_enc: encryptToken(pageAccessToken),
+        access_token_enc: encryptToken(page.access_token),
         expires_at: null,
         status: "connected",
         meta: nextMeta,
@@ -66,7 +82,6 @@ export async function POST(req: Request) {
 
     if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
-    // Also mirror to pro_tools_configs so UI updates instantly
     try {
       const { data: scRow } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const scRec = asRecord(scRow);
@@ -84,14 +99,11 @@ export async function POST(req: Request) {
         },
       };
       await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
-    } catch {
-      // non-fatal
-    }
+    } catch {}
 
-    // Invalidate stats cache so iNrStats + Generator reflect the new selection immediately.
     await invalidateUserStatsCache(supabase, userId);
 
-    return NextResponse.json({ ok: true, pageUrl });
+    return NextResponse.json({ ok: true, pageUrl, pageName, source: page.source, businessName: page.business_name || null });
   } catch (e: unknown) {
     return jsonUserFacingError(e, { status: 500 });
   }

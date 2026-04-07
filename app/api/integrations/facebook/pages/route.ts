@@ -4,19 +4,7 @@ import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
-
-type FbPage = { id: string; name?: string; access_token?: string };
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { cache: "no-store" });
-  const data = (await res.json()) as unknown;
-  if (!res.ok) {
-    const rec = asRecord(data);
-    const err = asRecord(rec["error"]);
-    throw new Error(asString(err["message"]) || `HTTP ${res.status}`);
-  }
-  return data as T;
-}
+import { listAccessibleFacebookPages } from "@/lib/metaBusinessAssets";
 
 export async function GET() {
   try {
@@ -40,8 +28,6 @@ export async function GET() {
       return NextResponse.json({ error: "Compte Facebook non connecté." }, { status: 400 });
     }
 
-    // access_token_enc may be a PAGE token after selection.
-    // For /me/accounts we need the USER token (stored in meta.user_access_token).
     const integRec = asRecord(integ);
     const metaRec = asRecord(integRec["meta"]);
     const userTokenRaw = String(
@@ -53,14 +39,7 @@ export async function GET() {
     const userToken = tryDecryptToken(userTokenRaw);
     if (!userToken) return NextResponse.json({ error: "La connexion Facebook doit être relancée pour récupérer vos pages." }, { status: 400 });
 
-    const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
-      fields: "id,name,access_token",
-      access_token: userToken,
-    }).toString()}`;
-
-    const resp = await fetchJson<{ data?: FbPage[] }>(pagesUrl);
-    const pages = (resp.data || []).filter((p) => p?.id);
-
+    const pages = await listAccessibleFacebookPages(userToken);
     return NextResponse.json({ pages });
   } catch (e: unknown) {
     return jsonUserFacingError(e, { status: 500 });

@@ -154,7 +154,7 @@ const payload: Record<string, unknown> = {
   expires_at: expiresAt,
   resource_id: null,
   resource_label: null,
-  meta: { picked: "none" },
+  meta: { picked: "none", user_access_token_enc: encryptToken(longUserToken) },
 };
 
 const { error: upsertErr } = await supabaseAdmin

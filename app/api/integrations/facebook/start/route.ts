@@ -4,6 +4,7 @@ import { makeOAuthState, safeInternalPath } from "@/lib/security";
 export async function GET(request: Request) {
   const appId = process.env.FACEBOOK_APP_ID;
   const redirectFromEnv = process.env.FACEBOOK_REDIRECT_URI;
+  const configId = process.env.FACEBOOK_LOGIN_FOR_BUSINESS_CONFIG_ID;
 
   // Canonical base URL (prevents redirect_uri mismatches between localhost / preview / prod).
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
@@ -32,8 +33,11 @@ export async function GET(request: Request) {
       "pages_manage_posts",
       "pages_read_engagement",
       "read_insights",
+      "business_management",
     ].join(","),
   });
+
+  if (configId) params.set("config_id", configId);
 
   const url = `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
   const res = NextResponse.redirect(url);

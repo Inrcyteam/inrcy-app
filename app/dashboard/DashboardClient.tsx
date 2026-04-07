@@ -1861,14 +1861,13 @@ const loadFacebookPages = useCallback(async () => {
     // If there is exactly one page, auto-select & save it server-side (no extra "Enregistrer").
     if (pages.length === 1) {
       const only = pages[0];
-      if (only?.id && only?.access_token) {
+      if (only?.id) {
         await fetch("/api/integrations/facebook/select-page", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             pageId: only.id,
             pageName: only.name || null,
-            pageAccessToken: only.access_token,
           }),
         });
         setFbSelectedPageId(only.id);
@@ -1909,7 +1908,7 @@ useEffect(() => {
 
 const saveFacebookPage = useCallback(async () => {
   const picked = fbPages.find((p) => p.id === fbSelectedPageId);
-  if (!picked?.id || !picked?.access_token) return;
+  if (!picked?.id) return;
 
   const r = await fetch("/api/integrations/facebook/select-page", {
     method: "POST",
@@ -1917,7 +1916,6 @@ const saveFacebookPage = useCallback(async () => {
     body: JSON.stringify({
       pageId: picked.id,
       pageName: picked.name || null,
-      pageAccessToken: picked.access_token,
     }),
   });
 
