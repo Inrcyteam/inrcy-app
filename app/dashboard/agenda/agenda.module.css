@@ -170,6 +170,8 @@
 .btnGhost {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 8px;
   padding: 10px 12px;
   border-radius: 14px;
@@ -190,6 +192,8 @@
 .btnPrimary {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 8px;
   padding: 10px 12px;
   border-radius: 14px;
@@ -676,7 +680,7 @@
   height: 42px;
 }
 .importantToggle input{ transform: translateY(1px); }
-.btnDanger{border:1px solid rgba(248,113,113,0.55);background:rgba(248,113,113,0.12);color:white;border-radius:14px;padding:10px 12px;font-weight:900;cursor:pointer}
+.btnDanger{display:inline-flex;align-items:center;justify-content:center;text-align:center;border:1px solid rgba(248,113,113,0.55);background:rgba(248,113,113,0.12);color:white;border-radius:14px;padding:10px 12px;font-weight:900;cursor:pointer}
 
 /* --- Modal --- */
 .modalOverlay{
