@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
 import StatusMessage from "./StatusMessage";
@@ -27,6 +27,16 @@ export default function InstagramPanel(props: any) {
   } = props;
 
   const [pendingMode, setPendingMode] = useState<null | "standard" | "business" | "disconnect">(null);
+
+  useEffect(() => {
+    if ((pendingMode === "standard" || pendingMode === "business") && instagramAccountConnected) {
+      setPendingMode(null);
+      return;
+    }
+    if (pendingMode === "disconnect" && !instagramAccountConnected && !instagramConnected) {
+      setPendingMode(null);
+    }
+  }, [pendingMode, instagramAccountConnected, instagramConnected]);
 
   const startStandard = () => {
     setPendingMode("standard");
@@ -117,26 +127,15 @@ export default function InstagramPanel(props: any) {
           />
         </div>
 
-        {pendingMode ? (
-          <StatusMessage variant="success">
-            Connexion en cours...
-          </StatusMessage>
-        ) : null}
-
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {instagramAccountConnected ? (
             <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectAll}>
               Déconnexion
             </button>
           ) : (
-            <>
-              <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={startStandard}>
-                Connexion standard
-              </button>
-              <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={startBusiness}>
-                Connexion business
-              </button>
-            </>
+            <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={startStandard}>
+              Connexion
+            </button>
           )}
         </div>
       </div>
@@ -200,6 +199,12 @@ export default function InstagramPanel(props: any) {
               {instagramConnected ? "Déconnecter le compte" : "Connecter"}
             </button>
           </div>
+
+          {pendingMode ? (
+            <StatusMessage variant="success">
+              {pendingMode === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
+            </StatusMessage>
+          ) : null}
           {displayAccountsError && <StatusMessage variant="error">{displayAccountsError}</StatusMessage>}
         </div>
       ) : null}

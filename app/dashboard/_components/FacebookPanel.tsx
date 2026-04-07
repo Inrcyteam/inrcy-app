@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
 import StatusMessage from "./StatusMessage";
@@ -28,6 +28,16 @@ export default function FacebookPanel(props: any) {
   } = props;
 
   const [pendingMode, setPendingMode] = useState<null | "standard" | "business" | "disconnect">(null);
+
+  useEffect(() => {
+    if ((pendingMode === "standard" || pendingMode === "business") && facebookAccountConnected) {
+      setPendingMode(null);
+      return;
+    }
+    if (pendingMode === "disconnect" && !facebookAccountConnected && !facebookPageConnected) {
+      setPendingMode(null);
+    }
+  }, [pendingMode, facebookAccountConnected, facebookPageConnected]);
 
   const hasSelectedPageInList = Boolean(
     fbSelectedPageId && fbPages.some((p: { id: string; name?: string | null }) => p.id === fbSelectedPageId)
@@ -119,12 +129,6 @@ export default function FacebookPanel(props: any) {
           />
         </div>
 
-        {pendingMode ? (
-          <StatusMessage variant="success">
-            Connexion en cours...
-          </StatusMessage>
-        ) : null}
-
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {facebookAccountConnected ? (
             <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectAll}>
@@ -203,6 +207,12 @@ export default function FacebookPanel(props: any) {
               {facebookPageConnected ? "Déconnecter la page" : "Connecter la page"}
             </button>
           </div>
+
+          {pendingMode ? (
+            <StatusMessage variant="success">
+              {pendingMode === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
+            </StatusMessage>
+          ) : null}
           {fbPagesError && <StatusMessage variant="error">{fbPagesError}</StatusMessage>}
         </div>
       ) : null}
