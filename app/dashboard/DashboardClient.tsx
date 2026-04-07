@@ -1940,7 +1940,12 @@ const saveFacebookPage = useCallback(async () => {
 // ===== Instagram (Meta) =====
 const connectInstagramAccount = useCallback(async () => {
   const returnTo = encodeURIComponent("/dashboard?panel=instagram");
-  window.location.href = `/api/integrations/instagram/start?returnTo=${returnTo}`;
+  window.location.href = `/api/integrations/instagram/start?returnTo=${returnTo}&mode=standard`;
+}, []);
+
+const connectInstagramBusinessAccount = useCallback(async () => {
+  const returnTo = encodeURIComponent("/dashboard?panel=instagram");
+  window.location.href = `/api/integrations/instagram/start?returnTo=${returnTo}&mode=business`;
 }, []);
 
 const disconnectInstagramAccount = useCallback(async () => {
@@ -4071,6 +4076,7 @@ const checkActivity = useCallback(async () => {
             instagramAccountConnected={instagramAccountConnected}
             instagramUsername={instagramUsername}
             connectInstagramAccount={connectInstagramAccount}
+            connectInstagramBusinessAccount={connectInstagramBusinessAccount}
             disconnectInstagramAccount={disconnectInstagramAccount}
             igAccountsLoading={igAccountsLoading}
             loadInstagramAccounts={loadInstagramAccounts}

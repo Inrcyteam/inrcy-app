@@ -12,7 +12,11 @@ export async function GET(request: Request) {
   if (!appId) return NextResponse.json({ error: "Configuration Facebook incomplète côté serveur." }, { status: 500 });
 
   const { searchParams } = new URL(request.url);
-  const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=instagram", "/dashboard?panel=instagram");
+  const requestedReturnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=instagram", "/dashboard?panel=instagram");
+  const mode = searchParams.get("mode") === "business" ? "business" : "standard";
+  const returnUrl = new URL(requestedReturnTo, siteUrl);
+  returnUrl.searchParams.set("ig_mode", mode);
+  const returnTo = `${returnUrl.pathname}${returnUrl.search}`;
 
   const { stateB64, nonce, cookieName } = makeOAuthState("instagram", returnTo);
 
@@ -35,7 +39,7 @@ export async function GET(request: Request) {
     ].join(","),
   });
 
-  if (configId) params.set("config_id", configId);
+  if (mode === "business" && configId) params.set("config_id", configId);
 
   const url = `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
   const res = NextResponse.redirect(url);

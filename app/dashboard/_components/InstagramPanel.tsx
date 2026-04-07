@@ -10,6 +10,7 @@ export default function InstagramPanel(props: any) {
     instagramAccountConnected,
     instagramUsername,
     connectInstagramAccount,
+    connectInstagramBusinessAccount,
     disconnectInstagramAccount,
     igAccountsLoading,
     loadInstagramAccounts,
@@ -58,7 +59,6 @@ export default function InstagramPanel(props: any) {
         </span>
       </div>
 
-      {/* Compte (OAuth Meta) */}
       <div
         style={{
           border: "1px solid rgba(255,255,255,0.12)",
@@ -95,20 +95,9 @@ export default function InstagramPanel(props: any) {
               opacity: instagramAccountConnected ? 1 : 0.8,
             }}
           />
-
-          {!instagramAccountConnected ? (
-            <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectInstagramAccount}>
-              Connecter Instagram
-            </button>
-          ) : (
-            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectInstagramAccount}>
-              Déconnecter Instagram
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Choix du compte Instagram (via Pages Meta) */}
       {instagramAccountConnected ? (
         <div
           style={{
@@ -165,73 +154,79 @@ export default function InstagramPanel(props: any) {
               onClick={instagramConnected ? disconnectInstagramProfile : saveInstagramProfile}
               disabled={!igSelectedPageId}
             >
-              {instagramConnected ? "Déconnecter la page" : "Connecter"}
+              {instagramConnected ? "Déconnecter le compte" : "Connecter"}
             </button>
           </div>
           {igAccountsError && <StatusMessage variant="error">{igAccountsError}</StatusMessage>}
         </div>
       ) : null}
 
-      {/* Lien + déconnexion */}
-      {instagramAccountConnected ? (
-        <div
-          style={{
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(255,255,255,0.03)",
-            borderRadius: 14,
-            padding: 12,
-            display: "grid",
-            gap: 10,
-          }}
-        >
-          <div className={styles.blockHeaderRow}>
-            <div className={styles.blockTitle}>Lien du compte</div>
-            <ConnectionPill connected={instagramConnected && !!instagramUrl?.trim()} />
-          </div>
-          <div className={styles.blockSub}>Se remplit automatiquement après sélection.</div>
-
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              value={instagramUrl}
-              readOnly
-              placeholder={instagramConnected ? "Lien récupéré automatiquement" : "Sélectionne un compte pour générer le lien"}
-              style={{
-                flex: "1 1 280px",
-                minWidth: 220,
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(15,23,42,0.65)",
-                colorScheme: "dark",
-                padding: "10px 12px",
-                color: "white",
-                outline: "none",
-                opacity: instagramUrl ? 1 : 0.8,
-              }}
-            />
-
-            <a
-              href={instagramUrl || "#"}
-              target="_blank"
-              rel="noreferrer"
-              className={`${styles.actionBtn} ${styles.viewBtn}`}
-              style={{ pointerEvents: instagramUrl ? "auto" : "none", opacity: instagramUrl ? 1 : 0.5 }}
-            >
-              Voir le compte
-            </a>
-          </div>
-
-          {instagramUrlNotice && <StatusMessage variant="success">{instagramUrlNotice}</StatusMessage>}
-          {instagramUrlError && <StatusMessage variant="error">{instagramUrlError}</StatusMessage>}
-
-          {instagramConnected ? (
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-              <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectInstagramProfile}>
-                Déconnecter le compte
-              </button>
-            </div>
-          ) : null}
+      <div
+        style={{
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: 14,
+          padding: 12,
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        <div className={styles.blockHeaderRow}>
+          <div className={styles.blockTitle}>Lien du compte</div>
+          <ConnectionPill connected={instagramConnected && !!instagramUrl?.trim()} />
         </div>
-      ) : null}
+        <div className={styles.blockSub}>Se remplit automatiquement après sélection.</div>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            value={instagramUrl}
+            readOnly
+            placeholder={instagramConnected ? "Lien récupéré automatiquement" : "Sélectionne un compte pour générer le lien"}
+            style={{
+              flex: "1 1 280px",
+              minWidth: 220,
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(15,23,42,0.65)",
+              colorScheme: "dark",
+              padding: "10px 12px",
+              color: "white",
+              outline: "none",
+              opacity: instagramUrl ? 1 : 0.8,
+            }}
+          />
+
+          <a
+            href={instagramUrl || "#"}
+            target="_blank"
+            rel="noreferrer"
+            className={`${styles.actionBtn} ${styles.viewBtn}`}
+            style={{ pointerEvents: instagramUrl ? "auto" : "none", opacity: instagramUrl ? 1 : 0.5 }}
+          >
+            Voir le compte
+          </a>
+        </div>
+
+        {instagramUrlNotice && <StatusMessage variant="success">{instagramUrlNotice}</StatusMessage>}
+        {instagramUrlError && <StatusMessage variant="error">{instagramUrlError}</StatusMessage>}
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {instagramAccountConnected ? (
+            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectInstagramAccount}>
+              Déconnexion
+            </button>
+          ) : (
+            <>
+              <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectInstagramAccount}>
+                Connexion standard
+              </button>
+              <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={connectInstagramBusinessAccount}>
+                Connexion business
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
