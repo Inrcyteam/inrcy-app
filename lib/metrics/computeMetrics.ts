@@ -1,11 +1,14 @@
 import 'server-only';
 
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { buildStatsOverview, type OverviewPayload } from '@/lib/stats/buildOverview';
+
 export type Period = 7 | 30 | 60 | 90;
 export type CubeKey = 'site_inrcy' | 'site_web' | 'gmb' | 'facebook' | 'instagram' | 'linkedin';
 
 export type Overview = {
   days: number;
-  business?: { sectorCategory?: string; profession?: string };
+  business?: { sectorCategory?: string | null; profession?: string | null };
   totals?: {
     users?: number;
     sessions?: number;
@@ -19,7 +22,7 @@ export type Overview = {
   topPages?: Array<{ path: string; views: number }>;
   topQueries?: Array<{ query: string; clicks?: number; impressions?: number }>;
   channels?: Array<{ channel?: string; sessions?: number; key?: string; value?: number; name?: string }>;
-  sources?: Record<string, { connected?: unknown; metrics?: Record<string, unknown> | null }>;
+  sources?: Record<string, { connected?: unknown; metrics?: unknown | null }>;
 };
 
 export type OpportunitiesSnapshot = {
@@ -372,10 +375,11 @@ export function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
     const gmb = ov.sources?.gmb;
     const connected = !!gmb?.connected;
     if (!connected) return 0;
-    const m = gmb?.metrics;
-    const totals = safeObj(m?.totals);
-    const hasError = !!safeObj(m).error;
-    const base = hasError || !m ? 0.8 : 1.2;
+    const rawMetrics = gmb?.metrics;
+    const m = safeObj(rawMetrics);
+    const totals = safeObj(m.totals);
+    const hasError = !!m.error;
+    const base = hasError || !rawMetrics ? 0.8 : 1.2;
     const impressionsGuess = safeNum(totals.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) + safeNum(totals.BUSINESS_IMPRESSIONS_MOBILE_MAPS);
     const interactionsGuess = safeNum(totals.WEBSITE_CLICKS) + safeNum(totals.CALL_CLICKS) + safeNum(totals.DIRECTION_REQUESTS);
     const perDay = clamp(base + impressionsGuess / 800 + interactionsGuess / 30, 0, 50);
@@ -415,9 +419,7 @@ export function invalidateOverviewCache(): void {
   overviewCache.clear();
 }
 
-async function fetchOverviewWithCache(url: string, headers?: HeadersInit, bypassCache = false): Promise<Overview | null> {
-  const headerKey = headers ? JSON.stringify(headers) : '';
-  const key = `${url}::${headerKey}`;
+async function resolveOverviewWithCache(key: string, loader: () => Promise<Overview | null>, bypassCache = false): Promise<Overview | null> {
   const now = Date.now();
 
   if (!bypassCache) {
@@ -432,11 +434,9 @@ async function fetchOverviewWithCache(url: string, headers?: HeadersInit, bypass
 
   const promise = (async () => {
     try {
-      const r = await fetch(url, { headers, cache: 'no-store' });
-      if (!r.ok) return null;
-      const json = (await r.json()) as Overview;
-      overviewCache.set(key, { value: json, expiresAt: Date.now() + OVERVIEW_TTL_MS });
-      return json;
+      const value = await loader();
+      overviewCache.set(key, { value, expiresAt: Date.now() + OVERVIEW_TTL_MS });
+      return value;
     } catch {
       overviewCache.set(key, { value: null, expiresAt: Date.now() + 2_000 });
       return null;
@@ -445,6 +445,20 @@ async function fetchOverviewWithCache(url: string, headers?: HeadersInit, bypass
 
   overviewCache.set(key, { promise, expiresAt: now + OVERVIEW_TTL_MS });
   return promise;
+}
+
+async function fetchOverviewWithCache(url: string, headers?: HeadersInit, bypassCache = false): Promise<Overview | null> {
+  const headerKey = headers ? JSON.stringify(headers) : '';
+  const key = `${url}::${headerKey}`;
+  return resolveOverviewWithCache(
+    key,
+    async () => {
+      const r = await fetch(url, { headers, cache: 'no-store' });
+      if (!r.ok) return null;
+      return (await r.json()) as Overview;
+    },
+    bypassCache,
+  );
 }
 
 export function toInrstatsSnapshot(opportunities30: OpportunitiesSnapshot): InrstatsOpportunitiesSnapshot {
@@ -463,16 +477,31 @@ export function toInrstatsSnapshot(opportunities30: OpportunitiesSnapshot): Inrs
 }
 
 export async function fetchCubeOverviews(args: {
-  origin: string;
+  origin?: string;
   days: number;
   getHeaders?: () => HeadersInit | undefined;
   extraParams?: Record<string, string | number | undefined>;
   bypassCache?: boolean;
+  supabase?: SupabaseClient;
+  userId?: string;
 }): Promise<Partial<Record<CubeKey, Overview>>> {
-  const { origin, days, getHeaders, extraParams, bypassCache = false } = args;
+  const { origin, days, getHeaders, extraParams, bypassCache = false, supabase, userId } = args;
   const entries = await Promise.all(
     CUBES.map(async (cube) => {
-      const params = new URLSearchParams({ days: String(days), include: INCLUDE_BY_CUBE[cube] });
+      const includeRaw = INCLUDE_BY_CUBE[cube];
+      if (supabase && userId) {
+        const directKey = `direct:${userId}:days=${days}:include=${includeRaw}:fresh=${bypassCache ? 1 : 0}`;
+        const overview = await resolveOverviewWithCache(
+          directKey,
+          async () => (await buildStatsOverview({ supabase, userId, days, includeRaw, fresh: bypassCache })) as OverviewPayload,
+          bypassCache,
+        );
+        return [cube, overview] as const;
+      }
+
+      if (!origin) return [cube, null] as const;
+
+      const params = new URLSearchParams({ days: String(days), include: includeRaw });
       for (const [k, v] of Object.entries(extraParams || {})) {
         if (v !== undefined && v !== null && `${v}` !== '') params.set(k, String(v));
       }

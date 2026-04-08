@@ -198,8 +198,8 @@ export async function buildMetricsSummary(args: {
       lead_conversion_rate: 0,
       avg_basket: 0,
     }),
-    safe('overviews_30d', () => fetchCubeOverviews({ origin, days: monthDays, getHeaders, bypassCache: fresh }), {}),
-    safe('overviews_7d', () => fetchCubeOverviews({ origin, days: weekDays, getHeaders, bypassCache: fresh }), {}),
+    safe('overviews_30d', () => fetchCubeOverviews({ origin, days: monthDays, getHeaders, bypassCache: fresh, supabase, userId }), {}),
+    safe('overviews_7d', () => fetchCubeOverviews({ origin, days: weekDays, getHeaders, bypassCache: fresh, supabase, userId }), {}),
   ]);
 
   const [oppResolved, history30Resolved, history7Resolved] = await Promise.all([

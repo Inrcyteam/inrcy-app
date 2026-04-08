@@ -51,6 +51,8 @@ export async function GET(req: Request) {
       days: period,
       getHeaders: () => (cookie ? { cookie } : undefined),
       bypassCache: fresh,
+      supabase,
+      userId: user.id,
     });
 
     const opportunities = toInrstatsSnapshot(computeOpportunitiesFromOverviews(overviews, period));
