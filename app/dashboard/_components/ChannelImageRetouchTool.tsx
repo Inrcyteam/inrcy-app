@@ -97,8 +97,7 @@ function legacyColorFromMode(mode: BackgroundMode, backgroundColor?: string) {
   }
 }
 
-function normalizedMode(mode: BackgroundMode): "blur" | "transparent" | "color" {
-  if (mode === "blur") return "blur";
+function normalizedMode(mode: BackgroundMode): "transparent" | "color" {
   if (mode === "transparent") return "transparent";
   return "color";
 }
@@ -324,9 +323,6 @@ export function ChannelImageRetouchModal({
                 onDoubleClick={onDoubleClick}
                 style={{ position: "relative", width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", aspectRatio, borderRadius: isMobile ? 16 : 22, overflow: "hidden", border: "1px solid rgba(255,255,255,0.14)", ...previewBg, cursor: isDragging ? "grabbing" : "grab", touchAction: "none", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.03)" }}
               >
-                {bgMode === "blur" && fitLabel === "Adapter" ? (
-                  <img src={previewSrc} alt="background-preview" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(26px) saturate(1.05) brightness(1.02)", transform: "scale(1.08)", opacity: 0.95, pointerEvents: "none", userSelect: "none" }} />
-                ) : null}
                 {hasLayout && previewLayout ? (
                   <img src={previewSrc} alt="preview" draggable={false} style={{ position: "absolute", left: previewLayout.dx, top: previewLayout.dy, width: previewLayout.drawW, height: previewLayout.drawH, maxWidth: "none", pointerEvents: "none", userSelect: "none" }} />
                 ) : (
@@ -454,9 +450,8 @@ export function ChannelImageRetouchModal({
             <div style={{ display: "grid", gap: 10, padding: 14, borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
               <div style={{ fontSize: 12, opacity: 0.82 }}>Arrière-plan</div>
               <select value={bgMode} onChange={(e) => onBackgroundModeChange(e.target.value as BackgroundMode)} style={{ width: "100%", minHeight: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "#ffffff", color: "#111827", padding: "0 12px" }}>
-                <option value="blur" style={{ background: "#ffffff", color: "#111827" }}>Flou</option>
                 <option value="transparent" style={{ background: "#ffffff", color: "#111827" }}>Transparent</option>
-                <option value="color" style={{ background: "#ffffff", color: "#111827" }}>Plein</option>
+                <option value="color" style={{ background: "#ffffff", color: "#111827" }}>Fond uni</option>
               </select>
               {bgMode === "color" ? (
                 <label style={{ display: "grid", gap: 6, fontSize: 12, opacity: 0.82 }}>

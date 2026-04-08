@@ -73,8 +73,8 @@ const DEFAULT_TRANSFORM: ImageTransform = {
   zoom: 1,
   offsetX: 0,
   offsetY: 0,
-  blurBackground: true,
-  backgroundMode: "blur",
+  blurBackground: false,
+  backgroundMode: "color",
   backgroundColor: "#e8f6ff",
   design: DEFAULT_DESIGN,
 };
@@ -97,9 +97,9 @@ const CHANNEL_LABELS: Record<ChannelKey, string> = {
 };
 
 const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
-  inrcy_site: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
-  site_web: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
-  gmb: { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: true },
+  inrcy_site: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: false },
+  site_web: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: false },
+  gmb: { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: false },
   facebook: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
   instagram: { width: 1080, height: 1350, defaultFit: "cover", defaultBlurBackground: false },
   linkedin: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
@@ -136,15 +136,18 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function getBackgroundMode(transform: ImageTransform): BackgroundMode {
+  if (transform.backgroundMode === "blur") return transform.backgroundColor ? "color" : "brand";
   if (transform.backgroundMode) return transform.backgroundMode;
-  return transform.blurBackground ? "blur" : "black";
+  if (transform.blurBackground) return transform.backgroundColor ? "color" : "brand";
+  return transform.backgroundColor ? "color" : "black";
 }
 
 function withBackgroundMode(transform: ImageTransform, backgroundMode: BackgroundMode): ImageTransform {
+  const normalizedMode = backgroundMode === "blur" ? (transform.backgroundColor ? "color" : "brand") : backgroundMode;
   return {
     ...transform,
-    backgroundMode,
-    blurBackground: backgroundMode === "blur",
+    backgroundMode: normalizedMode,
+    blurBackground: false,
   };
 }
 
@@ -289,17 +292,7 @@ async function renderChannelImage(params: {
     ctx.clearRect(0, 0, cw, ch);
 
     const backgroundMode = getBackgroundMode(transform);
-    if (transform.fit === "contain" && backgroundMode === "blur") {
-      ctx.save();
-      ctx.filter = "blur(28px) saturate(1.05) brightness(1.02)";
-      const bgScale = Math.max(cw / iw, ch / ih);
-      const bgW = iw * bgScale;
-      const bgH = ih * bgScale;
-      ctx.drawImage(img, (cw - bgW) / 2, (ch - bgH) / 2, bgW, bgH);
-      ctx.restore();
-      ctx.fillStyle = "rgba(0,0,0,0.08)";
-      ctx.fillRect(0, 0, cw, ch);
-    } else if (backgroundMode !== "transparent") {
+    if (backgroundMode !== "transparent") {
       ctx.fillStyle = getBackgroundFill(backgroundMode, transform.backgroundColor);
       ctx.fillRect(0, 0, cw, ch);
     }
@@ -327,8 +320,8 @@ function getDefaultTransform(channel: ChannelKey): ImageTransform {
     zoom: 1,
     offsetX: 0,
     offsetY: 0,
-    blurBackground: preset.defaultBlurBackground,
-    backgroundMode: preset.defaultBlurBackground ? "blur" : "black",
+    blurBackground: false,
+    backgroundMode: preset.defaultFit === "contain" ? "brand" : "black",
     design: { ...DEFAULT_DESIGN },
   };
 }
@@ -344,20 +337,20 @@ function getOptimizedTransform(channel: ChannelKey, meta?: ImageMeta): ImageTran
   const isVeryTall = ratio <= 0.68;
 
   if (channel === "inrcy_site" || channel === "site_web" || channel === "gmb") {
-    return withBackgroundMode({ ...base, fit: "contain", zoom: 1 }, "blur");
+    return withBackgroundMode({ ...base, fit: "contain", zoom: 1, backgroundColor: "#e8f6ff" }, "color");
   }
 
   if (channel === "instagram") {
-    if (isVeryWide) return withBackgroundMode({ ...base, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, "blur");
-    if (isWide) return withBackgroundMode({ ...base, fit: "contain", zoom: 1 }, "blur");
-    if (isVeryTall) return withBackgroundMode({ ...base, fit: "contain", zoom: 1 }, "blur");
+    if (isVeryWide) return withBackgroundMode({ ...base, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0, backgroundColor: "#ffffff" }, "color");
+    if (isWide) return withBackgroundMode({ ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" }, "color");
+    if (isVeryTall) return withBackgroundMode({ ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" }, "color");
     if (isTall) return withBackgroundMode({ ...base, fit: "cover", zoom: 1.04, offsetX: 0, offsetY: -10 }, "black");
     return withBackgroundMode({ ...base, fit: "cover", zoom: ratio < 1 ? 1.03 : 1.08, offsetX: 0, offsetY: ratio > 1 ? 0 : -6 }, "black");
   }
 
   if (channel === "facebook" || channel === "linkedin") {
-    if (isVeryWide || isVeryTall) return withBackgroundMode({ ...base, fit: "contain", zoom: 1 }, "blur");
-    if (isWide) return withBackgroundMode({ ...base, fit: "contain", zoom: 1 }, "blur");
+    if (isVeryWide || isVeryTall) return withBackgroundMode({ ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" }, "color");
+    if (isWide) return withBackgroundMode({ ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" }, "color");
     if (isTall) return withBackgroundMode({ ...base, fit: "cover", zoom: 1.06, offsetX: 0, offsetY: -12 }, "black");
     return withBackgroundMode({ ...base, fit: "cover", zoom: ratio < 1 ? 1.02 : 1.06, offsetX: 0, offsetY: ratio < 0.98 ? -8 : 0 }, "black");
   }
@@ -789,8 +782,9 @@ export default function PublishModal({
 
   const setContainMode = (channel: ChannelKey, imageKey: string) => {
     const current = channelImageEditors[channel]?.transforms?.[imageKey] || getOptimizedTransform(channel, imageMetaByKey[imageKey]);
-    const backgroundMode = current.fit === "contain" ? getBackgroundMode(current) : "blur";
-    updateChannelTransform(channel, imageKey, { fit: "contain", backgroundMode, blurBackground: backgroundMode === "blur" });
+    const backgroundMode = current.fit === "contain" ? getBackgroundMode(current) : (channel === "inrcy_site" || channel === "site_web" || channel === "gmb" ? "color" : "white");
+    const backgroundColor = current.backgroundColor || (channel === "inrcy_site" || channel === "site_web" || channel === "gmb" ? "#e8f6ff" : "#ffffff");
+    updateChannelTransform(channel, imageKey, { fit: "contain", backgroundMode: backgroundMode === "transparent" ? "transparent" : "color", backgroundColor, blurBackground: false });
   };
 
   const setCoverMode = (channel: ChannelKey, imageKey: string) => {
@@ -1254,7 +1248,7 @@ export default function PublishModal({
         onDoubleClick={() => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { offsetX: 0, offsetY: 0 })}
         onSave={closeImageEditor}
         onApplyToSelectedChannels={applyCurrentImageToSelectedChannels}
-        onBackgroundModeChange={(mode) => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, mode === "blur" ? { backgroundMode: "blur", blurBackground: true, fit: "contain" } : mode === "transparent" ? { backgroundMode: "transparent", blurBackground: false, fit: "contain" } : { backgroundMode: "color", backgroundColor: activeEditorTransform.backgroundColor || "#e8f6ff", blurBackground: false, fit: "contain" })}
+        onBackgroundModeChange={(mode) => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, mode === "transparent" ? { backgroundMode: "transparent", blurBackground: false, fit: "contain" } : { backgroundMode: "color", backgroundColor: activeEditorTransform.backgroundColor || (activeImageChannel === "inrcy_site" || activeImageChannel === "site_web" || activeImageChannel === "gmb" ? "#e8f6ff" : "#ffffff"), blurBackground: false, fit: "contain" })}
         onBackgroundColorChange={(color) => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { backgroundMode: "color", backgroundColor: color, blurBackground: false, fit: "contain" })}
         designState={getDesign(activeEditorTransform)}
         onDesignChange={(patch) => activeEditorImageKey && updateChannelTransform(activeImageChannel, activeEditorImageKey, { design: { ...getDesign(activeEditorTransform), ...patch } })}
