@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Établissement Google Business incomplet." }, { status: 400 });
     }
 
-    const { error: upErr } = await supabase
+    const { error: upErr } = await supabaseAdmin
       .from("integrations")
       .update({
         resource_id: locationName,
