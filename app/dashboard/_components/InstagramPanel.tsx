@@ -63,8 +63,29 @@ export default function InstagramPanel(props: any) {
 
   const displayAccountsError = !instagramConnected && !instagramAccountConnected ? null : igAccountsError;
 
+  const singleFieldStyle = {
+    width: "100%" as const,
+    minWidth: 0,
+    maxWidth: "100%",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(15,23,42,0.65)",
+    colorScheme: "dark" as const,
+    padding: "10px 12px",
+    color: "white",
+    outline: "none",
+  };
+
+  const responsiveActionsRow = {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))",
+    gap: 10,
+    alignItems: "center",
+    width: "100%",
+  } as const;
+
   return (
-    <div style={{ display: "grid", gap: 14 }}>
+    <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <span
           style={{
@@ -115,37 +136,29 @@ export default function InstagramPanel(props: any) {
           Instagram peut être connecté en <strong>standard</strong> ou en <strong>business via Facebook Business</strong>. Pour la sélection du profil, un compte <strong>Business / Creator</strong> relié à une Page Facebook reste nécessaire.
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ width: "100%", minWidth: 0 }}>
           <input
             value={instagramUsername}
             readOnly
             placeholder={instagramAccountConnected ? "Compte connecté" : "Aucun compte connecté"}
             style={{
-              flex: "1 1 280px",
-              minWidth: 220,
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(15,23,42,0.65)",
-              colorScheme: "dark",
-              padding: "10px 12px",
-              color: "white",
-              outline: "none",
+              ...singleFieldStyle,
               opacity: instagramAccountConnected ? 1 : 0.8,
             }}
           />
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        <div style={{ ...responsiveActionsRow, justifyItems: "stretch" }}>
           {instagramAccountConnected ? (
-            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectAll}>
+            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectAll} style={{ width: "100%" }}>
               Déconnexion
             </button>
           ) : (
             <>
-              <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={startStandard}>
+              <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={startStandard} style={{ width: "100%" }}>
                 Connexion standard
               </button>
-              <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={startBusiness}>
+              <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={startBusiness} style={{ width: "100%" }}>
                 Connexion business
               </button>
             </>
@@ -170,12 +183,13 @@ export default function InstagramPanel(props: any) {
           </div>
           <div className={styles.blockSub}>On liste les Pages Facebook qui possèdent un Instagram Business/Creator.</div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={responsiveActionsRow}>
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.secondaryBtn}`}
               onClick={() => loadInstagramAccounts()}
               disabled={igAccountsLoading}
+              style={{ width: "100%" }}
             >
               {igAccountsLoading ? "Chargement..." : "Charger mes comptes"}
             </button>
@@ -183,17 +197,7 @@ export default function InstagramPanel(props: any) {
             <select
               value={igSelectedPageId}
               onChange={(e) => setIgSelectedPageId(e.target.value)}
-              style={{
-                flex: "1 1 260px",
-                minWidth: 220,
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(15,23,42,0.65)",
-                colorScheme: "dark",
-                padding: "10px 12px",
-                color: "white",
-                outline: "none",
-              }}
+              style={singleFieldStyle}
             >
               <option value="">Sélectionner un compte</option>
               {igAccounts.map((a: { page_id: string; username?: string | null; page_name?: string | null }) => (
@@ -208,6 +212,7 @@ export default function InstagramPanel(props: any) {
               className={`${styles.actionBtn} ${instagramConnected ? styles.disconnectBtn : styles.connectBtn}`}
               onClick={instagramConnected ? handleProfileDisconnect : handleProfileConnect}
               disabled={!igSelectedPageId}
+              style={{ width: "100%" }}
             >
               {instagramConnected ? "Déconnecter le compte" : "Connecter"}
             </button>
@@ -238,21 +243,13 @@ export default function InstagramPanel(props: any) {
         </div>
         <div className={styles.blockSub}>Se remplit automatiquement après sélection.</div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={responsiveActionsRow}>
           <input
             value={instagramUrl}
             readOnly
             placeholder={instagramConnected ? "Lien récupéré automatiquement" : "Sélectionne un compte pour générer le lien"}
             style={{
-              flex: "1 1 280px",
-              minWidth: 220,
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(15,23,42,0.65)",
-              colorScheme: "dark",
-              padding: "10px 12px",
-              color: "white",
-              outline: "none",
+              ...singleFieldStyle,
               opacity: instagramUrl ? 1 : 0.8,
             }}
           />
@@ -262,7 +259,7 @@ export default function InstagramPanel(props: any) {
             target="_blank"
             rel="noreferrer"
             className={`${styles.actionBtn} ${styles.viewBtn}`}
-            style={{ pointerEvents: instagramUrl ? "auto" : "none", opacity: instagramUrl ? 1 : 0.5 }}
+            style={{ pointerEvents: instagramUrl ? "auto" : "none", opacity: instagramUrl ? 1 : 0.5, width: "100%" }}
           >
             Voir le compte
           </a>
