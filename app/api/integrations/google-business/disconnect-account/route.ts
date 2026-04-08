@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { revokeGoogleTokensBestEffort } from "@/lib/googleOAuthRevoke";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -14,6 +15,22 @@ export async function POST() {
   if (authErr || !authData?.user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
 
   const userId = authData.user.id;
+
+  const { data: revokeRows } = await supabaseAdmin
+    .from("integrations")
+    .select("id,access_token_enc,refresh_token_enc")
+    .eq("user_id", userId)
+    .eq("provider", "google")
+    .eq("source", "gmb")
+    .eq("product", "gmb");
+
+  await revokeGoogleTokensBestEffort((revokeRows || []).map((row: any) => ({
+    integrationId: String(row?.id || ""),
+    accessTokenEnc: row?.access_token_enc || null,
+    refreshTokenEnc: row?.refresh_token_enc || null,
+    context: "google_business_disconnect_account",
+  })));
+
   const { error } = await supabase
     .from("integrations")
     .delete()

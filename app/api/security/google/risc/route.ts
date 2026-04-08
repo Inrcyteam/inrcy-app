@@ -37,10 +37,11 @@ export const POST = withApi(async (req: Request) => {
         ok: true,
         accepted: true,
         action: outcome.action,
+        duplicate: outcome.duplicate,
         event_types: outcome.eventTypes,
         matched_integrations: outcome.integrationIds.length,
       },
-      { status: 202 }
+      { status: outcome.duplicate ? 200 : 202 }
     );
   } catch (e) {
     const message = safeErrorMessage(e);

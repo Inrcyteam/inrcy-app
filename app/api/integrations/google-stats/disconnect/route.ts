@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { revokeGoogleTokensBestEffort } from "@/lib/googleOAuthRevoke";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -24,6 +25,21 @@ export async function POST(request: Request) {
   const source = typeof body.source === "string" ? body.source : "";
   const product = typeof body.product === "string" ? body.product : "";
   if (!source || !product) return NextResponse.json({ error: "Source ou produit manquant." }, { status: 400 });
+
+  const { data: revokeRows } = await supabaseAdmin
+    .from("integrations")
+    .select("id,access_token_enc,refresh_token_enc")
+    .eq("user_id", userId)
+    .eq("provider", "google")
+    .eq("source", source)
+    .eq("product", product);
+
+  await revokeGoogleTokensBestEffort((revokeRows || []).map((row: any) => ({
+    integrationId: String(row?.id || ""),
+    accessTokenEnc: row?.access_token_enc || null,
+    refreshTokenEnc: row?.refresh_token_enc || null,
+    context: `google_stats_disconnect:${source}:${product}`,
+  })));
 
   await supabase
     .from("integrations")

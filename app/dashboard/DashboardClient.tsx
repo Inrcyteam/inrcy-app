@@ -1185,6 +1185,30 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     triggerGeneratorRefresh();
   }, [searchParams, triggerGeneratorRefresh]);
 
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/security/google/risc/status", { credentials: "include" });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || cancelled) return;
+        const reauth = (json as any)?.reauth || {};
+
+        if (reauth?.site_inrcy?.ga4) setSiteInrcyGa4Notice("Reconnexion Google Analytics requise (sécurité).");
+        if (reauth?.site_inrcy?.gsc) setSiteInrcyGscNotice("Reconnexion Search Console requise (sécurité).");
+        if (reauth?.site_web?.ga4) setSiteWebGa4Notice("Reconnexion Google Analytics requise (sécurité).");
+        if (reauth?.site_web?.gsc) setSiteWebGscNotice("Reconnexion Search Console requise (sécurité).");
+        if (reauth?.gmb) setPanelError("gmb", "Reconnexion Google Business requise (sécurité).", "Reconnexion Google Business requise (sécurité).", 5000);
+      } catch {}
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setPanelError]);
+
   useEffect(() => {
     const linked = searchParams.get("linked");
     const ok = searchParams.get("ok");
