@@ -38,6 +38,7 @@ export async function GET(request: Request) {
     ].join(" "),
     access_type: "offline",
     prompt: "consent",
+    include_granted_scopes: "true",
     state: stateB64,
   });
 

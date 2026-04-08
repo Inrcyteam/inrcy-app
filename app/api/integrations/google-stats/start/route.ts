@@ -121,18 +121,22 @@ const rawUrl =
 
   const { stateB64, nonce, cookieName } = makeOAuthState("google_stats", returnTo, { source, product, mode, domain, siteUrl });
 
+  const requestedScopes = [
+    product === "ga4"
+      ? "https://www.googleapis.com/auth/analytics.readonly"
+      : "https://www.googleapis.com/auth/webmasters.readonly",
+    "https://www.googleapis.com/auth/userinfo.email",
+  ];
+
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
     access_type: "offline",
     prompt: "consent",
+    include_granted_scopes: "true",
     state: stateB64,
-    scope: [
-      "https://www.googleapis.com/auth/analytics.readonly",
-      "https://www.googleapis.com/auth/webmasters.readonly",
-      "https://www.googleapis.com/auth/userinfo.email",
-    ].join(" "),
+    scope: requestedScopes.join(" "),
   });
 
   const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
