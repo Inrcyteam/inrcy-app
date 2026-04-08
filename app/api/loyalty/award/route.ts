@@ -38,6 +38,17 @@ const MULTIPLIED_ACTION_KEYS = new Set([
   // (ajouter ici les futures actions de gains récurrents)
 ]);
 
+// Actions déclenchées en arrière-plan par l'UI.
+// Lorsqu'une limite/cooldown est déjà atteinte, on préfère répondre 200
+// avec un statut "skipped" plutôt que remonter un 429 côté navigateur,
+// car cela crée un bruit console non bloquant en CI/E2E.
+const SOFT_LIMIT_ACTION_KEYS = new Set([
+  "account_open",
+  "monthly_seniority",
+  "profile_complete",
+  "activity_complete",
+]);
+
 type TurboSupabaseLike = {
   from: (_table: string) => {
     select: (_query: string) => {
@@ -173,6 +184,21 @@ export async function POST(req: Request) {
 
   if (error) {
     const norm = normalizePgError(error.message);
+
+    const isSoftLimited =
+      SOFT_LIMIT_ACTION_KEYS.has(actionKey) &&
+      ["COOLDOWN", "DAILY_POINTS_CAP", "DAILY_COUNT_CAP", "GLOBAL_DAILY_POINTS_CAP"].includes(norm.code);
+
+    if (isSoftLimited) {
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        code: norm.code,
+        balance: null,
+        updatedAt: null,
+      });
+    }
+
     return NextResponse.json(
       {
         ok: false,
