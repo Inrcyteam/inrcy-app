@@ -1210,6 +1210,34 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
   useEffect(() => {
     const linked = searchParams.get("linked");
     const ok = searchParams.get("ok");
+    const skipped = searchParams.get("skipped");
+    const targetPanel = searchParams.get("panel");
+    if (ok !== "1" || skipped !== "1") return;
+
+    if (targetPanel === "site_inrcy" && linked === "ga4") {
+      setSiteInrcyGa4Notice("Google Analytics déjà connecté pour le site iNrCy.");
+      window.setTimeout(() => setSiteInrcyGa4Notice(null), 2600);
+      return;
+    }
+    if (targetPanel === "site_inrcy" && linked === "gsc") {
+      setSiteInrcyGscNotice("Search Console déjà connecté pour le site iNrCy.");
+      window.setTimeout(() => setSiteInrcyGscNotice(null), 2600);
+      return;
+    }
+    if (targetPanel === "site_web" && linked === "ga4") {
+      setSiteWebGa4Notice("Google Analytics déjà connecté pour le site web.");
+      window.setTimeout(() => setSiteWebGa4Notice(null), 2600);
+      return;
+    }
+    if (targetPanel === "site_web" && linked === "gsc") {
+      setSiteWebGscNotice("Search Console déjà connecté pour le site web.");
+      window.setTimeout(() => setSiteWebGscNotice(null), 2600);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const linked = searchParams.get("linked");
+    const ok = searchParams.get("ok");
     const error = searchParams.get("error");
     const message = searchParams.get("message");
     if (!linked || ok !== "0" || (!error && !message)) return;

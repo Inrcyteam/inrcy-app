@@ -8,11 +8,75 @@ const ALLOWED_PRODUCTS = ["ga4", "gsc"] as const;
 type Source = (typeof ALLOWED_SOURCES)[number];
 type Product = (typeof ALLOWED_PRODUCTS)[number];
 
+const REQUIRED_SCOPE_BY_PRODUCT: Record<Product, string> = {
+  ga4: "https://www.googleapis.com/auth/analytics.readonly",
+  gsc: "https://www.googleapis.com/auth/webmasters.readonly",
+};
+
 function isAllowedSource(v: string): v is Source {
   return (ALLOWED_SOURCES as readonly string[]).includes(v);
 }
 function isAllowedProduct(v: string): v is Product {
   return (ALLOWED_PRODUCTS as readonly string[]).includes(v);
+}
+
+
+
+function parseScopes(raw: unknown): Set<string> {
+  const value = String(raw ?? "").trim();
+  if (!value) return new Set();
+  return new Set(value.split(/\s+/).map((scope) => scope.trim()).filter(Boolean));
+}
+
+function hasProductBinding(settings: unknown, source: Source, product: Product): boolean {
+  const root = asRecord(settings);
+
+  const scopedRoot =
+    source === "site_web"
+      ? asRecord(root["site_web"])
+      : root;
+
+  if (product === "ga4") {
+    const ga4 = asRecord(scopedRoot["ga4"]);
+    return Boolean(String(ga4["property_id"] ?? "").trim() || String(ga4["measurement_id"] ?? "").trim());
+  }
+
+  const gsc = asRecord(scopedRoot["gsc"]);
+  return Boolean(String(gsc["property"] ?? "").trim());
+}
+
+async function findReusableGoogleStatsConnection(params: {
+  userId: string;
+  source: Source;
+  product: Product;
+}): Promise<boolean> {
+  const { createSupabaseServer } = await import("@/lib/supabaseServer");
+  const supabase = await createSupabaseServer();
+  const requiredScope = REQUIRED_SCOPE_BY_PRODUCT[params.product];
+
+  const [integrationRes, inrcyCfgRes, proCfgRes] = await Promise.all([
+    supabase
+      .from("integrations")
+      .select("status, scopes")
+      .eq("user_id", params.userId)
+      .eq("provider", "google")
+      .eq("source", params.source)
+      .eq("product", params.product)
+      .maybeSingle(),
+    supabase.from("inrcy_site_configs").select("settings").eq("user_id", params.userId).maybeSingle(),
+    supabase.from("pro_tools_configs").select("settings").eq("user_id", params.userId).maybeSingle(),
+  ]);
+
+  const integration = asRecord(integrationRes.data);
+  const isConnected = String(integration["status"] ?? "") === "connected";
+  const scopes = parseScopes(integration["scopes"]);
+  if (!isConnected || !scopes.has(requiredScope)) return false;
+
+  const settings = params.source === "site_web"
+    ? asRecord(proCfgRes.data)["settings"]
+    : asRecord(inrcyCfgRes.data)["settings"];
+
+  return hasProductBinding(settings, params.source, params.product);
 }
 
 function extractDomainFromUrl(rawUrl: string): { normalizedUrl: string; domain: string } | null {
@@ -50,6 +114,7 @@ export async function GET(request: Request) {
   const product = searchParams.get("product") || "";
   const mode = searchParams.get("mode") || "";
   const returnTo = safeInternalPath(searchParams.get("returnTo") || `/dashboard?panel=${encodeURIComponent(source)}`, `/dashboard?panel=${encodeURIComponent(source)}`);
+  const returnRedirectUrl = new URL(returnTo, appOrigin);
 
   // Optional: if the UI passes a siteUrl (user just typed it), embed domain in OAuth state
   // so the callback can auto-resolve GA4/GSC for THAT site without requiring manual IDs.
@@ -60,6 +125,25 @@ export async function GET(request: Request) {
   }
   if (!isAllowedProduct(product)) {
     return NextResponse.json({ error: "Produit invalide." }, { status: 400 });
+  }
+
+  try {
+    const { createSupabaseServer } = await import("@/lib/supabaseServer");
+    const supabase = await createSupabaseServer();
+    const { data: authData, error: authErr } = await supabase.auth.getUser();
+    const userId = authErr ? null : authData?.user?.id ?? null;
+
+    if (userId) {
+      const canReuseExistingConnection = await findReusableGoogleStatsConnection({ userId, source, product });
+      if (canReuseExistingConnection) {
+        returnRedirectUrl.searchParams.set("linked", product);
+        returnRedirectUrl.searchParams.set("ok", "1");
+        returnRedirectUrl.searchParams.set("skipped", "1");
+        return NextResponse.redirect(returnRedirectUrl);
+      }
+    }
+  } catch {
+    // If the pre-check fails, fall back to the normal OAuth flow.
   }
 
   // Legacy support: only explicit mode=activate triggers the dual activation flow.
@@ -122,9 +206,7 @@ const rawUrl =
   const { stateB64, nonce, cookieName } = makeOAuthState("google_stats", returnTo, { source, product, mode, domain, siteUrl });
 
   const requestedScopes = [
-    product === "ga4"
-      ? "https://www.googleapis.com/auth/analytics.readonly"
-      : "https://www.googleapis.com/auth/webmasters.readonly",
+    REQUIRED_SCOPE_BY_PRODUCT[product],
     "https://www.googleapis.com/auth/userinfo.email",
   ];
 
