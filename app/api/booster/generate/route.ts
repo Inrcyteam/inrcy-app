@@ -10,6 +10,7 @@ import {
   type BoosterChannels,
   type BoosterTheme,
 } from "@/lib/boosterPrompt";
+import { sanitizeGmbGeneratedPost } from "@/lib/googleBusinessCompliance";
 
 type Payload = {
   idea?: string;
@@ -44,6 +45,21 @@ function cleanHashtags(input: unknown) {
 }
 
 function normalizePost(channel: BoosterChannels, raw: Partial<ChannelPost> | undefined): ChannelPost {
+  if (channel === "gmb") {
+    const safe = sanitizeGmbGeneratedPost({
+      title: String(raw?.title || ""),
+      content: String(raw?.content || ""),
+      cta: String(raw?.cta || ""),
+      hashtags: [],
+    });
+    return {
+      title: safe.title,
+      content: safe.content.slice(0, 2000),
+      cta: safe.cta,
+      hashtags: [],
+    };
+  }
+
   return {
     title: String(raw?.title || "").trim().slice(0, 90),
     content: String(raw?.content || "")

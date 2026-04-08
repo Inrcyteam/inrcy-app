@@ -51,7 +51,7 @@ Important :
 
 Règles par canal :
 - Site iNrCy / Site web : texte plus long, plus naturel, plus SEO local, environ 180 à 320 mots.
-- Google Business : texte local, utile, simple, environ 80 à 140 mots.
+- Google Business : texte local, utile, simple, environ 80 à 140 mots, strictement conforme aux règles Google Business Profile.
 - Facebook : texte engageant, clair, environ 60 à 120 mots.
 - Instagram : texte plus court, visuel, direct, environ 40 à 90 mots, hashtags utiles.
 - LinkedIn : texte plus professionnel, crédible, environ 60 à 120 mots.
@@ -62,8 +62,10 @@ Contraintes :
 - Pas de jargon marketing inutile.
 - Pas de promesses illégales ou invérifiables.
 - Pas d'adresse exacte ni de nom de client.
-- Le téléphone, s'il est fourni, peut apparaître naturellement quand c'est utile, au maximum une fois par canal.
-- L'email, s'il est fourni, peut aussi être utilisé quand c'est pertinent, surtout dans le CTA ou la version site.
+- Le téléphone, s'il est fourni, peut apparaître naturellement quand c'est utile, au maximum une fois par canal SAUF pour Google Business où il ne doit jamais apparaître.
+- L'email, s'il est fourni, peut aussi être utilisé quand c'est pertinent, surtout dans le CTA ou la version site, SAUF pour Google Business où il ne doit jamais apparaître.
+- Pour Google Business, ne jamais inclure de numéro de téléphone, d'email, d'URL, de hashtag, d'offre promotionnelle agressive, de remise, de réduction, de contenu trompeur ou de promesse invérifiable.
+- Pour Google Business, privilégier un ton informatif, local, factuel et utile. Le CTA doit rester très neutre, par exemple : "En savoir plus", "Découvrir" ou "Voir les informations".
 - La ville / zone doit être utilisée naturellement, pas sous forme de liste brute.
 
 Tu dois répondre en JSON strict, avec exactement cette structure :
@@ -82,6 +84,7 @@ Règles JSON :
 - Ne renvoyer que les canaux demandés.
 - Chaque version doit contenir les 4 clés title/content/cta/hashtags.
 - Pour chaque canal demandé, title, content et cta doivent être non vides.
+- Pour Google Business, le CTA doit rester neutre et non promotionnel.
 - hashtags = tableau de 0 à 8 mots-clés sans #.
 - Les hashtags ne sont réellement utiles que pour Instagram : pour les autres canaux, renvoie de préférence [].
 - Si un canal n'est pas demandé, ne pas l'ajouter.
@@ -144,7 +147,7 @@ Consignes supplémentaires :
 - Site iNrCy / Site web : version plus longue, plus SEO et plus locale. Quand c'est pertinent, intégrer naturellement le téléphone ou l'email de contact. Cette version est obligatoire si le canal site est demandé : ne jamais laisser title/content/cta vides.
 - Instagram : plus direct, plus léger, plus visuel.
 - LinkedIn : ton plus professionnel.
-- Google Business : ton local, utile et concret. Si utile, tu peux rappeler le téléphone ou l'email de contact.
+- Google Business : ton local, utile, concret et strictement informatif. Ne jamais rappeler le téléphone, l'email, un lien, un hashtag ou une promesse commerciale agressive.
 - Facebook : ton engageant et accessible. Le téléphone ou l'email peuvent être utilisés ponctuellement si cela aide à contacter l'entreprise.
 - Utiliser en priorité le métier exact et les prestations cochées quand elles existent.`;
 }

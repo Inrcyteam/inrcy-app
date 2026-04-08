@@ -13,6 +13,7 @@ import { optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
+import { buildGmbSummary } from "@/lib/googleBusinessCompliance";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
@@ -650,7 +651,7 @@ const body = await req.json().catch(() => null);
             accessToken: tok.accessToken,
             accountName,
             locationName,
-            summary: canonMessage.slice(0, 1498),
+            summary: buildGmbSummary(channelPost),
             imageUrls: (getChannelImageSet(ch).publishableUrls.length ? getChannelImageSet(ch).publishableUrls : externalImageUrls).slice(0, 5),
             languageCode: "fr-FR",
           });

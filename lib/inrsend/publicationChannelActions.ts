@@ -9,6 +9,7 @@ import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { randomUUID } from "crypto";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { buildGmbSummary } from "@/lib/googleBusinessCompliance";
 
 const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
@@ -531,7 +532,7 @@ async function replaceChannelDelivery(params: {
       accessToken: token.accessToken,
       accountName,
       locationName,
-      summary: canonMessage.slice(0, 1498),
+      summary: buildGmbSummary(nextPost),
       imageUrls: socialFeedImageUrls,
       languageCode: "fr-FR",
     });
