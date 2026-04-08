@@ -10,6 +10,9 @@ const SITE_CARD_MAX_BYTES = 8 * 1024 * 1024;
 const SITE_CARD_WIDTH = 1440;
 const SITE_CARD_HEIGHT = 900;
 
+const DEFAULT_BACKGROUND = { r: 255, g: 255, b: 255, alpha: 1 };
+const COVER_CROP_THRESHOLD = 0.08;
+
 export type OptimizeResult = {
   buffer: Buffer;
   mime: "image/jpeg";
@@ -21,47 +24,69 @@ export type OptimizeResult = {
   sourceFormat?: string;
 };
 
-async function createBlurContainJpeg(params: {
+function getCropLossFraction(sourceRatio: number, targetRatio: number) {
+  if (!Number.isFinite(sourceRatio) || sourceRatio <= 0 || !Number.isFinite(targetRatio) || targetRatio <= 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  if (sourceRatio > targetRatio) {
+    return 1 - targetRatio / sourceRatio;
+  }
+
+  return 1 - sourceRatio / targetRatio;
+}
+
+function shouldUseCover(sourceWidth: number, sourceHeight: number, targetWidth: number, targetHeight: number) {
+  const sourceRatio = sourceWidth / sourceHeight;
+  const targetRatio = targetWidth / targetHeight;
+  return getCropLossFraction(sourceRatio, targetRatio) <= COVER_CROP_THRESHOLD;
+}
+
+async function createSmartJpeg(params: {
   inputBuffer: Buffer;
   width: number;
   height: number;
   maxBytes: number;
   startQuality?: number;
   minQuality?: number;
-  blurSigma?: number;
-}) : Promise<OptimizeResult> {
-  const { inputBuffer, width, height, maxBytes, startQuality = 88, minQuality = 52, blurSigma = 28 } = params;
+  background?: { r: number; g: number; b: number; alpha: number };
+}): Promise<OptimizeResult> {
+  const {
+    inputBuffer,
+    width,
+    height,
+    maxBytes,
+    startQuality = 88,
+    minQuality = 52,
+    background = DEFAULT_BACKGROUND,
+  } = params;
 
   const src = sharp(inputBuffer, { failOn: "none" }).rotate();
   const meta = await src.metadata();
+  const sourceWidth = meta.width ?? width;
+  const sourceHeight = meta.height ?? height;
+  const useCover = shouldUseCover(sourceWidth, sourceHeight, width, height);
 
   let quality = startQuality;
 
   async function render(q: number) {
-    const backdrop = await sharp(inputBuffer, { failOn: "none" })
-      .rotate()
-      .resize({ width, height, fit: "cover", position: "centre" })
-      .blur(blurSigma)
-      .modulate({ brightness: 1.03, saturation: 1.05 })
-      .jpeg({ quality: Math.max(54, Math.min(q, 76)), mozjpeg: true, progressive: true, chromaSubsampling: "4:2:0" })
-      .toBuffer();
-
-    const foreground = await sharp(inputBuffer, { failOn: "none" })
+    return sharp(inputBuffer, { failOn: "none" })
       .rotate()
       .resize({
         width,
         height,
-        fit: "contain",
+        fit: useCover ? "cover" : "contain",
         position: "centre",
-        withoutEnlargement: true,
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
+        withoutEnlargement: false,
+        background: useCover ? undefined : background,
       })
-      .png()
-      .toBuffer();
-
-    return sharp(backdrop)
-      .composite([{ input: foreground, gravity: "centre" }])
-      .jpeg({ quality: q, mozjpeg: true, progressive: true, chromaSubsampling: "4:2:0" })
+      .flatten({ background })
+      .jpeg({
+        quality: q,
+        mozjpeg: true,
+        progressive: true,
+        chromaSubsampling: "4:2:0",
+      })
       .toBuffer();
   }
 
@@ -84,7 +109,7 @@ async function createBlurContainJpeg(params: {
 }
 
 export async function optimizeForInstagram(inputBuffer: Buffer): Promise<OptimizeResult> {
-  let result = await createBlurContainJpeg({
+  let result = await createSmartJpeg({
     inputBuffer,
     width: INSTAGRAM_WIDTH,
     height: INSTAGRAM_HEIGHT,
@@ -94,7 +119,7 @@ export async function optimizeForInstagram(inputBuffer: Buffer): Promise<Optimiz
   });
 
   if (result.size > INSTAGRAM_MAX_BYTES) {
-    result = await createBlurContainJpeg({
+    result = await createSmartJpeg({
       inputBuffer,
       width: 900,
       height: 1125,
@@ -108,7 +133,7 @@ export async function optimizeForInstagram(inputBuffer: Buffer): Promise<Optimiz
 }
 
 export async function optimizeForSocialFeed(inputBuffer: Buffer): Promise<OptimizeResult> {
-  let result = await createBlurContainJpeg({
+  let result = await createSmartJpeg({
     inputBuffer,
     width: SOCIAL_FEED_WIDTH,
     height: SOCIAL_FEED_HEIGHT,
@@ -118,7 +143,7 @@ export async function optimizeForSocialFeed(inputBuffer: Buffer): Promise<Optimi
   });
 
   if (result.size > SOCIAL_FEED_MAX_BYTES) {
-    result = await createBlurContainJpeg({
+    result = await createSmartJpeg({
       inputBuffer,
       width: 1080,
       height: 1080,
@@ -132,25 +157,23 @@ export async function optimizeForSocialFeed(inputBuffer: Buffer): Promise<Optimi
 }
 
 export async function optimizeForSiteCard(inputBuffer: Buffer): Promise<OptimizeResult> {
-  let result = await createBlurContainJpeg({
+  let result = await createSmartJpeg({
     inputBuffer,
     width: SITE_CARD_WIDTH,
     height: SITE_CARD_HEIGHT,
     maxBytes: SITE_CARD_MAX_BYTES,
     startQuality: 88,
     minQuality: 56,
-    blurSigma: 24,
   });
 
   if (result.size > SITE_CARD_MAX_BYTES) {
-    result = await createBlurContainJpeg({
+    result = await createSmartJpeg({
       inputBuffer,
       width: 1280,
       height: 800,
       maxBytes: SITE_CARD_MAX_BYTES,
       startQuality: 80,
       minQuality: 50,
-      blurSigma: 22,
     });
   }
 
