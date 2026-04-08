@@ -9,7 +9,6 @@ import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { randomUUID } from "crypto";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
-import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
@@ -75,9 +74,6 @@ function buildInstagramCaption(title: string, content: string, cta: string, hash
   return cleanTags.length ? `${base}\n\n${cleanTags.join(" ")}`.trim().slice(0, 2200) : base.slice(0, 2200);
 }
 
-function errMessage(e: unknown, fallback: string) {
-  return getSimpleFrenchErrorMessage(e, fallback);
-}
 
 function dataUrlToBuffer(dataUrl: string) {
   const match = /^data:(.+?);base64,(.+)$/.exec(dataUrl || "");

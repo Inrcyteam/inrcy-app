@@ -4,6 +4,12 @@ import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { revokeGoogleTokensBestEffort } from "@/lib/googleOAuthRevoke";
 
+type RevokeRow = {
+  id?: string | null;
+  access_token_enc?: string | null;
+  refresh_token_enc?: string | null;
+};
+
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -34,7 +40,7 @@ export async function POST(request: Request) {
     .eq("source", source)
     .eq("product", product);
 
-  await revokeGoogleTokensBestEffort((revokeRows || []).map((row: any) => ({
+  await revokeGoogleTokensBestEffort((revokeRows || []).map((row: RevokeRow) => ({
     integrationId: String(row?.id || ""),
     accessTokenEnc: row?.access_token_enc || null,
     refreshTokenEnc: row?.refresh_token_enc || null,

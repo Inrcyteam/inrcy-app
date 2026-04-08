@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
@@ -208,8 +207,7 @@ export async function POST(req: Request) {
 
   // If boutique mail failed, the order still exists (audit), but we tell the user.
   if (!boutiqueSent) {
-    const isDev = process.env.NODE_ENV !== "production";
-    return NextResponse.json(
+      return NextResponse.json(
       {
         ok: false,
         orderId,

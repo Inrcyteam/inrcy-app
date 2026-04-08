@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { asRecord, asString } from "@/lib/tsSafe";
+import type { SupabaseLike } from "@/lib/inrsendSignature";
 
 const BUCKET = "booster";
 const MAX_SIZE = 5 * 1024 * 1024;
@@ -69,7 +70,7 @@ export async function DELETE(req: Request) {
 
   await supabaseAdmin.storage.from(BUCKET).remove([imagePath]);
 
-  const { data: cfgRow } = await (supabase as any).from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
+  const { data: cfgRow } = await (supabase as SupabaseLike).from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
   const currentSettings = asRecord(asRecord(cfgRow).settings);
   const nextSettings = {
     ...currentSettings,
@@ -80,6 +81,6 @@ export async function DELETE(req: Request) {
     },
   };
 
-  await (supabase as any).from("pro_tools_configs").upsert({ user_id: user.id, settings: nextSettings }, { onConflict: "user_id" });
+  await (supabase as SupabaseLike).from("pro_tools_configs").upsert({ user_id: user.id, settings: nextSettings }, { onConflict: "user_id" });
   return NextResponse.json({ ok: true });
 }

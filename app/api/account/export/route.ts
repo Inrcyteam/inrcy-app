@@ -169,7 +169,7 @@ async function fetchUserTable(
     const { data, error } = await q;
     if (error) return { table, rows: [], error: "Impossible de récupérer cette partie de vos données pour le moment." };
     return { table, rows: (data ?? []).map((row) => sanitizeRow(table, row)) };
-  } catch (e: unknown) {
+  } catch (_e: unknown) {
     return { table, rows: [], error: "Impossible de récupérer cette partie de vos données pour le moment." };
   }
 }

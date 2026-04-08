@@ -9,7 +9,7 @@ import { appendRawMessage, type ImapConfig } from "@/lib/imapClient";
 import { withApi } from "@/lib/observability/withApi";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
-import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml } from "@/lib/inrsendSignature";
+import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
 
 
 // IMAP + SMTP require Node.js runtime (Edge runtime can't open raw TCP sockets)
@@ -92,7 +92,7 @@ const handler = async (req: Request) => {
     }
 
 
-    const signatureSettings = await buildInrSendSignature({ supabase: supabase as any, userId, account: accRec });
+    const signatureSettings = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId, account: accRec });
     const finalText = applyAutoSignatureToText(text || "", signatureSettings.signatureText);
     const finalHtml = applyAutoSignatureToHtml(html || textToSimpleHtml(text || ""), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
 

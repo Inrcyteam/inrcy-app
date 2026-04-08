@@ -50,12 +50,6 @@ type SourcesStatus = {
   linkedin: { connected: boolean; metrics: unknown | null };
 };
 
-type SocialSnapshot = {
-  gmb: { connected: boolean; metrics: unknown | null };
-  facebook: { connected: boolean };
-  instagram: { connected: boolean };
-  linkedin: { connected: boolean };
-};
 
 type LiveSourcesSnapshot = {
   site_inrcy: { connected: SiteConn };

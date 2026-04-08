@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { withApi } from "@/lib/observability/withApi";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";

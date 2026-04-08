@@ -4,7 +4,7 @@ import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { safeErrorMessage } from "@/lib/tsSafe";
 import { log } from "@/lib/observability/logger";
 
-function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
+export function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
   return Array.from(new Set(values.map((v) => String(v || "").trim()).filter(Boolean)));
 }
 

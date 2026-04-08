@@ -1,29 +1,22 @@
 import "server-only";
 
-import { createHash, createPublicKey, createVerify, type JsonWebKey } from "crypto";
+import { createPublicKey, createVerify, type JsonWebKey } from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { asRecord, asString, safeErrorMessage } from "@/lib/tsSafe";
 import { log } from "@/lib/observability/logger";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
+import {
+  extractSecurityEventToken,
+  parseGoogleRiscEvents,
+  parseJwt,
+  tokenMatchesIdentifier,
+  type GoogleRiscEvent,
+  type JwtHeaderLike,
+  type JwtPayloadLike,
+} from "@/lib/security/googleRiscTestables";
 
 const GOOGLE_RISC_CONFIG_URL = "https://accounts.google.com/.well-known/risc-configuration";
 const GOOGLE_ISSUERS = new Set(["https://accounts.google.com", "accounts.google.com"]);
-
-type JwtPayloadLike = {
-  iss?: unknown;
-  aud?: unknown;
-  iat?: unknown;
-  jti?: unknown;
-  events?: unknown;
-  [key: string]: unknown;
-};
-
-type JwtHeaderLike = {
-  alg?: unknown;
-  kid?: unknown;
-  typ?: unknown;
-  [key: string]: unknown;
-};
 
 type GoogleJwk = JsonWebKey & {
   kid?: string;
@@ -31,6 +24,17 @@ type GoogleJwk = JsonWebKey & {
   use?: string;
   kty?: string;
 };
+
+export { extractSecurityEventToken } from "@/lib/security/googleRiscTestables";
+
+async function getGoogleJwks(jwksUrl: string): Promise<GoogleJwk[]> {
+  const res = await fetch(jwksUrl, { cache: "no-store" });
+  if (!res.ok) throw new Error(`google_risc_jwks_http_${res.status}`);
+  const data = (await res.json()) as unknown;
+  const keys = asRecord(data)["keys"];
+  if (!Array.isArray(keys)) throw new Error("google_risc_jwks_invalid");
+  return keys.map((k) => asRecord(k) as GoogleJwk);
+}
 
 export type GoogleRiscVerificationResult = {
   payload: JwtPayloadLike;
@@ -42,16 +46,7 @@ export type GoogleRiscVerificationResult = {
   aud: string | string[] | null;
 };
 
-export type GoogleRiscEvent = {
-  type: string;
-  subjectType: string | null;
-  providerAccountId: string | null;
-  issuer: string | null;
-  tokenType: string | null;
-  tokenIdentifierAlg: string | null;
-  tokenIdentifier: string | null;
-  raw: Record<string, unknown>;
-};
+export type { GoogleRiscEvent } from "@/lib/security/googleRiscTestables";
 
 export type GoogleRiscAction = {
   integrationIds: string[];
@@ -107,41 +102,6 @@ export async function getGoogleRiscConfig(): Promise<{ issuer: string; jwks_uri:
   return { issuer, jwks_uri };
 }
 
-function base64UrlToBuffer(input: string): Buffer {
-  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
-  return Buffer.from(padded, "base64");
-}
-
-function parseJwtPart<T extends Record<string, unknown>>(part: string, label: string): T {
-  try {
-    return JSON.parse(base64UrlToBuffer(part).toString("utf8")) as T;
-  } catch {
-    throw new Error(`google_risc_invalid_${label}`);
-  }
-}
-
-function parseJwt(token: string): { header: JwtHeaderLike; payload: JwtPayloadLike; signingInput: string; signature: Buffer } {
-  const parts = token.split(".");
-  if (parts.length !== 3) throw new Error("google_risc_invalid_jwt");
-  const [encodedHeader, encodedPayload, encodedSignature] = parts;
-  return {
-    header: parseJwtPart<JwtHeaderLike>(encodedHeader, "header"),
-    payload: parseJwtPart<JwtPayloadLike>(encodedPayload, "payload"),
-    signingInput: `${encodedHeader}.${encodedPayload}`,
-    signature: base64UrlToBuffer(encodedSignature),
-  };
-}
-
-export async function getGoogleJwks(jwksUri: string): Promise<GoogleJwk[]> {
-  const res = await fetch(jwksUri, { cache: "no-store" });
-  if (!res.ok) throw new Error(`google_risc_jwks_http_${res.status}`);
-  const data = (await res.json()) as unknown;
-  const rec = asRecord(data);
-  const keys = Array.isArray(rec["keys"]) ? (rec["keys"] as unknown[]) : [];
-  return keys.map((key) => asRecord(key) as GoogleJwk);
-}
-
 function getAudienceList(aud: unknown): string[] {
   if (typeof aud === "string") return [aud];
   if (Array.isArray(aud)) return aud.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
@@ -158,39 +118,6 @@ function verifyJwtSignature(signingInput: string, signature: Buffer, header: Jwt
   verifier.end();
   const ok = verifier.verify(keyObject, signature);
   if (!ok) throw new Error("google_risc_invalid_signature");
-}
-
-function parseEvents(payload: JwtPayloadLike): GoogleRiscEvent[] {
-  const eventsRec = asRecord(payload.events);
-  return Object.entries(eventsRec).map(([type, raw]) => {
-    const rawRec = asRecord(raw);
-    const subject = asRecord(rawRec["subject"]);
-    return {
-      type,
-      subjectType: asString(subject["subject_type"]),
-      providerAccountId: asString(subject["sub"]),
-      issuer: asString(subject["iss"]),
-      tokenType: asString(subject["token_type"]),
-      tokenIdentifierAlg: asString(subject["token_identifier_alg"]),
-      tokenIdentifier: asString(subject["token"]),
-      raw: rawRec,
-    } satisfies GoogleRiscEvent;
-  });
-}
-
-export function extractSecurityEventToken(rawBody: string): string | null {
-  const body = String(rawBody || "").trim();
-  if (!body) return null;
-
-  if (body.startsWith("eyJ") && body.split(".").length >= 3) return body;
-
-  try {
-    const parsed = JSON.parse(body) as unknown;
-    const rec = asRecord(parsed);
-    return asString(rec["jwt"]) || asString(rec["token"]) || asString(rec["security_event_token"]) || null;
-  } catch {
-    return null;
-  }
 }
 
 export async function verifyGoogleSecurityEventToken(token: string): Promise<GoogleRiscVerificationResult> {
@@ -214,7 +141,7 @@ export async function verifyGoogleSecurityEventToken(token: string): Promise<Goo
   if (!kid) throw new Error("google_risc_missing_kid");
 
   const jwks = await getGoogleJwks(cfg.jwks_uri);
-  const jwk = jwks.find((key) => key.kid === kid);
+  const jwk = jwks.find((key: GoogleJwk) => key.kid === kid);
   if (!jwk) throw new Error("google_risc_signing_key_not_found");
 
   verifyJwtSignature(signingInput, signature, header, jwk);
@@ -222,7 +149,7 @@ export async function verifyGoogleSecurityEventToken(token: string): Promise<Goo
   return {
     payload,
     header,
-    events: parseEvents(payload),
+    events: parseGoogleRiscEvents(payload),
     jti: asString(payload.jti),
     iat: typeof payload.iat === "number" ? payload.iat : null,
     iss,
@@ -253,35 +180,6 @@ async function isDuplicateJti(jti: string | null): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function sha256Base64Url(value: string): string {
-  return createHash("sha256").update(value, "utf8").digest("base64url");
-}
-
-function sha256Base64(value: string): string {
-  return createHash("sha256").update(value, "utf8").digest("base64");
-}
-
-function sha256Hex(value: string): string {
-  return createHash("sha256").update(value, "utf8").digest("hex");
-}
-
-function prefix16(value: string): string {
-  return value.slice(0, 16);
-}
-
-function tokenMatchesIdentifier(token: string, algRaw: string | null, identifierRaw: string | null): boolean {
-  const identifier = String(identifierRaw || "").trim();
-  if (!identifier) return false;
-  const alg = String(algRaw || "").trim().toLowerCase();
-
-  if (alg === "prefix") return prefix16(token) === identifier;
-  if (["hash_sha256", "sha256", "hash_base64_sha256"].includes(alg)) {
-    return sha256Base64Url(token) === identifier || sha256Base64(token) === identifier || sha256Hex(token) === identifier;
-  }
-
-  return false;
 }
 
 async function findIntegrationsByTokenIdentifier(events: GoogleRiscEvent[]): Promise<string[]> {
@@ -356,7 +254,7 @@ export async function persistGoogleRiscEvent(opts: {
       .in("provider", ["google", "gmail"])
       .in("provider_account_id", providerAccountIds);
 
-    integrationIds = Array.from(new Set((data || []).map((row: any) => String(row.id || "")).filter(Boolean)));
+    integrationIds = Array.from(new Set((data || []).map((row) => String(asRecord(row)["id"] || "")).filter(Boolean)));
     matchedBy = integrationIds.length > 0 ? "provider_account_id" : "none";
   }
 

@@ -181,7 +181,7 @@ function computeOpportunityPerDayWeb(ov: Overview) {
   const sessions = safeNum(totals.sessions);
   const clicks = safeNum(totals.clicks);
   const impressions = safeNum(totals.impressions);
-  const ctr = clamp(safeNum((totals as any).ctr), 0, 1);
+  const ctr = clamp(safeNum((totals as Record<string, unknown>).ctr), 0, 1);
   const engagementRate = clamp(safeNum(totals.engagementRate), 0, 1);
   const avgSessionDurationSec = safeNum(totals.avgSessionDuration);
   const directShare = directShareFromChannels(ov, sessions);

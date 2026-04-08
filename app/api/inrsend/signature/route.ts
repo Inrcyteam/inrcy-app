@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { asRecord, asString } from "@/lib/tsSafe";
-import { DEFAULT_INRSEND_SIGNATURE_TEMPLATE, buildInrSendSignature, getInrSendSignatureSettings } from "@/lib/inrsendSignature";
+import { DEFAULT_INRSEND_SIGNATURE_TEMPLATE, buildInrSendSignature, getInrSendSignatureSettings, type SupabaseLike } from "@/lib/inrsendSignature";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 export async function GET() {
   const { supabase, user, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
 
-  const settings = await getInrSendSignatureSettings(supabase as any, user.id);
-  const rendered = await buildInrSendSignature({ supabase: supabase as any, userId: user.id });
+  const settings = await getInrSendSignatureSettings(supabase as SupabaseLike, user.id);
+  const rendered = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId: user.id });
 
   return NextResponse.json({
     enabled: settings.enabled,
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
   const imageWidthRaw = Number(asString(asRecord(body).imageWidth) || 400);
   const imageWidth = Number.isFinite(imageWidthRaw) ? Math.max(180, Math.min(600, imageWidthRaw)) : 400;
 
-  const { data: cfgRow } = await (supabase as any).from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
+  const { data: cfgRow } = await (supabase as SupabaseLike).from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
   const currentSettings = asRecord(asRecord(cfgRow).settings);
   const nextSettings = {
     ...currentSettings,
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     },
   };
 
-  const { error } = await (supabase as any)
+  const { error } = await (supabase as SupabaseLike)
     .from("pro_tools_configs")
     .upsert({ user_id: user.id, settings: nextSettings }, { onConflict: "user_id" });
 
@@ -71,6 +71,6 @@ export async function POST(req: Request) {
     return jsonUserFacingError(error, { status: 500, fallback: "Impossible d’enregistrer la signature." });
   }
 
-  const rendered = await buildInrSendSignature({ supabase: supabase as any, userId: user.id });
+  const rendered = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId: user.id });
   return NextResponse.json({ ok: true, enabled, template, imagePath, imageUrl: rendered.imageUrl, imageWidth, preview: rendered.signatureText });
 }

@@ -4,7 +4,7 @@ import { enforceRateLimit } from "@/lib/rateLimit";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 import { withApi } from "@/lib/observability/withApi";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
-import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml } from "@/lib/inrsendSignature";
+import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -262,7 +262,7 @@ const handler = async (req: Request) => {
   const account = accounts?.[0];
   if (!account) return NextResponse.json({ error: "Aucun compte Gmail connecté." }, { status: 400 });
 
-  const signatureSettings = await buildInrSendSignature({ supabase: supabase as any, userId, account });
+  const signatureSettings = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId, account });
   const finalText = applyAutoSignatureToText(text || "", signatureSettings.signatureText);
   const finalHtml = applyAutoSignatureToHtml(html || textToSimpleHtml(text || ""), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
 

@@ -99,7 +99,7 @@ function buildProvenanceSummary(entries?: DecisionInput["provenance"]): Provenan
   const sorted = [...safeEntries].sort((a, b) => b.value - a.value);
   const dominant = sorted[0] || { label: "", value: 0 };
 
-  const share = (matcher: (label: string) => boolean) => {
+  const share = (matcher: (_label: string) => boolean) => {
     if (total <= 0) return 0;
     return clamp(
       safeEntries.filter((entry) => matcher(entry.label.toLowerCase())).reduce((sum, entry) => sum + entry.value, 0) / total,
@@ -178,12 +178,10 @@ function makeReason(action: ActionType, channelType: ChannelType, p: ProvenanceS
 function detectMode(input: DecisionInput, p: ProvenanceSummary): ModeType {
   const opp = n(input.opportunities);
   const quality = n(input.quality);
-  const traffic = n(input.metrics?.traffic);
   const engagement = n(input.metrics?.engagement);
   const audience = n(input.metrics?.audience);
   const conversions = n(input.metrics?.conversions);
   const visibility = n(input.metrics?.visibility);
-  const intent = n(input.metrics?.intent);
 
   if (input.channelType === "website") {
     return opp >= 5 ? "fideliser" : "booster";
@@ -218,8 +216,8 @@ function scoreBooster(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
   const audience = n(input.metrics?.audience);
   const engagement = n(input.metrics?.engagement);
   const traffic = n(input.metrics?.traffic);
-  const conversions = n(input.metrics?.conversions);
   const intent = n(input.metrics?.intent);
+  const conversions = n(input.metrics?.conversions);
   const visibility = n(input.metrics?.visibility);
 
   addMany(scores, ["publier", "recolter", "offrir"], 1);
@@ -276,10 +274,10 @@ function scoreFideliser(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
   const opp = n(input.opportunities);
   const audience = n(input.metrics?.audience);
   const engagement = n(input.metrics?.engagement);
-  const traffic = n(input.metrics?.traffic);
   const conversions = n(input.metrics?.conversions);
-  const intent = n(input.metrics?.intent);
   const visibility = n(input.metrics?.visibility);
+  const traffic = n(input.metrics?.traffic);
+  const intent = n(input.metrics?.intent);
 
   addMany(scores, ["informer", "suivre", "enqueter"], 1);
 
@@ -341,10 +339,10 @@ function buildBusinessLecture(input: DecisionInput, action: ActionType, mode: Mo
   const quality = n(input.quality);
   const audience = n(input.metrics?.audience);
   const engagement = n(input.metrics?.engagement);
-  const traffic = n(input.metrics?.traffic);
   const conversions = n(input.metrics?.conversions);
-  const intent = n(input.metrics?.intent);
   const visibility = n(input.metrics?.visibility);
+  const traffic = n(input.metrics?.traffic);
+  const intent = n(input.metrics?.intent);
 
   const lines: string[] = [];
   const label = channelLabel(input.channelType);

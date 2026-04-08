@@ -2,14 +2,14 @@ import { asRecord, asString } from "@/lib/tsSafe";
 
 const SIGNATURE_IMAGE_BUCKET = "booster";
 
-type SupabaseLike = {
-  from: (table: string) => {
-    select: (columns: string) => {
-      eq: (column: string, value: string) => {
+export type SupabaseLike = {
+  from: (_table: string) => {
+    select: (_columns: string) => {
+      eq: (_column: string, _value: string) => {
         maybeSingle: () => Promise<{ data: unknown; error: { message: string } | null }>;
       };
     };
-    upsert?: (payload: Record<string, unknown>, options?: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+    upsert: (_payload: Record<string, unknown>, _options?: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
   };
 };
 

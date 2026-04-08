@@ -5,7 +5,7 @@ import { fetchWithRetry } from "@/lib/observability/fetch";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
 import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
-import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml } from "@/lib/inrsendSignature";
+import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
 
 // Microsoft Graph mail send requires Node.js runtime in most deployments.
 export const runtime = "nodejs";
@@ -51,14 +51,6 @@ async function refreshAccessToken(refreshToken: string, scope?: string | null) {
   return { ok: res.ok, status: res.status, data };
 }
 
-function textToHtml(text: string) {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br/>");
-  return `<div style="font-family:system-ui,Segoe UI,Arial">${escaped}</div>`;
-}
 
 const handler = async (req: Request) => {
   try {
@@ -123,7 +115,7 @@ const handler = async (req: Request) => {
       return NextResponse.json({ error: "La boîte Outlook sélectionnée est introuvable." }, { status: 404 });
     }
 
-    const signatureSettings = await buildInrSendSignature({ supabase: supabase as any, userId, account });
+    const signatureSettings = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId, account });
     const finalText = applyAutoSignatureToText(text || "", signatureSettings.signatureText);
     const finalHtml = applyAutoSignatureToHtml(textToSimpleHtml(text || ""), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
 

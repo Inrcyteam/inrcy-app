@@ -8,7 +8,7 @@ import {
   persistGoogleRiscEvent,
   decodeGoogleSecurityEventTokenUnsafe,
 } from "@/lib/security/googleRisc";
-import { safeErrorMessage } from "@/lib/tsSafe";
+import { asRecord, safeErrorMessage } from "@/lib/tsSafe";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,13 +52,16 @@ export const POST = withApi(async (req: Request) => {
       unsafe = null;
     }
 
+    const unsafePayload = asRecord(unsafe?.payload);
+    const unsafeHeader = asRecord(unsafe?.header);
+
     log.warn("google_risc_invalid_token", {
       request_id: requestId,
       error_message: message,
-      event_types: Object.keys(((unsafe?.payload as any)?.events || {}) as Record<string, unknown>),
-      iss: (unsafe?.payload as any)?.iss,
-      aud: (unsafe?.payload as any)?.aud,
-      kid: (unsafe?.header as any)?.kid,
+      event_types: Object.keys(asRecord(unsafePayload.events)),
+      iss: unsafePayload.iss,
+      aud: unsafePayload.aud,
+      kid: unsafeHeader.kid,
     });
 
     return NextResponse.json({ ok: false, error: "invalid_security_event_token" }, { status: 400 });

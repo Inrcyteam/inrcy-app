@@ -3,6 +3,7 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { revokeGoogleTokensBestEffort } from "@/lib/googleOAuthRevoke";
+type RevokeRow = { id?: string | null; access_token_enc?: string | null; refresh_token_enc?: string | null };
 /**
  * Déconnecte un compte Gmail (supprime la ligne integrations).
  * Le front passe { accountId }.
@@ -26,9 +27,9 @@ const body = await req.json().catch(() => ({}));
     .maybeSingle();
 
   await revokeGoogleTokensBestEffort({
-    integrationId: String((rowToRevoke as any)?.id || ""),
-    accessTokenEnc: (rowToRevoke as any)?.access_token_enc || null,
-    refreshTokenEnc: (rowToRevoke as any)?.refresh_token_enc || null,
+    integrationId: String((rowToRevoke as RevokeRow | null)?.id || ""),
+    accessTokenEnc: (rowToRevoke as RevokeRow | null)?.access_token_enc || null,
+    refreshTokenEnc: (rowToRevoke as RevokeRow | null)?.refresh_token_enc || null,
     context: "gmail_disconnect",
   });
 
