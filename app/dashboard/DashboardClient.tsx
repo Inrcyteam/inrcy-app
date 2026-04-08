@@ -198,11 +198,19 @@ export default function DashboardClient() {
   }, []);
 
   useEffect(() => {
-    void refreshNotifications();
-    const timer = window.setInterval(() => {
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
       void refreshNotifications();
-    }, 120000);
-    return () => window.clearInterval(timer);
+    };
+
+    const initialTimer = window.setTimeout(run, 900);
+    const timer = window.setInterval(run, 120000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
   }, [refreshNotifications]);
 
   const markNotificationRead = useCallback(async (id: string) => {
@@ -1188,24 +1196,26 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
 
   useEffect(() => {
     let cancelled = false;
+    const timer = window.setTimeout(() => {
+      (async () => {
+        try {
+          const res = await fetch("/api/security/google/risc/status", { credentials: "include" });
+          const json = await res.json().catch(() => null);
+          if (!res.ok || cancelled) return;
+          const reauth = (json as any)?.reauth || {};
 
-    (async () => {
-      try {
-        const res = await fetch("/api/security/google/risc/status", { credentials: "include" });
-        const json = await res.json().catch(() => null);
-        if (!res.ok || cancelled) return;
-        const reauth = (json as any)?.reauth || {};
-
-        if (reauth?.site_inrcy?.ga4) setSiteInrcyGa4Notice("Reconnexion Google Analytics requise (sécurité).");
-        if (reauth?.site_inrcy?.gsc) setSiteInrcyGscNotice("Reconnexion Search Console requise (sécurité).");
-        if (reauth?.site_web?.ga4) setSiteWebGa4Notice("Reconnexion Google Analytics requise (sécurité).");
-        if (reauth?.site_web?.gsc) setSiteWebGscNotice("Reconnexion Search Console requise (sécurité).");
-        if (reauth?.gmb) setPanelError("gmb", "Reconnexion Google Business requise (sécurité).", "Reconnexion Google Business requise (sécurité).", 5000);
-      } catch {}
-    })();
+          if (reauth?.site_inrcy?.ga4) setSiteInrcyGa4Notice("Reconnexion Google Analytics requise (sécurité).");
+          if (reauth?.site_inrcy?.gsc) setSiteInrcyGscNotice("Reconnexion Search Console requise (sécurité).");
+          if (reauth?.site_web?.ga4) setSiteWebGa4Notice("Reconnexion Google Analytics requise (sécurité).");
+          if (reauth?.site_web?.gsc) setSiteWebGscNotice("Reconnexion Search Console requise (sécurité).");
+          if (reauth?.gmb) setPanelError("gmb", "Reconnexion Google Business requise (sécurité).", "Reconnexion Google Business requise (sécurité).", 5000);
+        } catch {}
+      })();
+    }, 1200);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [setPanelError]);
 

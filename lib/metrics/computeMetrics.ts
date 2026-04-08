@@ -406,7 +406,9 @@ export function computeHistoryFromOverviews(overviews: Partial<Record<CubeKey, O
 }
 
 
-const OVERVIEW_TTL_MS = 20_000;
+// Small server-side TTL to collapse repeated internal overview reads.
+// Connect/disconnect actions still force fresh=1 and clear this cache.
+const OVERVIEW_TTL_MS = 60_000;
 const overviewCache = new Map<string, { expiresAt: number; value?: Overview | null; promise?: Promise<Overview | null> }>();
 
 export function invalidateOverviewCache(): void {

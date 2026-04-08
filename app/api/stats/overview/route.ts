@@ -133,7 +133,7 @@ export async function GET(request: Request) {
     // We fetch the minimal integration snapshot once and reuse it for connection flags + metrics.
     const { data: integrationsAll = [] } = await supabase
       .from("integrations")
-      .select("provider,source,product,status,resource_id,access_token_enc,expires_at,meta,updated_at,created_at")
+      .select("provider,source,product,status,resource_id,resource_label,resource_url,display_name,email_address,access_token_enc,refresh_token_enc,expires_at,meta,updated_at,created_at")
       .eq("user_id", userId);
 
     // Legacy table (older installs) used by some utilities (keep best-effort).
@@ -213,7 +213,12 @@ const inrcyTrackingEnabled = Boolean(asRecord(inrcySettings)["inrcy_tracking_ena
 // Use the same direct DB resolution path as /api/integrations/channel-states.
 // The preloaded snapshot used here could diverge from the live dashboard state and
 // make iNrStats show only one site as connected when both bubbles were green.
-const channelStatesPromise = getChannelConnectionStates(supabase, userId);
+const channelStatesPromise = getChannelConnectionStates(supabase, userId, {
+  profile: profileRow ?? null,
+  inrcySiteConfig: inrcyCfgRes.data ?? null,
+  proToolsConfig: proCfgRes.data ?? null,
+  integrations: Array.isArray(integrationsAll) ? integrationsAll : [],
+});
 
 async function fetchLiveSourcesStatus() {
   const states = await channelStatesPromise;
