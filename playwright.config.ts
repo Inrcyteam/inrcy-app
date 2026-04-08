@@ -34,7 +34,7 @@ export default defineConfig({
 
   webServer: shouldStartWebServer
     ? {
-        command: 'npm run dev -- -p 3000',
+        command: isCI ? 'npm run build && npm run start -- -p 3000' : 'npm run dev -- -p 3000',
         url: baseURL,
         reuseExistingServer: !isCI,
         timeout: 120_000,
