@@ -39,6 +39,18 @@ import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants
 import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
 import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, Module, ModuleAction, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
 
+
+
+type StatsWarmPeriod = 7 | 14 | 30 | 60;
+
+function statsCubeSessionKey(period: StatsWarmPeriod) {
+  return `inrcy_stats_cube_snapshot_v1:${period}`;
+}
+
+function statsSummarySessionKey(period: StatsWarmPeriod) {
+  return `inrcy_stats_summary_snapshot_v1:${period}`;
+}
+
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
   const [helpCanauxOpen, setHelpCanauxOpen] = useState(false);
@@ -1088,7 +1100,59 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
 
   const notifyStatsRefresh = useCallback(() => {
     if (typeof window === "undefined") return;
-    window.dispatchEvent(new CustomEvent("inrcy:channels-updated", { detail: { at: Date.now() } }));
+    const at = Date.now();
+    try {
+      window.sessionStorage.setItem("inrcy_stats_last_channel_sync_v1", String(at));
+    } catch {
+      // ignore
+    }
+    window.dispatchEvent(new CustomEvent("inrcy:channels-updated", { detail: { at } }));
+  }, []);
+
+  const warmInrStatsUi = useCallback(async () => {
+    if (typeof window === "undefined") return;
+
+    const periods: StatsWarmPeriod[] = [7, 30];
+
+    await Promise.allSettled(
+      periods.map(async (days) => {
+        const params = new URLSearchParams({ days: String(days), fresh: "1" });
+        const res = await fetch(`/api/stats/dashboard-bulk?${params.toString()}`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (!res.ok) {
+          throw new Error(`iNrStats warmup failed: ${res.status}`);
+        }
+
+        const json = await res.json().catch(() => null);
+        const overviews = json?.overviews;
+        const opportunities = json?.opportunities;
+
+        if (!overviews || typeof overviews !== "object") return;
+
+        try {
+          window.sessionStorage.setItem(
+            statsCubeSessionKey(days),
+            JSON.stringify(overviews)
+          );
+        } catch {
+          // ignore
+        }
+
+        try {
+          window.sessionStorage.setItem(
+            statsSummarySessionKey(days),
+            JSON.stringify({
+              total: Number(opportunities?.total ?? 0),
+              byCube: opportunities?.byCube ?? {},
+            })
+          );
+        } catch {
+          // ignore
+        }
+      })
+    );
   }, []);
 
   const refreshTimersRef = useRef<number[]>([]);
@@ -1105,13 +1169,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
       await Promise.allSettled([
         loadSiteInrcy(),
         refreshKpis({ fresh: true }),
+        warmInrStatsUi(),
       ]);
       notifyStatsRefresh();
     };
 
     clearScheduledGeneratorRefreshes();
     await runSync();
-  }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshKpis]);
+  }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshKpis, warmInrStatsUi]);
 
   // ✅ Opportunités activables (iNrStats) — lues directement depuis /api/metrics/summary.
   const [oppTotal, setOppTotal] = useState<number | null>(null);
