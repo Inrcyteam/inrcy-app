@@ -2619,6 +2619,7 @@ const checkActivity = useCallback(async () => {
   const leadsToday = kpis?.leads?.today ?? 0;
   const leadsWeek = kpis?.leads?.week ?? 0;
   const leadsMonth = kpis?.leads?.month ?? 0;
+  const generatorIsActive = inertiaSnapshot.connectedCount > 0;
 
   const estimatedValue = kpis?.estimatedValue ?? 0;
 
@@ -3494,9 +3495,9 @@ const checkActivity = useCallback(async () => {
                 )}
               </button>
 
-              <div className={`${styles.generatorStatus} ${leadsMonth > 0 ? styles.statusLive : styles.statusSetup}`}>
-                <span className={leadsMonth > 0 ? styles.liveDot : styles.setupDot} aria-hidden />
-                {leadsMonth > 0 ? "Actif" : "En attente"}
+              <div className={`${styles.generatorStatus} ${generatorIsActive ? styles.statusLive : styles.statusSetup}`}>
+                <span className={generatorIsActive ? styles.liveDot : styles.setupDot} aria-hidden />
+                {generatorIsActive ? "Actif" : "En attente"}
               </div>
             </div>
           </div>

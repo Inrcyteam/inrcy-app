@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import styles from "./stats.module.css";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
@@ -1119,10 +1119,10 @@ function PeriodSelect({ value, onChange }: { value: Period; onChange: (p: Period
 }
 
 export default function StatsClient() {
+  const router = useRouter();
   const [helpOpen, setHelpOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
-  const router = useRouter();
 
   const inrcyRef = useRef<HTMLDivElement | null>(null);
   const webRef = useRef<HTMLDivElement | null>(null);
@@ -1173,7 +1173,6 @@ export default function StatsClient() {
   const hydratedPeriodsRef = useRef(new Set<number>());
   const lastAutoRefreshAtRef = useRef(0);
   const refreshTimeoutRef = useRef<number | null>(null);
-  const hasAutoRefreshedRef = useRef(false);
 
   const clearCachedSnapshots = useCallback(() => {
     periodCacheRef.current.clear();
@@ -1187,13 +1186,12 @@ export default function StatsClient() {
     }
   }, []);
 
-  const triggerRefresh = useCallback((reason: "manual" | "focus" | "channels") => {
+  const triggerRefresh = useCallback((reason: "manual" | "channels") => {
     clearCachedSnapshots();
     setIsRefreshing(true);
     setLastRefreshAt(Date.now());
     setRefreshNonce((prev) => prev + 1);
-    if (reason === "manual") router.refresh();
-  }, [clearCachedSnapshots, router]);
+  }, [clearCachedSnapshots]);
 
 
   const fetchBulkStats = async (period: Period, forceFresh = false) => {
@@ -1375,38 +1373,16 @@ useEffect(() => {
 
   useEffect(() => {
     const handleChannelsUpdated = () => {
-      triggerRefresh("channels");
-    };
-
-    const handleFocusRefresh = () => {
       const now = Date.now();
       if (now - lastAutoRefreshAtRef.current < 1500) return;
       lastAutoRefreshAtRef.current = now;
-      triggerRefresh("focus");
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        handleFocusRefresh();
-      }
+      triggerRefresh("channels");
     };
 
     window.addEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
-    window.addEventListener("focus", handleFocusRefresh);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
-      window.removeEventListener("focus", handleFocusRefresh);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [triggerRefresh]);
-
-  useEffect(() => {
-    if (hasAutoRefreshedRef.current) return;
-
-    hasAutoRefreshedRef.current = true;
-    lastAutoRefreshAtRef.current = Date.now();
-    triggerRefresh("manual");
   }, [triggerRefresh]);
 
 
