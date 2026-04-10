@@ -11,7 +11,6 @@ type IntegrationLite = {
   status?: string | null;
   resource_id?: string | null;
   resource_label?: string | null;
-  resource_url?: string | null;
   display_name?: string | null;
   email_address?: string | null;
   expires_at?: string | null;
@@ -143,7 +142,7 @@ export async function getChannelConnectionStates(
         supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
         supabaseAdmin
           .from("integrations")
-          .select("provider,source,product,status,resource_id,resource_label,resource_url,display_name,email_address,expires_at,meta,updated_at,created_at")
+          .select("provider,source,product,status,resource_id,resource_label,display_name,email_address,expires_at,meta,updated_at,created_at")
           .eq("user_id", userId),
       ]);
 
@@ -176,7 +175,7 @@ export async function getChannelConnectionStates(
   const fbAccountConnected = Boolean(((fbStatus === "account_connected" || fbStatus === "connected") && !fbExpired && fbHasToken) || fbSettings.accountConnected);
   const fbResourceId = asString(fb.resource_id) || asString(fbSettings.pageId) || null;
   const fbResourceLabel = asString(fb.resource_label) || asString(fbSettings.pageName) || null;
-  const fbPageUrl = asString(asRecord(fb.meta).page_url) || asString(fb.resource_url) || asString(fbSettings.url) || null;
+  const fbPageUrl = asString(asRecord(fb.meta).page_url) || asString(fbSettings.url) || null;
   const fbPageConnected = Boolean((fbAccountConnected && fbResourceId) || fbSettings.pageConnected);
 
   const ig = latestIntegration(rows, "instagram", "instagram", "instagram");

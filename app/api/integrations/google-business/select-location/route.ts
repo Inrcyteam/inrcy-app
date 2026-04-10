@@ -33,7 +33,6 @@ export async function POST(req: Request) {
         resource_label: locationTitle,
         meta: { account: accountName },
         status: "connected",
-        resource_url: gmbUrl,
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", userId)

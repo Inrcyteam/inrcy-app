@@ -16,7 +16,7 @@ export async function POST() {
   const userId = authData.user.id;
   const { error } = await supabaseAdmin
     .from("integrations")
-    .update({ resource_id: null, resource_label: null, resource_url: null, page_url: null, updated_at: new Date().toISOString() })
+    .update({ resource_id: null, resource_label: null, page_url: null, updated_at: new Date().toISOString() })
     .eq("user_id", userId)
     .eq("provider", "google")
     .eq("source", "gmb")
