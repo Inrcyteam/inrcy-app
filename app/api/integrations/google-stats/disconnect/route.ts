@@ -48,16 +48,29 @@ export async function POST(request: Request) {
     context: `google_stats_disconnect:${source}:${product}`,
   })));
 
-  await supabase
+  const { error: integrationUpdateError } = await supabaseAdmin
     .from("integrations")
-    .update({ status: "disconnected", access_token_enc: null, refresh_token_enc: null, expires_at: null })
+    .update({
+      status: "disconnected",
+      access_token_enc: null,
+      refresh_token_enc: null,
+      expires_at: null,
+      updated_at: new Date().toISOString(),
+    })
     .eq("user_id", userId)
     .eq("provider", "google")
     .eq("source", source)
     .eq("product", product);
 
+  if (integrationUpdateError) {
+    return NextResponse.json(
+      { error: "Impossible de déconnecter l'intégration Google." },
+      { status: 500 }
+    );
+  }
+
   try {
-    await supabase
+    await supabaseAdmin
       .from("integrations_statistiques")
       .update({ statut: "déconnecté" })
       .eq("id_utilisateur", userId)
@@ -72,14 +85,35 @@ export async function POST(request: Request) {
       const current = asRecord(asRecord(data)["settings"]);
       const siteWeb = asRecord(current.site_web);
       const nextSiteWeb = stripGoogleProduct(siteWeb, product);
-      await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: userId, settings: { ...current, site_web: nextSiteWeb } }, { onConflict: "user_id" });
+      const { error: siteWebUpdateError } = await supabaseAdmin
+        .from("pro_tools_configs")
+        .upsert({ user_id: userId, settings: { ...current, site_web: nextSiteWeb } }, { onConflict: "user_id" });
+      if (siteWebUpdateError) {
+        return NextResponse.json(
+          { error: "La déconnexion Google a été partiellement appliquée côté site web." },
+          { status: 500 }
+        );
+      }
     }
     if (source === "site_inrcy") {
-      const { data } = await supabase.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle();
+      const { data } = await supabaseAdmin.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = stripGoogleProduct(asRecord(asRecord(data)["settings"]), product);
-      await supabase.from("inrcy_site_configs").upsert({ user_id: userId, settings: current }, { onConflict: "user_id" });
+      const { error: siteInrcyUpdateError } = await supabaseAdmin
+        .from("inrcy_site_configs")
+        .upsert({ user_id: userId, settings: current }, { onConflict: "user_id" });
+      if (siteInrcyUpdateError) {
+        return NextResponse.json(
+          { error: "La déconnexion Google a été partiellement appliquée côté site iNrCy." },
+          { status: 500 }
+        );
+      }
     }
-  } catch {}
+  } catch {
+    return NextResponse.json(
+      { error: "Une erreur est survenue lors du nettoyage de la configuration du site." },
+      { status: 500 }
+    );
+  }
 
   await syncSitePresenceIntegrations(userId);
   await clearAllToolCaches(supabase, userId);
