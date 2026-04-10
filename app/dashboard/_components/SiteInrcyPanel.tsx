@@ -78,7 +78,7 @@ export default function SiteInrcyPanel(props: any) {
                     : "rgba(59,130,246,0.95)",
             }}
           />
-          Statut : <strong>{siteInrcyOwnership === "none" ? "Aucun site" : siteInrcyAllGreen ? "Connecté" : "À connecter"}</strong>
+          Statut : <strong>{siteInrcyOwnership === "none" ? "Aucun site" : hasSiteInrcyUrl ? "Connecté" : "À connecter"}</strong>
         </span>
 
         {!!siteInrcyContactEmail && (

@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { syncSitePresenceIntegrations } from '@/lib/sitePresenceSync';
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
     const next: SiteSettings = { ...(current ?? {}), inrcy_tracking_enabled: false };
     await supabase.from("inrcy_site_configs").upsert({ user_id: userId, settings: next }, { onConflict: "user_id" });
 
+    await syncSitePresenceIntegrations(userId);
     await clearAllToolCaches(supabase, userId);
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {

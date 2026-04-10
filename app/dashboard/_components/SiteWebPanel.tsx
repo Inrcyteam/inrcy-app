@@ -74,7 +74,7 @@ export default function SiteWebPanel(props: any) {
                   : "rgba(148,163,184,0.9)",
             }}
           />
-          Statut : <strong>{hasSiteWebUrl ? (siteWebAllGreen ? "Connecté" : "À connecter") : "À configurer"}</strong>
+          Statut : <strong>{hasSiteWebUrl ? ("Connecté") : "À configurer"}</strong>
         </span>
       </div>
 

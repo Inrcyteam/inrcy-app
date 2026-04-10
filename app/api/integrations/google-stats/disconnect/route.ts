@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { revokeGoogleTokensBestEffort } from "@/lib/googleOAuthRevoke";
+import { syncSitePresenceIntegrations } from '@/lib/sitePresenceSync';
 
 type RevokeRow = {
   id?: string | null;
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
     }
   } catch {}
 
+  await syncSitePresenceIntegrations(userId);
   await clearAllToolCaches(supabase, userId);
   return NextResponse.json({ ok: true });
 }

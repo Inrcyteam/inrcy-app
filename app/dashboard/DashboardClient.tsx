@@ -1593,6 +1593,12 @@ const disconnectAllGoogleStatsForSource = useCallback(
   ]
 );
 
+const syncSitePresenceState = useCallback(async () => {
+  try {
+    await fetch('/api/integrations/site-presence/sync', { method: 'POST' });
+  } catch {}
+}, []);
+
 // ✅ Enregistrer le lien du site iNrCy (inrcy_site_configs.site_url)
 const saveSiteInrcyUrl = useCallback(async () => {
   if (siteInrcyOwnership === "none") return;
@@ -1626,10 +1632,12 @@ const saveSiteInrcyUrl = useCallback(async () => {
   setSiteInrcySavedUrl(valueToSave);
   setSiteInrcyUrlNotice(valueToSave ? "✅ Lien du site enregistré" : null);
   triggerGeneratorRefresh();
+  await syncSitePresenceState();
   if (valueToSave) {
     window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
   }
-}, [normalizeSiteUrl, siteInrcyOwnership, siteInrcySavedUrl, siteInrcyUrl, triggerGeneratorRefresh]);
+}, [normalizeSiteUrl, siteInrcyOwnership, siteInrcySavedUrl, siteInrcyUrl, triggerGeneratorRefresh, syncSitePresenceState]);
+
 
 const deleteSiteInrcyUrl = useCallback(async () => {
   if (siteInrcyOwnership === "none") return;
@@ -1661,8 +1669,9 @@ const deleteSiteInrcyUrl = useCallback(async () => {
   setShowSiteInrcyWidgetCode(false);
   setSiteInrcyUrlNotice("✅ Lien du site supprimé. GA4 et Search Console ont été déconnectés.");
   triggerGeneratorRefresh();
+  await syncSitePresenceState();
   window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
-}, [disconnectAllGoogleStatsForSource, siteInrcyOwnership, siteInrcySavedUrl, triggerGeneratorRefresh]);
+}, [disconnectAllGoogleStatsForSource, siteInrcyOwnership, siteInrcySavedUrl, triggerGeneratorRefresh, syncSitePresenceState]);
 
 // ✅ Enregistrer uniquement le lien du site web (settings.site_web.url)
 const saveSiteWebUrl = useCallback(async () => {
@@ -1693,11 +1702,12 @@ const saveSiteWebUrl = useCallback(async () => {
   setSiteWebUrl(valueToSave);
   setSiteWebSavedUrl(valueToSave);
   triggerGeneratorRefresh();
+  await syncSitePresenceState();
   setSiteWebUrlNotice(valueToSave ? "✅ Lien du site enregistré" : null);
   if (valueToSave) {
     window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
   }
-}, [normalizeSiteUrl, siteWebSavedUrl, siteWebSettingsText, siteWebUrl, triggerGeneratorRefresh, updateSiteWebSettings]);
+}, [normalizeSiteUrl, siteWebSavedUrl, siteWebSettingsText, siteWebUrl, triggerGeneratorRefresh, updateSiteWebSettings, syncSitePresenceState]);
 
 const deleteSiteWebUrl = useCallback(async () => {
   if (!siteWebSavedUrl.trim()) return;
@@ -1726,9 +1736,10 @@ const deleteSiteWebUrl = useCallback(async () => {
   setSiteWebSavedUrl("");
   setShowSiteWebWidgetCode(false);
   triggerGeneratorRefresh();
+  await syncSitePresenceState();
   setSiteWebUrlNotice("✅ Lien du site supprimé. GA4 et Search Console ont été déconnectés.");
   window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
-}, [disconnectAllGoogleStatsForSource, siteWebSavedUrl, siteWebSettingsText, triggerGeneratorRefresh, updateSiteWebSettings]);
+}, [disconnectAllGoogleStatsForSource, siteWebSavedUrl, siteWebSettingsText, triggerGeneratorRefresh, updateSiteWebSettings, syncSitePresenceState]);
 
 const resetSiteInrcyAll = useCallback(async () => {
   if (!confirm("Réinitialiser la configuration (lien + GA4 + Search Console) ?")) return;
@@ -2729,17 +2740,15 @@ const checkActivity = useCallback(async () => {
         if (!hasActiveInrcySite(siteInrcyOwnership)) return { status: "coming" as ModuleStatus, text: "Aucun site" };
         const hasUrl = !!siteInrcyUrl?.trim();
         const connectedCount = (hasUrl ? 1 : 0) + (siteInrcyGa4Connected ? 1 : 0) + (siteInrcyGscConnected ? 1 : 0);
-        const allGreen = connectedCount === 3;
-        if (!allGreen) return { status: "available" as ModuleStatus, text: `À connecter · ${connectedCount} / 3` };
-        return { status: "connected" as ModuleStatus, text: "Connecté · 3 / 3" };
+        if (connectedCount === 0) return { status: "available" as ModuleStatus, text: "A connecter · 0 / 3" };
+        return { status: "connected" as ModuleStatus, text: `Connecté · ${connectedCount} / 3` };
       }
 
       if (m.key === "site_web") {
         const hasUrl = !!siteWebUrl?.trim();
         const connectedCount = (hasUrl ? 1 : 0) + (siteWebGa4Connected ? 1 : 0) + (siteWebGscConnected ? 1 : 0);
-        const allGreen = connectedCount === 3;
-        if (!allGreen) return { status: "available" as ModuleStatus, text: `À connecter · ${connectedCount} / 3` };
-        return { status: "connected" as ModuleStatus, text: "Connecté · 3 / 3" };
+        if (connectedCount === 0) return { status: "available" as ModuleStatus, text: "A connecter · 0 / 3" };
+        return { status: "connected" as ModuleStatus, text: `Connecté · ${connectedCount} / 3` };
       }
 
       if (m.key === "instagram") {

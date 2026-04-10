@@ -24,12 +24,16 @@ type IntegrationLite = {
 export type ChannelStates = {
   site_inrcy: {
     connected: boolean;
+    statsConnected: boolean;
+    score: number;
     url: string | null;
     ga4: boolean;
     gsc: boolean;
   };
   site_web: {
     connected: boolean;
+    statsConnected: boolean;
+    score: number;
     url: string | null;
     ga4: boolean;
     gsc: boolean;
@@ -164,6 +168,8 @@ export async function getChannelConnectionStates(
   const inrcyGsc = isConnectedGoogleStat(rows, "site_inrcy", "gsc", inrcyCfgSettings);
   const webGa4 = isConnectedGoogleStat(rows, "site_web", "ga4", siteWeb);
   const webGsc = isConnectedGoogleStat(rows, "site_web", "gsc", siteWeb);
+  const inrcyScore = (inrcyHasSite && !!inrcyUrl ? 1 : 0) + (inrcyGa4 ? 1 : 0) + (inrcyGsc ? 1 : 0);
+  const webScore = (!!siteWebUrl ? 1 : 0) + (webGa4 ? 1 : 0) + (webGsc ? 1 : 0);
 
   const fb = latestIntegration(rows, "facebook", "facebook", "facebook");
   const fbSettings = asRecord(settings.facebook);
@@ -211,13 +217,17 @@ export async function getChannelConnectionStates(
 
   return {
     site_inrcy: {
-      connected: inrcyHasSite && !!inrcyUrl && inrcyGa4 && inrcyGsc,
+      connected: inrcyHasSite && !!inrcyUrl,
+      statsConnected: inrcyGa4 || inrcyGsc,
+      score: inrcyScore,
       url: inrcyUrl || null,
       ga4: inrcyHasSite && inrcyGa4,
       gsc: inrcyHasSite && inrcyGsc,
     },
     site_web: {
-      connected: !!siteWebUrl && webGa4 && webGsc,
+      connected: !!siteWebUrl,
+      statsConnected: webGa4 || webGsc,
+      score: webScore,
       url: siteWebUrl || null,
       ga4: webGa4,
       gsc: webGsc,

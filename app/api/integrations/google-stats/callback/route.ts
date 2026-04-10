@@ -7,6 +7,7 @@ import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
+import { syncSitePresenceIntegrations } from '@/lib/sitePresenceSync';
 
 type TokenResponse = {
   access_token?: string;
@@ -648,6 +649,7 @@ export async function GET(req: Request) {
     }
 
     await upsertGoogleIntegration({ supabase, userId, source, product, tokenData, userInfo });
+    await syncSitePresenceIntegrations(userId);
 
     oauthCallbackEvent(req, { provider: "google_stats", outcome: "success", user_id: userId, return_to: returnTo, product });
     return redirectBack({ linked: product, ok: "1" });
