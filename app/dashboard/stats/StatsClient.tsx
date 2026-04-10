@@ -126,6 +126,67 @@ function safeNum(v: any, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+
+function gmbMetricSeriesTotal(metrics: any, metricNames: string[]) {
+  const rawSeries = Array.isArray(metrics?.raw?.multiDailyMetricTimeSeries)
+    ? metrics.raw.multiDailyMetricTimeSeries
+    : Array.isArray(metrics?.multiDailyMetricTimeSeries)
+      ? metrics.multiDailyMetricTimeSeries
+      : [];
+  return rawSeries.reduce((sum: number, series: any) => {
+    if (!metricNames.includes(String(series?.dailyMetric || ""))) return sum;
+    const datedValues = Array.isArray(series?.timeSeries?.datedValues) ? series.timeSeries.datedValues : [];
+    return sum + datedValues.reduce((inner: number, dv: any) => inner + safeNum(dv?.value?.value ?? dv?.value), 0);
+  }, 0);
+}
+
+function getGmbTotals(metrics: any) {
+  const totals = metrics?.totals || {};
+  const impressions =
+    safeNum(totals.impressions) ||
+    safeNum(totals.BUSINESS_IMPRESSIONS) ||
+    safeNum(totals.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) +
+      safeNum(totals.BUSINESS_IMPRESSIONS_MOBILE_MAPS) +
+      safeNum(totals.BUSINESS_IMPRESSIONS_DESKTOP_SEARCH) +
+      safeNum(totals.BUSINESS_IMPRESSIONS_MOBILE_SEARCH) ||
+    gmbMetricSeriesTotal(metrics, [
+      "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
+      "BUSINESS_IMPRESSIONS_MOBILE_MAPS",
+      "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
+      "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
+    ]);
+
+  const websiteClicks =
+    safeNum(totals.websiteClicks) ||
+    safeNum(totals.website_clicks) ||
+    safeNum(totals.WEBSITE_CLICKS) ||
+    gmbMetricSeriesTotal(metrics, ["WEBSITE_CLICKS"]);
+
+  const callClicks =
+    safeNum(totals.callClicks) ||
+    safeNum(totals.call_clicks) ||
+    safeNum(totals.CALL_CLICKS) ||
+    gmbMetricSeriesTotal(metrics, ["CALL_CLICKS"]);
+
+  const directionRequests =
+    safeNum(totals.directionRequests) ||
+    safeNum(totals.direction_requests) ||
+    safeNum(totals.DIRECTION_REQUESTS) ||
+    gmbMetricSeriesTotal(metrics, ["DIRECTION_REQUESTS"]);
+
+  const mapsImpressions =
+    safeNum(totals.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) +
+    safeNum(totals.BUSINESS_IMPRESSIONS_MOBILE_MAPS) ||
+    gmbMetricSeriesTotal(metrics, ["BUSINESS_IMPRESSIONS_DESKTOP_MAPS", "BUSINESS_IMPRESSIONS_MOBILE_MAPS"]);
+
+  const searchImpressions =
+    safeNum(totals.BUSINESS_IMPRESSIONS_DESKTOP_SEARCH) +
+    safeNum(totals.BUSINESS_IMPRESSIONS_MOBILE_SEARCH) ||
+    gmbMetricSeriesTotal(metrics, ["BUSINESS_IMPRESSIONS_DESKTOP_SEARCH", "BUSINESS_IMPRESSIONS_MOBILE_SEARCH"]);
+
+  return { impressions, websiteClicks, callClicks, directionRequests, mapsImpressions, searchImpressions };
+}
+
 type GscOpportunitySectorConfig = {
   impressionRef: number;
   clickRef: number;
@@ -443,8 +504,9 @@ function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
     // (Old baseline 3.0/day => +90 was too aggressive.)
     const base = hasError || !m ? 0.8 : 1.2;
     // Use impressions if present (we can sometimes read them from the timeSeries).
-    const impressionsGuess = safeNum(m?.totals?.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) + safeNum(m?.totals?.BUSINESS_IMPRESSIONS_MOBILE_MAPS);
-    const interactionsGuess = safeNum(m?.totals?.WEBSITE_CLICKS) + safeNum(m?.totals?.CALL_CLICKS) + safeNum(m?.totals?.DIRECTION_REQUESTS);
+    const { impressions, websiteClicks, callClicks, directionRequests } = getGmbTotals(m);
+    const impressionsGuess = impressions;
+    const interactionsGuess = websiteClicks + callClicks + directionRequests;
     const perDay = clamp(base + impressionsGuess / 800 + interactionsGuess / 30, 0, 50);
     return Math.max(0, Math.round(perDay * 30));
   }
@@ -461,16 +523,7 @@ function buildProvenance(cubeKey: CubeKey, ov: Overview) {
   if (cubeKey === "gmb") {
     // Try to extract search vs maps impressions from known keys when available.
     const m = ov?.sources?.gmb?.metrics;
-    const maps =
-      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) +
-      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_MOBILE_MAPS) +
-      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_DESKTOP_MAPS?.value) +
-      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_MOBILE_MAPS?.value);
-    const search =
-      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_DESKTOP_SEARCH) +
-      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_MOBILE_SEARCH) +
-      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_DESKTOP_SEARCH?.value) +
-      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_MOBILE_SEARCH?.value);
+    const { mapsImpressions: maps, searchImpressions: search } = getGmbTotals(m);
     const total = maps + search;
     return [
       { label: "Maps", value: total > 0 ? maps : 1, colorVar: "--cGoogle" },
@@ -688,16 +741,9 @@ function getDecisionInput(
 
   if (cubeKey === "gmb") {
     const m = ov?.sources?.gmb?.metrics;
-    const visibility =
-      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) +
-      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_MOBILE_MAPS) +
-      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_DESKTOP_SEARCH) +
-      safeNum(m?.totals?.BUSINESS_IMPRESSIONS_MOBILE_SEARCH);
+    const { impressions: visibility, websiteClicks, callClicks, directionRequests } = getGmbTotals(m);
 
-    const conversions =
-      safeNum(m?.totals?.WEBSITE_CLICKS) +
-      safeNum(m?.totals?.CALL_CLICKS) +
-      safeNum(m?.totals?.DIRECTION_REQUESTS);
+    const conversions = websiteClicks + callClicks + directionRequests;
 
     return {
       channelType: "gmb" as const,

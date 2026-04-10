@@ -223,8 +223,17 @@ function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
     const totals = safeObj(safeObj(gmb?.metrics).totals);
     const hasError = !!safeObj(gmb?.metrics).error;
     const base = hasError || !gmb?.metrics ? 0.8 : 1.2;
-    const impressionsGuess = safeNum(totals["BUSINESS_IMPRESSIONS_DESKTOP_MAPS"]) + safeNum(totals["BUSINESS_IMPRESSIONS_MOBILE_MAPS"]);
-    const interactionsGuess = safeNum(totals["WEBSITE_CLICKS"]) + safeNum(totals["CALL_CLICKS"]) + safeNum(totals["DIRECTION_REQUESTS"]);
+    const impressionsGuess =
+      safeNum(totals["impressions"]) ||
+      safeNum(totals["BUSINESS_IMPRESSIONS"]) ||
+      (safeNum(totals["BUSINESS_IMPRESSIONS_DESKTOP_MAPS"]) +
+        safeNum(totals["BUSINESS_IMPRESSIONS_MOBILE_MAPS"]) +
+        safeNum(totals["BUSINESS_IMPRESSIONS_DESKTOP_SEARCH"]) +
+        safeNum(totals["BUSINESS_IMPRESSIONS_MOBILE_SEARCH"]));
+    const interactionsGuess =
+      (safeNum(totals["websiteClicks"]) || safeNum(totals["website_clicks"]) || safeNum(totals["WEBSITE_CLICKS"])) +
+      (safeNum(totals["callClicks"]) || safeNum(totals["call_clicks"]) || safeNum(totals["CALL_CLICKS"])) +
+      (safeNum(totals["directionRequests"]) || safeNum(totals["direction_requests"]) || safeNum(totals["DIRECTION_REQUESTS"]));
     return Math.max(0, Math.round(clamp(base + impressionsGuess / 800 + interactionsGuess / 30, 0, 50) * 30));
   }
   if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin") return Math.max(0, Math.round(computeOpportunityPerDaySocial(cubeKey, ov) * 30));
