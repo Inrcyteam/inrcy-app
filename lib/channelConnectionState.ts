@@ -163,10 +163,10 @@ export async function getChannelConnectionStates(
   const siteWeb = asRecord(settings.site_web);
   const siteWebUrl = (asString(siteWeb.url) || "").trim();
 
-  const inrcyGa4 = Boolean(inrcyHasSite && inrcyUrl && isConnectedGoogleStat(rows, "site_inrcy", "ga4", inrcyCfgSettings));
-  const inrcyGsc = Boolean(inrcyHasSite && inrcyUrl && isConnectedGoogleStat(rows, "site_inrcy", "gsc", inrcyCfgSettings));
-  const webGa4 = Boolean(siteWebUrl && isConnectedGoogleStat(rows, "site_web", "ga4", siteWeb));
-  const webGsc = Boolean(siteWebUrl && isConnectedGoogleStat(rows, "site_web", "gsc", siteWeb));
+  const inrcyGa4 = isConnectedGoogleStat(rows, "site_inrcy", "ga4", inrcyCfgSettings);
+  const inrcyGsc = isConnectedGoogleStat(rows, "site_inrcy", "gsc", inrcyCfgSettings);
+  const webGa4 = isConnectedGoogleStat(rows, "site_web", "ga4", siteWeb);
+  const webGsc = isConnectedGoogleStat(rows, "site_web", "gsc", siteWeb);
   const inrcyScore = (inrcyHasSite && !!inrcyUrl ? 1 : 0) + (inrcyGa4 ? 1 : 0) + (inrcyGsc ? 1 : 0);
   const webScore = (!!siteWebUrl ? 1 : 0) + (webGa4 ? 1 : 0) + (webGsc ? 1 : 0);
 
@@ -217,7 +217,7 @@ export async function getChannelConnectionStates(
   return {
     site_inrcy: {
       connected: inrcyHasSite && !!inrcyUrl,
-      statsConnected: Boolean(inrcyUrl && (inrcyGa4 || inrcyGsc)),
+      statsConnected: inrcyGa4 || inrcyGsc,
       score: inrcyScore,
       url: inrcyUrl || null,
       ga4: inrcyHasSite && inrcyGa4,
@@ -225,7 +225,7 @@ export async function getChannelConnectionStates(
     },
     site_web: {
       connected: !!siteWebUrl,
-      statsConnected: Boolean(siteWebUrl && (webGa4 || webGsc)),
+      statsConnected: webGa4 || webGsc,
       score: webScore,
       url: siteWebUrl || null,
       ga4: webGa4,
