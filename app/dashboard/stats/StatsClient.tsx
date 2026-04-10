@@ -1171,9 +1171,7 @@ export default function StatsClient() {
   const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
   const [refreshNonce, setRefreshNonce] = useState(0);
   const hydratedPeriodsRef = useRef(new Set<number>());
-  const lastAutoRefreshAtRef = useRef(0);
   const refreshTimeoutRef = useRef<number | null>(null);
-  const hasAutoRefreshedRef = useRef(false);
 
   const clearCachedSnapshots = useCallback(() => {
     periodCacheRef.current.clear();
@@ -1187,7 +1185,7 @@ export default function StatsClient() {
     }
   }, []);
 
-  const triggerRefresh = useCallback((reason: "manual" | "focus" | "channels") => {
+  const triggerRefresh = useCallback((reason: "manual" | "channels") => {
     clearCachedSnapshots();
     setIsRefreshing(true);
     setLastRefreshAt(Date.now());
@@ -1378,35 +1376,10 @@ useEffect(() => {
       triggerRefresh("channels");
     };
 
-    const handleFocusRefresh = () => {
-      const now = Date.now();
-      if (now - lastAutoRefreshAtRef.current < 1500) return;
-      lastAutoRefreshAtRef.current = now;
-      triggerRefresh("focus");
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        handleFocusRefresh();
-      }
-    };
-
     window.addEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
-    window.addEventListener("focus", handleFocusRefresh);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
-      window.removeEventListener("focus", handleFocusRefresh);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [triggerRefresh]);
-
-  useEffect(() => {
-    if (hasAutoRefreshedRef.current) return;
-
-    hasAutoRefreshedRef.current = true;
-    lastAutoRefreshAtRef.current = Date.now();
-    triggerRefresh("manual");
   }, [triggerRefresh]);
 
 

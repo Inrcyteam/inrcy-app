@@ -40,6 +40,52 @@ import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
 import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, Module, ModuleAction, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
 
 export default function DashboardClient() {
+  const SITE_SNAPSHOT_KEY = "inrcy_dashboard_site_snapshot_v1";
+  const SITE_SNAPSHOT_TS_KEY = "inrcy_dashboard_site_snapshot_ts_v1";
+  const KPIS_SNAPSHOT_TS_KEY = "inrcy_generator_kpis_ts_v1";
+  const DASHBOARD_SNAPSHOT_MAX_AGE_MS = 60_000;
+  const STATS_PERIODS_TO_PREWARM = [7, 30] as const;
+
+  const invalidateDashboardSnapshots = useCallback(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.sessionStorage.removeItem(SITE_SNAPSHOT_KEY);
+      window.sessionStorage.removeItem(SITE_SNAPSHOT_TS_KEY);
+      window.sessionStorage.removeItem(KPIS_SNAPSHOT_TS_KEY);
+    } catch {}
+  }, [KPIS_SNAPSHOT_TS_KEY, SITE_SNAPSHOT_KEY, SITE_SNAPSHOT_TS_KEY]);
+
+  const invalidateStatsSnapshots = useCallback(() => {
+    if (typeof window === "undefined") return;
+    try {
+      for (const days of STATS_PERIODS_TO_PREWARM) {
+        window.sessionStorage.removeItem(`inrcy_stats_cube_snapshot_v1:${days}`);
+        window.sessionStorage.removeItem(`inrcy_stats_summary_snapshot_v1:${days}`);
+      }
+    } catch {}
+  }, [STATS_PERIODS_TO_PREWARM]);
+
+  const prewarmStatsSnapshots = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    await Promise.allSettled(
+      STATS_PERIODS_TO_PREWARM.map(async (days) => {
+        const res = await fetch(`/api/stats/dashboard-bulk?days=${days}&fresh=1`, { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json().catch(() => null) as any;
+        if (!json || typeof json !== "object") return;
+        try {
+          window.sessionStorage.setItem(`inrcy_stats_cube_snapshot_v1:${days}`, JSON.stringify(json.overviews || {}));
+          window.sessionStorage.setItem(
+            `inrcy_stats_summary_snapshot_v1:${days}`,
+            JSON.stringify({
+              total: Number(json?.opportunities?.total || 0),
+              byCube: json?.opportunities?.byCube || {},
+            })
+          );
+        } catch {}
+      })
+    );
+  }, [STATS_PERIODS_TO_PREWARM]);
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
   const [helpCanauxOpen, setHelpCanauxOpen] = useState(false);
   const [helpSiteInrcyOpen, setHelpSiteInrcyOpen] = useState(false);
@@ -633,6 +679,48 @@ const removeGoogleProductFromSettings = useCallback((settingsObj: any, product: 
   return next;
 }, []);
 
+const applySiteSnapshot = useCallback((nextState: any) => {
+  setSiteInrcyOwnership(nextState.siteInrcyOwnership);
+  setSiteInrcyUrl(nextState.siteInrcyUrl);
+  setSiteInrcySavedUrl(nextState.siteInrcySavedUrl);
+  setSiteInrcyContactEmail(nextState.siteInrcyContactEmail);
+  setSiteInrcySettingsText(nextState.siteInrcySettingsText);
+  setSiteInrcySettingsError(null);
+  setGa4MeasurementId(nextState.ga4MeasurementId);
+  setGa4PropertyId(nextState.ga4PropertyId);
+  setGscProperty(nextState.gscProperty);
+  setSiteWebSettingsText(nextState.siteWebSettingsText);
+  setSiteWebSettingsError(null);
+  setSiteWebUrl(nextState.siteWebUrl);
+  setSiteWebSavedUrl(nextState.siteWebSavedUrl);
+  setSiteWebGa4MeasurementId(nextState.siteWebGa4MeasurementId);
+  setSiteWebGa4PropertyId(nextState.siteWebGa4PropertyId);
+  setSiteWebGscProperty(nextState.siteWebGscProperty);
+  setInstagramUrl(nextState.instagramUrl);
+  setInstagramAccountConnected(nextState.instagramAccountConnected);
+  setInstagramConnected(nextState.instagramConnected);
+  setInstagramUsername(nextState.instagramUsername);
+  setLinkedinUrl(nextState.linkedinUrl);
+  setLinkedinAccountConnected(nextState.linkedinAccountConnected);
+  setLinkedinConnected(nextState.linkedinConnected);
+  setLinkedinDisplayName(nextState.linkedinDisplayName);
+  setGmbUrl(nextState.gmbUrl);
+  setGmbAccountConnected(nextState.gmbAccountConnected);
+  setGmbConfigured(nextState.gmbConfigured);
+  setGmbConnected(nextState.gmbConnected);
+  setGmbAccountEmail(nextState.gmbAccountEmail);
+  setFacebookUrl(nextState.facebookUrl);
+  setFacebookAccountConnected(nextState.facebookAccountConnected);
+  setFacebookPageConnected(nextState.facebookPageConnected);
+  setFacebookAccountEmail(nextState.facebookAccountEmail);
+  setFbSelectedPageId(nextState.fbSelectedPageId);
+  setFbSelectedPageName(nextState.fbSelectedPageName);
+  setSiteInrcyGa4Connected(nextState.siteInrcyGa4Connected);
+  setSiteInrcyGscConnected(nextState.siteInrcyGscConnected);
+  setSiteWebGa4Connected(nextState.siteWebGa4Connected);
+  setSiteWebGscConnected(nextState.siteWebGscConnected);
+}, []);
+
 // ✅ Charge infos Site iNrCy + outils du pro depuis Supabase
 // - ownership + url iNrCy : profiles
 // - config iNrCy : inrcy_site_configs
@@ -735,10 +823,10 @@ const loadSiteInrcy = useCallback(async () => {
     facebookAccountEmail: fbObj?.userEmail ?? "",
     fbSelectedPageId: fbObj?.pageId ?? "",
     fbSelectedPageName: fbObj?.pageName ?? "",
-    siteInrcyGa4Connected: !!(ga4MeasurementIdValue || ga4PropertyIdValue),
-    siteInrcyGscConnected: !!gscPropertyValue,
-    siteWebGa4Connected: !!((siteWebObj as any)?.ga4?.measurement_id || (siteWebObj as any)?.ga4?.property_id),
-    siteWebGscConnected: !!((siteWebObj as any)?.gsc?.property),
+    siteInrcyGa4Connected: false,
+    siteInrcyGscConnected: false,
+    siteWebGa4Connected: false,
+    siteWebGscConnected: false,
   };
 
   try {
@@ -748,10 +836,10 @@ const loadSiteInrcy = useCallback(async () => {
     if (requestSeq !== siteConfigRequestSeqRef.current) return;
 
     if (states) {
-      nextState.siteInrcyGa4Connected = Boolean(states?.site_inrcy?.ga4 || ga4MeasurementIdValue || ga4PropertyIdValue);
-      nextState.siteInrcyGscConnected = Boolean(states?.site_inrcy?.gsc || gscPropertyValue);
-      nextState.siteWebGa4Connected = Boolean(states?.site_web?.ga4 || (siteWebObj as any)?.ga4?.measurement_id || (siteWebObj as any)?.ga4?.property_id);
-      nextState.siteWebGscConnected = Boolean(states?.site_web?.gsc || (siteWebObj as any)?.gsc?.property);
+      nextState.siteInrcyGa4Connected = Boolean(siteInrcyUrlValue && states?.site_inrcy?.ga4);
+      nextState.siteInrcyGscConnected = Boolean(siteInrcyUrlValue && states?.site_inrcy?.gsc);
+      nextState.siteWebGa4Connected = Boolean(((siteWebObj as any)?.url ?? "") && states?.site_web?.ga4);
+      nextState.siteWebGscConnected = Boolean(((siteWebObj as any)?.url ?? "") && states?.site_web?.gsc);
 
       nextState.gmbConnected = !!states?.gmb?.connected;
       nextState.gmbAccountConnected = !!states?.gmb?.accountConnected;
@@ -782,60 +870,48 @@ const loadSiteInrcy = useCallback(async () => {
         fetchGoogleConnected("site_web", "gsc"),
       ]);
       if (requestSeq !== siteConfigRequestSeqRef.current) return;
-      nextState.siteInrcyGa4Connected = inrcyGa4;
-      nextState.siteInrcyGscConnected = inrcyGsc;
-      nextState.siteWebGa4Connected = webGa4;
-      nextState.siteWebGscConnected = webGsc;
+      nextState.siteInrcyGa4Connected = Boolean(siteInrcyUrlValue && inrcyGa4);
+      nextState.siteInrcyGscConnected = Boolean(siteInrcyUrlValue && inrcyGsc);
+      nextState.siteWebGa4Connected = Boolean(((siteWebObj as any)?.url ?? "") && webGa4);
+      nextState.siteWebGscConnected = Boolean(((siteWebObj as any)?.url ?? "") && webGsc);
     }
   } catch {
     if (requestSeq !== siteConfigRequestSeqRef.current) return;
   }
 
   if (requestSeq !== siteConfigRequestSeqRef.current) return;
-  setSiteInrcyOwnership(nextState.siteInrcyOwnership);
-  setSiteInrcyUrl(nextState.siteInrcyUrl);
-  setSiteInrcySavedUrl(nextState.siteInrcySavedUrl);
-  setSiteInrcyContactEmail(nextState.siteInrcyContactEmail);
-  setSiteInrcySettingsText(nextState.siteInrcySettingsText);
-  setSiteInrcySettingsError(null);
-  setGa4MeasurementId(nextState.ga4MeasurementId);
-  setGa4PropertyId(nextState.ga4PropertyId);
-  setGscProperty(nextState.gscProperty);
-  setSiteWebSettingsText(nextState.siteWebSettingsText);
-  setSiteWebSettingsError(null);
-  setSiteWebUrl(nextState.siteWebUrl);
-  setSiteWebSavedUrl(nextState.siteWebSavedUrl);
-  setSiteWebGa4MeasurementId(nextState.siteWebGa4MeasurementId);
-  setSiteWebGa4PropertyId(nextState.siteWebGa4PropertyId);
-  setSiteWebGscProperty(nextState.siteWebGscProperty);
-  setInstagramUrl(nextState.instagramUrl);
-  setInstagramAccountConnected(nextState.instagramAccountConnected);
-  setInstagramConnected(nextState.instagramConnected);
-  setInstagramUsername(nextState.instagramUsername);
-  setLinkedinUrl(nextState.linkedinUrl);
-  setLinkedinAccountConnected(nextState.linkedinAccountConnected);
-  setLinkedinConnected(nextState.linkedinConnected);
-  setLinkedinDisplayName(nextState.linkedinDisplayName);
-  setGmbUrl(nextState.gmbUrl);
-  setGmbAccountConnected(nextState.gmbAccountConnected);
-  setGmbConfigured(nextState.gmbConfigured);
-  setGmbConnected(nextState.gmbConnected);
-  setGmbAccountEmail(nextState.gmbAccountEmail);
-  setFacebookUrl(nextState.facebookUrl);
-  setFacebookAccountConnected(nextState.facebookAccountConnected);
-  setFacebookPageConnected(nextState.facebookPageConnected);
-  setFacebookAccountEmail(nextState.facebookAccountEmail);
-  setFbSelectedPageId(nextState.fbSelectedPageId);
-  setFbSelectedPageName(nextState.fbSelectedPageName);
-  setSiteInrcyGa4Connected(nextState.siteInrcyGa4Connected);
-  setSiteInrcyGscConnected(nextState.siteInrcyGscConnected);
-  setSiteWebGa4Connected(nextState.siteWebGa4Connected);
-  setSiteWebGscConnected(nextState.siteWebGscConnected);
-}, [fetchGoogleConnected]);
+  applySiteSnapshot(nextState);
+  try {
+    window.sessionStorage.setItem(SITE_SNAPSHOT_KEY, JSON.stringify(nextState));
+    window.sessionStorage.setItem(SITE_SNAPSHOT_TS_KEY, String(Date.now()));
+  } catch {
+    // ignore
+  }
+}, [SITE_SNAPSHOT_KEY, SITE_SNAPSHOT_TS_KEY, applySiteSnapshot, fetchGoogleConnected]);
 
 useEffect(() => {
-  loadSiteInrcy();
-}, [loadSiteInrcy]);
+  let shouldFetch = true;
+  try {
+    const raw = window.sessionStorage.getItem(SITE_SNAPSHOT_KEY);
+    const rawTs = window.sessionStorage.getItem(SITE_SNAPSHOT_TS_KEY);
+    const ts = rawTs ? Number(rawTs) : NaN;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        applySiteSnapshot(parsed);
+        if (Number.isFinite(ts) && Date.now() - ts < DASHBOARD_SNAPSHOT_MAX_AGE_MS) {
+          shouldFetch = false;
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  if (shouldFetch) {
+    void loadSiteInrcy();
+  }
+}, [DASHBOARD_SNAPSHOT_MAX_AGE_MS, SITE_SNAPSHOT_KEY, SITE_SNAPSHOT_TS_KEY, applySiteSnapshot, loadSiteInrcy]);
 
 const canAccessSiteInrcy = hasActiveInrcySite(siteInrcyOwnership);
 const savedSiteInrcyUrlMeta = normalizeSiteUrl(siteInrcySavedUrl);
@@ -1071,6 +1147,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
       }
       try {
         window.sessionStorage.setItem("inrcy_generator_kpis_v1", JSON.stringify(json));
+        window.sessionStorage.setItem(KPIS_SNAPSHOT_TS_KEY, String(Date.now()));
       } catch {
         // ignore
       }
@@ -1102,16 +1179,27 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
   const triggerGeneratorRefresh = useCallback(async () => {
     const runSync = async () => {
       lastGeneratorRefreshAtRef.current = Date.now();
+      invalidateDashboardSnapshots();
+      invalidateStatsSnapshots();
       await Promise.allSettled([
         loadSiteInrcy(),
         refreshKpis({ fresh: true }),
       ]);
       notifyStatsRefresh();
+      void prewarmStatsSnapshots();
     };
 
     clearScheduledGeneratorRefreshes();
     await runSync();
-  }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshKpis]);
+  }, [
+    clearScheduledGeneratorRefreshes,
+    invalidateDashboardSnapshots,
+    invalidateStatsSnapshots,
+    loadSiteInrcy,
+    notifyStatsRefresh,
+    prewarmStatsSnapshots,
+    refreshKpis,
+  ]);
 
   // ✅ Opportunités activables (iNrStats) — lues directement depuis /api/metrics/summary.
   const [oppTotal, setOppTotal] = useState<number | null>(null);
@@ -1145,6 +1233,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
       t = window.setTimeout(() => {
         if (disposed) return;
         if (Date.now() - lastGeneratorRefreshAtRef.current < 2500) return;
+        invalidateDashboardSnapshots();
+        invalidateStatsSnapshots();
         triggerGeneratorRefresh();
       }, 500);
     };
@@ -1477,18 +1567,22 @@ const disconnectSiteInrcyGsc = useCallback(() => {
 
 // ✅ Réinitialisation globale (lien + GA4 + GSC)
 const resetGoogleStats = useCallback(async (source: GoogleSource) => {
-  await Promise.all([
-    fetch("/api/integrations/google-stats/disconnect", {
+  const disconnectOne = async (product: "ga4" | "gsc") => {
+    const res = await fetch("/api/integrations/google-stats/disconnect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, product: "ga4" }),
-    }).catch(() => null),
-    fetch("/api/integrations/google-stats/disconnect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, product: "gsc" }),
-    }).catch(() => null),
-  ]);
+      body: JSON.stringify({ source, product }),
+    }).catch(() => null);
+
+    if (!res || !res.ok) {
+      const msg = !res
+        ? "Connexion au serveur impossible pour le moment. Merci de réessayer."
+        : await getSimpleFrenchApiError(res, `Impossible de déconnecter ${product.toUpperCase()}.`);
+      throw new Error(msg);
+    }
+  };
+
+  await Promise.all([disconnectOne("ga4"), disconnectOne("gsc")]);
 }, []);
 
 
@@ -1537,6 +1631,8 @@ const updateSiteWebSettings = useCallback(
 const disconnectAllGoogleStatsForSource = useCallback(
   async (source: GoogleSource) => {
     await resetGoogleStats(source);
+    invalidateDashboardSnapshots();
+    invalidateStatsSnapshots();
 
     if (source === "site_inrcy") {
       let nextSettings: any = {};
@@ -1584,6 +1680,8 @@ const disconnectAllGoogleStatsForSource = useCallback(
     }, 2500);
   },
   [
+    invalidateDashboardSnapshots,
+    invalidateStatsSnapshots,
     removeGoogleProductFromSettings,
     resetGoogleStats,
     siteInrcySettingsText,
@@ -1745,46 +1843,56 @@ const resetSiteInrcyAll = useCallback(async () => {
   if (!confirm("Réinitialiser la configuration (lien + GA4 + Search Console) ?")) return;
   if (siteInrcyOwnership === "none") return;
 
-  await resetGoogleStats("site_inrcy");
-  await updateSiteInrcySettings({});
+  try {
+    await resetGoogleStats("site_inrcy");
+    await updateSiteInrcySettings({});
 
-  // Clear url in DB
-  const supabase = createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData?.user;
-  if (user) {
-    await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" });
+    const supabase = createClient();
+    const { data: authData } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (user) {
+      const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" });
+      if (error) throw error;
+    }
+
+    setSiteInrcyUrl("");
+    setSiteInrcySavedUrl("");
+    setSiteInrcySettingsText("{}");
+    setGa4MeasurementId("");
+    setGa4PropertyId("");
+    setGscProperty("");
+    setSiteInrcyGa4Connected(false);
+    setSiteInrcyGscConnected(false);
+    setSiteInrcySettingsError(null);
+    await syncSitePresenceState();
+    await triggerGeneratorRefresh();
+  } catch (e) {
+    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(e, "Impossible de réinitialiser la configuration du site iNrCy."));
   }
-
-  setSiteInrcyUrl("");
-  setSiteInrcySavedUrl("");
-  setSiteInrcySettingsText("{}");
-  setGa4MeasurementId("");
-  setGa4PropertyId("");
-  setGscProperty("");
-  setSiteInrcyGa4Connected(false);
-  setSiteInrcyGscConnected(false);
-  triggerGeneratorRefresh();
-}, [resetGoogleStats, siteInrcyOwnership, triggerGeneratorRefresh, updateSiteInrcySettings]);
+}, [resetGoogleStats, siteInrcyOwnership, syncSitePresenceState, triggerGeneratorRefresh, updateSiteInrcySettings]);
 
 const resetSiteWebAll = useCallback(async () => {
   if (!confirm("Réinitialiser la configuration (lien + GA4 + Search Console) ?")) return;
 
-  await resetGoogleStats("site_web");
+  try {
+    await resetGoogleStats("site_web");
+    await updateSiteWebSettings({});
 
-  // Clear settings.site_web
-  await updateSiteWebSettings({});
-
-  setSiteWebUrl("");
-  setSiteWebSavedUrl("");
-  setSiteWebSettingsText("{}");
-  setSiteWebGa4MeasurementId("");
-  setSiteWebGa4PropertyId("");
-  setSiteWebGscProperty("");
-  setSiteWebGa4Connected(false);
-  setSiteWebGscConnected(false);
-  triggerGeneratorRefresh();
-}, [resetGoogleStats, updateSiteWebSettings, triggerGeneratorRefresh]);
+    setSiteWebUrl("");
+    setSiteWebSavedUrl("");
+    setSiteWebSettingsText("{}");
+    setSiteWebGa4MeasurementId("");
+    setSiteWebGa4PropertyId("");
+    setSiteWebGscProperty("");
+    setSiteWebGa4Connected(false);
+    setSiteWebGscConnected(false);
+    setSiteWebSettingsError(null);
+    await syncSitePresenceState();
+    await triggerGeneratorRefresh();
+  } catch (e) {
+    setSiteWebSettingsError(getSimpleFrenchErrorMessage(e, "Impossible de réinitialiser la configuration du site web."));
+  }
+}, [resetGoogleStats, syncSitePresenceState, triggerGeneratorRefresh, updateSiteWebSettings]);
 
 // ✅ Houzz / Pages Jaunes (liens uniquement, stockés dans inrcy_site_configs.settings)
 const updateRootSettingsKey = useCallback(
@@ -2601,20 +2709,28 @@ const checkActivity = useCallback(async () => {
   }, [menuOpen]);
 
   useEffect(() => {
+    let shouldFetch = true;
     try {
       const raw = window.sessionStorage.getItem("inrcy_generator_kpis_v1");
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!parsed?.leads) return;
-      setKpis(parsed);
+      const rawTs = window.sessionStorage.getItem(KPIS_SNAPSHOT_TS_KEY);
+      const ts = rawTs ? Number(rawTs) : NaN;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.leads) {
+          setKpis(parsed);
+          if (Number.isFinite(ts) && Date.now() - ts < DASHBOARD_SNAPSHOT_MAX_AGE_MS) {
+            shouldFetch = false;
+          }
+        }
+      }
     } catch {
       // ignore
     }
-  }, []);
 
-  useEffect(() => {
-    void refreshKpis();
-  }, [refreshKpis]);
+    if (shouldFetch) {
+      void refreshKpis();
+    }
+  }, [DASHBOARD_SNAPSHOT_MAX_AGE_MS, KPIS_SNAPSHOT_TS_KEY, refreshKpis]);
 
   const leadsToday = kpis?.leads?.today ?? 0;
   const leadsWeek = kpis?.leads?.week ?? 0;
