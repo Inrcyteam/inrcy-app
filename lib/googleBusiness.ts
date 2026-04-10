@@ -1,3 +1,4 @@
+import { log } from "@/lib/observability/logger";
 import { getGoogleTokenForAnyGoogle } from "@/lib/googleStats";
 
 type GMBAccount = { name: string; accountName?: string; type?: string };
@@ -152,8 +153,38 @@ export async function gmbFetchDailyMetrics(accessToken: string, locationName: st
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j?.error?.message || j?.error_description || "Impossible de récupérer les statistiques Google Business pour le moment.");
+
+  const raw = await r.text().catch(() => "");
+  let j: any = {};
+  try {
+    j = raw ? JSON.parse(raw) : {};
+  } catch {
+    j = {};
+  }
+
+  if (!r.ok) {
+    log.error("[gmb] Business Profile Performance API error", {
+      provider: "google",
+      route: "businessprofileperformance.fetchMultiDailyMetricsTimeSeries",
+      status_code: r.status,
+      location_name: locationName,
+      endpoint,
+      request_body: body,
+      google_response_body: raw || null,
+    });
+
+    const msg = j?.error?.message || j?.error_description || raw || "Impossible de récupérer les statistiques Google Business pour le moment.";
+    throw new Error(`Business Profile Performance API error (${r.status}): ${msg}`);
+  }
+
+  log.info("[gmb] Business Profile Performance API success", {
+    provider: "google",
+    route: "businessprofileperformance.fetchMultiDailyMetricsTimeSeries",
+    status_code: r.status,
+    location_name: locationName,
+    endpoint,
+  });
+
   return j;
 }
 
