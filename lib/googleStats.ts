@@ -168,10 +168,15 @@ export async function getGoogleTokenFor(
     accessToken = refreshed.accessToken;
     expiresAt = refreshed.expiresAtIso;
 
-    // On cache l'access_token sur la ligne client (même si uses_admin=true)
+    // Refresh silently without disconnecting the integration.
+    // A token expiry is a technical refresh event, not a business disconnection.
     await supabase
       .from("integrations")
-      .update({ access_token_enc: accessToken ? encryptToken(accessToken) : null, expires_at: expiresAt })
+      .update({
+        access_token_enc: accessToken ? encryptToken(accessToken) : null,
+        expires_at: expiresAt,
+        status: "connected",
+      })
       .eq("id", row.id);
   }
 

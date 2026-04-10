@@ -105,31 +105,20 @@ function hasGoogleSetting(settingsNode: unknown, product: "ga4" | "gsc") {
 
 function isConnectedGoogleStat(rows: IntegrationLite[], source: "site_inrcy" | "site_web", product: "ga4" | "gsc", fallbackSettingsNode?: unknown) {
   const settingsConnected = hasGoogleSetting(fallbackSettingsNode, product);
-  if (!settingsConnected) return false;
-
   const row = latestIntegration(rows, "google", source, product);
-  const status = asString(row.status);
-  const hasRefreshToken = hasTruthyString(row.refresh_token_enc);
+  const status = (asString(asRecord(row).status) || "").toLowerCase();
 
-  // Google access tokens are short-lived by design.
-  // For GA4/GSC, a persisted config + a live integration row should continue to appear
-  // connected as long as the integration is not explicitly disconnected.
-  // The actual data fetch layer already knows how to refresh expired access tokens.
-  // So we must not flip the UI to "disconnected" only because expires_at has passed.
-  if (!Object.keys(row).length) return true;
+  // For GA4/GSC, the persisted property selection is the business truth.
+  // Access tokens are short-lived and are refreshed on demand in lib/googleStats.ts.
+  // So an expired access token must never make the UI or iNrStats look disconnected.
+  // Only an explicit "disconnected" status should turn the connection off.
   if (status === "disconnected") return false;
-  if (!status) return true;
 
-  if (status === "connected" || status === "account_connected") {
-    if (isExpired(row.expires_at) && !hasRefreshToken) {
-      // Keep the persisted Google settings visible as connected.
-      // Missing refresh tokens are handled by the fetch/runtime layer, not by this badge.
-      return true;
-    }
-    return true;
-  }
+  // If the integration row is connected, trust it as the official state.
+  if (status === "connected" || status === "account_connected") return true;
 
-  return true;
+  // If the row is missing or has no clear status yet, keep the persisted setup visible.
+  return settingsConnected;
 }
 
 export async function getChannelConnectionStates(
