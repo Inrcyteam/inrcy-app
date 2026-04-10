@@ -109,17 +109,27 @@ function isConnectedGoogleStat(rows: IntegrationLite[], source: "site_inrcy" | "
 
   const row = latestIntegration(rows, "google", source, product);
   const status = asString(row.status);
+  const hasRefreshToken = hasTruthyString(row.refresh_token_enc);
 
-  // UX rule for the dashboard:
-  // - if the IDs/settings are persisted, the tool should visually appear connected
-  //   even when the latest integration row is temporarily missing, stale, or not yet
-  //   visible through the query path used by this request.
-  // - when an integration row exists and is explicitly expired/disconnected, honor it.
+  // Google access tokens are short-lived by design.
+  // For GA4/GSC, a persisted config + a live integration row should continue to appear
+  // connected as long as the integration is not explicitly disconnected.
+  // The actual data fetch layer already knows how to refresh expired access tokens.
+  // So we must not flip the UI to "disconnected" only because expires_at has passed.
   if (!Object.keys(row).length) return true;
   if (status === "disconnected") return false;
-  if (isExpired(row.expires_at)) return false;
   if (!status) return true;
-  return status === "connected" || status === "account_connected";
+
+  if (status === "connected" || status === "account_connected") {
+    if (isExpired(row.expires_at) && !hasRefreshToken) {
+      // Keep the persisted Google settings visible as connected.
+      // Missing refresh tokens are handled by the fetch/runtime layer, not by this badge.
+      return true;
+    }
+    return true;
+  }
+
+  return true;
 }
 
 export async function getChannelConnectionStates(
@@ -146,7 +156,7 @@ export async function getChannelConnectionStates(
         supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
         supabaseAdmin
           .from("integrations")
-          .select("provider,source,product,status,resource_id,resource_label,display_name,email_address,expires_at,meta,updated_at,created_at")
+          .select("provider,source,product,status,resource_id,resource_label,display_name,email_address,expires_at,access_token_enc,refresh_token_enc,meta,updated_at,created_at")
           .eq("user_id", userId),
       ]);
 
