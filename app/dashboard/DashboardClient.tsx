@@ -40,6 +40,10 @@ import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
 import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, Module, ModuleAction, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
 
 export default function DashboardClient() {
+  const SITE_SNAPSHOT_KEY = "inrcy_dashboard_site_snapshot_v1";
+  const SITE_SNAPSHOT_TS_KEY = "inrcy_dashboard_site_snapshot_ts_v1";
+  const KPIS_SNAPSHOT_TS_KEY = "inrcy_generator_kpis_ts_v1";
+  const DASHBOARD_SNAPSHOT_MAX_AGE_MS = 60_000;
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
   const [helpCanauxOpen, setHelpCanauxOpen] = useState(false);
   const [helpSiteInrcyOpen, setHelpSiteInrcyOpen] = useState(false);
@@ -633,6 +637,48 @@ const removeGoogleProductFromSettings = useCallback((settingsObj: any, product: 
   return next;
 }, []);
 
+const applySiteSnapshot = useCallback((nextState: any) => {
+  setSiteInrcyOwnership(nextState.siteInrcyOwnership);
+  setSiteInrcyUrl(nextState.siteInrcyUrl);
+  setSiteInrcySavedUrl(nextState.siteInrcySavedUrl);
+  setSiteInrcyContactEmail(nextState.siteInrcyContactEmail);
+  setSiteInrcySettingsText(nextState.siteInrcySettingsText);
+  setSiteInrcySettingsError(null);
+  setGa4MeasurementId(nextState.ga4MeasurementId);
+  setGa4PropertyId(nextState.ga4PropertyId);
+  setGscProperty(nextState.gscProperty);
+  setSiteWebSettingsText(nextState.siteWebSettingsText);
+  setSiteWebSettingsError(null);
+  setSiteWebUrl(nextState.siteWebUrl);
+  setSiteWebSavedUrl(nextState.siteWebSavedUrl);
+  setSiteWebGa4MeasurementId(nextState.siteWebGa4MeasurementId);
+  setSiteWebGa4PropertyId(nextState.siteWebGa4PropertyId);
+  setSiteWebGscProperty(nextState.siteWebGscProperty);
+  setInstagramUrl(nextState.instagramUrl);
+  setInstagramAccountConnected(nextState.instagramAccountConnected);
+  setInstagramConnected(nextState.instagramConnected);
+  setInstagramUsername(nextState.instagramUsername);
+  setLinkedinUrl(nextState.linkedinUrl);
+  setLinkedinAccountConnected(nextState.linkedinAccountConnected);
+  setLinkedinConnected(nextState.linkedinConnected);
+  setLinkedinDisplayName(nextState.linkedinDisplayName);
+  setGmbUrl(nextState.gmbUrl);
+  setGmbAccountConnected(nextState.gmbAccountConnected);
+  setGmbConfigured(nextState.gmbConfigured);
+  setGmbConnected(nextState.gmbConnected);
+  setGmbAccountEmail(nextState.gmbAccountEmail);
+  setFacebookUrl(nextState.facebookUrl);
+  setFacebookAccountConnected(nextState.facebookAccountConnected);
+  setFacebookPageConnected(nextState.facebookPageConnected);
+  setFacebookAccountEmail(nextState.facebookAccountEmail);
+  setFbSelectedPageId(nextState.fbSelectedPageId);
+  setFbSelectedPageName(nextState.fbSelectedPageName);
+  setSiteInrcyGa4Connected(nextState.siteInrcyGa4Connected);
+  setSiteInrcyGscConnected(nextState.siteInrcyGscConnected);
+  setSiteWebGa4Connected(nextState.siteWebGa4Connected);
+  setSiteWebGscConnected(nextState.siteWebGscConnected);
+}, []);
+
 // ✅ Charge infos Site iNrCy + outils du pro depuis Supabase
 // - ownership + url iNrCy : profiles
 // - config iNrCy : inrcy_site_configs
@@ -792,50 +838,38 @@ const loadSiteInrcy = useCallback(async () => {
   }
 
   if (requestSeq !== siteConfigRequestSeqRef.current) return;
-  setSiteInrcyOwnership(nextState.siteInrcyOwnership);
-  setSiteInrcyUrl(nextState.siteInrcyUrl);
-  setSiteInrcySavedUrl(nextState.siteInrcySavedUrl);
-  setSiteInrcyContactEmail(nextState.siteInrcyContactEmail);
-  setSiteInrcySettingsText(nextState.siteInrcySettingsText);
-  setSiteInrcySettingsError(null);
-  setGa4MeasurementId(nextState.ga4MeasurementId);
-  setGa4PropertyId(nextState.ga4PropertyId);
-  setGscProperty(nextState.gscProperty);
-  setSiteWebSettingsText(nextState.siteWebSettingsText);
-  setSiteWebSettingsError(null);
-  setSiteWebUrl(nextState.siteWebUrl);
-  setSiteWebSavedUrl(nextState.siteWebSavedUrl);
-  setSiteWebGa4MeasurementId(nextState.siteWebGa4MeasurementId);
-  setSiteWebGa4PropertyId(nextState.siteWebGa4PropertyId);
-  setSiteWebGscProperty(nextState.siteWebGscProperty);
-  setInstagramUrl(nextState.instagramUrl);
-  setInstagramAccountConnected(nextState.instagramAccountConnected);
-  setInstagramConnected(nextState.instagramConnected);
-  setInstagramUsername(nextState.instagramUsername);
-  setLinkedinUrl(nextState.linkedinUrl);
-  setLinkedinAccountConnected(nextState.linkedinAccountConnected);
-  setLinkedinConnected(nextState.linkedinConnected);
-  setLinkedinDisplayName(nextState.linkedinDisplayName);
-  setGmbUrl(nextState.gmbUrl);
-  setGmbAccountConnected(nextState.gmbAccountConnected);
-  setGmbConfigured(nextState.gmbConfigured);
-  setGmbConnected(nextState.gmbConnected);
-  setGmbAccountEmail(nextState.gmbAccountEmail);
-  setFacebookUrl(nextState.facebookUrl);
-  setFacebookAccountConnected(nextState.facebookAccountConnected);
-  setFacebookPageConnected(nextState.facebookPageConnected);
-  setFacebookAccountEmail(nextState.facebookAccountEmail);
-  setFbSelectedPageId(nextState.fbSelectedPageId);
-  setFbSelectedPageName(nextState.fbSelectedPageName);
-  setSiteInrcyGa4Connected(nextState.siteInrcyGa4Connected);
-  setSiteInrcyGscConnected(nextState.siteInrcyGscConnected);
-  setSiteWebGa4Connected(nextState.siteWebGa4Connected);
-  setSiteWebGscConnected(nextState.siteWebGscConnected);
-}, [fetchGoogleConnected]);
+  applySiteSnapshot(nextState);
+  try {
+    window.sessionStorage.setItem(SITE_SNAPSHOT_KEY, JSON.stringify(nextState));
+    window.sessionStorage.setItem(SITE_SNAPSHOT_TS_KEY, String(Date.now()));
+  } catch {
+    // ignore
+  }
+}, [SITE_SNAPSHOT_KEY, SITE_SNAPSHOT_TS_KEY, applySiteSnapshot, fetchGoogleConnected]);
 
 useEffect(() => {
-  loadSiteInrcy();
-}, [loadSiteInrcy]);
+  let shouldFetch = true;
+  try {
+    const raw = window.sessionStorage.getItem(SITE_SNAPSHOT_KEY);
+    const rawTs = window.sessionStorage.getItem(SITE_SNAPSHOT_TS_KEY);
+    const ts = rawTs ? Number(rawTs) : NaN;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        applySiteSnapshot(parsed);
+        if (Number.isFinite(ts) && Date.now() - ts < DASHBOARD_SNAPSHOT_MAX_AGE_MS) {
+          shouldFetch = false;
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  if (shouldFetch) {
+    void loadSiteInrcy();
+  }
+}, [DASHBOARD_SNAPSHOT_MAX_AGE_MS, SITE_SNAPSHOT_KEY, SITE_SNAPSHOT_TS_KEY, applySiteSnapshot, loadSiteInrcy]);
 
 const canAccessSiteInrcy = hasActiveInrcySite(siteInrcyOwnership);
 const savedSiteInrcyUrlMeta = normalizeSiteUrl(siteInrcySavedUrl);
@@ -1071,6 +1105,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
       }
       try {
         window.sessionStorage.setItem("inrcy_generator_kpis_v1", JSON.stringify(json));
+        window.sessionStorage.setItem(KPIS_SNAPSHOT_TS_KEY, String(Date.now()));
       } catch {
         // ignore
       }
@@ -1145,6 +1180,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
       t = window.setTimeout(() => {
         if (disposed) return;
         if (Date.now() - lastGeneratorRefreshAtRef.current < 2500) return;
+        try {
+          window.sessionStorage.removeItem(SITE_SNAPSHOT_TS_KEY);
+          window.sessionStorage.removeItem(KPIS_SNAPSHOT_TS_KEY);
+        } catch {}
         triggerGeneratorRefresh();
       }, 500);
     };
@@ -2601,20 +2640,28 @@ const checkActivity = useCallback(async () => {
   }, [menuOpen]);
 
   useEffect(() => {
+    let shouldFetch = true;
     try {
       const raw = window.sessionStorage.getItem("inrcy_generator_kpis_v1");
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!parsed?.leads) return;
-      setKpis(parsed);
+      const rawTs = window.sessionStorage.getItem(KPIS_SNAPSHOT_TS_KEY);
+      const ts = rawTs ? Number(rawTs) : NaN;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.leads) {
+          setKpis(parsed);
+          if (Number.isFinite(ts) && Date.now() - ts < DASHBOARD_SNAPSHOT_MAX_AGE_MS) {
+            shouldFetch = false;
+          }
+        }
+      }
     } catch {
       // ignore
     }
-  }, []);
 
-  useEffect(() => {
-    void refreshKpis();
-  }, [refreshKpis]);
+    if (shouldFetch) {
+      void refreshKpis();
+    }
+  }, [DASHBOARD_SNAPSHOT_MAX_AGE_MS, KPIS_SNAPSHOT_TS_KEY, refreshKpis]);
 
   const leadsToday = kpis?.leads?.today ?? 0;
   const leadsWeek = kpis?.leads?.week ?? 0;
