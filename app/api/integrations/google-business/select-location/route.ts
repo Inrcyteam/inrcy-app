@@ -33,6 +33,8 @@ export async function POST(req: Request) {
         resource_label: locationTitle,
         meta: { account: accountName },
         status: "connected",
+        resource_url: gmbUrl,
+        updated_at: new Date().toISOString(),
       })
       .eq("user_id", userId)
       .eq("provider", "google")
@@ -49,7 +51,7 @@ export async function POST(req: Request) {
       const currentGmb = asRecord(current["gmb"]);
       const merged = {
         ...current,
-        gmb: { ...currentGmb, connected: true, accountName, locationName, locationTitle, url: gmbUrl },
+        gmb: { ...currentGmb, connected: true, configured: true, accountName, locationName, locationTitle, resource_id: locationName, resource_label: locationTitle, url: gmbUrl },
       };
       await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
     } catch {

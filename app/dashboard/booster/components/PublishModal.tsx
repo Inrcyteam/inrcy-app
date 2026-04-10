@@ -131,6 +131,16 @@ function makeImageKey(file: File): string {
   return `${file.name}__${file.size}__${file.lastModified}`;
 }
 
+
+async function fileToDataUrl(file: File): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("read_failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -386,7 +396,11 @@ function syncChannelImageEditors(params: {
   for (const channel of selectedChannels) {
     const prevState = previous[channel];
     const nextImageKeys = (prevState?.imageKeys || []).filter((key) => imageKeys.includes(key));
-    const mergedKeys = nextImageKeys.length ? nextImageKeys : [...imageKeys];
+    const mergedKeys = nextImageKeys.length
+      ? nextImageKeys
+      : channel === "gmb"
+        ? []
+        : [...imageKeys];
     const transforms: Record<string, ImageTransform> = {};
     for (const key of imageKeys) {
       transforms[key] = prevState?.transforms?.[key]
@@ -408,7 +422,7 @@ export default function PublishModal({
   styles: typeof stylesDash;
   onClose: () => void;
   trackEvent: (type: "publish", payload: Record<string, any>) => Promise<any>;
-  onPublishSuccess?: () => void;
+  onPublishSuccess?: (result?: any) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [idea, setIdea] = useState("");
@@ -421,6 +435,7 @@ export default function PublishModal({
   const [isMobile, setIsMobile] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const gmbFileInputRef = useRef<HTMLInputElement | null>(null);
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imgError, setImgError] = useState("");
@@ -669,66 +684,103 @@ export default function PublishModal({
     fileInputRef.current?.click();
   };
 
-  const onImagesChange = async (files: FileList | null) => {
+  const onImagesChange = async (files: FileList | null, targetChannel?: ChannelKey) => {
+    if (!files?.length) return;
     setImgError("");
-    if (!files) return;
 
-    const picked = Array.from(files);
-    if (!picked.length) return;
-
-    const tooBig = picked.find((f) => f.size > 2 * 1024 * 1024);
-    if (tooBig) {
-      setImgError("Image trop lourde (max 2 Mo).");
+    const incoming = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    if (!incoming.length) {
+      setImgError("Ajoutez des fichiers image valides.");
       return;
     }
 
     const existingKeys = new Set(images.map((file) => makeImageKey(file)));
-    const uniquePicked: File[] = [];
-    for (const file of picked) {
-      const key = makeImageKey(file);
-      if (existingKeys.has(key)) continue;
-      existingKeys.add(key);
-      uniquePicked.push(file);
+    const deduped = incoming.filter((file) => !existingKeys.has(makeImageKey(file)));
+    const allowed = deduped.slice(0, Math.max(0, 5 - images.length));
+
+    if (!allowed.length) {
+      setImgError(images.length >= 5 ? "Maximum 5 images." : "Ces images sont déjà ajoutées.");
+      return;
     }
 
-    if (!uniquePicked.length) return;
-
-    const remainingSlots = Math.max(0, 5 - images.length);
-    const accepted = uniquePicked.slice(0, remainingSlots);
-    if (uniquePicked.length > accepted.length) {
-      setImgError("Maximum 5 images.");
+    if (incoming.length > allowed.length) {
+      setImgError(images.length + allowed.length >= 5 ? "Maximum 5 images." : "Certaines images étaient déjà présentes.");
     }
-    if (!accepted.length) return;
 
-    const metaEntries = await Promise.all(accepted.map(async (file) => [makeImageKey(file), await readImageMeta(file)] as const));
-    setImageMetaByKey((prev) => ({ ...prev, ...Object.fromEntries(metaEntries) }));
-    setImages((prev) => [...prev, ...accepted]);
+    const tooBig = allowed.find((file) => file.size > 2 * 1024 * 1024);
+    if (tooBig) {
+      setImgError(`L'image ${tooBig.name} dépasse 2 Mo.`);
+      return;
+    }
+
+    const nextFiles = [...images, ...allowed].slice(0, 5);
+    const nextPreviews = [...imagePreviews, ...allowed.map((file) => URL.createObjectURL(file))].slice(0, 5);
+    const nextMetaEntries = await Promise.all(allowed.map(async (file) => [makeImageKey(file), await readImageMeta(file)] as const));
+    const nextMetaMap = Object.fromEntries(nextMetaEntries) as Record<string, ImageMeta>;
+    const newKeys = allowed.map((file) => makeImageKey(file));
+
+    setImages(nextFiles);
+    setImagePreviews(nextPreviews);
+    setImageMetaByKey((prev) => ({ ...prev, ...nextMetaMap }));
+
+    if (targetChannel) {
+      setChannelImageEditors((prev) => {
+        const next = syncChannelImageEditors({ previous: prev, imageKeys: nextFiles.map((file) => makeImageKey(file)), selectedChannels, imageMetaByKey: { ...imageMetaByKey, ...nextMetaMap } });
+        const current = next[targetChannel] || { imageKeys: [], transforms: {} };
+        next[targetChannel] = {
+          imageKeys: Array.from(new Set([...(current.imageKeys || []), ...newKeys])),
+          transforms: {
+            ...(current.transforms || {}),
+            ...Object.fromEntries(newKeys.map((key) => [key, current.transforms?.[key] || getOptimizedTransform(targetChannel, nextMetaMap[key])])),
+          },
+        };
+        return next;
+      });
+      setActiveImageChannel(targetChannel);
+      setActiveImageKeyByChannel((prev) => ({ ...prev, [targetChannel]: newKeys[0] || prev[targetChannel] || "" }));
+    }
   };
 
-  useEffect(() => {
-    setImagePreviews((prev) => {
-      prev.forEach((url) => URL.revokeObjectURL(url));
-      return images.map((file) => URL.createObjectURL(file));
+
+  const removeImage = (index: number) => {
+    setImgError("");
+    const removedFile = images[index];
+    const removedPreview = imagePreviews[index];
+    if (!removedFile) return;
+
+    if (removedPreview) {
+      try { URL.revokeObjectURL(removedPreview); } catch {}
+    }
+
+    const removedKey = makeImageKey(removedFile);
+    const nextFiles = images.filter((_, idx) => idx !== index);
+    const nextPreviews = imagePreviews.filter((_, idx) => idx !== index);
+    const remainingKeys = nextFiles.map((file) => makeImageKey(file));
+
+    setImages(nextFiles);
+    setImagePreviews(nextPreviews);
+    setImageMetaByKey((prev) => {
+      const next = { ...prev };
+      delete next[removedKey];
+      return next;
     });
-  }, [images]);
-
-  useEffect(() => {
-    return () => {
-      imagePreviews.forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, [imagePreviews]);
-
-  const removeImage = (idx: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== idx));
+    setChannelImageEditors((prev) => syncChannelImageEditors({
+      previous: prev,
+      imageKeys: remainingKeys,
+      selectedChannels,
+      imageMetaByKey,
+    }));
+    setActiveImageKeyByChannel((prev) => {
+      const next = { ...prev };
+      for (const channel of Object.keys(next) as ChannelKey[]) {
+        if (next[channel] === removedKey) {
+          next[channel] = remainingKeys[0] || "";
+        }
+      }
+      return next;
+    });
   };
 
-  const fileToDataUrl = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(reader.error ?? new Error("Impossible de lire cette image."));
-      reader.readAsDataURL(file);
-    });
 
   const updatePost = (channel: ChannelKey, patch: Partial<ChannelPost>) => {
     if (channel === "inrcy_site" || channel === "site_web") {
@@ -984,7 +1036,7 @@ export default function PublishModal({
 
       const { channelImages, channelSettings } = await buildChannelImagesPayload();
       const sitePost = getDisplayPost("site");
-      await trackEvent("publish", {
+      const result = await trackEvent("publish", {
         idea: idea.trim(),
         theme,
         channels: selectedChannels,
@@ -998,7 +1050,7 @@ export default function PublishModal({
         imageSettingsByChannel: channelSettings,
       });
 
-      onPublishSuccess?.();
+      onPublishSuccess?.(result);
       onClose();
     } catch (e) {
       setPublishError(getSimpleFrenchErrorMessage(e, "La publication n'a pas pu être envoyée. Merci de réessayer."));
@@ -1161,6 +1213,17 @@ export default function PublishModal({
             e.currentTarget.value = "";
           }}
         />
+        <input
+          ref={gmbFileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => {
+            onImagesChange(e.target.files, "gmb");
+            e.currentTarget.value = "";
+          }}
+        />
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button type="button" className={styles.secondaryBtn} onClick={onPickImagesClick}>+ Ajouter des images</button>
           {images.length ? <div style={{ fontSize: 12, opacity: 0.85 }}>{images.length} fichier(s) sélectionné(s)</div> : <div style={{ fontSize: 12, opacity: 0.7 }}>Aucune image</div>}
@@ -1189,7 +1252,20 @@ export default function PublishModal({
         ) : !images.length ? (
           <div style={{ fontSize: 13, opacity: 0.75 }}>Ajoutez d’abord une ou plusieurs images pour activer les retouches.</div>
         ) : (
-          <ChannelImageRetouchCardsPanel
+          <>
+            {activeImageChannel === "gmb" ? (
+              <div style={{ marginBottom: 12, borderRadius: 14, padding: "12px 14px", border: "1px solid rgba(251,191,36,0.26)", background: "rgba(251,191,36,0.10)", display: "grid", gap: 10 }}>
+                <div style={{ fontSize: 13, lineHeight: 1.5, color: "#fde68a" }}>
+                  <strong>Attention :</strong> Google Business refuse souvent les images à caractère publicitaire. Par sécurité, aucune image n&apos;est envoyée par défaut sur ce canal. Cochez seulement les images que vous avez vérifiées.
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button type="button" className={styles.secondaryBtn} onClick={() => gmbFileInputRef.current?.click()}>
+                    + Ajouter une image spécifique Google Business
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            <ChannelImageRetouchCardsPanel
             tabs={selectedChannels.map((channel) => ({ key: channel, label: CHANNEL_LABELS[channel] }))}
             activeChannel={activeImageChannel}
             onActiveChannelChange={(key) => setActiveImageChannel(key as ChannelKey)}
@@ -1216,6 +1292,7 @@ export default function PublishModal({
             pillButtonStyle={pillBtn}
             pillButtonActiveStyle={pillBtnActive}
           />
+          </>
         )}
       </div>
 

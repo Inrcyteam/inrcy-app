@@ -22,6 +22,43 @@ const asRecord = (v: unknown): JsonRecord =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as JsonRecord) : {};
 const errMessage = (e: unknown, fallback: string) => getSimpleFrenchErrorMessage(e, fallback);
 
+const CHANNEL_LABELS: Record<ChannelKey, string> = {
+  inrcy_site: "Site iNrCy",
+  site_web: "Site web",
+  gmb: "Google Business",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  linkedin: "LinkedIn",
+};
+
+function buildResultsSummary(results: Record<string, any>, selected: ChannelKey[]) {
+  const entries = selected.map((channel) => {
+    const value = results[channel] || {};
+    return {
+      channel,
+      label: CHANNEL_LABELS[channel] || channel,
+      ok: value?.ok !== false,
+      error: value?.ok === false ? String(value?.error || "erreur") : null,
+      warning: value?.warning ? String(value.warning) : null,
+      warning_message: value?.warning_message ? String(value.warning_message) : null,
+    };
+  });
+
+  const successes = entries.filter((entry) => entry.ok);
+  const failures = entries.filter((entry) => !entry.ok);
+
+  return {
+    total: entries.length,
+    successCount: successes.length,
+    failureCount: failures.length,
+    allSucceeded: failures.length === 0,
+    allFailed: successes.length === 0,
+    entries,
+    successChannels: successes.map((entry) => entry.channel),
+    failedChannels: failures.map((entry) => entry.channel),
+  };
+}
+
 function slugify(input: string): string {
   return String(input || "")
     .normalize("NFD")
@@ -647,19 +684,44 @@ const body = await req.json().catch(() => null);
             continue;
           }
 
-          const gmbResp = await gmbCreateLocalPost({
-            accessToken: tok.accessToken,
-            accountName,
-            locationName,
-            summary: buildGmbSummary(channelPost),
-            imageUrls: (getChannelImageSet(ch).publishableUrls.length ? getChannelImageSet(ch).publishableUrls : externalImageUrls).slice(0, 5),
-            languageCode: "fr-FR",
-          });
+          const gmbImageUrls = getChannelImageSet(ch).publishableUrls.filter(Boolean).slice(0, 5);
+          let gmbResp: any;
+          let gmbWarning: { code: string; message: string } | null = null;
+
+          try {
+            gmbResp = await gmbCreateLocalPost({
+              accessToken: tok.accessToken,
+              accountName,
+              locationName,
+              summary: buildGmbSummary(channelPost),
+              imageUrls: gmbImageUrls.length ? gmbImageUrls : undefined,
+              languageCode: "fr-FR",
+            });
+          } catch (gmbErr: unknown) {
+            if (!gmbImageUrls.length) {
+              throw gmbErr;
+            }
+            gmbResp = await gmbCreateLocalPost({
+              accessToken: tok.accessToken,
+              accountName,
+              locationName,
+              summary: buildGmbSummary(channelPost),
+              languageCode: "fr-FR",
+            });
+            gmbWarning = {
+              code: "published_without_image",
+              message: "Google Business a refusé l'image. Le texte a été publié sans image.",
+            };
+          }
 
           const gmbRespRec = asRecord(gmbResp);
           const externalId = String(gmbRespRec["name"] ?? "");
           await setDelivery(ch, { status: "delivered", error: null });
-          results[ch] = { ok: true, external_id: externalId || null };
+          results[ch] = {
+            ok: true,
+            external_id: externalId || null,
+            ...(gmbWarning ? { warning: gmbWarning.code, warning_message: gmbWarning.message } : {}),
+          };
           continue;
         }
 
@@ -692,6 +754,8 @@ const body = await req.json().catch(() => null);
       })
     );
 
+    const summary = buildResultsSummary(results, selected);
+
     // 5) Log booster event
     await supabaseAdmin.from("app_events").insert({
       id: randomUUID(),
@@ -712,6 +776,7 @@ const body = await req.json().catch(() => null);
         uploadErrors,
         publication_id: publicationId,
         results,
+        summary,
       },
     });
 
@@ -724,6 +789,7 @@ const body = await req.json().catch(() => null);
       socialFeedPublishableUrls,
       uploadErrors,
       results,
+      summary,
     });
   } catch (e: unknown) {
     return jsonUserFacingError(e, { status: 500, fallback: "L'action n'a pas pu être finalisée.", code: "publish_now_failed" });

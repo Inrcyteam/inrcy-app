@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
 import StatusMessage from "./StatusMessage";
@@ -27,9 +28,39 @@ export default function GoogleBusinessPanel(props: any) {
     disconnectGmbBusiness
   } = props;
 
+  const [locationPendingState, setLocationPendingState] = useState<null | "connect" | "disconnect">(null);
+
+  useEffect(() => {
+    if (locationPendingState === "connect" && gmbConfigured) {
+      setLocationPendingState(null);
+      return;
+    }
+    if (locationPendingState === "disconnect" && !gmbConfigured) {
+      setLocationPendingState(null);
+    }
+  }, [locationPendingState, gmbConfigured]);
+
+  const hasSelectedLocationInList = Boolean(
+    gmbLocationName && gmbLocations.some((l: { name: string; title?: string | null }) => l.name === gmbLocationName)
+  );
+
+  const selectedLocationLabel = useMemo(() => {
+    const picked = gmbLocations.find((l: { name: string; title?: string | null }) => l.name === gmbLocationName);
+    return String(picked?.title || gmbUrl || gmbLocationName || "").trim();
+  }, [gmbLocations, gmbLocationName, gmbUrl]);
+
+  const handleLocationConnect = () => {
+    setLocationPendingState("connect");
+    saveGmbLocation();
+  };
+
+  const handleLocationDisconnect = () => {
+    setLocationPendingState("disconnect");
+    disconnectGmbBusiness();
+  };
+
   return (
     <div style={{ display: "grid", gap: 14 }}>
-      {/* Statut */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <span
           style={{
@@ -38,7 +69,7 @@ export default function GoogleBusinessPanel(props: any) {
             gap: 8,
             border: "1px solid rgba(255,255,255,0.12)",
             background: "rgba(15,23,42,0.65)",
-                colorScheme: "dark",
+            colorScheme: "dark",
             padding: "8px 10px",
             borderRadius: 999,
             color: "rgba(255,255,255,0.92)",
@@ -51,14 +82,17 @@ export default function GoogleBusinessPanel(props: any) {
               width: 8,
               height: 8,
               borderRadius: 999,
-              background: gmbConnected ? "rgba(34,197,94,0.95)" : "rgba(148,163,184,0.9)",
+              background: gmbConnected
+                ? "rgba(34,197,94,0.95)"
+                : gmbAccountConnected
+                  ? "rgba(59,130,246,0.95)"
+                  : "rgba(148,163,184,0.9)",
             }}
           />
-          Statut : <strong>{!gmbAccountConnected ? "À connecter" : gmbConfigured ? "Google Business connecté" : "Compte connecté"}</strong>
+          Statut : <strong>{gmbConnected ? "Connecté" : gmbAccountConnected ? "Compte connecté" : "À connecter"}</strong>
         </span>
       </div>
 
-      {/* Compte Google connecté */}
       <div
         style={{
           border: "1px solid rgba(255,255,255,0.12)",
@@ -71,7 +105,7 @@ export default function GoogleBusinessPanel(props: any) {
       >
         <div className={styles.blockHeaderRow}>
           <div className={styles.blockTitle}>Compte connecté</div>
-            <ConnectionPill connected={gmbAccountConnected} />
+          <ConnectionPill connected={gmbAccountConnected} />
         </div>
         <div className={styles.blockSub}>Ce compte Google sert à accéder à vos établissements Google Business.</div>
 
@@ -79,7 +113,7 @@ export default function GoogleBusinessPanel(props: any) {
           <input
             value={gmbAccountEmail || (gmbAccountConnected ? "Compte connecté" : "")}
             readOnly
-            placeholder="(aucun compte connecté)"
+            placeholder={gmbAccountConnected ? "Compte connecté" : "Aucun compte connecté"}
             style={{
               flex: "1 1 280px",
               minWidth: 220,
@@ -90,24 +124,22 @@ export default function GoogleBusinessPanel(props: any) {
               padding: "10px 12px",
               color: "white",
               outline: "none",
-              opacity: gmbAccountConnected ? 1 : 0.7,
+              opacity: gmbAccountConnected ? 1 : 0.8,
             }}
           />
 
-          {!gmbAccountConnected ? (
-            <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectGmbAccount}>
-              Connecter Google
+          {gmbAccountConnected ? (
+            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectGmbAccount}>
+              Déconnexion
             </button>
           ) : (
-            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectGmbAccount}>
-              Déconnecter Google
+            <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectGmbAccount}>
+              Connecter Google
             </button>
           )}
         </div>
       </div>
 
-
-      {/* Sélection de l'établissement (requis pour publier) */}
       {gmbAccountConnected ? (
         <div
           style={{
@@ -120,10 +152,10 @@ export default function GoogleBusinessPanel(props: any) {
           }}
         >
           <div className={styles.blockHeaderRow}>
-            <div className={styles.blockTitle}>Établissement à publier</div>
-            <ConnectionPill connected={!!gmbLocationName} />
+            <div className={styles.blockTitle}>Établissement à connecter</div>
+            <ConnectionPill connected={gmbConfigured} />
           </div>
-          <div className={styles.blockSub}>Choisis la fiche Google Business sur laquelle iNrCy publie.</div>
+          <div className={styles.blockSub}>Choisissez la fiche Google Business à relier à iNrCy.</div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <button
@@ -135,22 +167,11 @@ export default function GoogleBusinessPanel(props: any) {
               {gmbLoadingList ? "Chargement..." : "Charger mes établissements"}
             </button>
 
-            {/*
-              Le compte Google est déjà identifié au-dessus (bloc "Compte connecté").
-              Ici on ne garde que le choix de la fiche (location).
-              Si plusieurs comptes sont disponibles, l'API renvoie un compte par défaut (souvent le premier).
-            */}
-            {gmbAccounts?.length > 1 ? (
-              <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginLeft: 2 }}>
-                Plusieurs comptes détectés : iNrCy utilise par défaut <strong>{gmbAccountName || "(non défini)"}</strong>.
-              </div>
-            ) : null}
-
             <select
               value={gmbLocationName}
               onChange={(e) => setGmbLocationName(e.target.value)}
               style={{
-                flex: "1 1 320px",
+                flex: "1 1 260px",
                 minWidth: 220,
                 borderRadius: 12,
                 border: "1px solid rgba(255,255,255,0.14)",
@@ -161,7 +182,8 @@ export default function GoogleBusinessPanel(props: any) {
                 outline: "none",
               }}
             >
-              <option value="">Fiche (location)</option>
+              <option value="">Sélectionner un établissement</option>
+              {!hasSelectedLocationInList && gmbLocationName ? <option value={gmbLocationName}>{selectedLocationLabel}</option> : null}
               {gmbLocations.map((l: { name: string; title?: string | null }) => (
                 <option key={l.name} value={l.name}>
                   {l.title || l.name}
@@ -171,87 +193,79 @@ export default function GoogleBusinessPanel(props: any) {
 
             <button
               type="button"
-              className={`${styles.actionBtn} ${styles.connectBtn}`}
-              onClick={saveGmbLocation}
-              disabled={!gmbAccountName || !gmbLocationName}
+              className={`${styles.actionBtn} ${gmbConfigured ? styles.disconnectBtn : styles.connectBtn}`}
+              onClick={gmbConfigured ? handleLocationDisconnect : handleLocationConnect}
+              disabled={!gmbLocationName}
             >
-              Connecter Google Business
+              {gmbConfigured ? "Déconnecter l'établissement" : "Connecter l'établissement"}
             </button>
           </div>
-          {gmbListError && (
-            <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 13, lineHeight: 1.3 }}>
-              {gmbListError}
-              <div style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
-                Astuce : si le message parle d’API non activée, active <strong>Business Profile Business Information API</strong> dans Google Cloud.
-              </div>
+
+          {gmbAccounts?.length > 1 ? (
+            <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: -2 }}>
+              Plusieurs comptes détectés : iNrCy utilise actuellement <strong>{gmbAccountName || "(non défini)"}</strong>.
             </div>
-          )}
+          ) : null}
+
+          {locationPendingState ? (
+            <StatusMessage variant="success">
+              {locationPendingState === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
+            </StatusMessage>
+          ) : null}
+
+          {gmbListError && <StatusMessage variant="error">{gmbListError}</StatusMessage>}
         </div>
       ) : null}
 
-      {/* Lien de la page (auto) */}
-      {gmbAccountConnected ? (
-        <div
-          style={{
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(255,255,255,0.03)",
-            borderRadius: 14,
-            padding: 12,
-            display: "grid",
-            gap: 10,
-          }}
-        >
-          <div className={styles.blockHeaderRow}>
-            <div className={styles.blockTitle}>Lien de la page</div>
-            <ConnectionPill connected={!!gmbUrl?.trim() && gmbConfigured} />
-          </div>
-          <div className={styles.blockSub}>
-            Se remplit automatiquement une fois l’<strong>établissement</strong> choisi.
-          </div>
-
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              value={gmbUrl}
-              readOnly
-              placeholder="(sélectionne une fiche pour générer le lien)"
-              style={{
-                flex: "1 1 280px",
-                minWidth: 220,
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(15,23,42,0.65)",
-                colorScheme: "dark",
-                padding: "10px 12px",
-                color: "white",
-                outline: "none",
-                opacity: gmbUrl ? 1 : 0.75,
-              }}
-            />
-
-            <a
-              href={gmbUrl || "#"}
-              target="_blank"
-              rel="noreferrer"
-              className={`${styles.actionBtn} ${styles.viewBtn}`}
-              style={{ pointerEvents: gmbUrl ? "auto" : "none", opacity: gmbUrl ? 1 : 0.5 }}
-            >
-              Voir la page
-            </a>
-          </div>
-
-          {gmbUrlNotice && <StatusMessage variant="success">{gmbUrlNotice}</StatusMessage>}
-          {gmbUrlError && <StatusMessage variant="error">{gmbUrlError}</StatusMessage>}
+      <div
+        style={{
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: 14,
+          padding: 12,
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        <div className={styles.blockHeaderRow}>
+          <div className={styles.blockTitle}>Lien de la page</div>
+          <ConnectionPill connected={gmbConfigured && !!gmbUrl?.trim()} />
         </div>
-      ) : null}
+        <div className={styles.blockSub}>Se remplit automatiquement une fois l'établissement sélectionné.</div>
 
-      {/* Bloc 3 — Déconnexion Google Business (ne déconnecte pas le compte Google) */}
-      {gmbAccountConnected && gmbConfigured ? (
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-          <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectGmbBusiness}>
-            Déconnecter Google Business
-          </button>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            value={gmbUrl}
+            readOnly
+            placeholder={gmbConfigured ? "Lien récupéré automatiquement" : "Sélectionne un établissement pour générer le lien"}
+            style={{
+              flex: "1 1 280px",
+              minWidth: 220,
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(15,23,42,0.65)",
+              colorScheme: "dark",
+              padding: "10px 12px",
+              color: "white",
+              outline: "none",
+              opacity: gmbUrl ? 1 : 0.8,
+            }}
+          />
+
+          <a
+            href={gmbUrl || "#"}
+            target="_blank"
+            rel="noreferrer"
+            className={`${styles.actionBtn} ${styles.viewBtn}`}
+            style={{ pointerEvents: gmbUrl ? "auto" : "none", opacity: gmbUrl ? 1 : 0.5 }}
+          >
+            Voir la page
+          </a>
         </div>
-      ) : null}
+
+        {gmbUrlNotice && <StatusMessage variant="success">{gmbUrlNotice}</StatusMessage>}
+        {gmbUrlError && <StatusMessage variant="error">{gmbUrlError}</StatusMessage>}
+      </div>
     </div>
   );
 }

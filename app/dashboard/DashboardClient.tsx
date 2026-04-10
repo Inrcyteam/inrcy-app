@@ -1818,19 +1818,29 @@ const disconnectGmbAccount = useCallback(async () => {
   setGmbConfigured(false);
   setGmbAccountEmail("");
   setGmbUrl("");
-  await updateRootSettingsKey("gmb", { url: "", connected: false, accountEmail: "", resource_id: "" });
+  setGmbAccounts([]);
+  setGmbLocations([]);
+  setGmbAccountName("");
+  setGmbLocationName("");
+  await updateRootSettingsKey("gmb", { url: "", connected: false, configured: false, accountEmail: "", accountName: "", locationName: "", locationTitle: "", resource_id: "" });
   setPanelSuccess("gmb", "Compte Google déconnecté.");
 }, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
 
 const disconnectGmbBusiness = useCallback(async () => {
   // Disconnect Google Business ONLY (keeps Google account connected)
-  await fetch("/api/integrations/google-business/disconnect-location", { method: "POST" });
+  const res = await fetch("/api/integrations/google-business/disconnect-location", { method: "POST" });
+  const js = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    setPanelError("gmb", js?.error, "Impossible de déconnecter l'établissement Google Business.");
+    return;
+  }
+  setGmbConnected(false);
   setGmbConfigured(false);
   setGmbUrl("");
   triggerGeneratorRefresh();
-  await updateRootSettingsKey("gmb", { url: "", resource_id: "" });
+  await updateRootSettingsKey("gmb", { url: "", resource_id: "", locationName: "", locationTitle: "", configured: false, connected: true });
   setPanelSuccess("gmb", "Établissement Google Business déconnecté.");
-}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
+}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelError, setPanelSuccess]);
 
 
   // Facebook pages (selection)
@@ -1840,6 +1850,7 @@ const disconnectGmbBusiness = useCallback(async () => {
   const [fbSelectedPageName, setFbSelectedPageName] = useState<string>("");
   const [fbPagesError, setFbPagesError] = useState<string | null>(null);
   const fbPagesAutoLoadRef = useRef(false);
+const gmbLocationsAutoLoadRef = useRef(false);
 
 // Instagram accounts (selection via Facebook pages that have an IG Business account)
 const [igAccounts, setIgAccounts] = useState<Array<{ page_id: string; page_name?: string; ig_id: string; username?: string; page_access_token?: string }>>([]);
@@ -2182,19 +2193,70 @@ const loadGmbAccountsAndLocations = useCallback(async () => {
   setGmbListError(null);
   try {
     const r = await fetch(`/api/integrations/google-business/locations`, { cache: "no-store" });
-    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger vos pages Facebook."));
+    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger les établissements Google Business."));
     const j = await r.json().catch(() => ({}));
-    setGmbAccounts(j.accounts || []);
+    const accounts = Array.isArray(j.accounts) ? j.accounts : [];
+    const locations = Array.isArray(j.locations) ? j.locations : [];
+    setGmbAccounts(accounts);
     setGmbAccountName(j.accountName || "");
-    setGmbLocations(j.locations || []);
+    setGmbLocations(locations);
     if (j.locationsError) setGmbListError(j.locationsError);
-    if (!gmbLocationName && j.locations?.[0]?.name) setGmbLocationName(j.locations[0].name);
+
+    const currentLocationName = (gmbLocationName || "").trim();
+    const hasCurrentSelection = Boolean(currentLocationName && locations.some((l: { name: string; title?: string | null }) => l.name === currentLocationName));
+    const nextLocationName = hasCurrentSelection ? currentLocationName : String(locations?.[0]?.name || "");
+    if (nextLocationName) setGmbLocationName(nextLocationName);
+
+    if (locations.length === 1 && j.accountName) {
+      const only = locations[0];
+      const autoRes = await fetch("/api/integrations/google-business/select-location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountName: j.accountName,
+          locationName: only.name,
+          locationTitle: only.title || null,
+        }),
+      });
+      const autoJson = await autoRes.json().catch(() => ({}));
+      if (!autoRes.ok) throw new Error(autoJson?.error || "Impossible d’enregistrer l’établissement Google Business.");
+      setGmbLocationName(String(only.name || ""));
+      setGmbConfigured(true);
+      setGmbConnected(true);
+      if (autoJson?.url) setGmbUrl(String(autoJson.url));
+      triggerGeneratorRefresh();
+      setPanelSuccess("gmb", "Établissement Google Business enregistré.");
+    }
   } catch (e: any) {
     setGmbListError(getSimpleFrenchErrorMessage(e, "Impossible de charger les établissements Google Business."));
   } finally {
     setGmbLoadingList(false);
   }
-}, [gmbAccountConnected, gmbLocationName]);
+}, [gmbAccountConnected, gmbLocationName, triggerGeneratorRefresh, setPanelSuccess]);
+
+
+useEffect(() => {
+  const linked = searchParams.get("linked");
+  const ok = searchParams.get("ok");
+  const shouldAutoLoad = panel === "gmb" && linked === "gmb" && ok === "1";
+
+  if (!shouldAutoLoad) {
+    gmbLocationsAutoLoadRef.current = false;
+    return;
+  }
+
+  if (!gmbAccountConnected || gmbConfigured || gmbLoadingList || gmbLocationsAutoLoadRef.current) return;
+
+  gmbLocationsAutoLoadRef.current = true;
+  void loadGmbAccountsAndLocations();
+}, [
+  panel,
+  searchParams,
+  gmbAccountConnected,
+  gmbConfigured,
+  gmbLoadingList,
+  loadGmbAccountsAndLocations,
+]);
 
 const saveGmbLocation = useCallback(async () => {
   if (!gmbAccountName || !gmbLocationName) return;
@@ -2212,6 +2274,8 @@ const saveGmbLocation = useCallback(async () => {
     const js = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(js?.error || "Impossible d’enregistrer l’établissement");
 
+    setGmbConfigured(true);
+    setGmbConnected(true);
     if (js?.url) setGmbUrl(String(js.url));
     triggerGeneratorRefresh();
     setPanelSuccess("gmb", "Établissement Google Business enregistré.", 1800);
