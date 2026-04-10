@@ -103,15 +103,22 @@ function hasGoogleSetting(settingsNode: unknown, product: "ga4" | "gsc") {
   return hasTruthyString(asRecord(node.gsc).property);
 }
 
-function isConnectedGoogleStat(rows: IntegrationLite[], source: "site_inrcy" | "site_web", product: "ga4" | "gsc", _fallbackSettingsNode?: unknown) {
+function isConnectedGoogleStat(rows: IntegrationLite[], source: "site_inrcy" | "site_web", product: "ga4" | "gsc", fallbackSettingsNode?: unknown) {
+  const settingsConnected = hasGoogleSetting(fallbackSettingsNode, product);
   const row = latestIntegration(rows, "google", source, product);
   const status = (asString(asRecord(row).status) || "").toLowerCase();
 
-  // GA4/GSC badges must reflect the official backend integration state only.
-  // A saved property id or measurement id is configuration, not proof of an active connection.
-  // Expired access tokens are refreshed on demand, so they do not disconnect the integration.
+  // For GA4/GSC, the persisted property selection is the business truth.
+  // Access tokens are short-lived and are refreshed on demand in lib/googleStats.ts.
+  // So an expired access token must never make the UI or iNrStats look disconnected.
+  // Only an explicit "disconnected" status should turn the connection off.
   if (status === "disconnected") return false;
-  return status === "connected" || status === "account_connected";
+
+  // If the integration row is connected, trust it as the official state.
+  if (status === "connected" || status === "account_connected") return true;
+
+  // If the row is missing or has no clear status yet, keep the persisted setup visible.
+  return settingsConnected;
 }
 
 export async function getChannelConnectionStates(
@@ -156,10 +163,10 @@ export async function getChannelConnectionStates(
   const siteWeb = asRecord(settings.site_web);
   const siteWebUrl = (asString(siteWeb.url) || "").trim();
 
-  const inrcyGa4 = Boolean(inrcyHasSite && inrcyUrl && isConnectedGoogleStat(rows, "site_inrcy", "ga4", inrcyCfgSettings));
-  const inrcyGsc = Boolean(inrcyHasSite && inrcyUrl && isConnectedGoogleStat(rows, "site_inrcy", "gsc", inrcyCfgSettings));
-  const webGa4 = Boolean(siteWebUrl && isConnectedGoogleStat(rows, "site_web", "ga4", siteWeb));
-  const webGsc = Boolean(siteWebUrl && isConnectedGoogleStat(rows, "site_web", "gsc", siteWeb));
+  const inrcyGa4 = isConnectedGoogleStat(rows, "site_inrcy", "ga4", inrcyCfgSettings);
+  const inrcyGsc = isConnectedGoogleStat(rows, "site_inrcy", "gsc", inrcyCfgSettings);
+  const webGa4 = isConnectedGoogleStat(rows, "site_web", "ga4", siteWeb);
+  const webGsc = isConnectedGoogleStat(rows, "site_web", "gsc", siteWeb);
   const inrcyScore = (inrcyHasSite && !!inrcyUrl ? 1 : 0) + (inrcyGa4 ? 1 : 0) + (inrcyGsc ? 1 : 0);
   const webScore = (!!siteWebUrl ? 1 : 0) + (webGa4 ? 1 : 0) + (webGsc ? 1 : 0);
 
@@ -210,7 +217,7 @@ export async function getChannelConnectionStates(
   return {
     site_inrcy: {
       connected: inrcyHasSite && !!inrcyUrl,
-      statsConnected: Boolean(inrcyUrl && (inrcyGa4 || inrcyGsc)),
+      statsConnected: inrcyGa4 || inrcyGsc,
       score: inrcyScore,
       url: inrcyUrl || null,
       ga4: inrcyHasSite && inrcyGa4,
@@ -218,7 +225,7 @@ export async function getChannelConnectionStates(
     },
     site_web: {
       connected: !!siteWebUrl,
-      statsConnected: Boolean(siteWebUrl && (webGa4 || webGsc)),
+      statsConnected: webGa4 || webGsc,
       score: webScore,
       url: siteWebUrl || null,
       ga4: webGa4,
