@@ -487,21 +487,32 @@ export function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
     const m = safeObj(rawMetrics);
     const totals = safeObj(m.totals);
     const hasError = !!m.error;
-    const base = hasError || !rawMetrics ? 0.8 : 1.2;
-    const impressionsGuess =
+
+    const impressions =
       safeNum(totals.impressions) ||
       safeNum(totals.BUSINESS_IMPRESSIONS) ||
       (safeNum(totals.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) +
         safeNum(totals.BUSINESS_IMPRESSIONS_MOBILE_MAPS) +
         safeNum(totals.BUSINESS_IMPRESSIONS_DESKTOP_SEARCH) +
         safeNum(totals.BUSINESS_IMPRESSIONS_MOBILE_SEARCH));
-    const interactionsGuess =
-      (safeNum(totals.websiteClicks) || safeNum(totals.website_clicks) || safeNum(totals.WEBSITE_CLICKS)) +
-      (safeNum(totals.callClicks) || safeNum(totals.call_clicks) || safeNum(totals.CALL_CLICKS)) +
-      (safeNum(totals.directionRequests) || safeNum(totals.direction_requests) || safeNum(totals.DIRECTION_REQUESTS) || safeNum(totals.BUSINESS_DIRECTION_REQUESTS)) +
-      (safeNum(totals.conversations) || safeNum(totals.BUSINESS_CONVERSATIONS));
-    const perDay = clamp(base + impressionsGuess / 800 + interactionsGuess / 30, 0, 50);
-    return Math.max(0, Math.round(perDay * 30));
+    const websiteClicks = safeNum(totals.websiteClicks) || safeNum(totals.website_clicks) || safeNum(totals.WEBSITE_CLICKS);
+    const callClicks = safeNum(totals.callClicks) || safeNum(totals.call_clicks) || safeNum(totals.CALL_CLICKS);
+    const directionRequests =
+      safeNum(totals.directionRequests) ||
+      safeNum(totals.direction_requests) ||
+      safeNum(totals.DIRECTION_REQUESTS) ||
+      safeNum(totals.BUSINESS_DIRECTION_REQUESTS);
+    const conversations = safeNum(totals.conversations) || safeNum(totals.BUSINESS_CONVERSATIONS);
+
+    const intentOpportunity =
+      websiteClicks * 0.45 +
+      callClicks * 0.70 +
+      directionRequests * 0.55 +
+      conversations * 0.65;
+    const visibilityOpportunity = impressions / 450;
+    const baseline = hasError || !rawMetrics ? 2 : 0;
+
+    return Math.max(0, Math.round(clamp(baseline + intentOpportunity + visibilityOpportunity, 0, 80)));
   }
   if (cubeKey === 'facebook' || cubeKey === 'instagram' || cubeKey === 'linkedin') {
     return Math.max(0, Math.round(computeOpportunityPerDaySocial(cubeKey, ov) * 30));

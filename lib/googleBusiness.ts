@@ -1,4 +1,3 @@
-import { log } from "@/lib/observability/logger";
 import { getGoogleTokenForAnyGoogle } from "@/lib/googleStats";
 
 type GMBAccount = { name: string; accountName?: string; type?: string };
@@ -176,27 +175,10 @@ export async function gmbFetchDailyMetrics(accessToken: string, locationName: st
   }
 
   if (!r.ok) {
-    log.error("[gmb] Business Profile Performance API error", {
-      provider: "google",
-      route: "businessprofileperformance.fetchMultiDailyMetricsTimeSeries",
-      status_code: r.status,
-      location_name: locationName,
-      endpoint,
-      request_query: requestMeta,
-      google_response_body: raw || null,
-    });
 
     const msg = j?.error?.message || j?.error_description || raw || "Impossible de récupérer les statistiques Google Business pour le moment.";
     throw new Error(`Business Profile Performance API error (${r.status}): ${msg}`);
   }
-
-  log.info("[gmb] Business Profile Performance API success", {
-    provider: "google",
-    route: "businessprofileperformance.fetchMultiDailyMetricsTimeSeries",
-    status_code: r.status,
-    location_name: locationName,
-    endpoint,
-  });
 
   return j;
 }

@@ -480,35 +480,25 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
 
 function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
   if (cubeKey === "gmb") {
-    // If the user is not connected, opportunity must be 0 (no ghost +90).
     const connected = !!ov?.sources?.gmb?.connected;
     if (!connected) return 0;
 
     const m = ov?.sources?.gmb?.metrics;
-    // Best-effort: sum interactions over the window and convert to a "potential".
-    // If metrics API is not enabled we still provide a conservative number.
-    const daily = m?.multiDailyMetricTimeSeries || m?.timeSeries || null;
-    // The API response shape may vary; we will just scan numeric fields.
-    const flatNums: number[] = [];
-    try {
-      const asStr = JSON.stringify(m || {});
-      // Cheap heuristic: count website clicks / calls / directions if present.
-      // We'll parse a few known metric keys if we can find them.
-      if (asStr) {
-        // no-op: keep conservative.
-      }
-    } catch {}
-
     const hasError = !!m?.error;
-    // Conservative baseline for a connected GBP when metrics are missing/unavailable.
-    // (Old baseline 3.0/day => +90 was too aggressive.)
-    const base = hasError || !m ? 0.8 : 1.2;
-    // Use impressions if present (we can sometimes read them from the timeSeries).
     const { impressions, websiteClicks, callClicks, directionRequests } = getGmbTotals(m);
-    const impressionsGuess = impressions;
-    const interactionsGuess = websiteClicks + callClicks + directionRequests;
-    const perDay = clamp(base + impressionsGuess / 800 + interactionsGuess / 30, 0, 50);
-    return Math.max(0, Math.round(perDay * 30));
+    const conversations =
+      safeNum(m?.totals?.conversations) ||
+      safeNum(m?.totals?.BUSINESS_CONVERSATIONS);
+
+    const intentOpportunity =
+      websiteClicks * 0.45 +
+      callClicks * 0.70 +
+      directionRequests * 0.55 +
+      conversations * 0.65;
+    const visibilityOpportunity = impressions / 450;
+    const baseline = hasError || !m ? 2 : 0;
+
+    return Math.max(0, Math.round(clamp(baseline + intentOpportunity + visibilityOpportunity, 0, 80)));
   }
   if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin") {
     const perDay = computeOpportunityPerDaySocial(cubeKey, ov);
@@ -1576,7 +1566,16 @@ const provenance = buildProvenance(key, ov);
   }, [centralByCube, summaryProfile.avg_basket, summaryProfile.lead_conversion_rate]);
 
   const summaryActionItems = useMemo(() => {
-    const actionCopy: Record<CubeKey, { label: string; kicker: string; motive: string; badge: string }> = {
+    const connectionStateByCube: Record<CubeKey, boolean> = {
+      site_inrcy: !!models.find((m) => m.key === "site_inrcy")?.connections.ga4 || !!models.find((m) => m.key === "site_inrcy")?.connections.gsc,
+      site_web: !!models.find((m) => m.key === "site_web")?.connections.ga4 || !!models.find((m) => m.key === "site_web")?.connections.gsc,
+      gmb: !!models.find((m) => m.key === "gmb")?.connections.main,
+      facebook: !!models.find((m) => m.key === "facebook")?.connections.main,
+      instagram: !!models.find((m) => m.key === "instagram")?.connections.main,
+      linkedin: !!models.find((m) => m.key === "linkedin")?.connections.main,
+    };
+
+    const connectedCopy: Record<CubeKey, { label: string; kicker: string; motive: string; badge: string }> = {
       facebook: {
         label: 'Publier sur Facebook',
         kicker: 'Relancez votre visibilité locale',
@@ -1608,7 +1607,46 @@ const provenance = buildProvenance(key, ov);
         badge: 'Fidéliser',
       },
       gmb: {
-        label: 'Activer Google Business',
+        label: 'Optimiser Google Business',
+        kicker: 'Débloquez un potentiel local immédiat',
+        motive: 'Votre fiche locale peut capter plus d’appels, de clics et d’itinéraires avec quelques actions ciblées.',
+        badge: 'Booster',
+      },
+    };
+
+    const disconnectedCopy: Record<CubeKey, { label: string; kicker: string; motive: string; badge: string }> = {
+      facebook: {
+        label: 'Connecter Facebook',
+        kicker: 'Activez un levier social local',
+        motive: 'Reliez Facebook pour mesurer votre visibilité sociale et capter plus de demandes locales.',
+        badge: 'Connexion',
+      },
+      instagram: {
+        label: 'Connecter Instagram',
+        kicker: 'Activez votre vitrine de marque',
+        motive: 'Reliez Instagram pour exploiter votre visibilité et transformer plus d’attention en opportunités.',
+        badge: 'Connexion',
+      },
+      linkedin: {
+        label: 'Connecter LinkedIn',
+        kicker: 'Activez votre crédibilité professionnelle',
+        motive: 'Reliez LinkedIn pour publier facilement et préparer le suivi analytics dès que les accès seront disponibles.',
+        badge: 'Connexion',
+      },
+      site_web: {
+        label: 'Connecter votre site',
+        kicker: 'Mesurez enfin votre rendement web',
+        motive: 'Connectez GA4 et GSC pour analyser votre trafic, vos intentions et votre potentiel business.',
+        badge: 'Connexion',
+      },
+      site_inrcy: {
+        label: 'Connecter le site iNrCy',
+        kicker: 'Branchez votre machine à leads',
+        motive: 'Activez les outils de mesure du site iNrCy pour suivre sa performance et ses opportunités.',
+        badge: 'Connexion',
+      },
+      gmb: {
+        label: 'Connecter Google Business',
         kicker: 'Débloquez un potentiel local immédiat',
         motive: 'Vous laissez probablement passer des demandes locales : ce canal mérite d’être activé en priorité.',
         badge: 'Connexion',
@@ -1616,16 +1654,20 @@ const provenance = buildProvenance(key, ov);
     };
 
     const items = [
+      { key: 'site_inrcy' as CubeKey, opportunities: centralByCube.site_inrcy, revenue: computedEstimatedByCube.site_inrcy || summaryEstimatedByCube.site_inrcy },
+      { key: 'site_web' as CubeKey, opportunities: centralByCube.site_web, revenue: computedEstimatedByCube.site_web || summaryEstimatedByCube.site_web },
+      { key: 'gmb' as CubeKey, opportunities: centralByCube.gmb, revenue: computedEstimatedByCube.gmb || summaryEstimatedByCube.gmb },
       { key: 'facebook' as CubeKey, opportunities: centralByCube.facebook, revenue: computedEstimatedByCube.facebook || summaryEstimatedByCube.facebook },
       { key: 'instagram' as CubeKey, opportunities: centralByCube.instagram, revenue: computedEstimatedByCube.instagram || summaryEstimatedByCube.instagram },
       { key: 'linkedin' as CubeKey, opportunities: centralByCube.linkedin, revenue: computedEstimatedByCube.linkedin || summaryEstimatedByCube.linkedin },
-      { key: 'site_web' as CubeKey, opportunities: centralByCube.site_web, revenue: computedEstimatedByCube.site_web || summaryEstimatedByCube.site_web },
-      { key: 'site_inrcy' as CubeKey, opportunities: centralByCube.site_inrcy, revenue: computedEstimatedByCube.site_inrcy || summaryEstimatedByCube.site_inrcy },
-      { key: 'gmb' as CubeKey, opportunities: centralByCube.gmb, revenue: computedEstimatedByCube.gmb || summaryEstimatedByCube.gmb },
-    ].map((item) => ({ ...item, ...actionCopy[item.key] }));
+    ].map((item) => ({
+      ...item,
+      ...(connectionStateByCube[item.key] ? connectedCopy[item.key] : disconnectedCopy[item.key]),
+      connected: connectionStateByCube[item.key],
+    }));
 
-    return items.filter((item) => item.opportunities > 0 || item.key === 'gmb');
-  }, [centralByCube, computedEstimatedByCube, summaryEstimatedByCube]);
+    return items;
+  }, [centralByCube, computedEstimatedByCube, models, summaryEstimatedByCube]);
 
   return (
     <div className={styles.page}>
