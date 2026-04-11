@@ -175,7 +175,7 @@ function estimateEngagedSessions(ov: Overview): number {
 }
 
 const CAP_MULTIPLIER_WHEN_STRONG_SIGNAL = 3;
-export const CAPTURED_MODEL_VERSION = 'captured_v2.0';
+export const CAPTURED_MODEL_VERSION = 'captured_v2.1';
 
 export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
   if (!isCubeConnected(cube, ov)) return 0;
@@ -224,14 +224,6 @@ export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
     const messages = getTotalMetric(m, [
       'messages', 'message_count', 'messageCount', 'conversations', 'conversations_started', 'conversationsStarted', 'text_message_clicks',
     ]);
-    const ctaClicks = getTotalMetric(m, [
-      'cta_clicks', 'ctaClicks', 'link_clicks', 'linkClicks', 'website_clicks', 'websiteClicks', 'clickCount', 'clicks',
-      'outbound_clicks', 'outboundClicks', 'page_website_clicks_logged_in_unique', 'page_website_clicks',
-      'page_call_phone_clicks', 'page_call_phone_clicks_logged_in_unique', 'page_get_directions_clicks',
-      'page_get_directions_clicks_logged_in_unique', 'phone_call_clicks', 'email_contacts', 'text_message_clicks',
-      'get_directions_clicks', 'get_direction_clicks', 'profile_views', 'profileVisits', 'profile_visits', 'searchAppearances', 'search_appearances',
-    ]);
-    const strong = messages + ctaClicks;
     const engagements = getTotalMetric(m, [
       'engagements', 'post_engaged_users', 'page_engaged_users', 'post_engaged_users_sum', 'likes', 'comments', 'shares', 'saves',
     ]);
@@ -241,18 +233,56 @@ export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
     const socialImpr = getTotalMetric(m, ['impressions', 'post_impressions_sum', 'post_impressions', 'views', 'video_views', 'impressionCount', 'uniqueImpressionsCount']);
     const fbPageViews = cube === 'facebook' ? getTotalMetric(m, ['page_views_total']) : 0;
     const igReach = cube === 'instagram' ? getTotalMetric(m, ['reach', 'uniqueReach', 'unique_reach']) : 0;
-    const igProfileViews = cube === 'instagram' ? getTotalMetric(m, ['profile_views', 'profileVisits', 'profile_visits']) : 0;
+    const igProfileViews = cube === 'instagram' ? getTotalMetric(m, ['profile_views', 'profileVisits', 'profile_visits', 'profile_links_taps']) : 0;
     const liPageViews = cube === 'linkedin' ? getTotalMetric(m, ['pageViews']) : 0;
     const liFollowerCount = cube === 'linkedin' ? getTotalMetric(m, ['followerCount', 'memberFollowersCount']) : 0;
+
+    if (cube === 'instagram') {
+      const directSignals =
+        messages +
+        getTotalMetric(m, [
+          'profile_links_taps', 'website_clicks', 'websiteClicks', 'phone_call_clicks', 'email_contacts',
+          'text_message_clicks', 'get_directions_clicks', 'get_direction_clicks',
+        ]);
+      const profileIntent =
+        getTotalMetric(m, ['profile_activity']) +
+        getTotalMetric(m, ['profile_visits', 'profileVisits']) * 0.85 +
+        getTotalMetric(m, ['profile_views', 'profileViews']) * 0.65;
+      const communityIntent =
+        getTotalMetric(m, ['replies']) * 0.8 +
+        getTotalMetric(m, ['comments']) * 0.35 +
+        getTotalMetric(m, ['shares']) * 0.25 +
+        getTotalMetric(m, ['saved', 'saves']) * 0.2 +
+        getTotalMetric(m, ['follows', 'follower_count']) * 0.15;
+      const visibilityAssist =
+        igReach * 0.008 +
+        socialImpr * 0.004 +
+        getTotalMetric(m, ['accounts_engaged']) * 0.05 +
+        getTotalMetric(m, ['total_interactions']) * 0.03;
+      const estimate = directSignals + profileIntent + communityIntent + visibilityAssist;
+      if (directSignals > 0) {
+        const capped = Math.min(directSignals * CAP_MULTIPLIER_WHEN_STRONG_SIGNAL + profileIntent * 0.75, estimate);
+        return roundNonNeg(capped);
+      }
+      return roundNonNeg(estimate);
+    }
+
+    const ctaClicks = getTotalMetric(m, [
+      'cta_clicks', 'ctaClicks', 'link_clicks', 'linkClicks', 'website_clicks', 'websiteClicks', 'clickCount', 'clicks',
+      'outbound_clicks', 'outboundClicks', 'page_website_clicks_logged_in_unique', 'page_website_clicks',
+      'page_call_phone_clicks', 'page_call_phone_clicks_logged_in_unique', 'page_get_directions_clicks',
+      'page_get_directions_clicks_logged_in_unique', 'phone_call_clicks', 'email_contacts', 'text_message_clicks',
+      'get_directions_clicks', 'get_direction_clicks', 'profile_views', 'profileVisits', 'profile_visits', 'searchAppearances', 'search_appearances',
+    ]);
+    const strong = messages + ctaClicks;
     const fallbackPresence =
       (cube === 'facebook' && fbPageViews > 0) ||
-      (cube === 'instagram' && (igReach > 0 || igProfileViews > 0 || profileViews > 0)) ||
       (cube === 'linkedin' && (liPageViews > 0 || liFollowerCount > 0 || profileViews > 0 || searchAppearances > 0 || socialImpr > 0 || engagements > 0))
         ? 1
         : 0;
     const estimate = Math.max(
       fallbackPresence,
-      strong + clicks * 0.05 + engagements * 0.03 + reach * 0.001 + socialImpr * 0.001 + fbPageViews * 0.04 + igReach * 0.03 + igProfileViews * 0.06 + profileViews * 0.06 + searchAppearances * 0.03 + liPageViews * 0.04 + liFollowerCount * 0.002
+      strong + clicks * 0.05 + engagements * 0.03 + reach * 0.001 + socialImpr * 0.001 + fbPageViews * 0.04 + profileViews * 0.06 + searchAppearances * 0.03 + liPageViews * 0.04 + liFollowerCount * 0.002
     );
     if (strong > 0) {
       const capped = Math.min(strong * CAP_MULTIPLIER_WHEN_STRONG_SIGNAL, estimate);
@@ -296,7 +326,7 @@ export function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): 
 
   const impressionsTotal = getTotalMetric(m, ['impressions', 'post_impressions', 'postImpressions', 'post_impressions_sum', 'IMPRESSIONS', 'impressionCount', 'viewerImpressions', 'reach', 'REACH']) || 0;
   const engagementsTotal = getTotalMetric(m, ['engagements', 'post_engagements', 'postEngagements', 'ENGAGEMENTS', 'total_engagements', 'page_engaged_users', 'post_engaged_users_sum', 'reactions', 'comments', 'shares', 'likes', 'saves', 'replies', 'video_views', 'videoViews']) || 0;
-  const ctaClicksTotal = getTotalMetric(m, ['cta_clicks', 'ctaClicks', 'link_clicks', 'linkClicks', 'website_clicks', 'websiteClicks', 'page_website_clicks_logged_in_unique', 'WEBSITE_CLICKS', 'CLICK_COUNT', 'clickCount', 'clicks', 'outbound_clicks', 'outboundClicks']) || 0;
+  const ctaClicksTotal = getTotalMetric(m, ['cta_clicks', 'ctaClicks', 'link_clicks', 'linkClicks', 'website_clicks', 'websiteClicks', 'page_website_clicks_logged_in_unique', 'WEBSITE_CLICKS', 'CLICK_COUNT', 'clickCount', 'clicks', 'outbound_clicks', 'outboundClicks', 'profile_links_taps', 'profile_visits', 'profile_activity']) || 0;
   const audienceTotal = getTotalMetric(m, ['followers', 'followerCount', 'follower_count', 'followers_count', 'fans', 'fanCount', 'fan_count', 'audience', 'subscribers']) || 0;
 
   const impressionsPerDay = impressionsTotal / baseDays;

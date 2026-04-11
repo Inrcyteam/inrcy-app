@@ -624,13 +624,32 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
             igFetchRecentMediaInsights(token, String(igRow["resource_id"]), start),
           ]);
           const baseMetrics = accountInsights.status === "fulfilled" ? accountInsights.value : null;
-          const mediaTotals = mediaInsights.status === "fulfilled" ? mediaInsights.value : {};
+          const mediaPayload = mediaInsights.status === "fulfilled" ? mediaInsights.value : null;
+          const mediaTotals = mediaPayload?.totals || {};
           if (!baseMetrics) throw new Error("Impossible de récupérer les statistiques Instagram pour le moment.");
           sourcesStatus.instagram.metrics = {
             ...baseMetrics,
-            totals: { ...baseMetrics.totals, ...mediaTotals, ...Object.fromEntries(Object.entries(mediaTotals).map(([k, v]) => [k, (Number(baseMetrics.totals[k] || 0) + Number(v || 0))])) },
+            totals: {
+              ...baseMetrics.totals,
+              ...Object.fromEntries(
+                Object.entries(mediaTotals).map(([k, v]) => [k, Number(baseMetrics.totals[k] || 0) + Number(v || 0)])
+              ),
+            },
             raw: {
-              mediaInsights: mediaInsights.status === "fulfilled" ? mediaInsights.value : { error: getSimpleFrenchErrorMessage(mediaInsights.reason, "media_insights_failed") },
+              ...(baseMetrics.raw || {}),
+              supportedMetrics: {
+                account: Array.isArray(baseMetrics.raw?.supportedMetrics?.account) ? baseMetrics.raw.supportedMetrics.account : [],
+                media: Array.isArray(mediaPayload?.supportedMetrics) ? mediaPayload.supportedMetrics : [],
+              },
+              unsupportedMetrics: {
+                account: Array.isArray(baseMetrics.raw?.unsupportedMetrics?.account) ? baseMetrics.raw.unsupportedMetrics.account : [],
+                media: Array.isArray(mediaPayload?.unsupportedMetrics) ? mediaPayload.unsupportedMetrics : [],
+              },
+              metricErrors: {
+                account: baseMetrics.raw?.metricErrors?.account || {},
+                media: mediaPayload?.metricErrors || {},
+              },
+              mediaInsights: mediaPayload ? mediaPayload.totals : { error: getSimpleFrenchErrorMessage(mediaInsights.status === "rejected" ? mediaInsights.reason : null, "media_insights_failed") },
             },
           };
         } catch (e) {
