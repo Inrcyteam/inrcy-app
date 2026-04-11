@@ -117,7 +117,7 @@ function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
     const m = safeObj(safeObj(sources["gmb"])["metrics"]);
     const calls = getTotalMetric(m, ["calls", "phone_calls", "phoneCalls", "call_clicks", "callClicks", "CALL_CLICKS"]);
     const website = getTotalMetric(m, ["website_clicks", "websiteClicks", "website_actions", "websiteActions", "WEBSITE_CLICKS"]);
-    const directions = getTotalMetric(m, ["directions", "direction_requests", "directionRequests", "driving_directions", "drivingDirections", "DIRECTION_REQUESTS"]);
+    const directions = getTotalMetric(m, ["directions", "direction_requests", "directionRequests", "driving_directions", "drivingDirections", "DIRECTION_REQUESTS", "BUSINESS_DIRECTION_REQUESTS"]);
     const strong = calls + website + directions;
     const gmbImpr = getTotalMetric(m, ["impressions", "business_impressions", "BUSINESS_IMPRESSIONS", "BUSINESS_IMPRESSIONS_DESKTOP_MAPS", "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH", "BUSINESS_IMPRESSIONS_MOBILE_MAPS", "BUSINESS_IMPRESSIONS_MOBILE_SEARCH", "views", "viewCount"]);
     const estimate = strong + clicks * 0.08 + gmbImpr * 0.002;
@@ -237,7 +237,7 @@ function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
     const interactionsGuess =
       (safeNum(totals["websiteClicks"]) || safeNum(totals["website_clicks"]) || safeNum(totals["WEBSITE_CLICKS"])) +
       (safeNum(totals["callClicks"]) || safeNum(totals["call_clicks"]) || safeNum(totals["CALL_CLICKS"])) +
-      (safeNum(totals["directionRequests"]) || safeNum(totals["direction_requests"]) || safeNum(totals["DIRECTION_REQUESTS"]));
+      (safeNum(totals["directionRequests"]) || safeNum(totals["direction_requests"]) || safeNum(totals["DIRECTION_REQUESTS"]) || safeNum(totals["BUSINESS_DIRECTION_REQUESTS"]));
     return Math.max(0, Math.round(clamp(base + impressionsGuess / 800 + interactionsGuess / 30, 0, 50) * 30));
   }
   if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin") return Math.max(0, Math.round(computeOpportunityPerDaySocial(cubeKey, ov) * 30));

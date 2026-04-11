@@ -134,24 +134,37 @@ function toDateObj(d: Date): DateObj {
  * Note: This endpoint requires the Business Profile Performance API.
  */
 export async function gmbFetchDailyMetrics(accessToken: string, locationName: string, start: Date, end: Date) {
-  const endpoint = `https://businessprofileperformance.googleapis.com/v1/${locationName}:fetchMultiDailyMetricsTimeSeries`;
-  const body = {
-    dailyMetrics: [
-      "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
-      "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
-      "BUSINESS_IMPRESSIONS_MOBILE_MAPS",
-      "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
-      "WEBSITE_CLICKS",
-      "CALL_CLICKS",
-      "DIRECTION_REQUESTS",
-    ],
-    timeRange: { startDate: toDateObj(start), endDate: toDateObj(end) },
+  const endpointUrl = new URL(`https://businessprofileperformance.googleapis.com/v1/${locationName}:fetchMultiDailyMetricsTimeSeries`);
+  const dailyMetrics = [
+    "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
+    "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
+    "BUSINESS_IMPRESSIONS_MOBILE_MAPS",
+    "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
+    "WEBSITE_CLICKS",
+    "CALL_CLICKS",
+    "BUSINESS_DIRECTION_REQUESTS",
+    "BUSINESS_CONVERSATIONS",
+  ] as const;
+  for (const metric of dailyMetrics) endpointUrl.searchParams.append("dailyMetrics", metric);
+
+  const startDate = toDateObj(start);
+  const endDate = toDateObj(end);
+  endpointUrl.searchParams.set("dailyRange.start_date.year", String(startDate.year));
+  endpointUrl.searchParams.set("dailyRange.start_date.month", String(startDate.month));
+  endpointUrl.searchParams.set("dailyRange.start_date.day", String(startDate.day));
+  endpointUrl.searchParams.set("dailyRange.end_date.year", String(endDate.year));
+  endpointUrl.searchParams.set("dailyRange.end_date.month", String(endDate.month));
+  endpointUrl.searchParams.set("dailyRange.end_date.day", String(endDate.day));
+
+  const endpoint = endpointUrl.toString();
+  const requestMeta = {
+    dailyMetrics: [...dailyMetrics],
+    dailyRange: { start_date: startDate, end_date: endDate },
   };
 
   const r = await fetch(endpoint, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
 
   const raw = await r.text().catch(() => "");
@@ -169,7 +182,7 @@ export async function gmbFetchDailyMetrics(accessToken: string, locationName: st
       status_code: r.status,
       location_name: locationName,
       endpoint,
-      request_body: body,
+      request_query: requestMeta,
       google_response_body: raw || null,
     });
 
@@ -197,6 +210,7 @@ export type GmbDailyMetrics = {
     websiteClicks: number;
     callClicks: number;
     directionRequests: number;
+    conversations: number;
   };
   daily: Array<{
     date: string; // YYYY-MM-DD
@@ -204,6 +218,7 @@ export type GmbDailyMetrics = {
     websiteClicks: number;
     callClicks: number;
     directionRequests: number;
+    conversations: number;
   }>;
   raw?: any;
 };
@@ -213,12 +228,12 @@ function ymd(d: Date) {
 }
 
 function addTo(
-  map: Map<string, { impressions: number; websiteClicks: number; callClicks: number; directionRequests: number }>,
+  map: Map<string, { impressions: number; websiteClicks: number; callClicks: number; directionRequests: number; conversations: number }>,
   date: string,
-  key: "impressions" | "websiteClicks" | "callClicks" | "directionRequests",
+  key: "impressions" | "websiteClicks" | "callClicks" | "directionRequests" | "conversations",
   v: number
 ) {
-  const row = map.get(date) || { impressions: 0, websiteClicks: 0, callClicks: 0, directionRequests: 0 };
+  const row = map.get(date) || { impressions: 0, websiteClicks: 0, callClicks: 0, directionRequests: 0, conversations: 0 };
   row[key] = (row[key] || 0) + (Number.isFinite(v) ? v : 0);
   map.set(date, row);
 }
@@ -228,31 +243,36 @@ function addTo(
  * The API returns a `multiDailyMetricTimeSeries` array with per-metric dated values.
  */
 export function gmbNormalizePerformanceResponse(raw: any, start: Date, end: Date): GmbDailyMetrics {
-  const outByDay = new Map<string, { impressions: number; websiteClicks: number; callClicks: number; directionRequests: number }>();
+  const outByDay = new Map<string, { impressions: number; websiteClicks: number; callClicks: number; directionRequests: number; conversations: number }>();
 
-  const series = Array.isArray(raw?.multiDailyMetricTimeSeries) ? raw.multiDailyMetricTimeSeries : [];
-  for (const s of series) {
-    const metric = String(s?.dailyMetric || "");
-    const dated = Array.isArray(s?.timeSeries?.datedValues) ? s.timeSeries.datedValues : [];
+  const seriesGroups = Array.isArray(raw?.multiDailyMetricTimeSeries) ? raw.multiDailyMetricTimeSeries : [];
+  for (const group of seriesGroups) {
+    const entries = Array.isArray(group?.dailyMetricTimeSeries) ? group.dailyMetricTimeSeries : [];
+    for (const s of entries) {
+      const metric = String(s?.dailyMetric || "");
+      const dated = Array.isArray(s?.timeSeries?.datedValues) ? s.timeSeries.datedValues : [];
 
-    const key:
-      | "impressions"
-      | "websiteClicks"
-      | "callClicks"
-      | "directionRequests"
-      | null =
-      metric === "WEBSITE_CLICKS"
-        ? "websiteClicks"
-        : metric === "CALL_CLICKS"
-          ? "callClicks"
-          : metric === "DIRECTION_REQUESTS"
-            ? "directionRequests"
-            : metric.startsWith("BUSINESS_IMPRESSIONS_")
-              ? "impressions"
-              : null;
-    if (!key) continue;
+      const key:
+        | "impressions"
+        | "websiteClicks"
+        | "callClicks"
+        | "directionRequests"
+        | "conversations"
+        | null =
+        metric === "WEBSITE_CLICKS"
+          ? "websiteClicks"
+          : metric === "CALL_CLICKS"
+            ? "callClicks"
+            : metric === "BUSINESS_DIRECTION_REQUESTS" || metric === "DIRECTION_REQUESTS"
+              ? "directionRequests"
+              : metric === "BUSINESS_CONVERSATIONS"
+                ? "conversations"
+                : metric.startsWith("BUSINESS_IMPRESSIONS_")
+                  ? "impressions"
+                  : null;
+      if (!key) continue;
 
-    for (const dv of dated) {
+      for (const dv of dated) {
       const d = dv?.date;
       const dateStr =
         d && typeof d === "object"
@@ -261,9 +281,10 @@ export function gmbNormalizePerformanceResponse(raw: any, start: Date, end: Date
       if (!dateStr) continue;
 
       // value can be { value: "123" } depending on backend
-      const vRaw = dv?.value?.value ?? dv?.value ?? 0;
-      const v = Number(vRaw);
-      addTo(outByDay, dateStr, key, Number.isFinite(v) ? v : 0);
+        const vRaw = dv?.value?.value ?? dv?.value ?? 0;
+        const v = Number(vRaw);
+        addTo(outByDay, dateStr, key, Number.isFinite(v) ? v : 0);
+      }
     }
   }
 
@@ -272,7 +293,7 @@ export function gmbNormalizePerformanceResponse(raw: any, start: Date, end: Date
   const endDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
   while (cur <= endDay) {
     const d = ymd(cur);
-    if (!outByDay.has(d)) outByDay.set(d, { impressions: 0, websiteClicks: 0, callClicks: 0, directionRequests: 0 });
+    if (!outByDay.has(d)) outByDay.set(d, { impressions: 0, websiteClicks: 0, callClicks: 0, directionRequests: 0, conversations: 0 });
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
 
@@ -286,9 +307,10 @@ export function gmbNormalizePerformanceResponse(raw: any, start: Date, end: Date
       acc.websiteClicks += d.websiteClicks;
       acc.callClicks += d.callClicks;
       acc.directionRequests += d.directionRequests;
+      acc.conversations += d.conversations;
       return acc;
     },
-    { impressions: 0, websiteClicks: 0, callClicks: 0, directionRequests: 0 }
+    { impressions: 0, websiteClicks: 0, callClicks: 0, directionRequests: 0, conversations: 0 }
   );
 
   return {

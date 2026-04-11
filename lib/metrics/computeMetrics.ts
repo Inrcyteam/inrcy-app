@@ -203,8 +203,9 @@ export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
     const m = gmbNode.metrics;
     const calls = getTotalMetric(m, ['calls', 'phone_calls', 'phoneCalls', 'call_clicks', 'callClicks', 'CALL_CLICKS']);
     const website = getTotalMetric(m, ['website_clicks', 'websiteClicks', 'website_actions', 'websiteActions', 'WEBSITE_CLICKS']);
-    const directions = getTotalMetric(m, ['directions', 'direction_requests', 'directionRequests', 'driving_directions', 'drivingDirections', 'DIRECTION_REQUESTS']);
-    const strong = calls + website + directions;
+    const directions = getTotalMetric(m, ['directions', 'direction_requests', 'directionRequests', 'driving_directions', 'drivingDirections', 'DIRECTION_REQUESTS', 'BUSINESS_DIRECTION_REQUESTS']);
+    const conversations = getTotalMetric(m, ['conversations', 'BUSINESS_CONVERSATIONS', 'messages']);
+    const strong = calls + website + directions + conversations;
     const gmbImpr = getTotalMetric(m, [
       'impressions', 'business_impressions', 'BUSINESS_IMPRESSIONS', 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS',
       'BUSINESS_IMPRESSIONS_DESKTOP_SEARCH', 'BUSINESS_IMPRESSIONS_MOBILE_MAPS', 'BUSINESS_IMPRESSIONS_MOBILE_SEARCH',
@@ -233,7 +234,6 @@ export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
     const socialImpr = getTotalMetric(m, ['impressions', 'post_impressions_sum', 'post_impressions', 'views', 'video_views', 'impressionCount', 'uniqueImpressionsCount']);
     const fbPageViews = cube === 'facebook' ? getTotalMetric(m, ['page_views_total']) : 0;
     const igReach = cube === 'instagram' ? getTotalMetric(m, ['reach', 'uniqueReach', 'unique_reach']) : 0;
-    const igProfileViews = cube === 'instagram' ? getTotalMetric(m, ['profile_views', 'profileVisits', 'profile_visits', 'profile_links_taps']) : 0;
     const liPageViews = cube === 'linkedin' ? getTotalMetric(m, ['pageViews']) : 0;
     const liFollowerCount = cube === 'linkedin' ? getTotalMetric(m, ['followerCount', 'memberFollowersCount']) : 0;
 
@@ -301,31 +301,12 @@ export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
         liLikes > 0 ||
         liNewFollowers > 0 ||
         directSignals > 0;
-      console.log('[LinkedIn][Captured][inputs]', JSON.stringify({
-        comments: liComments,
-        shares: liShares,
-        likes: liLikes,
-        newFollowers: liNewFollowers,
-        postsPublished: liPostsPublished,
-        uniqueImpressions: liUniqueImpr,
-        socialImpressions: socialImpr,
-        profileViews,
-        searchAppearances,
-        pageViews: liPageViews,
-        clicks: liClicks,
-        directSignals,
-        memberRawScore,
-        memberEstimate,
-        hasAnySignal,
-      }));
       if (!hasAnySignal) return 0;
       const estimate = directSignals + memberEstimate;
       if (directSignals > 0) {
         const capped = Math.min(directSignals * CAP_MULTIPLIER_WHEN_STRONG_SIGNAL + memberEstimate * 0.5, estimate);
-        console.log('[LinkedIn][Captured][result]', JSON.stringify({ estimate, capped, rounded: roundNonNeg(capped) }));
         return roundNonNeg(capped);
       }
-      console.log('[LinkedIn][Captured][result]', JSON.stringify({ estimate: memberEstimate, rounded: roundNonNeg(memberEstimate) }));
       return roundNonNeg(memberEstimate);
     }
 
@@ -425,27 +406,6 @@ export function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): 
       2.2,
     );
     const additionalPerDay = Math.max(0, potentialPerDay - currentPerDay);
-    console.log('[LinkedIn][Opportunity][inputs]', JSON.stringify({
-      baseDays,
-      commentsTotal,
-      sharesTotal,
-      likesTotal,
-      newFollowersTotal,
-      postsPublishedTotal,
-      uniqueImpressionsTotal,
-      impressionsTotal,
-      engagementsTotal,
-      audienceTotal,
-      currentPerDay,
-      publishTarget,
-      publishDeficit,
-      exposureN,
-      engagementN,
-      audienceN,
-      audienceHeadroom,
-      potentialPerDay,
-      additionalPerDay,
-    }));
     return clamp(additionalPerDay, 0, 2.2);
   }
 
@@ -538,7 +498,8 @@ export function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
     const interactionsGuess =
       (safeNum(totals.websiteClicks) || safeNum(totals.website_clicks) || safeNum(totals.WEBSITE_CLICKS)) +
       (safeNum(totals.callClicks) || safeNum(totals.call_clicks) || safeNum(totals.CALL_CLICKS)) +
-      (safeNum(totals.directionRequests) || safeNum(totals.direction_requests) || safeNum(totals.DIRECTION_REQUESTS));
+      (safeNum(totals.directionRequests) || safeNum(totals.direction_requests) || safeNum(totals.DIRECTION_REQUESTS) || safeNum(totals.BUSINESS_DIRECTION_REQUESTS)) +
+      (safeNum(totals.conversations) || safeNum(totals.BUSINESS_CONVERSATIONS));
     const perDay = clamp(base + impressionsGuess / 800 + interactionsGuess / 30, 0, 50);
     return Math.max(0, Math.round(perDay * 30));
   }

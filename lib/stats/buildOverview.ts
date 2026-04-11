@@ -678,8 +678,6 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           if (authorUrn.startsWith("urn:li:person:")) {
             sourcesStatus.linkedin.metrics = await liFetchMemberAnalytics(token, authorUrn, start, end);
-            console.log("[LinkedIn][Overview][member][totals]", JSON.stringify((sourcesStatus.linkedin.metrics as { totals?: unknown } | null)?.totals ?? null));
-            console.log("[LinkedIn][Overview][member][raw]", JSON.stringify((sourcesStatus.linkedin.metrics as { raw?: unknown } | null)?.raw ?? null));
           } else {
             const resolvedOrgUrn = orgUrn || (await liResolveFirstAdminOrgUrn(token));
             sourcesStatus.linkedin.metrics = await liFetchOrgAnalytics(token, resolvedOrgUrn, start, end);

@@ -386,8 +386,6 @@ export async function liFetchMemberAnalytics(
     throw new Error(errors[0] || "Aucune métrique LinkedIn membre exploitable.");
   }
 
-  console.log("[LinkedIn][Member Analytics][totals]", JSON.stringify(totals));
-  console.log("[LinkedIn][Member Analytics][raw]", JSON.stringify(raw));
 
   return {
     range: { since: start.toISOString(), until: end.toISOString() },

@@ -172,7 +172,7 @@ function getGmbTotals(metrics: any) {
     safeNum(totals.directionRequests) ||
     safeNum(totals.direction_requests) ||
     safeNum(totals.DIRECTION_REQUESTS) ||
-    gmbMetricSeriesTotal(metrics, ["DIRECTION_REQUESTS"]);
+    gmbMetricSeriesTotal(metrics, ["DIRECTION_REQUESTS", "BUSINESS_DIRECTION_REQUESTS"]);
 
   const mapsImpressions =
     safeNum(totals.BUSINESS_IMPRESSIONS_DESKTOP_MAPS) +
