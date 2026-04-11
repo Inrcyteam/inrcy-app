@@ -320,10 +320,26 @@ export type ResolvedGmbLocation = {
   locationTitle: string | null;
 };
 
+async function gmbCanReadPerformanceMetrics(args: {
+  accessToken: string;
+  locationName: string;
+  start: Date;
+  end: Date;
+}): Promise<boolean> {
+  try {
+    await gmbFetchDailyMetrics(args.accessToken, args.locationName, args.start, args.end);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function gmbResolveWorkingLocation(
   accessToken: string,
   preferredLocationName: string,
-  preferredAccountName?: string | null
+  preferredAccountName?: string | null,
+  start?: Date,
+  end?: Date
 ): Promise<ResolvedGmbLocation | null> {
   const targetId = locationIdOf(preferredLocationName);
   const accounts = await gmbListAccounts(accessToken);
@@ -362,8 +378,25 @@ export async function gmbResolveWorkingLocation(
     }
   }
 
-  if (exactMatches.length > 0) return exactMatches[0];
-  if (fallbacks.length === 1) return fallbacks[0];
+  const candidates = [...exactMatches, ...fallbacks];
+  if (!candidates.length) return null;
+
+  if (!start || !end) {
+    if (exactMatches.length > 0) return exactMatches[0];
+    if (fallbacks.length === 1) return fallbacks[0];
+    return fallbacks[0] ?? null;
+  }
+
+  for (const candidate of candidates) {
+    const ok = await gmbCanReadPerformanceMetrics({
+      accessToken,
+      locationName: candidate.locationName,
+      start,
+      end,
+    });
+    if (ok) return candidate;
+  }
+
   return null;
 }
 
@@ -433,7 +466,13 @@ export async function gmbFetchDailyMetricsNormalizedWithRecovery(args: {
   } catch (error) {
     if (!isRecoverableMissingLocationError(error)) throw error;
 
-    const candidate = await gmbResolveWorkingLocation(args.accessToken, normalizedLocationName, args.preferredAccountName ?? null);
+    const candidate = await gmbResolveWorkingLocation(
+      args.accessToken,
+      normalizedLocationName,
+      args.preferredAccountName ?? null,
+      args.start,
+      args.end
+    );
     if (!candidate || candidate.locationName === normalizedLocationName) throw error;
 
     const metrics = await gmbFetchDailyMetricsNormalized(args.accessToken, candidate.locationName, args.start, args.end);
