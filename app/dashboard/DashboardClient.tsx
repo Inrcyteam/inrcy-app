@@ -51,6 +51,35 @@ function statsSummarySessionKey(period: StatsWarmPeriod) {
   return `inrcy_stats_summary_snapshot_v2:${period}`;
 }
 
+function getLastChannelSyncAt() {
+  if (typeof window === "undefined") return 0;
+  try {
+    const raw = window.sessionStorage.getItem("inrcy_stats_last_channel_sync_v1");
+    const n = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function readGeneratorCache(): { syncedAt: number; payload: any | null } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem("inrcy_generator_kpis_v1");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && "payload" in parsed) {
+      return {
+        syncedAt: Number.isFinite(Number((parsed as any).syncedAt)) ? Number((parsed as any).syncedAt) : 0,
+        payload: (parsed as any).payload ?? null,
+      };
+    }
+    return { syncedAt: 0, payload: parsed };
+  } catch {
+    return null;
+  }
+}
+
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
   const [helpCanauxOpen, setHelpCanauxOpen] = useState(false);
@@ -1055,7 +1084,7 @@ const connectSiteInrcyGsc = useCallback(() => {
   window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
 }, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl]);
 
-const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
+const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: number }) => {
     const requestSeq = ++kpisRequestSeqRef.current;
     const fresh = options?.fresh === true;
     setKpisLoading(true);
@@ -1082,7 +1111,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
         }
       }
       try {
-        window.sessionStorage.setItem("inrcy_generator_kpis_v1", JSON.stringify(json));
+        const syncedAt = Number.isFinite(Number(options?.syncedAt)) ? Number(options?.syncedAt) : Date.now();
+        window.sessionStorage.setItem("inrcy_generator_kpis_v1", JSON.stringify({ syncedAt, payload: json }));
       } catch {
         // ignore
       }
@@ -1098,22 +1128,22 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     }
   }, []);
 
-  const notifyStatsRefresh = useCallback(() => {
+  const notifyStatsRefresh = useCallback((at?: number) => {
     if (typeof window === "undefined") return;
-    const at = Date.now();
+    const syncAt = Number.isFinite(Number(at)) ? Number(at) : Date.now();
     try {
-      window.sessionStorage.setItem("inrcy_stats_last_channel_sync_v1", String(at));
+      window.sessionStorage.setItem("inrcy_stats_last_channel_sync_v1", String(syncAt));
     } catch {
       // ignore
     }
-    window.dispatchEvent(new CustomEvent("inrcy:channels-updated", { detail: { at } }));
+    window.dispatchEvent(new CustomEvent("inrcy:channels-updated", { detail: { at: syncAt } }));
   }, []);
 
-  const warmInrStatsUi = useCallback(async () => {
+  const warmInrStatsUi = useCallback(async (syncedAt?: number) => {
     if (typeof window === "undefined") return;
 
     const periods: StatsWarmPeriod[] = [7, 30];
-    const syncedAt = Date.now();
+    const syncAt = Number.isFinite(Number(syncedAt)) ? Number(syncedAt) : Date.now();
 
     await Promise.allSettled(
       periods.map(async (days) => {
@@ -1135,7 +1165,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
         try {
           window.sessionStorage.setItem(
             statsCubeSessionKey(days),
-            JSON.stringify({ syncedAt, overviews })
+            JSON.stringify({ syncedAt: syncAt, overviews })
           );
         } catch {
           // ignore
@@ -1145,7 +1175,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
           window.sessionStorage.setItem(
             statsSummarySessionKey(days),
             JSON.stringify({
-              syncedAt,
+              syncedAt: syncAt,
               total: Number(opportunities?.total ?? 0),
               byCube: opportunities?.byCube ?? {},
               profile: json?.profile ?? {},
@@ -1169,13 +1199,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
 
   const triggerGeneratorRefresh = useCallback(async () => {
     const runSync = async () => {
-      lastGeneratorRefreshAtRef.current = Date.now();
+      const syncAt = Date.now();
+      lastGeneratorRefreshAtRef.current = syncAt;
       await Promise.allSettled([
         loadSiteInrcy(),
-        refreshKpis({ fresh: true }),
-        warmInrStatsUi(),
+        refreshKpis({ fresh: true, syncedAt: syncAt }),
+        warmInrStatsUi(syncAt),
       ]);
-      notifyStatsRefresh();
+      notifyStatsRefresh(syncAt);
     };
 
     clearScheduledGeneratorRefreshes();
@@ -2671,17 +2702,25 @@ const checkActivity = useCallback(async () => {
 
   useEffect(() => {
     try {
-      const raw = window.sessionStorage.getItem("inrcy_generator_kpis_v1");
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!parsed?.leads) return;
-      setKpis(parsed);
+      const cached = readGeneratorCache();
+      const payload = cached?.payload;
+      if (!payload?.leads) return;
+      setKpis(payload);
+      const oppMonth = Number(payload?.details?.opportunities?.month);
+      if (Number.isFinite(oppMonth)) {
+        setOppTotal(oppMonth);
+      }
     } catch {
       // ignore
     }
   }, []);
 
   useEffect(() => {
+    const cached = readGeneratorCache();
+    const lastChannelSyncAt = getLastChannelSyncAt();
+    if (cached?.payload?.leads && cached.syncedAt >= lastChannelSyncAt) {
+      return;
+    }
     void refreshKpis();
   }, [refreshKpis]);
 

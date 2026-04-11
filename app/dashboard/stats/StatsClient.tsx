@@ -1287,6 +1287,53 @@ export default function StatsClient() {
   }, [clearCachedSnapshots]);
 
 
+  const hydrateFromSessionCache = useCallback((targetPeriod: Period) => {
+    const lastChannelSyncAt = getStatsLastChannelSyncAt();
+    const cachedCube = parseCachedCubeSnapshot(window.sessionStorage.getItem(cubeSessionKey(targetPeriod)));
+    const cachedSummary = parseCachedSummarySnapshot(window.sessionStorage.getItem(summarySessionKey(targetPeriod)));
+    const cubeFresh = !!cachedCube?.overviews && cachedCube.syncedAt >= lastChannelSyncAt;
+    const summaryFresh = !!cachedSummary && cachedSummary.syncedAt >= lastChannelSyncAt;
+    if (!cubeFresh || !summaryFresh) return false;
+
+    periodCacheRef.current.set(targetPeriod, cachedCube.overviews);
+    setDataByCube((prev) => {
+      const next: any = { ...prev };
+      for (const k of Object.keys(cachedCube.overviews) as CubeKey[]) {
+        next[k] = { ov: (cachedCube.overviews as any)[k], loading: false, error: undefined };
+      }
+      return next;
+    });
+
+    const byCubePartial = cachedSummary?.byCube || {};
+    const estimatedByCubePartial = cachedSummary?.estimatedByCube || {};
+    setSummaryOpp({
+      loading: false,
+      total: safeNum(cachedSummary?.total),
+      byCube: {
+        site_inrcy: safeNum(byCubePartial.site_inrcy),
+        site_web: safeNum(byCubePartial.site_web),
+        gmb: safeNum(byCubePartial.gmb),
+        facebook: safeNum(byCubePartial.facebook),
+        instagram: safeNum(byCubePartial.instagram),
+        linkedin: safeNum(byCubePartial.linkedin),
+      },
+    });
+    setSummaryProfile({
+      lead_conversion_rate: safeNum(cachedSummary?.profile?.lead_conversion_rate),
+      avg_basket: safeNum(cachedSummary?.profile?.avg_basket),
+    });
+    setSummaryEstimatedByCube({
+      site_inrcy: safeNum(estimatedByCubePartial.site_inrcy),
+      site_web: safeNum(estimatedByCubePartial.site_web),
+      gmb: safeNum(estimatedByCubePartial.gmb),
+      facebook: safeNum(estimatedByCubePartial.facebook),
+      instagram: safeNum(estimatedByCubePartial.instagram),
+      linkedin: safeNum(estimatedByCubePartial.linkedin),
+    });
+    return true;
+  }, []);
+
+
   const fetchBulkStats = async (period: Period, forceFresh = false) => {
     const params = new URLSearchParams({ days: String(period) });
     if (forceFresh) params.set("fresh", "1");
@@ -1329,58 +1376,12 @@ export default function StatsClient() {
     if (hydratedPeriodsRef.current.has(period)) return;
     hydratedPeriodsRef.current.add(period);
 
-    const lastChannelSyncAt = getStatsLastChannelSyncAt();
-
     try {
-      const cached = parseCachedCubeSnapshot(window.sessionStorage.getItem(cubeSessionKey(period)));
-      if (cached?.overviews && cached.syncedAt >= lastChannelSyncAt) {
-        periodCacheRef.current.set(period, cached.overviews);
-        setDataByCube((prev) => {
-          const next: any = { ...prev };
-          for (const k of Object.keys(cached.overviews) as CubeKey[]) {
-            next[k] = { ov: (cached.overviews as any)[k], loading: false, error: undefined };
-          }
-          return next;
-        });
-      }
+      hydrateFromSessionCache(period);
     } catch {
       // ignore
     }
-
-    try {
-      const cached = parseCachedSummarySnapshot(window.sessionStorage.getItem(summarySessionKey(period)));
-      if (cached && cached.syncedAt >= lastChannelSyncAt) {
-        const byCubePartial = cached?.byCube || {};
-        const estimatedByCubePartial = cached?.estimatedByCube || {};
-        setSummaryOpp({
-          loading: false,
-          total: safeNum(cached?.total),
-          byCube: {
-            site_inrcy: safeNum(byCubePartial.site_inrcy),
-            site_web: safeNum(byCubePartial.site_web),
-            gmb: safeNum(byCubePartial.gmb),
-            facebook: safeNum(byCubePartial.facebook),
-            instagram: safeNum(byCubePartial.instagram),
-            linkedin: safeNum(byCubePartial.linkedin),
-          },
-        });
-        setSummaryProfile({
-          lead_conversion_rate: safeNum(cached?.profile?.lead_conversion_rate),
-          avg_basket: safeNum(cached?.profile?.avg_basket),
-        });
-        setSummaryEstimatedByCube({
-          site_inrcy: safeNum(estimatedByCubePartial.site_inrcy),
-          site_web: safeNum(estimatedByCubePartial.site_web),
-          gmb: safeNum(estimatedByCubePartial.gmb),
-          facebook: safeNum(estimatedByCubePartial.facebook),
-          instagram: safeNum(estimatedByCubePartial.instagram),
-          linkedin: safeNum(estimatedByCubePartial.linkedin),
-        });
-      }
-    } catch {
-      // ignore
-    }
-  }, [period]);
+  }, [hydrateFromSessionCache, period]);
 
 useEffect(() => {
   let cancelled = false;
@@ -1402,6 +1403,9 @@ useEffect(() => {
       });
       return;
     }
+    if (hydrateFromSessionCache(period)) {
+      return;
+    }
 
     setDataByCube((prev) => {
       const next: any = { ...prev };
@@ -1415,9 +1419,10 @@ useEffect(() => {
       const snap = next.overviews as Record<CubeKey, Overview>;
 
       try {
+        const syncedAt = Date.now();
         periodCacheRef.current.set(period, snap);
         try {
-          window.sessionStorage.setItem(cubeSessionKey(period), JSON.stringify({ syncedAt: Date.now(), overviews: snap }));
+          window.sessionStorage.setItem(cubeSessionKey(period), JSON.stringify({ syncedAt, overviews: snap }));
         } catch {
           // ignore
         }
@@ -1425,7 +1430,7 @@ useEffect(() => {
           window.sessionStorage.setItem(
             summarySessionKey(period),
             JSON.stringify({
-              syncedAt: Date.now(),
+              syncedAt,
               ...next.summary,
               profile: next.profile,
               estimatedByCube: next.estimatedByCube,
@@ -1466,7 +1471,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [period, refreshNonce]);
+}, [hydrateFromSessionCache, period, refreshNonce]);
 
   useEffect(() => {
     if (!isRefreshing) return;
@@ -1491,6 +1496,11 @@ useEffect(() => {
       const now = Date.now();
       if (now - lastAutoRefreshAtRef.current < 1500) return;
       lastAutoRefreshAtRef.current = now;
+      if (hydrateFromSessionCache(period)) {
+        setLastRefreshAt(now);
+        setIsRefreshing(false);
+        return;
+      }
       triggerRefresh("channels");
     };
 
@@ -1498,7 +1508,7 @@ useEffect(() => {
     return () => {
       window.removeEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
     };
-  }, [triggerRefresh]);
+  }, [hydrateFromSessionCache, period, triggerRefresh]);
 
 
   const models: CubeModel[] = useMemo(() => {
