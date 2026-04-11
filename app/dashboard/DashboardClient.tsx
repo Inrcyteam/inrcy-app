@@ -48,7 +48,7 @@ function statsCubeSessionKey(period: StatsWarmPeriod) {
 }
 
 function statsSummarySessionKey(period: StatsWarmPeriod) {
-  return `inrcy_stats_summary_snapshot_v1:${period}`;
+  return `inrcy_stats_summary_snapshot_v2:${period}`;
 }
 
 export default function DashboardClient() {
@@ -1113,6 +1113,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
     if (typeof window === "undefined") return;
 
     const periods: StatsWarmPeriod[] = [7, 30];
+    const syncedAt = Date.now();
 
     await Promise.allSettled(
       periods.map(async (days) => {
@@ -1134,7 +1135,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
         try {
           window.sessionStorage.setItem(
             statsCubeSessionKey(days),
-            JSON.stringify(overviews)
+            JSON.stringify({ syncedAt, overviews })
           );
         } catch {
           // ignore
@@ -1144,8 +1145,11 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean }) => {
           window.sessionStorage.setItem(
             statsSummarySessionKey(days),
             JSON.stringify({
+              syncedAt,
               total: Number(opportunities?.total ?? 0),
               byCube: opportunities?.byCube ?? {},
+              profile: json?.profile ?? {},
+              estimatedByCube: json?.estimatedByCube ?? {},
             })
           );
         } catch {

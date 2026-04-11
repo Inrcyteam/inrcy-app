@@ -127,6 +127,63 @@ function safeNum(v: any, fallback = 0) {
 }
 
 
+
+function getStatsLastChannelSyncAt() {
+  try {
+    const raw = window.sessionStorage.getItem("inrcy_stats_last_channel_sync_v1");
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function parseCachedCubeSnapshot(raw: string | null): { syncedAt: number; overviews: Record<CubeKey, Overview> } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as any;
+    if (parsed && typeof parsed === "object" && parsed.overviews && typeof parsed.overviews === "object") {
+      return {
+        syncedAt: safeNum(parsed.syncedAt),
+        overviews: parsed.overviews as Record<CubeKey, Overview>,
+      };
+    }
+    if (parsed && typeof parsed === "object") {
+      return {
+        syncedAt: 0,
+        overviews: parsed as Record<CubeKey, Overview>,
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function parseCachedSummarySnapshot(raw: string | null): {
+  syncedAt: number;
+  total?: number;
+  byCube?: Partial<Record<CubeKey, number>>;
+  profile?: { lead_conversion_rate?: number; avg_basket?: number };
+  estimatedByCube?: Partial<Record<CubeKey, number>>;
+} | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as any;
+    if (parsed && typeof parsed === "object") {
+      return {
+        syncedAt: safeNum(parsed.syncedAt),
+        total: parsed.total,
+        byCube: parsed.byCube,
+        profile: parsed.profile,
+        estimatedByCube: parsed.estimatedByCube,
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 function gmbMetricSeriesTotal(metrics: any, metricNames: string[]) {
   const rawSeries = Array.isArray(metrics?.raw?.multiDailyMetricTimeSeries)
     ? metrics.raw.multiDailyMetricTimeSeries
@@ -1272,34 +1329,27 @@ export default function StatsClient() {
     if (hydratedPeriodsRef.current.has(period)) return;
     hydratedPeriodsRef.current.add(period);
 
+    const lastChannelSyncAt = getStatsLastChannelSyncAt();
+
     try {
-      const raw = window.sessionStorage.getItem(cubeSessionKey(period));
-      if (raw) {
-        const cached = JSON.parse(raw) as Record<CubeKey, Overview>;
-        if (cached && typeof cached === "object") {
-          periodCacheRef.current.set(period, cached);
-          setDataByCube((prev) => {
-            const next: any = { ...prev };
-            for (const k of Object.keys(cached) as CubeKey[]) {
-              next[k] = { ov: (cached as any)[k], loading: false, error: undefined };
-            }
-            return next;
-          });
-        }
+      const cached = parseCachedCubeSnapshot(window.sessionStorage.getItem(cubeSessionKey(period)));
+      if (cached?.overviews && cached.syncedAt >= lastChannelSyncAt) {
+        periodCacheRef.current.set(period, cached.overviews);
+        setDataByCube((prev) => {
+          const next: any = { ...prev };
+          for (const k of Object.keys(cached.overviews) as CubeKey[]) {
+            next[k] = { ov: (cached.overviews as any)[k], loading: false, error: undefined };
+          }
+          return next;
+        });
       }
     } catch {
       // ignore
     }
 
     try {
-      const raw = window.sessionStorage.getItem(summarySessionKey(period));
-      if (raw) {
-        const cached = JSON.parse(raw) as {
-          total?: number;
-          byCube?: Partial<Record<CubeKey, number>>;
-          profile?: { lead_conversion_rate?: number; avg_basket?: number };
-          estimatedByCube?: Partial<Record<CubeKey, number>>;
-        };
+      const cached = parseCachedSummarySnapshot(window.sessionStorage.getItem(summarySessionKey(period)));
+      if (cached && cached.syncedAt >= lastChannelSyncAt) {
         const byCubePartial = cached?.byCube || {};
         const estimatedByCubePartial = cached?.estimatedByCube || {};
         setSummaryOpp({
@@ -1339,7 +1389,10 @@ useEffect(() => {
   (async () => {
     // Fast path: cached data for this period
     const cached = periodCacheRef.current.get(period);
-    if (cached) {
+    const lastChannelSyncAt = getStatsLastChannelSyncAt();
+    const cachedSummary = parseCachedSummarySnapshot(window.sessionStorage.getItem(summarySessionKey(period)));
+    const hasFreshCachedSummary = !!cachedSummary && cachedSummary.syncedAt >= lastChannelSyncAt;
+    if (cached && hasFreshCachedSummary) {
       setDataByCube((prev) => {
         const next: any = { ...prev };
         for (const k of Object.keys(cached) as CubeKey[]) {
@@ -1364,7 +1417,7 @@ useEffect(() => {
       try {
         periodCacheRef.current.set(period, snap);
         try {
-          window.sessionStorage.setItem(cubeSessionKey(period), JSON.stringify(snap));
+          window.sessionStorage.setItem(cubeSessionKey(period), JSON.stringify({ syncedAt: Date.now(), overviews: snap }));
         } catch {
           // ignore
         }
@@ -1372,6 +1425,7 @@ useEffect(() => {
           window.sessionStorage.setItem(
             summarySessionKey(period),
             JSON.stringify({
+              syncedAt: Date.now(),
               ...next.summary,
               profile: next.profile,
               estimatedByCube: next.estimatedByCube,
