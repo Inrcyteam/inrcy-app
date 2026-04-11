@@ -304,6 +304,69 @@ export async function gmbFetchDailyMetricsNormalized(accessToken: string, locati
   return gmbNormalizePerformanceResponse(raw, start, end);
 }
 
+function locationIdOf(name: string): string {
+  const normalized = normalizeLocationName(String(name || ""));
+  return normalized.split("/").pop() || normalized;
+}
+
+function isRecoverableMissingLocationError(error: unknown): boolean {
+  const msg = String(error instanceof Error ? error.message : error || "");
+  return /not found|introuvable|requested entity was not found|requested entity|404/i.test(msg);
+}
+
+export type ResolvedGmbLocation = {
+  accountName: string;
+  locationName: string;
+  locationTitle: string | null;
+};
+
+export async function gmbResolveWorkingLocation(
+  accessToken: string,
+  preferredLocationName: string,
+  preferredAccountName?: string | null
+): Promise<ResolvedGmbLocation | null> {
+  const targetId = locationIdOf(preferredLocationName);
+  const accounts = await gmbListAccounts(accessToken);
+  if (!accounts.length) return null;
+
+  const orderedAccounts = [...accounts].sort((a, b) => {
+    if (a.name === preferredAccountName) return -1;
+    if (b.name === preferredAccountName) return 1;
+    return 0;
+  });
+
+  const exactMatches: ResolvedGmbLocation[] = [];
+  const fallbacks: ResolvedGmbLocation[] = [];
+
+  for (const account of orderedAccounts) {
+    if (!account?.name) continue;
+    let locations: GMBLocation[] = [];
+    try {
+      locations = await gmbListLocationsWithFallback(accessToken, account.name);
+    } catch {
+      continue;
+    }
+    for (const loc of locations) {
+      const normalizedName = normalizeLocationName(String(loc?.name || ""));
+      if (!normalizedName) continue;
+      const candidate: ResolvedGmbLocation = {
+        accountName: account.name,
+        locationName: normalizedName,
+        locationTitle: typeof loc?.title === "string" && loc.title.trim() ? loc.title.trim() : null,
+      };
+      if (locationIdOf(normalizedName) === targetId || normalizedName === normalizeLocationName(preferredLocationName)) {
+        exactMatches.push(candidate);
+      } else {
+        fallbacks.push(candidate);
+      }
+    }
+  }
+
+  if (exactMatches.length > 0) return exactMatches[0];
+  if (fallbacks.length === 1) return fallbacks[0];
+  return null;
+}
+
 
 export async function gmbCreateLocalPost(args: {
   accessToken: string;
@@ -348,4 +411,38 @@ export async function gmbCreateLocalPost(args: {
   if (!r.ok) throw new Error(j?.error?.message || j?.error_description || "Impossible de publier sur Google Business pour le moment.");
 
   return j;
+}
+
+export async function gmbFetchDailyMetricsNormalizedWithRecovery(args: {
+  accessToken: string;
+  locationName: string;
+  start: Date;
+  end: Date;
+  preferredAccountName?: string | null;
+}) {
+  const normalizedLocationName = normalizeLocationName(args.locationName);
+  try {
+    const metrics = await gmbFetchDailyMetricsNormalized(args.accessToken, normalizedLocationName, args.start, args.end);
+    return {
+      metrics,
+      locationName: normalizedLocationName,
+      locationTitle: null,
+      accountName: args.preferredAccountName ?? null,
+      recovered: false,
+    };
+  } catch (error) {
+    if (!isRecoverableMissingLocationError(error)) throw error;
+
+    const candidate = await gmbResolveWorkingLocation(args.accessToken, normalizedLocationName, args.preferredAccountName ?? null);
+    if (!candidate || candidate.locationName === normalizedLocationName) throw error;
+
+    const metrics = await gmbFetchDailyMetricsNormalized(args.accessToken, candidate.locationName, args.start, args.end);
+    return {
+      metrics,
+      locationName: candidate.locationName,
+      locationTitle: candidate.locationTitle,
+      accountName: candidate.accountName,
+      recovered: true,
+    };
+  }
 }

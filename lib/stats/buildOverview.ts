@@ -129,10 +129,10 @@ export async function buildStatsOverview(args: {
     runGscQuery,
     getGoogleTokenForAnyGoogle,
   } = await import("@/lib/googleStats");
-  const { gmbFetchDailyMetricsNormalized } = await import("@/lib/googleBusiness");
-  const { igFetchDailyInsights } = await import("@/lib/metaInsights");
+  const { gmbFetchDailyMetricsNormalizedWithRecovery } = await import("@/lib/googleBusiness");
+  const { igFetchDailyInsights, igFetchRecentMediaInsights } = await import("@/lib/metaInsights");
   const { fbFetchDailyInsights } = await import("@/lib/facebookInsights");
-  const { liFetchOrgAnalytics, liResolveFirstAdminOrgUrn } = await import("@/lib/linkedinAnalytics");
+  const { liFetchOrgAnalytics, liFetchMemberAnalytics, liResolveFirstAdminOrgUrn } = await import("@/lib/linkedinAnalytics");
 
 // --- Load all integration rows once (avoid Supabase rate-limits) ---
     // iNrStats calls this endpoint several times; repeated per-provider selects can hit Supabase mw:read limits.
@@ -619,7 +619,20 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           const token = tryDecryptToken(String(igRow["access_token_enc"]));
           if (!token) throw new Error("La connexion Instagram a expiré ou n’est plus valide.");
-          sourcesStatus.instagram.metrics = await igFetchDailyInsights(token, String(igRow["resource_id"]), start, end);
+          const [accountInsights, mediaInsights] = await Promise.allSettled([
+            igFetchDailyInsights(token, String(igRow["resource_id"]), start, end),
+            igFetchRecentMediaInsights(token, String(igRow["resource_id"]), start),
+          ]);
+          const baseMetrics = accountInsights.status === "fulfilled" ? accountInsights.value : null;
+          const mediaTotals = mediaInsights.status === "fulfilled" ? mediaInsights.value : {};
+          if (!baseMetrics) throw new Error("Impossible de récupérer les statistiques Instagram pour le moment.");
+          sourcesStatus.instagram.metrics = {
+            ...baseMetrics,
+            totals: { ...baseMetrics.totals, ...mediaTotals, ...Object.fromEntries(Object.entries(mediaTotals).map(([k, v]) => [k, (Number(baseMetrics.totals[k] || 0) + Number(v || 0))])) },
+            raw: {
+              mediaInsights: mediaInsights.status === "fulfilled" ? mediaInsights.value : { error: getSimpleFrenchErrorMessage(mediaInsights.reason, "media_insights_failed") },
+            },
+          };
         } catch (e) {
           sourcesStatus.instagram.metrics = { error: getSimpleFrenchErrorMessage(e, "Impossible de récupérer les statistiques Instagram pour le moment.") };
         }
@@ -640,12 +653,16 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         try {
           const token = tryDecryptToken(String(liRow["access_token_enc"]));
           if (!token) throw new Error("La connexion LinkedIn a expiré ou n’est plus valide.");
-          // Resolve first admin org if needed
           const orgUrn = String(asRecord(liRow["meta"])["org_urn"] || "");
-          const resolvedOrgUrn = orgUrn || (await liResolveFirstAdminOrgUrn(token));
+          const authorUrn = String(liRow["resource_id"] || "");
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-          sourcesStatus.linkedin.metrics = await liFetchOrgAnalytics(token, resolvedOrgUrn, start, end);
+          if (authorUrn.startsWith("urn:li:person:")) {
+            sourcesStatus.linkedin.metrics = await liFetchMemberAnalytics(token, authorUrn, start, end);
+          } else {
+            const resolvedOrgUrn = orgUrn || (await liResolveFirstAdminOrgUrn(token));
+            sourcesStatus.linkedin.metrics = await liFetchOrgAnalytics(token, resolvedOrgUrn, start, end);
+          }
         } catch (e) {
           sourcesStatus.linkedin.metrics = { error: getSimpleFrenchErrorMessage(e, "Impossible de récupérer les statistiques LinkedIn pour le moment.") };
         }
@@ -695,7 +712,49 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const end = new Date();
           const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
           try {
-            sourcesStatus.gmb.metrics = await gmbFetchDailyMetricsNormalized(accessToken, loc, start, end);
+            const preferredAccountName = String(asRecord(gmbRow["meta"])["account"] || "") || null;
+            const recovered = await gmbFetchDailyMetricsNormalizedWithRecovery({
+              accessToken,
+              locationName: loc,
+              start,
+              end,
+              preferredAccountName,
+            });
+            sourcesStatus.gmb.metrics = recovered.metrics;
+
+            if (recovered.recovered && recovered.locationName && recovered.locationName !== loc) {
+              const nextMeta = { ...asRecord(gmbRow["meta"]), ...(recovered.accountName ? { account: recovered.accountName } : {}) };
+              try {
+                await supabase
+                  .from("integrations")
+                  .update({
+                    resource_id: recovered.locationName,
+                    resource_label: recovered.locationTitle,
+                    meta: nextMeta,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("user_id", userId)
+                  .eq("provider", "google")
+                  .eq("source", "gmb")
+                  .eq("product", "gmb");
+              } catch {}
+
+              try {
+                const currentGmb = asRecord(asRecord(proSettings)["gmb"]);
+                const mergedSettings = {
+                  ...proSettings,
+                  gmb: {
+                    ...currentGmb,
+                    accountName: recovered.accountName || currentGmb["accountName"] || null,
+                    locationName: recovered.locationName,
+                    locationTitle: recovered.locationTitle || currentGmb["locationTitle"] || null,
+                    resource_id: recovered.locationName,
+                    resource_label: recovered.locationTitle || currentGmb["resource_label"] || null,
+                  },
+                };
+                await supabase.from("pro_tools_configs").upsert({ user_id: userId, settings: mergedSettings }, { onConflict: "user_id" });
+              } catch {}
+            }
           } catch (e) {
             sourcesStatus.gmb.metrics = { error: getSimpleFrenchErrorMessage(e, "Impossible de récupérer les statistiques Google Business pour le moment."), location: loc };
           }

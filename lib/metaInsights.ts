@@ -27,10 +27,14 @@ export async function igFetchDailyInsights(
   // We fetch metrics one-by-one and skip unsupported ones so the whole
   // dashboard does not break.
   const metrics = [
-    // Core
+    // Core audience / profile activity
     "reach",
+    "impressions",
     "follower_count",
     "profile_views",
+    "views",
+    "accounts_engaged",
+    "total_interactions",
     // Intent/CTA (optional)
     "website_clicks",
     "phone_call_clicks",
@@ -96,4 +100,54 @@ export async function igFetchDailyInsights(
     totals,
     daily,
   };
+}
+
+
+export async function igFetchRecentMediaInsights(accessToken: string, igUserId: string, start: Date) {
+  const mediaUrl = `${GRAPH}/${encodeURIComponent(igUserId)}/media?` +
+    new URLSearchParams({ fields: "id,timestamp,media_type", limit: "25", access_token: accessToken }).toString();
+
+  const mediaResp = await fetchJson(mediaUrl);
+  const media = Array.isArray(mediaResp?.data) ? mediaResp.data : [];
+  const metrics = ["impressions", "reach", "likes", "comments", "saved", "shares", "total_interactions", "profile_activity", "profile_visits"];
+  const totals: Record<string, number> = {};
+
+  for (const item of media) {
+    const mediaId = String(item?.id || "");
+    const ts = String(item?.timestamp || "");
+    if (!mediaId) continue;
+    if (ts) {
+      const when = Date.parse(ts);
+      if (Number.isFinite(when) && when < start.getTime()) continue;
+    }
+
+    try {
+      const url = `${GRAPH}/${encodeURIComponent(mediaId)}/insights?` +
+        new URLSearchParams({ metric: metrics.join(","), access_token: accessToken }).toString();
+      const resp = await fetchJson(url);
+      const rows = Array.isArray(resp?.data) ? resp.data : [];
+      for (const row of rows) {
+        const name = String(row?.name || "");
+        const values = Array.isArray(row?.values) ? row.values : [];
+        if (!name) continue;
+        for (const valueRow of values) {
+          const rawValue = valueRow?.value;
+          if (typeof rawValue === "number") {
+            totals[name] = (totals[name] || 0) + rawValue;
+          } else if (rawValue && typeof rawValue === "object") {
+            for (const [k, v] of Object.entries(rawValue as Record<string, unknown>)) {
+              const n = typeof v === "number" ? v : Number(v);
+              if (Number.isFinite(n)) {
+                totals[k] = (totals[k] || 0) + n;
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore per-media unsupported metrics
+    }
+  }
+
+  return totals;
 }

@@ -130,12 +130,16 @@ function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
   const strong = messages + ctaClicks;
   const engagements = getTotalMetric(m, ["engagements","post_engaged_users","page_engaged_users","post_engaged_users_sum","likes","comments","shares","saves"]);
   const reach = getTotalMetric(m, ["reach","uniqueReach","unique_reach"]);
+  const profileViews = getTotalMetric(m, ["profile_views", "profileVisits", "profile_visits", "profileViews"]);
+  const searchAppearances = getTotalMetric(m, ["searchAppearances", "search_appearances"]);
   const socialImpr = getTotalMetric(m, ["impressions","post_impressions_sum","post_impressions","views","video_views","impressionCount","uniqueImpressionsCount"]);
   const fbPageViews = cube === "facebook" ? getTotalMetric(m, ["page_views_total"]) : 0;
   const igReach = cube === "instagram" ? getTotalMetric(m, ["reach", "uniqueReach", "unique_reach"]) : 0;
+  const igProfileViews = cube === "instagram" ? getTotalMetric(m, ["profile_views", "profileVisits", "profile_visits"]) : 0;
   const liPageViews = cube === "linkedin" ? getTotalMetric(m, ["pageViews"]) : 0;
-  const fallbackPresence = ((cube === "facebook" && fbPageViews > 0) || (cube === "instagram" && igReach > 0) || (cube === "linkedin" && (liPageViews > 0 || socialImpr > 0 || engagements > 0))) ? 1 : 0;
-  const estimate = Math.max(fallbackPresence, strong + clicks * 0.05 + engagements * 0.03 + reach * 0.001 + socialImpr * 0.001 + fbPageViews * 0.04 + igReach * 0.03 + liPageViews * 0.04);
+  const liFollowerCount = cube === "linkedin" ? getTotalMetric(m, ["followerCount", "memberFollowersCount"]) : 0;
+  const fallbackPresence = ((cube === "facebook" && fbPageViews > 0) || (cube === "instagram" && (igReach > 0 || igProfileViews > 0 || profileViews > 0)) || (cube === "linkedin" && (liPageViews > 0 || liFollowerCount > 0 || profileViews > 0 || searchAppearances > 0 || socialImpr > 0 || engagements > 0))) ? 1 : 0;
+  const estimate = Math.max(fallbackPresence, strong + clicks * 0.05 + engagements * 0.03 + reach * 0.001 + socialImpr * 0.001 + fbPageViews * 0.04 + igReach * 0.03 + igProfileViews * 0.06 + profileViews * 0.06 + searchAppearances * 0.03 + liPageViews * 0.04 + liFollowerCount * 0.002);
   if (strong > 0) return roundNonNeg(Math.min(strong * CAP, estimate));
   return roundNonNeg(estimate);
 }
