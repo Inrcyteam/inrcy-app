@@ -1535,6 +1535,21 @@ const provenance = buildProvenance(key, ov);
   const centralPotential30 = summaryOpp.total;
   const centralByCube = summaryOpp.byCube;
 
+  const computedEstimatedByCube = useMemo<Record<CubeKey, number>>(() => {
+    const rate = Math.max(0, safeNum(summaryProfile.lead_conversion_rate)) / 100;
+    const basket = Math.max(0, safeNum(summaryProfile.avg_basket));
+    const estimate = (opportunities: number) => Math.round(Math.max(0, safeNum(opportunities)) * rate * basket);
+
+    return {
+      site_inrcy: estimate(centralByCube.site_inrcy),
+      site_web: estimate(centralByCube.site_web),
+      gmb: estimate(centralByCube.gmb),
+      facebook: estimate(centralByCube.facebook),
+      instagram: estimate(centralByCube.instagram),
+      linkedin: estimate(centralByCube.linkedin),
+    };
+  }, [centralByCube, summaryProfile.avg_basket, summaryProfile.lead_conversion_rate]);
+
   const summaryActionItems = useMemo(() => {
     const actionCopy: Record<CubeKey, { label: string; kicker: string; motive: string; badge: string }> = {
       facebook: {
@@ -1576,16 +1591,16 @@ const provenance = buildProvenance(key, ov);
     };
 
     const items = [
-      { key: 'facebook' as CubeKey, opportunities: centralByCube.facebook, revenue: summaryEstimatedByCube.facebook },
-      { key: 'instagram' as CubeKey, opportunities: centralByCube.instagram, revenue: summaryEstimatedByCube.instagram },
-      { key: 'linkedin' as CubeKey, opportunities: centralByCube.linkedin, revenue: summaryEstimatedByCube.linkedin },
-      { key: 'site_web' as CubeKey, opportunities: centralByCube.site_web, revenue: summaryEstimatedByCube.site_web },
-      { key: 'site_inrcy' as CubeKey, opportunities: centralByCube.site_inrcy, revenue: summaryEstimatedByCube.site_inrcy },
-      { key: 'gmb' as CubeKey, opportunities: centralByCube.gmb, revenue: summaryEstimatedByCube.gmb },
+      { key: 'facebook' as CubeKey, opportunities: centralByCube.facebook, revenue: computedEstimatedByCube.facebook || summaryEstimatedByCube.facebook },
+      { key: 'instagram' as CubeKey, opportunities: centralByCube.instagram, revenue: computedEstimatedByCube.instagram || summaryEstimatedByCube.instagram },
+      { key: 'linkedin' as CubeKey, opportunities: centralByCube.linkedin, revenue: computedEstimatedByCube.linkedin || summaryEstimatedByCube.linkedin },
+      { key: 'site_web' as CubeKey, opportunities: centralByCube.site_web, revenue: computedEstimatedByCube.site_web || summaryEstimatedByCube.site_web },
+      { key: 'site_inrcy' as CubeKey, opportunities: centralByCube.site_inrcy, revenue: computedEstimatedByCube.site_inrcy || summaryEstimatedByCube.site_inrcy },
+      { key: 'gmb' as CubeKey, opportunities: centralByCube.gmb, revenue: computedEstimatedByCube.gmb || summaryEstimatedByCube.gmb },
     ].map((item) => ({ ...item, ...actionCopy[item.key] }));
 
     return items.filter((item) => item.opportunities > 0 || item.key === 'gmb');
-  }, [centralByCube, summaryEstimatedByCube]);
+  }, [centralByCube, computedEstimatedByCube, summaryEstimatedByCube]);
 
   return (
     <div className={styles.page}>
