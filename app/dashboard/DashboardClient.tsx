@@ -770,6 +770,8 @@ const loadSiteInrcy = useCallback(async () => {
     gmbConfigured: !!gmbObj?.resource_id,
     gmbConnected: !!gmbObj?.connected && !!gmbObj?.resource_id,
     gmbAccountEmail: gmbObj?.accountEmail ?? "",
+    gmbLocationName: String(gmbObj?.locationName ?? gmbObj?.resource_id ?? ""),
+    gmbLocationLabel: String(gmbObj?.locationTitle ?? gmbObj?.resource_label ?? ""),
     facebookUrl: fbObj?.url ?? "",
     facebookAccountConnected: !!fbObj?.accountConnected,
     facebookPageConnected: !!fbObj?.pageConnected,
@@ -798,6 +800,8 @@ const loadSiteInrcy = useCallback(async () => {
       nextState.gmbAccountConnected = !!states?.gmb?.accountConnected;
       nextState.gmbConfigured = !!states?.gmb?.configured;
       if (states?.gmb?.email) nextState.gmbAccountEmail = String(states.gmb.email);
+      if (states?.gmb?.resource_id) nextState.gmbLocationName = String(states.gmb.resource_id);
+      if (states?.gmb?.resource_label) nextState.gmbLocationLabel = String(states.gmb.resource_label);
 
       nextState.facebookAccountConnected = !!states?.facebook?.accountConnected;
       nextState.facebookPageConnected = !!states?.facebook?.pageConnected;
@@ -862,6 +866,8 @@ const loadSiteInrcy = useCallback(async () => {
   setGmbConfigured(nextState.gmbConfigured);
   setGmbConnected(nextState.gmbConnected);
   setGmbAccountEmail(nextState.gmbAccountEmail);
+  setGmbLocationName(nextState.gmbLocationName);
+  setGmbLocationLabel(nextState.gmbLocationLabel);
   setFacebookUrl(nextState.facebookUrl);
   setFacebookAccountConnected(nextState.facebookAccountConnected);
   setFacebookPageConnected(nextState.facebookPageConnected);
@@ -1933,6 +1939,7 @@ const disconnectGmbAccount = useCallback(async () => {
   setGmbLocations([]);
   setGmbAccountName("");
   setGmbLocationName("");
+  setGmbLocationLabel("");
   await updateRootSettingsKey("gmb", { url: "", connected: false, configured: false, accountEmail: "", accountName: "", locationName: "", locationTitle: "", resource_id: "" });
   setPanelSuccess("gmb", "Compte Google déconnecté.");
 }, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
@@ -1948,6 +1955,8 @@ const disconnectGmbBusiness = useCallback(async () => {
   setGmbConnected(false);
   setGmbConfigured(false);
   setGmbUrl("");
+  setGmbLocationName("");
+  setGmbLocationLabel("");
   triggerGeneratorRefresh();
   await updateRootSettingsKey("gmb", { url: "", resource_id: "", locationName: "", locationTitle: "", configured: false, connected: true });
   setPanelSuccess("gmb", "Établissement Google Business déconnecté.");
@@ -1977,6 +1986,7 @@ const igAccountsAutoLoadRef = useRef(false);
   const [gmbLocations, setGmbLocations] = useState<Array<{ name: string; title?: string }>>([]);
   const [gmbAccountName, setGmbAccountName] = useState<string>("");
   const [gmbLocationName, setGmbLocationName] = useState<string>("");
+  const [gmbLocationLabel, setGmbLocationLabel] = useState<string>("");
   const [gmbLoadingList, setGmbLoadingList] = useState(false);
   const [gmbListError, setGmbListError] = useState<string | null>(null);
 const connectFacebookAccount = useCallback(async () => {
@@ -2316,7 +2326,11 @@ const loadGmbAccountsAndLocations = useCallback(async () => {
     const currentLocationName = (gmbLocationName || "").trim();
     const hasCurrentSelection = Boolean(currentLocationName && locations.some((l: { name: string; title?: string | null }) => l.name === currentLocationName));
     const nextLocationName = hasCurrentSelection ? currentLocationName : String(locations?.[0]?.name || "");
-    if (nextLocationName) setGmbLocationName(nextLocationName);
+    if (nextLocationName) {
+      setGmbLocationName(nextLocationName);
+      const matched = locations.find((l: { name: string; title?: string | null }) => l.name === nextLocationName);
+      if (matched?.title) setGmbLocationLabel(String(matched.title));
+    }
 
     if (locations.length === 1 && j.accountName) {
       const only = locations[0];
@@ -2332,6 +2346,7 @@ const loadGmbAccountsAndLocations = useCallback(async () => {
       const autoJson = await autoRes.json().catch(() => ({}));
       if (!autoRes.ok) throw new Error(autoJson?.error || "Impossible d’enregistrer l’établissement Google Business.");
       setGmbLocationName(String(only.name || ""));
+      setGmbLocationLabel(String(only.title || ""));
       setGmbConfigured(true);
       setGmbConnected(true);
       if (autoJson?.url) setGmbUrl(String(autoJson.url));
@@ -2387,6 +2402,7 @@ const saveGmbLocation = useCallback(async () => {
 
     setGmbConfigured(true);
     setGmbConnected(true);
+    setGmbLocationLabel(String(picked?.title || ""));
     if (js?.url) setGmbUrl(String(js.url));
     triggerGeneratorRefresh();
     setPanelSuccess("gmb", "Établissement Google Business enregistré.", 1800);
@@ -4369,6 +4385,7 @@ const checkActivity = useCallback(async () => {
             gmbLoadingList={gmbLoadingList}
             loadGmbAccountsAndLocations={loadGmbAccountsAndLocations}
             gmbLocationName={gmbLocationName}
+            gmbLocationLabel={gmbLocationLabel}
             setGmbLocationName={setGmbLocationName}
             gmbLocations={gmbLocations}
             saveGmbLocation={saveGmbLocation}

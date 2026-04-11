@@ -18,6 +18,7 @@ export default function GoogleBusinessPanel(props: any) {
     gmbLoadingList,
     loadGmbAccountsAndLocations,
     gmbLocationName,
+    gmbLocationLabel,
     setGmbLocationName,
     gmbLocations,
     saveGmbLocation,
@@ -46,8 +47,8 @@ export default function GoogleBusinessPanel(props: any) {
 
   const selectedLocationLabel = useMemo(() => {
     const picked = gmbLocations.find((l: { name: string; title?: string | null }) => l.name === gmbLocationName);
-    return String(picked?.title || gmbUrl || gmbLocationName || "").trim();
-  }, [gmbLocations, gmbLocationName, gmbUrl]);
+    return String(picked?.title || gmbLocationLabel || gmbUrl || gmbLocationName || "").trim();
+  }, [gmbLocations, gmbLocationName, gmbLocationLabel, gmbUrl]);
 
   const handleLocationConnect = () => {
     setLocationPendingState("connect");
