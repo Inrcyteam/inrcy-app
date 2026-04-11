@@ -187,6 +187,11 @@ export async function igFetchDailyInsights(
     }
   }
 
+  console.log("[Instagram][Account Insights] supportedMetrics=", supportedMetrics);
+  console.log("[Instagram][Account Insights] unsupportedMetrics=", unsupportedMetrics);
+  console.log("[Instagram][Account Insights] metricErrors=", metricErrors);
+  console.log("[Instagram][Account Insights] totals=", totals);
+
   return {
     range: { since: start.toISOString(), until: end.toISOString() },
     totals,
@@ -277,6 +282,11 @@ export async function igFetchRecentMediaInsights(accessToken: string, igUserId: 
       }
     }
   }
+
+  console.log("[Instagram][Media Insights] supportedMetrics=", Array.from(supportedMetrics).sort());
+  console.log("[Instagram][Media Insights] unsupportedMetrics=", Array.from(unsupportedMetrics).sort());
+  console.log("[Instagram][Media Insights] metricErrors=", metricErrors);
+  console.log("[Instagram][Media Insights] totals=", totals);
 
   return {
     totals,

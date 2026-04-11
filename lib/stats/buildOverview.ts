@@ -652,6 +652,9 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
               mediaInsights: mediaPayload ? mediaPayload.totals : { error: getSimpleFrenchErrorMessage(mediaInsights.status === "rejected" ? mediaInsights.reason : null, "media_insights_failed") },
             },
           };
+          const instagramMetricsRecord = asRecord(sourcesStatus.instagram.metrics);
+          console.log("[Instagram][Overview][raw]", JSON.stringify(instagramMetricsRecord["raw"] ?? null, null, 2));
+          console.log("[Instagram][Overview][totals]", JSON.stringify(instagramMetricsRecord["totals"] ?? null, null, 2));
         } catch (e) {
           sourcesStatus.instagram.metrics = { error: getSimpleFrenchErrorMessage(e, "Impossible de récupérer les statistiques Instagram pour le moment.") };
         }
