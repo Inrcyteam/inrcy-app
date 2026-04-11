@@ -953,7 +953,6 @@ const exportCsv = () => {
         </div>
 
         {error ? <div className={styles.error}>{error}</div> : null}
-            {success ? <div style={{ color: "#22c55e", fontWeight: 800, marginTop: 8 }}>{success}</div> : null}
         {success ? <div style={{ color: "#22c55e", fontWeight: 800, marginTop: 8 }}>{success}</div> : null}
 
                 
