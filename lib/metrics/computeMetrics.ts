@@ -301,12 +301,31 @@ export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
         liLikes > 0 ||
         liNewFollowers > 0 ||
         directSignals > 0;
+      console.log('[LinkedIn][Captured][inputs]', JSON.stringify({
+        comments: liComments,
+        shares: liShares,
+        likes: liLikes,
+        newFollowers: liNewFollowers,
+        postsPublished: liPostsPublished,
+        uniqueImpressions: liUniqueImpr,
+        socialImpressions: socialImpr,
+        profileViews,
+        searchAppearances,
+        pageViews: liPageViews,
+        clicks: liClicks,
+        directSignals,
+        memberRawScore,
+        memberEstimate,
+        hasAnySignal,
+      }));
       if (!hasAnySignal) return 0;
       const estimate = directSignals + memberEstimate;
       if (directSignals > 0) {
         const capped = Math.min(directSignals * CAP_MULTIPLIER_WHEN_STRONG_SIGNAL + memberEstimate * 0.5, estimate);
+        console.log('[LinkedIn][Captured][result]', JSON.stringify({ estimate, capped, rounded: roundNonNeg(capped) }));
         return roundNonNeg(capped);
       }
+      console.log('[LinkedIn][Captured][result]', JSON.stringify({ estimate: memberEstimate, rounded: roundNonNeg(memberEstimate) }));
       return roundNonNeg(memberEstimate);
     }
 
@@ -406,6 +425,27 @@ export function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): 
       2.2,
     );
     const additionalPerDay = Math.max(0, potentialPerDay - currentPerDay);
+    console.log('[LinkedIn][Opportunity][inputs]', JSON.stringify({
+      baseDays,
+      commentsTotal,
+      sharesTotal,
+      likesTotal,
+      newFollowersTotal,
+      postsPublishedTotal,
+      uniqueImpressionsTotal,
+      impressionsTotal,
+      engagementsTotal,
+      audienceTotal,
+      currentPerDay,
+      publishTarget,
+      publishDeficit,
+      exposureN,
+      engagementN,
+      audienceN,
+      audienceHeadroom,
+      potentialPerDay,
+      additionalPerDay,
+    }));
     return clamp(additionalPerDay, 0, 2.2);
   }
 
