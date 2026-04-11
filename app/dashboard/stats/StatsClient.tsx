@@ -110,7 +110,7 @@ function cubeSessionKey(period: Period) {
 }
 
 function summarySessionKey(period: Period) {
-  return `inrcy_stats_summary_snapshot_v1:${period}`;
+  return `inrcy_stats_summary_snapshot_v2:${period}`;
 }
 
 function fmtInt(n: number) {
@@ -1304,8 +1304,14 @@ export default function StatsClient() {
     try {
       const raw = window.sessionStorage.getItem(summarySessionKey(period));
       if (raw) {
-        const cached = JSON.parse(raw) as { total?: number; byCube?: Partial<Record<CubeKey, number>> };
+        const cached = JSON.parse(raw) as {
+          total?: number;
+          byCube?: Partial<Record<CubeKey, number>>;
+          profile?: { lead_conversion_rate?: number; avg_basket?: number };
+          estimatedByCube?: Partial<Record<CubeKey, number>>;
+        };
         const byCubePartial = cached?.byCube || {};
+        const estimatedByCubePartial = cached?.estimatedByCube || {};
         setSummaryOpp({
           loading: false,
           total: safeNum(cached?.total),
@@ -1317,6 +1323,18 @@ export default function StatsClient() {
             instagram: safeNum(byCubePartial.instagram),
             linkedin: safeNum(byCubePartial.linkedin),
           },
+        });
+        setSummaryProfile({
+          lead_conversion_rate: safeNum(cached?.profile?.lead_conversion_rate),
+          avg_basket: safeNum(cached?.profile?.avg_basket),
+        });
+        setSummaryEstimatedByCube({
+          site_inrcy: safeNum(estimatedByCubePartial.site_inrcy),
+          site_web: safeNum(estimatedByCubePartial.site_web),
+          gmb: safeNum(estimatedByCubePartial.gmb),
+          facebook: safeNum(estimatedByCubePartial.facebook),
+          instagram: safeNum(estimatedByCubePartial.instagram),
+          linkedin: safeNum(estimatedByCubePartial.linkedin),
         });
       }
     } catch {
@@ -1361,7 +1379,14 @@ useEffect(() => {
           // ignore
         }
         try {
-          window.sessionStorage.setItem(summarySessionKey(period), JSON.stringify(next.summary));
+          window.sessionStorage.setItem(
+            summarySessionKey(period),
+            JSON.stringify({
+              ...next.summary,
+              profile: next.profile,
+              estimatedByCube: next.estimatedByCube,
+            }),
+          );
         } catch {
           // ignore
         }
