@@ -175,7 +175,7 @@ function estimateEngagedSessions(ov: Overview): number {
 }
 
 const CAP_MULTIPLIER_WHEN_STRONG_SIGNAL = 3;
-export const CAPTURED_MODEL_VERSION = 'captured_v2.1';
+export const CAPTURED_MODEL_VERSION = 'captured_v2.2';
 
 export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
   if (!isCubeConnected(cube, ov)) return 0;
@@ -245,23 +245,24 @@ export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
           'text_message_clicks', 'get_directions_clicks', 'get_direction_clicks',
         ]);
       const profileIntent =
-        getTotalMetric(m, ['profile_activity']) +
-        getTotalMetric(m, ['profile_visits', 'profileVisits']) * 0.85 +
-        getTotalMetric(m, ['profile_views', 'profileViews']) * 0.65;
+        getTotalMetric(m, ['profile_activity']) * 1.35 +
+        getTotalMetric(m, ['profile_visits', 'profileVisits']) * 1.25 +
+        getTotalMetric(m, ['profile_views', 'profileViews']) * 0.9;
       const communityIntent =
-        getTotalMetric(m, ['replies']) * 0.8 +
-        getTotalMetric(m, ['comments']) * 0.35 +
-        getTotalMetric(m, ['shares']) * 0.25 +
-        getTotalMetric(m, ['saved', 'saves']) * 0.2 +
-        getTotalMetric(m, ['follows', 'follower_count']) * 0.15;
+        getTotalMetric(m, ['replies']) * 1.0 +
+        getTotalMetric(m, ['comments']) * 0.5 +
+        getTotalMetric(m, ['shares']) * 0.4 +
+        getTotalMetric(m, ['saved', 'saves']) * 0.35 +
+        getTotalMetric(m, ['likes']) * 0.12 +
+        getTotalMetric(m, ['follows', 'follower_count']) * 0.2;
       const visibilityAssist =
-        igReach * 0.008 +
-        socialImpr * 0.004 +
-        getTotalMetric(m, ['accounts_engaged']) * 0.05 +
-        getTotalMetric(m, ['total_interactions']) * 0.03;
+        igReach * 0.012 +
+        socialImpr * 0.006 +
+        getTotalMetric(m, ['accounts_engaged']) * 0.08 +
+        getTotalMetric(m, ['total_interactions']) * 0.08;
       const estimate = directSignals + profileIntent + communityIntent + visibilityAssist;
       if (directSignals > 0) {
-        const capped = Math.min(directSignals * CAP_MULTIPLIER_WHEN_STRONG_SIGNAL + profileIntent * 0.75, estimate);
+        const capped = Math.min(directSignals * CAP_MULTIPLIER_WHEN_STRONG_SIGNAL + profileIntent * 1.0 + communityIntent * 0.35, estimate);
         return roundNonNeg(capped);
       }
       return roundNonNeg(estimate);
