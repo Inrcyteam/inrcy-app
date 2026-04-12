@@ -103,6 +103,25 @@ function readGeneratorCache(): { syncedAt: number; payload: any | null } | null 
   }
 }
 
+function readSnapshotSyncAt(key: string): number {
+  try {
+    const raw = readUiCacheValue(key);
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw) as any;
+    const syncedAt = Number(parsed?.syncedAt);
+    return Number.isFinite(syncedAt) ? syncedAt : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function readInrStatsPeriodSyncAt(period: StatsWarmPeriod): number {
+  return Math.max(
+    readSnapshotSyncAt(statsCubeSessionKey(period)),
+    readSnapshotSyncAt(statsSummarySessionKey(period)),
+  );
+}
+
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
   const [helpCanauxOpen, setHelpCanauxOpen] = useState(false);
@@ -179,7 +198,7 @@ export default function DashboardClient() {
       return;
     }
     closePanel();
-  }, []);
+  }, [panel]);
 
   // Orientation: gérée globalement via <OrientationGuard />
 
@@ -1113,10 +1132,11 @@ const connectSiteInrcyGsc = useCallback(() => {
   window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
 }, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl]);
 
-const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: number }) => {
+const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: number; silent?: boolean }) => {
     const requestSeq = ++kpisRequestSeqRef.current;
     const fresh = options?.fresh === true;
-    setKpisLoading(true);
+    const silent = options?.silent === true;
+    if (!silent || !kpis) setKpisLoading(true);
     try {
       const url = fresh ? "/api/metrics/summary?fresh=1" : "/api/metrics/summary";
       const res = await fetch(url, { cache: "no-store" });
@@ -1151,7 +1171,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       // Keep the last known KPIs to avoid a visual "blink".
       // If nothing exists yet, we'll display 0.
     } finally {
-      if (requestSeq === kpisRequestSeqRef.current) {
+      if (requestSeq === kpisRequestSeqRef.current && (!silent || !kpis)) {
         setKpisLoading(false);
       }
     }
@@ -1168,15 +1188,23 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     window.dispatchEvent(new CustomEvent("inrcy:channels-updated", { detail: { at: syncAt } }));
   }, []);
 
-  const warmInrStatsUi = useCallback(async (syncedAt?: number) => {
+  const warmInrStatsUi = useCallback(async (options?: {
+    syncedAt?: number;
+    fresh?: boolean;
+    targetPeriods?: StatsWarmPeriod[];
+    syncByPeriod?: Partial<Record<StatsWarmPeriod, number>>;
+  }) => {
     if (typeof window === "undefined") return;
 
-    const periods: StatsWarmPeriod[] = [7, 30];
-    const syncAt = Number.isFinite(Number(syncedAt)) ? Number(syncedAt) : Date.now();
+    const periods: StatsWarmPeriod[] = options?.targetPeriods?.length ? options.targetPeriods : [7, 30];
+    const syncAt = Number.isFinite(Number(options?.syncedAt)) ? Number(options?.syncedAt) : Date.now();
+    const fresh = options?.fresh === true;
+    const syncByPeriod = options?.syncByPeriod || {};
 
     await Promise.allSettled(
       periods.map(async (days) => {
-        const params = new URLSearchParams({ days: String(days), fresh: "1" });
+        const params = new URLSearchParams({ days: String(days) });
+        if (fresh) params.set("fresh", "1");
         const res = await fetch(`/api/stats/dashboard-bulk?${params.toString()}`, {
           cache: "no-store",
           credentials: "include",
@@ -1194,7 +1222,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         try {
           writeUiCacheValue(
             statsCubeSessionKey(days),
-            JSON.stringify({ syncedAt: syncAt, overviews })
+            JSON.stringify({ syncedAt: Number.isFinite(Number(syncByPeriod[days])) ? Number(syncByPeriod[days]) : syncAt, overviews })
           );
         } catch {
           // ignore
@@ -1204,7 +1232,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           writeUiCacheValue(
             statsSummarySessionKey(days),
             JSON.stringify({
-              syncedAt: syncAt,
+              syncedAt: Number.isFinite(Number(syncByPeriod[days])) ? Number(syncByPeriod[days]) : syncAt,
               total: Number(opportunities?.total ?? 0),
               byCube: opportunities?.byCube ?? {},
               profile: json?.profile ?? {},
@@ -1220,11 +1248,64 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
   const refreshTimersRef = useRef<number[]>([]);
   const lastGeneratorRefreshAtRef = useRef(0);
+  const lastServerCacheCheckAtRef = useRef(0);
+  const serverCacheCheckPromiseRef = useRef<Promise<void> | null>(null);
 
   const clearScheduledGeneratorRefreshes = useCallback(() => {
     refreshTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
     refreshTimersRef.current = [];
   }, []);
+
+  const syncFromServerCacheIfNeeded = useCallback(async (force = false) => {
+    if (typeof window === "undefined") return;
+    const now = Date.now();
+    if (!force && now - lastServerCacheCheckAtRef.current < 60_000) return;
+    if (serverCacheCheckPromiseRef.current) {
+      await serverCacheCheckPromiseRef.current;
+      return;
+    }
+
+    const job = (async () => {
+      lastServerCacheCheckAtRef.current = now;
+      try {
+        const res = await fetch("/api/dashboard/cache-status", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const json = await res.json().catch(() => null);
+        const generatorSyncedAt = Number(json?.generator?.syncedAt ?? 0);
+        const localGeneratorSyncedAt = readGeneratorCache()?.syncedAt || 0;
+
+        const periodSyncs: Partial<Record<StatsWarmPeriod, number>> = {
+          7: Number(json?.inrstats?.[7] ?? json?.inrstats?.["7"] ?? 0),
+          30: Number(json?.inrstats?.[30] ?? json?.inrstats?.["30"] ?? 0),
+        };
+        const stalePeriods = ([7, 30] as StatsWarmPeriod[]).filter((days) => {
+          const serverTs = Number(periodSyncs[days] ?? 0);
+          return serverTs > readInrStatsPeriodSyncAt(days);
+        });
+
+        await Promise.allSettled([
+          generatorSyncedAt > localGeneratorSyncedAt
+            ? refreshKpis({ syncedAt: generatorSyncedAt, silent: true })
+            : Promise.resolve(),
+          stalePeriods.length
+            ? warmInrStatsUi({ targetPeriods: stalePeriods, syncByPeriod: periodSyncs })
+            : Promise.resolve(),
+        ]);
+      } catch {
+        // ignore lightweight sync errors
+      }
+    })();
+
+    serverCacheCheckPromiseRef.current = job;
+    try {
+      await job;
+    } finally {
+      serverCacheCheckPromiseRef.current = null;
+    }
+  }, [refreshKpis, warmInrStatsUi]);
 
   const triggerGeneratorRefresh = useCallback(async () => {
     const runSync = async () => {
@@ -1233,7 +1314,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       await Promise.allSettled([
         loadSiteInrcy(),
         refreshKpis({ fresh: true, syncedAt: syncAt }),
-        warmInrStatsUi(syncAt),
+        warmInrStatsUi({ syncedAt: syncAt, fresh: true }),
       ]);
       notifyStatsRefresh(syncAt);
     };
@@ -2765,6 +2846,26 @@ const checkActivity = useCallback(async () => {
     }
     void refreshKpis();
   }, [refreshKpis]);
+
+  useEffect(() => {
+    void syncFromServerCacheIfNeeded(true);
+
+    const handleFocus = () => {
+      void syncFromServerCacheIfNeeded(false);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void syncFromServerCacheIfNeeded(false);
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [syncFromServerCacheIfNeeded]);
 
   const leadsToday = kpis?.leads?.today ?? 0;
   const leadsWeek = kpis?.leads?.week ?? 0;

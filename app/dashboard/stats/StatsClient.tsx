@@ -55,6 +55,19 @@ type StatsBulkResponse = {
   estimatedByCube?: Partial<Record<CubeKey, number>>;
 };
 
+type BulkFetchResult = {
+  overviews: Partial<Record<CubeKey, Overview>>;
+  summary: {
+    total: number;
+    byCube: Record<CubeKey, number>;
+  };
+  profile: {
+    lead_conversion_rate: number;
+    avg_basket: number;
+  };
+  estimatedByCube: Record<CubeKey, number>;
+};
+
 type ActionKey =
   | "booster_publier"
   | "booster_avis"
@@ -223,6 +236,13 @@ function parseCachedSummarySnapshot(raw: string | null): {
   }
   return null;
 }
+
+function getLocalPeriodSyncAt(period: Period): number {
+  const cubeSync = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(period)))?.syncedAt || 0;
+  const summarySync = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)))?.syncedAt || 0;
+  return Math.max(cubeSync, summarySync);
+}
+
 function gmbMetricSeriesTotal(metrics: any, metricNames: string[]) {
   const rawSeries = Array.isArray(metrics?.raw?.multiDailyMetricTimeSeries)
     ? metrics.raw.multiDailyMetricTimeSeries
@@ -1305,6 +1325,8 @@ export default function StatsClient() {
   const hydratedPeriodsRef = useRef(new Set<number>());
   const lastAutoRefreshAtRef = useRef(0);
   const refreshTimeoutRef = useRef<number | null>(null);
+  const lastServerCacheCheckAtRef = useRef(0);
+  const serverCacheCheckPromiseRef = useRef<Promise<void> | null>(null);
 
   const clearCachedSnapshots = useCallback(() => {
     periodCacheRef.current.clear();
@@ -1373,7 +1395,77 @@ export default function StatsClient() {
   }, []);
 
 
-  const fetchBulkStats = async (period: Period, forceFresh = false) => {
+  const applyBulkPayload = useCallback((targetPeriod: Period, next: BulkFetchResult, syncedAt: number) => {
+    const snap = next.overviews as Record<CubeKey, Overview>;
+    periodCacheRef.current.set(targetPeriod, snap);
+    try {
+      writeUiCacheValue(cubeSessionKey(targetPeriod), JSON.stringify({ syncedAt, overviews: snap }));
+      writeUiCacheValue(
+        summarySessionKey(targetPeriod),
+        JSON.stringify({
+          syncedAt,
+          ...next.summary,
+          profile: next.profile,
+          estimatedByCube: next.estimatedByCube,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+
+    if (targetPeriod !== period) return;
+
+    setDataByCube((prev) => {
+      const updated: any = { ...prev };
+      for (const k of Object.keys(snap) as CubeKey[]) {
+        updated[k] = { ov: snap[k] ?? null, loading: false, error: undefined };
+      }
+      return updated;
+    });
+    setSummaryOpp({ loading: false, total: next.summary.total, byCube: next.summary.byCube });
+    setSummaryProfile(next.profile);
+    setSummaryEstimatedByCube(next.estimatedByCube);
+    setLastRefreshAt(Date.now());
+    setIsRefreshing(false);
+  }, [period]);
+
+  const syncFromServerCacheIfNeeded = useCallback(async (force = false) => {
+    if (typeof window === "undefined") return;
+    const now = Date.now();
+    if (!force && now - lastServerCacheCheckAtRef.current < 60_000) return;
+    if (serverCacheCheckPromiseRef.current) {
+      await serverCacheCheckPromiseRef.current;
+      return;
+    }
+
+    const job = (async () => {
+      lastServerCacheCheckAtRef.current = now;
+      try {
+        const res = await fetch("/api/dashboard/cache-status", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json().catch(() => null);
+        const periodsToRefresh = ([7, 30] as Period[])
+          .map((days) => ({ days, syncedAt: Number(json?.inrstats?.[days] ?? json?.inrstats?.[String(days)] ?? 0) }))
+          .filter((item) => item.syncedAt > getLocalPeriodSyncAt(item.days));
+
+        for (const item of periodsToRefresh) {
+          const next = await fetchBulkStats(item.days, false);
+          applyBulkPayload(item.days, next, item.syncedAt);
+        }
+      } catch {
+        // ignore lightweight sync errors
+      }
+    })();
+
+    serverCacheCheckPromiseRef.current = job;
+    try {
+      await job;
+    } finally {
+      serverCacheCheckPromiseRef.current = null;
+    }
+  }, [applyBulkPayload]);
+
+  const fetchBulkStats = async (period: Period, forceFresh = false): Promise<BulkFetchResult> => {
     const params = new URLSearchParams({ days: String(period) });
     if (forceFresh) params.set("fresh", "1");
     const r = await fetch(`/api/stats/dashboard-bulk?${params.toString()}`, { cache: "no-store" });
@@ -1489,43 +1581,11 @@ useEffect(() => {
 
     try {
       const next = await fetchBulkStats(period, refreshNonce > 0);
-      const snap = next.overviews as Record<CubeKey, Overview>;
-
+      if (cancelled) return;
       try {
         const syncedAt = Date.now();
-        periodCacheRef.current.set(period, snap);
-        try {
-          writeUiCacheValue(cubeSessionKey(period), JSON.stringify({ syncedAt, overviews: snap }));
-        } catch {
-          // ignore
-        }
-        try {
-          writeUiCacheValue(
-            summarySessionKey(period),
-            JSON.stringify({
-              syncedAt,
-              ...next.summary,
-              profile: next.profile,
-              estimatedByCube: next.estimatedByCube,
-            }),
-          );
-        } catch {
-          // ignore
-        }
+        applyBulkPayload(period, next, syncedAt);
       } catch {}
-
-      if (cancelled) return;
-
-      setDataByCube((prev) => {
-        const updated: any = { ...prev };
-        for (const k of keys) {
-          updated[k] = { ov: snap[k] ?? null, loading: false, error: undefined };
-        }
-        return updated;
-      });
-      setSummaryOpp({ loading: false, total: next.summary.total, byCube: next.summary.byCube });
-      setSummaryProfile(next.profile);
-      setSummaryEstimatedByCube(next.estimatedByCube);
     } catch (e: any) {
       if (cancelled) return;
 
@@ -1582,6 +1642,26 @@ useEffect(() => {
       window.removeEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
     };
   }, [hydrateFromSessionCache, period, triggerRefresh]);
+
+  useEffect(() => {
+    void syncFromServerCacheIfNeeded(true);
+
+    const handleFocus = () => {
+      void syncFromServerCacheIfNeeded(false);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void syncFromServerCacheIfNeeded(false);
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [syncFromServerCacheIfNeeded]);
 
 
   const models: CubeModel[] = useMemo(() => {
