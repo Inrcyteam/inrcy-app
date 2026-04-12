@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getChannelConnectionStates, type ChannelStates } from "@/lib/channelConnectionState";
 import { saveDailyMetricsSummary, type SnapshotDetail } from "@/lib/dailyMetricsSummary";
+import { buildMetricsSummary } from "@/lib/metrics/summary";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAppUrl } from "@/lib/stripeRest";
 
@@ -35,8 +36,8 @@ const INCLUDE_BY_CUBE: Record<CubeKey, string> = {
   linkedin: "linkedin",
 };
 
-const DEFAULT_TOTAL_SHARDS = 4;
-const DEFAULT_CONCURRENCY = 4;
+const DEFAULT_TOTAL_SHARDS = 12;
+const DEFAULT_CONCURRENCY = 2;
 const LOCK_BASE_KEY = 90421001;
 
 function safeNum(v: unknown): number {
@@ -289,6 +290,21 @@ function parsePositiveInt(raw: string | null, fallback: number, opts?: { min?: n
 }
 
 async function processUser(req: Request, userId: string) {
+  const origin = getAppUrl(req);
+  try {
+    await buildMetricsSummary({
+      supabase: supabaseAdmin,
+      userId,
+      origin,
+      monthDays: 30,
+      weekDays: 7,
+      todayDays: 2,
+      fresh: true,
+    });
+  } catch (error) {
+    console.warn("daily-metrics-summary metrics_summary warm failed", userId, error instanceof Error ? error.message : String(error));
+  }
+
   const states = await getChannelConnectionStates(supabaseAdmin, userId);
   const details: Partial<Record<CubeKey, SnapshotDetail>> = {};
 

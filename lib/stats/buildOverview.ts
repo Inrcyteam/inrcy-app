@@ -836,7 +836,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
     // cache write (best-effort)
     try {
-      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      const expiresAt = new Date(Date.now() + 36 * 60 * 60 * 1000).toISOString();
       await supabase.from("stats_cache").insert({
         user_id: userId,
         source: "overview",

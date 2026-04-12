@@ -128,14 +128,53 @@ function safeNum(v: any, fallback = 0) {
 
 
 
-function getStatsLastChannelSyncAt() {
+function readUiCacheValue(key: string): string | null {
+  if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem("inrcy_stats_last_channel_sync_v1");
-    const n = raw ? Number(raw) : NaN;
-    return Number.isFinite(n) ? n : 0;
+    const sessionValue = window.sessionStorage.getItem(key);
+    if (sessionValue !== null) return sessionValue;
   } catch {
-    return 0;
+    // ignore
   }
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeUiCacheValue(key: string, value: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
+function removeUiCacheValue(key: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+function getStatsLastChannelSyncAt() {
+  const raw = readUiCacheValue("inrcy_stats_last_channel_sync_v1");
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) ? n : 0;
 }
 
 function parseCachedCubeSnapshot(raw: string | null): { syncedAt: number; overviews: Record<CubeKey, Overview> } | null {
@@ -1271,8 +1310,8 @@ export default function StatsClient() {
     periodCacheRef.current.clear();
     try {
       for (const p of AVAILABLE_PERIODS) {
-        window.sessionStorage.removeItem(cubeSessionKey(p));
-        window.sessionStorage.removeItem(summarySessionKey(p));
+        removeUiCacheValue(cubeSessionKey(p));
+        removeUiCacheValue(summarySessionKey(p));
       }
     } catch {
       // ignore
@@ -1289,8 +1328,8 @@ export default function StatsClient() {
 
   const hydrateFromSessionCache = useCallback((targetPeriod: Period) => {
     const lastChannelSyncAt = getStatsLastChannelSyncAt();
-    const cachedCube = parseCachedCubeSnapshot(window.sessionStorage.getItem(cubeSessionKey(targetPeriod)));
-    const cachedSummary = parseCachedSummarySnapshot(window.sessionStorage.getItem(summarySessionKey(targetPeriod)));
+    const cachedCube = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(targetPeriod)));
+    const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(targetPeriod)));
     const cubeFresh = !!cachedCube?.overviews && cachedCube.syncedAt >= lastChannelSyncAt;
     const summaryFresh = !!cachedSummary && cachedSummary.syncedAt >= lastChannelSyncAt;
     if (!cubeFresh || !summaryFresh) return false;
@@ -1391,7 +1430,7 @@ useEffect(() => {
     // Fast path: cached data for this period
     const cached = periodCacheRef.current.get(period);
     const lastChannelSyncAt = getStatsLastChannelSyncAt();
-    const cachedSummary = parseCachedSummarySnapshot(window.sessionStorage.getItem(summarySessionKey(period)));
+    const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
     const hasFreshCachedSummary = !!cachedSummary && cachedSummary.syncedAt >= lastChannelSyncAt;
     if (cached && hasFreshCachedSummary) {
       setDataByCube((prev) => {
@@ -1404,6 +1443,40 @@ useEffect(() => {
       return;
     }
     if (hydrateFromSessionCache(period)) {
+      return;
+    }
+    if (cached && cachedSummary) {
+      setDataByCube((prev) => {
+        const next: any = { ...prev };
+        for (const k of Object.keys(cached) as CubeKey[]) {
+          next[k] = { ov: (cached as any)[k], loading: false, error: undefined };
+        }
+        return next;
+      });
+      setSummaryOpp({
+        loading: false,
+        total: safeNum(cachedSummary.total),
+        byCube: {
+          site_inrcy: safeNum(cachedSummary.byCube?.site_inrcy),
+          site_web: safeNum(cachedSummary.byCube?.site_web),
+          gmb: safeNum(cachedSummary.byCube?.gmb),
+          facebook: safeNum(cachedSummary.byCube?.facebook),
+          instagram: safeNum(cachedSummary.byCube?.instagram),
+          linkedin: safeNum(cachedSummary.byCube?.linkedin),
+        },
+      });
+      setSummaryProfile({
+        lead_conversion_rate: safeNum(cachedSummary.profile?.lead_conversion_rate),
+        avg_basket: safeNum(cachedSummary.profile?.avg_basket),
+      });
+      setSummaryEstimatedByCube({
+        site_inrcy: safeNum(cachedSummary.estimatedByCube?.site_inrcy),
+        site_web: safeNum(cachedSummary.estimatedByCube?.site_web),
+        gmb: safeNum(cachedSummary.estimatedByCube?.gmb),
+        facebook: safeNum(cachedSummary.estimatedByCube?.facebook),
+        instagram: safeNum(cachedSummary.estimatedByCube?.instagram),
+        linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
+      });
       return;
     }
 
@@ -1422,12 +1495,12 @@ useEffect(() => {
         const syncedAt = Date.now();
         periodCacheRef.current.set(period, snap);
         try {
-          window.sessionStorage.setItem(cubeSessionKey(period), JSON.stringify({ syncedAt, overviews: snap }));
+          writeUiCacheValue(cubeSessionKey(period), JSON.stringify({ syncedAt, overviews: snap }));
         } catch {
           // ignore
         }
         try {
-          window.sessionStorage.setItem(
+          writeUiCacheValue(
             summarySessionKey(period),
             JSON.stringify({
               syncedAt,

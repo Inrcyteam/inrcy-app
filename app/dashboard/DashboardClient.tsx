@@ -51,21 +51,44 @@ function statsSummarySessionKey(period: StatsWarmPeriod) {
   return `inrcy_stats_summary_snapshot_v2:${period}`;
 }
 
-function getLastChannelSyncAt() {
-  if (typeof window === "undefined") return 0;
+function readUiCacheValue(key: string): string | null {
+  if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem("inrcy_stats_last_channel_sync_v1");
-    const n = raw ? Number(raw) : Number.NaN;
-    return Number.isFinite(n) ? n : 0;
+    const sessionValue = window.sessionStorage.getItem(key);
+    if (sessionValue !== null) return sessionValue;
   } catch {
-    return 0;
+    // ignore
+  }
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
   }
 }
 
-function readGeneratorCache(): { syncedAt: number; payload: any | null } | null {
-  if (typeof window === "undefined") return null;
+function writeUiCacheValue(key: string, value: string) {
+  if (typeof window === "undefined") return;
   try {
-    const raw = window.sessionStorage.getItem("inrcy_generator_kpis_v1");
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
+function getLastChannelSyncAt() {
+  const raw = readUiCacheValue("inrcy_stats_last_channel_sync_v1");
+  const n = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(n) ? n : 0;
+}
+
+function readGeneratorCache(): { syncedAt: number; payload: any | null } | null {
+  try {
+    const raw = readUiCacheValue("inrcy_generator_kpis_v1");
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object" && "payload" in parsed) {
@@ -1111,14 +1134,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       if (Number.isFinite(oppMonth)) {
         setOppTotal(oppMonth);
         try {
-          window.sessionStorage.setItem("inrcy_opp30_total_v1", String(oppMonth));
+          writeUiCacheValue("inrcy_opp30_total_v1", String(oppMonth));
         } catch {
           // ignore
         }
       }
       try {
         const syncedAt = Number.isFinite(Number(options?.syncedAt)) ? Number(options?.syncedAt) : Date.now();
-        window.sessionStorage.setItem("inrcy_generator_kpis_v1", JSON.stringify({ syncedAt, payload: json }));
+        writeUiCacheValue("inrcy_generator_kpis_v1", JSON.stringify({ syncedAt, payload: json }));
       } catch {
         // ignore
       }
@@ -1138,7 +1161,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     if (typeof window === "undefined") return;
     const syncAt = Number.isFinite(Number(at)) ? Number(at) : Date.now();
     try {
-      window.sessionStorage.setItem("inrcy_stats_last_channel_sync_v1", String(syncAt));
+      writeUiCacheValue("inrcy_stats_last_channel_sync_v1", String(syncAt));
     } catch {
       // ignore
     }
@@ -1169,7 +1192,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         if (!overviews || typeof overviews !== "object") return;
 
         try {
-          window.sessionStorage.setItem(
+          writeUiCacheValue(
             statsCubeSessionKey(days),
             JSON.stringify({ syncedAt: syncAt, overviews })
           );
@@ -1178,7 +1201,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         }
 
         try {
-          window.sessionStorage.setItem(
+          writeUiCacheValue(
             statsSummarySessionKey(days),
             JSON.stringify({
               syncedAt: syncAt,
@@ -1224,7 +1247,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
   useEffect(() => {
     try {
-      const raw = window.sessionStorage.getItem("inrcy_opp30_total_v1");
+      const raw = readUiCacheValue("inrcy_opp30_total_v1");
       const n = raw ? Number(raw) : NaN;
       if (Number.isFinite(n)) setOppTotal(n);
     } catch {
@@ -2735,6 +2758,9 @@ const checkActivity = useCallback(async () => {
     const cached = readGeneratorCache();
     const lastChannelSyncAt = getLastChannelSyncAt();
     if (cached?.payload?.leads && cached.syncedAt >= lastChannelSyncAt) {
+      return;
+    }
+    if (cached?.payload?.leads) {
       return;
     }
     void refreshKpis();
