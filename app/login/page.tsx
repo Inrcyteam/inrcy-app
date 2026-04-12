@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
@@ -54,7 +53,6 @@ function clearStaleSupabaseAuthStorage() {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const [supabaseReady, setSupabaseReady] = useState(false);
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
   const [email, setEmail] = useState("");
@@ -259,8 +257,10 @@ useEffect(() => {
         return;
       }
 
-      router.replace("/dashboard");
-      router.refresh();
+      // Utilise une redirection navigateur complète pour fiabiliser la navigation
+      // après création de session. En CI/Playwright, router.replace()+refresh()
+      // pouvait laisser l'utilisateur sur /login et faire échouer l'attente de /dashboard.
+      window.location.replace("/dashboard");
     } catch (err: unknown) {
       setError(getSimpleFrenchErrorMessage(err, "La connexion a échoué. Veuillez réessayer."));
     } finally {
