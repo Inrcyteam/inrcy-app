@@ -30,28 +30,6 @@ function rint(min: number, max: number) {
 }
 
 
-function clearStaleSupabaseAuthStorage() {
-  if (typeof window === "undefined") return;
-
-  try {
-    const keysToRemove: string[] = [];
-
-    for (let i = 0; i < window.localStorage.length; i += 1) {
-      const key = window.localStorage.key(i);
-      if (!key) continue;
-      if (key.startsWith("sb-") && key.includes("-auth-token")) {
-        keysToRemove.push(key);
-      }
-    }
-
-    for (const key of keysToRemove) {
-      window.localStorage.removeItem(key);
-    }
-  } catch {
-    // no-op
-  }
-}
-
 export default function LoginPage() {
   const [supabaseReady, setSupabaseReady] = useState(false);
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
@@ -83,6 +61,58 @@ export default function LoginPage() {
   const [mounted, setMounted] = useState(false);
   const [dots, setDots] = useState<WanderDot[]>([]);
   const handledHashRef = useRef(false);
+
+useEffect(() => {
+  if (typeof window === "undefined" || !supabaseReady) return;
+
+  const supabase = supabaseRef.current;
+  if (!supabase) return;
+
+  const hash = window.location.hash;
+  const search = window.location.search;
+  const hasAuthFlowInUrl =
+    hash.includes("access_token=") ||
+    hash.includes("error=") ||
+    search.includes("error=");
+
+  if (hasAuthFlowInUrl) return;
+
+  let cancelled = false;
+
+  const redirectToDashboard = () => {
+    if (cancelled) return;
+    window.location.replace("/dashboard");
+  };
+
+  const ensureExistingSession = async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    if (!session || cancelled) return;
+
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (!cancelled && !error && user) {
+      redirectToDashboard();
+    }
+  };
+
+  void ensureExistingSession();
+
+  const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+    if (!session) return;
+    if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
+      redirectToDashboard();
+    }
+  });
+
+  return () => {
+    cancelled = true;
+    authListener.subscription.unsubscribe();
+  };
+}, [supabaseReady]);
 
 // ✅ gestion lien expiré / invalide (2e clic invitation)
 useEffect(() => {
@@ -159,7 +189,6 @@ useEffect(() => {
 useEffect(() => {
     setMounted(true);
 
-    clearStaleSupabaseAuthStorage();
     supabaseRef.current = createClient();
     setSupabaseReady(true);
 
