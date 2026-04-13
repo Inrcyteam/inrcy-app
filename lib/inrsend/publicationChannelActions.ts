@@ -10,6 +10,7 @@ import { optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from
 import { randomUUID } from "crypto";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { buildGmbSummary } from "@/lib/googleBusinessCompliance";
+import { extractFacebookUserTokens } from "@/lib/metaBusinessAssets";
 
 const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
@@ -345,6 +346,16 @@ async function deleteInstagramMedia(externalId: string, accessToken: string) {
   }
 }
 
+function resolveInstagramDeleteToken(integrationRow: unknown) {
+  const row = asRecord(integrationRow);
+  const encryptedCandidates = extractFacebookUserTokens(asRecord(row.meta), null);
+  for (const raw of encryptedCandidates) {
+    const token = tryDecryptToken(String(raw || "")) || "";
+    if (token) return token;
+  }
+  return tryDecryptToken(String(row.access_token_enc ?? "")) || "";
+}
+
 async function deleteLinkedInPost(externalId: string, accessToken: string) {
   if (!externalId) return;
   const res = await fetch(`https://api.linkedin.com/rest/posts/${encodeURIComponent(externalId)}`, {
@@ -482,10 +493,11 @@ async function replaceChannelDelivery(params: {
     const ig = asRecord(igRow);
     const igUserId = String(ig.resource_id ?? "");
     const igToken = tryDecryptToken(String(ig.access_token_enc ?? "")) || "";
+    const igDeleteToken = resolveInstagramDeleteToken(igRow);
     if (String(ig.status ?? "") !== "connected" || !igUserId || !igToken) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
     const instagramImages = instagramImageUrls.filter(Boolean).slice(0, 10);
     if (!instagramImages.length) throw new Error("Instagram nécessite au moins 1 image.");
-    if (previousExternalId) await deleteInstagramMedia(previousExternalId, igToken);
+    if (previousExternalId) await deleteInstagramMedia(previousExternalId, igDeleteToken || igToken);
     const resp = instagramImages.length > 1
       ? await instagramPublishCarousel({
           igUserId,
@@ -560,7 +572,7 @@ async function removeChannelDelivery(params: {
   const [fbRow, _gmbRow, igRow, liRow] = await Promise.all([
     getLatestIntegrationRow(userId, "facebook", "facebook", "facebook", "status,resource_id,access_token_enc"),
     getLatestIntegrationRow(userId, "google", "gmb", "gmb", "status,resource_id,meta"),
-    getLatestIntegrationRow(userId, "instagram", "instagram", "instagram", "status,resource_id,access_token_enc"),
+    getLatestIntegrationRow(userId, "instagram", "instagram", "instagram", "status,resource_id,access_token_enc,meta"),
     getLatestIntegrationRow(userId, "linkedin", "linkedin", "linkedin", "status,resource_id,access_token_enc"),
   ]);
 
@@ -572,7 +584,8 @@ async function removeChannelDelivery(params: {
   }
 
   if (channel === "instagram") {
-    const token = tryDecryptToken(String(asRecord(igRow).access_token_enc ?? "")) || "";
+    const ig = asRecord(igRow);
+    const token = resolveInstagramDeleteToken(igRow) || tryDecryptToken(String(ig.access_token_enc ?? "")) || "";
     if (!token) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
     if (previousExternalId) await deleteInstagramMedia(previousExternalId, token);
     return;
