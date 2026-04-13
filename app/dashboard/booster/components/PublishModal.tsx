@@ -1045,7 +1045,10 @@ export default function PublishModal({
           ...(channels.inrcy_site ? { inrcy_site: sitePost } : {}),
           ...(channels.site_web ? { site_web: sitePost } : {}),
         },
-        images: imagePayloads,
+        // Avoid sending the same images twice (base images + channel images),
+        // which can make the JSON body too large and trigger HTTP 413.
+        // The API now rebuilds the fallback/base image set from channel images.
+        images: [],
         imagesByChannel: channelImages,
         imageSettingsByChannel: channelSettings,
       });

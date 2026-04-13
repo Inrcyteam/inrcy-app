@@ -319,6 +319,7 @@ const body = await req.json().catch(() => null);
     const images = (Array.isArray(body.images) ? body.images : []) as ImagePayload[];
     const imagesByChannel = ((body.imagesByChannel || {}) as ImagesByChannel) || {};
     const imageSettingsByChannel = (body.imageSettingsByChannel || {}) as Record<string, unknown>;
+    const hadAnyImageInput = images.length > 0 || Object.values(imagesByChannel).some((value) => Array.isArray(value) && value.length > 0);
 
     const selected = Array.from(new Set(channels)).filter(Boolean);
     if (!selected.length) {
@@ -365,8 +366,17 @@ const body = await req.json().catch(() => null);
       uploadErrors.push(...channelErrors.map((entry) => ({ ...entry, stage: `${channel}:${entry.stage}` })));
     }
 
-    // Optional hard fail if user selected images but none uploaded
-    if (images.length > 0 && uploadedUrls.length === 0) {
+    const fallbackImageSet = selected
+      .map((channel) => channelImageSets[channel])
+      .find((value): value is ImageSet => Boolean(value && (value.images.length || value.publishableUrls.length || value.instagramPublishableUrls.length || value.socialFeedPublishableUrls.length || value.siteCardPublishableUrls.length)))
+      || null;
+
+    const publicationImageSet = baseImageSet.images.length
+      ? baseImageSet
+      : fallbackImageSet || baseImageSet;
+
+    // Hard fail only if images were provided somewhere but none could be uploaded/prepared.
+    if (hadAnyImageInput && !publicationImageSet.images.length && !publicationImageSet.publishableUrls.length && !publicationImageSet.instagramPublishableUrls.length && !publicationImageSet.socialFeedPublishableUrls.length && !publicationImageSet.siteCardPublishableUrls.length) {
       return NextResponse.json(
         { ok: false, error: "Les images sélectionnées n'ont pas pu être envoyées. Merci de réessayer.", uploadErrors },
         { status: 400 }
@@ -427,9 +437,9 @@ const body = await req.json().catch(() => null);
     const inrcySiteUrl = String(inrcyCfg["site_url"] ?? "").trim();
     const siteWebUrl = String(proSiteWeb["url"] ?? "").trim();
 
-    const externalImageUrls = (publishableUrls.length ? publishableUrls : uploadedUrls).slice(0, 5);
-    const socialFeedImageUrls = (socialFeedPublishableUrls.length ? socialFeedPublishableUrls : externalImageUrls).slice(0, 5);
-    const instagramImageUrls = (instagramPublishableUrls.length ? instagramPublishableUrls : socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).slice(0, 5);
+    const externalImageUrls = (publicationImageSet.publishableUrls.length ? publicationImageSet.publishableUrls : publicationImageSet.images).slice(0, 5);
+    const socialFeedImageUrls = (publicationImageSet.socialFeedPublishableUrls.length ? publicationImageSet.socialFeedPublishableUrls : externalImageUrls).slice(0, 5);
+    const instagramImageUrls = (publicationImageSet.instagramPublishableUrls.length ? publicationImageSet.instagramPublishableUrls : socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).slice(0, 5);
 
     const getChannelImageSet = (channel: ChannelKey): ImageSet => channelImageSets[channel] || baseImageSet;
 
