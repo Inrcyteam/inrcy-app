@@ -412,6 +412,7 @@ export async function gmbCreateLocalPost(args: {
   summary: string;
   imageUrls?: string[];
   languageCode?: string; // default fr-FR
+  callToAction?: { actionType: "LEARN_MORE" | "CALL"; url: string } | null;
 }) {
   const { accessToken, accountName, locationName } = args;
 
@@ -433,6 +434,13 @@ export async function gmbCreateLocalPost(args: {
       mediaFormat: "PHOTO",
       sourceUrl,
     }));
+  }
+
+  if (args.callToAction?.actionType && args.callToAction?.url) {
+    payload.callToAction = {
+      actionType: args.callToAction.actionType,
+      url: args.callToAction.url,
+    };
   }
 
   const r = await fetch(endpoint, {

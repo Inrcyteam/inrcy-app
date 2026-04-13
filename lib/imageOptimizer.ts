@@ -9,6 +9,9 @@ const SOCIAL_FEED_HEIGHT = 1200;
 const SITE_CARD_MAX_BYTES = 8 * 1024 * 1024;
 const SITE_CARD_WIDTH = 1440;
 const SITE_CARD_HEIGHT = 900;
+const GMB_MAX_BYTES = 5 * 1024 * 1024;
+const GMB_WIDTH = 1200;
+const GMB_HEIGHT = 900;
 
 const DEFAULT_BACKGROUND = { r: 255, g: 255, b: 255, alpha: 1 };
 const COVER_CROP_THRESHOLD = 0.08;
@@ -174,6 +177,31 @@ export async function optimizeForSiteCard(inputBuffer: Buffer): Promise<Optimize
       maxBytes: SITE_CARD_MAX_BYTES,
       startQuality: 80,
       minQuality: 50,
+    });
+  }
+
+  return result;
+}
+
+
+export async function optimizeForGoogleBusiness(inputBuffer: Buffer): Promise<OptimizeResult> {
+  let result = await createSmartJpeg({
+    inputBuffer,
+    width: GMB_WIDTH,
+    height: GMB_HEIGHT,
+    maxBytes: GMB_MAX_BYTES,
+    startQuality: 86,
+    minQuality: 52,
+  });
+
+  if (result.size > GMB_MAX_BYTES) {
+    result = await createSmartJpeg({
+      inputBuffer,
+      width: 960,
+      height: 720,
+      maxBytes: GMB_MAX_BYTES,
+      startQuality: 78,
+      minQuality: 48,
     });
   }
 

@@ -9,11 +9,11 @@ import { facebookPublishToPage } from "@/lib/facebookPublish";
 import { instagramPublishCarousel, instagramPublishPhoto } from "@/lib/instagramPublish";
 import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
-import { optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
+import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
-import { buildGmbSummary } from "@/lib/googleBusinessCompliance";
+import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
@@ -81,6 +81,9 @@ type PostPayload = {
   title: string;
   content: string;
   cta: string;
+  ctaMode?: string;
+  ctaUrl?: string;
+  ctaPhone?: string;
   hashtags?: string[];
 };
 
@@ -92,6 +95,7 @@ type ImageSet = {
   instagramPublishableUrls: string[];
   socialFeedPublishableUrls: string[];
   siteCardPublishableUrls: string[];
+  gmbPublishableUrls: string[];
 };
 
 type ResolvedImageInput = {
@@ -110,32 +114,12 @@ function dataUrlToBuffer(dataUrl: string) {
   return { mime, buffer: Buffer.from(b64, "base64") };
 }
 
-function buildCanonMessage(title: string, content: string, cta: string) {
-  const parts = [];
-  if (title) parts.push(title);
-  if (content) parts.push(content);
-  if (cta) parts.push(cta);
-  return parts.join("\n\n").trim();
-}
-
 function normalizeHashtag(input: string): string {
   return String(input || "")
     .trim()
     .replace(/^#+/, "")
     .replace(/[^\p{L}\p{N}_]/gu, "")
     .slice(0, 40);
-}
-
-function buildInstagramCaption(title: string, content: string, cta: string, hashtags: string[] = []) {
-  const base = buildCanonMessage(title, content, cta);
-  const cleanTags = hashtags
-    .map(normalizeHashtag)
-    .filter(Boolean)
-    .slice(0, 8)
-    .map((tag) => `#${tag}`);
-
-  const full = cleanTags.length ? `${base}\n\n${cleanTags.join(" ")}`.trim() : base;
-  return full.slice(0, 2200);
 }
 
 function isExpired(expiresAt: unknown, skewSeconds = 60) {
@@ -208,6 +192,7 @@ async function uploadImageSet(userId: string, images: ImagePayload[]): Promise<{
   const instagramPublishableUrls: string[] = [];
   const socialFeedPublishableUrls: string[] = [];
   const siteCardPublishableUrls: string[] = [];
+  const gmbPublishableUrls: string[] = [];
   const uploadErrors: Array<{ name: string; reason: string; stage: string }> = [];
 
   for (const img of images.slice(0, 5)) {
@@ -349,6 +334,35 @@ async function uploadImageSet(userId: string, images: ImagePayload[]): Promise<{
         stage: "siteCardOptimize",
       });
     }
+
+    try {
+      const optimized = await optimizeForGoogleBusiness(parsed.buffer);
+      const gmbPath = `${userId}/gmb/${randomUUID()}.${optimized.extension}`;
+      const gmbUpload = await supabaseAdmin.storage.from("booster").upload(gmbPath, optimized.buffer, {
+        contentType: optimized.mime,
+        upsert: false,
+      });
+
+      if (gmbUpload.error) {
+        uploadErrors.push({ name: img?.name || "image", reason: gmbUpload.error.message, stage: "gmbUpload" });
+      } else {
+        const gmbSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(gmbPath, 60 * 60 * 24);
+        const gmbPublic = supabaseAdmin.storage.from("booster").getPublicUrl(gmbPath);
+        if (gmbSigned?.data?.signedUrl) {
+          gmbPublishableUrls.push(gmbSigned.data.signedUrl);
+        } else if (gmbPublic?.data?.publicUrl) {
+          gmbPublishableUrls.push(gmbPublic.data.publicUrl);
+        } else {
+          uploadErrors.push({ name: img?.name || "image", reason: "Google Business optimized image URL unavailable", stage: "gmbUpload" });
+        }
+      }
+    } catch (optErr) {
+      uploadErrors.push({
+        name: img?.name || "image",
+        reason: errMessage(optErr, "Google Business image optimization failed"),
+        stage: "gmbOptimize",
+      });
+    }
   }
 
   return {
@@ -358,6 +372,7 @@ async function uploadImageSet(userId: string, images: ImagePayload[]): Promise<{
       instagramPublishableUrls,
       socialFeedPublishableUrls,
       siteCardPublishableUrls,
+      gmbPublishableUrls,
     },
     uploadErrors,
   };
@@ -416,10 +431,13 @@ const body = await req.json().catch(() => null);
       const title = String(raw.title || fallbackTitle || "").trim();
       const content = String(raw.content || fallbackContent || "").trim();
       const cta = String(raw.cta || fallbackCta || "").trim();
+      const ctaMode = String(raw.ctaMode || "").trim();
+      const ctaUrl = String(raw.ctaUrl || "").trim();
+      const ctaPhone = String(raw.ctaPhone || "").trim();
       const hashtags = Array.isArray(raw.hashtags)
         ? raw.hashtags.map((h) => normalizeHashtag(String(h || ""))).filter(Boolean).slice(0, 20)
         : fallbackHashtags;
-      return { title, content, cta, hashtags };
+      return { title, content, cta, ctaMode, ctaUrl, ctaPhone, hashtags };
     };
 
     const firstPost = getChannelPost(selected[0]);
@@ -434,6 +452,7 @@ const body = await req.json().catch(() => null);
     const instagramPublishableUrls = baseImageSet.instagramPublishableUrls;
     const socialFeedPublishableUrls = baseImageSet.socialFeedPublishableUrls;
     const siteCardPublishableUrls = baseImageSet.siteCardPublishableUrls;
+    const gmbPublishableUrls = baseImageSet.gmbPublishableUrls;
 
     const channelImageSets: Partial<Record<ChannelKey, ImageSet>> = {};
     for (const channel of selected) {
@@ -446,7 +465,7 @@ const body = await req.json().catch(() => null);
 
     const fallbackImageSet = selected
       .map((channel) => channelImageSets[channel])
-      .find((value): value is ImageSet => Boolean(value && (value.images.length || value.publishableUrls.length || value.instagramPublishableUrls.length || value.socialFeedPublishableUrls.length || value.siteCardPublishableUrls.length)))
+      .find((value): value is ImageSet => Boolean(value && (value.images.length || value.publishableUrls.length || value.instagramPublishableUrls.length || value.socialFeedPublishableUrls.length || value.siteCardPublishableUrls.length || value.gmbPublishableUrls.length)))
       || null;
 
     const publicationImageSet = baseImageSet.images.length
@@ -454,7 +473,7 @@ const body = await req.json().catch(() => null);
       : fallbackImageSet || baseImageSet;
 
     // Hard fail only if images were provided somewhere but none could be uploaded/prepared.
-    if (hadAnyImageInput && !publicationImageSet.images.length && !publicationImageSet.publishableUrls.length && !publicationImageSet.instagramPublishableUrls.length && !publicationImageSet.socialFeedPublishableUrls.length && !publicationImageSet.siteCardPublishableUrls.length) {
+    if (hadAnyImageInput && !publicationImageSet.images.length && !publicationImageSet.publishableUrls.length && !publicationImageSet.instagramPublishableUrls.length && !publicationImageSet.socialFeedPublishableUrls.length && !publicationImageSet.siteCardPublishableUrls.length && !publicationImageSet.gmbPublishableUrls.length) {
       return NextResponse.json(
         { ok: false, error: "Les images sélectionnées n'ont pas pu être envoyées. Merci de réessayer.", uploadErrors },
         { status: 400 }
@@ -501,7 +520,7 @@ const body = await req.json().catch(() => null);
 
     // Internal channel configuration (URLs)
     const [profileRes, inrcyCfgRes, proCfgRes] = await Promise.all([
-      supabaseAdmin.from("profiles").select("inrcy_site_ownership").eq("user_id", userId).maybeSingle(),
+      supabaseAdmin.from("profiles").select("inrcy_site_ownership,phone").eq("user_id", userId).maybeSingle(),
       supabaseAdmin.from("inrcy_site_configs").select("site_url").eq("user_id", userId).maybeSingle(),
       supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
     ]);
@@ -512,12 +531,14 @@ const body = await req.json().catch(() => null);
     const proSiteWeb = asRecord(proSettings["site_web"]);
 
     const ownership = String(profile["inrcy_site_ownership"] ?? "none");
+    const businessPhone = String(profile["phone"] ?? "").trim();
     const inrcySiteUrl = String(inrcyCfg["site_url"] ?? "").trim();
     const siteWebUrl = String(proSiteWeb["url"] ?? "").trim();
 
     const externalImageUrls = (publicationImageSet.publishableUrls.length ? publicationImageSet.publishableUrls : publicationImageSet.images).slice(0, 5);
     const socialFeedImageUrls = (publicationImageSet.socialFeedPublishableUrls.length ? publicationImageSet.socialFeedPublishableUrls : externalImageUrls).slice(0, 5);
     const instagramImageUrls = (publicationImageSet.instagramPublishableUrls.length ? publicationImageSet.instagramPublishableUrls : socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).slice(0, 5);
+    const gmbImageUrls = (publicationImageSet.gmbPublishableUrls.length ? publicationImageSet.gmbPublishableUrls : publicationImageSet.publishableUrls.length ? publicationImageSet.publishableUrls : publicationImageSet.images).slice(0, 5);
 
     const getChannelImageSet = (channel: ChannelKey): ImageSet => channelImageSets[channel] || baseImageSet;
 
@@ -543,7 +564,7 @@ const body = await req.json().catch(() => null);
     for (const ch of selected) {
       try {
         const channelPost = getChannelPost(ch);
-        const canonMessage = buildCanonMessage(channelPost.title, channelPost.content, channelPost.cta);
+        const canonMessage = buildBoosterMessage(ch, channelPost, { websiteUrl: siteWebUrl || inrcySiteUrl, phone: businessPhone });
         if (ch === "inrcy_site" || ch === "site_web") {
           // We treat "publication" as an "article/actu" for the site.
           // This creates a record that your iNrCy site renderer (or your pro's website connector)
@@ -651,7 +672,7 @@ const body = await req.json().catch(() => null);
             continue;
           }
 
-          const instagramCaption = buildInstagramCaption(channelPost.title, channelPost.content, channelPost.cta, channelPost.hashtags);
+          const instagramCaption = buildBoosterInstagramCaption(channelPost, { websiteUrl: siteWebUrl || inrcySiteUrl, phone: businessPhone });
           const instagramImages = (getChannelImageSet(ch).instagramPublishableUrls.length ? getChannelImageSet(ch).instagramPublishableUrls : instagramImageUrls).filter(Boolean).slice(0, 10);
           if (!instagramImages.length) {
             await setDelivery(ch, { status: "failed", error: "Instagram nécessite au moins 1 image" });
@@ -771,7 +792,10 @@ const body = await req.json().catch(() => null);
             continue;
           }
 
-          const gmbImageUrls = getChannelImageSet(ch).publishableUrls.filter(Boolean).slice(0, 5);
+          const gmbChannelImageSet = getChannelImageSet(ch);
+          const gmbChannelImages = (gmbChannelImageSet.gmbPublishableUrls.length ? gmbChannelImageSet.gmbPublishableUrls : gmbImageUrls.length ? gmbImageUrls : gmbChannelImageSet.publishableUrls).filter(Boolean).slice(0, 5);
+          const gmbSummary = buildBoosterGmbSummary(channelPost);
+          const gmbCallToAction = getBoosterGmbCallToAction(channelPost, { websiteUrl: siteWebUrl || inrcySiteUrl, phone: businessPhone });
           let gmbResp: any;
           let gmbWarning: { code: string; message: string } | null = null;
 
@@ -780,25 +804,50 @@ const body = await req.json().catch(() => null);
               accessToken: tok.accessToken,
               accountName,
               locationName,
-              summary: buildGmbSummary(channelPost),
-              imageUrls: gmbImageUrls.length ? gmbImageUrls : undefined,
+              summary: gmbSummary,
+              imageUrls: gmbChannelImages.length ? gmbChannelImages : undefined,
               languageCode: "fr-FR",
+              callToAction: gmbCallToAction || undefined,
             });
           } catch (gmbErr: unknown) {
-            if (!gmbImageUrls.length) {
-              throw gmbErr;
-            }
-            gmbResp = await gmbCreateLocalPost({
+            const retryWithoutImages = async () => gmbCreateLocalPost({
               accessToken: tok.accessToken,
               accountName,
               locationName,
-              summary: buildGmbSummary(channelPost),
+              summary: gmbSummary,
+              languageCode: "fr-FR",
+              callToAction: gmbCallToAction || undefined,
+            });
+            const retryWithoutCta = async () => gmbCreateLocalPost({
+              accessToken: tok.accessToken,
+              accountName,
+              locationName,
+              summary: gmbSummary,
+              imageUrls: gmbChannelImages.length ? gmbChannelImages : undefined,
               languageCode: "fr-FR",
             });
-            gmbWarning = {
-              code: "published_without_image",
-              message: "Google Business a refusé l'image. Le texte a été publié sans image.",
-            };
+            try {
+              if (!gmbChannelImages.length) throw gmbErr;
+              gmbResp = await retryWithoutImages();
+              gmbWarning = {
+                code: "published_without_image",
+                message: "Google Business a refusé l'image. Le texte a été publié sans image.",
+              };
+            } catch (retryError: unknown) {
+              if (gmbCallToAction) {
+                try {
+                  gmbResp = await retryWithoutCta();
+                  gmbWarning = {
+                    code: "published_without_cta",
+                    message: "Google Business a publié le texte sans bouton CTA.",
+                  };
+                } catch {
+                  throw retryError;
+                }
+              } else {
+                throw retryError;
+              }
+            }
           }
 
           const gmbRespRec = asRecord(gmbResp);
@@ -835,6 +884,7 @@ const body = await req.json().catch(() => null);
                 instagramPublishableUrls: imageSet.instagramPublishableUrls,
                 socialFeedPublishableUrls: imageSet.socialFeedPublishableUrls,
                 siteCardPublishableUrls: imageSet.siteCardPublishableUrls,
+                gmbPublishableUrls: imageSet.gmbPublishableUrls,
               }
             : (baseValue || {}),
         ];
@@ -860,6 +910,7 @@ const body = await req.json().catch(() => null);
         instagramPublishableUrls,
         socialFeedPublishableUrls,
         siteCardPublishableUrls,
+        gmbPublishableUrls,
         uploadErrors,
         publication_id: publicationId,
         results,
@@ -874,6 +925,7 @@ const body = await req.json().catch(() => null);
       publishableUrls,
       instagramPublishableUrls,
       socialFeedPublishableUrls,
+      gmbPublishableUrls,
       uploadErrors,
       results,
       summary,

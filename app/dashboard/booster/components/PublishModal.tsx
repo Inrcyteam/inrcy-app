@@ -1,6 +1,7 @@
 import StatusMessage from "../../_components/StatusMessage";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { buildBoosterGmbSummary, buildBoosterInstagramCaption, getCtaMode, type BoosterCtaMode } from "@/lib/boosterCta";
 import stylesDash from "../../dashboard/dashboard.module.css";
 import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/dashboard/_components/ChannelImageRetouchTool";
 
@@ -16,7 +17,18 @@ type ChannelPost = {
   title: string;
   content: string;
   cta: string;
+  ctaMode?: BoosterCtaMode;
+  ctaUrl?: string;
+  ctaPhone?: string;
   hashtags?: string[];
+};
+
+type BoosterCtaDefaults = {
+  preferredWebsiteUrl: string;
+  preferredWebsiteLabel: string;
+  siteWebUrl: string;
+  inrcySiteUrl: string;
+  phone: string;
 };
 
 type ImagePayload = {
@@ -109,6 +121,194 @@ const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
 
 const BOOSTER_MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const BOOSTER_MAX_IMAGE_MB_LABEL = "8 Mo";
+
+type TextFieldKey = "title" | "content" | "cta" | "hashtags";
+type LimitTone = "ok" | "warn" | "over";
+
+type ChannelTextGuidelines = {
+  title: number;
+  content: number;
+  cta: number;
+  hashtags?: number;
+  totalLabel?: string;
+  totalMax?: number;
+  totalValue?: (post: ChannelPost) => number;
+};
+
+const CHANNEL_TEXT_GUIDELINES: Record<DisplayKey, ChannelTextGuidelines> = {
+  site: {
+    title: 90,
+    content: 6000,
+    cta: 180,
+  },
+  gmb: {
+    title: 90,
+    content: 2000,
+    cta: 80,
+    totalLabel: "Résumé final Google Business",
+    totalMax: 1498,
+    totalValue: (post) => buildBoosterGmbSummary(post).length,
+  },
+  facebook: {
+    title: 90,
+    content: 5000,
+    cta: 180,
+  },
+  instagram: {
+    title: 90,
+    content: 2000,
+    cta: 180,
+    hashtags: 20,
+    totalLabel: "Légende Instagram finale",
+    totalMax: 2200,
+    totalValue: (post) => buildInstagramPreviewCaption(post).length,
+  },
+  linkedin: {
+    title: 90,
+    content: 3000,
+    cta: 180,
+  },
+};
+const CTA_MODE_OPTIONS: Record<DisplayKey, Array<{ value: BoosterCtaMode; label: string }>> = {
+  site: [
+    { value: "none", label: "Aucun CTA" },
+    { value: "website", label: "Lien site / devis" },
+    { value: "call", label: "Appel" },
+    { value: "message", label: "Message privé" },
+    { value: "custom", label: "Texte libre" },
+  ],
+  gmb: [
+    { value: "none", label: "Aucun CTA" },
+    { value: "website", label: "Bouton site" },
+    { value: "call", label: "Bouton appel" },
+    { value: "custom", label: "Texte simple" },
+  ],
+  facebook: [
+    { value: "none", label: "Aucun CTA" },
+    { value: "website", label: "Lien site / devis" },
+    { value: "call", label: "Appel" },
+    { value: "message", label: "Message privé" },
+    { value: "custom", label: "Texte libre" },
+  ],
+  instagram: [
+    { value: "none", label: "Aucun CTA" },
+    { value: "website", label: "Lien site" },
+    { value: "call", label: "Appel" },
+    { value: "message", label: "Message privé" },
+    { value: "custom", label: "Texte libre" },
+  ],
+  linkedin: [
+    { value: "none", label: "Aucun CTA" },
+    { value: "website", label: "Lien site / devis" },
+    { value: "call", label: "Appel" },
+    { value: "message", label: "Message privé" },
+    { value: "custom", label: "Texte libre" },
+  ],
+};
+
+function getCtaModeHelp(channel: DisplayKey, mode: BoosterCtaMode) {
+  if (mode === "none") return "Aucun bloc CTA ne sera ajouté à la fin du texte.";
+  if (mode === "website") return channel === "gmb"
+    ? "Un vrai bouton Google Business sera utilisé quand une URL de site est disponible."
+    : "Le lien du site sera ajouté proprement à la fin du contenu. Vous pouvez laisser l’URL vide pour utiliser le site connecté par défaut.";
+  if (mode === "call") return channel === "gmb"
+    ? "Un vrai bouton Appeler sera utilisé si un numéro est disponible."
+    : "Une phrase d’appel naturelle sera ajoutée avec le numéro si disponible.";
+  if (mode === "message") return "Une phrase naturelle du type “Envoyez-nous un message privé.” sera ajoutée.";
+  return channel === "gmb"
+    ? "Réservé à un court texte neutre, sans faux bouton."
+    : "Texte libre. Évitez les CTA vagues du type “Message” sans destination réelle.";
+}
+
+function getDefaultPost(): ChannelPost {
+  return { title: "", content: "", cta: "", ctaMode: "none", ctaUrl: "", ctaPhone: "", hashtags: [] };
+}
+
+function getChannelDefaultCtaLabel(channel: DisplayKey, mode: BoosterCtaMode) {
+  if (mode === "website") {
+    if (channel === "site") return "Demander un devis";
+    if (channel === "gmb") return "Voir le site";
+    if (channel === "instagram") return "Lien du site";
+    return "Voir le site";
+  }
+  if (mode === "call") {
+    return channel === "gmb" ? "Appeler" : "Appelez-nous";
+  }
+  return "";
+}
+
+function buildAutoPrefillPatch(channel: DisplayKey, mode: BoosterCtaMode, post: ChannelPost, defaults: BoosterCtaDefaults | null): Partial<ChannelPost> {
+  const patch: Partial<ChannelPost> = { ctaMode: mode };
+  if (!defaults) return patch;
+
+  if (mode === "website") {
+    if (!String(post.cta || "").trim()) patch.cta = getChannelDefaultCtaLabel(channel, mode);
+    if (!String(post.ctaUrl || "").trim() && defaults.preferredWebsiteUrl) patch.ctaUrl = defaults.preferredWebsiteUrl;
+  }
+
+  if (mode === "call") {
+    if (!String(post.ctaPhone || "").trim() && defaults.phone) patch.ctaPhone = defaults.phone;
+  }
+
+  return patch;
+}
+
+function getWebsiteSourceLabel(defaults: BoosterCtaDefaults | null) {
+  if (!defaults?.preferredWebsiteUrl) return "";
+  if (defaults.siteWebUrl && defaults.preferredWebsiteUrl === defaults.siteWebUrl) return "Site web connecté";
+  if (defaults.inrcySiteUrl && defaults.preferredWebsiteUrl === defaults.inrcySiteUrl) return "Site iNrCy";
+  return defaults.preferredWebsiteLabel || "Site connecté";
+}
+
+function normalizePost(post?: Partial<ChannelPost> | null): ChannelPost {
+  return {
+    ...getDefaultPost(),
+    ...(post || {}),
+    ctaMode: getCtaMode(post || {}),
+    ctaUrl: String(post?.ctaUrl || ""),
+    ctaPhone: String(post?.ctaPhone || ""),
+    hashtags: Array.isArray(post?.hashtags) ? post!.hashtags! : [],
+  };
+}
+
+
+function normalizeHashtagPreview(input: string): string {
+  return String(input || "")
+    .trim()
+    .replace(/^#+/, "")
+    .replace(/[^\p{L}\p{N}_]/gu, "")
+    .slice(0, 40);
+}
+
+function buildInstagramPreviewCaption(post: ChannelPost) {
+  const cleanPost = {
+    ...post,
+    hashtags: Array.isArray(post.hashtags) ? post.hashtags.map(normalizeHashtagPreview).filter(Boolean).slice(0, 8) : [],
+  };
+  return buildBoosterInstagramCaption(cleanPost);
+}
+
+function getLimitTone(current: number, max: number): LimitTone {
+  if (current > max) return "over";
+  if (current >= Math.round(max * 0.9)) return "warn";
+  return "ok";
+}
+
+function getLimitToneStyle(tone: LimitTone): React.CSSProperties {
+  if (tone === "over") return { color: "#ff8f8f" };
+  if (tone === "warn") return { color: "#fde68a" };
+  return { color: "rgba(255,255,255,0.62)" };
+}
+
+function renderLimitCounter(label: string, current: number, max: number) {
+  const tone = getLimitTone(current, max);
+  return (
+    <div style={{ fontSize: 11, marginTop: 6, textAlign: "right", ...getLimitToneStyle(tone) }}>
+      {label} : {current} / {max}
+    </div>
+  );
+}
+
 
 const THEME_OPTIONS: Array<{ value: ThemeKey; label: string }> = [
   { value: "", label: "—" },
@@ -527,6 +727,7 @@ export default function PublishModal({
     linkedin: false,
   });
   const [didInitChannels, setDidInitChannels] = useState(false);
+  const [ctaDefaults, setCtaDefaults] = useState<BoosterCtaDefaults | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -561,6 +762,54 @@ export default function PublishModal({
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/booster/cta-defaults", { cache: "no-store" as any });
+        if (!res.ok) return;
+        const json = await res.json().catch(() => ({}));
+        if (!alive) return;
+        setCtaDefaults({
+          preferredWebsiteUrl: String(json?.preferredWebsiteUrl || "").trim(),
+          preferredWebsiteLabel: String(json?.preferredWebsiteLabel || "").trim(),
+          siteWebUrl: String(json?.siteWebUrl || "").trim(),
+          inrcySiteUrl: String(json?.inrcySiteUrl || "").trim(),
+          phone: String(json?.phone || "").trim(),
+        });
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!ctaDefaults) return;
+    setPostsByChannel((prev) => {
+      let changed = false;
+      const next: Partial<Record<ChannelKey, ChannelPost>> = { ...prev };
+      const keys: ChannelKey[] = ["site_web", "inrcy_site", "gmb", "facebook", "instagram", "linkedin"];
+      for (const key of keys) {
+        const current = normalizePost(prev[key]);
+        const mode = current.ctaMode || "none";
+        if (mode !== "website" && mode !== "call") continue;
+        const patch = buildAutoPrefillPatch(key === "site_web" || key === "inrcy_site" ? "site" : key, mode, current, ctaDefaults);
+        const hasMeaningfulPatch = Object.entries(patch).some(([patchKey, patchValue]) => patchKey !== "ctaMode" && String(patchValue || "").trim());
+        if (!hasMeaningfulPatch) continue;
+        const merged = { ...current, ...patch };
+        const before = JSON.stringify(current);
+        const after = JSON.stringify(merged);
+        if (before === after) continue;
+        next[key] = merged;
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [ctaDefaults]);
 
   useEffect(() => {
     const check = () => setIsMobile(typeof window !== "undefined" && window.innerWidth <= 768);
@@ -728,10 +977,12 @@ export default function PublishModal({
             ? versions.inrcy_site
             : undefined;
 
-      setPostsByChannel({
-        ...versions,
-        ...(sitePost ? { inrcy_site: sitePost, site_web: sitePost } : {}),
-      });
+      setPostsByChannel(Object.fromEntries(
+        Object.entries({
+          ...versions,
+          ...(sitePost ? { inrcy_site: sitePost, site_web: sitePost } : {}),
+        }).map(([key, value]) => [key, normalizePost(value as Partial<ChannelPost>)])
+      ) as Partial<Record<ChannelKey, ChannelPost>>);
     } catch {
       setGenError("Connexion impossible pour le moment. Merci de réessayer.");
     } finally {
@@ -845,11 +1096,7 @@ export default function PublishModal({
   const updatePost = (channel: ChannelKey, patch: Partial<ChannelPost>) => {
     if (channel === "inrcy_site" || channel === "site_web") {
       const next = {
-        title: "",
-        content: "",
-        cta: "",
-        hashtags: [],
-        ...(postsByChannel.site_web || postsByChannel.inrcy_site || {}),
+        ...normalizePost(postsByChannel.site_web || postsByChannel.inrcy_site),
         ...patch,
       };
       setPostsByChannel((prev) => ({ ...prev, inrcy_site: next, site_web: next }));
@@ -858,19 +1105,21 @@ export default function PublishModal({
     setPostsByChannel((prev) => ({
       ...prev,
       [channel]: {
-        title: "",
-        content: "",
-        cta: "",
-        hashtags: [],
-        ...(prev[channel] || {}),
+        ...normalizePost(prev[channel]),
         ...patch,
       },
     }));
   };
 
   const getDisplayPost = (key: DisplayKey): ChannelPost => {
-    if (key === "site") return postsByChannel.site_web || postsByChannel.inrcy_site || { title: "", content: "", cta: "", hashtags: [] };
-    return postsByChannel[key] || { title: "", content: "", cta: "", hashtags: [] };
+    if (key === "site") return normalizePost(postsByChannel.site_web || postsByChannel.inrcy_site);
+    return normalizePost(postsByChannel[key]);
+  };
+
+  const applyCtaModePrefill = (displayKey: DisplayKey, mode: BoosterCtaMode) => {
+    const current = getDisplayPost(displayKey);
+    const patch = buildAutoPrefillPatch(displayKey, mode, current, ctaDefaults);
+    updatePost(displayKey === "site" ? "site_web" : displayKey, patch);
   };
 
   const updateChannelTransform = (channel: ChannelKey, imageKey: string, patch: Partial<ImageTransform>) => {
@@ -1227,14 +1476,74 @@ export default function PublishModal({
                 <div>
                   <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Titre</div>
                   <input value={getDisplayPost(activeCard).title} onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { title: e.target.value })} style={inputStyle} placeholder="Titre" />
+                  {renderLimitCounter("Titre", getDisplayPost(activeCard).title.length, CHANNEL_TEXT_GUIDELINES[activeCard].title)}
                 </div>
                 <div>
                   <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Contenu</div>
                   <textarea value={getDisplayPost(activeCard).content} onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { content: e.target.value })} style={{ ...textAreaStyle, minHeight: activeCard === "site" ? 280 : 160 }} placeholder="Contenu" />
+                  {renderLimitCounter("Contenu", getDisplayPost(activeCard).content.length, CHANNEL_TEXT_GUIDELINES[activeCard].content)}
                 </div>
                 <div>
                   <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>CTA</div>
-                  <input value={getDisplayPost(activeCard).cta} onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { cta: e.target.value })} style={inputStyle} placeholder="Ex : Contactez-nous" />
+                  <select
+                    value={getDisplayPost(activeCard).ctaMode || "none"}
+                    onChange={(e) => applyCtaModePrefill(activeCard, e.target.value as BoosterCtaMode)}
+                    style={inputStyle}
+                  >
+                    {CTA_MODE_OPTIONS[activeCard].map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 11, marginTop: 6, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
+                    {getCtaModeHelp(activeCard, getDisplayPost(activeCard).ctaMode || "none")}
+                  </div>
+                  {(getDisplayPost(activeCard).ctaMode || "none") === "website" ? (
+                    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                      <input
+                        value={getDisplayPost(activeCard).cta}
+                        onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { cta: e.target.value })}
+                        style={inputStyle}
+                        placeholder={`Libellé du lien (ex : ${getChannelDefaultCtaLabel(activeCard, "website") || "Demander un devis"})`}
+                      />
+                      <input
+                        value={getDisplayPost(activeCard).ctaUrl || ""}
+                        onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { ctaUrl: e.target.value })}
+                        style={inputStyle}
+                        placeholder={ctaDefaults?.preferredWebsiteUrl ? `URL du site préremplie (${getWebsiteSourceLabel(ctaDefaults)})` : "URL du site (optionnel)"}
+                      />
+                      {ctaDefaults?.preferredWebsiteUrl ? (
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
+                          Valeur par défaut disponible depuis {getWebsiteSourceLabel(ctaDefaults).toLowerCase()} : {ctaDefaults.preferredWebsiteUrl}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {(getDisplayPost(activeCard).ctaMode || "none") === "call" ? (
+                    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                      <input
+                        value={getDisplayPost(activeCard).ctaPhone || ""}
+                        onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { ctaPhone: e.target.value })}
+                        style={inputStyle}
+                        placeholder={ctaDefaults?.phone ? "Téléphone prérempli depuis Mon profil" : "Téléphone (optionnel)"}
+                      />
+                      {ctaDefaults?.phone ? (
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
+                          Valeur par défaut disponible depuis Mon profil : {ctaDefaults.phone}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {(getDisplayPost(activeCard).ctaMode || "none") === "custom" ? (
+                    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                      <input
+                        value={getDisplayPost(activeCard).cta}
+                        onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { cta: e.target.value })}
+                        style={inputStyle}
+                        placeholder={activeCard === "gmb" ? "Ex : En savoir plus" : "Ex : Contactez-nous"}
+                      />
+                    </div>
+                  ) : null}
+                  {((getDisplayPost(activeCard).ctaMode || "none") === "website" || (getDisplayPost(activeCard).ctaMode || "none") === "custom") ? renderLimitCounter("CTA", getDisplayPost(activeCard).cta.length, CHANNEL_TEXT_GUIDELINES[activeCard].cta) : null}
                 </div>
                 {activeCard === "instagram" ? (
                   <div>
@@ -1245,6 +1554,12 @@ export default function PublishModal({
                       style={inputStyle}
                       placeholder="#local #metier"
                     />
+                    {renderLimitCounter("Hashtags", Array.isArray(getDisplayPost(activeCard).hashtags) ? getDisplayPost(activeCard).hashtags!.filter(Boolean).length : 0, CHANNEL_TEXT_GUIDELINES.instagram.hashtags || 20)}
+                  </div>
+                ) : null}
+                {CHANNEL_TEXT_GUIDELINES[activeCard].totalLabel && CHANNEL_TEXT_GUIDELINES[activeCard].totalMax && CHANNEL_TEXT_GUIDELINES[activeCard].totalValue ? (
+                  <div style={{ marginTop: 2 }}>
+                    {renderLimitCounter(CHANNEL_TEXT_GUIDELINES[activeCard].totalLabel!, CHANNEL_TEXT_GUIDELINES[activeCard].totalValue!(getDisplayPost(activeCard)), CHANNEL_TEXT_GUIDELINES[activeCard].totalMax!)}
                   </div>
                 ) : null}
               </div>

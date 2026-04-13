@@ -6,10 +6,10 @@ import { facebookPublishToPage } from "@/lib/facebookPublish";
 import { instagramPublishCarousel, instagramPublishPhoto } from "@/lib/instagramPublish";
 import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
-import { optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
+import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { randomUUID } from "crypto";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
-import { buildGmbSummary } from "@/lib/googleBusinessCompliance";
+import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 import { extractFacebookUserTokens } from "@/lib/metaBusinessAssets";
 
 const FACEBOOK_GRAPH_VERSION = "v20.0";
@@ -28,6 +28,9 @@ type PostPayload = {
   title: string;
   content: string;
   cta: string;
+  ctaMode?: string;
+  ctaUrl?: string;
+  ctaPhone?: string;
   hashtags: string[];
   images?: string[];
   attachments?: string[];
@@ -35,6 +38,7 @@ type PostPayload = {
   instagramPublishableUrls?: string[];
   socialFeedPublishableUrls?: string[];
   siteCardPublishableUrls?: string[];
+  gmbPublishableUrls?: string[];
 };
 
 type ImagePayload = {
@@ -48,6 +52,7 @@ type ImageSet = {
   instagramPublishableUrls: string[];
   socialFeedPublishableUrls: string[];
   siteCardPublishableUrls: string[];
+  gmbPublishableUrls: string[];
 };
 
 function asRecord(v: unknown): JsonRecord {
@@ -60,20 +65,6 @@ function normalizeHashtag(input: string): string {
     .replace(/^#+/, "")
     .replace(/[^\p{L}\p{N}_]/gu, "")
     .slice(0, 40);
-}
-
-function buildCanonMessage(title: string, content: string, cta: string) {
-  return [title, content, cta].map((x) => String(x || "").trim()).filter(Boolean).join("\n\n").trim();
-}
-
-function buildInstagramCaption(title: string, content: string, cta: string, hashtags: string[] = []) {
-  const base = buildCanonMessage(title, content, cta);
-  const cleanTags = hashtags
-    .map(normalizeHashtag)
-    .filter(Boolean)
-    .slice(0, 8)
-    .map((tag) => `#${tag}`);
-  return cleanTags.length ? `${base}\n\n${cleanTags.join(" ")}`.trim().slice(0, 2200) : base.slice(0, 2200);
 }
 
 
@@ -90,6 +81,7 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
   const instagramPublishableUrls: string[] = [];
   const socialFeedPublishableUrls: string[] = [];
   const siteCardPublishableUrls: string[] = [];
+  const gmbPublishableUrls: string[] = [];
 
   for (const img of newImages.slice(0, 5)) {
     const parsed = dataUrlToBuffer(img.dataUrl);
@@ -146,9 +138,22 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
     const siteUrl = String(siteSigned?.data?.signedUrl || sitePublic?.data?.publicUrl || "").trim();
     if (!siteUrl) throw new Error(`URL site introuvable pour ${img?.name || "image"}.`);
     siteCardPublishableUrls.push(siteUrl);
+
+    const gmbOptimized = await optimizeForGoogleBusiness(parsed.buffer);
+    const gmbPath = `${userId}/gmb/${randomUUID()}.${gmbOptimized.extension}`;
+    const gmbUpload = await supabaseAdmin.storage.from("booster").upload(gmbPath, gmbOptimized.buffer, {
+      contentType: gmbOptimized.mime,
+      upsert: false,
+    });
+    if (gmbUpload.error) throw gmbUpload.error;
+    const gmbSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(gmbPath, 60 * 60 * 24);
+    const gmbPublic = supabaseAdmin.storage.from("booster").getPublicUrl(gmbPath);
+    const gmbUrl = String(gmbSigned?.data?.signedUrl || gmbPublic?.data?.publicUrl || "").trim();
+    if (!gmbUrl) throw new Error(`URL Google Business introuvable pour ${img?.name || "image"}.`);
+    gmbPublishableUrls.push(gmbUrl);
   }
 
-  return { images: uploadedUrls, instagramPublishableUrls, socialFeedPublishableUrls, siteCardPublishableUrls };
+  return { images: uploadedUrls, instagramPublishableUrls, socialFeedPublishableUrls, siteCardPublishableUrls, gmbPublishableUrls };
 }
 
 function filterUrlsByIndexes(values: unknown, indexes: number[]): string[] {
@@ -157,7 +162,7 @@ function filterUrlsByIndexes(values: unknown, indexes: number[]): string[] {
 }
 
 function emptyImageSet(): ImageSet {
-  return { images: [], instagramPublishableUrls: [], socialFeedPublishableUrls: [], siteCardPublishableUrls: [] };
+  return { images: [], instagramPublishableUrls: [], socialFeedPublishableUrls: [], siteCardPublishableUrls: [], gmbPublishableUrls: [] };
 }
 
 function getChannelImageSet(eventPayload: JsonRecord, publication: JsonRecord, channel: ChannelKey): ImageSet {
@@ -187,6 +192,9 @@ function getChannelImageSet(eventPayload: JsonRecord, publication: JsonRecord, c
     siteCardPublishableUrls: Array.isArray(raw.siteCardPublishableUrls)
       ? raw.siteCardPublishableUrls.map((value) => String(value || "").trim()).filter(Boolean)
       : filterUrlsByIndexes(eventPayload.siteCardPublishableUrls, inheritedIndexes),
+    gmbPublishableUrls: Array.isArray(raw.gmbPublishableUrls)
+      ? raw.gmbPublishableUrls.map((value) => String(value || "").trim()).filter(Boolean)
+      : filterUrlsByIndexes(eventPayload.gmbPublishableUrls, inheritedIndexes),
   };
 }
 
@@ -211,6 +219,7 @@ async function updatePublicationImages(params: {
     instagramPublishableUrls: filterUrlsByIndexes(currentImageSet.instagramPublishableUrls, retainedIndexes),
     socialFeedPublishableUrls: filterUrlsByIndexes(currentImageSet.socialFeedPublishableUrls, retainedIndexes),
     siteCardPublishableUrls: filterUrlsByIndexes(currentImageSet.siteCardPublishableUrls, retainedIndexes),
+    gmbPublishableUrls: filterUrlsByIndexes(currentImageSet.gmbPublishableUrls, retainedIndexes),
   };
 
   const uploadedSet = newImages.length ? await uploadPublicationImages(userId, newImages) : emptyImageSet();
@@ -219,6 +228,7 @@ async function updatePublicationImages(params: {
     instagramPublishableUrls: [...baseImageSet.instagramPublishableUrls, ...uploadedSet.instagramPublishableUrls].slice(0, 10),
     socialFeedPublishableUrls: [...baseImageSet.socialFeedPublishableUrls, ...uploadedSet.socialFeedPublishableUrls].slice(0, 20),
     siteCardPublishableUrls: [...baseImageSet.siteCardPublishableUrls, ...uploadedSet.siteCardPublishableUrls].slice(0, 20),
+    gmbPublishableUrls: [...baseImageSet.gmbPublishableUrls, ...uploadedSet.gmbPublishableUrls].slice(0, 20),
   };
 }
 
@@ -244,6 +254,9 @@ function getChannelPost(eventPayload: JsonRecord, publication: JsonRecord, chann
     title: String(raw.title ?? publication.title ?? "").trim(),
     content: String(raw.content ?? raw.text ?? raw.message ?? publication.content ?? "").trim(),
     cta: String(raw.cta ?? publication.cta ?? "").trim(),
+    ctaMode: String(raw.ctaMode ?? "").trim(),
+    ctaUrl: String(raw.ctaUrl ?? "").trim(),
+    ctaPhone: String(raw.ctaPhone ?? "").trim(),
     hashtags: rawTags.map((tag: unknown) => normalizeHashtag(String(tag || ""))).filter(Boolean).slice(0, 20),
   };
 }
@@ -440,8 +453,22 @@ async function replaceChannelDelivery(params: {
   const socialFeedImageUrls = resolvedImageSet.socialFeedPublishableUrls.length ? resolvedImageSet.socialFeedPublishableUrls : images;
   const instagramImageUrls = resolvedImageSet.instagramPublishableUrls.length ? resolvedImageSet.instagramPublishableUrls : images;
   const siteCardImageUrls = resolvedImageSet.siteCardPublishableUrls.length ? resolvedImageSet.siteCardPublishableUrls : socialFeedImageUrls;
+  const gmbImageUrls = resolvedImageSet.gmbPublishableUrls.length ? resolvedImageSet.gmbPublishableUrls : socialFeedImageUrls;
 
-  const canonMessage = buildCanonMessage(nextPost.title, nextPost.content, nextPost.cta);
+  const [profileRes, inrcyCfgRes, proCfgRes] = await Promise.all([
+    supabaseAdmin.from("profiles").select("phone").eq("user_id", userId).maybeSingle(),
+    supabaseAdmin.from("inrcy_site_configs").select("site_url").eq("user_id", userId).maybeSingle(),
+    supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
+  ]);
+  const profile = asRecord(profileRes.data);
+  const inrcyCfg = asRecord(inrcyCfgRes.data);
+  const proCfg = asRecord(proCfgRes.data);
+  const proSettings = asRecord(proCfg.settings);
+  const proSiteWeb = asRecord(proSettings.site_web);
+  const websiteUrl = String(proSiteWeb.url ?? inrcyCfg.site_url ?? "").trim();
+  const phone = String(profile.phone ?? "").trim();
+
+  const canonMessage = buildBoosterMessage(channel, nextPost, { websiteUrl, phone });
 
   if (channel === "inrcy_site" || channel === "site_web") {
     const { data: article, error: articleError } = await supabaseAdmin
@@ -502,13 +529,13 @@ async function replaceChannelDelivery(params: {
       ? await instagramPublishCarousel({
           igUserId,
           accessToken: igToken,
-          caption: buildInstagramCaption(nextPost.title, nextPost.content, nextPost.cta, nextPost.hashtags),
+          caption: buildBoosterInstagramCaption(nextPost, { websiteUrl, phone }),
           imageUrls: instagramImages,
         })
       : await instagramPublishPhoto({
           igUserId,
           accessToken: igToken,
-          caption: buildInstagramCaption(nextPost.title, nextPost.content, nextPost.cta, nextPost.hashtags),
+          caption: buildBoosterInstagramCaption(nextPost, { websiteUrl, phone }),
           imageUrl: instagramImages[0],
         });
     if (!resp.ok) throw new Error(resp.error);
@@ -544,9 +571,10 @@ async function replaceChannelDelivery(params: {
       accessToken: token.accessToken,
       accountName,
       locationName,
-      summary: buildGmbSummary(nextPost),
-      imageUrls: socialFeedImageUrls,
+      summary: buildBoosterGmbSummary(nextPost),
+      imageUrls: gmbImageUrls,
       languageCode: "fr-FR",
+      callToAction: getBoosterGmbCallToAction(nextPost, { websiteUrl, phone }) || undefined,
     });
     return { externalId: String(asRecord(resp).name ?? "") || null, status: "delivered", error: null };
   }
@@ -640,6 +668,7 @@ function buildUpdatedPayload(params: {
     nextChannelPost.instagramPublishableUrls = imageSet.instagramPublishableUrls;
     nextChannelPost.socialFeedPublishableUrls = imageSet.socialFeedPublishableUrls;
     nextChannelPost.siteCardPublishableUrls = imageSet.siteCardPublishableUrls;
+    nextChannelPost.gmbPublishableUrls = imageSet.gmbPublishableUrls;
   }
 
   const nextPayload: JsonRecord = {
@@ -712,6 +741,9 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         title: String(body.title ?? currentPost.title ?? "").trim(),
         content: String(body.content ?? currentPost.content ?? "").trim(),
         cta: String(body.cta ?? currentPost.cta ?? "").trim(),
+        ctaMode: String(body.ctaMode ?? currentPost.ctaMode ?? "").trim(),
+        ctaUrl: String(body.ctaUrl ?? currentPost.ctaUrl ?? "").trim(),
+        ctaPhone: String(body.ctaPhone ?? currentPost.ctaPhone ?? "").trim(),
         hashtags: Array.isArray(body.hashtags)
           ? body.hashtags.map((tag: unknown) => normalizeHashtag(String(tag || ""))).filter(Boolean).slice(0, 20)
           : currentPost.hashtags,
