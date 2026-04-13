@@ -782,9 +782,28 @@ function extractPublicationResults(payload: any): Record<string, any> {
 
 function isFailedChannelResult(result: any): boolean {
   if (!result || typeof result !== "object") return false;
+  if (isDeletedChannelResult(result)) return false;
   if (result.ok === false) return true;
   const status = String(result.status || "").toLowerCase();
   return status === "failed" || status === "error";
+}
+
+function getChannelIndicatorMeta(result: any): { kind: "failed" | "deleted"; title: string; className: string } | null {
+  if (isDeletedChannelResult(result)) {
+    return {
+      kind: "deleted",
+      title: "Publication supprimée sur ce canal",
+      className: styles.channelDeletedDot,
+    };
+  }
+  if (isFailedChannelResult(result)) {
+    return {
+      kind: "failed",
+      title: "Échec sur ce canal",
+      className: styles.channelFailedDot,
+    };
+  }
+  return null;
 }
 
 function getFailedChannelMessage(result: any): string {
@@ -803,10 +822,13 @@ function getPublicationChannelStatuses(payload: any, fallbackChannels: string[] 
 
   return channels.map((channel) => {
     const result = (results as any)?.[channel] || null;
+    const indicator = getChannelIndicatorMeta(result);
     return {
       key: channel,
       label: formatChannelLabel(channel),
-      failed: isFailedChannelResult(result),
+      failed: indicator?.kind === "failed",
+      deleted: indicator?.kind === "deleted",
+      indicator,
       result,
     };
   });
@@ -822,11 +844,11 @@ function renderPublicationChannelsWithFailures(payload: any, fallbackChannels: s
         <React.Fragment key={`${entry.key}-${index}`}>
           <span className={styles.channelStatusInline}>
             <span className={styles.channelStatusLabel}>{entry.label}</span>
-            {entry.failed ? (
+            {entry.indicator ? (
               <span
-                className={styles.channelFailedDot}
-                title="Échec sur ce canal"
-                aria-label="Échec sur ce canal"
+                className={entry.indicator.className}
+                title={entry.indicator.title}
+                aria-label={entry.indicator.title}
               />
             ) : null}
           </span>
@@ -2995,7 +3017,7 @@ async function deleteDraftPermanently(id: string) {
                                     const entryResult = detailsItem.source !== "send_items" && payload?.results && typeof payload.results === "object"
                                       ? ((payload.results as any)[entry.key] || null)
                                       : null;
-                                    const entryFailed = isFailedChannelResult(entryResult);
+                                    const entryIndicator = getChannelIndicatorMeta(entryResult);
                                     return (
                                       <button
                                         key={`${entry.key}-${idx}`}
@@ -3005,11 +3027,11 @@ async function deleteDraftPermanently(id: string) {
                                       >
                                         <span className={styles.channelBubble}>
                                           <span>{entry.label}</span>
-                                          {entryFailed ? (
+                                          {entryIndicator ? (
                                             <span
-                                              className={styles.channelFailedDot}
-                                              title="Échec sur ce canal"
-                                              aria-label="Échec sur ce canal"
+                                              className={entryIndicator.className}
+                                              title={entryIndicator.title}
+                                              aria-label={entryIndicator.title}
                                             />
                                           ) : null}
                                         </span>

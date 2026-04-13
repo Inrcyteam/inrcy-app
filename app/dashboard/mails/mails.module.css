@@ -5300,3 +5300,15 @@ width: 100%;
   pointer-events: auto;
   cursor: help;
 }
+
+.channelDeletedDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #a855f7;
+  box-shadow: 0 0 0 2px rgba(168,85,247,0.2);
+  flex: 0 0 8px;
+  display: inline-block;
+  pointer-events: auto;
+  cursor: help;
+}
