@@ -359,14 +359,56 @@ async function deleteInstagramMedia(externalId: string, accessToken: string) {
   }
 }
 
-function resolveInstagramDeleteToken(integrationRow: unknown) {
+function resolveInstagramDeleteTokens(integrationRow: unknown): string[] {
   const row = asRecord(integrationRow);
-  const encryptedCandidates = extractFacebookUserTokens(asRecord(row.meta), null);
-  for (const raw of encryptedCandidates) {
+  const rawCandidates = [
+    String(row.access_token_enc ?? ""),
+    ...extractFacebookUserTokens(asRecord(row.meta), null),
+  ];
+
+  const tokens: string[] = [];
+  for (const raw of rawCandidates) {
     const token = tryDecryptToken(String(raw || "")) || "";
-    if (token) return token;
+    if (!token || tokens.includes(token)) continue;
+    tokens.push(token);
   }
-  return tryDecryptToken(String(row.access_token_enc ?? "")) || "";
+  return tokens;
+}
+
+function isInstagramDeletePermissionError(error: unknown) {
+  const message = String(error instanceof Error ? error.message : error || "").toLowerCase();
+  return (
+    message.includes("insufficient")
+    || message.includes("permission")
+    || message.includes("access this data")
+    || message.includes("not authorized")
+    || message.includes("not authorised")
+    || message.includes("unsupported request")
+    || message.includes("access token")
+    || message.includes("oauth")
+  );
+}
+
+async function deleteInstagramMediaWithFallback(externalId: string, integrationRow: unknown) {
+  if (!externalId) return;
+  const tokens = resolveInstagramDeleteTokens(integrationRow);
+  if (!tokens.length) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
+
+  let lastError: unknown = null;
+  for (let index = 0; index < tokens.length; index += 1) {
+    try {
+      await deleteInstagramMedia(externalId, tokens[index]);
+      return;
+    } catch (error) {
+      lastError = error;
+      const hasNextCandidate = index < tokens.length - 1;
+      if (hasNextCandidate && isInstagramDeletePermissionError(error)) continue;
+      throw error;
+    }
+  }
+
+  if (lastError instanceof Error) throw lastError;
+  throw new Error("Suppression Instagram impossible.");
 }
 
 async function deleteLinkedInPost(externalId: string, accessToken: string) {
@@ -520,11 +562,10 @@ async function replaceChannelDelivery(params: {
     const ig = asRecord(igRow);
     const igUserId = String(ig.resource_id ?? "");
     const igToken = tryDecryptToken(String(ig.access_token_enc ?? "")) || "";
-    const igDeleteToken = resolveInstagramDeleteToken(igRow);
     if (String(ig.status ?? "") !== "connected" || !igUserId || !igToken) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
     const instagramImages = instagramImageUrls.filter(Boolean).slice(0, 10);
     if (!instagramImages.length) throw new Error("Instagram nécessite au moins 1 image.");
-    if (previousExternalId) await deleteInstagramMedia(previousExternalId, igDeleteToken || igToken);
+    if (previousExternalId) await deleteInstagramMediaWithFallback(previousExternalId, igRow);
     const resp = instagramImages.length > 1
       ? await instagramPublishCarousel({
           igUserId,
@@ -612,10 +653,9 @@ async function removeChannelDelivery(params: {
   }
 
   if (channel === "instagram") {
-    const ig = asRecord(igRow);
-    const token = resolveInstagramDeleteToken(igRow) || tryDecryptToken(String(ig.access_token_enc ?? "")) || "";
-    if (!token) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
-    if (previousExternalId) await deleteInstagramMedia(previousExternalId, token);
+    const tokens = resolveInstagramDeleteTokens(igRow);
+    if (!tokens.length) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
+    if (previousExternalId) await deleteInstagramMediaWithFallback(previousExternalId, igRow);
     return;
   }
 
