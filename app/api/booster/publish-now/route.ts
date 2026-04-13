@@ -758,9 +758,8 @@ const body = await req.json().catch(() => null);
           const locationName = String(gmb["resource_id"] ?? "");
           const gmbMeta = asRecord(gmb["meta"]);
           const accountName = String(gmbMeta["account"] ?? "");
-          const gmbExpired = isExpired(gmb["expires_at"]);
-          if (String(gmb["status"] ?? "") !== "connected" || !locationName || !accountName || gmbExpired) {
-            await setDelivery(ch, { status: "failed", error: gmbExpired ? "Google Business expiré : reconnectez le compte." : "Votre fiche Google Business n’est pas encore correctement reliée." });
+          if (String(gmb["status"] ?? "") !== "connected" || !locationName || !accountName) {
+            await setDelivery(ch, { status: "failed", error: "Votre fiche Google Business n’est pas encore correctement reliée." });
             results[ch] = { ok: false, error: "Le compte Google Business n'est pas encore correctement connecté." };
             continue;
           }

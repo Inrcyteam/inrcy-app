@@ -107,6 +107,9 @@ const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
   linkedin: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
 };
 
+const BOOSTER_MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const BOOSTER_MAX_IMAGE_MB_LABEL = "8 Mo";
+
 const THEME_OPTIONS: Array<{ value: ThemeKey; label: string }> = [
   { value: "", label: "—" },
   { value: "promotion", label: "Promotion" },
@@ -764,9 +767,9 @@ export default function PublishModal({
       setImgError(images.length + allowed.length >= 5 ? "Maximum 5 images." : "Certaines images étaient déjà présentes.");
     }
 
-    const tooBig = allowed.find((file) => file.size > 2 * 1024 * 1024);
+    const tooBig = allowed.find((file) => file.size > BOOSTER_MAX_IMAGE_BYTES);
     if (tooBig) {
-      setImgError(`L'image ${tooBig.name} dépasse 2 Mo.`);
+      setImgError(`L'image ${tooBig.name} dépasse ${BOOSTER_MAX_IMAGE_MB_LABEL}.`);
       return;
     }
 
@@ -1255,7 +1258,7 @@ export default function PublishModal({
       <div className={styles.blockCard}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Images</div>
         <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: isMobile ? "normal" : "nowrap" }}>
-          Ajoutez 1 ou plusieurs images (max 5, 2 Mo chacune). iNrCy applique automatiquement un cadrage de départ intelligent par canal. <strong>Fort recommandé</strong>. <strong>Obligatoire pour Instagram</strong>.
+          Ajoutez 1 ou plusieurs images (max 5, 8 Mo chacune). iNrCy applique automatiquement un cadrage de départ intelligent par canal et recompresse les visuels avant publication. <strong>Fort recommandé</strong>. <strong>Obligatoire pour Instagram</strong>.
         </div>
         <input
           ref={fileInputRef}

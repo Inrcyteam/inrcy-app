@@ -206,10 +206,14 @@ export async function getChannelConnectionStates(
 
   const gmb = latestIntegration(rows, "google", "gmb", "gmb");
   const gmbSettings = asRecord(settings.gmb);
-  const gmbExpired = isExpired(gmb.expires_at);
   const gmbStatus = asString(gmb.status);
   const gmbHasToken = hasTruthyString(gmb.access_token_enc);
-  const gmbAccountConnected = Boolean(((gmbStatus === "connected" || gmbStatus === "account_connected") && !gmbExpired && gmbHasToken) || gmbSettings.connected || gmbSettings.accountEmail);
+  const gmbHasRefreshToken = hasTruthyString(gmb.refresh_token_enc);
+  const gmbHasReusableAuth = gmbHasToken || gmbHasRefreshToken;
+  const gmbExpired = isExpired(gmb.expires_at) && !gmbHasRefreshToken;
+  const gmbAccountConnected = Boolean(
+    (((gmbStatus === "connected" || gmbStatus === "account_connected") && gmbHasReusableAuth && !gmbExpired) || gmbSettings.connected || gmbSettings.accountEmail)
+  );
   const gmbResourceId = asString(gmb.resource_id) || asString(gmbSettings.locationName) || null;
   const gmbResourceLabel = asString(gmb.resource_label) || asString(gmbSettings.locationTitle) || null;
   const gmbConfigured = Boolean((gmbAccountConnected && gmbResourceId) || (gmbSettings.connected && (gmbSettings.locationName || gmbSettings.locationTitle)));

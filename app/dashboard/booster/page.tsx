@@ -393,7 +393,7 @@ export default function BoosterPage() {
                 : "Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés."}
             </div>
             <StatusMessage variant={publishSummary?.failureCount ? "error" : "success"} style={{ marginTop: 0, fontSize: 14 }}>
-              {publishSummary?.failureCount ? "Succès partiel : vérifiez le détail ci-dessous." : "C&apos;est parfait, votre publication est lancée."}
+              {publishSummary?.failureCount ? "Succès partiel : vérifiez le détail ci-dessous." : "C’est parfait, votre publication est lancée."}
             </StatusMessage>
             {Array.isArray(publishSummary?.entries) ? (
               <div style={{ marginTop: 14, display: "grid", gap: 8, textAlign: "left" }}>
