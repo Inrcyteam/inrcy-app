@@ -2438,19 +2438,42 @@ async function deleteDraftPermanently(id: string) {
     setDetailsActionBusy(true);
     setDetailsActionError(null);
     try {
-      const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/${encodeURIComponent(channelApiPath(channel))}`, {
+      const instagramDeleteDebug = channel === "instagram" && typeof window !== "undefined" && (() => {
+        try {
+          const params = new URLSearchParams(window.location.search);
+          return params.get("debugInstagramDelete") === "1" || window.localStorage.getItem("inrcy_debug_instagram_delete") === "1";
+        } catch {
+          return false;
+        }
+      })();
+      const debugSuffix = instagramDeleteDebug ? "?debug=1" : "";
+      const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/${encodeURIComponent(channelApiPath(channel))}${debugSuffix}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ externalId: (activeDetailsChannelResult as any)?.external_id || null }),
+        body: JSON.stringify({ externalId: (activeDetailsChannelResult as any)?.external_id || null, ...(instagramDeleteDebug ? { debug: true } : {}) }),
       });
       const json = await res.json().catch(() => ({}));
+      if (instagramDeleteDebug && json?.debug) {
+        console.groupCollapsed("[iNrCy] Debug suppression Instagram");
+        console.log(json.debug);
+        console.groupEnd();
+      }
       if (!res.ok) throw new Error(json?.error || "Suppression impossible.");
       setToast(`Publication ${label} supprimée.`);
       setDetailsEditMode(false);
       await loadHistory();
       setDetailsChannelKey(channel);
     } catch (e: any) {
-      setDetailsActionError(getSimpleFrenchErrorMessage(e, "Impossible de supprimer cette publication pour le moment."));
+      const baseMessage = getSimpleFrenchErrorMessage(e, "Impossible de supprimer cette publication pour le moment.");
+      const debugActive = channel === "instagram" && typeof window !== "undefined" && (() => {
+        try {
+          const params = new URLSearchParams(window.location.search);
+          return params.get("debugInstagramDelete") === "1" || window.localStorage.getItem("inrcy_debug_instagram_delete") === "1";
+        } catch {
+          return false;
+        }
+      })();
+      setDetailsActionError(debugActive ? `${baseMessage} (debug dans la console)` : baseMessage);
     } finally {
       setDetailsActionBusy(false);
     }
