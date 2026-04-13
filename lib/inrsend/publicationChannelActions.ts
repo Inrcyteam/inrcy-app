@@ -24,29 +24,6 @@ type InstagramDeleteTokenCandidate = {
   preview: string;
 };
 
-type InstagramDeleteAttempt = {
-  step?: "probe_read" | "delete";
-  source: string;
-  token_preview: string;
-  success: boolean;
-  status_code?: number | null;
-  graph_code?: number | null;
-  graph_subcode?: number | null;
-  fbtrace_id?: string | null;
-  message: string;
-};
-
-type InstagramDeleteDebugState = {
-  mode: "instagram_delete";
-  external_id: string;
-  channel: "instagram";
-  context: JsonRecord;
-  candidates: Array<{ source: string; token_preview: string }>;
-  probes: InstagramDeleteAttempt[];
-  attempts: InstagramDeleteAttempt[];
-  final_error?: string | null;
-};
-
 type AppEventRow = {
   id: string | number;
   payload?: unknown;
@@ -95,7 +72,6 @@ function normalizeHashtag(input: string): string {
     .replace(/[^\p{L}\p{N}_]/gu, "")
     .slice(0, 40);
 }
-
 
 function dataUrlToBuffer(dataUrl: string) {
   const match = /^data:(.+?);base64,(.+)$/.exec(dataUrl || "");
@@ -399,39 +375,6 @@ async function deleteInstagramMedia(externalId: string, accessToken: string) {
   }
 }
 
-async function probeInstagramMediaRead(externalId: string, accessToken: string) {
-  if (!externalId) return { ok: false, message: "external_id_absent" } as const;
-  const qs = new URLSearchParams({
-    access_token: accessToken,
-    fields: "id,media_type,media_product_type,permalink,shortcode,timestamp,username",
-  });
-  const res = await fetch(`https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(externalId)}?${qs.toString()}`, {
-    method: "GET",
-    cache: "no-store",
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || asRecord(json).error) {
-    const meta = extractGraphErrorMeta(json);
-    return {
-      ok: false,
-      status_code: res.status,
-      graph_code: meta.graph_code,
-      graph_subcode: meta.graph_subcode,
-      fbtrace_id: meta.fbtrace_id,
-      message: meta.message || `Lecture Instagram impossible (${res.status})`,
-    } as const;
-  }
-  const data = asRecord(json);
-  return {
-    ok: true,
-    status_code: res.status,
-    graph_code: null,
-    graph_subcode: null,
-    fbtrace_id: null,
-    message: `read_ok:${String(data.media_type ?? "")}:${String(data.media_product_type ?? "")}`,
-  } as const;
-}
-
 function previewToken(token: string) {
   if (!token) return "absent";
   const digest = createHash("sha256").update(token).digest("hex").slice(0, 10);
@@ -460,45 +403,6 @@ function buildInstagramDeleteTokenCandidates(entries: Array<{ sourceLabel: strin
   }
 
   return candidates;
-}
-
-function buildInstagramDeleteDebugState(params: {
-  externalId: string;
-  igRow?: unknown;
-  fbRow?: unknown;
-  candidates: InstagramDeleteTokenCandidate[];
-}): InstagramDeleteDebugState {
-  const ig = asRecord(params.igRow);
-  const igMeta = asRecord(ig.meta);
-  const fb = asRecord(params.fbRow);
-  const fbMeta = asRecord(fb.meta);
-
-  return {
-    mode: "instagram_delete",
-    external_id: params.externalId,
-    channel: "instagram",
-    context: {
-      instagram_status: String(ig.status ?? ""),
-      instagram_resource_id: String(ig.resource_id ?? ""),
-      instagram_resource_label: String(ig.resource_label ?? ""),
-      instagram_page_id: String(igMeta.page_id ?? igMeta.selected_page_id ?? ""),
-      instagram_page_name: String(igMeta.page_name ?? ""),
-      instagram_page_source: String(igMeta.page_source ?? ""),
-      instagram_business_id: String(igMeta.business_id ?? igMeta.business_account_id ?? igMeta.selected_business_id ?? ""),
-      instagram_user_id: String(igMeta.user_id ?? igMeta.instagram_user_id ?? ""),
-      instagram_profile_id: String(igMeta.selected_profile_id ?? igMeta.profile_id ?? ""),
-      facebook_status: String(fb.status ?? ""),
-      facebook_resource_id: String(fb.resource_id ?? ""),
-      facebook_page_id: String(fbMeta.page_id ?? fbMeta.selected_page_id ?? ""),
-      facebook_page_name: String(fbMeta.page_name ?? ""),
-      facebook_business_id: String(fbMeta.business_id ?? fbMeta.selected_business_id ?? ""),
-      candidates_count: params.candidates.length,
-    },
-    candidates: params.candidates.map((candidate) => ({ source: candidate.source, token_preview: candidate.preview })),
-    probes: [],
-    attempts: [],
-    final_error: null,
-  };
 }
 
 function extractGraphErrorMeta(errorLike: unknown) {
@@ -530,7 +434,6 @@ async function deleteInstagramMediaWithFallback(
   options: {
     igRow?: unknown;
     fbRow?: unknown;
-    debugState?: InstagramDeleteDebugState | null;
   } = {},
 ) {
   if (!externalId) return;
@@ -539,61 +442,13 @@ async function deleteInstagramMediaWithFallback(
     { sourceLabel: "facebook", row: options.fbRow },
   ]);
 
-  if (options.debugState) {
-    options.debugState.candidates = candidates.map((candidate) => ({ source: candidate.source, token_preview: candidate.preview }));
-    options.debugState.context.candidates_count = candidates.length;
-  }
-
   if (!candidates.length) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
-
-  if (options.debugState) {
-    for (const candidate of candidates) {
-      const probe = await probeInstagramMediaRead(externalId, candidate.token);
-      options.debugState.probes.push({
-        step: "probe_read",
-        source: candidate.source,
-        token_preview: candidate.preview,
-        success: probe.ok,
-        status_code: probe.status_code,
-        graph_code: probe.graph_code ?? null,
-        graph_subcode: probe.graph_subcode ?? null,
-        fbtrace_id: probe.fbtrace_id ?? null,
-        message: probe.message,
-      });
-      log.info("instagram_delete_probe", {
-        route: "inrsend_instagram_delete",
-        external_id: externalId,
-        source: candidate.source,
-        token_preview: candidate.preview,
-        probe_step: "read_media",
-        probe_success: probe.ok,
-        status_code: probe.status_code,
-        graph_code: probe.graph_code ?? null,
-        graph_subcode: probe.graph_subcode ?? null,
-        fbtrace_id: probe.fbtrace_id ?? null,
-        probe_message: probe.message,
-      });
-    }
-  }
 
   let lastError: unknown = null;
   for (let index = 0; index < candidates.length; index += 1) {
     const candidate = candidates[index];
     try {
       await deleteInstagramMedia(externalId, candidate.token);
-      if (options.debugState) {
-        options.debugState.attempts.push({
-          step: "delete",
-          source: candidate.source,
-          token_preview: candidate.preview,
-          success: true,
-          status_code: 200,
-          graph_code: null,
-          graph_subcode: null,
-          fbtrace_id: null,
-          message: "success",
-        });
-      }
       log.info("instagram_delete_success", {
         route: "inrsend_instagram_delete",
         external_id: externalId,
@@ -609,20 +464,7 @@ async function deleteInstagramMediaWithFallback(
         graph_subcode?: number | null;
         fbtrace_id?: string | null;
       };
-      if (options.debugState) {
-        options.debugState.attempts.push({
-          step: "delete",
-          source: candidate.source,
-          token_preview: candidate.preview,
-          success: false,
-          status_code: err.status_code,
-          graph_code: err.graph_code ?? null,
-          graph_subcode: err.graph_subcode ?? null,
-          fbtrace_id: err.fbtrace_id ?? null,
-          message: String(err.message || "Suppression Instagram impossible."),
-        });
-        options.debugState.final_error = String(err.message || "Suppression Instagram impossible.");
-      }
+
       log.warn("instagram_delete_attempt_failed", {
         route: "inrsend_instagram_delete",
         external_id: externalId,
@@ -636,14 +478,11 @@ async function deleteInstagramMediaWithFallback(
       });
 
       const hasNextCandidate = index < candidates.length - 1;
-      if (hasNextCandidate && (options.debugState ? true : isInstagramDeletePermissionError(error))) continue;
+      if (hasNextCandidate && isInstagramDeletePermissionError(error)) continue;
       throw error;
     }
   }
 
-  if (options.debugState && lastError instanceof Error) {
-    options.debugState.final_error = lastError.message;
-  }
   if (lastError instanceof Error) throw lastError;
   throw new Error("Suppression Instagram impossible.");
 }
@@ -864,7 +703,6 @@ async function removeChannelDelivery(params: {
   userId: string;
   channel: ChannelKey;
   previousExternalId?: string | null;
-  debugState?: InstagramDeleteDebugState | null;
 }) {
   const { userId, channel, previousExternalId } = params;
 
@@ -893,7 +731,7 @@ async function removeChannelDelivery(params: {
   if (channel === "instagram") {
     const candidates = buildInstagramDeleteTokenCandidates([{ sourceLabel: "instagram", row: igRow }, { sourceLabel: "facebook", row: fbRow }]);
     if (!candidates.length) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
-    if (previousExternalId) await deleteInstagramMediaWithFallback(previousExternalId, { igRow, fbRow, debugState: params.debugState ?? null });
+    if (previousExternalId) await deleteInstagramMediaWithFallback(previousExternalId, { igRow, fbRow });
     return;
   }
 
@@ -1085,8 +923,6 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
   }
 
   async function DELETE(req: Request, context: { params: Promise<{ publicationId: string }> }) {
-    let instagramDeleteDebug: InstagramDeleteDebugState | null = null;
-    let instagramDeleteDebugEnabled = false;
     try {
       const { user, errorResponse } = await requireUser();
       if (errorResponse) return errorResponse;
@@ -1099,7 +935,6 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       if (!ctx) return jsonUserFacingError("Publication introuvable.", { status: 404, code: "publication_not_found" });
 
       const body = (await req.json().catch(() => ({}))) as JsonRecord;
-      instagramDeleteDebugEnabled = channel === "instagram" && ((new URL(req.url).searchParams.get("debug") === "1") || body.debug === true || String(body.debug || "") === "1");
       const results = asRecord(ctx.eventPayload.results);
       const channelResult = asRecord(results[channel]);
       const previousExternalId = String(body.externalId ?? channelResult.external_id ?? "").trim() || null;
@@ -1109,28 +944,15 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload });
       }
 
-      if (instagramDeleteDebugEnabled && channel === "instagram") {
-        const [fbRow, igRow] = await Promise.all([
-          getLatestIntegrationRow(user.id, "facebook", "facebook", "facebook", "status,resource_id,resource_label,access_token_enc,meta"),
-          getLatestIntegrationRow(user.id, "instagram", "instagram", "instagram", "status,resource_id,resource_label,access_token_enc,meta"),
-        ]);
-        const candidates = buildInstagramDeleteTokenCandidates([{ sourceLabel: "instagram", row: igRow }, { sourceLabel: "facebook", row: fbRow }]);
-        instagramDeleteDebug = buildInstagramDeleteDebugState({ externalId: previousExternalId || "", igRow, fbRow, candidates });
-      }
-
-      await removeChannelDelivery({ userId: user.id, channel, previousExternalId, debugState: instagramDeleteDebug });
+      await removeChannelDelivery({ userId: user.id, channel, previousExternalId });
 
       const nextPayload = buildDeletedPayload({ eventPayload: ctx.eventPayload, channel, previousExternalId });
       await persistEventPayload(user.id, publicationId, nextPayload);
       await syncDeliveryRow({ userId: user.id, publicationId, channel, status: "deleted", error: null });
 
-      return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload: nextPayload, ...(instagramDeleteDebugEnabled && instagramDeleteDebug ? { debug: instagramDeleteDebug } : {}) });
+      return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload: nextPayload });
     } catch (e: unknown) {
-      if (instagramDeleteDebugEnabled && instagramDeleteDebug) {
-        instagramDeleteDebug.final_error = String(e instanceof Error ? e.message : e || "La suppression de la publication a échoué.");
-        log.warn("instagram_delete_failed", { route: "inrsend_instagram_delete", external_id: instagramDeleteDebug.external_id, final_error: instagramDeleteDebug.final_error, attempts_count: instagramDeleteDebug.attempts.length });
-      }
-      return jsonUserFacingError(e, { status: 500, fallback: "La suppression de la publication a échoué.", code: "publication_delete_failed", ...(instagramDeleteDebugEnabled && instagramDeleteDebug ? { extra: { debug: instagramDeleteDebug } } : {}) });
+      return jsonUserFacingError(e, { status: 500, fallback: "La suppression de la publication a échoué.", code: "publication_delete_failed" });
     }
   }
 

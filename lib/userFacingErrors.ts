@@ -28,6 +28,10 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette ac
     return "Le serveur met trop de temps à répondre. Merci de réessayer.";
   }
 
+  if (matches(message, ["insufficient permissions to access this data", "(#10)", "access this data"])) {
+    return "Désolé, cette publication Instagram ne peut pas être supprimée depuis l'application : vérifiez la connexion Meta Business et réessayez ou supprimez-la depuis Instagram.";
+  }
+
   if (matches(message, ["401", "unauthorized", "not authenticated", "non authentifi", "session", "jwt expired", "refresh token", "auth session missing", "invalid refresh token"])) {
     return "Votre session a expiré. Merci de vous reconnecter.";
   }
