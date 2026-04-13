@@ -1431,9 +1431,9 @@ export default function PublishModal({
         <div style={{ display: "grid", gap: 10 }}>
           <div>
             <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Thème</div>
-            <select value={theme} onChange={(e) => onThemeChange(e.target.value as ThemeKey)} style={inputStyle as React.CSSProperties}>
+            <select value={theme} onChange={(e) => onThemeChange(e.target.value as ThemeKey)} style={lightSelectStyle as React.CSSProperties}>
               {THEME_OPTIONS.map((opt) => (
-                <option key={opt.value || "empty"} value={opt.value} style={{ color: "#111", background: "#fff" }}>{opt.label}</option>
+                <option key={opt.value || "empty"} value={opt.value} style={lightOptionStyle}>{opt.label}</option>
               ))}
             </select>
           </div>
@@ -1488,10 +1488,10 @@ export default function PublishModal({
                   <select
                     value={getDisplayPost(activeCard).ctaMode || "none"}
                     onChange={(e) => applyCtaModePrefill(activeCard, e.target.value as BoosterCtaMode)}
-                    style={inputStyle}
+                    style={lightSelectStyle}
                   >
                     {CTA_MODE_OPTIONS[activeCard].map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
+                      <option key={option.value} value={option.value} style={lightOptionStyle}>{option.label}</option>
                     ))}
                   </select>
                   <div style={{ fontSize: 11, marginTop: 6, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
@@ -1502,13 +1502,13 @@ export default function PublishModal({
                       <input
                         value={getDisplayPost(activeCard).cta}
                         onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { cta: e.target.value })}
-                        style={inputStyle}
+                        style={lightFieldStyle}
                         placeholder={`Libellé du lien (ex : ${getChannelDefaultCtaLabel(activeCard, "website") || "Demander un devis"})`}
                       />
                       <input
                         value={getDisplayPost(activeCard).ctaUrl || ""}
                         onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { ctaUrl: e.target.value })}
-                        style={inputStyle}
+                        style={lightFieldStyle}
                         placeholder={ctaDefaults?.preferredWebsiteUrl ? `URL du site préremplie (${getWebsiteSourceLabel(ctaDefaults)})` : "URL du site (optionnel)"}
                       />
                       {ctaDefaults?.preferredWebsiteUrl ? (
@@ -1523,7 +1523,7 @@ export default function PublishModal({
                       <input
                         value={getDisplayPost(activeCard).ctaPhone || ""}
                         onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { ctaPhone: e.target.value })}
-                        style={inputStyle}
+                        style={lightFieldStyle}
                         placeholder={ctaDefaults?.phone ? "Téléphone prérempli depuis Mon profil" : "Téléphone (optionnel)"}
                       />
                       {ctaDefaults?.phone ? (
@@ -1538,7 +1538,7 @@ export default function PublishModal({
                       <input
                         value={getDisplayPost(activeCard).cta}
                         onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { cta: e.target.value })}
-                        style={inputStyle}
+                        style={lightFieldStyle}
                         placeholder={activeCard === "gmb" ? "Ex : En savoir plus" : "Ex : Contactez-nous"}
                       />
                     </div>
@@ -1758,6 +1758,25 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
   display: "block",
   maxWidth: "100%",
+};
+
+const lightFieldStyle: React.CSSProperties = {
+  ...inputStyle,
+  background: "#ffffff",
+  color: "#111827",
+  border: "1px solid rgba(17,24,39,0.14)",
+};
+
+const lightSelectStyle: React.CSSProperties = {
+  ...lightFieldStyle,
+  appearance: "auto",
+  WebkitAppearance: "menulist",
+  MozAppearance: "menulist",
+};
+
+const lightOptionStyle: React.CSSProperties = {
+  color: "#111827",
+  background: "#ffffff",
 };
 
 const channelBtn: React.CSSProperties = {
