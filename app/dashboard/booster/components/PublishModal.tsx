@@ -1118,8 +1118,8 @@ export default function PublishModal({
   };
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <div className={styles.blockCard}>
+    <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+      <div className={styles.blockCard} style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Canaux</div>
         <div className={styles.subtitle} style={{ marginBottom: 10 }}>
           iNrCy diffuse une version adaptée sur chaque canal sélectionné !
@@ -1149,7 +1149,7 @@ export default function PublishModal({
                   style={{ width: 18, height: 18, accentColor: "#4cc3ff", cursor: connected[key] ? "pointer" : "not-allowed", flexShrink: 0 }}
                 />
                 <span style={{ width: 10, height: 10, borderRadius: 999, background: channels[key] ? "#43d17d" : "#ff4d6d", boxShadow: channels[key] ? "0 0 12px rgba(67,209,125,0.35)" : "0 0 12px rgba(255,77,109,0.25)", flexShrink: 0 }} />
-                <span style={{ minWidth: 0, whiteSpace: isMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "left" }}>
+                <span style={{ minWidth: 0, whiteSpace: "normal", overflow: "hidden", textOverflow: "ellipsis", textAlign: "left" }}>
                   {CHANNEL_LABELS[key]}
                 </span>
               </span>
@@ -1174,9 +1174,9 @@ export default function PublishModal({
         </div>
       </div>
 
-      <div className={styles.blockCard}>
+      <div className={styles.blockCard} style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Votre intention</div>
-        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: isMobile ? "normal" : "nowrap" }}>
+        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}>
           Choisissez le thème si vous le souhaitez, puis écrivez votre phrase. iNrCy adapte ensuite le contenu à chaque canal.
         </div>
         <div style={{ display: "grid", gap: 10 }}>
@@ -1207,9 +1207,9 @@ export default function PublishModal({
         </div>
       </div>
 
-      <div className={styles.blockCard}>
+      <div className={styles.blockCard} style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Contenus par canal</div>
-        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: isMobile ? "normal" : "nowrap" }}>
+        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}>
           Relisez et ajustez si nécessaire chaque version avant publication. Les contenus publiés sont modifiables et supprimables depuis le module iNr'Send.
         </div>
         {displayCards.length ? (
@@ -1255,9 +1255,9 @@ export default function PublishModal({
         )}
       </div>
 
-      <div className={styles.blockCard}>
+      <div className={styles.blockCard} style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Images</div>
-        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: isMobile ? "normal" : "nowrap" }}>
+        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}>
           Ajoutez 1 ou plusieurs images (max 5, 8 Mo chacune). iNrCy applique automatiquement un cadrage de départ intelligent par canal et recompresse les visuels avant publication. <strong>Fort recommandé</strong>. <strong>Obligatoire pour Instagram</strong>.
         </div>
         <input
@@ -1300,7 +1300,7 @@ export default function PublishModal({
       </div>
 
 
-      <div className={styles.blockCard}>
+      <div className={styles.blockCard} style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Retouche des images par canal</div>
         <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none" }}>
           Gérez chaque canal séparément : cochez les images à publier, puis ouvrez la retouche uniquement quand vous voulez recadrer une image.
@@ -1426,6 +1426,9 @@ const textAreaStyle: React.CSSProperties = {
   padding: "14px 16px",
   outline: "none",
   resize: "vertical",
+  boxSizing: "border-box",
+  display: "block",
+  maxWidth: "100%",
 };
 
 const inputStyle: React.CSSProperties = {
@@ -1437,6 +1440,9 @@ const inputStyle: React.CSSProperties = {
   color: "inherit",
   padding: "0 14px",
   outline: "none",
+  boxSizing: "border-box",
+  display: "block",
+  maxWidth: "100%",
 };
 
 const channelBtn: React.CSSProperties = {

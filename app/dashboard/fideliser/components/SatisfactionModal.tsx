@@ -94,8 +94,8 @@ export default function SatisfactionModal({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <div className={styles.blockCard} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 }}>
+      <div className={styles.blockCard} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, maxWidth: "100%", boxSizing: "border-box", height: "100%" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 10, fontSize: 20 }}>
           Modèle d’email — Enquêter
         </div>
@@ -123,6 +123,9 @@ export default function SatisfactionModal({
               fontSize: 15,
               fontWeight: 700,
               boxShadow: '0 14px 28px rgba(0,0,0,0.18)',
+              boxSizing: 'border-box',
+              display: 'block',
+              maxWidth: '100%',
             }}
           >
             {categories.map((tpl, index) => (
@@ -141,7 +144,7 @@ export default function SatisfactionModal({
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="Objet"
                 className={styles.input}
-                style={{ width: "100%", fontSize: 16 }}
+                style={{ width: "100%", fontSize: 16, boxSizing: "border-box", display: "block", maxWidth: "100%" }}
               />
           </div>
 

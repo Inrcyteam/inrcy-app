@@ -57,6 +57,8 @@ export default function BaseModal({
         alignItems: "stretch",
         justifyContent: "stretch",
         padding: `max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))`,
+        boxSizing: "border-box",
+        overflow: "hidden",
       }}
     >
       <div
@@ -64,7 +66,11 @@ export default function BaseModal({
         className={styles.blockCard}
         style={{
           width: "100%",
+          maxWidth: "100%",
           height: "100%",
+          maxHeight: "100%",
+          boxSizing: "border-box",
+          minWidth: 0,
           borderRadius: 22,
           overflow: "hidden",
           minHeight: 0,
@@ -90,6 +96,7 @@ export default function BaseModal({
           <div
             style={{
               width: "100%",
+              minWidth: 0,
               display: "grid",
               gridTemplateColumns: "auto 1fr auto",
               alignItems: "center",
@@ -125,6 +132,8 @@ export default function BaseModal({
             overflowX: "hidden",
             flex: 1,
             minHeight: 0,
+            minWidth: 0,
+            boxSizing: "border-box",
             WebkitOverflowScrolling: "touch",
             overscrollBehavior: "contain",
             touchAction: "pan-y",
@@ -132,8 +141,10 @@ export default function BaseModal({
         >
           <div
             style={{
-              maxWidth: 1400,
+              maxWidth: "min(1400px, 100%)",
               margin: "0 auto",
+              minWidth: 0,
+              boxSizing: "border-box",
               minHeight: "100%",
               height: "100%",
               width: "100%",
