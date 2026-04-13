@@ -22,7 +22,9 @@ type ChannelPost = {
 type ImagePayload = {
   name: string;
   type: string;
-  dataUrl: string;
+  dataUrl?: string;
+  storagePath?: string;
+  publicUrl?: string;
 };
 
 type ImageTransform = {
@@ -270,6 +272,61 @@ function loadHtmlImage(src: string): Promise<HTMLImageElement> {
     img.src = src;
   });
 }
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl);
+  if (!res.ok) throw new Error("Impossible de préparer l'image.");
+  return await res.blob();
+}
+
+function sanitizeUploadName(name: string): string {
+  return String(name || "image")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/(^-|-$)+/g, "") || "image";
+}
+
+function buildBoosterUploadPath(fileName: string): string {
+  const safeName = sanitizeUploadName(fileName);
+  const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `booster-prepublish/${unique}-${safeName}`;
+}
+
+async function uploadPreparedImages(images: ImagePayload[]): Promise<ImagePayload[]> {
+  const uploaded: ImagePayload[] = [];
+
+  for (const image of images) {
+    if (!image?.dataUrl) {
+      uploaded.push(image);
+      continue;
+    }
+
+    const blob = await dataUrlToBlob(image.dataUrl);
+    const file = new File([blob], sanitizeUploadName(image.name), { type: image.type || blob.type || "application/octet-stream" });
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("path", buildBoosterUploadPath(image.name));
+
+    const res = await fetch("/api/booster/upload-prepared", {
+      method: "POST",
+      body: formData,
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(String(json?.error || "Impossible d'uploader l'image préparée."));
+
+    uploaded.push({
+      name: image.name,
+      type: image.type || blob.type || "application/octet-stream",
+      storagePath: String(json?.storagePath || ""),
+      publicUrl: String(json?.publicUrl || ""),
+    });
+  }
+
+  return uploaded;
+}
+
 
 async function renderChannelImage(params: {
   file: File;
@@ -1025,16 +1082,11 @@ export default function PublishModal({
 
     setSaving(true);
     try {
-      const imagePayloads: ImagePayload[] = await Promise.all(
-        images.map(async (f) => ({ name: f.name, type: f.type, dataUrl: await fileToDataUrl(f) }))
-      );
-
-      if (images.length && (!imagePayloads.length || imagePayloads.some((p) => !p.dataUrl.startsWith("data:")))) {
-        setImgError("Impossible de préparer une ou plusieurs images. Vérifiez leur format puis réessayez.");
-        return;
-      }
-
       const { channelImages, channelSettings } = await buildChannelImagesPayload();
+      const uploadedChannelImages = {} as ChannelImagePayload;
+      for (const channel of selectedChannels) {
+        uploadedChannelImages[channel] = await uploadPreparedImages(channelImages[channel] || []);
+      }
       const sitePost = getDisplayPost("site");
       const result = await trackEvent("publish", {
         idea: idea.trim(),
@@ -1049,7 +1101,7 @@ export default function PublishModal({
         // which can make the JSON body too large and trigger HTTP 413.
         // The API now rebuilds the fallback/base image set from channel images.
         images: [],
-        imagesByChannel: channelImages,
+        imagesByChannel: uploadedChannelImages,
         imageSettingsByChannel: channelSettings,
       });
 

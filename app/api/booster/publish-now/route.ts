@@ -72,7 +72,9 @@ function slugify(input: string): string {
 type ImagePayload = {
   name: string;
   type: string;
-  dataUrl: string; // base64 data URL
+  dataUrl?: string; // base64 data URL
+  storagePath?: string; // Supabase Storage path (bucket: booster)
+  publicUrl?: string;
 };
 
 type PostPayload = {
@@ -90,6 +92,14 @@ type ImageSet = {
   instagramPublishableUrls: string[];
   socialFeedPublishableUrls: string[];
   siteCardPublishableUrls: string[];
+};
+
+type ResolvedImageInput = {
+  mime: string;
+  buffer: Buffer;
+  originalPublicUrl: string | null;
+  originalPublishableUrl: string | null;
+  storagePath?: string;
 };
 
 function dataUrlToBuffer(dataUrl: string) {
@@ -124,9 +134,7 @@ function buildInstagramCaption(title: string, content: string, cta: string, hash
     .slice(0, 8)
     .map((tag) => `#${tag}`);
 
-  const full = cleanTags.length ? `${base}
-
-${cleanTags.join(" ")}`.trim() : base;
+  const full = cleanTags.length ? `${base}\n\n${cleanTags.join(" ")}`.trim() : base;
   return full.slice(0, 2200);
 }
 
@@ -138,6 +146,61 @@ function isExpired(expiresAt: unknown, skewSeconds = 60) {
   return t <= Date.now() + skewSeconds * 1000;
 }
 
+async function buildUrlsFromStoragePath(path: string): Promise<{ publicUrl: string | null; signedUrl: string | null }> {
+  const publicUrl = supabaseAdmin.storage.from("booster").getPublicUrl(path)?.data?.publicUrl || null;
+  const signed = await supabaseAdmin.storage.from("booster").createSignedUrl(path, 60 * 60 * 24);
+  return {
+    publicUrl,
+    signedUrl: signed?.data?.signedUrl || publicUrl,
+  };
+}
+
+async function resolveImageInput(img: ImagePayload): Promise<ResolvedImageInput | null> {
+  if (img?.storagePath) {
+    const download = await supabaseAdmin.storage.from("booster").download(img.storagePath);
+    if (download.error || !download.data) {
+      throw new Error(download.error?.message || "Impossible de relire l'image préparée.");
+    }
+
+    const arrayBuffer = await download.data.arrayBuffer();
+    const mime = download.data.type || img.type || "application/octet-stream";
+    const urls = await buildUrlsFromStoragePath(img.storagePath);
+    return {
+      mime,
+      buffer: Buffer.from(arrayBuffer),
+      originalPublicUrl: img.publicUrl || urls.publicUrl,
+      originalPublishableUrl: urls.signedUrl || img.publicUrl || urls.publicUrl,
+      storagePath: img.storagePath,
+    };
+  }
+
+  if (img?.dataUrl) {
+    const parsed = dataUrlToBuffer(img.dataUrl);
+    if (!parsed) return null;
+    return {
+      mime: parsed.mime || img.type || "application/octet-stream",
+      buffer: parsed.buffer,
+      originalPublicUrl: null,
+      originalPublishableUrl: null,
+    };
+  }
+
+  if (img?.publicUrl) {
+    const res = await fetch(img.publicUrl);
+    if (!res.ok) {
+      throw new Error(`Impossible de télécharger l'image (${res.status}).`);
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    return {
+      mime: res.headers.get("content-type") || img.type || "application/octet-stream",
+      buffer: Buffer.from(arrayBuffer),
+      originalPublicUrl: img.publicUrl,
+      originalPublishableUrl: img.publicUrl,
+    };
+  }
+
+  return null;
+}
 
 async function uploadImageSet(userId: string, images: ImagePayload[]): Promise<{ imageSet: ImageSet; uploadErrors: Array<{ name: string; reason: string; stage: string }> }> {
   const uploadedUrls: string[] = [];
@@ -148,41 +211,56 @@ async function uploadImageSet(userId: string, images: ImagePayload[]): Promise<{
   const uploadErrors: Array<{ name: string; reason: string; stage: string }> = [];
 
   for (const img of images.slice(0, 5)) {
-    const parsed = dataUrlToBuffer(img.dataUrl);
-    if (!parsed) {
-      uploadErrors.push({ name: img?.name || "image", reason: "Invalid dataUrl (expected data:*;base64,...)", stage: "parse" });
+    let source: ResolvedImageInput | null = null;
+    try {
+      source = await resolveImageInput(img);
+    } catch (e) {
+      uploadErrors.push({ name: img?.name || "image", reason: errMessage(e, "Impossible de préparer l'image."), stage: "resolve" });
       continue;
     }
 
-    const ext = (img.name || "image").split(".").pop() || "jpg";
-    const path = `${userId}/${randomUUID()}.${ext}`;
-
-    const up = await supabaseAdmin.storage.from("booster").upload(path, parsed.buffer, {
-      contentType: parsed.mime || img.type || "application/octet-stream",
-      upsert: false,
-    });
-
-    if (up.error) {
-      console.error("[Booster] Storage upload error:", up.error.message, { path, name: img.name });
-      uploadErrors.push({ name: img?.name || "image", reason: up.error.message, stage: "upload" });
+    if (!source) {
+      uploadErrors.push({ name: img?.name || "image", reason: "Invalid image payload (expected dataUrl, storagePath or publicUrl)", stage: "parse" });
       continue;
     }
 
-    const pub = supabaseAdmin.storage.from("booster").getPublicUrl(path);
-    if (pub?.data?.publicUrl) {
-      uploadedUrls.push(pub.data.publicUrl);
-    } else {
-      uploadErrors.push({ name: img?.name || "image", reason: "getPublicUrl returned empty", stage: "publicUrl" });
+    const parsed = { mime: source.mime, buffer: source.buffer };
+    let originalPublicUrl = source.originalPublicUrl;
+    let originalPublishableUrl = source.originalPublishableUrl;
+
+    if (!source.storagePath) {
+      const ext = (img.name || "image").split(".").pop() || "jpg";
+      const path = `${userId}/${randomUUID()}.${ext}`;
+
+      const up = await supabaseAdmin.storage.from("booster").upload(path, parsed.buffer, {
+        contentType: parsed.mime || img.type || "application/octet-stream",
+        upsert: false,
+      });
+
+      if (up.error) {
+        console.error("[Booster] Storage upload error:", up.error.message, { path, name: img.name });
+        uploadErrors.push({ name: img?.name || "image", reason: up.error.message, stage: "upload" });
+        continue;
+      }
+
+      const urls = await buildUrlsFromStoragePath(path);
+      originalPublicUrl = urls.publicUrl;
+      originalPublishableUrl = urls.signedUrl;
     }
 
-    const signed = await supabaseAdmin.storage.from("booster").createSignedUrl(path, 60 * 60 * 24);
-    if (signed?.data?.signedUrl) {
-      publishableUrls.push(signed.data.signedUrl);
-    } else if (pub?.data?.publicUrl) {
-      publishableUrls.push(pub.data.publicUrl);
-      uploadErrors.push({ name: img?.name || "image", reason: "createSignedUrl failed, fell back to publicUrl", stage: "signedUrl" });
+    if (originalPublicUrl) {
+      uploadedUrls.push(originalPublicUrl);
     } else {
-      uploadErrors.push({ name: img?.name || "image", reason: "createSignedUrl failed and no publicUrl available", stage: "signedUrl" });
+      uploadErrors.push({ name: img?.name || "image", reason: "Original image public URL unavailable", stage: "publicUrl" });
+    }
+
+    if (originalPublishableUrl) {
+      publishableUrls.push(originalPublishableUrl);
+    } else if (originalPublicUrl) {
+      publishableUrls.push(originalPublicUrl);
+      uploadErrors.push({ name: img?.name || "image", reason: "Signed URL unavailable, fell back to publicUrl", stage: "signedUrl" });
+    } else {
+      uploadErrors.push({ name: img?.name || "image", reason: "Original image publishable URL unavailable", stage: "signedUrl" });
     }
 
     try {
