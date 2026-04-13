@@ -1431,9 +1431,9 @@ export default function PublishModal({
         <div style={{ display: "grid", gap: 10 }}>
           <div>
             <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Thème</div>
-            <select value={theme} onChange={(e) => onThemeChange(e.target.value as ThemeKey)} style={lightSelectStyle as React.CSSProperties}>
+            <select value={theme} onChange={(e) => onThemeChange(e.target.value as ThemeKey)} style={darkSelectStyle as React.CSSProperties}>
               {THEME_OPTIONS.map((opt) => (
-                <option key={opt.value || "empty"} value={opt.value} style={lightOptionStyle}>{opt.label}</option>
+                <option key={opt.value || "empty"} value={opt.value} style={darkOptionStyle}>{opt.label}</option>
               ))}
             </select>
           </div>
@@ -1488,10 +1488,10 @@ export default function PublishModal({
                   <select
                     value={getDisplayPost(activeCard).ctaMode || "none"}
                     onChange={(e) => applyCtaModePrefill(activeCard, e.target.value as BoosterCtaMode)}
-                    style={lightSelectStyle}
+                    style={darkSelectStyle}
                   >
                     {CTA_MODE_OPTIONS[activeCard].map((option) => (
-                      <option key={option.value} value={option.value} style={lightOptionStyle}>{option.label}</option>
+                      <option key={option.value} value={option.value} style={darkOptionStyle}>{option.label}</option>
                     ))}
                   </select>
                   <div style={{ fontSize: 11, marginTop: 6, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
@@ -1767,16 +1767,20 @@ const lightFieldStyle: React.CSSProperties = {
   border: "1px solid rgba(17,24,39,0.14)",
 };
 
-const lightSelectStyle: React.CSSProperties = {
-  ...lightFieldStyle,
+const darkSelectStyle: React.CSSProperties = {
+  ...inputStyle,
   appearance: "auto",
   WebkitAppearance: "menulist",
   MozAppearance: "menulist",
+  color: "#ffffff",
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.14)",
+  colorScheme: "dark",
 };
 
-const lightOptionStyle: React.CSSProperties = {
-  color: "#111827",
-  background: "#ffffff",
+const darkOptionStyle: React.CSSProperties = {
+  color: "#ffffff",
+  background: "#1f2937",
 };
 
 const channelBtn: React.CSSProperties = {

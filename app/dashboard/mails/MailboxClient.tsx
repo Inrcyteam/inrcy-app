@@ -776,6 +776,67 @@ function orderChannelKeys(channels: string[]): string[] {
   });
 }
 
+function extractPublicationResults(payload: any): Record<string, any> {
+  return payload?.results && typeof payload.results === "object" ? payload.results : {};
+}
+
+function isFailedChannelResult(result: any): boolean {
+  if (!result || typeof result !== "object") return false;
+  if (result.ok === false) return true;
+  const status = String(result.status || "").toLowerCase();
+  return status === "failed" || status === "error";
+}
+
+function getFailedChannelMessage(result: any): string {
+  if (!isFailedChannelResult(result)) return "";
+  const message = result?.error ?? result?.message ?? result?.last_error ?? "";
+  return typeof message === "string" ? message.trim() : String(message || "").trim();
+}
+
+function getPublicationChannelStatuses(payload: any, fallbackChannels: string[] = []) {
+  const results = extractPublicationResults(payload);
+  const channels = orderChannelKeys([
+    ...fallbackChannels,
+    ...extractChannelsFromPayload(payload),
+    ...Object.keys(results),
+  ]);
+
+  return channels.map((channel) => {
+    const result = (results as any)?.[channel] || null;
+    return {
+      key: channel,
+      label: formatChannelLabel(channel),
+      failed: isFailedChannelResult(result),
+      result,
+    };
+  });
+}
+
+function renderPublicationChannelsWithFailures(payload: any, fallbackChannels: string[] = []) {
+  const channels = getPublicationChannelStatuses(payload, fallbackChannels);
+  if (!channels.length) return null;
+
+  return (
+    <span className={styles.channelStatusInlineWrap}>
+      {channels.map((entry, index) => (
+        <React.Fragment key={`${entry.key}-${index}`}>
+          <span className={styles.channelStatusInline}>
+            <span className={styles.channelStatusLabel}>{entry.label}</span>
+            {entry.failed ? (
+              <span
+                className={styles.channelFailedDot}
+                title="Échec sur ce canal"
+                aria-label="Échec sur ce canal"
+              />
+            ) : null}
+          </span>
+          {index < channels.length - 1 ? <span className={styles.channelStatusSeparator}> / </span> : null}
+        </React.Fragment>
+      ))}
+    </span>
+  );
+}
+
 function extractChannelPublications(payload: any): ChannelPublication[] {
   if (!payload || typeof payload !== "object") return [];
 
@@ -1432,7 +1493,7 @@ const subTitle = firstNonEmpty(
           preview,
           detailHtml: extracted.html,
           detailText: extracted.text,
-          channels: extractChannelsFromPayload(payload),
+          channels: getPublicationChannelStatuses(payload, extractChannelsFromPayload(payload)).map((entry) => entry.key),
           attachments: extractAttachmentsFromPayload(payload),
           raw: e,
         };
@@ -2698,6 +2759,9 @@ async function deleteDraftPermanently(id: string) {
                         : (it.channels && it.channels.length
                             ? it.channels.map((channel) => formatChannelLabel(channel)).join(" / ")
                             : formatChannelLabel(it.target || ""));
+                    const midLabelNode = folder === "publications" && it.source === "app_events"
+                      ? (renderPublicationChannelsWithFailures((it as any)?.raw?.payload || null, it.channels && it.channels.length ? it.channels : [it.target]) || (midLabel || ""))
+                      : (midLabel || "");
 
                     // NOTE: this is a clickable row that contains action buttons.
                     // Using a <button> wrapper would create invalid HTML (nested buttons)
@@ -2733,7 +2797,7 @@ async function deleteDraftPermanently(id: string) {
 
                           {/* Au centre : boîte d'envoi (mails/factures/devis) ou canaux (publications, etc.) */}
                           <div className={styles.itemMid} title={midLabel || it.target}>
-                            {midLabel || ""}
+                            {midLabelNode}
                           </div>
 
                           <div className={styles.itemRight}>
@@ -2831,6 +2895,8 @@ async function deleteDraftPermanently(id: string) {
                     ? ((payload?.results && typeof payload.results === "object" ? (payload.results as any)[activePublicationEntry.key] : null) || null)
                     : null;
                   const activePublicationDeleted = isDeletedChannelResult(activePublicationResult);
+                  const activePublicationFailed = isFailedChannelResult(activePublicationResult);
+                  const activePublicationFailureMessage = getFailedChannelMessage(activePublicationResult);
                   const activeParts = activePublicationEntry?.parts || defaultParts;
                   const sourceDocAttachments = detailsItem.source === "send_items"
                     ? extractAttachmentsFromPayload(detailsSourceDocPayload)
@@ -2925,16 +2991,31 @@ async function deleteDraftPermanently(id: string) {
                             <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
                               <div className={styles.detailPillsWrap}>
                                 {publicationChannelEntries.length ? (
-                                  publicationChannelEntries.map((entry, idx) => (
-                                    <button
-                                      key={`${entry.key}-${idx}`}
-                                      type="button"
-                                      className={`${styles.channelBubbleBtn} ${activePublicationEntry?.key === entry.key ? styles.channelBubbleBtnActive : ""}`}
-                                      onClick={() => setDetailsChannelKey(entry.key)}
-                                    >
-                                      <span className={styles.channelBubble}>{entry.label}</span>
-                                    </button>
-                                  ))
+                                  publicationChannelEntries.map((entry, idx) => {
+                                    const entryResult = detailsItem.source !== "send_items" && payload?.results && typeof payload.results === "object"
+                                      ? ((payload.results as any)[entry.key] || null)
+                                      : null;
+                                    const entryFailed = isFailedChannelResult(entryResult);
+                                    return (
+                                      <button
+                                        key={`${entry.key}-${idx}`}
+                                        type="button"
+                                        className={`${styles.channelBubbleBtn} ${activePublicationEntry?.key === entry.key ? styles.channelBubbleBtnActive : ""}`}
+                                        onClick={() => setDetailsChannelKey(entry.key)}
+                                      >
+                                        <span className={styles.channelBubble}>
+                                          <span>{entry.label}</span>
+                                          {entryFailed ? (
+                                            <span
+                                              className={styles.channelFailedDot}
+                                              title="Échec sur ce canal"
+                                              aria-label="Échec sur ce canal"
+                                            />
+                                          ) : null}
+                                        </span>
+                                      </button>
+                                    );
+                                  })
                                 ) : (
                                   <span className={styles.metaVal}>—</span>
                                 )}
@@ -2976,6 +3057,18 @@ async function deleteDraftPermanently(id: string) {
                           {detailsActionError ? (
                             <div className={styles.detailsError}>
                               <b>Action :</b> {detailsActionError}
+                            </div>
+                          ) : null}
+
+                          {detailsItem.source !== "send_items" && activePublicationFailed && !activePublicationDeleted ? (
+                            <div className={styles.detailsError}>
+                              <b>Statut :</b> Publication échouée
+                            </div>
+                          ) : null}
+
+                          {detailsItem.source !== "send_items" && activePublicationFailed && activePublicationFailureMessage ? (
+                            <div className={styles.detailsError}>
+                              <b>Détail :</b> {activePublicationFailureMessage}
                             </div>
                           ) : null}
 

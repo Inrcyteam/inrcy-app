@@ -5258,3 +5258,45 @@ width: 100%;
 .channelBubble {
   text-transform: none !important;
 }
+
+/* iNrSend – failed publication channel indicators */
+.channelBubble {
+  gap: 8px;
+}
+
+.channelStatusInlineWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.channelStatusInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.channelStatusLabel {
+  min-width: 0;
+}
+
+.channelStatusSeparator {
+  color: rgba(255,255,255,0.55);
+  margin: 0 4px;
+}
+
+.channelFailedDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239,68,68,0.18);
+  flex: 0 0 8px;
+  display: inline-block;
+  pointer-events: auto;
+  cursor: help;
+}
