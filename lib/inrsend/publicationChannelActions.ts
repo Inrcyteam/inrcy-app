@@ -25,6 +25,7 @@ type InstagramDeleteTokenCandidate = {
 };
 
 type InstagramDeleteAttempt = {
+  step?: "probe_read" | "delete";
   source: string;
   token_preview: string;
   success: boolean;
@@ -41,6 +42,7 @@ type InstagramDeleteDebugState = {
   channel: "instagram";
   context: JsonRecord;
   candidates: Array<{ source: string; token_preview: string }>;
+  probes: InstagramDeleteAttempt[];
   attempts: InstagramDeleteAttempt[];
   final_error?: string | null;
 };
@@ -397,6 +399,39 @@ async function deleteInstagramMedia(externalId: string, accessToken: string) {
   }
 }
 
+async function probeInstagramMediaRead(externalId: string, accessToken: string) {
+  if (!externalId) return { ok: false, message: "external_id_absent" } as const;
+  const qs = new URLSearchParams({
+    access_token: accessToken,
+    fields: "id,media_type,media_product_type,permalink,shortcode,timestamp,username",
+  });
+  const res = await fetch(`https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(externalId)}?${qs.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || asRecord(json).error) {
+    const meta = extractGraphErrorMeta(json);
+    return {
+      ok: false,
+      status_code: res.status,
+      graph_code: meta.graph_code,
+      graph_subcode: meta.graph_subcode,
+      fbtrace_id: meta.fbtrace_id,
+      message: meta.message || `Lecture Instagram impossible (${res.status})`,
+    } as const;
+  }
+  const data = asRecord(json);
+  return {
+    ok: true,
+    status_code: res.status,
+    graph_code: null,
+    graph_subcode: null,
+    fbtrace_id: null,
+    message: `read_ok:${String(data.media_type ?? "")}:${String(data.media_product_type ?? "")}`,
+  } as const;
+}
+
 function previewToken(token: string) {
   if (!token) return "absent";
   const digest = createHash("sha256").update(token).digest("hex").slice(0, 10);
@@ -446,16 +481,21 @@ function buildInstagramDeleteDebugState(params: {
       instagram_status: String(ig.status ?? ""),
       instagram_resource_id: String(ig.resource_id ?? ""),
       instagram_resource_label: String(ig.resource_label ?? ""),
-      instagram_page_id: String(igMeta.page_id ?? ""),
+      instagram_page_id: String(igMeta.page_id ?? igMeta.selected_page_id ?? ""),
       instagram_page_name: String(igMeta.page_name ?? ""),
       instagram_page_source: String(igMeta.page_source ?? ""),
+      instagram_business_id: String(igMeta.business_id ?? igMeta.business_account_id ?? igMeta.selected_business_id ?? ""),
+      instagram_user_id: String(igMeta.user_id ?? igMeta.instagram_user_id ?? ""),
+      instagram_profile_id: String(igMeta.selected_profile_id ?? igMeta.profile_id ?? ""),
       facebook_status: String(fb.status ?? ""),
       facebook_resource_id: String(fb.resource_id ?? ""),
-      facebook_page_id: String(fbMeta.page_id ?? ""),
+      facebook_page_id: String(fbMeta.page_id ?? fbMeta.selected_page_id ?? ""),
       facebook_page_name: String(fbMeta.page_name ?? ""),
+      facebook_business_id: String(fbMeta.business_id ?? fbMeta.selected_business_id ?? ""),
       candidates_count: params.candidates.length,
     },
     candidates: params.candidates.map((candidate) => ({ source: candidate.source, token_preview: candidate.preview })),
+    probes: [],
     attempts: [],
     final_error: null,
   };
@@ -506,6 +546,36 @@ async function deleteInstagramMediaWithFallback(
 
   if (!candidates.length) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
 
+  if (options.debugState) {
+    for (const candidate of candidates) {
+      const probe = await probeInstagramMediaRead(externalId, candidate.token);
+      options.debugState.probes.push({
+        step: "probe_read",
+        source: candidate.source,
+        token_preview: candidate.preview,
+        success: probe.ok,
+        status_code: probe.status_code,
+        graph_code: probe.graph_code ?? null,
+        graph_subcode: probe.graph_subcode ?? null,
+        fbtrace_id: probe.fbtrace_id ?? null,
+        message: probe.message,
+      });
+      log.info("instagram_delete_probe", {
+        route: "inrsend_instagram_delete",
+        external_id: externalId,
+        source: candidate.source,
+        token_preview: candidate.preview,
+        probe_step: "read_media",
+        probe_success: probe.ok,
+        status_code: probe.status_code,
+        graph_code: probe.graph_code ?? null,
+        graph_subcode: probe.graph_subcode ?? null,
+        fbtrace_id: probe.fbtrace_id ?? null,
+        probe_message: probe.message,
+      });
+    }
+  }
+
   let lastError: unknown = null;
   for (let index = 0; index < candidates.length; index += 1) {
     const candidate = candidates[index];
@@ -513,6 +583,7 @@ async function deleteInstagramMediaWithFallback(
       await deleteInstagramMedia(externalId, candidate.token);
       if (options.debugState) {
         options.debugState.attempts.push({
+          step: "delete",
           source: candidate.source,
           token_preview: candidate.preview,
           success: true,
@@ -540,6 +611,7 @@ async function deleteInstagramMediaWithFallback(
       };
       if (options.debugState) {
         options.debugState.attempts.push({
+          step: "delete",
           source: candidate.source,
           token_preview: candidate.preview,
           success: false,
