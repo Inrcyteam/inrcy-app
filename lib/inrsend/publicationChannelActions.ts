@@ -359,12 +359,14 @@ async function deleteInstagramMedia(externalId: string, accessToken: string) {
   }
 }
 
-function resolveInstagramDeleteTokens(integrationRow: unknown): string[] {
-  const row = asRecord(integrationRow);
-  const rawCandidates = [
-    String(row.access_token_enc ?? ""),
-    ...extractFacebookUserTokens(asRecord(row.meta), null),
-  ];
+function resolveInstagramDeleteTokensFromRows(...rows: unknown[]): string[] {
+  const rawCandidates: string[] = [];
+
+  for (const integrationRow of rows) {
+    const row = asRecord(integrationRow);
+    rawCandidates.push(String(row.access_token_enc ?? ""));
+    rawCandidates.push(...extractFacebookUserTokens(asRecord(row.meta), null));
+  }
 
   const tokens: string[] = [];
   for (const raw of rawCandidates) {
@@ -389,9 +391,9 @@ function isInstagramDeletePermissionError(error: unknown) {
   );
 }
 
-async function deleteInstagramMediaWithFallback(externalId: string, integrationRow: unknown) {
+async function deleteInstagramMediaWithFallback(externalId: string, ...integrationRows: unknown[]) {
   if (!externalId) return;
-  const tokens = resolveInstagramDeleteTokens(integrationRow);
+  const tokens = resolveInstagramDeleteTokensFromRows(...integrationRows);
   if (!tokens.length) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
 
   let lastError: unknown = null;
@@ -534,7 +536,7 @@ async function replaceChannelDelivery(params: {
   }
 
   const [fbRow, gmbRow, igRow, liRow] = await Promise.all([
-    getLatestIntegrationRow(userId, "facebook", "facebook", "facebook", "status,resource_id,access_token_enc,expires_at"),
+    getLatestIntegrationRow(userId, "facebook", "facebook", "facebook", "status,resource_id,access_token_enc,meta,expires_at"),
     getLatestIntegrationRow(userId, "google", "gmb", "gmb", "status,resource_id,meta,expires_at"),
     getLatestIntegrationRow(userId, "instagram", "instagram", "instagram", "status,resource_id,access_token_enc,resource_label,meta,expires_at"),
     getLatestIntegrationRow(userId, "linkedin", "linkedin", "linkedin", "status,resource_id,access_token_enc,meta,expires_at"),
@@ -565,7 +567,7 @@ async function replaceChannelDelivery(params: {
     if (String(ig.status ?? "") !== "connected" || !igUserId || !igToken) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
     const instagramImages = instagramImageUrls.filter(Boolean).slice(0, 10);
     if (!instagramImages.length) throw new Error("Instagram nécessite au moins 1 image.");
-    if (previousExternalId) await deleteInstagramMediaWithFallback(previousExternalId, igRow);
+    if (previousExternalId) await deleteInstagramMediaWithFallback(previousExternalId, igRow, fbRow);
     const resp = instagramImages.length > 1
       ? await instagramPublishCarousel({
           igUserId,
@@ -639,7 +641,7 @@ async function removeChannelDelivery(params: {
   }
 
   const [fbRow, _gmbRow, igRow, liRow] = await Promise.all([
-    getLatestIntegrationRow(userId, "facebook", "facebook", "facebook", "status,resource_id,access_token_enc"),
+    getLatestIntegrationRow(userId, "facebook", "facebook", "facebook", "status,resource_id,access_token_enc,meta"),
     getLatestIntegrationRow(userId, "google", "gmb", "gmb", "status,resource_id,meta"),
     getLatestIntegrationRow(userId, "instagram", "instagram", "instagram", "status,resource_id,access_token_enc,meta"),
     getLatestIntegrationRow(userId, "linkedin", "linkedin", "linkedin", "status,resource_id,access_token_enc"),
@@ -653,9 +655,9 @@ async function removeChannelDelivery(params: {
   }
 
   if (channel === "instagram") {
-    const tokens = resolveInstagramDeleteTokens(igRow);
+    const tokens = resolveInstagramDeleteTokensFromRows(igRow, fbRow);
     if (!tokens.length) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
-    if (previousExternalId) await deleteInstagramMediaWithFallback(previousExternalId, igRow);
+    if (previousExternalId) await deleteInstagramMediaWithFallback(previousExternalId, igRow, fbRow);
     return;
   }
 
