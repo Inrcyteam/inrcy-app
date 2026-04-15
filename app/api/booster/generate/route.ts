@@ -8,6 +8,7 @@ import {
   boosterSystemPrompt,
   boosterUserPrompt,
   type BoosterChannels,
+  type BoosterStyle,
   type BoosterTheme,
 } from "@/lib/boosterPrompt";
 import { sanitizeGmbGeneratedPost } from "@/lib/googleBusinessCompliance";
@@ -15,6 +16,7 @@ import { sanitizeGmbGeneratedPost } from "@/lib/googleBusinessCompliance";
 type Payload = {
   idea?: string;
   theme?: BoosterTheme;
+  style?: BoosterStyle;
   channels?: BoosterChannels[];
 };
 
@@ -33,6 +35,7 @@ type JsonRecord = Record<string, unknown>;
 
 const allowedChannels: BoosterChannels[] = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"];
 const allowedThemes: BoosterTheme[] = ["", "promotion", "information", "conseil", "avis_client", "realisation", "actualite", "autre"];
+const allowedStyles: BoosterStyle[] = ["sobre", "equilibre", "dynamique"];
 const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web"]);
 
 function cleanHashtags(input: unknown) {
@@ -89,6 +92,7 @@ function computeMaxOutputTokens(channels: BoosterChannels[]) {
 async function generateVersions(args: {
   idea: string;
   theme: BoosterTheme;
+  style: BoosterStyle;
   channels: BoosterChannels[];
   profile: JsonRecord | null;
   business: JsonRecord | null;
@@ -98,6 +102,7 @@ async function generateVersions(args: {
   const baseInput = boosterUserPrompt({
     idea: args.idea,
     theme: args.theme,
+    style: args.style,
     channels: args.channels,
     profile: args.profile,
     business: args.business,
@@ -129,6 +134,8 @@ const handler = async (req: Request) => {
     }
 
     const theme = allowedThemes.includes(body?.theme as BoosterTheme) ? (body.theme as BoosterTheme) : "information";
+    const style = allowedStyles.includes(body?.style as BoosterStyle) ? (body.style as BoosterStyle) : "equilibre";
+
     const channels = Array.from(
       new Set(
         (Array.isArray(body?.channels) ? body.channels : []).filter(
@@ -153,6 +160,7 @@ const handler = async (req: Request) => {
     const out = await generateVersions({
       idea,
       theme,
+      style,
       channels,
       profile: (profile ?? null) as JsonRecord | null,
       business,
@@ -174,6 +182,7 @@ const handler = async (req: Request) => {
       const retryOut = await generateVersions({
         idea,
         theme,
+        style,
         channels: missingChannels,
         profile: (profile ?? null) as JsonRecord | null,
         business,

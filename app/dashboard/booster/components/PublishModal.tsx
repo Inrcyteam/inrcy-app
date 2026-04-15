@@ -8,6 +8,7 @@ import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/d
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 type DisplayKey = "site" | "gmb" | "facebook" | "instagram" | "linkedin";
 type ThemeKey = "" | "promotion" | "information" | "conseil" | "avis_client" | "realisation" | "actualite" | "autre";
+type StyleKey = "sobre" | "equilibre" | "dynamique";
 type FitMode = "contain" | "cover";
 type BackgroundMode = "blur" | "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
 type DesignPosition = "top" | "center" | "bottom";
@@ -332,6 +333,18 @@ const THEME_PLACEHOLDERS: Record<ThemeKey, string> = {
   autre: "Ex : Intervention rapide réalisée ce matin suite à une fuite en cuisine",
 };
 
+const STYLE_OPTIONS: Array<{ value: StyleKey; label: string }> = [
+  { value: "sobre", label: "Sobre" },
+  { value: "equilibre", label: "Équilibré" },
+  { value: "dynamique", label: "Dynamique" },
+];
+
+const STYLE_HELPERS: Record<StyleKey, string> = {
+  sobre: "Ton plus posé, accroches sobres, très peu d’emojis.",
+  equilibre: "Ton chaleureux et pro, avec juste ce qu’il faut de peps et d’emojis.",
+  dynamique: "Ton plus vivant, accroches plus fortes, phrases plus rythmées et emojis adaptés au canal.",
+};
+
 function makeImageKey(file: File): string {
   return `${file.name}__${file.size}__${file.lastModified}`;
 }
@@ -497,8 +510,21 @@ function buildBoosterUploadPath(fileName: string): string {
   return `booster-prepublish/${unique}-${safeName}`;
 }
 
-async function uploadPreparedImages(images: ImagePayload[]): Promise<ImagePayload[]> {
+function clampPercent(value: number, min = 0, max = 100) {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function uploadPreparedImages(
+  images: ImagePayload[],
+  onProgress?: (current: number, total: number) => void,
+): Promise<ImagePayload[]> {
   const uploaded: ImagePayload[] = [];
+  const total = images.filter((image) => !!image?.dataUrl).length;
+  let done = 0;
 
   for (const image of images) {
     if (!image?.dataUrl) {
@@ -525,11 +551,14 @@ async function uploadPreparedImages(images: ImagePayload[]): Promise<ImagePayloa
       storagePath: String(json?.storagePath || ""),
       publicUrl: String(json?.publicUrl || ""),
     });
+    done += 1;
+    onProgress?.(done, total);
   }
+
+  if (!total) onProgress?.(0, 0);
 
   return uploaded;
 }
-
 
 async function renderChannelImage(params: {
   file: File;
@@ -687,12 +716,16 @@ export default function PublishModal({
   const [saving, setSaving] = useState(false);
   const [idea, setIdea] = useState("");
   const [theme, setTheme] = useState<ThemeKey>("");
+  const [contentStyle, setContentStyle] = useState<StyleKey>("equilibre");
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState("");
   const [publishError, setPublishError] = useState("");
+  const [publishProgress, setPublishProgress] = useState(0);
+  const [publishProgressLabel, setPublishProgressLabel] = useState("");
   const [postsByChannel, setPostsByChannel] = useState<Partial<Record<ChannelKey, ChannelPost>>>({});
   const [activeCard, setActiveCard] = useState<DisplayKey>("site");
   const [isMobile, setIsMobile] = useState(false);
+  const [duplicateFeedback, setDuplicateFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const gmbFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -704,6 +737,8 @@ export default function PublishModal({
   const [activeImageChannel, setActiveImageChannel] = useState<ChannelKey>("inrcy_site");
   const [activeImageKeyByChannel, setActiveImageKeyByChannel] = useState<Partial<Record<ChannelKey, string>>>({});
   const previewStageRef = useRef<HTMLDivElement | null>(null);
+  const publishAreaRef = useRef<HTMLDivElement | null>(null);
+  const publishPulseTimerRef = useRef<number | null>(null);
   const dragStateRef = useRef<{ pointerId: number; startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
   const [previewStageSize, setPreviewStageSize] = useState({ width: 0, height: 0 });
   const [isDraggingImage, setIsDraggingImage] = useState(false);
@@ -818,6 +853,32 @@ export default function PublishModal({
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  const scrollToPublishArea = (behavior: ScrollBehavior = "smooth") => {
+    if (typeof window === "undefined") return;
+    window.requestAnimationFrame(() => {
+      publishAreaRef.current?.scrollIntoView({ behavior, block: "end", inline: "nearest" });
+    });
+  };
+
+  useEffect(() => {
+    if (!saving) return;
+    scrollToPublishArea("smooth");
+  }, [saving]);
+
+  useEffect(() => {
+    if (!publishError && !imgError) return;
+    scrollToPublishArea("smooth");
+  }, [publishError, imgError]);
+
+  useEffect(() => {
+    return () => {
+      if (publishPulseTimerRef.current) {
+        window.clearInterval(publishPulseTimerRef.current);
+        publishPulseTimerRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const node = previewStageRef.current;
     if (!node || typeof ResizeObserver === "undefined") return;
@@ -930,8 +991,10 @@ export default function PublishModal({
   const onReset = () => {
     setIdea("");
     setTheme("");
+    setContentStyle("equilibre");
     setPostsByChannel({});
     setGenError("");
+    setDuplicateFeedback(null);
     imagePreviews.forEach((url) => URL.revokeObjectURL(url));
     setImages([]);
     setImagePreviews([]);
@@ -956,11 +1019,12 @@ export default function PublishModal({
     }
 
     setGenerating(true);
+    setDuplicateFeedback(null);
     try {
       const res = await fetch("/api/booster/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea: trimmed, theme, channels: selectedForGeneration }),
+        body: JSON.stringify({ idea: trimmed, theme, style: contentStyle, channels: selectedForGeneration }),
       });
 
       const json = await res.json().catch(() => ({}));
@@ -988,6 +1052,54 @@ export default function PublishModal({
     } finally {
       setGenerating(false);
     }
+  };
+
+  const onDuplicateContentToAllChannels = () => {
+    const source = getDisplayPost(activeCard);
+    const hasSourceContent = Boolean(String(source.title || "").trim() || String(source.content || "").trim());
+
+    if (!hasSourceContent) {
+      setDuplicateFeedback({ kind: "error", message: "Ajoutez au moins un titre ou un contenu avant de dupliquer." });
+      return;
+    }
+
+    if (displayCards.length < 2) {
+      setDuplicateFeedback({ kind: "error", message: "Sélectionnez au moins 2 canaux pour utiliser la duplication." });
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm("Dupliquer ce contenu sur tous les canaux ?\n\nLe titre et le contenu des autres canaux seront remplacés.");
+      if (!confirmed) return;
+    }
+
+    const patch: Pick<ChannelPost, "title" | "content"> = {
+      title: source.title,
+      content: source.content,
+    };
+
+    setPostsByChannel((prev) => {
+      const next: Partial<Record<ChannelKey, ChannelPost>> = { ...prev };
+      for (const key of displayCards) {
+        if (key === "site") {
+          const sitePost = {
+            ...normalizePost(prev.site_web || prev.inrcy_site),
+            ...patch,
+          };
+          next.inrcy_site = sitePost;
+          next.site_web = sitePost;
+          continue;
+        }
+
+        next[key] = {
+          ...normalizePost(prev[key]),
+          ...patch,
+        };
+      }
+      return next;
+    });
+
+    setDuplicateFeedback({ kind: "success", message: "Titre et contenu dupliqués sur tous les canaux affichés." });
   };
 
   const onPickImagesClick = () => {
@@ -1282,12 +1394,17 @@ export default function PublishModal({
     setIsImageEditorOpen(false);
   };
 
-  const buildChannelImagesPayload = async (): Promise<{
+  const buildChannelImagesPayload = async (onProgress?: (current: number, total: number) => void): Promise<{
     channelImages: ChannelImagePayload;
     channelSettings: ChannelImageSettingsPayload;
   }> => {
     const channelImages = {} as ChannelImagePayload;
     const channelSettings = {} as ChannelImageSettingsPayload;
+    const totalRenders = selectedChannels.reduce((sum, channel) => {
+      const editor = channelImageEditors[channel] || { imageKeys: [], transforms: {} };
+      return sum + editor.imageKeys.length;
+    }, 0);
+    let doneRenders = 0;
 
     for (const channel of selectedChannels) {
       const editor = channelImageEditors[channel] || { imageKeys: [], transforms: {} };
@@ -1297,6 +1414,8 @@ export default function PublishModal({
         if (!file) continue;
         const transform = editor.transforms[imageKey] || getDefaultTransform(channel);
         renderList.push(await renderChannelImage({ file, transform, preset: CHANNEL_PRESETS[channel] }));
+        doneRenders += 1;
+        onProgress?.(doneRenders, totalRenders);
       }
       channelImages[channel] = renderList;
       channelSettings[channel] = {
@@ -1305,6 +1424,8 @@ export default function PublishModal({
       };
     }
 
+    if (!totalRenders) onProgress?.(0, 0);
+
     return { channelImages, channelSettings };
   };
 
@@ -1312,6 +1433,9 @@ export default function PublishModal({
     if (saving) return;
     setPublishError("");
     setImgError("");
+    setPublishProgress(0);
+    setPublishProgressLabel("");
+    scrollToPublishArea("smooth");
 
     if (!selectedChannels.length) {
       setPublishError("Sélectionnez au moins 1 canal.");
@@ -1333,13 +1457,45 @@ export default function PublishModal({
     }
 
     setSaving(true);
+    setPublishProgress(5);
+    setPublishProgressLabel("Préparation de la publication...");
+
     try {
-      const { channelImages, channelSettings } = await buildChannelImagesPayload();
+      const { channelImages, channelSettings } = await buildChannelImagesPayload((current, total) => {
+        if (!total) {
+          setPublishProgress(25);
+          setPublishProgressLabel("Préparation des contenus...");
+          return;
+        }
+        const ratio = current / total;
+        setPublishProgress(clampPercent(8 + ratio * 27));
+        setPublishProgressLabel(`Préparation des images ${clampPercent(ratio * 100)}%`);
+      });
+
+      setPublishProgress((prev) => Math.max(prev, 35));
+      setPublishProgressLabel("Upload des images...");
+
       const uploadedChannelImages = {} as ChannelImagePayload;
+      const uploadTargets = selectedChannels.reduce((sum, channel) => sum + (channelImages[channel] || []).filter((image) => !!image?.dataUrl).length, 0);
+      let uploadedCount = 0;
       for (const channel of selectedChannels) {
-        uploadedChannelImages[channel] = await uploadPreparedImages(channelImages[channel] || []);
+        uploadedChannelImages[channel] = await uploadPreparedImages(channelImages[channel] || [], (current, total) => {
+          if (!total) return;
+          uploadedCount += 1;
+          const ratio = uploadTargets ? uploadedCount / uploadTargets : 1;
+          setPublishProgress(clampPercent(35 + ratio * 35));
+          setPublishProgressLabel(`Upload des images ${clampPercent(ratio * 100)}%`);
+        });
       }
+
       const sitePost = getDisplayPost("site");
+      setPublishProgress((prev) => Math.max(prev, 74));
+      setPublishProgressLabel("Envoi aux canaux...");
+      if (publishPulseTimerRef.current) window.clearInterval(publishPulseTimerRef.current);
+      publishPulseTimerRef.current = window.setInterval(() => {
+        setPublishProgress((prev) => (prev >= 94 ? prev : prev + 1));
+      }, 220);
+
       const result = await trackEvent("publish", {
         idea: idea.trim(),
         theme,
@@ -1357,9 +1513,22 @@ export default function PublishModal({
         imageSettingsByChannel: channelSettings,
       });
 
+      if (publishPulseTimerRef.current) {
+        window.clearInterval(publishPulseTimerRef.current);
+        publishPulseTimerRef.current = null;
+      }
+      setPublishProgress(100);
+      setPublishProgressLabel("Publié");
+      await sleep(220);
       onPublishSuccess?.(result);
       onClose();
     } catch (e) {
+      if (publishPulseTimerRef.current) {
+        window.clearInterval(publishPulseTimerRef.current);
+        publishPulseTimerRef.current = null;
+      }
+      setPublishProgress(0);
+      setPublishProgressLabel("");
       setPublishError(getSimpleFrenchErrorMessage(e, "La publication n'a pas pu être envoyée. Merci de réessayer."));
     } finally {
       setSaving(false);
@@ -1445,6 +1614,17 @@ export default function PublishModal({
               value={idea}
               onChange={(e) => setIdea(e.target.value)}
             />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Style</div>
+            <select value={contentStyle} onChange={(e) => setContentStyle(e.target.value as StyleKey)} style={darkSelectStyle as React.CSSProperties}>
+              {STYLE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value} style={darkOptionStyle}>{opt.label}</option>
+              ))}
+            </select>
+            <div style={{ fontSize: 11, marginTop: 6, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
+              {STYLE_HELPERS[contentStyle]}
+            </div>
           </div>
           {genError ? <div style={{ fontSize: 13, color: "#ffb4b4" }}>{genError}</div> : null}
                     <div style={{ display: "grid", gap: 6, justifyItems: "start" }}>
@@ -1566,6 +1746,20 @@ export default function PublishModal({
                   </div>
                 ) : null}
               </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+              <div style={{ fontSize: 12, color: duplicateFeedback?.kind === "error" ? "#ffb4b4" : "rgba(255,255,255,0.72)" }}>
+                {duplicateFeedback?.message || "Dupliquez le titre et le contenu du canal ouvert vers les autres canaux affichés."}
+              </div>
+              <button
+                type="button"
+                className={styles.secondaryBtn}
+                onClick={onDuplicateContentToAllChannels}
+                disabled={displayCards.length < 2}
+                style={{ marginLeft: "auto" }}
+              >
+                Dupliquer ce contenu sur tous les canaux
+              </button>
             </div>
           </>
         ) : (
@@ -1721,8 +1915,7 @@ export default function PublishModal({
       />
 
 
-      <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
-        {saving ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)", textAlign: "right" }}>Cela peut prendre quelques secondes.</div> : null}
+      <div ref={publishAreaRef} style={{ display: "grid", gap: 8, justifyItems: "end", scrollMarginBottom: 24 }}>
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
           <button
             type="button"
@@ -1731,10 +1924,23 @@ export default function PublishModal({
             disabled={saving}
             style={{ minHeight: 52, padding: "0 24px", fontSize: 16, fontWeight: 800 }}
           >
-            {saving ? "Publication..." : "Publier"}
+            {saving ? `Publication ${publishProgress}%` : "Publier"}
           </button>
         </div>
-        {publishError ? <StatusMessage variant="error" style={{ marginTop: 0, textAlign: "right", maxWidth: 440 }}>{publishError}</StatusMessage> : null}
+        <div style={{ width: "min(440px, 100%)", minHeight: saving || publishError ? 58 : 0, display: "grid", gap: 8, justifyItems: "stretch" }}>
+          {saving ? (
+            <div style={{ justifySelf: "end", width: "100%", maxWidth: 440, borderRadius: 14, padding: "10px 12px", border: "1px solid rgba(76,195,255,0.22)", background: "rgba(76,195,255,0.08)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontSize: 12, color: "rgba(255,255,255,0.86)" }}>
+                <span>{publishProgressLabel || "Publication en cours..."}</span>
+                <strong>{publishProgress}%</strong>
+              </div>
+              <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "rgba(255,255,255,0.10)", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${publishProgress}%`, borderRadius: 999, background: "linear-gradient(90deg, rgba(76,195,255,0.92), rgba(99,102,241,0.95))", transition: "width 180ms ease" }} />
+              </div>
+            </div>
+          ) : null}
+          {publishError ? <StatusMessage variant="error" style={{ marginTop: 0, textAlign: "right", maxWidth: 440, justifySelf: "end" }}>{publishError}</StatusMessage> : null}
+        </div>
       </div>
     </div>
   );

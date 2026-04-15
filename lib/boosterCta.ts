@@ -119,10 +119,20 @@ export function buildCtaTextForChannel(channel: BoosterChannelKey, post: Partial
   }
 }
 
+function buildPrimaryBoosterText(channel: BoosterChannelKey, post: Partial<BoosterPostLike> | null | undefined) {
+  const title = collapseWhitespace(String(post?.title || ""));
+  const content = collapseWhitespace(String(post?.content || ""));
+
+  if ((channel === "facebook" || channel === "linkedin") && title && content) {
+    return collapseWhitespace(`${title} — ${content}`);
+  }
+
+  return [title, content].filter(Boolean).join("\n\n").trim();
+}
+
 export function buildBoosterMessage(channel: BoosterChannelKey, post: Partial<BoosterPostLike> | null | undefined, context?: BoosterCtaContext) {
   const parts = [
-    collapseWhitespace(String(post?.title || "")),
-    collapseWhitespace(String(post?.content || "")),
+    buildPrimaryBoosterText(channel, post),
     buildCtaTextForChannel(channel, post, context),
   ].filter(Boolean);
   return parts.join("\n\n").trim();

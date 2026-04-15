@@ -18,6 +18,8 @@ export type BoosterTheme =
   | "actualite"
   | "autre";
 
+export type BoosterStyle = "sobre" | "equilibre" | "dynamique";
+
 const CHANNEL_LABELS: Record<BoosterChannels, string> = {
   inrcy_site: "Site iNrCy",
   site_web: "Site web",
@@ -38,6 +40,12 @@ const THEME_LABELS: Record<BoosterTheme, string> = {
   autre: "Autre",
 };
 
+const STYLE_LABELS: Record<BoosterStyle, string> = {
+  sobre: "Sobre",
+  equilibre: "Équilibré",
+  dynamique: "Dynamique",
+};
+
 export function boosterSystemPrompt() {
   return `Tu es un assistant marketing local pour des pros de proximité en France.
 
@@ -55,6 +63,18 @@ Règles par canal :
 - Facebook : texte engageant, clair, environ 60 à 120 mots.
 - Instagram : texte plus court, visuel, direct, environ 40 à 90 mots, hashtags utiles.
 - LinkedIn : texte plus professionnel, crédible, environ 60 à 120 mots.
+
+Règles d'ambiance et d'emojis :
+- Respecter le style demandé par le pro : sobre, équilibré ou dynamique.
+- Style sobre : ton plus posé, accroches discrètes, phrases fluides, emojis quasi absents.
+- Style équilibré : ton chaleureux, accroches engageantes, phrases naturelles, emojis modérés.
+- Style dynamique : ton plus vivant, accroches plus fortes, phrases plus rythmées, mais toujours professionnel.
+- Site iNrCy / Site web : 0 emoji.
+- Google Business : 0 à 1 emoji maximum, seulement si c'est vraiment naturel et non promotionnel.
+- Facebook : 1 à 3 emojis maximum.
+- Instagram : 2 à 5 emojis maximum.
+- LinkedIn : 0 à 2 emojis maximum.
+- Les emojis doivent rester utiles, naturels et lisibles. Jamais de surcharge.
 
 Contraintes :
 - Français uniquement.
@@ -95,6 +115,7 @@ Règles JSON :
 export function boosterUserPrompt(args: {
   idea: string;
   theme: BoosterTheme;
+  style: BoosterStyle;
   channels: BoosterChannels[];
   profile?: Record<string, any> | null;
   business?: Record<string, any> | null;
@@ -122,6 +143,7 @@ export function boosterUserPrompt(args: {
 ${args.idea}
 
 Thème choisi : ${THEME_LABELS[args.theme]}
+Style souhaité : ${STYLE_LABELS[args.style]}
 
 Canaux à générer : ${args.channels.map((c) => CHANNEL_LABELS[c]).join(", ")}
 
@@ -144,9 +166,13 @@ Infos activité :
 
 Consignes supplémentaires :
 - Adapter clairement le contenu à chaque canal demandé.
+- Le style demandé agit sur le ton, les accroches, le rythme des phrases et le niveau d'emojis, tout en respectant les règles propres à chaque canal.
 - Site iNrCy / Site web : version plus longue, plus SEO et plus locale. Quand c'est pertinent, intégrer naturellement le téléphone ou l'email de contact. Cette version est obligatoire si le canal site est demandé : ne jamais laisser title/content/cta vides.
 - Instagram : plus direct, plus léger, plus visuel.
 - LinkedIn : ton plus professionnel.
+- Si le style demandé est "Sobre" : rester très propre, posé et presque sans emojis.
+- Si le style demandé est "Équilibré" : viser un ton chaleureux, humain et engageant avec quelques emojis selon le canal.
+- Si le style demandé est "Dynamique" : proposer des accroches plus fortes, un ton plus vivant, des phrases plus rythmées et des emojis selon le canal, sans tomber dans l'excès.
 - Google Business : ton local, utile, concret et strictement informatif. Ne jamais rappeler le téléphone, l'email, un lien, un hashtag ou une promesse commerciale agressive.
 - Facebook : ton engageant et accessible. Le téléphone ou l'email peuvent être utilisés ponctuellement si cela aide à contacter l'entreprise.
 - Utiliser en priorité le métier exact et les prestations cochées quand elles existent.`;
