@@ -23,6 +23,7 @@ export type Overview = {
   topQueries?: Array<{ query: string; clicks?: number; impressions?: number }>;
   channels?: Array<{ channel?: string; sessions?: number; key?: string; value?: number; name?: string }>;
   sources?: Record<string, { connected?: unknown; metrics?: unknown | null }>;
+  meta?: { generatedAt?: string; snapshotDate?: string | null; live?: boolean };
 };
 
 export type OpportunitiesSnapshot = {
@@ -613,16 +614,17 @@ export async function fetchCubeOverviews(args: {
   bypassCache?: boolean;
   supabase?: SupabaseClient;
   userId?: string;
+  snapshotDate?: string | null;
 }): Promise<Partial<Record<CubeKey, Overview>>> {
-  const { origin, days, getHeaders, extraParams, bypassCache = false, supabase, userId } = args;
+  const { origin, days, getHeaders, extraParams, bypassCache = false, supabase, userId, snapshotDate } = args;
   const entries = await Promise.all(
     CUBES.map(async (cube) => {
       const includeRaw = INCLUDE_BY_CUBE[cube];
       if (supabase && userId) {
-        const directKey = `direct:${userId}:days=${days}:include=${includeRaw}:fresh=${bypassCache ? 1 : 0}`;
+        const directKey = `direct:${userId}:days=${days}:include=${includeRaw}:snapshot=${snapshotDate || (bypassCache ? 'live' : 'default')}:fresh=${bypassCache ? 1 : 0}`;
         const overview = await resolveOverviewWithCache(
           directKey,
-          async () => (await buildStatsOverview({ supabase, userId, days, includeRaw, fresh: bypassCache })) as OverviewPayload,
+          async () => (await buildStatsOverview({ supabase, userId, days, includeRaw, fresh: bypassCache, snapshotDate })) as OverviewPayload,
           bypassCache,
         );
         return [cube, overview] as const;
@@ -635,6 +637,7 @@ export async function fetchCubeOverviews(args: {
         if (v !== undefined && v !== null && `${v}` !== '') params.set(k, String(v));
       }
       if (bypassCache) params.set('fresh', '1');
+      if (snapshotDate) params.set('snapshotDate', snapshotDate);
       const url = `${origin}/api/stats/overview?${params.toString()}`;
       const headers = getHeaders?.();
       const overview = await fetchOverviewWithCache(url, headers, bypassCache);

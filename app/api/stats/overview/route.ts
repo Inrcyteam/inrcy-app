@@ -11,6 +11,7 @@ export async function GET(request: Request) {
     const days = Math.min(Math.max(Number(searchParams.get("days") || 28), 7), 90);
     const fresh = searchParams.get("fresh") === "1";
     const includeRaw = (searchParams.get("include") || "").trim();
+    const snapshotDate = (searchParams.get("snapshotDate") || "").trim() || null;
 
     const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";
     const suppliedSecret = (searchParams.get("secret") || request.headers.get("x-cron-secret") || "").trim();
@@ -33,6 +34,7 @@ export async function GET(request: Request) {
       days,
       includeRaw,
       fresh,
+      snapshotDate,
     });
 
     return NextResponse.json(payload, {

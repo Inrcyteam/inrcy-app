@@ -7,6 +7,7 @@ import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
+import { buildSnapshotWindow } from "@/lib/stats/snapshotWindow";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -98,6 +99,11 @@ export type OverviewPayload = {
   business: { sectorCategory: string | null; profession: string | null };
   sources: SourcesStatus;
   note: string;
+  meta: {
+    generatedAt: string;
+    snapshotDate: string | null;
+    live: boolean;
+  };
 };
 
 export async function buildStatsOverview(args: {
@@ -106,6 +112,7 @@ export async function buildStatsOverview(args: {
   days: number;
   includeRaw?: string;
   fresh?: boolean;
+  snapshotDate?: string | null;
 }): Promise<OverviewPayload> {
   const { supabase, userId, fresh = false } = args;
   const days = Math.min(Math.max(Number(args.days || 28), 7), 90);
@@ -119,6 +126,8 @@ export async function buildStatsOverview(args: {
       : []
   );
   const includeAll = includeSet.size === 0;
+
+  const dateWindow = buildSnapshotWindow({ days, fresh, snapshotDate: args.snapshotDate });
 
   // Lazy-import server helpers inside the request scope to avoid Next.js request-scope errors.
   const {
@@ -301,7 +310,7 @@ async function buildConnectionsKey() {
 }
 
 const connectionsKey = await buildConnectionsKey();
-const rangeKey = `days=${days}|include=${includeRaw || "all"}|inrcy=${inrcyTrackingEnabled ? 1 : 0}|conn=${connectionsKey}`;
+const rangeKey = `days=${days}|include=${includeRaw || "all"}|snapshot=${dateWindow.snapshotDate || "live"}|inrcy=${inrcyTrackingEnabled ? 1 : 0}|conn=${connectionsKey}`;
 
 // Lecture cache (best-effort)
 if (!fresh) try {
@@ -427,9 +436,24 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
             try {
               // ✅ parallel GA4 calls (was sequential)
               const [overview, pages, channels] = await Promise.all([
-                runGa4Report(token.accessToken, s.ga4Property, days),
-                runGa4TopPages(token.accessToken, s.ga4Property, days),
-                runGa4Channels(token.accessToken, s.ga4Property, days),
+                runGa4Report(token.accessToken, s.ga4Property, days, {
+                  start: dateWindow.start,
+                  end: dateWindow.end,
+                  startDateYmd: dateWindow.startDateYmd,
+                  endDateYmd: dateWindow.endDateYmd,
+                }),
+                runGa4TopPages(token.accessToken, s.ga4Property, days, {
+                  start: dateWindow.start,
+                  end: dateWindow.end,
+                  startDateYmd: dateWindow.startDateYmd,
+                  endDateYmd: dateWindow.endDateYmd,
+                }),
+                runGa4Channels(token.accessToken, s.ga4Property, days, {
+                  start: dateWindow.start,
+                  end: dateWindow.end,
+                  startDateYmd: dateWindow.startDateYmd,
+                  endDateYmd: dateWindow.endDateYmd,
+                }),
               ]);
 
               entry.connected.ga4 = true;
@@ -455,7 +479,12 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const token = await safeGetGoogleTokenFor(s.key, "gsc");
           if (token?.accessToken) {
             try {
-              const q = await runGscQuery(token.accessToken, s.gscProperty, days);
+              const q = await runGscQuery(token.accessToken, s.gscProperty, days, {
+                start: dateWindow.start,
+                end: dateWindow.end,
+                startDateYmd: dateWindow.startDateYmd,
+                endDateYmd: dateWindow.endDateYmd,
+              });
               entry.connected.gsc = true;
               entry.gsc = { property: s.gscProperty, queries: q.rows };
 
@@ -587,8 +616,8 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         sourcesStatus.facebook.metrics = null;
       } else if (sourcesStatus.facebook.connected && fbRow["resource_id"] && fbRow["access_token_enc"] && !isExpired(fbRow["expires_at"])) {
         try {
-          const end = new Date();
-          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          const end = dateWindow.end;
+          const start = dateWindow.start;
           const token = tryDecryptToken(String(fbRow["access_token_enc"]));
           if (!token) throw new Error("La connexion Facebook a expiré ou n’est plus valide.");
           sourcesStatus.facebook.metrics = await fbFetchDailyInsights(
@@ -615,8 +644,8 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         sourcesStatus.instagram.metrics = null;
       } else if (sourcesStatus.instagram.connected && igRow["resource_id"] && igRow["access_token_enc"] && !isExpired(igRow["expires_at"])) {
         try {
-          const end = new Date();
-          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          const end = dateWindow.end;
+          const start = dateWindow.start;
           const token = tryDecryptToken(String(igRow["access_token_enc"]));
           if (!token) throw new Error("La connexion Instagram a expiré ou n’est plus valide.");
           const [accountInsights, mediaInsights] = await Promise.allSettled([
@@ -674,8 +703,8 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           if (!token) throw new Error("La connexion LinkedIn a expiré ou n’est plus valide.");
           const orgUrn = String(asRecord(liRow["meta"])["org_urn"] || "");
           const authorUrn = String(liRow["resource_id"] || "");
-          const end = new Date();
-          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          const end = dateWindow.end;
+          const start = dateWindow.start;
           if (authorUrn.startsWith("urn:li:person:")) {
             sourcesStatus.linkedin.metrics = await liFetchMemberAnalytics(token, authorUrn, start, end);
           } else {
@@ -728,8 +757,8 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         const loc = resourceId;
 
         if (accessToken && loc) {
-          const end = new Date();
-          const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          const end = dateWindow.end;
+          const start = dateWindow.start;
           try {
             const preferredAccountName = String(asRecord(gmbRow["meta"])["account"] || "") || null;
             const recovered = await gmbFetchDailyMetricsNormalizedWithRecovery({
@@ -783,6 +812,8 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       }
     } catch {}
 
+    const generatedAt = new Date().toISOString();
+
     const payload = {
       days,
       selected: includeAll ? null : Array.from(includeSet),
@@ -832,6 +863,11 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       },
       sources: sourcesStatus,
       note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook, Instagram, LinkedIn.",
+      meta: {
+        generatedAt,
+        snapshotDate: dateWindow.snapshotDate,
+        live: dateWindow.live,
+      },
     };
 
     // cache write (best-effort)

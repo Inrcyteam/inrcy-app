@@ -183,11 +183,27 @@ export async function getGoogleTokenFor(
   return { accessToken: accessToken!, row };
 }
 
-export async function runGa4Report(accessToken: string, propertyId: string, days: number) {
-  const end = new Date();
-  const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+type StatsDateWindow = {
+  start?: Date;
+  end?: Date;
+  startDateYmd?: string;
+  endDateYmd?: string;
+};
 
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+function resolveStatsDateWindow(days: number, window?: StatsDateWindow) {
+  const end = window?.end instanceof Date ? window.end : new Date();
+  const start = window?.start instanceof Date ? window.start : new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  return {
+    start,
+    end,
+    startDateYmd: window?.startDateYmd || start.toISOString().slice(0, 10),
+    endDateYmd: window?.endDateYmd || end.toISOString().slice(0, 10),
+  };
+}
+
+export async function runGa4Report(accessToken: string, propertyId: string, days: number, window?: StatsDateWindow) {
+  const resolvedWindow = resolveStatsDateWindow(days, window);
+
 
   const res = await fetch(
     `https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(propertyId)}:runReport`,
@@ -198,7 +214,7 @@ export async function runGa4Report(accessToken: string, propertyId: string, days
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        dateRanges: [{ startDate: fmt(start), endDate: fmt(end) }],
+        dateRanges: [{ startDate: resolvedWindow.startDateYmd, endDate: resolvedWindow.endDateYmd }],
         metrics: [
           { name: "activeUsers" },
           { name: "sessions" },
@@ -229,10 +245,8 @@ export async function runGa4Report(accessToken: string, propertyId: string, days
 // "Demandes captées" (leads) on GA4.
 // 1) Prefer the native "conversions" metric (requires GA4 conversion configuration).
 // 2) Fallback: sum common lead intent events.
-export async function runGa4Leads(accessToken: string, propertyId: string, days: number) {
-  const end = new Date();
-  const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+export async function runGa4Leads(accessToken: string, propertyId: string, days: number, window?: StatsDateWindow) {
+  const resolvedWindow = resolveStatsDateWindow(days, window);
 
   // Prefer conversions
   try {
@@ -245,7 +259,7 @@ export async function runGa4Leads(accessToken: string, propertyId: string, days:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          dateRanges: [{ startDate: fmt(start), endDate: fmt(end) }],
+          dateRanges: [{ startDate: resolvedWindow.startDateYmd, endDate: resolvedWindow.endDateYmd }],
           metrics: [{ name: "conversions" }],
         }),
       }
@@ -283,7 +297,7 @@ export async function runGa4Leads(accessToken: string, propertyId: string, days:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        dateRanges: [{ startDate: fmt(start), endDate: fmt(end) }],
+        dateRanges: [{ startDate: resolvedWindow.startDateYmd, endDate: resolvedWindow.endDateYmd }],
         dimensions: [{ name: "eventName" }],
         metrics: [{ name: "eventCount" }],
         dimensionFilter: {
@@ -309,10 +323,8 @@ export async function runGa4Leads(accessToken: string, propertyId: string, days:
   return Math.max(0, sum);
 }
 
-export async function runGa4TopPages(accessToken: string, propertyId: string, days: number) {
-  const end = new Date();
-  const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+export async function runGa4TopPages(accessToken: string, propertyId: string, days: number, window?: StatsDateWindow) {
+  const resolvedWindow = resolveStatsDateWindow(days, window);
 
   const res = await fetch(
     `https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(propertyId)}:runReport`,
@@ -323,7 +335,7 @@ export async function runGa4TopPages(accessToken: string, propertyId: string, da
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        dateRanges: [{ startDate: fmt(start), endDate: fmt(end) }],
+        dateRanges: [{ startDate: resolvedWindow.startDateYmd, endDate: resolvedWindow.endDateYmd }],
         dimensions: [{ name: "pagePath" }],
         metrics: [{ name: "screenPageViews" }],
         orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
@@ -343,10 +355,8 @@ export async function runGa4TopPages(accessToken: string, propertyId: string, da
   return rows;
 }
 
-export async function runGa4Channels(accessToken: string, propertyId: string, days: number) {
-  const end = new Date();
-  const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+export async function runGa4Channels(accessToken: string, propertyId: string, days: number, window?: StatsDateWindow) {
+  const resolvedWindow = resolveStatsDateWindow(days, window);
 
   const res = await fetch(
     `https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(propertyId)}:runReport`,
@@ -357,7 +367,7 @@ export async function runGa4Channels(accessToken: string, propertyId: string, da
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        dateRanges: [{ startDate: fmt(start), endDate: fmt(end) }],
+        dateRanges: [{ startDate: resolvedWindow.startDateYmd, endDate: resolvedWindow.endDateYmd }],
         dimensions: [{ name: "sessionDefaultChannelGroup" }],
         metrics: [{ name: "sessions" }],
         orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
@@ -377,10 +387,8 @@ export async function runGa4Channels(accessToken: string, propertyId: string, da
   return rows;
 }
 
-export async function runGscQuery(accessToken: string, property: string, days: number) {
-  const end = new Date();
-  const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+export async function runGscQuery(accessToken: string, property: string, days: number, window?: StatsDateWindow) {
+  const resolvedWindow = resolveStatsDateWindow(days, window);
 
   const siteUrlEnc = encodeURIComponent(property);
 
@@ -393,8 +401,8 @@ export async function runGscQuery(accessToken: string, property: string, days: n
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        startDate: fmt(start),
-        endDate: fmt(end),
+        startDate: resolvedWindow.startDateYmd,
+        endDate: resolvedWindow.endDateYmd,
         dimensions: ["query"],
         rowLimit: 8,
       }),

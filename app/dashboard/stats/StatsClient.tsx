@@ -9,6 +9,7 @@ import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { decideAction, type DecisionResult } from "@/lib/decision/decisionEngine";
+import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -36,6 +37,7 @@ type Overview = {
     linkedin: { connected: boolean; metrics?: any | null };
   };
   identities?: Partial<Record<CubeKey, { label?: string | null; url?: string | null }>>;
+  meta?: { generatedAt?: string; snapshotDate?: string | null; live?: boolean };
 };
 
 type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
@@ -53,6 +55,7 @@ type StatsBulkResponse = {
     avg_basket?: number;
   };
   estimatedByCube?: Partial<Record<CubeKey, number>>;
+  meta?: { snapshotDate?: string | null; live?: boolean };
 };
 
 type BulkFetchResult = {
@@ -66,6 +69,7 @@ type BulkFetchResult = {
     avg_basket: number;
   };
   estimatedByCube: Record<CubeKey, number>;
+  snapshotDate: string | null;
 };
 
 type ActionKey =
@@ -184,13 +188,28 @@ function removeUiCacheValue(key: string) {
   }
 }
 
+function expectedUiSnapshotDate() {
+  return getDefaultSnapshotDate();
+}
+
 function getStatsLastChannelSyncAt() {
   const raw = readUiCacheValue("inrcy_stats_last_channel_sync_v1");
   const n = raw ? Number(raw) : NaN;
   return Number.isFinite(n) ? n : 0;
 }
 
-function parseCachedCubeSnapshot(raw: string | null): { syncedAt: number; overviews: Record<CubeKey, Overview> } | null {
+function getOverviewSnapshotDate(overviews: unknown): string | null {
+  if (!overviews || typeof overviews !== "object") return null;
+  for (const overview of Object.values(overviews as Record<string, unknown>)) {
+    const snapshotDate = typeof (overview as any)?.meta?.snapshotDate === "string"
+      ? (overview as any).meta.snapshotDate
+      : null;
+    if (snapshotDate) return snapshotDate;
+  }
+  return null;
+}
+
+function parseCachedCubeSnapshot(raw: string | null): { syncedAt: number; overviews: Record<CubeKey, Overview>; snapshotDate: string | null } | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as any;
@@ -198,12 +217,14 @@ function parseCachedCubeSnapshot(raw: string | null): { syncedAt: number; overvi
       return {
         syncedAt: safeNum(parsed.syncedAt),
         overviews: parsed.overviews as Record<CubeKey, Overview>,
+        snapshotDate: typeof parsed.snapshotDate === "string" ? parsed.snapshotDate : getOverviewSnapshotDate(parsed.overviews),
       };
     }
     if (parsed && typeof parsed === "object") {
       return {
         syncedAt: 0,
         overviews: parsed as Record<CubeKey, Overview>,
+        snapshotDate: getOverviewSnapshotDate(parsed),
       };
     }
   } catch {
@@ -218,6 +239,7 @@ function parseCachedSummarySnapshot(raw: string | null): {
   byCube?: Partial<Record<CubeKey, number>>;
   profile?: { lead_conversion_rate?: number; avg_basket?: number };
   estimatedByCube?: Partial<Record<CubeKey, number>>;
+  snapshotDate?: string | null;
 } | null {
   if (!raw) return null;
   try {
@@ -229,6 +251,7 @@ function parseCachedSummarySnapshot(raw: string | null): {
         byCube: parsed.byCube,
         profile: parsed.profile,
         estimatedByCube: parsed.estimatedByCube,
+        snapshotDate: typeof parsed.snapshotDate === "string" ? parsed.snapshotDate : null,
       };
     }
   } catch {
@@ -1352,8 +1375,9 @@ export default function StatsClient() {
     const lastChannelSyncAt = getStatsLastChannelSyncAt();
     const cachedCube = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(targetPeriod)));
     const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(targetPeriod)));
-    const cubeFresh = !!cachedCube?.overviews && cachedCube.syncedAt >= lastChannelSyncAt;
-    const summaryFresh = !!cachedSummary && cachedSummary.syncedAt >= lastChannelSyncAt;
+    const expectedSnapshotDate = expectedUiSnapshotDate();
+    const cubeFresh = !!cachedCube?.overviews && cachedCube.syncedAt >= lastChannelSyncAt && cachedCube.snapshotDate === expectedSnapshotDate;
+    const summaryFresh = !!cachedSummary && cachedSummary.syncedAt >= lastChannelSyncAt && cachedSummary.snapshotDate === expectedSnapshotDate;
     if (!cubeFresh || !summaryFresh) return false;
 
     periodCacheRef.current.set(targetPeriod, cachedCube.overviews);
@@ -1399,11 +1423,12 @@ export default function StatsClient() {
     const snap = next.overviews as Record<CubeKey, Overview>;
     periodCacheRef.current.set(targetPeriod, snap);
     try {
-      writeUiCacheValue(cubeSessionKey(targetPeriod), JSON.stringify({ syncedAt, overviews: snap }));
+      writeUiCacheValue(cubeSessionKey(targetPeriod), JSON.stringify({ syncedAt, snapshotDate: next.snapshotDate, overviews: snap }));
       writeUiCacheValue(
         summarySessionKey(targetPeriod),
         JSON.stringify({
           syncedAt,
+          snapshotDate: next.snapshotDate,
           ...next.summary,
           profile: next.profile,
           estimatedByCube: next.estimatedByCube,
@@ -1475,6 +1500,7 @@ export default function StatsClient() {
     const json = (await r.json()) as StatsBulkResponse;
     const overviews = (json?.overviews || {}) as Partial<Record<CubeKey, Overview>>;
     const byCubePartial = json?.opportunities?.byCube || {};
+    const snapshotDate = typeof json?.meta?.snapshotDate === "string" ? json.meta.snapshotDate : getOverviewSnapshotDate(overviews);
     return {
       overviews,
       summary: {
@@ -1500,6 +1526,7 @@ export default function StatsClient() {
         instagram: safeNum(json?.estimatedByCube?.instagram),
         linkedin: safeNum(json?.estimatedByCube?.linkedin),
       } as Record<CubeKey, number>,
+      snapshotDate: snapshotDate ?? null,
     };
   };
 
@@ -1523,7 +1550,7 @@ useEffect(() => {
     const cached = periodCacheRef.current.get(period);
     const lastChannelSyncAt = getStatsLastChannelSyncAt();
     const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
-    const hasFreshCachedSummary = !!cachedSummary && cachedSummary.syncedAt >= lastChannelSyncAt;
+    const hasFreshCachedSummary = !!cachedSummary && cachedSummary.syncedAt >= lastChannelSyncAt && cachedSummary.snapshotDate === expectedUiSnapshotDate();
     if (cached && hasFreshCachedSummary) {
       setDataByCube((prev) => {
         const next: any = { ...prev };

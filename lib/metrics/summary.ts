@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { buildSnapshotWindow } from '@/lib/stats/snapshotWindow';
 import {
   EMPTY_CUBE_RECORD,
   computeHistoryFromOverviews,
@@ -33,6 +34,8 @@ export type MetricsSummary = {
   meta: {
     source: 'api/metrics/summary';
     generatedAt: string;
+    snapshotDate: string | null;
+    live: boolean;
   };
 };
 
@@ -140,6 +143,7 @@ export async function buildMetricsSummary(args: {
   todayDays?: number;
   debug?: AnyRec;
   fresh?: boolean;
+  snapshotDate?: string | null;
 }): Promise<MetricsSummary> {
   const {
     supabase,
@@ -151,6 +155,7 @@ export async function buildMetricsSummary(args: {
     todayDays = 2,
     debug,
     fresh = false,
+    snapshotDate,
   } = args;
 
   const safe = async <T,>(key: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
@@ -173,7 +178,9 @@ export async function buildMetricsSummary(args: {
     invalidateOverviewCache();
   }
 
-  const cacheRangeKey = `month=${monthDays}|week=${weekDays}|today=${todayDays}|conn=${await buildSummaryConnectionsKey(supabase, userId)}`;
+  const dateWindow = buildSnapshotWindow({ days: monthDays, fresh, snapshotDate });
+
+  const cacheRangeKey = `month=${monthDays}|week=${weekDays}|today=${todayDays}|snapshot=${dateWindow.snapshotDate || 'live'}|conn=${await buildSummaryConnectionsKey(supabase, userId)}`;
 
   if (!fresh) {
     try {
@@ -198,8 +205,8 @@ export async function buildMetricsSummary(args: {
       lead_conversion_rate: 0,
       avg_basket: 0,
     }),
-    safe('overviews_30d', () => fetchCubeOverviews({ origin, days: monthDays, getHeaders, bypassCache: fresh, supabase, userId }), {}),
-    safe('overviews_7d', () => fetchCubeOverviews({ origin, days: weekDays, getHeaders, bypassCache: fresh, supabase, userId }), {}),
+    safe('overviews_30d', () => fetchCubeOverviews({ origin, days: monthDays, getHeaders, bypassCache: fresh, supabase, userId, snapshotDate: dateWindow.snapshotDate }), {}),
+    safe('overviews_7d', () => fetchCubeOverviews({ origin, days: weekDays, getHeaders, bypassCache: fresh, supabase, userId, snapshotDate: dateWindow.snapshotDate }), {}),
   ]);
 
   const [oppResolved, history30Resolved, history7Resolved] = await Promise.all([
@@ -265,6 +272,8 @@ export async function buildMetricsSummary(args: {
     meta: {
       source: 'api/metrics/summary',
       generatedAt: new Date().toISOString(),
+      snapshotDate: dateWindow.snapshotDate,
+      live: dateWindow.live,
     },
   };
 

@@ -35,6 +35,7 @@ import { createClient } from "@/lib/supabaseClient";
 import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
+import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants";
 import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
 import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, Module, ModuleAction, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
@@ -86,7 +87,22 @@ function getLastChannelSyncAt() {
   return Number.isFinite(n) ? n : 0;
 }
 
-function readGeneratorCache(): { syncedAt: number; payload: any | null } | null {
+function expectedUiSnapshotDate() {
+  return getDefaultSnapshotDate();
+}
+
+function getOverviewSnapshotDate(overviews: unknown): string | null {
+  if (!overviews || typeof overviews !== "object") return null;
+  for (const overview of Object.values(overviews as Record<string, unknown>)) {
+    const snapshotDate = typeof (overview as any)?.meta?.snapshotDate === "string"
+      ? (overview as any).meta.snapshotDate
+      : null;
+    if (snapshotDate) return snapshotDate;
+  }
+  return null;
+}
+
+function readGeneratorCache(): { syncedAt: number; payload: any | null; snapshotDate: string | null } | null {
   try {
     const raw = readUiCacheValue("inrcy_generator_kpis_v1");
     if (!raw) return null;
@@ -95,9 +111,10 @@ function readGeneratorCache(): { syncedAt: number; payload: any | null } | null 
       return {
         syncedAt: Number.isFinite(Number((parsed as any).syncedAt)) ? Number((parsed as any).syncedAt) : 0,
         payload: (parsed as any).payload ?? null,
+        snapshotDate: typeof (parsed as any).snapshotDate === "string" ? (parsed as any).snapshotDate : (typeof (parsed as any)?.payload?.meta?.snapshotDate === "string" ? (parsed as any).payload.meta.snapshotDate : null),
       };
     }
-    return { syncedAt: 0, payload: parsed };
+    return { syncedAt: 0, payload: parsed, snapshotDate: typeof parsed?.meta?.snapshotDate === "string" ? parsed.meta.snapshotDate : null };
   } catch {
     return null;
   }
@@ -1161,7 +1178,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       }
       try {
         const syncedAt = Number.isFinite(Number(options?.syncedAt)) ? Number(options?.syncedAt) : Date.now();
-        writeUiCacheValue("inrcy_generator_kpis_v1", JSON.stringify({ syncedAt, payload: json }));
+        const snapshotDate = typeof json?.meta?.snapshotDate === "string" ? json.meta.snapshotDate : null;
+        writeUiCacheValue("inrcy_generator_kpis_v1", JSON.stringify({ syncedAt, snapshotDate, payload: json }));
       } catch {
         // ignore
       }
@@ -1216,13 +1234,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         const json = await res.json().catch(() => null);
         const overviews = json?.overviews;
         const opportunities = json?.opportunities;
+        const snapshotDate = typeof json?.meta?.snapshotDate === "string" ? json.meta.snapshotDate : getOverviewSnapshotDate(overviews);
 
         if (!overviews || typeof overviews !== "object") return;
 
         try {
           writeUiCacheValue(
             statsCubeSessionKey(days),
-            JSON.stringify({ syncedAt: Number.isFinite(Number(syncByPeriod[days])) ? Number(syncByPeriod[days]) : syncAt, overviews })
+            JSON.stringify({ syncedAt: Number.isFinite(Number(syncByPeriod[days])) ? Number(syncByPeriod[days]) : syncAt, snapshotDate, overviews })
           );
         } catch {
           // ignore
@@ -1233,6 +1252,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
             statsSummarySessionKey(days),
             JSON.stringify({
               syncedAt: Number.isFinite(Number(syncByPeriod[days])) ? Number(syncByPeriod[days]) : syncAt,
+              snapshotDate,
               total: Number(opportunities?.total ?? 0),
               byCube: opportunities?.byCube ?? {},
               profile: json?.profile ?? {},
@@ -2825,6 +2845,7 @@ const checkActivity = useCallback(async () => {
       const cached = readGeneratorCache();
       const payload = cached?.payload;
       if (!payload?.leads) return;
+      if (cached?.snapshotDate !== expectedUiSnapshotDate()) return;
       setKpis(payload);
       const oppMonth = Number(payload?.details?.opportunities?.month);
       if (Number.isFinite(oppMonth)) {
@@ -2838,10 +2859,7 @@ const checkActivity = useCallback(async () => {
   useEffect(() => {
     const cached = readGeneratorCache();
     const lastChannelSyncAt = getLastChannelSyncAt();
-    if (cached?.payload?.leads && cached.syncedAt >= lastChannelSyncAt) {
-      return;
-    }
-    if (cached?.payload?.leads) {
+    if (cached?.payload?.leads && cached.syncedAt >= lastChannelSyncAt && cached.snapshotDate === expectedUiSnapshotDate()) {
       return;
     }
     void refreshKpis();

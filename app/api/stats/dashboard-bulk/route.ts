@@ -23,6 +23,8 @@ type BulkResponse = {
   meta: {
     source: 'api/stats/dashboard-bulk';
     generatedAt: string;
+    snapshotDate: string | null;
+    live: boolean;
   };
 };
 
@@ -44,6 +46,7 @@ export async function GET(req: Request) {
     const { searchParams, origin } = new URL(req.url);
     const period = Math.max(1, Number(searchParams.get('days') || 30));
     const fresh = searchParams.get('fresh') === '1';
+    const snapshotDate = (searchParams.get('snapshotDate') || '').trim() || null;
     const cookie = req.headers.get('cookie') || '';
 
     const overviews = await fetchCubeOverviews({
@@ -53,6 +56,7 @@ export async function GET(req: Request) {
       bypassCache: fresh,
       supabase,
       userId: user.id,
+      snapshotDate,
     });
 
     const opportunities = toInrstatsSnapshot(computeOpportunitiesFromOverviews(overviews, period));
@@ -86,6 +90,8 @@ export async function GET(req: Request) {
       meta: {
         source: 'api/stats/dashboard-bulk',
         generatedAt: new Date().toISOString(),
+      snapshotDate: Object.values(overviews).find((overview) => overview?.meta)?.meta?.snapshotDate ?? snapshotDate ?? null,
+      live: Boolean(Object.values(overviews).find((overview) => overview?.meta)?.meta?.live ?? fresh),
       },
     };
 

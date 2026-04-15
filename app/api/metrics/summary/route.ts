@@ -49,6 +49,7 @@ export async function GET(req: Request) {
     const todayDays = Math.max(1, Number(searchParams.get('todayDays') || 2));
     const cookie = req.headers.get('cookie') || '';
     const fresh = searchParams.get('fresh') === '1';
+    const snapshotDate = (searchParams.get('snapshotDate') || '').trim() || null;
 
     const summary = await buildMetricsSummary({
       supabase,
@@ -60,6 +61,7 @@ export async function GET(req: Request) {
       todayDays,
       debug,
       fresh,
+      snapshotDate,
     });
 
     debug.ok = true;

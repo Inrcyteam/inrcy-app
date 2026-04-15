@@ -4,6 +4,7 @@ import { saveDailyMetricsSummary, type SnapshotDetail } from "@/lib/dailyMetrics
 import { buildMetricsSummary } from "@/lib/metrics/summary";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAppUrl } from "@/lib/stripeRest";
+import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 
 export const runtime = "nodejs";
 
@@ -244,7 +245,7 @@ function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
   if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin") return Math.max(0, Math.round(computeOpportunityPerDaySocial(cubeKey, ov) * 30));
   return Math.max(0, Math.round(computeOpportunityPerDayWeb(ov) * 30));
 }
-async function fetchOverviewForUser(req: Request, userId: string, cube: CubeKey, days = 30): Promise<Overview> {
+async function fetchOverviewForUser(req: Request, userId: string, cube: CubeKey, days = 30, snapshotDate?: string | null): Promise<Overview> {
   const baseUrl = getAppUrl(req);
   const secret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";
   const url = new URL(`${baseUrl}/api/stats/overview`);
@@ -252,6 +253,8 @@ async function fetchOverviewForUser(req: Request, userId: string, cube: CubeKey,
   url.searchParams.set("include", INCLUDE_BY_CUBE[cube]);
   url.searchParams.set("userId", userId);
   url.searchParams.set("secret", secret);
+  url.searchParams.set("fresh", "1");
+  if (snapshotDate) url.searchParams.set("snapshotDate", snapshotDate);
   const res = await fetch(url.toString(), { headers: { "x-cron-secret": secret }, cache: "no-store" });
   if (!res.ok) throw new Error(`overview_failed:${cube}:${res.status}:${(await res.text()).slice(0, 140)}`);
   return (await res.json()) as Overview;
@@ -291,6 +294,7 @@ function parsePositiveInt(raw: string | null, fallback: number, opts?: { min?: n
 
 async function processUser(req: Request, userId: string) {
   const origin = getAppUrl(req);
+  const snapshotDate = getDefaultSnapshotDate();
   try {
     await buildMetricsSummary({
       supabase: supabaseAdmin,
@@ -300,6 +304,7 @@ async function processUser(req: Request, userId: string) {
       weekDays: 7,
       todayDays: 2,
       fresh: true,
+      snapshotDate,
     });
   } catch (error) {
     console.warn("daily-metrics-summary metrics_summary warm failed", userId, error instanceof Error ? error.message : String(error));
@@ -310,7 +315,7 @@ async function processUser(req: Request, userId: string) {
 
   for (const source of SNAPSHOT_SOURCES) {
     const state = states[source];
-    const overview = await fetchOverviewForUser(req, userId, source);
+    const overview = await fetchOverviewForUser(req, userId, source, 30, snapshotDate);
     const demandesCaptees = computeCapturedForCube(source as CubeKey, overview);
     const opportunites = computeOpportunity30(source as CubeKey, overview);
 
