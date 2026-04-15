@@ -83,10 +83,11 @@ function hasRequiredContent(channel: BoosterChannels, post: ChannelPost | undefi
 function computeMaxOutputTokens(channels: BoosterChannels[]) {
   const uniqueChannels = new Set(channels);
   const hasSite = channels.some((channel) => siteChannels.has(channel));
-  let budget = 700 + uniqueChannels.size * 220;
-  if (hasSite) budget += 350;
-  if (uniqueChannels.size >= 4) budget += 150;
-  return Math.min(2000, Math.max(900, budget));
+  let budget = 800 + uniqueChannels.size * 260;
+  if (hasSite) budget += 450;
+  if (uniqueChannels.size >= 4) budget += 250;
+  if (uniqueChannels.size >= 5) budget += 150;
+  return Math.min(2800, Math.max(1000, budget));
 }
 
 async function generateVersions(args: {
