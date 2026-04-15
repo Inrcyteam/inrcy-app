@@ -4,8 +4,6 @@ import { sendTxMail } from "@/lib/txMailer";
 import { optionalEnv } from "@/lib/env";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
-import fs from "node:fs";
-import path from "node:path";
 
 export const runtime = "nodejs";
 
@@ -52,21 +50,18 @@ function asNumber(value: unknown, fallback: number) {
 const AGENDA_TIMEZONE = "Europe/Paris";
 const APP_ORIGIN = optionalEnv("NEXT_PUBLIC_SITE_URL", optionalEnv("NEXT_PUBLIC_APP_URL", "https://app.inrcy.com")).replace(/\/$/, "");
 const AGENDA_DASHBOARD_URL = `${APP_ORIGIN}/dashboard/agenda`;
+const EMAIL_LOGO_DIMENSIONS = {
+  calendar: { width: 188, height: 71 },
+  inrcy: { width: 108, height: 41 },
+} as const;
 
-function readPublicImageDataUri(fileName: string, fallbackUrl: string) {
-  try {
-    const filePath = path.join(process.cwd(), "public", fileName);
-    const file = fs.readFileSync(filePath);
-    const ext = path.extname(fileName).toLowerCase();
-    const mime = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : ext === ".svg" ? "image/svg+xml" : "image/png";
-    return `data:${mime};base64,${file.toString("base64")}`;
-  } catch {
-    return fallbackUrl;
-  }
+function publicAssetUrl(assetPath: string) {
+  const normalized = assetPath.startsWith("/") ? assetPath : `/${assetPath}`;
+  return `${APP_ORIGIN}${normalized}`;
 }
 
-const INR_CALENDAR_LOGO_SRC = readPublicImageDataUri("inrcalendar-logo.png", `${APP_ORIGIN}/inrcalendar-logo.png`);
-const INRCY_LOGO_SRC = readPublicImageDataUri("logo-inrcy.png", `${APP_ORIGIN}/logo-inrcy.png`);
+const INR_CALENDAR_LOGO_SRC = publicAssetUrl("/email/inrcalendar-logo-email.png");
+const INRCY_LOGO_SRC = publicAssetUrl("/email/inrcy-logo-email.png");
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
@@ -309,10 +304,11 @@ function infoRow(label: string, value: string) {
 }
 
 function ctaButton(label: string, href: string, variant: "primary" | "secondary" = "primary") {
-  const background = variant === "primary" ? "linear-gradient(135deg,#38bdf8 0%,#8b5cf6 52%,#ec4899 100%)" : "#16223f";
+  const backgroundColor = variant === "primary" ? "#5b74ff" : "#16223f";
+  const backgroundImage = variant === "primary" ? "linear-gradient(135deg,#38bdf8 0%,#8b5cf6 52%,#ec4899 100%)" : "none";
   const color = "#ffffff";
   return `
-    <a href="${escapeHtml(href)}" style="display:inline-block;padding:13px 18px;border-radius:12px;background:${background};color:${color};text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;margin:0 10px 10px 0;border:1px solid #d8e4f1;">
+    <a href="${escapeHtml(href)}" style="display:inline-block;padding:13px 18px;border-radius:12px;background-color:${backgroundColor};background-image:${backgroundImage};color:${color};text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;margin:0 10px 10px 0;border:1px solid #d8e4f1;">
       ${escapeHtml(label)}
     </a>`;
 }
@@ -405,37 +401,64 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
     : "Ce rappel vous est envoyé automatiquement par iNr'Calendar, un service iNrCy.";
 
   const html = `<!doctype html>
-<html lang="fr">
-  <body style="margin:0;padding:0;background:#041126;background-color:#041126;">
+<html lang="fr" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>${escapeHtml(subject)}</title>
+    <style>
+      body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+      table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+      img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+      table { border-collapse: collapse; }
+      @media screen and (max-width: 640px) {
+        .email-shell { width: 100% !important; }
+        .email-card { border-radius: 22px !important; }
+        .email-pad { padding: 20px !important; }
+        .hero-title { font-size: 28px !important; line-height: 1.18 !important; }
+        .logo-cell-left,
+        .logo-cell-right {
+          display: block !important;
+          width: 100% !important;
+          text-align: left !important;
+        }
+        .logo-cell-right { padding-top: 10px !important; }
+      }
+    </style>
+  </head>
+  <body class="body" style="margin:0;padding:0;background:#041126;background-color:#041126;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">${escapeHtml(preheader)}</span>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#041126" style="width:100%;background:#041126;background-color:#041126;">
       <tr>
         <td align="center" style="padding:26px 12px 34px 12px;">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:680px;border-collapse:separate;border-spacing:0;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" class="email-shell" style="width:100%;max-width:680px;">
             <tr>
               <td style="padding:0 0 14px 0;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#071736" style="width:100%;border-collapse:separate;border-spacing:0;border-radius:28px;overflow:hidden;background:#071736;background-color:#071736;border:1px solid rgba(120,143,190,.22);box-shadow:0 24px 60px rgba(2,8,23,.45);">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#071736" class="email-card" style="width:100%;border-collapse:separate;border-spacing:0;border-radius:28px;overflow:hidden;background:#071736;background-color:#071736;border:1px solid rgba(120,143,190,.22);box-shadow:0 24px 60px rgba(2,8,23,.45);">
                   <tr>
-                    <td style="padding:24px 24px 20px 24px;background:#071736;background-color:#071736;background-image:linear-gradient(135deg,#0b2450 0%, #071736 52%, #2c1f6a 100%);">
+                    <td class="email-pad" style="padding:24px 24px 20px 24px;background:#071736;background-color:#071736;background-image:linear-gradient(135deg,#0b2450 0%, #071736 52%, #2c1f6a 100%);">
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
                         <tr>
-                          <td align="left" valign="middle" style="padding:0 0 18px 0;">
-                            <img src="${escapeHtml(INR_CALENDAR_LOGO_SRC)}" alt="iNr'Calendar" width="188" style="display:block;width:188px;max-width:100%;height:auto;border:0;outline:none;" />
+                          <td class="logo-cell-left" align="left" valign="middle" style="padding:0 0 18px 0;">
+                            <img src="${escapeHtml(INR_CALENDAR_LOGO_SRC)}" alt="iNr'Calendar" width="${EMAIL_LOGO_DIMENSIONS.calendar.width}" height="${EMAIL_LOGO_DIMENSIONS.calendar.height}" style="display:block;width:${EMAIL_LOGO_DIMENSIONS.calendar.width}px;max-width:100%;height:auto;border:0;outline:none;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.2;" />
                           </td>
-                          <td align="right" valign="middle" style="padding:0 0 18px 0;">
-                            <img src="${escapeHtml(INRCY_LOGO_SRC)}" alt="iNrCy" width="108" style="display:block;width:108px;max-width:100%;height:auto;border:0;outline:none;" />
+                          <td class="logo-cell-right" align="right" valign="middle" style="padding:0 0 18px 0;">
+                            <img src="${escapeHtml(INRCY_LOGO_SRC)}" alt="iNrCy" width="${EMAIL_LOGO_DIMENSIONS.inrcy.width}" height="${EMAIL_LOGO_DIMENSIONS.inrcy.height}" style="display:block;width:${EMAIL_LOGO_DIMENSIONS.inrcy.width}px;max-width:100%;height:auto;border:0;outline:none;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.2;" />
                           </td>
                         </tr>
                       </table>
-                      <div style="display:inline-block;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.14);color:#dbeafe;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;letter-spacing:.05em;">${escapeHtml(badgeLabel)}</div>
+                      <div style="display:inline-block;padding:8px 12px;border-radius:999px;background:#20345f;background-color:#20345f;color:#dbeafe;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;letter-spacing:.05em;">${escapeHtml(badgeLabel)}</div>
                       <div style="height:16px;line-height:16px;font-size:0;">&nbsp;</div>
-                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:32px;line-height:1.15;color:#ffffff;font-weight:900;">${escapeHtml(title)}</div>
+                      <div class="hero-title" style="font-family:Arial,Helvetica,sans-serif;font-size:32px;line-height:1.15;color:#ffffff;font-weight:900;">${escapeHtml(title)}</div>
                       <div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>
-                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.75;color:rgba(255,255,255,.88);max-width:560px;">${escapeHtml(greeting)}<br />${escapeHtml(intro)}</div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.75;color:#eef4ff;max-width:560px;">${escapeHtml(greeting)}<br />${escapeHtml(intro)}</div>
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:0 24px 24px 24px;background:#071736;background-color:#071736;">
+                    <td class="email-pad" style="padding:0 24px 24px 24px;background:#071736;background-color:#071736;">
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0d1630" style="width:100%;border-collapse:separate;border-spacing:0;background:#0d1630;background-color:#0d1630;border:1px solid rgba(148,163,184,.14);border-radius:22px;overflow:hidden;">
                         <tr>
                           <td style="padding:22px 22px 10px 22px;">
@@ -450,7 +473,7 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:0 24px 24px 24px;background:#071736;background-color:#071736;">
+                    <td class="email-pad" style="padding:0 24px 24px 24px;background:#071736;background-color:#071736;">
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#101b38" style="width:100%;border-collapse:separate;border-spacing:0;background:#101b38;background-color:#101b38;border:1px solid rgba(148,163,184,.12);border-radius:22px;overflow:hidden;">
                         <tr>
                           <td style="padding:20px 22px 10px 22px;">
@@ -465,13 +488,13 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:0 24px 16px 24px;background:#071736;background-color:#071736;">
+                    <td class="email-pad" style="padding:0 24px 16px 24px;background:#071736;background-color:#071736;">
                       ${buttons || ""}
                       ${recipient.kind === "pro" ? ctaButton("Ouvrir iNr'Calendar", AGENDA_DASHBOARD_URL, "secondary") : ""}
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:0 24px 24px 24px;background:#071736;background-color:#071736;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.75;color:#97a6c5;">
+                    <td class="email-pad" style="padding:0 24px 24px 24px;background:#071736;background-color:#071736;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.75;color:#97a6c5;">
                       ${escapeHtml(footerText)}
                     </td>
                   </tr>
