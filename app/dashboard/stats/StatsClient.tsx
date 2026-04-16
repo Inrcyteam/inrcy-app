@@ -1492,7 +1492,9 @@ export default function StatsClient() {
 
   const fetchBulkStats = async (period: Period, forceFresh = false): Promise<BulkFetchResult> => {
     const params = new URLSearchParams({ days: String(period) });
+    const expectedSnapshotDate = expectedUiSnapshotDate();
     if (forceFresh) params.set("fresh", "1");
+    if (expectedSnapshotDate) params.set("snapshotDate", expectedSnapshotDate);
     const r = await fetch(`/api/stats/dashboard-bulk?${params.toString()}`, { cache: "no-store" });
     if (!r.ok) {
       throw new Error(await getSimpleFrenchApiError(r));
@@ -1500,7 +1502,7 @@ export default function StatsClient() {
     const json = (await r.json()) as StatsBulkResponse;
     const overviews = (json?.overviews || {}) as Partial<Record<CubeKey, Overview>>;
     const byCubePartial = json?.opportunities?.byCube || {};
-    const snapshotDate = typeof json?.meta?.snapshotDate === "string" ? json.meta.snapshotDate : getOverviewSnapshotDate(overviews);
+    const snapshotDate = typeof json?.meta?.snapshotDate === "string" ? json.meta.snapshotDate : getOverviewSnapshotDate(overviews) || expectedSnapshotDate;
     return {
       overviews,
       summary: {

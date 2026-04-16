@@ -1155,7 +1155,11 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     const silent = options?.silent === true;
     if (!silent || !kpis) setKpisLoading(true);
     try {
-      const url = fresh ? "/api/metrics/summary?fresh=1" : "/api/metrics/summary";
+      const params = new URLSearchParams();
+      const snapshotDate = expectedUiSnapshotDate();
+      if (fresh) params.set("fresh", "1");
+      if (snapshotDate) params.set("snapshotDate", snapshotDate);
+      const url = `/api/metrics/summary${params.toString() ? `?${params.toString()}` : ""}`;
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) {
         if (res.status === 404) {
@@ -1178,8 +1182,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       }
       try {
         const syncedAt = Number.isFinite(Number(options?.syncedAt)) ? Number(options?.syncedAt) : Date.now();
-        const snapshotDate = typeof json?.meta?.snapshotDate === "string" ? json.meta.snapshotDate : null;
-        writeUiCacheValue("inrcy_generator_kpis_v1", JSON.stringify({ syncedAt, snapshotDate, payload: json }));
+        const responseSnapshotDate = typeof json?.meta?.snapshotDate === "string" ? json.meta.snapshotDate : null;
+        writeUiCacheValue("inrcy_generator_kpis_v1", JSON.stringify({ syncedAt, snapshotDate: responseSnapshotDate || snapshotDate || null, payload: json }));
       } catch {
         // ignore
       }
@@ -1222,7 +1226,9 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     await Promise.allSettled(
       periods.map(async (days) => {
         const params = new URLSearchParams({ days: String(days) });
+        const expectedSnapshotDate = expectedUiSnapshotDate();
         if (fresh) params.set("fresh", "1");
+        if (expectedSnapshotDate) params.set("snapshotDate", expectedSnapshotDate);
         const res = await fetch(`/api/stats/dashboard-bulk?${params.toString()}`, {
           cache: "no-store",
           credentials: "include",
@@ -1234,7 +1240,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         const json = await res.json().catch(() => null);
         const overviews = json?.overviews;
         const opportunities = json?.opportunities;
-        const snapshotDate = typeof json?.meta?.snapshotDate === "string" ? json.meta.snapshotDate : getOverviewSnapshotDate(overviews);
+        const snapshotDate = typeof json?.meta?.snapshotDate === "string" ? json.meta.snapshotDate : getOverviewSnapshotDate(overviews) || expectedSnapshotDate;
 
         if (!overviews || typeof overviews !== "object") return;
 
