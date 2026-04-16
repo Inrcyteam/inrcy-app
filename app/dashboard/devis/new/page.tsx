@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
+import { resolveProfileLogoUrl } from "@/lib/profileLogo";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import styles from "../../_documents/documents.module.css";
 import dash from "../../dashboard.module.css";
@@ -30,6 +31,7 @@ type Profile = {
   vat_number?: string | null;
   vat_dispense?: boolean | null;
   logo_url?: string | null;
+  logo_path?: string | null;
 };
 
 type CrmContact = {
@@ -261,12 +263,17 @@ export default function NewDevisPage() {
       const { data } = await supabase
         .from("profiles")
         .select(
-          "user_id,company_legal_name,hq_address,hq_zip,hq_city,contact_email,phone,siren,rcs_city,vat_number,vat_dispense,logo_url"
+          "user_id,company_legal_name,hq_address,hq_zip,hq_city,contact_email,phone,siren,rcs_city,vat_number,vat_dispense,logo_url,logo_path"
         )
         .eq("user_id", user.id)
         .single();
 
-      setProfile((data as Profile) ?? null);
+      const resolvedLogo = await resolveProfileLogoUrl(supabase, {
+        logo_path: data?.logo_path ?? null,
+        logo_url: data?.logo_url ?? null,
+      });
+
+      setProfile(data ? ({ ...(data as Profile), logo_url: resolvedLogo.logoUrl, logo_path: resolvedLogo.logoPath } as Profile) : null);
     };
     load();
   }, [supabase]);

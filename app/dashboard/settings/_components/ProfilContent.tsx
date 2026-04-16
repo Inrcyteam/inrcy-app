@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabaseClient";
+import { createSignedLogoUrl, extractLogoPathFromUrl, resolveProfileLogoUrl, revokeBlobUrl } from "@/lib/profileLogo";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type Props = {
@@ -31,6 +32,7 @@ type ProfilForm = {
   // Logo
   logoPreview: string;
   logoFile: File | null;
+  logoPath: string;
 
   // Légal
   companyLegalName: string; // raison sociale
@@ -75,6 +77,7 @@ export default function ProfilContent({
       phone: "",
       logoPreview: "",
       logoFile: null,
+      logoPath: "",
 
       companyLegalName: "",
       legalForm: "EI",
@@ -125,6 +128,11 @@ export default function ProfilContent({
         if (error) throw new Error(getSimpleFrenchErrorMessage(error));
         if (!data) return;
 
+        const resolvedLogo = await resolveProfileLogoUrl(supabase, {
+          logo_path: data.logo_path ?? null,
+          logo_url: data.logo_url ?? null,
+        });
+
         setForm((prev) => ({
           ...prev,
           contactEmail: data.contact_email ?? prev.contactEmail,
@@ -132,8 +140,9 @@ export default function ProfilContent({
           lastName: data.last_name ?? "",
           phone: data.phone ?? "",
 
-          logoPreview: data.logo_url ?? "",
+          logoPreview: resolvedLogo.logoUrl,
           logoFile: null,
+          logoPath: resolvedLogo.logoPath,
 
           companyLegalName: data.company_legal_name ?? "",
           legalForm: (data.legal_form ?? "EI") as ProfilForm["legalForm"],
@@ -269,14 +278,12 @@ export default function ProfilContent({
     const { error: uploadError } = await supabase.storage.from("logos").upload(path, file, { upsert: true });
     if (uploadError) throw new Error(getSimpleFrenchErrorMessage(uploadError));
 
-    // Bucket privé => URL signée (7 jours)
-    const { data, error: signError } = await supabase.storage.from("logos").createSignedUrl(path, 60 * 60 * 24 * 7);
-
-    if (signError || !data?.signedUrl) {
+    try {
+      const signedUrl = await createSignedLogoUrl(supabase, path);
+      return { path, signedUrl };
+    } catch (signError) {
       throw new Error(getSimpleFrenchErrorMessage(signError, "Impossible de préparer le logo pour le moment."));
     }
-
-    return { path, signedUrl: data.signedUrl };
   }
 
   const handleSave = async () => {
@@ -298,13 +305,16 @@ export default function ProfilContent({
 
       // 1) Upload du logo si un fichier est sélectionné
       let logoUrl = form.logoPreview || "";
+      let logoPath = form.logoPath || extractLogoPathFromUrl(form.logoPreview) || "";
 
       if (form.logoFile) {
-        const { signedUrl } = await uploadLogoIfNeeded(supabase, user.id, form.logoFile);
-        logoUrl = signedUrl;
+        const uploaded = await uploadLogoIfNeeded(supabase, user.id, form.logoFile);
+        logoUrl = uploaded.signedUrl;
+        logoPath = uploaded.path;
 
         // on remplace l'aperçu local par l'URL signée
         onChange("logoPreview", logoUrl);
+        onChange("logoPath", logoPath);
         onChange("logoFile", null);
       }
 
@@ -338,7 +348,8 @@ export default function ProfilContent({
         avg_basket: form.avgBasket,
         lead_conversion_rate: form.leadConversionRate,
 
-        logo_url: logoUrl,
+        logo_path: logoPath || null,
+        logo_url: logoUrl || null,
       };
 
       const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
@@ -477,7 +488,7 @@ export default function ProfilContent({
               const file = e.target.files?.[0];
               if (!file) return;
 
-              if (form.logoPreview) URL.revokeObjectURL(form.logoPreview);
+              revokeBlobUrl(form.logoPreview);
 
               const url = URL.createObjectURL(file);
               onChange("logoFile", file);
@@ -561,7 +572,7 @@ export default function ProfilContent({
               e.preventDefault();
               e.stopPropagation();
 
-              if (form.logoPreview) URL.revokeObjectURL(form.logoPreview);
+              revokeBlobUrl(form.logoPreview);
 
               onChange("logoFile", null);
               onChange("logoPreview", "");
