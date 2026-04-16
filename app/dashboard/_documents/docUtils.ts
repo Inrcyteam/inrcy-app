@@ -72,6 +72,14 @@ export function generateNumber(prefix: "FAC" | "DEV") {
 
 export type DocKind = "facture" | "devis";
 
+export type DocStatus =
+  | "brouillon"
+  | "envoye"
+  | "paye"
+  | "en_attente_paiement"
+  | "accepte"
+  | "annule";
+
 export type DocRecord = {
   id: string;
   kind: DocKind;
@@ -81,10 +89,14 @@ export type DocRecord = {
   clientName: string;
   clientAddress?: string;
   clientEmail?: string;
-  status: "brouillon" | "envoye" | "paye";
+  status: DocStatus;
   lines: LineItem[];
   vatDispense?: boolean;
   validityDays?: number; // pour devis (ex: 30)
+  // Cycle de vie léger pour la facture électronique
+  isFinalized?: boolean;
+  finalizedAtISO?: string | null;
+  lockedAtISO?: string | null;
   // Remise commerciale (appliquée sur le TOTAL TTC)
   discountKind?: DiscountKind;
   discountValue?: number;

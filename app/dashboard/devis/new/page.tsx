@@ -102,6 +102,7 @@ export default function NewDevisPage() {
   const [crmError, setCrmError] = useState<string | null>(null);
   const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
   const [formMessage, setFormMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [currentSaveId, setCurrentSaveId] = useState<string>("");
 
   // UI dropdown custom (style "select blanc", 10 items visibles + scroll)
   const [crmOpen, setCrmOpen] = useState(false);
@@ -401,6 +402,7 @@ export default function NewDevisPage() {
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
 
   const saveDraft = async (options?: { silent?: boolean }) => {
+    const nowISO = new Date().toISOString();
     const finalNumber = number || generateNumber("DEV");
     if (!number) setNumber(finalNumber);
 
@@ -429,18 +431,35 @@ export default function NewDevisPage() {
       snapshot.number ||
       "Sauvegarde";
 
-    const { data: insertedSave, error } = await supabase.from("doc_saves").insert({
-      user_id: user.id,
-      type: SAVES_TYPE,
-      name: autoName,
-      payload: snapshot,
-    }).select("id").single();
+    const saveMutation = currentSaveId
+      ? supabase
+          .from("doc_saves")
+          .update({
+            name: autoName,
+            payload: snapshot,
+            updated_at: nowISO,
+          })
+          .eq("user_id", user.id)
+          .eq("type", SAVES_TYPE)
+          .eq("id", currentSaveId)
+      : supabase.from("doc_saves").insert({
+          user_id: user.id,
+          type: SAVES_TYPE,
+          name: autoName,
+          payload: snapshot,
+          updated_at: nowISO,
+        });
+
+    const { data: savedRows, error } = await saveMutation.select("id");
 
     if (error) {
       console.error(error);
       setFormMessage({ type: "error", text: "Impossible d’enregistrer ce devis pour le moment." });
       return;
     }
+
+    const savedId = (savedRows?.[0] as { id?: string } | undefined)?.id || currentSaveId;
+    if (savedId) setCurrentSaveId(savedId);
 
     const { data: ids } = await supabase
       .from("doc_saves")
@@ -463,10 +482,10 @@ export default function NewDevisPage() {
     await refreshSaves();
     if (!options?.silent) {
       setDraftsOpen(true);
-      setFormMessage({ type: "success", text: "Devis enregistré." });
+      setFormMessage({ type: "success", text: currentSaveId ? "Devis mis à jour." : "Devis enregistré." });
     }
 
-    return insertedSave?.id as string | undefined;
+    return savedId as string | undefined;
   };
 
   const applyDraftSnapshot = (s: DevisDraft["snapshot"]) => {
@@ -494,6 +513,7 @@ export default function NewDevisPage() {
 
   const openDraft = (d: DevisDraft) => {
     applyDraftSnapshot(d.snapshot);
+    setCurrentSaveId(d.id);
     setDraftsOpen(false);
   };
 
@@ -510,6 +530,7 @@ export default function NewDevisPage() {
       .eq("type", SAVES_TYPE)
       .eq("id", id);
 
+    if (currentSaveId === id) setCurrentSaveId("");
     await refreshSaves();
   };
 
@@ -674,6 +695,7 @@ export default function NewDevisPage() {
                   setClientAddress("");
 
                   // Devis
+                  setCurrentSaveId("");
                   setNumber(generateNumber("DEV"));
                   setDocDateISO(new Date().toISOString().slice(0, 10));
                   setValidityDays(30);

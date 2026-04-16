@@ -1,18 +1,10 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "../_documents/documents.module.css";
-import {
-  DocRecord,
-  calcTotalsWithDiscount,
-  deleteDoc,
-  duplicateDoc,
-  formatEuro,
-  loadDocs,
-  setStatus,
-  transformDevisToFacture,
-} from "../_documents/docUtils";
+import { type DocRecord, calcTotalsWithDiscount, formatEuro, loadDocs } from "../_documents/docUtils";
+import { deleteDocRecord, duplicateDocRecord, fetchDocRecords } from "../_documents/docSaveStore";
 
 type Props = {
   kind: "devis" | "facture";
@@ -25,11 +17,28 @@ type Row = DocRecord & { totals: ReturnType<typeof calcTotalsWithDiscount> };
 
 export default function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
   const router = useRouter();
-  const [docs, setDocs] = useState<DocRecord[]>(() => loadDocs().filter((d) => d.kind === kind));
+  const [docs, setDocs] = useState<DocRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [storageMode, setStorageMode] = useState<"supabase" | "local">("supabase");
 
-  const refresh = useCallback(() => {
-    setDocs(loadDocs().filter((d) => d.kind === kind));
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const next = await fetchDocRecords(kind);
+      setDocs(next);
+      setStorageMode("supabase");
+    } catch (error) {
+      console.error(error);
+      setDocs(loadDocs().filter((d) => d.kind === kind));
+      setStorageMode("local");
+    } finally {
+      setLoading(false);
+    }
   }, [kind]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const rows: Row[] = useMemo(() => {
     return docs.map((d) => ({
@@ -38,26 +47,31 @@ export default function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
     }));
   }, [docs]);
 
-  const onDuplicate = (id: string) => {
-    duplicateDoc(id);
-    refresh();
+  const onOpen = (id: string) => {
+    router.push(`/dashboard/devis/new?saveId=${encodeURIComponent(id)}`);
   };
 
-  const onMarkPaid = (id: string, isAlreadyPaid: boolean) => {
-    if (isAlreadyPaid) return;
-    setStatus(id, "paye");
-    refresh();
+  const onDuplicate = async (id: string) => {
+    try {
+      const duplicatedId = await duplicateDocRecord(kind, id);
+      await refresh();
+      if (duplicatedId) router.push(`/dashboard/devis/new?saveId=${encodeURIComponent(duplicatedId)}`);
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const onTransform = (id: string) => {
-    const created = transformDevisToFacture(id);
-    refresh();
-    if (created) router.push("/dashboard/factures");
+    router.push(`/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent(id)}`);
   };
 
-  const onDelete = (id: string) => {
-    deleteDoc(id);
-    refresh();
+  const onDelete = async (id: string) => {
+    try {
+      await deleteDocRecord(kind, id);
+      await refresh();
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   return (
@@ -66,7 +80,9 @@ export default function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
         <div>
           <h1 className={styles.listTitle}>{title}</h1>
           <p className={styles.listSub}>
-            Historique local (stocké dans le navigateur). On branchera Supabase ensuite.
+            {storageMode === "supabase"
+              ? "Brouillons et versions synchronisés via iNrSend."
+              : "Affichage de secours depuis le navigateur."}
           </p>
         </div>
         <button type="button" onClick={() => router.push(ctaHref)} className={styles.primaryBtn}>
@@ -75,7 +91,9 @@ export default function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
       </div>
 
       <div className={styles.tableCard}>
-        {rows.length === 0 ? (
+        {loading ? (
+          <div className={styles.empty}>Chargement…</div>
+        ) : rows.length === 0 ? (
           <div className={styles.empty}>
             Aucun document pour l’instant.
             <div style={{ marginTop: 10 }}>
@@ -93,57 +111,43 @@ export default function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
                 <th>Date</th>
                 <th>Statut</th>
                 <th style={{ textAlign: "right" }}>Total</th>
-                <th style={{ width: 300 }}></th>
+                <th style={{ width: 380 }}></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((d) => {
-                const isPaid = d.status === "paye";
-                return (
-                  <tr key={d.id}>
-                    <td style={{ fontWeight: 650 }}>{d.number}</td>
-                    <td>{d.clientName}</td>
-                    <td>{new Date(d.createdAtISO).toLocaleDateString("fr-FR")}</td>
-                    <td>{d.status}</td>
-                    <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {formatEuro(d.totals.totalDue ?? d.totals.totalTTC)}
-                    </td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        display: "flex",
-                        gap: 8,
-                        justifyContent: "flex-end",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <button type="button" onClick={() => onDuplicate(d.id)} className={styles.ghostBtn}>
-                        Dupliquer
-                      </button>
-
-                      {kind === "facture" ? (
-                        <button
-                          type="button"
-                          onClick={() => onMarkPaid(d.id, isPaid)}
-                          className={styles.ghostBtn}
-                          disabled={isPaid}
-                          style={isPaid ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
-                        >
-                          Marquer payé
-                        </button>
-                      ) : (
-                        <button type="button" onClick={() => onTransform(d.id)} className={styles.ghostBtn}>
-                          → Facture
-                        </button>
-                      )}
-
-                      <button type="button" onClick={() => onDelete(d.id)} className={styles.ghostBtn}>
-                        Supprimer
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {rows.map((d) => (
+                <tr key={d.id}>
+                  <td style={{ fontWeight: 650 }}>{d.number}</td>
+                  <td>{d.clientName}</td>
+                  <td>{new Date(d.createdAtISO).toLocaleDateString("fr-FR")}</td>
+                  <td>{d.status}</td>
+                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {formatEuro(d.totals.totalDue ?? d.totals.totalTTC)}
+                  </td>
+                  <td
+                    style={{
+                      textAlign: "right",
+                      display: "flex",
+                      gap: 8,
+                      justifyContent: "flex-end",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <button type="button" onClick={() => onOpen(d.id)} className={styles.ghostBtn}>
+                      Ouvrir
+                    </button>
+                    <button type="button" onClick={() => onDuplicate(d.id)} className={styles.ghostBtn}>
+                      Dupliquer
+                    </button>
+                    <button type="button" onClick={() => onTransform(d.id)} className={styles.ghostBtn}>
+                      → Facture
+                    </button>
+                    <button type="button" onClick={() => onDelete(d.id)} className={styles.ghostBtn}>
+                      Supprimer
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         )}

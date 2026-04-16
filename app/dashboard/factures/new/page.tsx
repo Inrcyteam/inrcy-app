@@ -98,6 +98,7 @@ export default function NewFacturePage() {
   const [crmError, setCrmError] = useState<string | null>(null);
   const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
   const [formMessage, setFormMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [currentSaveId, setCurrentSaveId] = useState<string>("");
 
   const [crmOpen, setCrmOpen] = useState(false);
   const crmSelectRef = useRef<HTMLDivElement | null>(null);
@@ -273,6 +274,12 @@ export default function NewFacturePage() {
       discountKind: DiscountKind | "";
       discountValue: number;
       discountDetails: string;
+      isFinalized?: boolean;
+      finalizedAt?: string | null;
+      lockedAt?: string | null;
+      officialNumberAssignedAt?: string | null;
+      officialSequenceYear?: number | null;
+      officialSequenceValue?: number | null;
     };
   };
 
@@ -295,6 +302,10 @@ export default function NewFacturePage() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [drafts, setDrafts] = useState<FactureDraft[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
+  const [isFinalized, setIsFinalized] = useState(false);
+  const [finalizedAt, setFinalizedAt] = useState<string>("");
+  const [finalizing, setFinalizing] = useState(false);
+  const coreEditingLocked = isFinalized;
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -378,6 +389,8 @@ export default function NewFacturePage() {
     setDiscountKind(s.discountKind);
     setDiscountValue(s.discountValue);
     setDiscountDetails(s.discountDetails || "");
+    setIsFinalized(!!s.isFinalized);
+    setFinalizedAt(typeof s.finalizedAt === "string" ? s.finalizedAt : "");
   };
 
   useEffect(() => {
@@ -414,6 +427,7 @@ export default function NewFacturePage() {
 
       if (!cancelled) {
         applyDraftSnapshot(data.payload as FactureDraft["snapshot"]);
+        setCurrentSaveId(data.id);
         setFormMessage({ type: "success", text: "Facture réouverte depuis iNrSend." });
       }
     };
@@ -467,6 +481,9 @@ export default function NewFacturePage() {
       due.setDate(due.getDate() + 30);
 
       if (!cancelled) {
+        setCurrentSaveId("");
+        setIsFinalized(false);
+        setFinalizedAt("");
         setNumber(generateNumber("FAC"));
         setInvoiceDate(now.toISOString().slice(0, 10));
         setDueDate(due.toISOString().slice(0, 10));
@@ -519,6 +536,7 @@ export default function NewFacturePage() {
 
 
   const saveDraft = async (options?: { silent?: boolean }) => {
+    const nowISO = new Date().toISOString();
     const finalNumber = number || generateNumber("FAC");
     if (!number) setNumber(finalNumber);
 
@@ -537,6 +555,9 @@ export default function NewFacturePage() {
       discountKind,
       discountValue: Number(discountValue) || 0,
       discountDetails,
+      isFinalized,
+      finalizedAt: finalizedAt || null,
+      lockedAt: finalizedAt || null,
     };
 
     const {
@@ -551,18 +572,35 @@ export default function NewFacturePage() {
       snapshot.number ||
       "Sauvegarde";
 
-    const { data: insertedSave, error } = await supabase.from("doc_saves").insert({
-      user_id: user.id,
-      type: SAVES_TYPE,
-      name: autoName,
-      payload: snapshot,
-    }).select("id").single();
+    const saveMutation = currentSaveId
+      ? supabase
+          .from("doc_saves")
+          .update({
+            name: autoName,
+            payload: snapshot,
+            updated_at: nowISO,
+          })
+          .eq("user_id", user.id)
+          .eq("type", SAVES_TYPE)
+          .eq("id", currentSaveId)
+      : supabase.from("doc_saves").insert({
+          user_id: user.id,
+          type: SAVES_TYPE,
+          name: autoName,
+          payload: snapshot,
+          updated_at: nowISO,
+        });
+
+    const { data: savedRows, error } = await saveMutation.select("id");
 
     if (error) {
       console.error(error);
       setFormMessage({ type: "error", text: "Impossible d’enregistrer cette facture pour le moment." });
       return;
     }
+
+    const savedId = (savedRows?.[0] as { id?: string } | undefined)?.id || currentSaveId;
+    if (savedId) setCurrentSaveId(savedId);
 
     // Enforce limit (keep most recent)
     const { data: ids } = await supabase
@@ -586,14 +624,61 @@ export default function NewFacturePage() {
     await refreshSaves();
     if (!options?.silent) {
       setDraftsOpen(true);
-      setFormMessage({ type: "success", text: "Facture enregistrée." });
+      setFormMessage({ type: "success", text: currentSaveId ? "Facture mise à jour." : "Facture enregistrée." });
     }
 
-    return insertedSave?.id as string | undefined;
+    return savedId as string | undefined;
+  };
+
+  const finalizeInvoice = async (
+    docSaveId: string,
+    targetStatus: "en_attente_paiement" | "envoye" | "paye" = "en_attente_paiement"
+  ) => {
+    setFinalizing(true);
+    try {
+      const res = await fetch("/api/factures/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ docSaveId, targetStatus }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(getSimpleFrenchErrorMessage(json?.error, "Impossible de figer cette facture pour le moment."));
+      }
+
+      const officialNumber = typeof json?.number === "string" && json.number ? json.number : number;
+      const nextStatus =
+        typeof json?.status === "string" && json.status
+          ? (json.status as DocRecord["status"])
+          : ((targetStatus as DocRecord["status"]) || "en_attente_paiement");
+      const nextFinalizedAt = typeof json?.finalizedAt === "string" ? json.finalizedAt : new Date().toISOString();
+
+      setCurrentSaveId(docSaveId);
+      setNumber(officialNumber);
+      setStatus(nextStatus);
+      setIsFinalized(true);
+      setFinalizedAt(nextFinalizedAt);
+      await refreshSaves();
+
+      return {
+        docSaveId,
+        number: officialNumber,
+        status: nextStatus,
+        finalizedAt: nextFinalizedAt,
+      };
+    } catch (error) {
+      const text = getSimpleFrenchErrorMessage(error, "Impossible de figer cette facture pour le moment.");
+      setFormMessage({ type: "error", text });
+      return null;
+    } finally {
+      setFinalizing(false);
+    }
   };
 
   const openDraft = (d: FactureDraft) => {
     applyDraftSnapshot(d.snapshot);
+    setCurrentSaveId(d.id);
     setDraftsOpen(false);
   };
 
@@ -610,6 +695,7 @@ export default function NewFacturePage() {
       .eq("type", SAVES_TYPE)
       .eq("id", id);
 
+    if (currentSaveId === id) setCurrentSaveId("");
     await refreshSaves();
   };
 
@@ -661,7 +747,7 @@ export default function NewFacturePage() {
     return pdf.output("blob") as Blob;
   };
 
-  const uploadPdfAndOpenCompose = async (to: string, filename: string) => {
+  const uploadPdfAndOpenCompose = async (to: string, filename?: string) => {
     const {
       data: { user },
       error: userErr,
@@ -677,13 +763,20 @@ export default function NewFacturePage() {
       return;
     }
 
+    const finalized = await finalizeInvoice(docSaveId, "envoye");
+    if (!finalized) return;
+
+    const officialNumber = finalized.number || number || generateNumber("FAC");
+    if (!number || number !== officialNumber) setNumber(officialNumber);
+
     const pdfBlob = await buildPdfBlob();
     if (!pdfBlob) {
       setFormMessage({ type: "error", text: "Impossible de générer le PDF de cette facture pour le moment." });
       return;
     }
 
-    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const rawFilename = filename && filename.trim() ? filename : `${officialNumber}.pdf`;
+    const safeName = rawFilename.replace(/[^a-zA-Z0-9._-]/g, "_");
     const key = `${user.id}/factures/${Date.now()}_${safeName}`;
 
     const { error: upErr } = await supabase.storage
@@ -705,7 +798,7 @@ export default function NewFacturePage() {
     params.set("type", "facture");
     params.set("docSaveId", docSaveId);
     params.set("docType", "facture");
-    params.set("docNumber", number || safeName.replace(/\.pdf$/i, ""));
+    params.set("docNumber", officialNumber || safeName.replace(/\.pdf$/i, ""));
     router.push(`/dashboard/mails?${params.toString()}`);
   };
 
@@ -728,6 +821,23 @@ export default function NewFacturePage() {
             {formMessage ? (
               <div style={{ marginTop: 10, color: formMessage.type === "success" ? "#22c55e" : "#ef4444", fontWeight: 800, fontSize: 13 }}>
                 {formMessage.text}
+              </div>
+            ) : null}
+
+            {isFinalized ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  background: "rgba(34,197,94,0.12)",
+                  border: "1px solid rgba(34,197,94,0.35)",
+                  fontSize: 13,
+                  lineHeight: 1.4,
+                }}
+              >
+                Facture figée avec le numéro officiel <strong>{number || "—"}</strong>
+                {finalizedAt ? <> · figée le {new Date(finalizedAt).toLocaleString("fr-FR")}</> : null}
               </div>
             ) : null}
 
@@ -760,6 +870,9 @@ export default function NewFacturePage() {
         setClientEmail("");
         setClientAddress("");
 
+        setCurrentSaveId("");
+        setIsFinalized(false);
+        setFinalizedAt("");
         setNumber(generateNumber("FAC"));
         const d = new Date();
         setInvoiceDate(d.toISOString().slice(0, 10));
@@ -879,7 +992,7 @@ export default function NewFacturePage() {
               type="button"
               className={styles.crmSelectButton}
               onClick={() => setCrmOpen((v) => !v)}
-              disabled={crmLoading}
+              disabled={crmLoading || coreEditingLocked}
             >
               <span>
                 {selectedCrmLabel ||
@@ -925,6 +1038,7 @@ export default function NewFacturePage() {
             value={clientName}
             onChange={(e) => setClientName(e.target.value)}
             placeholder="Nom du client"
+            disabled={coreEditingLocked}
           />
         </div>
 
@@ -934,6 +1048,7 @@ export default function NewFacturePage() {
             value={clientAddress}
             onChange={(e) => setClientAddress(e.target.value)}
             placeholder="Adresse, ville"
+            disabled={coreEditingLocked}
           />
         </div>
 
@@ -943,6 +1058,7 @@ export default function NewFacturePage() {
             value={clientEmail}
             onChange={(e) => setClientEmail(e.target.value)}
             placeholder="email@client.fr"
+            disabled={coreEditingLocked}
           />
         </div>
 
@@ -953,6 +1069,7 @@ export default function NewFacturePage() {
               value={number}
               onChange={(e) => setNumber(e.target.value)}
               placeholder="FAC-YYYYMMDD-XXXX"
+              disabled={coreEditingLocked}
             />
           </div>
 
@@ -962,6 +1079,7 @@ export default function NewFacturePage() {
               type="date"
               value={invoiceDate}
               onChange={(e) => setInvoiceDate(e.target.value)}
+              disabled={coreEditingLocked}
             />
           </div>
         </div>
@@ -972,6 +1090,7 @@ export default function NewFacturePage() {
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
+            disabled={coreEditingLocked}
           />
         </div>
 
@@ -993,8 +1112,8 @@ export default function NewFacturePage() {
                 color: "white",
               }}
             >
-              <option value="">—</option>
-              <option value="brouillon">brouillon</option>
+              {!isFinalized ? <option value="">—</option> : null}
+              {!isFinalized ? <option value="brouillon">brouillon</option> : null}
               <option value="en_attente_paiement">en attente de paiement</option>
               <option value="envoye">envoyé</option>
               <option value="paye">payé</option>
@@ -1048,14 +1167,31 @@ export default function NewFacturePage() {
         <div
           style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}
         >
-          <button type="button" onClick={addLine}>
+          <button type="button" onClick={addLine} disabled={coreEditingLocked}>
             + Ajouter une ligne
           </button>
-          <button type="button" onClick={() => { void saveDraft(); }}>
+          <button type="button" onClick={() => { void saveDraft(); }} disabled={finalizing}>
             Sauvegarder
           </button>
+          {!isFinalized ? (
+            <button
+              type="button"
+              disabled={finalizing}
+              onClick={async () => {
+                const docSaveId = await saveDraft({ silent: true });
+                if (!docSaveId) return;
+                const finalized = await finalizeInvoice(docSaveId, "en_attente_paiement");
+                if (finalized) {
+                  setFormMessage({ type: "success", text: `Facture figée sous le numéro ${finalized.number}.` });
+                }
+              }}
+            >
+              {finalizing ? "Émission…" : "Émettre / figer"}
+            </button>
+          ) : null}
           <button
             type="button"
+            disabled={finalizing}
             onClick={async () => {
               const to = (clientEmail || "").trim();
               if (!to) {
@@ -1063,15 +1199,12 @@ export default function NewFacturePage() {
                 return;
               }
 
-              const finalNumber = number || generateNumber("FAC");
-              if (!number) setNumber(finalNumber);
-
-              await uploadPdfAndOpenCompose(to, `${finalNumber}.pdf`);
+              await uploadPdfAndOpenCompose(to);
             }}
           >
-            Envoyer par mail
+            {finalizing ? "Préparation…" : "Envoyer par mail"}
           </button>
-          <button type="button" onClick={print}>
+          <button type="button" onClick={print} disabled={finalizing}>
             Imprimer / PDF
           </button>
         </div>
@@ -1186,6 +1319,7 @@ export default function NewFacturePage() {
                       updateLine(l.id, { label: e.target.value })
                     }
                     placeholder="Ex: Réparation / entretien"
+                    disabled={coreEditingLocked}
                     style={{
                       width: "100%",
                       border: "1px solid #e5e7eb",
@@ -1201,6 +1335,7 @@ export default function NewFacturePage() {
                     onChange={(e) =>
                       updateLine(l.id, { qty: Number(e.target.value) })
                     }
+                    disabled={coreEditingLocked}
                     style={{
                       width: 64,
                       border: "1px solid #e5e7eb",
@@ -1218,6 +1353,7 @@ export default function NewFacturePage() {
                         unitPrice: Number(e.target.value),
                       })
                     }
+                    disabled={coreEditingLocked}
                     style={{
                       width: 110,
                       border: "1px solid #e5e7eb",
@@ -1229,7 +1365,7 @@ export default function NewFacturePage() {
                 <td>
                   <select
                     value={vatDispense ? 0 : l.vatRate}
-                    disabled={vatDispense}
+                    disabled={vatDispense || coreEditingLocked}
                     onChange={(e) =>
                       updateLine(l.id, { vatRate: Number(e.target.value) })
                     }
@@ -1268,6 +1404,7 @@ export default function NewFacturePage() {
                         cursor: "pointer",
                       }}
                       title="Supprimer la ligne"
+                      disabled={coreEditingLocked}
                     >
                       −
                     </button>
@@ -1304,6 +1441,7 @@ export default function NewFacturePage() {
               <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 8 }}>
                 <select
                   value={discountKind}
+                  disabled={coreEditingLocked}
                   onChange={(e) => {
                     const v = e.target.value as any;
                     setDiscountKind(v);
@@ -1328,14 +1466,14 @@ export default function NewFacturePage() {
                   value={discountValue}
                   onChange={(e) => setDiscountValue(Number(e.target.value) || 0)}
                   placeholder={discountKind === "percent" ? "Ex: 10" : "Ex: 50"}
-                  disabled={!discountKind}
+                  disabled={!discountKind || coreEditingLocked}
                 style={{ width: "100%", background: "white", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 12px", color: "#111" }}
                 />
                 <textarea
                   value={discountDetails}
                   onChange={(e) => setDiscountDetails(e.target.value)}
                   placeholder="Détail de la remise (optionnel)"
-                  disabled={!discountKind}
+                  disabled={!discountKind || coreEditingLocked}
                   rows={2}
                   style={{ gridColumn: "1 / -1", width: "100%", background: "white", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 12px", color: "#111", resize: "vertical" }}
                 />
