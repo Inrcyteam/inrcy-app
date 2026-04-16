@@ -966,7 +966,7 @@ export default function NewFacturePage() {
         <div className={styles.panel}>
          <div className={styles.panelHeaderStack}>
   <div className={styles.panelHeaderTopRow}>
-    <h1>Créer une facture</h1>
+    <h1 className={styles.titleBadge}>Créer une facture</h1>
     <button type="button" className={styles.closeBtn} onClick={() => router.push("/dashboard")}>
       Fermer
     </button>
@@ -1243,14 +1243,15 @@ export default function NewFacturePage() {
         </div>
 
         <div className={styles.field}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: coreEditingLocked ? "not-allowed" : "pointer" }}>
+          <label className={styles.checkboxLabel} style={{ cursor: coreEditingLocked ? "not-allowed" : "pointer" }}>
             <input
+              className={styles.checkboxInput}
               type="checkbox"
               checked={sameAddresses}
               onChange={(e) => setSameAddresses(e.target.checked)}
               disabled={coreEditingLocked}
             />
-            Adresse de livraison identique à l’adresse de facturation
+            <span>Adresse de livraison identique à l’adresse de facturation</span>
           </label>
         </div>
 
@@ -1287,7 +1288,7 @@ export default function NewFacturePage() {
           />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className={styles.twoCol}>
           <div className={styles.field}>
             <label>Numéro de facture</label>
             <input
@@ -1319,7 +1320,7 @@ export default function NewFacturePage() {
           />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className={styles.twoCol}>
           <div className={styles.field}>
             <label>Type de document</label>
             <select
@@ -1365,7 +1366,7 @@ export default function NewFacturePage() {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className={styles.twoCol}>
           <div className={styles.field}>
             <label>Date de prestation / livraison</label>
             <input
@@ -1390,7 +1391,7 @@ export default function NewFacturePage() {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className={styles.twoCol}>
           <div className={styles.field}>
             <label>Période de prestation — début</label>
             <input
@@ -1412,7 +1413,7 @@ export default function NewFacturePage() {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className={styles.purchaseDepositRow}>
           <div className={styles.field}>
             <label>Référence commande / PO</label>
             <input
@@ -1425,7 +1426,7 @@ export default function NewFacturePage() {
 
           <div className={styles.field}>
             <label>Acompte</label>
-            <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 8 }}>
+            <div className={styles.depositInline}>
               <select
                 value={depositKind}
                 onChange={(e) => setDepositKind(e.target.value as "" | "percent" | "amount")}
@@ -1436,6 +1437,8 @@ export default function NewFacturePage() {
                   borderRadius: 10,
                   padding: "10px 12px",
                   color: "white",
+                  width: "100%",
+                  minWidth: 0,
                 }}
               >
                 <option value="">—</option>
@@ -1450,37 +1453,40 @@ export default function NewFacturePage() {
                 onChange={(e) => setDepositValue(e.target.value)}
                 placeholder={depositKind === "amount" ? "Ex : 300" : "Ex : 30"}
                 disabled={coreEditingLocked || !depositKind}
+                style={{ width: "100%", minWidth: 0 }}
               />
             </div>
           </div>
         </div>
 
         <div className={styles.field}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: coreEditingLocked ? "not-allowed" : "pointer" }}>
+          <label className={styles.checkboxLabel} style={{ cursor: coreEditingLocked ? "not-allowed" : "pointer" }}>
             <input
+              className={styles.checkboxInput}
               type="checkbox"
               checked={vatOnDebits}
               onChange={(e) => setVatOnDebits(e.target.checked)}
               disabled={coreEditingLocked}
             />
-            TVA sur les débits (si applicable)
+            <span>TVA sur les débits (si applicable)</span>
           </label>
         </div>
 
         <div className={styles.field}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: coreEditingLocked ? "not-allowed" : "pointer" }}>
+          <label className={styles.checkboxLabel} style={{ cursor: coreEditingLocked ? "not-allowed" : "pointer" }}>
             <input
+              className={styles.checkboxInput}
               type="checkbox"
               checked={fixedRecoveryFee40}
               onChange={(e) => setFixedRecoveryFee40(e.target.checked)}
               disabled={coreEditingLocked}
             />
-            Mentionner l’indemnité forfaitaire de 40 € pour frais de recouvrement
+            <span>Mentionner l’indemnité forfaitaire de 40 € pour frais de recouvrement</span>
           </label>
         </div>
 
         <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}
+          className={styles.twoCol}
         >
           <div className={styles.field}>
             <label>Statut</label>

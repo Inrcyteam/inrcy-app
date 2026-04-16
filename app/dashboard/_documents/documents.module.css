@@ -1,16 +1,32 @@
 /* --- Layout create page --- */
 .container {
   display: grid;
-  grid-template-columns: 420px 1fr;
-  gap: 24px;
-  padding: 24px;
+  grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+  gap: 20px;
+  padding: 22px 20px 24px 12px;
+  max-width: 1460px;
+  margin: 0 auto;
+  align-items: start;
+  box-sizing: border-box;
+}
+
+.container > * {
+  min-width: 0;
 }
 
 /* ✅ Responsive: sur mobile on empile formulaire + aperçu */
+@media (max-width: 1180px) {
+  .container {
+    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+    gap: 16px;
+    padding: 18px 16px 22px 10px;
+  }
+}
+
 @media (max-width: 900px) {
   .container {
     grid-template-columns: 1fr;
-    padding: 14px;
+    padding: 12px 12px 16px 8px;
     gap: 14px;
   }
 
@@ -68,6 +84,8 @@
 }
 
 .panel {
+  min-width: 0;
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px;
@@ -201,6 +219,9 @@
 }
 
 .preview {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
   position: relative; /* <— IMPORTANT : l’absolu se cale sur la page blanche */
   background: white;
   color: #111;
@@ -778,4 +799,82 @@
   background: rgba(0,0,0,0.06);
   border-color: rgba(0,0,0,0.08);
   outline: none;
+}
+
+
+.titleBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(56,189,248,0.22) 0%, rgba(167,139,250,0.22) 38%, rgba(244,114,182,0.22) 72%, rgba(251,146,60,0.22) 100%);
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 10px 28px rgba(10, 15, 35, 0.28);
+  font-size: clamp(24px, 2vw, 30px);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.twoCol {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.purchaseDepositRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 310px);
+  gap: 10px;
+  align-items: end;
+}
+
+.depositInline {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  flex-wrap: wrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.checkboxInput {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: #38bdf8;
+}
+
+@media (max-width: 1180px) {
+  .twoCol,
+  .purchaseDepositRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .titleBadge {
+    min-height: 44px;
+    padding: 8px 14px;
+    font-size: 22px;
+  }
+
+  .depositInline {
+    grid-template-columns: 118px minmax(0, 1fr);
+  }
+
+  .checkboxLabel {
+    gap: 8px;
+  }
 }

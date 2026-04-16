@@ -740,7 +740,7 @@ export default function NewDevisPage() {
         <div className={styles.panel}>
           <div className={styles.panelHeaderStack}>
             <div className={styles.panelHeaderTopRow}>
-              <h1>Créer un devis</h1>
+              <h1 className={styles.titleBadge}>Créer un devis</h1>
               <button type="button" className={styles.closeBtn} onClick={() => router.push("/dashboard")}>
                 Fermer
               </button>
@@ -981,13 +981,14 @@ export default function NewDevisPage() {
           </div>
 
           <div className={styles.field}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <label className={styles.checkboxLabel}>
               <input
+                className={styles.checkboxInput}
                 type="checkbox"
                 checked={sameAddresses}
                 onChange={(e) => setSameAddresses(e.target.checked)}
               />
-              Adresse de livraison identique à l’adresse de facturation
+              <span>Adresse de livraison identique à l’adresse de facturation</span>
             </label>
           </div>
 
@@ -1018,7 +1019,7 @@ export default function NewDevisPage() {
             <input value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="email@client.fr" />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className={styles.twoCol}>
             <div className={styles.field}>
               <label>Numéro de devis</label>
               <input
@@ -1049,7 +1050,7 @@ export default function NewDevisPage() {
             />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className={styles.twoCol}>
             <div className={styles.field}>
               <label>Catégorie d’opération</label>
               <select
@@ -1081,7 +1082,7 @@ export default function NewDevisPage() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className={styles.twoCol}>
             <div className={styles.field}>
               <label>Période de prestation — début</label>
               <input
@@ -1101,7 +1102,7 @@ export default function NewDevisPage() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className={styles.purchaseDepositRow}>
             <div className={styles.field}>
               <label>Référence commande / PO</label>
               <input
@@ -1113,7 +1114,7 @@ export default function NewDevisPage() {
 
             <div className={styles.field}>
               <label>Acompte demandé</label>
-              <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 8 }}>
+              <div className={styles.depositInline}>
                 <select
                   value={depositKind}
                   onChange={(e) => setDepositKind(e.target.value as "" | "percent" | "amount")}
@@ -1123,6 +1124,8 @@ export default function NewDevisPage() {
                     borderRadius: 10,
                     padding: "10px 12px",
                     color: "white",
+                    width: "100%",
+                    minWidth: 0,
                   }}
                 >
                   <option value="">—</option>
@@ -1137,6 +1140,7 @@ export default function NewDevisPage() {
                   onChange={(e) => setDepositValue(e.target.value)}
                   placeholder={depositKind === "amount" ? "Ex : 300" : "Ex : 30"}
                   disabled={!depositKind}
+                  style={{ width: "100%", minWidth: 0 }}
                 />
               </div>
             </div>
