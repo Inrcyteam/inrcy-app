@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { revokeGoogleTokensBestEffort } from "@/lib/googleOAuthRevoke";
+import { revokeGoogleTokensBestEffort, shouldRevokeGoogleTokensForDisconnect } from "@/lib/googleOAuthRevoke";
 import { syncSitePresenceIntegrations } from '@/lib/sitePresenceSync';
 
 type RevokeRow = {
   id?: string | null;
   access_token_enc?: string | null;
   refresh_token_enc?: string | null;
+  provider_account_id?: string | null;
+  email_address?: string | null;
 };
 
 function asRecord(v: unknown): Record<string, unknown> {
@@ -35,18 +37,27 @@ export async function POST(request: Request) {
 
   const { data: revokeRows } = await supabaseAdmin
     .from("integrations")
-    .select("id,access_token_enc,refresh_token_enc")
+    .select("id,access_token_enc,refresh_token_enc,provider_account_id,email_address")
     .eq("user_id", userId)
     .eq("provider", "google")
     .eq("source", source)
     .eq("product", product);
 
-  await revokeGoogleTokensBestEffort((revokeRows || []).map((row: RevokeRow) => ({
-    integrationId: String(row?.id || ""),
-    accessTokenEnc: row?.access_token_enc || null,
-    refreshTokenEnc: row?.refresh_token_enc || null,
+  const googleStatsRows = (revokeRows || []) as RevokeRow[];
+  const canRevokeGoogleAuth = await shouldRevokeGoogleTokensForDisconnect({
+    userId,
+    rows: googleStatsRows,
     context: `google_stats_disconnect:${source}:${product}`,
-  })));
+  });
+
+  if (canRevokeGoogleAuth) {
+    await revokeGoogleTokensBestEffort(googleStatsRows.map((row: RevokeRow) => ({
+      integrationId: String(row?.id || ""),
+      accessTokenEnc: row?.access_token_enc || null,
+      refreshTokenEnc: row?.refresh_token_enc || null,
+      context: `google_stats_disconnect:${source}:${product}`,
+    })));
+  }
 
   const { error: integrationUpdateError } = await supabaseAdmin
     .from("integrations")

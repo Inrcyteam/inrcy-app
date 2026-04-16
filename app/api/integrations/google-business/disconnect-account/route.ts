@@ -3,12 +3,14 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
-import { revokeGoogleTokensBestEffort } from "@/lib/googleOAuthRevoke";
+import { revokeGoogleTokensBestEffort, shouldRevokeGoogleTokensForDisconnect } from "@/lib/googleOAuthRevoke";
 
 type RevokeRow = {
   id?: string | null;
   access_token_enc?: string | null;
   refresh_token_enc?: string | null;
+  provider_account_id?: string | null;
+  email_address?: string | null;
 };
 
 function asRecord(v: unknown): Record<string, unknown> {
@@ -24,18 +26,27 @@ export async function POST() {
 
   const { data: revokeRows } = await supabaseAdmin
     .from("integrations")
-    .select("id,access_token_enc,refresh_token_enc")
+    .select("id,access_token_enc,refresh_token_enc,provider_account_id,email_address")
     .eq("user_id", userId)
     .eq("provider", "google")
     .eq("source", "gmb")
     .eq("product", "gmb");
 
-  await revokeGoogleTokensBestEffort((revokeRows || []).map((row: RevokeRow) => ({
-    integrationId: String(row?.id || ""),
-    accessTokenEnc: row?.access_token_enc || null,
-    refreshTokenEnc: row?.refresh_token_enc || null,
+  const googleBusinessRows = (revokeRows || []) as RevokeRow[];
+  const canRevokeGoogleAuth = await shouldRevokeGoogleTokensForDisconnect({
+    userId,
+    rows: googleBusinessRows,
     context: "google_business_disconnect_account",
-  })));
+  });
+
+  if (canRevokeGoogleAuth) {
+    await revokeGoogleTokensBestEffort(googleBusinessRows.map((row: RevokeRow) => ({
+      integrationId: String(row?.id || ""),
+      accessTokenEnc: row?.access_token_enc || null,
+      refreshTokenEnc: row?.refresh_token_enc || null,
+      context: "google_business_disconnect_account",
+    })));
+  }
 
   const { error } = await supabase
     .from("integrations")
