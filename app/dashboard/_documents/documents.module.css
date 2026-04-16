@@ -1,10 +1,10 @@
 /* --- Layout create page --- */
 .container {
   display: grid;
-  grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
-  gap: 20px;
-  padding: 22px 20px 24px 12px;
-  max-width: 1460px;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  padding: 18px 16px 24px;
+  max-width: 1200px;
   margin: 0 auto;
   align-items: start;
   box-sizing: border-box;
@@ -14,18 +14,8 @@
   min-width: 0;
 }
 
-/* ✅ Responsive: sur mobile on empile formulaire + aperçu */
-@media (max-width: 1180px) {
-  .container {
-    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
-    gap: 16px;
-    padding: 18px 16px 22px 10px;
-  }
-}
-
 @media (max-width: 900px) {
   .container {
-    grid-template-columns: 1fr;
     padding: 12px 12px 16px 8px;
     gap: 14px;
   }
@@ -39,13 +29,11 @@
     padding: 18px;
   }
 
-  /* ✅ aperçu: on retire la réserve logo en mobile (comme avant) */
   .previewHeader {
     min-height: 0;
     padding-top: 0;
   }
 
-  /* ✅ logo : toujours contenu dans une zone fixe (évite d'empiéter en PDF) */
   .logoBox {
     position: static;
     display: flex;
@@ -65,7 +53,6 @@
     object-fit: contain;
   }
 
-  /* Les tableaux sont trop larges sur mobile => scroll horizontal */
   .table,
   .listTable {
     display: block;
@@ -85,6 +72,7 @@
 
 .panel {
   min-width: 0;
+  width: 100%;
   box-sizing: border-box;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -158,6 +146,59 @@
 .panelHeaderActions .closeBtn {
   width: 100%;
   white-space: nowrap;
+}
+
+
+.panelToolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, max-content) repeat(4, minmax(120px, 1fr));
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.panelToolbar > * {
+  min-width: 0;
+}
+
+.toolbarBtn {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.switchBtnFactures {
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.18), rgba(244, 114, 182, 0.16));
+  border-color: rgba(251, 146, 60, 0.34);
+}
+
+.switchBtnFactures:hover {
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.26), rgba(244, 114, 182, 0.22));
+  border-color: rgba(251, 146, 60, 0.46);
+}
+
+.switchBtnDevis {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(167, 139, 250, 0.16));
+  border-color: rgba(56, 189, 248, 0.34);
+}
+
+.switchBtnDevis:hover {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.26), rgba(167, 139, 250, 0.22));
+  border-color: rgba(56, 189, 248, 0.46);
+}
+
+.actionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.actionGrid > * {
+  min-width: 0;
+}
+
+.actionGrid button {
+  width: 100%;
 }
 
 /* ✅ Impression: masquer les champs de saisie, garder uniquement le résultat */
@@ -805,15 +846,30 @@
 .titleBadge {
   display: inline-flex;
   align-items: center;
-  min-height: 48px;
-  padding: 8px 16px;
+  min-height: 42px;
+  max-width: 100%;
+  padding: 7px 14px;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(56,189,248,0.22) 0%, rgba(167,139,250,0.22) 38%, rgba(244,114,182,0.22) 72%, rgba(251,146,60,0.22) 100%);
   border: 1px solid rgba(255,255,255,0.18);
   box-shadow: 0 10px 28px rgba(10, 15, 35, 0.28);
-  font-size: clamp(24px, 2vw, 30px);
-  font-weight: 900;
-  letter-spacing: -0.02em;
+  font-size: clamp(19px, 1.45vw, 24px);
+  font-weight: 850;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+}
+
+
+.threeCol {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.fourCol {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .twoCol {
@@ -856,18 +912,95 @@
   accent-color: #38bdf8;
 }
 
+.previewAddLineWrap {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 10px;
+}
+
+.previewAddLineBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px dashed rgba(17, 24, 39, 0.24);
+  background: rgba(255, 255, 255, 0.98);
+  color: #111;
+  border-radius: 12px;
+  padding: 9px 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.previewAddLineBtn:hover {
+  background: #f8fafc;
+}
+
+.previewAddLineBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 @media (max-width: 1180px) {
+  .fourCol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .threeCol {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .twoCol,
   .purchaseDepositRow {
     grid-template-columns: 1fr;
   }
 }
 
+@media (max-width: 1100px) {
+  .panelToolbar {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .panelToolbar .titleBadge {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 980px) {
+  .threeCol,
+  .fourCol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .panelToolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .panelToolbar .titleBadge {
+    grid-column: 1 / -1;
+  }
+
+  .toolbarBtn {
+    white-space: normal;
+  }
+
+  .actionGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .threeCol,
+  .fourCol {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 520px) {
   .titleBadge {
-    min-height: 44px;
-    padding: 8px 14px;
-    font-size: 22px;
+    min-height: 40px;
+    padding: 7px 12px;
+    font-size: 18px;
   }
 
   .depositInline {
@@ -876,5 +1009,10 @@
 
   .checkboxLabel {
     gap: 8px;
+  }
+
+  .panelToolbar,
+  .actionGrid {
+    grid-template-columns: 1fr;
   }
 }

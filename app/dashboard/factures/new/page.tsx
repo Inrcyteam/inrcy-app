@@ -964,109 +964,103 @@ export default function NewFacturePage() {
       <div className={styles.container}>
         {/* Formulaire */}
         <div className={styles.panel}>
-         <div className={styles.panelHeaderStack}>
-  <div className={styles.panelHeaderTopRow}>
-    <h1 className={styles.titleBadge}>Créer une facture</h1>
-    <button type="button" className={styles.closeBtn} onClick={() => router.push("/dashboard")}>
-      Fermer
-    </button>
-  </div>
+         <div className={styles.panelToolbar}>
+            <h1 className={styles.titleBadge}>Créer une facture</h1>
+            <button
+              type="button"
+              className={`${styles.closeBtn} ${styles.toolbarBtn}`}
+              onClick={() => {
+                void refreshSaves();
+                setDraftsOpen(true);
+              }}
+            >
+              Sauvegardes
+            </button>
+            <button
+              type="button"
+              className={`${styles.closeBtn} ${styles.toolbarBtn} ${styles.switchBtnDevis}`}
+              onClick={() => router.push("/dashboard/devis/new")}
+            >
+              Devis
+            </button>
+            <button
+              type="button"
+              className={`${styles.closeBtn} ${styles.toolbarBtn}`}
+              onClick={() => {
+                setSelectedCrmContactId("");
+                setCrmOpen(false);
 
-            {formMessage ? (
-              <div style={{ marginTop: 10, color: formMessage.type === "success" ? "#22c55e" : "#ef4444", fontWeight: 800, fontSize: 13 }}>
-                {formMessage.text}
-              </div>
-            ) : null}
+                setClientName("");
+                setClientEmail("");
+                setClientSiren("");
+                setClientVatNumber("");
+                setClientAddress("");
+                setBillingAddress("");
+                setDeliveryAddress("");
+                setSameAddresses(true);
+                setOperationCategory("");
+                setServiceDate("");
+                setServicePeriodStart("");
+                setServicePeriodEnd("");
+                setPurchaseOrderReference("");
+                setDepositKind("");
+                setDepositValue("");
+                setVatOnDebits(false);
+                setLateFeeRate("");
+                setFixedRecoveryFee40(true);
+                setDocumentKind("invoice");
 
-            {isFinalized ? (
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  background: "rgba(34,197,94,0.12)",
-                  border: "1px solid rgba(34,197,94,0.35)",
-                  fontSize: 13,
-                  lineHeight: 1.4,
-                }}
-              >
-                Facture figée avec le numéro officiel <strong>{number || "—"}</strong>
-                {finalizedAt ? <> · figée le {new Date(finalizedAt).toLocaleString("fr-FR")}</> : null}
-              </div>
-            ) : null}
+                setCurrentSaveId("");
+                setIsFinalized(false);
+                setFinalizedAt("");
+                setNumber(generateNumber("FAC"));
+                const d = new Date();
+                setInvoiceDate(d.toISOString().slice(0, 10));
+                const dd = new Date();
+                dd.setDate(dd.getDate() + 30);
+                setDueDate(dd.toISOString().slice(0, 10));
 
-  <div className={styles.panelHeaderActions}>
-    <button
-      type="button"
-      className={styles.closeBtn}
-      onClick={() => {
-        void refreshSaves();
-        setDraftsOpen(true);
-      }}
-    >
-      Sauvegardes
-    </button>
-    <button
-      type="button"
-      className={styles.closeBtn}
-      onClick={() => router.push("/dashboard/devis/new")}
-    >
-      Devis
-    </button>
-    <button
-      type="button"
-      className={styles.closeBtn}
-      onClick={() => {
-        setSelectedCrmContactId("");
-        setCrmOpen(false);
+                setStatus("");
+                setPaymentMethod("");
+                setPaymentDetails("");
+                setNotes("");
 
-        setClientName("");
-        setClientEmail("");
-        setClientSiren("");
-        setClientVatNumber("");
-        setClientAddress("");
-        setBillingAddress("");
-        setDeliveryAddress("");
-        setSameAddresses(true);
-        setOperationCategory("");
-        setServiceDate("");
-        setServicePeriodStart("");
-        setServicePeriodEnd("");
-        setPurchaseOrderReference("");
-        setDepositKind("");
-        setDepositValue("");
-        setVatOnDebits(false);
-        setLateFeeRate("");
-        setFixedRecoveryFee40(true);
-        setDocumentKind("invoice");
+                setDiscountKind("");
+                setDiscountValue(0);
+                setDiscountDetails("");
 
-        setCurrentSaveId("");
-        setIsFinalized(false);
-        setFinalizedAt("");
-        setNumber(generateNumber("FAC"));
-        const d = new Date();
-        setInvoiceDate(d.toISOString().slice(0, 10));
-        const dd = new Date();
-        dd.setDate(dd.getDate() + 30);
-        setDueDate(dd.toISOString().slice(0, 10));
+                setLines([{ id: "l_1", label: "Prestation", qty: 1, unitPrice: 120, vatRate: 20 }]);
+              }}
+            >
+              Réinitialiser
+            </button>
+            <button type="button" className={`${styles.closeBtn} ${styles.toolbarBtn}`} onClick={() => router.push("/dashboard")}>
+              Fermer
+            </button>
+          </div>
 
-        setStatus("");
-        setPaymentMethod("");
-        setPaymentDetails("");
-        setNotes("");
+          {formMessage ? (
+            <div style={{ marginTop: 10, color: formMessage.type === "success" ? "#22c55e" : "#ef4444", fontWeight: 800, fontSize: 13 }}>
+              {formMessage.text}
+            </div>
+          ) : null}
 
-        setDiscountKind("");
-        setDiscountValue(0);
-        setDiscountDetails("");
-
-        setLines([{ id: "l_1", label: "Prestation", qty: 1, unitPrice: 120, vatRate: 20 }]);
-      }}
-    >
-      Réinitialiser
-    </button>
-
-  </div>
-</div>
+          {isFinalized ? (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "rgba(34,197,94,0.12)",
+                border: "1px solid rgba(34,197,94,0.35)",
+                fontSize: 13,
+                lineHeight: 1.4,
+              }}
+            >
+              Facture figée avec le numéro officiel <strong>{number || "—"}</strong>
+              {finalizedAt ? <> · figée le {new Date(finalizedAt).toLocaleString("fr-FR")}</> : null}
+            </div>
+          ) : null}
 
         {draftsOpen ? (
           <div
@@ -1202,34 +1196,46 @@ export default function NewFacturePage() {
           ) : null}
         </div>
 
-<div className={styles.field}>
-          <label>Client</label>
-          <input
-            value={clientName}
-            onChange={(e) => setClientName(e.target.value)}
-            placeholder="Nom du client"
-            disabled={coreEditingLocked}
-          />
-        </div>
+<div className={styles.fourCol}>
+          <div className={styles.field}>
+            <label>Client</label>
+            <input
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              placeholder="Nom du client"
+              disabled={coreEditingLocked}
+            />
+          </div>
 
-        <div className={styles.field}>
-          <label>SIREN client (optionnel)</label>
-          <input
-            value={clientSiren}
-            onChange={(e) => setClientSiren(e.target.value)}
-            placeholder="Ex : 123456789"
-            disabled={coreEditingLocked}
-          />
-        </div>
+          <div className={styles.field}>
+            <label>Email client</label>
+            <input
+              value={clientEmail}
+              onChange={(e) => setClientEmail(e.target.value)}
+              placeholder="email@client.fr"
+              disabled={coreEditingLocked}
+            />
+          </div>
 
-        <div className={styles.field}>
-          <label>N° TVA client (optionnel)</label>
-          <input
-            value={clientVatNumber}
-            onChange={(e) => setClientVatNumber(e.target.value)}
-            placeholder="Ex : FR12345678901"
-            disabled={coreEditingLocked}
-          />
+          <div className={styles.field}>
+            <label>SIREN client (optionnel)</label>
+            <input
+              value={clientSiren}
+              onChange={(e) => setClientSiren(e.target.value)}
+              placeholder="Ex : 123456789"
+              disabled={coreEditingLocked}
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label>N° TVA client (optionnel)</label>
+            <input
+              value={clientVatNumber}
+              onChange={(e) => setClientVatNumber(e.target.value)}
+              placeholder="Ex : FR12345678901"
+              disabled={coreEditingLocked}
+            />
+          </div>
         </div>
 
         <div className={styles.field}>
@@ -1278,17 +1284,7 @@ export default function NewFacturePage() {
           </div>
         ) : null}
 
-        <div className={styles.field}>
-          <label>Email client</label>
-          <input
-            value={clientEmail}
-            onChange={(e) => setClientEmail(e.target.value)}
-            placeholder="email@client.fr"
-            disabled={coreEditingLocked}
-          />
-        </div>
-
-        <div className={styles.twoCol}>
+        <div className={styles.threeCol}>
           <div className={styles.field}>
             <label>Numéro de facture</label>
             <input
@@ -1308,19 +1304,19 @@ export default function NewFacturePage() {
               disabled={coreEditingLocked}
             />
           </div>
+
+          <div className={styles.field}>
+            <label>Échéance</label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              disabled={coreEditingLocked}
+            />
+          </div>
         </div>
 
-        <div className={styles.field}>
-          <label>Échéance</label>
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            disabled={coreEditingLocked}
-          />
-        </div>
-
-        <div className={styles.twoCol}>
+        <div className={styles.threeCol}>
           <div className={styles.field}>
             <label>Type de document</label>
             <select
@@ -1364,18 +1360,6 @@ export default function NewFacturePage() {
               ))}
             </select>
           </div>
-        </div>
-
-        <div className={styles.twoCol}>
-          <div className={styles.field}>
-            <label>Date de prestation / livraison</label>
-            <input
-              type="date"
-              value={serviceDate}
-              onChange={(e) => setServiceDate(e.target.value)}
-              disabled={coreEditingLocked}
-            />
-          </div>
 
           <div className={styles.field}>
             <label>Taux pénalités de retard (%)</label>
@@ -1391,9 +1375,19 @@ export default function NewFacturePage() {
           </div>
         </div>
 
-        <div className={styles.twoCol}>
+        <div className={styles.threeCol}>
           <div className={styles.field}>
-            <label>Période de prestation — début</label>
+            <label>Date de prestation / livraison</label>
+            <input
+              type="date"
+              value={serviceDate}
+              onChange={(e) => setServiceDate(e.target.value)}
+              disabled={coreEditingLocked}
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label>Début de prestation</label>
             <input
               type="date"
               value={servicePeriodStart}
@@ -1403,7 +1397,7 @@ export default function NewFacturePage() {
           </div>
 
           <div className={styles.field}>
-            <label>Période de prestation — fin</label>
+            <label>Fin de prestation</label>
             <input
               type="date"
               value={servicePeriodEnd}
@@ -1413,7 +1407,7 @@ export default function NewFacturePage() {
           </div>
         </div>
 
-        <div className={styles.purchaseDepositRow}>
+        <div className={styles.threeCol}>
           <div className={styles.field}>
             <label>Référence commande / PO</label>
             <input
@@ -1426,36 +1420,38 @@ export default function NewFacturePage() {
 
           <div className={styles.field}>
             <label>Acompte</label>
-            <div className={styles.depositInline}>
-              <select
-                value={depositKind}
-                onChange={(e) => setDepositKind(e.target.value as "" | "percent" | "amount")}
-                disabled={coreEditingLocked}
-                style={{
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  borderRadius: 10,
-                  padding: "10px 12px",
-                  color: "white",
-                  width: "100%",
-                  minWidth: 0,
-                }}
-              >
-                <option value="">—</option>
-                <option value="percent">Pourcentage</option>
-                <option value="amount">Montant</option>
-              </select>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={depositValue}
-                onChange={(e) => setDepositValue(e.target.value)}
-                placeholder={depositKind === "amount" ? "Ex : 300" : "Ex : 30"}
-                disabled={coreEditingLocked || !depositKind}
-                style={{ width: "100%", minWidth: 0 }}
-              />
-            </div>
+            <select
+              value={depositKind}
+              onChange={(e) => setDepositKind(e.target.value as "" | "percent" | "amount")}
+              disabled={coreEditingLocked}
+              style={{
+                background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                color: "white",
+                width: "100%",
+                minWidth: 0,
+              }}
+            >
+              <option value="">—</option>
+              <option value="percent">Pourcentage</option>
+              <option value="amount">Montant</option>
+            </select>
+          </div>
+
+          <div className={styles.field}>
+            <label>Valeur acompte</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={depositValue}
+              onChange={(e) => setDepositValue(e.target.value)}
+              placeholder={depositKind === "amount" ? "Ex : 300" : "Ex : 30"}
+              disabled={coreEditingLocked || !depositKind}
+              style={{ width: "100%", minWidth: 0 }}
+            />
           </div>
         </div>
 
@@ -1555,12 +1551,7 @@ export default function NewFacturePage() {
           />
         </div>
 
-        <div
-          style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}
-        >
-          <button type="button" onClick={addLine} disabled={coreEditingLocked}>
-            + Ajouter une prestation
-          </button>
+        <div className={styles.actionGrid}>
           <button type="button" onClick={() => { void saveDraft(); }} disabled={finalizing}>
             Sauvegarder
           </button>
@@ -1823,6 +1814,12 @@ export default function NewFacturePage() {
             ))}
           </tbody>
         </table>
+
+        <div className={`${styles.previewAddLineWrap} ${styles.noPrint}`}>
+          <button type="button" className={styles.previewAddLineBtn} onClick={addLine} disabled={coreEditingLocked}>
+            + Ajouter une prestation
+          </button>
+        </div>
 
         <div
           style={{

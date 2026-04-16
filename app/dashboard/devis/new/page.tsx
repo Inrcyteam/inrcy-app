@@ -738,82 +738,76 @@ export default function NewDevisPage() {
       <div className={styles.container}>
         {/* Formulaire */}
         <div className={styles.panel}>
-          <div className={styles.panelHeaderStack}>
-            <div className={styles.panelHeaderTopRow}>
-              <h1 className={styles.titleBadge}>Créer un devis</h1>
-              <button type="button" className={styles.closeBtn} onClick={() => router.push("/dashboard")}>
-                Fermer
-              </button>
-            </div>
+          <div className={styles.panelToolbar}>
+            <h1 className={styles.titleBadge}>Créer un devis</h1>
+            <button
+              type="button"
+              className={`${styles.closeBtn} ${styles.toolbarBtn}`}
+              onClick={() => {
+                void refreshSaves();
+                setDraftsOpen(true);
+              }}
+            >
+              Sauvegardes
+            </button>
+            <button
+              type="button"
+              className={`${styles.closeBtn} ${styles.toolbarBtn} ${styles.switchBtnFactures}`}
+              onClick={() => router.push("/dashboard/factures/new")}
+            >
+              Factures
+            </button>
+            <button
+              type="button"
+              className={`${styles.closeBtn} ${styles.toolbarBtn}`}
+              onClick={() => {
+                // CRM
+                setSelectedCrmContactId("");
+                setCrmOpen(false);
 
-            {formMessage ? (
-              <div style={{ marginTop: 10, color: formMessage.type === "success" ? "#22c55e" : "#ef4444", fontWeight: 800, fontSize: 13 }}>
-                {formMessage.text}
-              </div>
-            ) : null}
+                // Client
+                setClientName("");
+                setClientEmail("");
+                setClientSiren("");
+                setClientVatNumber("");
+                setClientAddress("");
+                setBillingAddress("");
+                setDeliveryAddress("");
+                setSameAddresses(true);
+                setOperationCategory("");
+                setServiceDate("");
+                setServicePeriodStart("");
+                setServicePeriodEnd("");
+                setPurchaseOrderReference("");
+                setDepositKind("");
+                setDepositValue("");
 
-            <div className={styles.panelHeaderActions}>
-              <button
-                type="button"
-                className={styles.closeBtn}
-                onClick={() => {
-                  void refreshSaves();
-                  setDraftsOpen(true);
-                }}
-              >
-                Sauvegardes
-              </button>
-              <button
-                type="button"
-                className={styles.closeBtn}
-                onClick={() => router.push("/dashboard/factures/new")}
-              >
-                Factures
-              </button>
-              <button
-                type="button"
-                className={styles.closeBtn}
-                onClick={() => {
-                  // CRM
-                  setSelectedCrmContactId("");
-                  setCrmOpen(false);
+                // Devis
+                setCurrentSaveId("");
+                setNumber(generateNumber("DEV"));
+                setDocDateISO(new Date().toISOString().slice(0, 10));
+                setValidityDays(30);
 
-                  // Client
-                  setClientName("");
-                  setClientEmail("");
-                  setClientSiren("");
-                  setClientVatNumber("");
-                  setClientAddress("");
-                  setBillingAddress("");
-                  setDeliveryAddress("");
-                  setSameAddresses(true);
-                  setOperationCategory("");
-                  setServiceDate("");
-                  setServicePeriodStart("");
-                  setServicePeriodEnd("");
-                  setPurchaseOrderReference("");
-                  setDepositKind("");
-                  setDepositValue("");
+                setDiscountKind("");
+                setDiscountValue(0);
+                setDiscountDetails("");
 
-                  // Devis
-                  setCurrentSaveId("");
-                  setNumber(generateNumber("DEV"));
-                  setDocDateISO(new Date().toISOString().slice(0, 10));
-                  setValidityDays(30);
-
-                  setDiscountKind("");
-                  setDiscountValue(0);
-                  setDiscountDetails("");
-
-                  // Lignes
-                  setLines([{ id: "l_1", label: "Prestation", qty: 1, unitPrice: 100, vatRate: 20 }]);
-                }}
-              >
-                Réinitialiser
-              </button>
-
-            </div>
+                // Lignes
+                setLines([{ id: "l_1", label: "Prestation", qty: 1, unitPrice: 100, vatRate: 20 }]);
+              }}
+            >
+              Réinitialiser
+            </button>
+            <button type="button" className={`${styles.closeBtn} ${styles.toolbarBtn}`} onClick={() => router.push("/dashboard")}>
+              Fermer
+            </button>
           </div>
+
+          {formMessage ? (
+            <div style={{ marginTop: 10, color: formMessage.type === "success" ? "#22c55e" : "#ef4444", fontWeight: 800, fontSize: 13 }}>
+              {formMessage.text}
+            </div>
+          ) : null}
 
           {draftsOpen ? (
             <div
@@ -948,27 +942,34 @@ export default function NewDevisPage() {
             ) : null}
           </div>
 
-          <div className={styles.field}>
-            <label>Client</label>
-            <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Nom du client" />
-          </div>
+          <div className={styles.fourCol}>
+            <div className={styles.field}>
+              <label>Client</label>
+              <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Nom du client" />
+            </div>
 
-          <div className={styles.field}>
-            <label>SIREN client (optionnel)</label>
-            <input
-              value={clientSiren}
-              onChange={(e) => setClientSiren(e.target.value)}
-              placeholder="Ex : 123456789"
-            />
-          </div>
+            <div className={styles.field}>
+              <label>Email client</label>
+              <input value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="email@client.fr" />
+            </div>
 
-          <div className={styles.field}>
-            <label>N° TVA client (optionnel)</label>
-            <input
-              value={clientVatNumber}
-              onChange={(e) => setClientVatNumber(e.target.value)}
-              placeholder="Ex : FR12345678901"
-            />
+            <div className={styles.field}>
+              <label>SIREN client (optionnel)</label>
+              <input
+                value={clientSiren}
+                onChange={(e) => setClientSiren(e.target.value)}
+                placeholder="Ex : 123456789"
+              />
+            </div>
+
+            <div className={styles.field}>
+              <label>N° TVA client (optionnel)</label>
+              <input
+                value={clientVatNumber}
+                onChange={(e) => setClientVatNumber(e.target.value)}
+                placeholder="Ex : FR12345678901"
+              />
+            </div>
           </div>
 
           <div className={styles.field}>
@@ -1014,12 +1015,7 @@ export default function NewDevisPage() {
             </div>
           ) : null}
 
-          <div className={styles.field}>
-            <label>Email client</label>
-            <input value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="email@client.fr" />
-          </div>
-
-          <div className={styles.twoCol}>
+          <div className={styles.threeCol}>
             <div className={styles.field}>
               <label>Numéro de devis</label>
               <input
@@ -1037,20 +1033,20 @@ export default function NewDevisPage() {
                 onChange={(e) => setDocDateISO(e.target.value)}
               />
             </div>
+
+            <div className={styles.field}>
+              <label>Durée de validité (jours)</label>
+              <input
+                type="number"
+                min={1}
+                value={validityDays}
+                onChange={(e) => setValidityDays(Math.max(1, Number(e.target.value) || 1))}
+                placeholder="30"
+              />
+            </div>
           </div>
 
-          <div className={styles.field}>
-            <label>Durée de validité (jours)</label>
-            <input
-              type="number"
-              min={1}
-              value={validityDays}
-              onChange={(e) => setValidityDays(Math.max(1, Number(e.target.value) || 1))}
-              placeholder="30"
-            />
-          </div>
-
-          <div className={styles.twoCol}>
+          <div className={styles.fourCol}>
             <div className={styles.field}>
               <label>Catégorie d’opération</label>
               <select
@@ -1080,11 +1076,9 @@ export default function NewDevisPage() {
                 onChange={(e) => setServiceDate(e.target.value)}
               />
             </div>
-          </div>
 
-          <div className={styles.twoCol}>
             <div className={styles.field}>
-              <label>Période de prestation — début</label>
+              <label>Début de prestation</label>
               <input
                 type="date"
                 value={servicePeriodStart}
@@ -1093,7 +1087,7 @@ export default function NewDevisPage() {
             </div>
 
             <div className={styles.field}>
-              <label>Période de prestation — fin</label>
+              <label>Fin de prestation</label>
               <input
                 type="date"
                 value={servicePeriodEnd}
@@ -1102,7 +1096,7 @@ export default function NewDevisPage() {
             </div>
           </div>
 
-          <div className={styles.purchaseDepositRow}>
+          <div className={styles.threeCol}>
             <div className={styles.field}>
               <label>Référence commande / PO</label>
               <input
@@ -1114,42 +1108,41 @@ export default function NewDevisPage() {
 
             <div className={styles.field}>
               <label>Acompte demandé</label>
-              <div className={styles.depositInline}>
-                <select
-                  value={depositKind}
-                  onChange={(e) => setDepositKind(e.target.value as "" | "percent" | "amount")}
-                  style={{
-                    background: "rgba(255,255,255,0.08)",
-                    border: "1px solid rgba(255,255,255,0.15)",
-                    borderRadius: 10,
-                    padding: "10px 12px",
-                    color: "white",
-                    width: "100%",
-                    minWidth: 0,
-                  }}
-                >
-                  <option value="">—</option>
-                  <option value="percent">Pourcentage</option>
-                  <option value="amount">Montant</option>
-                </select>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={depositValue}
-                  onChange={(e) => setDepositValue(e.target.value)}
-                  placeholder={depositKind === "amount" ? "Ex : 300" : "Ex : 30"}
-                  disabled={!depositKind}
-                  style={{ width: "100%", minWidth: 0 }}
-                />
-              </div>
+              <select
+                value={depositKind}
+                onChange={(e) => setDepositKind(e.target.value as "" | "percent" | "amount")}
+                style={{
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  color: "white",
+                  width: "100%",
+                  minWidth: 0,
+                }}
+              >
+                <option value="">—</option>
+                <option value="percent">Pourcentage</option>
+                <option value="amount">Montant</option>
+              </select>
+            </div>
+
+            <div className={styles.field}>
+              <label>Valeur acompte</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={depositValue}
+                onChange={(e) => setDepositValue(e.target.value)}
+                placeholder={depositKind === "amount" ? "Ex : 300" : "Ex : 30"}
+                disabled={!depositKind}
+                style={{ width: "100%", minWidth: 0 }}
+              />
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-            <button type="button" onClick={addLine}>
-              + Ajouter une prestation
-            </button>
+          <div className={styles.actionGrid}>
             <button type="button" onClick={() => { void saveDraft(); }}>Sauvegarder</button>
             <button type="button" onClick={() => void convertCurrentDevisToInvoice()}>
               → Convertir en facture
@@ -1320,6 +1313,12 @@ export default function NewDevisPage() {
               ))}
             </tbody>
           </table>
+
+          <div className={`${styles.previewAddLineWrap} ${styles.noPrint}`}>
+            <button type="button" className={styles.previewAddLineBtn} onClick={addLine}>
+              + Ajouter une prestation
+            </button>
+          </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", marginTop: 18, gap: 24 }}>
             <div style={{ fontSize: 12, color: "#444", lineHeight: 1.4 }}>
