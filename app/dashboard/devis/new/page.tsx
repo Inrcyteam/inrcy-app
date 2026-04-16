@@ -46,6 +46,13 @@ type CrmContact = {
 
 const VAT_OPTIONS = [0, 5.5, 10, 20];
 
+const OPERATION_CATEGORY_OPTIONS = [
+  { key: "", label: "—" },
+  { key: "vente", label: "Vente" },
+  { key: "prestation", label: "Prestation de services" },
+  { key: "mixte", label: "Vente + prestation" },
+] as const;
+
 function normalizeLabel(s: string) {
   // tri FR, sans casse/accents (stable)
   return s
@@ -90,6 +97,29 @@ export default function NewDevisPage() {
   const [clientName, setClientName] = useState("");
   const [clientAddress, setClientAddress] = useState("");
   const [clientEmail, setClientEmail] = useState("");
+  const [clientSiren, setClientSiren] = useState("");
+  const [clientVatNumber, setClientVatNumber] = useState("");
+  const [billingAddress, setBillingAddress] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [sameAddresses, setSameAddresses] = useState(true);
+  const [operationCategory, setOperationCategory] = useState<(typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]>("");
+  const [serviceDate, setServiceDate] = useState("");
+  const [servicePeriodStart, setServicePeriodStart] = useState("");
+  const [servicePeriodEnd, setServicePeriodEnd] = useState("");
+  const [purchaseOrderReference, setPurchaseOrderReference] = useState("");
+  const [depositKind, setDepositKind] = useState<"" | "percent" | "amount">("");
+  const [depositValue, setDepositValue] = useState("");
+
+  const setPrimaryClientAddress = (value: string) => {
+    setClientAddress(value);
+    setBillingAddress(value);
+    if (sameAddresses) setDeliveryAddress(value);
+  };
+
+  useEffect(() => {
+    if (!sameAddresses) return;
+    setDeliveryAddress(billingAddress || clientAddress);
+  }, [sameAddresses, billingAddress, clientAddress]);
 
   // --- Remise commerciale (appliquée sur le total TTC)
   const [discountKind, setDiscountKind] = useState<DiscountKind | "">("");
@@ -115,7 +145,11 @@ export default function NewDevisPage() {
     const address = searchParams.get("clientAddress") || searchParams.get("address") || "";
     if (name) setClientName((prev) => prev || name);
     if (email) setClientEmail((prev) => prev || email);
-    if (address) setClientAddress((prev) => prev || address);
+    if (address) {
+      setClientAddress((prev) => prev || address);
+      setBillingAddress((prev) => prev || address);
+      setDeliveryAddress((prev) => prev || address);
+    }
   }, []);
 
   // ✅ Liste des contacts CRM pour import dans ce formulaire
@@ -159,7 +193,7 @@ export default function NewDevisPage() {
 
     setClientName(displayName);
     setClientEmail((c.email || "").trim());
-    setClientAddress(fullAddress);
+    setPrimaryClientAddress(fullAddress);
   };
 
   const sortedCrmContacts = useMemo(() => {
@@ -258,8 +292,20 @@ export default function NewDevisPage() {
   docDateISO: string;
   clientName: string;
   clientAddress: string;
+  billingAddress?: string;
+  deliveryAddress?: string;
+  sameAddresses?: boolean;
   clientEmail: string;
-  validityDays: number; // ✅ AJOUT
+  clientSiren?: string;
+  clientVatNumber?: string;
+  operationCategory?: (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"];
+  serviceDate?: string;
+  servicePeriodStart?: string;
+  servicePeriodEnd?: string;
+  purchaseOrderReference?: string;
+  depositKind?: "" | "percent" | "amount";
+  depositValue?: string;
+  validityDays: number;
   lines: LineItem[];
   discountKind: DiscountKind | "";
   discountValue: number;
@@ -375,6 +421,7 @@ export default function NewDevisPage() {
 
       if (!cancelled) {
         applyDraftSnapshot(data.payload as DevisDraft["snapshot"]);
+        setCurrentSaveId(data.id);
         setFormMessage({ type: "success", text: "Devis réouvert depuis iNrSend." });
       }
     };
@@ -406,13 +453,28 @@ export default function NewDevisPage() {
     const finalNumber = number || generateNumber("DEV");
     if (!number) setNumber(finalNumber);
 
+   const normalizedBillingAddress = billingAddress || clientAddress;
+   const normalizedDeliveryAddress = sameAddresses ? normalizedBillingAddress : deliveryAddress;
+
    const snapshot: DevisDraft["snapshot"] = {
   number: finalNumber,
   docDateISO: docDateISO || new Date().toISOString().slice(0, 10),
   clientName,
-  clientAddress,
+  clientAddress: normalizedBillingAddress,
+  billingAddress: normalizedBillingAddress,
+  deliveryAddress: normalizedDeliveryAddress,
+  sameAddresses,
   clientEmail,
-  validityDays, // ✅ AJOUT
+  clientSiren,
+  clientVatNumber,
+  operationCategory,
+  serviceDate,
+  servicePeriodStart,
+  servicePeriodEnd,
+  purchaseOrderReference,
+  depositKind,
+  depositValue,
+  validityDays,
   lines,
   discountKind,
   discountValue: Number(discountValue) || 0,
@@ -489,11 +551,31 @@ export default function NewDevisPage() {
   };
 
   const applyDraftSnapshot = (s: DevisDraft["snapshot"]) => {
+    const nextBillingAddress = s.billingAddress || s.clientAddress || "";
+    const nextSameAddresses = typeof s.sameAddresses === "boolean"
+      ? s.sameAddresses
+      : !s.deliveryAddress || s.deliveryAddress === nextBillingAddress;
+    const nextDeliveryAddress = nextSameAddresses
+      ? nextBillingAddress
+      : (s.deliveryAddress || "");
+
     setNumber(s.number);
     setDocDateISO(s.docDateISO);
     setClientName(s.clientName);
-    setClientAddress(s.clientAddress);
+    setClientAddress(nextBillingAddress);
+    setBillingAddress(nextBillingAddress);
+    setDeliveryAddress(nextDeliveryAddress);
+    setSameAddresses(nextSameAddresses);
     setClientEmail(s.clientEmail);
+    setClientSiren(s.clientSiren || "");
+    setClientVatNumber(s.clientVatNumber || "");
+    setOperationCategory((s.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]) || "");
+    setServiceDate(s.serviceDate || "");
+    setServicePeriodStart(s.servicePeriodStart || "");
+    setServicePeriodEnd(s.servicePeriodEnd || "");
+    setPurchaseOrderReference(s.purchaseOrderReference || "");
+    setDepositKind((s.depositKind as "" | "percent" | "amount") || "");
+    setDepositValue(s.depositValue || "");
     setValidityDays(s.validityDays);
     setLines(s.lines);
     setDiscountKind(s.discountKind);
@@ -692,7 +774,19 @@ export default function NewDevisPage() {
                   // Client
                   setClientName("");
                   setClientEmail("");
+                  setClientSiren("");
+                  setClientVatNumber("");
                   setClientAddress("");
+                  setBillingAddress("");
+                  setDeliveryAddress("");
+                  setSameAddresses(true);
+                  setOperationCategory("");
+                  setServiceDate("");
+                  setServicePeriodStart("");
+                  setServicePeriodEnd("");
+                  setPurchaseOrderReference("");
+                  setDepositKind("");
+                  setDepositValue("");
 
                   // Devis
                   setCurrentSaveId("");
@@ -853,13 +947,64 @@ export default function NewDevisPage() {
           </div>
 
           <div className={styles.field}>
-            <label>Adresse client</label>
+            <label>SIREN client (optionnel)</label>
             <input
-              value={clientAddress}
-              onChange={(e) => setClientAddress(e.target.value)}
+              value={clientSiren}
+              onChange={(e) => setClientSiren(e.target.value)}
+              placeholder="Ex : 123456789"
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label>N° TVA client (optionnel)</label>
+            <input
+              value={clientVatNumber}
+              onChange={(e) => setClientVatNumber(e.target.value)}
+              placeholder="Ex : FR12345678901"
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label>Adresse de facturation</label>
+            <input
+              value={billingAddress}
+              onChange={(e) => setPrimaryClientAddress(e.target.value)}
               placeholder="Adresse, ville"
             />
           </div>
+
+          <div className={styles.field}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={sameAddresses}
+                onChange={(e) => setSameAddresses(e.target.checked)}
+              />
+              Adresse de livraison identique à l’adresse de facturation
+            </label>
+          </div>
+
+          {!sameAddresses ? (
+            <div
+              style={{
+                marginTop: -2,
+                marginBottom: 4,
+                padding: 12,
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.04)",
+              }}
+            >
+              <div className={styles.field} style={{ marginBottom: 0 }}>
+                <label>Adresse de livraison</label>
+                <input
+                  value={deliveryAddress}
+                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                  placeholder="Adresse de livraison, ville"
+                />
+              </div>
+            </div>
+          ) : null}
 
           <div className={styles.field}>
             <label>Email client</label>
@@ -897,9 +1042,102 @@ export default function NewDevisPage() {
             />
           </div>
 
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className={styles.field}>
+              <label>Catégorie d’opération</label>
+              <select
+                value={operationCategory}
+                onChange={(e) => setOperationCategory(e.target.value as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"])}
+                style={{
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  color: "white",
+                }}
+              >
+                {OPERATION_CATEGORY_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className={styles.field}>
+              <label>Date de prestation / livraison</label>
+              <input
+                type="date"
+                value={serviceDate}
+                onChange={(e) => setServiceDate(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className={styles.field}>
+              <label>Période de prestation — début</label>
+              <input
+                type="date"
+                value={servicePeriodStart}
+                onChange={(e) => setServicePeriodStart(e.target.value)}
+              />
+            </div>
+
+            <div className={styles.field}>
+              <label>Période de prestation — fin</label>
+              <input
+                type="date"
+                value={servicePeriodEnd}
+                onChange={(e) => setServicePeriodEnd(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className={styles.field}>
+              <label>Référence commande / PO</label>
+              <input
+                value={purchaseOrderReference}
+                onChange={(e) => setPurchaseOrderReference(e.target.value)}
+                placeholder="Ex : BC-2026-014 / PO-7781"
+              />
+            </div>
+
+            <div className={styles.field}>
+              <label>Acompte demandé</label>
+              <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 8 }}>
+                <select
+                  value={depositKind}
+                  onChange={(e) => setDepositKind(e.target.value as "" | "percent" | "amount")}
+                  style={{
+                    background: "rgba(255,255,255,0.08)",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    color: "white",
+                  }}
+                >
+                  <option value="">—</option>
+                  <option value="percent">Pourcentage</option>
+                  <option value="amount">Montant</option>
+                </select>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={depositValue}
+                  onChange={(e) => setDepositValue(e.target.value)}
+                  placeholder={depositKind === "amount" ? "Ex : 300" : "Ex : 30"}
+                  disabled={!depositKind}
+                />
+              </div>
+            </div>
+          </div>
+
           <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
             <button type="button" onClick={addLine}>
-              + Ajouter une ligne
+              + Ajouter une prestation
             </button>
             <button type="button" onClick={() => { void saveDraft(); }}>Sauvegarder</button>
             <button type="button" onClick={() => void convertCurrentDevisToInvoice()}>
@@ -943,6 +1181,17 @@ export default function NewDevisPage() {
               <div style={{ marginTop: 6, color: "#444" }}>
                 Date : {docDateISO ? new Date(docDateISO).toLocaleDateString("fr-FR") : "—"}
               </div>
+              {serviceDate ? (
+                <div style={{ marginTop: 4, color: "#444" }}>
+                  Prestation / livraison : {new Date(serviceDate).toLocaleDateString("fr-FR")}
+                </div>
+              ) : null}
+              {servicePeriodStart || servicePeriodEnd ? (
+                <div style={{ marginTop: 4, color: "#444" }}>
+                  Période : {servicePeriodStart ? new Date(servicePeriodStart).toLocaleDateString("fr-FR") : "—"}
+                  {servicePeriodEnd ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}` : ""}
+                </div>
+              ) : null}
             </div>
 
             {profile?.logo_url ? (
@@ -992,7 +1241,14 @@ export default function NewDevisPage() {
             <div>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Client</div>
               <div style={{ fontWeight: 600 }}>{clientName || "—"}</div>
-              <div>{clientAddress || ""}</div>
+              {clientSiren ? <div>SIREN : {clientSiren}</div> : null}
+              {clientVatNumber ? <div>TVA : {clientVatNumber}</div> : null}
+              <div>{billingAddress || clientAddress || ""}</div>
+              {!sameAddresses && deliveryAddress ? (
+                <div style={{ marginTop: 6 }}>
+                  <strong>Adresse de livraison :</strong> {deliveryAddress}
+                </div>
+              ) : null}
               <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>{clientEmail || ""}</div>
             </div>
           </div>
@@ -1056,13 +1312,38 @@ export default function NewDevisPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", marginTop: 18, gap: 24 }}>
             <div style={{ fontSize: 12, color: "#444", lineHeight: 1.4 }}>
+              <div>Les prix sont exprimés en euros. Le devis est valable {validityDays} jours.</div>
+              {operationCategory ? (
+                <div style={{ marginTop: 6 }}>
+                  <strong>Catégorie :</strong> {OPERATION_CATEGORY_OPTIONS.find((option) => option.key === operationCategory)?.label}
+                </div>
+              ) : null}
+              {serviceDate ? (
+                <div style={{ marginTop: 6 }}>
+                  <strong>Date de prestation / livraison :</strong> {new Date(serviceDate).toLocaleDateString("fr-FR")}
+                </div>
+              ) : null}
+              {servicePeriodStart || servicePeriodEnd ? (
+                <div style={{ marginTop: 6 }}>
+                  <strong>Période de prestation :</strong> {servicePeriodStart ? new Date(servicePeriodStart).toLocaleDateString("fr-FR") : "—"}
+                  {servicePeriodEnd ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}` : ""}
+                </div>
+              ) : null}
+              {purchaseOrderReference ? (
+                <div style={{ marginTop: 6 }}>
+                  <strong>Référence commande / PO :</strong> {purchaseOrderReference}
+                </div>
+              ) : null}
+              {depositKind && depositValue ? (
+                <div style={{ marginTop: 6 }}>
+                  <strong>Acompte demandé :</strong> {depositKind === "amount" ? `${depositValue} €` : `${depositValue} %`}
+                </div>
+              ) : null}
               {vatDispense ? (
-                <>
+                <div style={{ marginTop: 6 }}>
                   <strong>TVA non applicable</strong> — Article 293 B du CGI.
-                </>
-              ) : (
-                <>Les prix sont exprimés en euros. Le devis est valable {validityDays} jours.</>
-              )}
+                </div>
+              ) : null}
             </div>
 
             <div>

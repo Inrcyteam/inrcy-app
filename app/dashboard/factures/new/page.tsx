@@ -56,6 +56,19 @@ const PAYMENT_METHODS = [
   { key: "abonnement", label: "Abonnement" },
 ] as const;
 
+const DOCUMENT_KIND_OPTIONS = [
+  { key: "invoice", label: "Facture" },
+  { key: "deposit", label: "Facture d’acompte" },
+  { key: "credit_note", label: "Avoir" },
+] as const;
+
+const OPERATION_CATEGORY_OPTIONS = [
+  { key: "", label: "—" },
+  { key: "vente", label: "Vente" },
+  { key: "prestation", label: "Prestation de services" },
+  { key: "mixte", label: "Vente + prestation" },
+] as const;
+
 export default function NewFacturePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -85,6 +98,33 @@ export default function NewFacturePage() {
   const [clientName, setClientName] = useState("");
   const [clientAddress, setClientAddress] = useState("");
   const [clientEmail, setClientEmail] = useState("");
+  const [clientSiren, setClientSiren] = useState("");
+  const [clientVatNumber, setClientVatNumber] = useState("");
+  const [billingAddress, setBillingAddress] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [sameAddresses, setSameAddresses] = useState(true);
+  const [operationCategory, setOperationCategory] = useState<(typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]>("");
+  const [serviceDate, setServiceDate] = useState("");
+  const [servicePeriodStart, setServicePeriodStart] = useState("");
+  const [servicePeriodEnd, setServicePeriodEnd] = useState("");
+  const [purchaseOrderReference, setPurchaseOrderReference] = useState("");
+  const [depositKind, setDepositKind] = useState<"" | "percent" | "amount">("");
+  const [depositValue, setDepositValue] = useState("");
+  const [vatOnDebits, setVatOnDebits] = useState(false);
+  const [lateFeeRate, setLateFeeRate] = useState("");
+  const [fixedRecoveryFee40, setFixedRecoveryFee40] = useState(true);
+  const [documentKind, setDocumentKind] = useState<(typeof DOCUMENT_KIND_OPTIONS)[number]["key"]>("invoice");
+
+  const setPrimaryClientAddress = (value: string) => {
+    setClientAddress(value);
+    setBillingAddress(value);
+    if (sameAddresses) setDeliveryAddress(value);
+  };
+
+  useEffect(() => {
+    if (!sameAddresses) return;
+    setDeliveryAddress(billingAddress || clientAddress);
+  }, [sameAddresses, billingAddress, clientAddress]);
 
   // --- Remise commerciale (appliquée sur le total TTC)
   const [discountKind, setDiscountKind] = useState<DiscountKind | "">("");
@@ -134,7 +174,11 @@ export default function NewFacturePage() {
     const address = searchParams.get("clientAddress") || searchParams.get("address") || "";
     if (name) setClientName((prev) => prev || name);
     if (email) setClientEmail((prev) => prev || email);
-    if (address) setClientAddress((prev) => prev || address);
+    if (address) {
+      setClientAddress((prev) => prev || address);
+      setBillingAddress((prev) => prev || address);
+      setDeliveryAddress((prev) => prev || address);
+    }
   }, []);
 
   // ✅ Liste des contacts CRM pour import dans ce formulaire
@@ -179,7 +223,7 @@ export default function NewFacturePage() {
 
     setClientName(displayName);
     setClientEmail((c.email || "").trim());
-    setClientAddress(fullAddress);
+    setPrimaryClientAddress(fullAddress);
   };
 
 
@@ -265,7 +309,23 @@ export default function NewFacturePage() {
       dueDate: string;
       clientName: string;
       clientAddress: string;
+      billingAddress?: string;
+      deliveryAddress?: string;
+      sameAddresses?: boolean;
       clientEmail: string;
+      clientSiren?: string;
+      clientVatNumber?: string;
+      operationCategory?: (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"];
+      serviceDate?: string;
+      servicePeriodStart?: string;
+      servicePeriodEnd?: string;
+      purchaseOrderReference?: string;
+      depositKind?: "" | "percent" | "amount";
+      depositValue?: string;
+      vatOnDebits?: boolean;
+      lateFeeRate?: string;
+      fixedRecoveryFee40?: boolean;
+      documentKind?: (typeof DOCUMENT_KIND_OPTIONS)[number]["key"];
       status: DocRecord["status"];
       paymentMethod: (typeof PAYMENT_METHODS)[number]["key"];
       paymentDetails: string;
@@ -288,7 +348,19 @@ export default function NewFacturePage() {
     docDateISO: string;
     clientName: string;
     clientAddress: string;
+    billingAddress?: string;
+    deliveryAddress?: string;
+    sameAddresses?: boolean;
     clientEmail: string;
+    clientSiren?: string;
+    clientVatNumber?: string;
+    operationCategory?: (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"];
+    serviceDate?: string;
+    servicePeriodStart?: string;
+    servicePeriodEnd?: string;
+    purchaseOrderReference?: string;
+    depositKind?: "" | "percent" | "amount";
+    depositValue?: string;
     validityDays: number;
     lines: LineItem[];
     discountKind: DiscountKind | "";
@@ -375,12 +447,36 @@ export default function NewFacturePage() {
   }, []);
 
   const applyDraftSnapshot = (s: FactureDraft["snapshot"]) => {
+    const nextBillingAddress = s.billingAddress || s.clientAddress || "";
+    const nextSameAddresses = typeof s.sameAddresses === "boolean"
+      ? s.sameAddresses
+      : !s.deliveryAddress || s.deliveryAddress === nextBillingAddress;
+    const nextDeliveryAddress = nextSameAddresses
+      ? nextBillingAddress
+      : (s.deliveryAddress || "");
+
     setNumber(s.number);
     setInvoiceDate(s.invoiceDate);
     setDueDate(s.dueDate);
     setClientName(s.clientName);
-    setClientAddress(s.clientAddress);
+    setClientAddress(nextBillingAddress);
+    setBillingAddress(nextBillingAddress);
+    setDeliveryAddress(nextDeliveryAddress);
+    setSameAddresses(nextSameAddresses);
     setClientEmail(s.clientEmail);
+    setClientSiren(s.clientSiren || "");
+    setClientVatNumber(s.clientVatNumber || "");
+    setOperationCategory((s.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]) || "");
+    setServiceDate(s.serviceDate || "");
+    setServicePeriodStart(s.servicePeriodStart || "");
+    setServicePeriodEnd(s.servicePeriodEnd || "");
+    setPurchaseOrderReference(s.purchaseOrderReference || "");
+    setDepositKind((s.depositKind as "" | "percent" | "amount") || "");
+    setDepositValue(s.depositValue || "");
+    setVatOnDebits(!!s.vatOnDebits);
+    setLateFeeRate(s.lateFeeRate || "");
+    setFixedRecoveryFee40(typeof s.fixedRecoveryFee40 === "boolean" ? s.fixedRecoveryFee40 : true);
+    setDocumentKind((s.documentKind as (typeof DOCUMENT_KIND_OPTIONS)[number]["key"]) || "invoice");
     setStatus(s.status);
     setPaymentMethod(s.paymentMethod);
     setPaymentDetails(s.paymentDetails);
@@ -487,9 +583,33 @@ export default function NewFacturePage() {
         setNumber(generateNumber("FAC"));
         setInvoiceDate(now.toISOString().slice(0, 10));
         setDueDate(due.toISOString().slice(0, 10));
+        const nextBillingAddress = devis.billingAddress || devis.clientAddress || "";
+        const nextSameAddresses = typeof devis.sameAddresses === "boolean"
+          ? devis.sameAddresses
+          : !devis.deliveryAddress || devis.deliveryAddress === nextBillingAddress;
+        const nextDeliveryAddress = nextSameAddresses
+          ? nextBillingAddress
+          : (devis.deliveryAddress || "");
+
         setClientName(devis.clientName || "");
-        setClientAddress(devis.clientAddress || "");
+        setClientAddress(nextBillingAddress);
+        setBillingAddress(nextBillingAddress);
+        setDeliveryAddress(nextDeliveryAddress);
+        setSameAddresses(nextSameAddresses);
         setClientEmail(devis.clientEmail || "");
+        setClientSiren(devis.clientSiren || "");
+        setClientVatNumber(devis.clientVatNumber || "");
+        setOperationCategory((devis.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]) || "");
+        setServiceDate(devis.serviceDate || "");
+        setServicePeriodStart(devis.servicePeriodStart || "");
+        setServicePeriodEnd(devis.servicePeriodEnd || "");
+        setPurchaseOrderReference(devis.purchaseOrderReference || "");
+        setDepositKind((devis.depositKind as "" | "percent" | "amount") || "");
+        setDepositValue(devis.depositValue || "");
+        setVatOnDebits(false);
+        setLateFeeRate("");
+        setFixedRecoveryFee40(true);
+        setDocumentKind("invoice");
         setStatus("");
         setPaymentMethod("");
         setPaymentDetails("");
@@ -540,13 +660,32 @@ export default function NewFacturePage() {
     const finalNumber = number || generateNumber("FAC");
     if (!number) setNumber(finalNumber);
 
+    const normalizedBillingAddress = billingAddress || clientAddress;
+    const normalizedDeliveryAddress = sameAddresses ? normalizedBillingAddress : deliveryAddress;
+
     const snapshot: FactureDraft["snapshot"] = {
       number: finalNumber,
       invoiceDate: invoiceDate || new Date().toISOString().slice(0, 10),
       dueDate,
       clientName,
-      clientAddress,
+      clientAddress: normalizedBillingAddress,
+      billingAddress: normalizedBillingAddress,
+      deliveryAddress: normalizedDeliveryAddress,
+      sameAddresses,
       clientEmail,
+      clientSiren,
+      clientVatNumber,
+      operationCategory,
+      serviceDate,
+      servicePeriodStart,
+      servicePeriodEnd,
+      purchaseOrderReference,
+      depositKind,
+      depositValue,
+      vatOnDebits,
+      lateFeeRate,
+      fixedRecoveryFee40,
+      documentKind,
       status: (status as any) || "brouillon",
       paymentMethod,
       paymentDetails,
@@ -804,6 +943,14 @@ export default function NewFacturePage() {
 
   const paymentLabel =
     PAYMENT_METHODS.find((m) => m.key === paymentMethod)?.label ?? "—";
+  const operationCategoryLabel =
+    OPERATION_CATEGORY_OPTIONS.find((option) => option.key === operationCategory)?.label ?? "—";
+  const documentTitle =
+    documentKind === "deposit"
+      ? "FACTURE D’ACOMPTE"
+      : documentKind === "credit_note"
+        ? "AVOIR"
+        : "FACTURE";
 
   return (
       <div className={`${dash.page} ${styles.editorPage}`}>
@@ -868,7 +1015,23 @@ export default function NewFacturePage() {
 
         setClientName("");
         setClientEmail("");
+        setClientSiren("");
+        setClientVatNumber("");
         setClientAddress("");
+        setBillingAddress("");
+        setDeliveryAddress("");
+        setSameAddresses(true);
+        setOperationCategory("");
+        setServiceDate("");
+        setServicePeriodStart("");
+        setServicePeriodEnd("");
+        setPurchaseOrderReference("");
+        setDepositKind("");
+        setDepositValue("");
+        setVatOnDebits(false);
+        setLateFeeRate("");
+        setFixedRecoveryFee40(true);
+        setDocumentKind("invoice");
 
         setCurrentSaveId("");
         setIsFinalized(false);
@@ -1043,14 +1206,69 @@ export default function NewFacturePage() {
         </div>
 
         <div className={styles.field}>
-          <label>Adresse client</label>
+          <label>SIREN client (optionnel)</label>
           <input
-            value={clientAddress}
-            onChange={(e) => setClientAddress(e.target.value)}
+            value={clientSiren}
+            onChange={(e) => setClientSiren(e.target.value)}
+            placeholder="Ex : 123456789"
+            disabled={coreEditingLocked}
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label>N° TVA client (optionnel)</label>
+          <input
+            value={clientVatNumber}
+            onChange={(e) => setClientVatNumber(e.target.value)}
+            placeholder="Ex : FR12345678901"
+            disabled={coreEditingLocked}
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label>Adresse de facturation</label>
+          <input
+            value={billingAddress}
+            onChange={(e) => setPrimaryClientAddress(e.target.value)}
             placeholder="Adresse, ville"
             disabled={coreEditingLocked}
           />
         </div>
+
+        <div className={styles.field}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: coreEditingLocked ? "not-allowed" : "pointer" }}>
+            <input
+              type="checkbox"
+              checked={sameAddresses}
+              onChange={(e) => setSameAddresses(e.target.checked)}
+              disabled={coreEditingLocked}
+            />
+            Adresse de livraison identique à l’adresse de facturation
+          </label>
+        </div>
+
+        {!sameAddresses ? (
+          <div
+            style={{
+              marginTop: -2,
+              marginBottom: 4,
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(255,255,255,0.04)",
+            }}
+          >
+            <div className={styles.field} style={{ marginBottom: 0 }}>
+              <label>Adresse de livraison</label>
+              <input
+                value={deliveryAddress}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
+                placeholder="Adresse de livraison, ville"
+                disabled={coreEditingLocked}
+              />
+            </div>
+          </div>
+        ) : null}
 
         <div className={styles.field}>
           <label>Email client</label>
@@ -1092,6 +1310,166 @@ export default function NewFacturePage() {
             onChange={(e) => setDueDate(e.target.value)}
             disabled={coreEditingLocked}
           />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className={styles.field}>
+            <label>Type de document</label>
+            <select
+              value={documentKind}
+              onChange={(e) => setDocumentKind(e.target.value as (typeof DOCUMENT_KIND_OPTIONS)[number]["key"])}
+              disabled={coreEditingLocked}
+              style={{
+                background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                color: "white",
+              }}
+            >
+              {DOCUMENT_KIND_OPTIONS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.field}>
+            <label>Catégorie d’opération</label>
+            <select
+              value={operationCategory}
+              onChange={(e) => setOperationCategory(e.target.value as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"])}
+              disabled={coreEditingLocked}
+              style={{
+                background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                color: "white",
+              }}
+            >
+              {OPERATION_CATEGORY_OPTIONS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className={styles.field}>
+            <label>Date de prestation / livraison</label>
+            <input
+              type="date"
+              value={serviceDate}
+              onChange={(e) => setServiceDate(e.target.value)}
+              disabled={coreEditingLocked}
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label>Taux pénalités de retard (%)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={lateFeeRate}
+              onChange={(e) => setLateFeeRate(e.target.value)}
+              placeholder="Ex : 12.00"
+              disabled={coreEditingLocked}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className={styles.field}>
+            <label>Période de prestation — début</label>
+            <input
+              type="date"
+              value={servicePeriodStart}
+              onChange={(e) => setServicePeriodStart(e.target.value)}
+              disabled={coreEditingLocked}
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label>Période de prestation — fin</label>
+            <input
+              type="date"
+              value={servicePeriodEnd}
+              onChange={(e) => setServicePeriodEnd(e.target.value)}
+              disabled={coreEditingLocked}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className={styles.field}>
+            <label>Référence commande / PO</label>
+            <input
+              value={purchaseOrderReference}
+              onChange={(e) => setPurchaseOrderReference(e.target.value)}
+              placeholder="Ex : BC-2026-014 / PO-7781"
+              disabled={coreEditingLocked}
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label>Acompte</label>
+            <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 8 }}>
+              <select
+                value={depositKind}
+                onChange={(e) => setDepositKind(e.target.value as "" | "percent" | "amount")}
+                disabled={coreEditingLocked}
+                style={{
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  color: "white",
+                }}
+              >
+                <option value="">—</option>
+                <option value="percent">Pourcentage</option>
+                <option value="amount">Montant</option>
+              </select>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={depositValue}
+                onChange={(e) => setDepositValue(e.target.value)}
+                placeholder={depositKind === "amount" ? "Ex : 300" : "Ex : 30"}
+                disabled={coreEditingLocked || !depositKind}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.field}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: coreEditingLocked ? "not-allowed" : "pointer" }}>
+            <input
+              type="checkbox"
+              checked={vatOnDebits}
+              onChange={(e) => setVatOnDebits(e.target.checked)}
+              disabled={coreEditingLocked}
+            />
+            TVA sur les débits (si applicable)
+          </label>
+        </div>
+
+        <div className={styles.field}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: coreEditingLocked ? "not-allowed" : "pointer" }}>
+            <input
+              type="checkbox"
+              checked={fixedRecoveryFee40}
+              onChange={(e) => setFixedRecoveryFee40(e.target.checked)}
+              disabled={coreEditingLocked}
+            />
+            Mentionner l’indemnité forfaitaire de 40 € pour frais de recouvrement
+          </label>
         </div>
 
         <div
@@ -1168,7 +1546,7 @@ export default function NewFacturePage() {
           style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}
         >
           <button type="button" onClick={addLine} disabled={coreEditingLocked}>
-            + Ajouter une ligne
+            + Ajouter une prestation
           </button>
           <button type="button" onClick={() => { void saveDraft(); }} disabled={finalizing}>
             Sauvegarder
@@ -1221,7 +1599,7 @@ export default function NewFacturePage() {
         <div className={styles.preview} ref={previewRef}>
         <div className={styles.previewHeader}>
           <div>
-            <div className={styles.title}>FACTURE</div>
+            <div className={styles.title}>{documentTitle}</div>
             <div>{number || "—"}</div>
             <div style={{ marginTop: 6, color: "#444" }}>
               Date :{" "}
@@ -1235,6 +1613,17 @@ export default function NewFacturePage() {
                 </>
               ) : null}
             </div>
+            {serviceDate ? (
+              <div style={{ marginTop: 4, color: "#444" }}>
+                Prestation / livraison : {new Date(serviceDate).toLocaleDateString("fr-FR")}
+              </div>
+            ) : null}
+            {servicePeriodStart || servicePeriodEnd ? (
+              <div style={{ marginTop: 4, color: "#444" }}>
+                Période : {servicePeriodStart ? new Date(servicePeriodStart).toLocaleDateString("fr-FR") : "—"}
+                {servicePeriodEnd ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}` : ""}
+              </div>
+            ) : null}
           </div>
           {profile?.logo_url ? (
             <div className={styles.logoBox} aria-label="Logo">
@@ -1291,7 +1680,14 @@ export default function NewFacturePage() {
           <div>
             <div style={{ fontWeight: 700, marginBottom: 6 }}>Client</div>
             <div style={{ fontWeight: 600 }}>{clientName || "—"}</div>
-            <div>{clientAddress || ""}</div>
+            {clientSiren ? <div>SIREN : {clientSiren}</div> : null}
+            {clientVatNumber ? <div>TVA : {clientVatNumber}</div> : null}
+            <div>{billingAddress || clientAddress || ""}</div>
+            {!sameAddresses && deliveryAddress ? (
+              <div style={{ marginTop: 6 }}>
+                <strong>Adresse de livraison :</strong> {deliveryAddress}
+              </div>
+            ) : null}
             <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>
               {clientEmail || ""}
             </div>
@@ -1428,6 +1824,47 @@ export default function NewFacturePage() {
               <strong>Paiement :</strong> {paymentLabel}
               {paymentDetails ? <> — {paymentDetails}</> : null}
             </div>
+            {operationCategory ? (
+              <div style={{ marginBottom: 6 }}>
+                <strong>Catégorie :</strong> {operationCategoryLabel}
+              </div>
+            ) : null}
+            {serviceDate ? (
+              <div style={{ marginBottom: 6 }}>
+                <strong>Date de prestation / livraison :</strong> {new Date(serviceDate).toLocaleDateString("fr-FR")}
+              </div>
+            ) : null}
+            {servicePeriodStart || servicePeriodEnd ? (
+              <div style={{ marginBottom: 6 }}>
+                <strong>Période de prestation :</strong> {servicePeriodStart ? new Date(servicePeriodStart).toLocaleDateString("fr-FR") : "—"}
+                {servicePeriodEnd ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}` : ""}
+              </div>
+            ) : null}
+            {purchaseOrderReference ? (
+              <div style={{ marginBottom: 6 }}>
+                <strong>Référence commande / PO :</strong> {purchaseOrderReference}
+              </div>
+            ) : null}
+            {depositKind && depositValue ? (
+              <div style={{ marginBottom: 6 }}>
+                <strong>Acompte :</strong> {depositKind === "amount" ? `${depositValue} €` : `${depositValue} %`}
+              </div>
+            ) : null}
+            {vatOnDebits ? (
+              <div style={{ marginBottom: 6 }}>
+                <strong>TVA sur les débits</strong>
+              </div>
+            ) : null}
+            {lateFeeRate ? (
+              <div style={{ marginBottom: 6 }}>
+                <strong>Pénalités de retard :</strong> {lateFeeRate} %
+              </div>
+            ) : null}
+            {fixedRecoveryFee40 ? (
+              <div style={{ marginBottom: 6 }}>
+                Indemnité forfaitaire de 40 € pour frais de recouvrement en cas de retard de paiement.
+              </div>
+            ) : null}
             {vatDispense ? (
               <div>
                 <strong>TVA non applicable</strong> — Article 293 B du CGI.
