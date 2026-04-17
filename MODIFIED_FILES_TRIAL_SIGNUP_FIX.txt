@@ -1,9 +1,9 @@
 Modified files for Elementor trial signup fix:
 
 1. app/api/public/trial-signup/route.ts
-   - added robust parsing for Elementor webhook payloads
-   - supports form_fields[field_id], fields[field_id][value], and JSON-like nested strings
-   - broadened aliases for consent, company, phone, and honeypot fields
+   - fixed multipart form parsing type issue for Next.js build
+   - broadened consent parsing so Elementor acceptance text counts as true
+   - keeps support for Elementor webhook payload variants
 
 2. docs/WORDPRESS_ELEMENTOR_TRIAL_SIGNUP.md
    - clarified recommended Elementor field IDs

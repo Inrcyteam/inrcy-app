@@ -236,7 +236,13 @@ function normalizePayload(body: LooseRecord): SignupPayload {
     "privacy_policy",
     "rgpd",
     "gdpr",
-  ]).toLowerCase();
+  ])
+    .trim()
+    .toLowerCase();
+
+  const consent =
+    !!consentRaw &&
+    !["0", "false", "no", "non", "off", "unchecked"].includes(consentRaw);
 
   return {
     email: lookupValue(flat, ["email", "e-mail", "mail", "your-email"]).trim().toLowerCase(),
@@ -252,7 +258,7 @@ function normalizePayload(body: LooseRecord): SignupPayload {
       "societe_raison_sociale",
     ]),
     phone: lookupValue(flat, ["phone", "telephone", "téléphone", "tel", "mobile", "portable"]),
-    consent: ["1", "true", "yes", "oui", "on", "accepted", "checked"].includes(consentRaw),
+    consent,
     website: lookupValue(flat, ["website", "site_web", "company_website", "url", "honeypot"]),
     source: lookupValue(flat, ["source", "form_name", "form-id"]) || optionalEnv("INRCY_MARKETING_SOURCE", "wordpress-elementor"),
   };
