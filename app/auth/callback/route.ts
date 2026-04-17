@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { safeInternalPath } from "@/lib/security";
 import { ensureNotificationPreferences } from "@/lib/notifications";
+import { ensureProfileRow } from "@/lib/ensureProfileRow";
 
 export async function GET(req: Request) {
   const supabase = await createSupabaseServer();
@@ -25,7 +26,11 @@ export async function GET(req: Request) {
   const code = searchParams.get("code");
   if (code) {
     const { data } = await supabase.auth.exchangeCodeForSession(code);
-    const userId = data?.user?.id;
+    const authUser = data?.user;
+    const userId = authUser?.id;
+    if (authUser) {
+      await ensureProfileRow(authUser).catch(() => null);
+    }
     if (userId) {
       await ensureNotificationPreferences(userId).catch(() => null);
     }

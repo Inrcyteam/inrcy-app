@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { getMaintenanceState, isAdminUser } from "@/lib/maintenance";
 import ProfileRealtimeBridge from "./_components/ProfileRealtimeBridge";
+import { ensureProfileRow } from "@/lib/ensureProfileRow";
 
 export default async function DashboardLayout({
   children,
@@ -26,6 +27,8 @@ export default async function DashboardLayout({
   if (error || !user) {
     redirect("/login");
   }
+
+  await ensureProfileRow(user).catch(() => null);
 
   // Vérifie l'état maintenance
   const maintenance = await getMaintenanceState();

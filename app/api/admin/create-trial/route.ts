@@ -6,6 +6,7 @@ import { getAppUrl } from "@/lib/stripeRest";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
 import { ensureNotificationPreferences } from "@/lib/notifications";
 import { ensureTrialSubscription } from "@/lib/trialSubscription";
+import { ensureProfileRow } from "@/lib/ensureProfileRow";
 
 export const runtime = "nodejs";
 
@@ -34,6 +35,7 @@ export async function POST(req: Request) {
 
     const userId = invite.user.id;
 
+    await ensureProfileRow(invite.user);
     await ensureNotificationPreferences(userId);
     const { trialDays, start, end } = await ensureTrialSubscription(userId, email);
 
