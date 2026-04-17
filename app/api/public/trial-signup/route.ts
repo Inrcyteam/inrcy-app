@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { optionalEnv, requireEnv } from "@/lib/env";
-import { getClientIp, enforceRateLimit } from "@/lib/rateLimit";
 import { ensureNotificationPreferences } from "@/lib/notifications";
+import { ensureProfileRow } from "@/lib/ensureProfileRow";
+import { getClientIp, enforceRateLimit } from "@/lib/rateLimit";
 import { getAppUrl } from "@/lib/stripeRest";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -19,11 +20,9 @@ type SignupPayload = {
   lastName: string;
   companyName: string;
   phone: string;
-  legalForm: string;
-  source: string;
-  notes: string;
   consent: boolean;
-  honeypot: string;
+  website: string;
+  source: string;
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -87,9 +86,7 @@ function lookupValue(flat: Record<string, string>, aliases: string[]) {
       key.replace(/^fields\./i, ""),
       key.replace(/^fields\./i, "").toLowerCase(),
     ];
-    for (const variant of variants) {
-      normalized.set(variant, value);
-    }
+    for (const variant of variants) normalized.set(variant, value);
   }
 
   for (const alias of aliases) {
@@ -117,7 +114,7 @@ async function readRequestBody(req: Request): Promise<LooseRecord> {
   if (contentType.includes("multipart/form-data")) {
     const formData = await req.formData().catch(() => null);
     if (!formData) return {};
-    const entries: Record<string, unknown> = {};
+    const entries: LooseRecord = {};
     for (const [key, value] of formData.entries()) {
       entries[key] = typeof value === "string" ? value : value.name;
     }
@@ -138,30 +135,17 @@ function normalizePayload(body: LooseRecord): SignupPayload {
   const flat: Record<string, string> = {};
   extractScalarStrings(body, flat);
 
+  const consentRaw = lookupValue(flat, ["consent", "acceptance", "privacy", "rgpd"]).toLowerCase();
+
   return {
-    email: lookupValue(flat, ["email", "e-mail", "mail", "your-email"])
-      .trim()
-      .toLowerCase(),
+    email: lookupValue(flat, ["email", "e-mail", "mail", "your-email"]).trim().toLowerCase(),
     firstName: lookupValue(flat, ["first_name", "firstname", "prenom", "prénom", "first-name"]),
     lastName: lookupValue(flat, ["last_name", "lastname", "nom", "last-name"]),
-    companyName: lookupValue(flat, [
-      "company",
-      "company_name",
-      "company_legal_name",
-      "societe",
-      "société",
-      "entreprise",
-      "business_name",
-    ]),
+    companyName: lookupValue(flat, ["company_name", "company", "company_legal_name", "societe", "société", "entreprise"]),
     phone: lookupValue(flat, ["phone", "telephone", "téléphone", "tel", "mobile"]),
-    legalForm: lookupValue(flat, ["legal_form", "forme_juridique", "legal-form"]),
-    source: lookupValue(flat, ["source", "form_name", "form-id"]),
-    notes: lookupValue(flat, ["message", "notes", "commentaire", "comments"]),
-    consent:
-      ["1", "true", "yes", "oui", "on"].includes(
-        lookupValue(flat, ["consent", "rgpd", "privacy", "acceptance"]).toLowerCase()
-      ),
-    honeypot: lookupValue(flat, ["website", "site_web", "company_website", "url"]),
+    consent: ["1", "true", "yes", "oui", "on", "accepted", "checked"].includes(consentRaw),
+    website: lookupValue(flat, ["website", "site_web", "company_website", "url"]),
+    source: lookupValue(flat, ["source", "form_name", "form-id"]) || optionalEnv("INRCY_MARKETING_SOURCE", "wordpress-elementor"),
   };
 }
 
@@ -179,10 +163,9 @@ function resolveSharedSecret(req: Request, body: LooseRecord) {
 
 export async function POST(req: Request) {
   try {
-    const ip = getClientIp(req);
     const limited = await enforceRateLimit({
       name: "public_trial_signup",
-      identifier: ip,
+      identifier: getClientIp(req),
       limit: 8,
       window: "10 m",
       failClosed: false,
@@ -190,20 +173,24 @@ export async function POST(req: Request) {
     if (limited) return limited;
 
     const body = await readRequestBody(req);
-    const expectedSecret = requireEnv("INRCY_TRIAL_SIGNUP_SECRET");
+    const payload = normalizePayload(body);
+
+    const expectedSecret = optionalEnv("INRCY_TRIAL_SIGNUP_SECRET", "").trim();
     const gotSecret = resolveSharedSecret(req, body);
-    if (gotSecret !== expectedSecret) {
+    if (expectedSecret && gotSecret !== expectedSecret) {
       return jsonResponse({ error: "Accès non autorisé." }, 401);
     }
 
-    const payload = normalizePayload(body);
-
-    if (payload.honeypot) {
+    if (payload.website) {
       return jsonResponse({ ok: true });
     }
 
     if (!payload.email) {
       return jsonResponse({ error: "Email manquant." }, 400);
+    }
+
+    if (!payload.consent) {
+      return jsonResponse({ error: "Le consentement est obligatoire." }, 400);
     }
 
     const appUrl = getAppUrl(req) || requireEnv("NEXT_PUBLIC_APP_URL");
@@ -216,7 +203,7 @@ export async function POST(req: Request) {
         last_name: payload.lastName || undefined,
         company_legal_name: payload.companyName || undefined,
         phone: payload.phone || undefined,
-        source: payload.source || "wordpress-elementor",
+        source: payload.source || undefined,
       },
     });
 
@@ -239,8 +226,11 @@ export async function POST(req: Request) {
       throw new Error(inviteError.message);
     }
 
-    const userId = invite.user.id;
+    const invitedUser = invite.user;
+    const userId = invitedUser.id;
     const nowIso = new Date().toISOString();
+
+    await ensureProfileRow(invitedUser);
 
     const profilePatch: LooseRecord = {
       user_id: userId,
@@ -250,9 +240,8 @@ export async function POST(req: Request) {
     };
     if (payload.firstName) profilePatch.first_name = payload.firstName;
     if (payload.lastName) profilePatch.last_name = payload.lastName;
-    if (payload.phone) profilePatch.phone = payload.phone;
     if (payload.companyName) profilePatch.company_legal_name = payload.companyName;
-    if (payload.legalForm) profilePatch.legal_form = payload.legalForm;
+    if (payload.phone) profilePatch.phone = payload.phone;
 
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
@@ -260,23 +249,24 @@ export async function POST(req: Request) {
     if (profileError) throw new Error(profileError.message);
 
     await ensureNotificationPreferences(userId);
-    const { trialDays, start, end } = await ensureTrialSubscription(userId, payload.email);
+    const { trialDays, end } = await ensureTrialSubscription(userId, payload.email);
 
     await sendAdminSubscriptionAlertForUser({
       type: "trial_started",
-      source: payload.source || optionalEnv("INRCY_MARKETING_SOURCE", "wordpress-elementor"),
+      source: payload.source || "wordpress-elementor",
       userId,
       accountEmail: payload.email,
       profileContactEmail: payload.email,
       plan: "Trial",
       status: "trialing",
-      trialStartAt: start.toISOString(),
       trialEndAt: end.toISOString(),
       note: [
+        payload.firstName || payload.lastName
+          ? `Contact: ${[payload.firstName, payload.lastName].filter(Boolean).join(" ")}`
+          : null,
         payload.companyName ? `Société: ${payload.companyName}` : null,
         payload.phone ? `Téléphone: ${payload.phone}` : null,
-        payload.notes ? `Note: ${payload.notes}` : null,
-        payload.consent ? "Consentement RGPD coché" : null,
+        "Consentement RGPD coché",
       ]
         .filter(Boolean)
         .join(" | "),
@@ -303,6 +293,7 @@ export async function OPTIONS() {
     status: 204,
     headers: {
       Allow: "POST, OPTIONS",
+      "Cache-Control": "no-store",
     },
   });
 }
