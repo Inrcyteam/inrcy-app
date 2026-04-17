@@ -11,6 +11,7 @@ Recommended field names:
 - `email`
 - `first_name`
 - `last_name`
+- `company_name`
 - `company`
 - `phone`
 - `legal_form`
@@ -18,7 +19,7 @@ Recommended field names:
 - `consent`
 - honeypot: `website`
 
-The endpoint also accepts common French aliases like `nom`, `prenom`, `societe`, `telephone`.
+The endpoint also accepts common French aliases like `nom`, `prenom`, `societe`, `telephone`, plus Elementor-style keys such as `form_fields[email]` or `fields[first_name][value]`.
 
 ## What the endpoint does
 
@@ -36,7 +37,7 @@ Use an Elementor Pro Form widget with:
    - Prénom → `first_name`
    - Nom → `last_name`
    - Email → `email`
-   - Société → `company`
+   - Société → `company_name`
    - Téléphone → `phone`
    - Forme juridique → `legal_form`
    - Commentaire (optional) → `message`

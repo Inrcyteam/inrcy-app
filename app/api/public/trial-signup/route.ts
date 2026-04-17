@@ -39,10 +39,39 @@ function toPlainObject(value: unknown): LooseRecord {
   return value as LooseRecord;
 }
 
+function maybeParseStructuredString(value: string): unknown {
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+
+  if (
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+  ) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+}
+
 function extractScalarStrings(input: unknown, out: Record<string, string>, parentKey = "") {
   if (input == null) return;
 
-  if (typeof input === "string" || typeof input === "number" || typeof input === "boolean") {
+  if (typeof input === "string") {
+    const parsed = maybeParseStructuredString(input);
+    if (parsed !== input) {
+      extractScalarStrings(parsed, out, parentKey);
+      return;
+    }
+    const key = parentKey.trim();
+    if (key) out[key] = input.trim();
+    return;
+  }
+
+  if (typeof input === "number" || typeof input === "boolean") {
     const key = parentKey.trim();
     if (key) out[key] = String(input).trim();
     return;
@@ -76,27 +105,94 @@ function extractScalarStrings(input: unknown, out: Record<string, string>, paren
   }
 }
 
+function normalizeLookupKey(value: string) {
+  return value
+    .trim()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/\]\[/g, ".")
+    .replace(/\[/g, ".")
+    .replace(/\]/g, "")
+    .replace(/["']/g, "")
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^a-z0-9._]/g, "")
+    .replace(/_+/g, "_")
+    .replace(/\.+/g, ".")
+    .replace(/^\.+|\.+$/g, "");
+}
+
+function buildLookupVariants(key: string) {
+  const base = normalizeLookupKey(key);
+  if (!base) return [];
+
+  const variants = new Set<string>([base]);
+  const prefixes = [
+    "fields.",
+    "field.",
+    "form_fields.",
+    "form.field.",
+    "form.data.",
+    "meta.",
+    "data.",
+    "payload.",
+    "request.",
+    "body.",
+  ];
+
+  let added = true;
+  while (added) {
+    added = false;
+    for (const value of Array.from(variants)) {
+      for (const prefix of prefixes) {
+        if (value.startsWith(prefix)) {
+          const stripped = value.slice(prefix.length);
+          if (stripped && !variants.has(stripped)) {
+            variants.add(stripped);
+            added = true;
+          }
+        }
+      }
+
+      for (const suffix of [".value", ".raw_value", ".checked"]) {
+        if (value.endsWith(suffix)) {
+          const stripped = value.slice(0, -suffix.length);
+          if (stripped && !variants.has(stripped)) {
+            variants.add(stripped);
+            added = true;
+          }
+        }
+      }
+    }
+  }
+
+  return Array.from(variants);
+}
+
 function lookupValue(flat: Record<string, string>, aliases: string[]) {
   const normalized = new Map<string, string>();
 
   for (const [key, value] of Object.entries(flat)) {
-    const variants = [
-      key,
-      key.toLowerCase(),
-      key.replace(/^fields\./i, ""),
-      key.replace(/^fields\./i, "").toLowerCase(),
-    ];
-    for (const variant of variants) normalized.set(variant, value);
+    for (const variant of buildLookupVariants(key)) {
+      if (!normalized.has(variant)) normalized.set(variant, value.trim());
+    }
   }
 
   for (const alias of aliases) {
-    const direct = normalized.get(alias);
-    if (direct) return direct.trim();
-    const lower = normalized.get(alias.toLowerCase());
-    if (lower) return lower.trim();
+    const normalizedAlias = normalizeLookupKey(alias);
+    const match = normalized.get(normalizedAlias);
+    if (match) return match;
   }
 
   return "";
+}
+
+function parseFormLikeEntries(entries: Iterable<[string, string]>) {
+  const out: LooseRecord = {};
+  for (const [key, rawValue] of entries) {
+    out[key] = maybeParseStructuredString(rawValue);
+  }
+  return out;
 }
 
 async function readRequestBody(req: Request): Promise<LooseRecord> {
@@ -108,17 +204,14 @@ async function readRequestBody(req: Request): Promise<LooseRecord> {
 
   if (contentType.includes("application/x-www-form-urlencoded")) {
     const raw = await req.text().catch(() => "");
-    return Object.fromEntries(new URLSearchParams(raw));
+    return parseFormLikeEntries(new URLSearchParams(raw).entries());
   }
 
   if (contentType.includes("multipart/form-data")) {
     const formData = await req.formData().catch(() => null);
     if (!formData) return {};
-    const entries: LooseRecord = {};
-    for (const [key, value] of formData.entries()) {
-      entries[key] = typeof value === "string" ? value : value.name;
-    }
-    return entries;
+    const entries: [string, string][] = Array.from(formData.entries()).map(([key, value]) => [key, typeof value === "string" ? value : value.name]);
+    return parseFormLikeEntries(entries);
   }
 
   const raw = await req.text().catch(() => "");
@@ -127,7 +220,7 @@ async function readRequestBody(req: Request): Promise<LooseRecord> {
   try {
     return toPlainObject(JSON.parse(raw));
   } catch {
-    return Object.fromEntries(new URLSearchParams(raw));
+    return parseFormLikeEntries(new URLSearchParams(raw).entries());
   }
 }
 
@@ -135,16 +228,32 @@ function normalizePayload(body: LooseRecord): SignupPayload {
   const flat: Record<string, string> = {};
   extractScalarStrings(body, flat);
 
-  const consentRaw = lookupValue(flat, ["consent", "acceptance", "privacy", "rgpd"]).toLowerCase();
+  const consentRaw = lookupValue(flat, [
+    "consent",
+    "consentement",
+    "acceptance",
+    "privacy",
+    "privacy_policy",
+    "rgpd",
+    "gdpr",
+  ]).toLowerCase();
 
   return {
     email: lookupValue(flat, ["email", "e-mail", "mail", "your-email"]).trim().toLowerCase(),
     firstName: lookupValue(flat, ["first_name", "firstname", "prenom", "prénom", "first-name"]),
     lastName: lookupValue(flat, ["last_name", "lastname", "nom", "last-name"]),
-    companyName: lookupValue(flat, ["company_name", "company", "company_legal_name", "societe", "société", "entreprise"]),
-    phone: lookupValue(flat, ["phone", "telephone", "téléphone", "tel", "mobile"]),
+    companyName: lookupValue(flat, [
+      "company_name",
+      "company",
+      "company_legal_name",
+      "societe",
+      "société",
+      "entreprise",
+      "societe_raison_sociale",
+    ]),
+    phone: lookupValue(flat, ["phone", "telephone", "téléphone", "tel", "mobile", "portable"]),
     consent: ["1", "true", "yes", "oui", "on", "accepted", "checked"].includes(consentRaw),
-    website: lookupValue(flat, ["website", "site_web", "company_website", "url"]),
+    website: lookupValue(flat, ["website", "site_web", "company_website", "url", "honeypot"]),
     source: lookupValue(flat, ["source", "form_name", "form-id"]) || optionalEnv("INRCY_MARKETING_SOURCE", "wordpress-elementor"),
   };
 }
