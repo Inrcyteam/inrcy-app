@@ -28,10 +28,17 @@ function rint(min: number, max: number) {
   return Math.round(rand(min, max));
 }
 
-function mapSupabaseRecoveryError(code?: string | null, desc?: string | null) {
-  if (code === "otp_expired") return "Ce lien a expiré. Veuillez refaire une demande de réinitialisation depuis la page de connexion.";
-  if (code === "access_denied") return "Accès refusé. Veuillez refaire une demande de réinitialisation depuis la page de connexion.";
-  if (desc && desc.toLowerCase().includes("invalid")) return "Lien invalide. Veuillez refaire une demande de réinitialisation.";
+function mapSupabaseRecoveryError(code?: string | null, desc?: string | null, mode: "invite" | "reset" = "reset") {
+  const isInvite = mode === "invite";
+  const requestLabel = isInvite
+    ? "demander un nouveau lien d’invitation auprès de votre contact iNrCy"
+    : "refaire une demande de réinitialisation depuis la page de connexion";
+
+  if (code === "otp_expired") return `Ce lien a expiré. Veuillez ${requestLabel}.`;
+  if (code === "access_denied") return `Accès refusé. Veuillez ${requestLabel}.`;
+  if (code === "otp_disabled") return "Ce type de lien n’est pas disponible pour le moment.";
+  if (desc && desc.toLowerCase().includes("invalid")) return `Lien invalide ou déjà utilisé. Veuillez ${requestLabel}.`;
+  if (desc && desc.toLowerCase().includes("expired")) return `Ce lien a expiré. Veuillez ${requestLabel}.`;
   return null;
 }
 
@@ -130,9 +137,9 @@ function SetPasswordInner() {
   useEffect(() => {
     const code = searchParams.get("error_code");
     const desc = searchParams.get("error_description");
-    const friendly = mapSupabaseRecoveryError(code, desc);
+    const friendly = mapSupabaseRecoveryError(code, desc, mode);
     if (friendly) setMsg(friendly);
-  }, [searchParams]);
+  }, [mode, searchParams]);
 
   function validate(): string | null {
     if (!getPasswordStrength(password).isStrong) {
@@ -155,12 +162,15 @@ function SetPasswordInner() {
 
     setLoading(true);
     try {
-      // ✅ Pour le reset password Supabase (recovery), on NE FAIT PAS exchangeCodeForSession.
-      // On vérifie juste que l’utilisateur est bien authentifié via le lien.
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const hasSession = Boolean(sessionData.session);
+
       const { data, error } = await supabase.auth.getUser();
-      if (error || !data.user) {
+      if (sessionError || error || !hasSession || !data.user) {
         setMsg(
-          "Lien invalide/expiré ou ouvert dans un autre navigateur. Veuillez copier-coller le lien dans le même navigateur ou refaire une demande."
+          isInvite
+            ? "Votre session d’activation n’a pas pu être finalisée. Le lien est peut-être expiré, déjà utilisé, ou ouvert dans un autre navigateur. Demandez un nouveau lien d’invitation."
+            : "Votre session de réinitialisation n’a pas pu être finalisée. Le lien est peut-être expiré, déjà utilisé, ou ouvert dans un autre navigateur. Refaites une demande de réinitialisation."
         );
         return;
       }
@@ -276,7 +286,7 @@ function SetPasswordInner() {
             <div className="text-xs text-slate-500 text-center">
               {isInvite
                 ? "Bienvenue sur iNrCy. Définissez votre mot de passe pour activer votre espace client."
-                : "Définissez un nouveau mot de passe pour accéder à votre espace iNrCy."}
+                : "Définissez un nouveau mot de passe pour accéder à votre espace iNrCy. Ce lien fonctionne une seule fois et doit être ouvert dans le navigateur qui a finalisé l’étape précédente."}
             </div>
           </div>
 
