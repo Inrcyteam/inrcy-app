@@ -3,6 +3,7 @@
 import Image from "next/image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
+import { purgeAllBrowserAccountCaches, setActiveBrowserUserId } from "@/lib/browserAccountCache";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type WanderDot = {
@@ -95,6 +96,7 @@ useEffect(() => {
     } = await supabase.auth.getUser();
 
     if (!cancelled && !error && user) {
+      setActiveBrowserUserId(user.id);
       redirectToDashboard();
     }
   };
@@ -102,8 +104,12 @@ useEffect(() => {
   void ensureExistingSession();
 
   const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-    if (!session) return;
+    if (!session) {
+      setActiveBrowserUserId(null);
+      return;
+    }
     if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
+      setActiveBrowserUserId(session.user.id);
       redirectToDashboard();
     }
   });
@@ -169,10 +175,19 @@ useEffect(() => {
     const supabase = supabaseRef.current;
     if (!supabase) return;
 
+    purgeAllBrowserAccountCaches();
+    setActiveBrowserUserId(null);
+    await (supabase.auth.signOut as any)({ scope: "local" }).catch(() => null);
+
     const { error } = await supabase.auth.setSession({ access_token, refresh_token });
     if (error) {
       console.error("setSession error:", error);
       return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+    if (userData?.user?.id) {
+      setActiveBrowserUserId(userData.user.id);
     }
 
     // on redirige d'abord (sans tuer le hash avant)
@@ -223,17 +238,13 @@ useEffect(() => {
   setLoading(true);
 
   try {
-    const origin = window.location.origin;
-
     const supabase = supabaseRef.current;
     if (!supabase) {
       setError("Le service d’authentification est momentanément indisponible. Veuillez recharger la page.");
       return;
     }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-  redirectTo: `${origin}/set-password?mode=reset`,
-});
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
 
     if (error) {
       setError(getSimpleFrenchErrorMessage(error));
@@ -284,6 +295,11 @@ useEffect(() => {
       if (!session) {
         setError("La connexion a abouti, mais la session n’a pas pu être finalisée. Veuillez réessayer.");
         return;
+      }
+
+      const { data: userData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+      if (userData?.user?.id) {
+        setActiveBrowserUserId(userData.user.id);
       }
 
       // Utilise une redirection navigateur complète pour fiabiliser la navigation

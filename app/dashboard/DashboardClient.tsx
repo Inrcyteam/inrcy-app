@@ -32,6 +32,7 @@ import NotificationsSettingsContent from "./settings/_components/NotificationsSe
 
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
+import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
 import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
@@ -54,32 +55,11 @@ function statsSummarySessionKey(period: StatsWarmPeriod) {
 }
 
 function readUiCacheValue(key: string): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const sessionValue = window.sessionStorage.getItem(key);
-    if (sessionValue !== null) return sessionValue;
-  } catch {
-    // ignore
-  }
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
+  return readAccountCacheValue(key);
 }
 
 function writeUiCacheValue(key: string, value: string) {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(key, value);
-  } catch {
-    // ignore
-  }
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // ignore
-  }
+  writeAccountCacheValue(key, value);
 }
 
 function getLastChannelSyncAt() {
@@ -248,13 +228,14 @@ export default function DashboardClient() {
   // ✅ Déconnexion Supabase + retour /login
   const handleLogout = async () => {
     const supabase = createClient();
-    const { error } = await supabase.auth.signOut();
+    purgeAllBrowserAccountCaches();
+    setActiveBrowserUserId(null);
+    const { error } = await (supabase.auth.signOut as any)({ scope: "local" }).catch(() => ({ error: null as { message?: string } | null }));
     if (error) {
       console.error("Erreur déconnexion:", error.message);
       return;
     }
-    router.replace("/login");
-    router.refresh();
+    window.location.replace("/login");
   };
 
   // ✅ Menu utilisateur (desktop)
@@ -271,6 +252,7 @@ export default function DashboardClient() {
   const notificationsRequestSeqRef = useRef(0);
   const kpisRequestSeqRef = useRef(0);
   const siteConfigRequestSeqRef = useRef(0);
+  const activeUserIdRef = useRef<string | null>(null);
 
   const [kpisLoading, setKpisLoading] = useState(false);
   const [kpis, setKpis] = useState<null | {
@@ -574,7 +556,7 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
 
   useEffect(() => {
     try {
-      const raw = window.sessionStorage.getItem("inrcy_ui_balance_v1");
+      const raw = readAccountCacheValue("inrcy_ui_balance_v1");
       const n = raw ? Number(raw) : NaN;
       if (Number.isFinite(n)) setUiBalance(n);
     } catch {
@@ -600,7 +582,7 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
       const next = Number.isFinite(bal) ? bal : 0;
       setUiBalance(next);
       try {
-        window.sessionStorage.setItem("inrcy_ui_balance_v1", String(next));
+        writeAccountCacheValue("inrcy_ui_balance_v1", String(next));
       } catch {
         // ignore
       }
@@ -615,9 +597,35 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
 
   useEffect(() => {
     const supabase = createClient();
+    let cancelled = false;
+
     supabase.auth.getUser().then(({ data }) => {
-      setUserEmail(data.user?.email ?? null);
+      if (cancelled) return;
+      const user = data.user ?? null;
+      activeUserIdRef.current = user?.id ?? null;
+      setUserEmail(user?.email ?? null);
+      setActiveBrowserUserId(user?.id ?? null);
     });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const nextUser = session?.user ?? null;
+      const previousUserId = activeUserIdRef.current;
+      const nextUserId = nextUser?.id ?? null;
+      if (previousUserId && nextUserId && previousUserId !== nextUserId) {
+        purgeAllBrowserAccountCaches();
+        setActiveBrowserUserId(nextUserId);
+        window.location.replace("/dashboard");
+        return;
+      }
+      activeUserIdRef.current = nextUserId;
+      setUserEmail(nextUser?.email ?? null);
+      setActiveBrowserUserId(nextUserId);
+    });
+
+    return () => {
+      cancelled = true;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
 

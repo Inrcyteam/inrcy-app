@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { optionalEnv, requireEnv } from "@/lib/env";
+import { optionalEnv } from "@/lib/env";
 import { ensureNotificationPreferences } from "@/lib/notifications";
 import { ensureProfileRow } from "@/lib/ensureProfileRow";
 import { getClientIp, enforceRateLimit } from "@/lib/rateLimit";
-import { getAppUrl } from "@/lib/stripeRest";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { ensureTrialSubscription } from "@/lib/trialSubscription";
@@ -308,11 +307,8 @@ export async function POST(req: Request) {
       return jsonResponse({ error: "Le consentement est obligatoire." }, 400);
     }
 
-    const appUrl = getAppUrl(req) || requireEnv("NEXT_PUBLIC_APP_URL");
-    const redirectTo = `${appUrl.replace(/\/$/, "")}/set-password?mode=invite`;
 
     const { data: invite, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(payload.email, {
-      redirectTo,
       data: {
         first_name: payload.firstName || undefined,
         last_name: payload.lastName || undefined,

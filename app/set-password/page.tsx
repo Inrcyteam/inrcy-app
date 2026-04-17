@@ -2,8 +2,9 @@
 
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
+import { setActiveBrowserUserId } from "@/lib/browserAccountCache";
 
 type WanderDot = {
   left: string;
@@ -26,6 +27,11 @@ function rand(min: number, max: number) {
 }
 function rint(min: number, max: number) {
   return Math.round(rand(min, max));
+}
+
+function normalizeEmail(value?: string | null) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized || null;
 }
 
 function mapSupabaseRecoveryError(code?: string | null, desc?: string | null, mode: "invite" | "reset" = "reset") {
@@ -77,11 +83,11 @@ export default function SetPasswordPage() {
 }
 
 function SetPasswordInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const mode = (searchParams.get("mode") ?? "reset") as "invite" | "reset";
   const isInvite = mode === "invite";
+  const expectedEmail = normalizeEmail(searchParams.get("email"));
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -141,6 +147,30 @@ function SetPasswordInner() {
     if (friendly) setMsg(friendly);
   }, [mode, searchParams]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const verifyExpectedAccount = async () => {
+      if (!expectedEmail) return;
+      const { data, error } = await supabase.auth.getUser();
+      if (cancelled || error || !data.user) return;
+      setActiveBrowserUserId(data.user.id);
+      const currentEmail = normalizeEmail(data.user.email);
+      if (currentEmail && currentEmail !== expectedEmail) {
+        setMsg(
+          isInvite
+            ? `Ce lien d’activation correspond à ${expectedEmail}, mais ce navigateur utilise actuellement ${currentEmail}. Demandez un nouveau lien d’invitation ou ouvrez-le après vous être déconnecté du bon compte.`
+            : `Ce lien de réinitialisation correspond à ${expectedEmail}, mais ce navigateur utilise actuellement ${currentEmail}. Refaites la demande après vous être déconnecté du bon compte.`
+        );
+      }
+    };
+
+    void verifyExpectedAccount();
+    return () => {
+      cancelled = true;
+    };
+  }, [expectedEmail, isInvite, supabase]);
+
   function validate(): string | null {
     if (!getPasswordStrength(password).isStrong) {
       return "Mot de passe trop faible : 8+ caractères, lettre, chiffre, majuscule et symbole requis.";
@@ -175,6 +205,18 @@ function SetPasswordInner() {
         return;
       }
 
+      const currentEmail = normalizeEmail(data.user.email);
+      if (expectedEmail && currentEmail && currentEmail !== expectedEmail) {
+        setMsg(
+          isInvite
+            ? `Ce lien d’activation est prévu pour ${expectedEmail}. Déconnectez-vous du compte ${currentEmail} puis demandez un nouveau lien d’invitation.`
+            : `Ce lien de réinitialisation est prévu pour ${expectedEmail}. Déconnectez-vous du compte ${currentEmail} puis refaites une demande de réinitialisation.`
+        );
+        return;
+      }
+
+      setActiveBrowserUserId(data.user.id);
+
       const { error: updErr } = await supabase.auth.updateUser({ password });
       if (updErr) {
         setMsg(updErr.message);
@@ -187,8 +229,7 @@ function SetPasswordInner() {
           : "Mot de passe réinitialisé. Redirection…"
       );
 
-      router.replace("/dashboard");
-      router.refresh();
+      window.location.replace("/dashboard");
     } finally {
       setLoading(false);
     }

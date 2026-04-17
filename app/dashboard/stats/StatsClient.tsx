@@ -11,6 +11,7 @@ import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/user
 import { decideAction, type DecisionResult } from "@/lib/decision/decisionEngine";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
+import { readAccountCacheValue, removeAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -147,46 +148,15 @@ function safeNum(v: any, fallback = 0) {
 
 
 function readUiCacheValue(key: string): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const sessionValue = window.sessionStorage.getItem(key);
-    if (sessionValue !== null) return sessionValue;
-  } catch {
-    // ignore
-  }
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
+  return readAccountCacheValue(key);
 }
 
 function writeUiCacheValue(key: string, value: string) {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(key, value);
-  } catch {
-    // ignore
-  }
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // ignore
-  }
+  writeAccountCacheValue(key, value);
 }
 
 function removeUiCacheValue(key: string) {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.removeItem(key);
-  } catch {
-    // ignore
-  }
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    // ignore
-  }
+  removeAccountCacheValue(key);
 }
 
 function expectedUiSnapshotDate() {

@@ -1,3 +1,5 @@
+import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
+
 export type LineItem = {
   id: string;
   label: string;
@@ -112,7 +114,7 @@ const LS_KEY = "inrcy_docs_v1";
 export function loadDocs(): DocRecord[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(LS_KEY);
+    const raw = readAccountCacheValue(LS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -124,7 +126,7 @@ export function loadDocs(): DocRecord[] {
 
 export function saveDocs(docs: DocRecord[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(LS_KEY, JSON.stringify(docs));
+  writeAccountCacheValue(LS_KEY, JSON.stringify(docs));
 }
 
 export function upsertDoc(doc: DocRecord) {

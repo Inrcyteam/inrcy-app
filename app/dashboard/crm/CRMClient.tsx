@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./crm.module.css";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
@@ -273,7 +274,7 @@ export default function CRMClient() {
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(() => new Set());
   const [importantIds, setImportantIds] = useState<Set<string>>(() => {
     try {
-      const raw = localStorage.getItem("inrcy_crm_important_ids");
+      const raw = readAccountCacheValue("inrcy_crm_important_ids");
       const ids = raw ? JSON.parse(raw) : [];
       return new Set<string>(Array.isArray(ids) ? ids.filter((x) => typeof x === "string") : []);
     } catch {
@@ -282,7 +283,7 @@ export default function CRMClient() {
   });
   const [notesById, setNotesById] = useState<Record<string, string>>(() => {
     try {
-      const raw = localStorage.getItem("inrcy_crm_notes_by_id");
+      const raw = readAccountCacheValue("inrcy_crm_notes_by_id");
       const obj = raw ? JSON.parse(raw) : {};
       return obj && typeof obj === "object" ? (obj as Record<string, string>) : {};
     } catch {
@@ -493,13 +494,13 @@ export default function CRMClient() {
 
   const persistImportant = (next: Set<string>) => {
     try {
-      localStorage.setItem("inrcy_crm_important_ids", JSON.stringify(Array.from(next)));
+      writeAccountCacheValue("inrcy_crm_important_ids", JSON.stringify(Array.from(next)));
     } catch {}
   };
 
   const persistNotes = (next: Record<string, string>) => {
     try {
-      localStorage.setItem("inrcy_crm_notes_by_id", JSON.stringify(next));
+      writeAccountCacheValue("inrcy_crm_notes_by_id", JSON.stringify(next));
     } catch {}
   };
 

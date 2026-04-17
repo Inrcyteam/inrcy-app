@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireEnv } from "@/lib/env";
-import { getAppUrl } from "@/lib/stripeRest";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
 import { ensureNotificationPreferences } from "@/lib/notifications";
 import { ensureTrialSubscription } from "@/lib/trialSubscription";
@@ -25,11 +24,8 @@ export async function POST(req: Request) {
 
     if (!email) return NextResponse.json({ error: "Email manquant." }, { status: 400 });
 
-    const appUrl = getAppUrl(req) || requireEnv("NEXT_PUBLIC_APP_URL");
 
-    const { data: invite, error: invErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${appUrl}/set-password?mode=invite`,
-    });
+    const { data: invite, error: invErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
 
     if (invErr) throw new Error(invErr.message);
 
