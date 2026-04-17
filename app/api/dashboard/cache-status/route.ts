@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const PERIODS = [7, 30] as const;
 
 type PeriodKey = (typeof PERIODS)[number];
