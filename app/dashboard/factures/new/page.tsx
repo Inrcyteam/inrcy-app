@@ -1284,7 +1284,7 @@ export default function NewFacturePage() {
           </div>
         ) : null}
 
-        <div className={styles.threeCol}>
+        <div className={styles.compactThreeCol}>
           <div className={styles.field}>
             <label>Numéro de facture</label>
             <input
@@ -1316,7 +1316,7 @@ export default function NewFacturePage() {
           </div>
         </div>
 
-        <div className={styles.threeCol}>
+        <div className={styles.compactThreeCol}>
           <div className={styles.field}>
             <label>Type de document</label>
             <select
@@ -1375,7 +1375,7 @@ export default function NewFacturePage() {
           </div>
         </div>
 
-        <div className={styles.threeCol}>
+        <div className={styles.compactThreeCol}>
           <div className={styles.field}>
             <label>Date de prestation / livraison</label>
             <input
@@ -1407,7 +1407,7 @@ export default function NewFacturePage() {
           </div>
         </div>
 
-        <div className={styles.threeCol}>
+        <div className={styles.compactThreeCol}>
           <div className={styles.field}>
             <label>Référence commande / PO</label>
             <input

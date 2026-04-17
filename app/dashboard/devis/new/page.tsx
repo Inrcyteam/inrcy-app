@@ -1015,7 +1015,7 @@ export default function NewDevisPage() {
             </div>
           ) : null}
 
-          <div className={styles.threeCol}>
+          <div className={styles.compactThreeCol}>
             <div className={styles.field}>
               <label>Numéro de devis</label>
               <input
@@ -1096,7 +1096,7 @@ export default function NewDevisPage() {
             </div>
           </div>
 
-          <div className={styles.threeCol}>
+          <div className={styles.compactThreeCol}>
             <div className={styles.field}>
               <label>Référence commande / PO</label>
               <input

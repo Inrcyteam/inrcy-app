@@ -166,24 +166,73 @@
   white-space: nowrap;
 }
 
-.switchBtnFactures {
-  background: linear-gradient(135deg, rgba(251, 146, 60, 0.18), rgba(244, 114, 182, 0.16));
-  border-color: rgba(251, 146, 60, 0.34);
+.switchBtnFactures,
+.switchBtnDevis {
+  position: relative;
+  overflow: hidden;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #f8fafc;
+  text-shadow: 0 1px 0 rgba(15, 23, 42, 0.5);
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease;
 }
 
-.switchBtnFactures:hover {
-  background: linear-gradient(135deg, rgba(251, 146, 60, 0.26), rgba(244, 114, 182, 0.22));
-  border-color: rgba(251, 146, 60, 0.46);
+.switchBtnFactures {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(190, 242, 255, 0.12) 16%, rgba(14, 165, 233, 0.34) 52%, rgba(8, 47, 73, 0.82) 100%),
+    linear-gradient(135deg, rgba(34, 211, 238, 0.4), rgba(37, 99, 235, 0.28));
+  border-color: rgba(103, 232, 249, 0.78);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(8, 47, 73, 0.28),
+    0 0 0 1px rgba(34, 211, 238, 0.12),
+    0 10px 24px rgba(8, 47, 73, 0.3),
+    0 0 18px rgba(34, 211, 238, 0.18);
 }
 
 .switchBtnDevis {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(167, 139, 250, 0.16));
-  border-color: rgba(56, 189, 248, 0.34);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(254, 240, 138, 0.1) 16%, rgba(245, 158, 11, 0.34) 52%, rgba(120, 53, 15, 0.82) 100%),
+    linear-gradient(135deg, rgba(251, 191, 36, 0.4), rgba(249, 115, 22, 0.3));
+  border-color: rgba(253, 224, 71, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -1px 0 rgba(120, 53, 15, 0.26),
+    0 0 0 1px rgba(251, 191, 36, 0.12),
+    0 10px 24px rgba(120, 53, 15, 0.28),
+    0 0 18px rgba(251, 191, 36, 0.18);
 }
 
-.switchBtnDevis:hover {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.26), rgba(167, 139, 250, 0.22));
-  border-color: rgba(56, 189, 248, 0.46);
+.switchBtnFactures:hover,
+.switchBtnFactures:focus-visible {
+  transform: translateY(-1px);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(207, 250, 254, 0.14) 16%, rgba(6, 182, 212, 0.4) 52%, rgba(8, 47, 73, 0.9) 100%),
+    linear-gradient(135deg, rgba(34, 211, 238, 0.48), rgba(59, 130, 246, 0.34));
+  border-color: rgba(165, 243, 252, 0.95);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(8, 47, 73, 0.24),
+    0 12px 28px rgba(8, 47, 73, 0.36),
+    0 0 22px rgba(34, 211, 238, 0.28);
+}
+
+.switchBtnDevis:hover,
+.switchBtnDevis:focus-visible {
+  transform: translateY(-1px);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(254, 249, 195, 0.13) 16%, rgba(249, 115, 22, 0.42) 52%, rgba(124, 45, 18, 0.9) 100%),
+    linear-gradient(135deg, rgba(253, 224, 71, 0.44), rgba(249, 115, 22, 0.34));
+  border-color: rgba(254, 240, 138, 0.96);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(124, 45, 18, 0.24),
+    0 12px 28px rgba(124, 45, 18, 0.34),
+    0 0 22px rgba(251, 191, 36, 0.28);
 }
 
 .actionGrid {
@@ -866,6 +915,22 @@
   gap: 10px;
 }
 
+.compactThreeCol {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.compactThreeCol > * {
+  min-width: 0;
+}
+
+.compactThreeCol .field,
+.compactThreeCol .field input,
+.compactThreeCol .field select {
+  min-width: 0;
+}
+
 .fourCol {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -971,6 +1036,10 @@
   .fourCol {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .compactThreeCol {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 700px) {
@@ -994,6 +1063,26 @@
   .fourCol {
     grid-template-columns: 1fr;
   }
+
+  .compactThreeCol {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .compactThreeCol .field {
+    gap: 5px;
+  }
+
+  .compactThreeCol .field label {
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .compactThreeCol .field input,
+  .compactThreeCol .field select {
+    padding: 9px 8px;
+    font-size: 13px;
+  }
 }
 
 @media (max-width: 520px) {
@@ -1009,6 +1098,20 @@
 
   .checkboxLabel {
     gap: 8px;
+  }
+
+  .compactThreeCol {
+    gap: 6px;
+  }
+
+  .compactThreeCol .field label {
+    font-size: 10px;
+  }
+
+  .compactThreeCol .field input,
+  .compactThreeCol .field select {
+    padding: 8px 7px;
+    font-size: 12px;
   }
 
   .panelToolbar,
