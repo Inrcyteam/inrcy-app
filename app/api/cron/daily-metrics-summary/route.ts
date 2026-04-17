@@ -5,37 +5,10 @@ import { buildMetricsSummary } from "@/lib/metrics/summary";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAppUrl } from "@/lib/stripeRest";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
+import { fetchCubeOverviews, type CubeKey, type Overview } from "@/lib/metrics/computeMetrics";
 
 export const runtime = "nodejs";
 
-
-type CubeKey = "site_inrcy" | "site_web" | "facebook" | "instagram" | "linkedin" | "gmb";
-
-type Overview = {
-  days: number;
-  business?: { sectorCategory?: string | null; profession?: string | null };
-  totals?: {
-    pageviews?: number;
-    clicks?: number;
-    sessions?: number;
-    impressions?: number;
-    engagementRate?: number;
-    avgSessionDuration?: number;
-  };
-  topPages?: Array<{ path: string; views: number }>;
-  topQueries?: Array<{ query: string; clicks: number }>;
-  channels?: Array<{ channel?: string; sessions?: number; key?: string; value?: number }>;
-  sources?: Record<string, { connected?: boolean | Record<string, boolean>; metrics?: Record<string, unknown> | null }>;
-};
-
-const INCLUDE_BY_CUBE: Record<CubeKey, string> = {
-  site_inrcy: "site_inrcy_ga4,site_inrcy_gsc",
-  site_web: "site_web_ga4,site_web_gsc",
-  gmb: "gmb",
-  facebook: "facebook",
-  instagram: "instagram",
-  linkedin: "linkedin",
-};
 
 const DEFAULT_TOTAL_SHARDS = 12;
 const DEFAULT_CONCURRENCY = 2;
@@ -245,20 +218,6 @@ function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
   if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin") return Math.max(0, Math.round(computeOpportunityPerDaySocial(cubeKey, ov) * 30));
   return Math.max(0, Math.round(computeOpportunityPerDayWeb(ov) * 30));
 }
-async function fetchOverviewForUser(req: Request, userId: string, cube: CubeKey, days = 30, snapshotDate?: string | null): Promise<Overview> {
-  const baseUrl = getAppUrl(req);
-  const secret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";
-  const url = new URL(`${baseUrl}/api/stats/overview`);
-  url.searchParams.set("days", String(days));
-  url.searchParams.set("include", INCLUDE_BY_CUBE[cube]);
-  url.searchParams.set("userId", userId);
-  url.searchParams.set("secret", secret);
-  url.searchParams.set("fresh", "1");
-  if (snapshotDate) url.searchParams.set("snapshotDate", snapshotDate);
-  const res = await fetch(url.toString(), { headers: { "x-cron-secret": secret }, cache: "no-store" });
-  if (!res.ok) throw new Error(`overview_failed:${cube}:${res.status}:${(await res.text()).slice(0, 140)}`);
-  return (await res.json()) as Overview;
-}
 
 const SNAPSHOT_SOURCES: Array<keyof ChannelStates> = [
   "site_inrcy",
@@ -295,6 +254,7 @@ function parsePositiveInt(raw: string | null, fallback: number, opts?: { min?: n
 async function processUser(req: Request, userId: string) {
   const origin = getAppUrl(req);
   const snapshotDate = getDefaultSnapshotDate();
+
   try {
     await buildMetricsSummary({
       supabase: supabaseAdmin,
@@ -310,14 +270,38 @@ async function processUser(req: Request, userId: string) {
     console.warn("daily-metrics-summary metrics_summary warm failed", userId, error instanceof Error ? error.message : String(error));
   }
 
+  let overviews30: Partial<Record<CubeKey, Overview>> = {};
+  try {
+    // Warm exactly the same iNrStats data family used by the UI refresh.
+    await fetchCubeOverviews({
+      origin,
+      days: 7,
+      bypassCache: true,
+      supabase: supabaseAdmin,
+      userId,
+      snapshotDate,
+    });
+
+    overviews30 = await fetchCubeOverviews({
+      origin,
+      days: 30,
+      bypassCache: true,
+      supabase: supabaseAdmin,
+      userId,
+      snapshotDate,
+    });
+  } catch (error) {
+    console.warn("daily-metrics-summary inrstats warm failed", userId, error instanceof Error ? error.message : String(error));
+  }
+
   const states = await getChannelConnectionStates(supabaseAdmin, userId);
   const details: Partial<Record<CubeKey, SnapshotDetail>> = {};
 
   for (const source of SNAPSHOT_SOURCES) {
     const state = states[source];
-    const overview = await fetchOverviewForUser(req, userId, source, 30, snapshotDate);
-    const demandesCaptees = computeCapturedForCube(source as CubeKey, overview);
-    const opportunites = computeOpportunity30(source as CubeKey, overview);
+    const overview = overviews30[source as CubeKey] as Overview | undefined;
+    const demandesCaptees = overview ? computeCapturedForCube(source as CubeKey, overview) : 0;
+    const opportunites = overview ? computeOpportunity30(source as CubeKey, overview) : 0;
 
     details[source as CubeKey] = {
       connected: Boolean(state?.connected),
