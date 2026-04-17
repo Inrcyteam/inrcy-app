@@ -278,10 +278,9 @@ export async function buildMetricsSummary(args: {
   };
 
   try {
-    // Keep the shared generator/iNrStats snapshot warm for a short period.
-    // Live channel connect/disconnect flows already bypass this cache with fresh=1,
-    // so a slightly longer TTL cuts recomputation without making the UI stale.
-    const expiresAt = new Date(Date.now() + 36 * 60 * 60 * 1000).toISOString();
+    // Keep the shared generator/iNrStats snapshot warm for a very short period
+    // so another device catches up quickly without waiting for hours.
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     await supabase.from('stats_cache').insert({
       user_id: userId,
       source: 'metrics_summary',

@@ -7,6 +7,7 @@ import styles from "./dashboard.module.css";
 import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { getMaintenanceState, isAdminUser } from "@/lib/maintenance";
+import ProfileRealtimeBridge from "./_components/ProfileRealtimeBridge";
 
 export default async function DashboardLayout({
   children,
@@ -41,6 +42,7 @@ export default async function DashboardLayout({
     <div className={styles.shell}>
       <div className={styles.bg} />
       <div className={styles.noise} />
+      <ProfileRealtimeBridge />
 
       {children}
     </div>

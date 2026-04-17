@@ -10,6 +10,7 @@ import HelpModal from "../_components/HelpModal";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { decideAction, type DecisionResult } from "@/lib/decision/decisionEngine";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
+import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -1671,6 +1672,19 @@ useEffect(() => {
       window.removeEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
     };
   }, [hydrateFromSessionCache, period, triggerRefresh]);
+
+  useEffect(() => {
+    const handleProfileVersionChange = (event: Event) => {
+      const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
+      if (detail?.field !== "stats_version") return;
+      triggerRefresh("channels");
+    };
+
+    window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    return () => {
+      window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    };
+  }, [triggerRefresh]);
 
   useEffect(() => {
     void syncFromServerCacheIfNeeded(true);

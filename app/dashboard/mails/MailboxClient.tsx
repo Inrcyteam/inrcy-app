@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./mails.module.css";
@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabaseClient";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/dashboard/_components/ChannelImageRetouchTool";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 
 
 const pillBtn: React.CSSProperties = {
@@ -1065,7 +1066,7 @@ export default function MailboxClient() {
   const [helpOpen, setHelpOpen] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [mobileFoldersOpen, setMobileFoldersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1387,7 +1388,7 @@ export default function MailboxClient() {
     }
   }
 
-  async function loadHistory() {
+  const loadHistory = useCallback(async () => {
     setLoading(true);
     try {
       const { data: auth } = await supabase.auth.getUser();
@@ -1574,7 +1575,7 @@ const subTitle = firstNonEmpty(
     } finally {
       setLoading(false);
     }
-  }
+  }, [filterAccountId, supabase]);
 
   const visibleItems = useMemo(() => {
     const q = historyQuery.trim().toLowerCase();
@@ -1767,7 +1768,7 @@ const subTitle = firstNonEmpty(
       await loadAccounts();
       await loadHistory();
     })();
-  }, []);
+  }, [loadHistory]);
 
   useEffect(() => {
     const handleMailAccountsUpdated = async () => {
@@ -1777,7 +1778,7 @@ const subTitle = firstNonEmpty(
 
     window.addEventListener(MAIL_ACCOUNTS_UPDATED_EVENT, handleMailAccountsUpdated as EventListener);
     return () => window.removeEventListener(MAIL_ACCOUNTS_UPDATED_EVENT, handleMailAccountsUpdated as EventListener);
-  }, []);
+  }, [loadHistory]);
 
   useEffect(() => {
     if (!composeOpen) return;
@@ -1817,7 +1818,20 @@ const subTitle = firstNonEmpty(
   // Recharger l'historique quand le filtre "boîte d'envoi" change
   useEffect(() => {
     void loadHistory();
-  }, [filterAccountId]);
+  }, [loadHistory]);
+
+  useEffect(() => {
+    const handleProfileVersionChange = (event: Event) => {
+      const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
+      if (!(detail?.field === "docs_version" || detail?.field === "publications_version")) return;
+      void loadHistory();
+    };
+
+    window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    return () => {
+      window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    };
+  }, [loadHistory]);
 
   // open folder from URL
   useEffect(() => {

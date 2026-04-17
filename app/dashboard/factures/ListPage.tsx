@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import styles from "../_documents/documents.module.css";
 import { type DocRecord, calcTotalsWithDiscount, formatEuro, loadDocs } from "../_documents/docUtils";
 import { deleteDocRecord, duplicateDocRecord, fetchDocRecords, updateDocRecordStatus } from "../_documents/docSaveStore";
+import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 
 type Props = {
   kind: "devis" | "facture";
@@ -38,6 +39,19 @@ function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
 
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const handleProfileVersionChange = (event: Event) => {
+      const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
+      if (detail?.field !== "docs_version") return;
+      void refresh();
+    };
+
+    window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    return () => {
+      window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    };
   }, [refresh]);
 
   const rows: Row[] = useMemo(() => {

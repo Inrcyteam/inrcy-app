@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "../../dashboard/dashboard.module.css";
 import b from "./fideliser.module.css";
 import BaseModal from "./components/BaseModal";
@@ -12,6 +12,7 @@ import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
 import { WEEKLY_GOALS, clampProgress, getGoalCopy } from "@/lib/weeklyGoals";
+import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 
 type ActiveModal = null | "inform" | "thanks" | "satisfaction";
 
@@ -38,7 +39,7 @@ export default function FideliserPage() {
     }
   }, [searchParams]);
 
-  const refreshMetrics = async () => {
+  const refreshMetrics = useCallback(async () => {
     try {
       const [metricsRes, summaryRes] = await Promise.all([
         fetch("/api/fideliser/metrics?days=30", { cache: "no-store" as any }),
@@ -49,11 +50,24 @@ export default function FideliserPage() {
     } catch {
       // ignore
     }
-  };
+  }, []);
 
   useEffect(() => {
-    refreshMetrics();
-  }, []);
+    void refreshMetrics();
+  }, [refreshMetrics]);
+
+  useEffect(() => {
+    const handleProfileVersionChange = (event: Event) => {
+      const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
+      if (!(detail?.field === "loyalty_version")) return;
+      void refreshMetrics();
+    };
+
+    window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    return () => {
+      window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    };
+  }, [refreshMetrics]);
 
   const data = useMemo(() => {
     const newsletter = metrics?.newsletter_mail ?? {};

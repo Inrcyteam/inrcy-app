@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "../../dashboard/dashboard.module.css";
 import b from "./booster.module.css";
 import BaseModal from "./components/BaseModal";
@@ -14,6 +14,7 @@ import HelpModal from "../_components/HelpModal";
 import StatusMessage from "../_components/StatusMessage";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { WEEKLY_GOALS, clampProgress, getGoalCopy } from "@/lib/weeklyGoals";
+import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 
 type ActiveModal = null | "publish" | "reviews" | "promo";
 
@@ -44,7 +45,7 @@ export default function BoosterPage() {
     }
   }, [searchParams]);
 
-  const refreshMetrics = async () => {
+  const refreshMetrics = useCallback(async () => {
     try {
       const [metricsRes, summaryRes] = await Promise.all([
         fetch("/api/booster/metrics?days=30", { cache: "no-store" as any }),
@@ -55,9 +56,9 @@ export default function BoosterPage() {
     } catch {
       // ignore
     }
-  };
+  }, []);
 
-  const trackEvent = async (
+  const trackEvent = useCallback(async (
     type: "publish" | "review_mail" | "promo_mail",
     payload: Record<string, any>
   ) => {
@@ -121,11 +122,24 @@ export default function BoosterPage() {
     } finally {
       await refreshMetrics();
     }
-  };
+  }, [refreshMetrics]);
 
   useEffect(() => {
-    refreshMetrics();
-  }, []);
+    void refreshMetrics();
+  }, [refreshMetrics]);
+
+  useEffect(() => {
+    const handleProfileVersionChange = (event: Event) => {
+      const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
+      if (!(detail?.field === "publications_version" || detail?.field === "loyalty_version")) return;
+      void refreshMetrics();
+    };
+
+    window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    return () => {
+      window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    };
+  }, [refreshMetrics]);
 
   const data = useMemo(() => {
     const publish = metrics?.publish ?? {};

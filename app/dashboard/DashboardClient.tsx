@@ -36,6 +36,7 @@ import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
+import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants";
 import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
 import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, Module, ModuleAction, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
@@ -1348,6 +1349,32 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     clearScheduledGeneratorRefreshes();
     await runSync();
   }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshKpis, warmInrStatsUi]);
+
+  useEffect(() => {
+    const handleProfileVersionChange = (event: Event) => {
+      const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
+      if (!detail) return;
+
+      if (detail.field === "notifications_version") {
+        void refreshNotifications();
+        return;
+      }
+
+      if (detail.field === "loyalty_version") {
+        void refreshUiBalance();
+        return;
+      }
+
+      if (detail.field === "stats_version") {
+        void triggerGeneratorRefresh();
+      }
+    };
+
+    window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    return () => {
+      window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    };
+  }, [refreshNotifications, refreshUiBalance, triggerGeneratorRefresh]);
 
   // ✅ Opportunités activables (iNrStats) — lues directement depuis /api/metrics/summary.
   const [oppTotal, setOppTotal] = useState<number | null>(null);
