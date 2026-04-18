@@ -67,9 +67,6 @@ export function normalizeCampaignRecipients(input: unknown): MailCampaignRecipie
   return out;
 }
 
-export function providerBatchLimit(provider: string | null | undefined) {
-  const normalized = String(provider || "").toLowerCase();
-  if (normalized === "gmail") return 20;
-  if (normalized === "microsoft") return 40;
-  return 40;
+export function providerBatchLimit(_provider: string | null | undefined) {
+  return 20;
 }

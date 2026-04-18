@@ -1,3 +1,0 @@
-app/dashboard/crm/CRMClient.tsx
-lib/vendor/xlsx.mjs
-lib/vendor/xlsx-LICENSE.txt

@@ -243,6 +243,13 @@ async function sendViaGmail(
     const data = await sendRes.text().catch(() => "");
     throw new Error(`Envoi Gmail impossible (${sendRes.status}) ${data}`.trim());
   }
+
+  const data = await sendRes.json().catch(() => ({}));
+  return {
+    provider: "gmail" as const,
+    providerMessageId: typeof data?.id === "string" ? data.id : null,
+    providerThreadId: typeof data?.threadId === "string" ? data.threadId : null,
+  };
 }
 
 async function sendViaMicrosoft(
@@ -293,6 +300,8 @@ async function sendViaMicrosoft(
     const details = await graphRes.text().catch(() => "");
     throw new Error(`Envoi Outlook impossible (${graphRes.status}) ${details}`.trim());
   }
+
+  return { provider: "microsoft" as const, providerMessageId: null, providerThreadId: null };
 }
 
 async function sendViaImap(
@@ -332,7 +341,7 @@ async function sendViaImap(
 
   const fromName = String(imap.user || login);
   const from = `"${fromName}" <${login}>`;
-  await transporter.sendMail({
+  const smtpResult = await transporter.sendMail({
     from,
     to,
     subject,
@@ -380,6 +389,12 @@ async function sendViaImap(
   } catch {
     // best effort only
   }
+
+  return {
+    provider: "imap" as const,
+    providerMessageId: typeof (smtpResult as any)?.messageId === "string" ? String((smtpResult as any).messageId) : null,
+    providerThreadId: null,
+  };
 }
 
 export async function sendMailFromIntegration(params: {
@@ -423,16 +438,13 @@ export async function sendMailFromIntegration(params: {
   }
 
   if (provider === "gmail") {
-    await sendViaGmail(account, to, subject, finalText, finalHtml, attachments);
-    return { provider };
+    return sendViaGmail(account, to, subject, finalText, finalHtml, attachments);
   }
   if (provider === "microsoft") {
-    await sendViaMicrosoft(account, to, subject, finalHtml, attachments);
-    return { provider };
+    return sendViaMicrosoft(account, to, subject, finalHtml, attachments);
   }
   if (provider === "imap") {
-    await sendViaImap(account, to, subject, finalText, finalHtml, attachments);
-    return { provider };
+    return sendViaImap(account, to, subject, finalText, finalHtml, attachments);
   }
 
   throw new Error("Provider de messagerie non supporté.");

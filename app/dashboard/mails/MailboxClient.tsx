@@ -42,6 +42,17 @@ function safeDecode(v: string): string {
   }
 }
 
+function stripText(v: unknown): string {
+  return String(v || "")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+}
+
+function safeS(v: unknown, fallback = ""): string {
+  const s = stripText(v);
+  return s || fallback;
+}
+
 function applySignaturePreview(text: string, signature: string): string {
   const base = String(text || "").trimEnd();
   const sig = String(signature || "").trim();
@@ -103,10 +114,72 @@ type Folder =
   | "suivis"
   | "enquetes";
 
+const ALL_FOLDERS: Folder[] = [
+  "mails",
+  "factures",
+  "devis",
+  "publications",
+  "recoltes",
+  "offres",
+  "informations",
+  "suivis",
+  "enquetes",
+];
+
+function isFolderValue(value: string): value is Folder {
+  return (ALL_FOLDERS as string[]).includes(value);
+}
+
+function folderFromTrack(trackKind: string | null | undefined, trackType: string | null | undefined, fallback: Folder = "mails"): Folder {
+  const kind = String(trackKind || "").toLowerCase();
+  const type = String(trackType || "").toLowerCase();
+
+  if (kind === "booster") {
+    if (type === "review_mail") return "recoltes";
+    if (type === "promo_mail") return "offres";
+  }
+
+  if (kind === "fideliser") {
+    if (type === "newsletter_mail") return "informations";
+    if (type === "thanks_mail") return "suivis";
+    if (type === "satisfaction_mail") return "enquetes";
+  }
+
+  return fallback;
+}
+
+function defaultFolderFromSendType(type: SendType | string | null | undefined): Folder {
+  if (type === "facture") return "factures";
+  if (type === "devis") return "devis";
+  return "mails";
+}
+
+function resolveCampaignFolder(raw: any): Folder {
+  const explicit = String(raw?.folder || "").toLowerCase();
+  if (isFolderValue(explicit)) return explicit;
+  const tracked = folderFromTrack(raw?.track_kind, raw?.track_type, defaultFolderFromSendType(raw?.type));
+  return tracked;
+}
+
+function campaignTitleFromFolder(folder: Folder, subject: string) {
+  const safeSubject = safeS(subject, "(sans objet)");
+  if (folder === "offres") return `Offre — ${safeSubject}`;
+  if (folder === "recoltes") return `Récolte — ${safeSubject}`;
+  if (folder === "informations") return `Information — ${safeSubject}`;
+  if (folder === "suivis") return `Suivi — ${safeSubject}`;
+  if (folder === "enquetes") return `Enquête — ${safeSubject}`;
+  if (folder === "factures") return `Envoi facture — ${safeSubject}`;
+  if (folder === "devis") return `Envoi devis — ${safeSubject}`;
+  return `Campagne — ${safeSubject}`;
+}
+
+function isBusinessMailFolder(folder: Folder) {
+  return folder === "recoltes" || folder === "offres" || folder === "informations" || folder === "suivis" || folder === "enquetes";
+}
 
 // Typage historique d'envoi (ancienne table send_items)
 type SendType = "mail" | "facture" | "devis";
-type Status = "draft" | "sent" | "error";
+type Status = "draft" | "sent" | "error" | "queued" | "processing" | "partial" | "failed";
 
 type MailAccount = {
   id: string;
@@ -124,6 +197,20 @@ type ComposeAttachmentRef = {
   name: string;
   type?: string | null;
   size?: number | null;
+};
+
+type CampaignRecipientLog = {
+  id: string;
+  email: string;
+  display_name?: string | null;
+  status: string;
+  error?: string | null;
+  last_error?: string | null;
+  attempt_count?: number | null;
+  max_attempts?: number | null;
+  next_attempt_at?: string | null;
+  sent_at?: string | null;
+  updated_at?: string | null;
 };
 
 type SendItem = {
@@ -150,7 +237,7 @@ type SendItem = {
 
 type OutboxItem = {
   id: string;
-  source: "send_items" | "app_events";
+  source: "send_items" | "app_events" | "mail_campaigns";
   module?: "booster" | "fideliser";
   folder: Folder;
   provider: string | null; // Gmail / Microsoft / IMAP / Booster / Fidéliser / Admin
@@ -1053,6 +1140,49 @@ function pill(provider?: string | null) {
   return { label: provider || "Mail", cls: styles.badgeDefault };
 }
 
+function campaignCounts(raw: any) {
+  return {
+    total: Math.max(0, Number(raw?.total_count || 0) || 0),
+    queued: Math.max(0, Number(raw?.queued_count || 0) || 0),
+    processing: Math.max(0, Number(raw?.processing_count || 0) || 0),
+    sent: Math.max(0, Number(raw?.sent_count || 0) || 0),
+    failed: Math.max(0, Number(raw?.failed_count || 0) || 0),
+  };
+}
+
+function formatCampaignProgress(raw: any) {
+  const counts = campaignCounts(raw);
+  const bits = [`${counts.sent}/${counts.total || counts.sent} envoyés`];
+  if (counts.processing > 0) bits.push(`${counts.processing} en cours`);
+  if (counts.queued > 0) bits.push(`${counts.queued} en attente`);
+  if (counts.failed > 0) bits.push(`${counts.failed} en échec`);
+  return bits.join(" • ");
+}
+
+function formatOutboxStatusLabel(item: OutboxItem) {
+  if (item.source === "mail_campaigns") {
+    const raw = (item.raw || {}) as any;
+    const status = String(raw?.status || item.status || "").toLowerCase();
+    const counts = campaignCounts(raw);
+    if (status === "queued") return `En attente • ${formatCampaignProgress(raw)}`;
+    if (status === "processing") return `Campagne en cours • ${formatCampaignProgress(raw)}`;
+    if (status === "partial") return `Campagne partielle • ${formatCampaignProgress(raw)}`;
+    if (status === "failed") return `Campagne en échec • ${counts.failed}/${counts.total || counts.failed} en échec`;
+    if (status === "sent") return item.sent_at ? `Campagne terminée • ${new Date(item.sent_at).toLocaleString()}` : `Campagne terminée • ${formatCampaignProgress(raw)}`;
+    return `Campagne • ${formatCampaignProgress(raw)}`;
+  }
+
+  if (item.status === "draft") return "Brouillon";
+  if (item.status === "error" || item.status === "failed") return "En échec";
+  return item.sent_at ? `Envoyé • ${new Date(item.sent_at).toLocaleString()}` : `Historique • ${new Date(item.created_at).toLocaleString()}`;
+}
+
+function isRetryableCampaignItem(item: OutboxItem | null) {
+  if (!item || item.source !== "mail_campaigns") return false;
+  const counts = campaignCounts((item.raw || {}) as any);
+  return counts.failed > 0;
+}
+
 function listGridTemplateColumns(folder: Folder) {
   if (folder === "factures" || folder === "devis") {
     return "minmax(0, 520px) minmax(180px, 240px) auto";
@@ -1086,6 +1216,9 @@ export default function MailboxClient() {
   const [detailsActionBusy, setDetailsActionBusy] = useState(false);
   const [detailsActionError, setDetailsActionError] = useState<string | null>(null);
   const [detailsSourceDocPayload, setDetailsSourceDocPayload] = useState<any | null>(null);
+  const [campaignRecipients, setCampaignRecipients] = useState<CampaignRecipientLog[]>([]);
+  const [campaignRecipientsLoading, setCampaignRecipientsLoading] = useState(false);
+  const [campaignActionBusyId, setCampaignActionBusyId] = useState<string | null>(null);
   const [publicationEditForm, setPublicationEditForm] = useState<PublicationEditForm>({ title: "", content: "", cta: "", hashtags: "" });
   const [publicationEditImagesByChannel, setPublicationEditImagesByChannel] = useState<Record<string, PublicationChannelImagesState>>({});
   const [publicationRetouchChannelKey, setPublicationRetouchChannelKey] = useState<string | null>(null);
@@ -1229,7 +1362,7 @@ export default function MailboxClient() {
 
   function itemMailAccountId(it: OutboxItem): string {
     try {
-      if (it.source === "send_items") return String((it.raw as any)?.integration_id || "");
+      if (it.source === "send_items" || it.source === "mail_campaigns") return String((it.raw as any)?.integration_id || "");
       const payload = (it.raw as any)?.payload || (it.raw as any)?.raw?.payload || (it.raw as any)?.meta || {};
       return String((payload as any)?.integration_id || (payload as any)?.mailAccountId || (payload as any)?.accountId || "");
     } catch {
@@ -1411,7 +1544,7 @@ export default function MailboxClient() {
       // On charge 2 sources :
       // 1) send_items (mails / factures / devis)
       // 2) app_events (Booster + Fidéliser)
-      const [sendRes, eventsRes] = await Promise.all([
+      const [sendRes, campaignsRes, eventsRes] = await Promise.all([
         supabase
           .from("send_items")
           .select(
@@ -1423,6 +1556,13 @@ export default function MailboxClient() {
           .order("created_at", { ascending: false })
           .limit(80),
         supabase
+          .from("mail_campaigns")
+          .select("id, integration_id, provider, type, folder, track_kind, track_type, template_key, subject, body_text, body_html, status, total_count, queued_count, processing_count, sent_count, failed_count, source_doc_save_id, source_doc_type, source_doc_number, last_error, started_at, finished_at, created_at, updated_at")
+          .eq("user_id", userId)
+          .gte("created_at", cutoffIso)
+          .order("created_at", { ascending: false })
+          .limit(60),
+        supabase
           .from("app_events")
           .select("id, module, type, payload, created_at")
           .eq("user_id", userId)
@@ -1433,6 +1573,7 @@ export default function MailboxClient() {
       ]);
 
       if (sendRes.error) console.error(sendRes.error);
+      if (campaignsRes.error) console.error(campaignsRes.error);
       if (eventsRes.error) console.error(eventsRes.error);
 
       const sendItems = ((sendRes.data || []) as SendItem[])
@@ -1467,6 +1608,37 @@ export default function MailboxClient() {
           };
         })
         .filter(Boolean) as OutboxItem[];
+
+      const campaignItems = ((campaignsRes.data || []) as any[]).map<OutboxItem>((x: any) => {
+        const folder = resolveCampaignFolder(x);
+        const counts = campaignCounts(x);
+        const target = `${counts.total || 0} contact${counts.total > 1 ? "s" : ""}`;
+        return {
+          id: String(x.id || ""),
+          source: "mail_campaigns",
+          module: String(x.track_kind || "").toLowerCase() === "booster"
+            ? "booster"
+            : String(x.track_kind || "").toLowerCase() === "fideliser"
+              ? "fideliser"
+              : undefined,
+          folder,
+          provider: x.provider || "Mail",
+          status: String(x.status || "processing") as Status,
+          created_at: String(x.created_at || new Date().toISOString()),
+          sent_at: x.finished_at || null,
+          error: x.last_error || null,
+          title: campaignTitleFromFolder(folder, x.subject),
+          target,
+          preview: formatCampaignProgress(x),
+          detailHtml: x.body_html,
+          detailText: x.body_text,
+          subject: x.subject,
+          raw: x,
+          reopenHref: x.source_doc_save_id && x.source_doc_type
+            ? `/dashboard/${x.source_doc_type === "facture" ? "factures" : "devis"}/new?saveId=${encodeURIComponent(x.source_doc_save_id)}`
+            : null,
+        };
+      });
 
       const eventRows = (eventsRes.data || []) as any[];
 
@@ -1557,7 +1729,7 @@ const subTitle = firstNonEmpty(
         };
       });
 
-      let combined = [...sendItems, ...boosterItems, ...fideliserItems].sort((a, b) =>
+      let combined = [...sendItems, ...campaignItems, ...boosterItems, ...fideliserItems].sort((a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
 
@@ -1607,8 +1779,52 @@ const subTitle = firstNonEmpty(
   }, [detailsItem, mailAccounts]);
 
   const detailsPayload = useMemo(() => {
-    return detailsItem && detailsItem.source !== "send_items" ? (((detailsItem as any)?.raw?.payload || null) as any) : null;
+    return detailsItem && detailsItem.source === "app_events" ? (((detailsItem as any)?.raw?.payload || null) as any) : null;
   }, [detailsItem]);
+
+  const loadCampaignRecipients = useCallback(async (campaignId: string) => {
+    if (!campaignId) {
+      setCampaignRecipients([]);
+      return;
+    }
+    setCampaignRecipientsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("mail_campaign_recipients")
+        .select("id,email,display_name,status,error,last_error,attempt_count,max_attempts,next_attempt_at,sent_at,updated_at")
+        .eq("campaign_id", campaignId)
+        .order("created_at", { ascending: true })
+        .limit(120);
+      if (error) throw error;
+      setCampaignRecipients(((data || []) as any[]).map((row: any) => ({
+        id: String(row.id || ""),
+        email: String(row.email || ""),
+        display_name: row.display_name || null,
+        status: String(row.status || "queued"),
+        error: row.error || null,
+        last_error: row.last_error || null,
+        attempt_count: row.attempt_count == null ? null : Number(row.attempt_count),
+        max_attempts: row.max_attempts == null ? null : Number(row.max_attempts),
+        next_attempt_at: row.next_attempt_at || null,
+        sent_at: row.sent_at || null,
+        updated_at: row.updated_at || null,
+      })));
+    } catch (error) {
+      console.error(error);
+      setCampaignRecipients([]);
+    } finally {
+      setCampaignRecipientsLoading(false);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!detailsOpen || !detailsItem || detailsItem.source !== "mail_campaigns") {
+      setCampaignRecipients([]);
+      setCampaignRecipientsLoading(false);
+      return;
+    }
+    void loadCampaignRecipients(detailsItem.id);
+  }, [detailsOpen, detailsItem, loadCampaignRecipients]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1653,7 +1869,7 @@ const subTitle = firstNonEmpty(
   }, [detailsOpen, detailsItem, supabase]);
 
   const detailsChannelEntries = useMemo(() => {
-    if (!detailsItem || detailsItem.source === "send_items") return [] as ChannelPublication[];
+    if (!detailsItem || detailsItem.source !== "app_events") return [] as ChannelPublication[];
     const payload = detailsPayload;
     const channelPublications = extractChannelPublications(payload);
     if (channelPublications.length) return channelPublications;
@@ -1681,7 +1897,7 @@ const subTitle = firstNonEmpty(
   const activePublicationEditAssets = publicationEditImagesByChannel[activePublicationEditChannelKey]?.assets || [];
 
   useEffect(() => {
-    if (!detailsOpen || !detailsItem || detailsItem.source === "send_items") return;
+    if (!detailsOpen || !detailsItem || detailsItem.source !== "app_events") return;
     const parts = activeDetailsChannelEntry?.parts || {};
     setPublicationEditForm({
       title: parts.title || "",
@@ -1694,7 +1910,7 @@ const subTitle = firstNonEmpty(
   }, [detailsOpen, detailsItem, activeDetailsChannelEntry?.key]);
 
   useEffect(() => {
-    if (!detailsOpen || !detailsItem || detailsItem.source === "send_items") return;
+    if (!detailsOpen || !detailsItem || detailsItem.source !== "app_events") return;
     const nextState: Record<string, PublicationChannelImagesState> = {};
     for (const entry of detailsChannelEntries) {
       const channel = normalizeChannelKey(entry.key);
@@ -2217,6 +2433,15 @@ async function deleteDraftPermanently(id: string) {
 }
 
 
+  function getBulkCampaignFolder(): Folder {
+    if (composeType === "facture") return "factures";
+    if (composeType === "devis") return "devis";
+    if (pendingTrack?.kind && pendingTrack?.type) {
+      return folderFromTrack(pendingTrack.kind, pendingTrack.type, isBusinessMailFolder(folder) ? folder : "mails");
+    }
+    return isBusinessMailFolder(folder) ? folder : "mails";
+  }
+
   async function doSend() {
     if (!selectedAccount) {
       setToast("Veuillez connecter une boîte d’envoi dans les réglages.");
@@ -2241,9 +2466,15 @@ async function deleteDraftPermanently(id: string) {
     setSendBusy(true);
     try {
       if (recipientsList.length > 1) {
+        const campaignFolder = getBulkCampaignFolder();
+        const templateKey = searchParams?.get("template_key") || "";
         const campaignPayload = {
           accountId: selectedAccount.id,
           type: composeType,
+          folder: campaignFolder,
+          trackKind: pendingTrack?.kind || undefined,
+          trackType: pendingTrack?.type || undefined,
+          templateKey: templateKey || undefined,
           subject: subject.trim() || "(sans objet)",
           text: text || "",
           html: "",
@@ -2265,11 +2496,12 @@ async function deleteDraftPermanently(id: string) {
           return;
         }
 
-        setToast(`Campagne lancée : ${recipientsList.length} email${recipientsList.length > 1 ? "s" : ""} vont partir individuellement.`);
+        if (pendingTrack) setPendingTrack(null);
+        setToast(`Campagne lancée : ${recipientsList.length} email${recipientsList.length > 1 ? "s" : ""} vont partir individuellement par vagues de 20.`);
         setComposeOpen(false);
         resetCompose();
         await loadHistory();
-        updateFolder("mails");
+        updateFolder(campaignFolder);
         return;
       }
 
@@ -2431,7 +2663,7 @@ async function deleteDraftPermanently(id: string) {
     });
 
   async function saveChannelPublication() {
-    if (!detailsItem || detailsItem.source === "send_items") return;
+    if (!detailsItem || detailsItem.source !== "app_events") return;
     const publicationId = String((detailsPayload as any)?.publication_id || "").trim();
     const channel = String(activeDetailsChannelEntry?.key || "").trim();
     if (!publicationId || !channel) return;
@@ -2500,7 +2732,7 @@ async function deleteDraftPermanently(id: string) {
   }
 
   async function deleteChannelPublication() {
-    if (!detailsItem || detailsItem.source === "send_items") return;
+    if (!detailsItem || detailsItem.source !== "app_events") return;
     const publicationId = String((detailsPayload as any)?.publication_id || "").trim();
     const channel = String(activeDetailsChannelEntry?.key || "").trim();
     if (!publicationId || !channel) return;
@@ -2526,6 +2758,29 @@ async function deleteDraftPermanently(id: string) {
       setDetailsActionError(baseMessage);
     } finally {
       setDetailsActionBusy(false);
+    }
+  }
+
+  async function retryCampaignFailedRecipients(campaignId: string) {
+    if (!campaignId) return;
+    setCampaignActionBusyId(campaignId);
+    try {
+      const res = await fetch(`/api/crm/campaigns/${encodeURIComponent(campaignId)}/retry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast(data?.error || "Relance impossible pour le moment.");
+        return;
+      }
+      setToast(data?.retried ? `${data.retried} contact${data.retried > 1 ? "s" : ""} relancé${data.retried > 1 ? "s" : ""}.` : "Échecs relancés.");
+      await loadHistory();
+      if (detailsOpen && detailsId === campaignId) {
+        await loadCampaignRecipients(campaignId);
+      }
+    } finally {
+      setCampaignActionBusyId(null);
     }
   }
 
@@ -2849,8 +3104,8 @@ async function deleteDraftPermanently(id: string) {
                     })();
 
                     const midLabel =
-                      it.source === "send_items"
-                        ? accountLabel
+                      it.source === "send_items" || it.source === "mail_campaigns"
+                        ? [accountLabel, it.source === "mail_campaigns" ? formatCampaignProgress((it.raw || {}) as any) : ""].filter(Boolean).join(" • ")
                         : (it.channels && it.channels.length
                             ? it.channels.map((channel) => formatChannelLabel(channel)).join(" / ")
                             : formatChannelLabel(it.target || ""));
@@ -2952,7 +3207,7 @@ async function deleteDraftPermanently(id: string) {
                   {detailsItem ? (
                     <>
                       <span className={`${styles.badge} ${pill(detailsItem.provider).cls}`}>{pill(detailsItem.provider).label}</span>
-                      {detailsItem.source === "send_items" && detailsAccountLabel ? (
+                      {detailsItem.source !== "app_events" && detailsAccountLabel ? (
                         <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>• {detailsAccountLabel}</span>
                       ) : null}
                     </>
@@ -2971,10 +3226,10 @@ async function deleteDraftPermanently(id: string) {
                 {!detailsItem ? (
                   <div style={{ color: "rgba(255,255,255,0.65)" }}>Sélectionne un élément.</div>
                 ) : (() => {
-                  const payload = (detailsItem as any)?.raw?.payload || null;
-                  const channelPublications = detailsItem.source !== "send_items" ? extractChannelPublications(payload) : [];
-                  const defaultParts = detailsItem.source !== "send_items" ? extractPublicationParts(payload) : {};
-                  const publicationChannelEntries = detailsItem.source !== "send_items"
+                  const payload = detailsItem.source === "app_events" ? ((detailsItem as any)?.raw?.payload || null) : null;
+                  const channelPublications = detailsItem.source === "app_events" ? extractChannelPublications(payload) : [];
+                  const defaultParts = detailsItem.source === "app_events" ? extractPublicationParts(payload) : {};
+                  const publicationChannelEntries = detailsItem.source === "app_events"
                     ? channelPublications.length
                       ? channelPublications
                       : orderChannelKeys((detailsItem.channels && detailsItem.channels.length ? detailsItem.channels : [detailsItem.target]).filter(Boolean).map((channel) => String(channel))).map((channel) => ({
@@ -2983,10 +3238,10 @@ async function deleteDraftPermanently(id: string) {
                           parts: defaultParts,
                         }))
                     : [];
-                  const activePublicationEntry = detailsItem.source !== "send_items"
+                  const activePublicationEntry = detailsItem.source === "app_events"
                     ? (publicationChannelEntries.find((entry) => entry.key === detailsChannelKey) || publicationChannelEntries[0] || null)
                     : null;
-                  const activePublicationResult = detailsItem.source !== "send_items" && activePublicationEntry
+                  const activePublicationResult = detailsItem.source === "app_events" && activePublicationEntry
                     ? ((payload?.results && typeof payload.results === "object" ? (payload.results as any)[activePublicationEntry.key] : null) || null)
                     : null;
                   const activePublicationDeleted = isDeletedChannelResult(activePublicationResult);
@@ -2998,7 +3253,9 @@ async function deleteDraftPermanently(id: string) {
                     : [];
                   const attachmentCandidates = detailsItem.source === "send_items"
                     ? [...(detailsItem.attachments || []), ...sourceDocAttachments]
-                    : [...(activeParts.attachments || [])];
+                    : detailsItem.source === "app_events"
+                    ? [...(activeParts.attachments || [])]
+                    : [];
                   const dedupedAttachments = attachmentCandidates.filter((att, idx, arr) => {
                     const key = `${att.url || ""}|${att.name || ""}`;
                     return arr.findIndex((x) => `${x.url || ""}|${x.name || ""}` === key) === idx;
@@ -3008,7 +3265,7 @@ async function deleteDraftPermanently(id: string) {
                   const fileAttachments = dedupedAttachments.filter((att) => !imageAttachments.includes(att) && !videoAttachments.includes(att));
                   const hasAttachments = imageAttachments.length > 0 || videoAttachments.length > 0 || fileAttachments.length > 0;
                   const showFallbackMessage = (() => {
-                    if (detailsItem.source === "send_items") return true;
+                    if (detailsItem.source !== "app_events") return true;
                     const activeHasStructured = !!(activeParts.title || activeParts.content || activeParts.cta || activeParts.hashtags?.length || activeParts.attachments?.length);
                     const fallbackTitle = firstNonEmpty(payload?.post?.title, payload?.subject, payload?.title);
                     const fallbackContent = firstNonEmpty(payload?.post?.content, payload?.post?.text, payload?.content, payload?.text, payload?.message);
@@ -3027,15 +3284,7 @@ async function deleteDraftPermanently(id: string) {
                           <div className={styles.detailSectionHeader}>
                             <div>
                               <div className={styles.detailsTitle}>{detailsItem.title || "(sans objet)"}</div>
-                              <div className={styles.detailsSub}>
-                                {detailsItem.status === "draft"
-                                  ? "Brouillon"
-                                  : detailsItem.status === "error"
-                                  ? "En échec"
-                                  : detailsItem.sent_at
-                                  ? `Envoyé • ${new Date(detailsItem.sent_at).toLocaleString()}`
-                                  : `Historique • ${new Date(detailsItem.created_at).toLocaleString()}`}
-                              </div>
+                              <div className={styles.detailsSub}>{formatOutboxStatusLabel(detailsItem)}</div>
                             </div>
                           </div>
 
@@ -3082,12 +3331,62 @@ async function deleteDraftPermanently(id: string) {
                                 </div>
                               ) : null}
                             </>
+                          ) : detailsItem.source === "mail_campaigns" ? (
+                            <>
+                              <div className={styles.metaGrid}>
+                                <div className={styles.metaRow}>
+                                  <div className={styles.metaKey}>Boîte d’envoi</div>
+                                  <div className={styles.metaVal}>{detailsAccountLabel || "—"}</div>
+                                </div>
+                                <div className={styles.metaRow}>
+                                  <div className={styles.metaKey}>Destinataires</div>
+                                  <div className={styles.metaVal}>{(detailsItem as any).raw?.total_count || 0} contact{Number((detailsItem as any).raw?.total_count || 0) > 1 ? "s" : ""}</div>
+                                </div>
+                                <div className={styles.metaRow}>
+                                  <div className={styles.metaKey}>Progression</div>
+                                  <div className={styles.metaVal}>{formatCampaignProgress((detailsItem as any).raw || {})}</div>
+                                </div>
+                                <div className={styles.metaRow}>
+                                  <div className={styles.metaKey}>Objet</div>
+                                  <div className={styles.metaVal}>{detailsItem.subject || detailsItem.title || "—"}</div>
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+                                {isRetryableCampaignItem(detailsItem) ? (
+                                  <button
+                                    type="button"
+                                    className={styles.btnPrimary}
+                                    onClick={() => void retryCampaignFailedRecipients(detailsItem.id)}
+                                    disabled={campaignActionBusyId === detailsItem.id}
+                                  >
+                                    {campaignActionBusyId === detailsItem.id ? "Relance…" : "Relancer les échecs"}
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className={styles.btnGhost}
+                                  onClick={() => void loadCampaignRecipients(detailsItem.id)}
+                                  disabled={campaignRecipientsLoading}
+                                >
+                                  {campaignRecipientsLoading ? "Actualisation…" : "Rafraîchir le suivi"}
+                                </button>
+                                {detailsItem.reopenHref ? (
+                                  <button
+                                    type="button"
+                                    className={styles.btnGhost}
+                                    onClick={() => router.push(detailsItem.reopenHref || "/dashboard/mails")}
+                                  >
+                                    Réouvrir dans l’outil
+                                  </button>
+                                ) : null}
+                              </div>
+                            </>
                           ) : (
                             <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
                               <div className={styles.detailPillsWrap}>
                                 {publicationChannelEntries.length ? (
                                   publicationChannelEntries.map((entry, idx) => {
-                                    const entryResult = detailsItem.source !== "send_items" && payload?.results && typeof payload.results === "object"
+                                    const entryResult = detailsItem.source === "app_events" && payload?.results && typeof payload.results === "object"
                                       ? ((payload.results as any)[entry.key] || null)
                                       : null;
                                     const entryIndicator = getChannelIndicatorMeta(entryResult);
@@ -3155,13 +3454,13 @@ async function deleteDraftPermanently(id: string) {
                             </div>
                           ) : null}
 
-                          {detailsItem.source !== "send_items" && activePublicationFailed && !activePublicationDeleted ? (
+                          {detailsItem.source === "app_events" && activePublicationFailed && !activePublicationDeleted ? (
                             <div className={styles.detailsError}>
                               <b>Statut :</b> Publication échouée
                             </div>
                           ) : null}
 
-                          {detailsItem.source !== "send_items" && activePublicationFailed && activePublicationFailureMessage ? (
+                          {detailsItem.source === "app_events" && activePublicationFailed && activePublicationFailureMessage ? (
                             <div className={styles.detailsError}>
                               <b>Détail :</b> {activePublicationFailureMessage}
                             </div>
@@ -3179,7 +3478,7 @@ async function deleteDraftPermanently(id: string) {
                             <div className={styles.messageHeaderTitle}>Message</div>
                           </div>
 
-                          {detailsItem.source === "send_items" ? (
+                          {detailsItem.source !== "app_events" ? (
                             <div className={styles.messageBody}>
                               {detailsItem.detailHtml ? (
                                 <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
@@ -3362,6 +3661,48 @@ async function deleteDraftPermanently(id: string) {
                             <div className={styles.emptyDetailText}>Aucun message disponible.</div>
                           )}
                         </section>
+
+                        {detailsItem.source === "mail_campaigns" ? (
+                          <section className={styles.detailSectionCard}>
+                            <div className={styles.detailSectionHeader}>
+                              <div className={styles.messageHeaderTitle}>Suivi destinataires</div>
+                            </div>
+                            {campaignRecipientsLoading ? (
+                              <div style={{ color: "rgba(255,255,255,0.68)" }}>Chargement des destinataires…</div>
+                            ) : campaignRecipients.length === 0 ? (
+                              <div style={{ color: "rgba(255,255,255,0.68)" }}>Aucun destinataire chargé.</div>
+                            ) : (
+                              <div className={styles.attachmentsList}>
+                                {campaignRecipients.map((recipient) => {
+                                  const attemptLabel = recipient.attempt_count != null && recipient.max_attempts != null
+                                    ? `Tentative ${recipient.attempt_count}/${recipient.max_attempts}`
+                                    : null;
+                                  const statusLabel = recipient.status === "sent"
+                                    ? recipient.sent_at
+                                      ? `Envoyé • ${new Date(recipient.sent_at).toLocaleString()}`
+                                      : "Envoyé"
+                                    : recipient.status === "failed"
+                                    ? "Échec final"
+                                    : recipient.status === "processing"
+                                    ? "En cours"
+                                    : recipient.next_attempt_at
+                                    ? `En attente • prochain essai ${new Date(recipient.next_attempt_at).toLocaleString()}`
+                                    : "En attente";
+                                  return (
+                                    <div key={recipient.id} className={styles.attachmentItem}>
+                                      <span className={styles.attachmentName}>{recipient.display_name ? `${recipient.display_name} — ${recipient.email}` : recipient.email}</span>
+                                      <span className={styles.attachmentMeta}>{statusLabel}</span>
+                                      {attemptLabel ? <span className={styles.attachmentMeta}>{attemptLabel}</span> : null}
+                                      {recipient.last_error || recipient.error ? (
+                                        <span className={styles.attachmentMeta} style={{ color: "#ffb0b0" }}>{recipient.last_error || recipient.error}</span>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </section>
+                        ) : null}
 
                         {hasAttachments ? (
                           <section className={styles.detailSectionCard}>

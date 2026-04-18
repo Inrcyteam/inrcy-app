@@ -14,6 +14,34 @@ type CampaignRecipientRow = {
   status: "queued";
 };
 
+type CampaignFolder =
+  | "mails"
+  | "factures"
+  | "devis"
+  | "publications"
+  | "recoltes"
+  | "offres"
+  | "informations"
+  | "suivis"
+  | "enquetes";
+
+const ALLOWED_FOLDERS = new Set<CampaignFolder>([
+  "mails",
+  "factures",
+  "devis",
+  "publications",
+  "recoltes",
+  "offres",
+  "informations",
+  "suivis",
+  "enquetes",
+]);
+
+function normalizeCampaignFolder(input: unknown, fallback: CampaignFolder): CampaignFolder {
+  const value = String(input || "").trim().toLowerCase() as CampaignFolder;
+  return ALLOWED_FOLDERS.has(value) ? value : fallback;
+}
+
 function chunkArray<T>(items: T[], size: number) {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -35,6 +63,9 @@ export async function POST(req: Request) {
   const sourceDocSaveId = String(body.sourceDocSaveId || "").trim();
   const sourceDocType = String(body.sourceDocType || "").trim();
   const sourceDocNumber = String(body.sourceDocNumber || "").trim();
+  const trackKindRaw = String(body.trackKind || "").trim().toLowerCase();
+  const trackType = String(body.trackType || "").trim();
+  const templateKey = String(body.templateKey || "").trim();
   const attachments = Array.isArray(body.attachments) ? body.attachments : [];
   const recipients = normalizeCampaignRecipients(body.recipients);
 
@@ -47,6 +78,11 @@ export async function POST(req: Request) {
   if (recipients.length === 1) {
     return NextResponse.json({ error: "Une campagne CRM nécessite au moins 2 destinataires." }, { status: 400 });
   }
+
+  const defaultFolder: CampaignFolder =
+    type === "facture" ? "factures" : type === "devis" ? "devis" : "mails";
+  const folder = normalizeCampaignFolder(body.folder, defaultFolder);
+  const trackKind = trackKindRaw === "booster" || trackKindRaw === "fideliser" ? trackKindRaw : null;
 
   const { data: account, error: accountError } = await supabase
     .from("integrations")
@@ -84,6 +120,10 @@ export async function POST(req: Request) {
       source_doc_save_id: sourceDocSaveId || null,
       source_doc_type: sourceDocType || null,
       source_doc_number: sourceDocNumber || null,
+      folder,
+      track_kind: trackKind,
+      track_type: trackType || null,
+      template_key: templateKey || null,
       started_at: null,
       finished_at: null,
       last_error: null,
