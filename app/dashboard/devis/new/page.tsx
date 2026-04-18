@@ -134,6 +134,7 @@ export default function NewDevisPage() {
   const [crmError, setCrmError] = useState<string | null>(null);
   const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
   const [formMessage, setFormMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [addingToCrm, setAddingToCrm] = useState(false);
   const [currentSaveId, setCurrentSaveId] = useState<string>("");
 
   // UI dropdown custom (style "select blanc", 10 items visibles + scroll)
@@ -145,12 +146,21 @@ export default function NewDevisPage() {
     const name = searchParams.get("clientName") || searchParams.get("name") || "";
     const email = searchParams.get("clientEmail") || searchParams.get("email") || "";
     const address = searchParams.get("clientAddress") || searchParams.get("address") || "";
+    const siren = searchParams.get("clientSiren") || "";
+    const vatNumber = searchParams.get("clientVatNumber") || "";
+    const billing = searchParams.get("billingAddress") || "";
+    const delivery = searchParams.get("deliveryAddress") || "";
     if (name) setClientName((prev) => prev || name);
     if (email) setClientEmail((prev) => prev || email);
+    if (siren) setClientSiren((prev) => prev || siren);
+    if (vatNumber) setClientVatNumber((prev) => prev || vatNumber);
     if (address) {
       setClientAddress((prev) => prev || address);
-      setBillingAddress((prev) => prev || address);
-      setDeliveryAddress((prev) => prev || address);
+      setBillingAddress((prev) => prev || billing || address);
+      setDeliveryAddress((prev) => prev || delivery || billing || address);
+    } else {
+      if (billing) setBillingAddress((prev) => prev || billing);
+      if (delivery) setDeliveryAddress((prev) => prev || delivery);
     }
   }, []);
 
@@ -724,6 +734,48 @@ export default function NewDevisPage() {
     router.push(`/dashboard/mails?${params.toString()}`);
   };
 
+  const addCurrentClientToCrm = async () => {
+    const displayName = (clientName || "").trim();
+    const email = (clientEmail || "").trim();
+    const primaryAddress = (clientAddress || billingAddress || "").trim();
+
+    if (!displayName && !email && !primaryAddress) {
+      setFormMessage({ type: "error", text: "Renseignez au moins un nom, un email ou une adresse client avant d’ajouter au CRM." });
+      return;
+    }
+
+    setAddingToCrm(true);
+    try {
+      const response = await fetch("/api/crm/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          display_name: displayName,
+          siret: (clientSiren || "").trim(),
+          vat_number: (clientVatNumber || "").trim(),
+          email,
+          address: primaryAddress,
+          billing_address: (billingAddress || "").trim(),
+          delivery_address: sameAddresses ? "" : (deliveryAddress || "").trim(),
+          contact_type: "client",
+          category: "professionnel",
+          notes: [`Ajouté depuis Devis`, purchaseOrderReference ? `PO: ${purchaseOrderReference}` : ""].filter(Boolean).join(" — "),
+        }),
+      });
+
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(getSimpleFrenchErrorMessage(json?.error, "Impossible d’ajouter ce client au CRM."));
+      }
+
+      setFormMessage({ type: "success", text: "Client ajouté au CRM." });
+    } catch (error) {
+      setFormMessage({ type: "error", text: getSimpleFrenchErrorMessage(error, "Impossible d’ajouter ce client au CRM.") });
+    } finally {
+      setAddingToCrm(false);
+    }
+  };
+
   const crmButtonText = useMemo(() => {
     if (crmLoading) return "Chargement...";
     if (selectedCrmContact) {
@@ -1143,7 +1195,10 @@ export default function NewDevisPage() {
           </div>
 
           <div className={styles.actionGrid}>
-            <button type="button" onClick={() => { void saveDraft(); }}>Sauvegarder</button>
+            <button type="button" onClick={() => { void saveDraft(); }} disabled={addingToCrm}>Sauvegarder</button>
+            <button type="button" onClick={() => void addCurrentClientToCrm()} disabled={addingToCrm}>
+              {addingToCrm ? "Ajout CRM…" : "Ajouter au CRM"}
+            </button>
             <button type="button" onClick={() => void convertCurrentDevisToInvoice()}>
               → Convertir en facture
             </button>

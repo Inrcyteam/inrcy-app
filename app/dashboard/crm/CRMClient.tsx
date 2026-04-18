@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import styles from "./crm.module.css";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
 
@@ -21,6 +20,9 @@ type CrmContact = {
   email: string;
   phone: string;
   address: string;
+  billing_address?: string;
+  delivery_address?: string;
+  vat_number?: string;
   city?: string;
   postal_code?: string;
   category: Category;
@@ -79,6 +81,9 @@ function emptyDraft() {
     email: "",
     phone: "",
     address: "",
+    billing_address: "",
+    delivery_address: "",
+    vat_number: "",
     city: "",
     postal_code: "",
     category: "" as Category,
@@ -118,6 +123,9 @@ function contactsToCsv(rows: any[]) {
     "email",
     "phone",
     "address",
+    "billing_address",
+    "delivery_address",
+    "vat_number",
     "city",
     "postal_code",
     "category",
@@ -211,7 +219,10 @@ function normalizeImportedRow(row: any) {
     siret: String(pick("siret")).trim(),
     email: String(pick("email", "Email", "Mail", "E-mail")).trim(),
     phone: String(pick("phone", "Téléphone", "Telephone", "Tel")).trim(),
-    address: String(pick("address", "Adresse")).trim(),
+    address: String(pick("address", "Adresse", "Adresse principale")).trim(),
+    billing_address: String(pick("billing_address", "Adresse de facturation", "Billing address")).trim(),
+    delivery_address: String(pick("delivery_address", "Adresse de livraison", "Delivery address")).trim(),
+    vat_number: String(pick("vat_number", "TVA", "TVA intracom", "VAT", "VAT number")).trim(),
     city: String(pick("city", "Ville")).trim(),
     postal_code: String(pick("postal_code", "Code postal", "CP")).trim(),
     category: String(pick("category", "Categorie", "Catégorie")).trim(),
@@ -279,6 +290,14 @@ export default function CRMClient() {
     return () => mq.removeEventListener?.("change", update);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateCompactUi = () => setIsCompactUi(window.innerWidth <= 980 || window.innerHeight <= 560);
+    updateCompactUi();
+    window.addEventListener("resize", updateCompactUi);
+    return () => window.removeEventListener("resize", updateCompactUi);
+  }, []);
+
 
   // Orientation: gérée globalement via <OrientationGuard />
 
@@ -310,6 +329,9 @@ export default function CRMClient() {
   const [addOpen, setAddOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const statsRef = useRef<HTMLDivElement | null>(null);
+  const exportRef = useRef<HTMLDivElement | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [isCompactUi, setIsCompactUi] = useState(false);
   const [importing, setImporting] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<"" | "csv" | "xlsx">("");
 
@@ -469,6 +491,18 @@ export default function CRMClient() {
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
   }, []);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const el = exportRef.current;
+      if (!el) return;
+      if (el.contains(e.target as any)) return;
+      setExportOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [exportOpen]);
 
   const selectedContacts = useMemo(() => {
     if (selectedContactIds.size === 0) return [] as CrmContact[];
@@ -693,6 +727,9 @@ const buildExportRows = useCallback(
       email: c.email ?? "",
       phone: c.phone ?? "",
       address: c.address ?? "",
+      billing_address: c.billing_address ?? "",
+      delivery_address: c.delivery_address ?? "",
+      vat_number: c.vat_number ?? "",
       city: c.city ?? "",
       postal_code: c.postal_code ?? "",
       category: c.category ?? "",
@@ -735,8 +772,9 @@ const exportExcel = async () => {
       { wch: 24 },
       { wch: 16 },
       { wch: 28 },
+      { wch: 32 },
+      { wch: 32 },
       { wch: 18 },
-      { wch: 28 },
       { wch: 18 },
       { wch: 12 },
       { wch: 18 },
@@ -809,6 +847,10 @@ const exportExcel = async () => {
     if (clientName) params.set("clientName", clientName);
     if (clientEmail) params.set("clientEmail", clientEmail);
     if (clientAddress) params.set("clientAddress", clientAddress);
+    if ((c.siret || "").trim()) params.set("clientSiren", (c.siret || "").trim());
+    if ((c.vat_number || "").trim()) params.set("clientVatNumber", (c.vat_number || "").trim());
+    if ((c.billing_address || "").trim()) params.set("billingAddress", (c.billing_address || "").trim());
+    if ((c.delivery_address || "").trim()) params.set("deliveryAddress", (c.delivery_address || "").trim());
     params.set("from", "crm");
     params.set("contactId", c.id);
     return params;
@@ -852,6 +894,9 @@ const exportExcel = async () => {
       email: (c.email ?? "") as string,
       phone: (c.phone ?? "") as string,
       address: (c.address ?? "") as string,
+      billing_address: (c.billing_address ?? "") as string,
+      delivery_address: (c.delivery_address ?? "") as string,
+      vat_number: (c.vat_number ?? "") as string,
       city: (c.city ?? "") as string,
       postal_code: (c.postal_code ?? "") as string,
       // ✅ évite le warning React (uncontrolled -> controlled)
@@ -860,10 +905,9 @@ const exportExcel = async () => {
       notes: ((c.notes as any) ?? "") as string,
       important: Boolean((c as any).important ?? importantIds.has(c.id)),
     });
-    // Mobile: on édite dans la fenêtre (modal)
+    setAddOpen(true);
     try {
       if (window.matchMedia("(max-width: 900px)").matches) {
-        setAddOpen(true);
         return;
       }
     } catch {}
@@ -891,6 +935,9 @@ const exportExcel = async () => {
       email: draft.email.trim(),
       phone: draft.phone.trim(),
       address: draft.address.trim(),
+      billing_address: (draft.billing_address || "").trim(),
+      delivery_address: (draft.delivery_address || "").trim(),
+      vat_number: (draft.vat_number || "").trim(),
       city: (draft.city || "").trim(),
       postal_code: (draft.postal_code || "").trim(),
       category: draft.category,
@@ -930,6 +977,7 @@ const exportExcel = async () => {
         }
       }
       startNew();
+      setAddOpen(false);
       setSuccess(editingId ? "Contact mis à jour." : "Contact ajouté.");
     } catch (e: any) {
       setError(getSimpleFrenchErrorMessage(e, editingId ? "Impossible de mettre à jour ce contact." : "Impossible d’ajouter ce contact."));
@@ -998,6 +1046,15 @@ const exportExcel = async () => {
     }
   }
 
+  const statsItems = [
+    { label: "Contacts", value: kpis.total },
+    { label: "Prospects", value: kpis.prospects },
+    { label: "Clients", value: kpis.clients },
+    { label: "Partenaires", value: kpis.partenaires },
+    { label: "Fournisseurs", value: kpis.fournisseurs },
+    { label: "Autres", value: kpis.autres },
+  ];
+
   return (
     <div
       className={styles.shell}
@@ -1012,70 +1069,177 @@ const exportExcel = async () => {
         <div className={styles.titleWrap}>
           <img src="/inrcrm-logo.png" alt="iNr’CRM" style={{ width: 154, height: 64, display: "block" }} />
 
-          <p className={styles.subInline}>Un tableau simple et connecté pour suivre tous vos contacts.</p>
+          <p className={styles.subInline}>La centrale de tous vos contacts</p>
         </div>
 
         <div className={styles.headerRight}>
           <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’CRM" />
 
+          {isResponsive ? (
+            <>
+              <button
+                type="button"
+                className={`${styles.headerIconBtn} ${styles.addBtn}`}
+                onClick={() => {
+                  startNew();
+                  setAddOpen(true);
+                }}
+                title="Ajouter un contact"
+                aria-label="Ajouter un contact"
+              >
+                +
+              </button>
+
+              <button
+                type="button"
+                className={styles.headerIconBtn}
+                onClick={triggerImport}
+                disabled={saving || importing}
+                title="Importer des contacts"
+                aria-label="Importer des contacts"
+              >
+                ↓
+              </button>
+
+              <div className={styles.exportWrap} ref={exportRef}>
+                <button
+                  type="button"
+                  className={styles.headerIconBtn}
+                  onClick={() => setExportOpen((prev) => !prev)}
+                  disabled={saving || Boolean(exportingFormat) || total === 0}
+                  aria-expanded={exportOpen ? "true" : "false"}
+                  title={total === 0 ? "Aucun contact à exporter" : "Exporter les contacts"}
+                  aria-label="Exporter les contacts"
+                >
+                  ↑
+                </button>
+
+                {exportOpen ? (
+                  <div className={styles.exportMenu} role="menu">
+                    <button
+                      className={styles.exportItem}
+                      type="button"
+                      onClick={() => {
+                        setExportOpen(false);
+                        void exportExcel();
+                      }}
+                      disabled={Boolean(exportingFormat)}
+                    >
+                      Excel (.xlsx)
+                    </button>
+                    <button
+                      className={styles.exportItem}
+                      type="button"
+                      onClick={() => {
+                        setExportOpen(false);
+                        void exportCsv();
+                      }}
+                      disabled={Boolean(exportingFormat)}
+                    >
+                      CSV (.csv)
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className={`${styles.primaryBtn} ${styles.headerActionBtn}`}
+                onClick={() => {
+                  startNew();
+                  setAddOpen(true);
+                }}
+                disabled={saving}
+              >
+                + Ajouter
+              </button>
+
+              <button
+                type="button"
+                className={`${styles.ghostBtn} ${styles.headerActionBtn}`}
+                onClick={triggerImport}
+                disabled={saving || importing}
+                title="Importer un fichier CSV, JSON ou Excel (.xlsx, .xls)"
+              >
+                {importing ? "Import…" : "Importer"}
+              </button>
+
+              <div className={styles.exportWrap} ref={exportRef}>
+                <button
+                  className={`${styles.ghostBtn} ${styles.headerActionBtn}`}
+                  type="button"
+                  onClick={() => setExportOpen((prev) => !prev)}
+                  disabled={saving || Boolean(exportingFormat) || total === 0}
+                  aria-expanded={exportOpen ? "true" : "false"}
+                  title={total === 0 ? "Aucun contact à exporter" : "Choisir le format d’export"}
+                >
+                  {exportingFormat ? "Export…" : "Exporter"} <span className={styles.caret}>▾</span>
+                </button>
+
+                {exportOpen ? (
+                  <div className={styles.exportMenu} role="menu">
+                    <button
+                      className={styles.exportItem}
+                      type="button"
+                      onClick={() => {
+                        setExportOpen(false);
+                        void exportExcel();
+                      }}
+                      disabled={Boolean(exportingFormat)}
+                    >
+                      Excel (.xlsx)
+                    </button>
+                    <button
+                      className={styles.exportItem}
+                      type="button"
+                      onClick={() => {
+                        setExportOpen(false);
+                        void exportCsv();
+                      }}
+                      disabled={Boolean(exportingFormat)}
+                    >
+                      CSV (.csv)
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
+            </>
+          )}
+
           <div className={styles.statsWrap} ref={statsRef}>
             <button
               type="button"
-              className={`${styles.headerIconBtn} ${styles.statsBtn}`}
+              className={(isResponsive ? styles.headerIconBtn : `${styles.ghostBtn} ${styles.headerActionBtn} ${styles.headerStatsBtn}`).trim()}
               onClick={() => setStatsOpen((v) => !v)}
               aria-expanded={statsOpen ? "true" : "false"}
               title="Statistiques"
             >
-              ≡
+              {isResponsive ? "≡" : "Stats"}
             </button>
 
             {statsOpen ? (
               <div className={styles.statsDropdown} role="menu">
                 <div className={styles.statsTitle}>Statistiques</div>
                 <div className={styles.statsGrid}>
-                  <div className={styles.statsItem}>
-                    <span>Contacts</span>
-                    <strong>{kpis.total}</strong>
-                  </div>
-                  <div className={styles.statsItem}>
-                    <span>Prospects</span>
-                    <strong>{kpis.prospects}</strong>
-                  </div>
-                  <div className={styles.statsItem}>
-                    <span>Clients</span>
-                    <strong>{kpis.clients}</strong>
-                  </div>
-                  <div className={styles.statsItem}>
-                    <span>Partenaires</span>
-                    <strong>{kpis.partenaires}</strong>
-                  </div>
-                  <div className={styles.statsItem}>
-                    <span>Fournisseurs</span>
-                    <strong>{kpis.fournisseurs}</strong>
-                  </div>
-                  <div className={styles.statsItem}>
-                    <span>Autres</span>
-                    <strong>{kpis.autres}</strong>
-                  </div>
+                  {statsItems.map((item) => (
+                    <div key={item.label} className={styles.statsItem}>
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : null}
           </div>
 
-          <button
-            type="button"
-            className={`${styles.headerIconBtn} ${styles.addBtn}`}
-            onClick={() => {
-              startNew();
-              setAddOpen(true);
-            }}
-            title="Ajouter un contact"
-          >
-            +
-          </button>
-
           <div className={styles.closeWrap}>
-            <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
+            <button type="button" className={styles.backBtn} onClick={() => router.push("/dashboard")} aria-label="Fermer" title="Fermer">
+              {isCompactUi ? <span className={styles.closeIcon}>✕</span> : <span className={styles.closeText}>Fermer</span>}
+            </button>
           </div>
         </div>
       </header>
@@ -1091,223 +1255,6 @@ const exportExcel = async () => {
         </ul>
       </HelpModal>
 
-      <div className={styles.kpiRow}>
-        <div className={styles.kpiCard}>
-          <div className={styles.kpiLabel}>Contacts</div>
-          <div className={styles.kpiValue}>{kpis.total}</div>
-        </div>
-        <div className={styles.kpiCard}>
-          <div className={styles.kpiLabel}>Prospects</div>
-          <div className={styles.kpiValue}>{kpis.prospects}</div>
-        </div>
-        <div className={styles.kpiCard}>
-          <div className={styles.kpiLabel}>Clients</div>
-          <div className={styles.kpiValue}>{kpis.clients}</div>
-        </div>
-        <div className={styles.kpiCard}>
-          <div className={styles.kpiLabel}>Partenaires</div>
-          <div className={styles.kpiValue}>{kpis.partenaires}</div>
-        </div>
-
-        <div className={styles.kpiCard}>
-          <div className={styles.kpiLabel}>Fournisseurs</div>
-          <div className={styles.kpiValue}>{kpis.fournisseurs}</div>
-        </div>
-        <div className={styles.kpiCard}>
-          <div className={styles.kpiLabel}>Autres</div>
-          <div className={styles.kpiValue}>{kpis.autres}</div>
-        </div>
-      </div>
-
-      <section className={`${styles.card} ${styles.formCard}`} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.cardHead}>
-        </div>
-
-        {error ? <div className={styles.error}>{error}</div> : null}
-        {success ? <div style={{ color: "#22c55e", fontWeight: 800, marginTop: 8 }}>{success}</div> : null}
-
-                
-<div className={styles.formGrid}>
-  {/* Ligne 1 */}
-  <label className={`${styles.label} ${styles.col4} ${styles.fName}`}>
-    <span>Nom Prénom / Raison sociale</span>
-    <input
-      className={styles.input}
-      value={draft.display_name}
-      onChange={(e) => setDraft((s) => ({ ...s, display_name: e.target.value }))}
-      placeholder="Dupont Marie / SAS Exemple"
-      autoComplete="name"
-    />
-  </label>
-
-  <label className={`${styles.label} ${styles.col2} ${styles.fSiren}`}>
-    <span>SIREN</span>
-    <input
-      className={styles.input}
-      value={draft.siret}
-      onChange={(e) => setDraft((s) => ({ ...s, siret: e.target.value }))}
-      placeholder="123 456 789"
-      inputMode="numeric"
-    />
-  </label>
-
-  <label className={`${styles.label} ${styles.col2} ${styles.fCategory}`}>
-    <span>Catégorie</span>
-    <select
-      className={styles.select}
-      value={draft.category}
-      onChange={(e) => setDraft((s) => ({ ...s, category: e.target.value as Category }))}
-    >
-      <option value="">—</option>
-      <option value="particulier">Particulier</option>
-      <option value="professionnel">Professionnel</option>
-      <option value="collectivite_publique">Institution</option>
-    </select>
-  </label>
-
-  <label className={`${styles.label} ${styles.col2} ${styles.fType}`}>
-    <span>Type</span>
-    <select
-      className={styles.select}
-      value={draft.contact_type}
-      onChange={(e) => setDraft((s) => ({ ...s, contact_type: e.target.value as ContactType }))}
-    >
-      <option value="">—</option>
-      <option value="client">Client</option>
-      <option value="prospect">Prospect</option>
-      <option value="fournisseur">Fournisseur</option>
-      <option value="partenaire">Partenaire</option>
-      <option value="autre">Autre</option>
-    </select>
-  </label>
-
-  <label className={`${styles.label} ${styles.col2} ${styles.fPhone}`}>
-    <span>Téléphone</span>
-    <input
-      className={styles.input}
-      value={draft.phone}
-      onChange={(e) => setDraft((s) => ({ ...s, phone: e.target.value }))}
-      placeholder="06 00 00 00 00"
-      autoComplete="tel"
-    />
-  </label>
-
-  {/* Ligne 2 */}
-  <label className={`${styles.label} ${styles.col3} ${styles.fMail}`}>
-    <span>Mail</span>
-    <input
-      className={styles.input}
-      value={draft.email}
-      onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
-      placeholder="marie@exemple.fr"
-      autoComplete="email"
-    />
-  </label>
-
-  <label className={`${styles.label} ${styles.col3} ${styles.fAddress}`}>
-    <span>Adresse</span>
-    <input
-      className={styles.input}
-      value={draft.address}
-      onChange={(e) => setDraft((s) => ({ ...s, address: e.target.value }))}
-      placeholder="12 rue ... "
-      autoComplete="street-address"
-    />
-  </label>
-
-  <label className={`${styles.label} ${styles.col2} ${styles.fCity}`}>
-    <span>Ville</span>
-    <input
-      className={styles.input}
-      value={draft.city}
-      onChange={(e) => setDraft((s) => ({ ...s, city: e.target.value }))}
-      placeholder="Paris"
-      autoComplete="address-level2"
-    />
-  </label>
-
-  <label className={`${styles.label} ${styles.col1} ${styles.fCP}`}>
-    <span>CP</span>
-    <input
-      className={styles.input}
-      value={draft.postal_code}
-      onChange={(e) => setDraft((s) => ({ ...s, postal_code: e.target.value }))}
-      placeholder="75000"
-      autoComplete="postal-code"
-      inputMode="numeric"
-    />
-  </label>
-
-  <label className={`${styles.label} ${styles.col2} ${styles.notesField} ${styles.fNotes}`}>
-    <span>Notes</span>
-    <input
-      className={styles.input}
-      value={draft.notes}
-      onChange={(e) => {
-        const v = e.target.value;
-        setDraft((s) => ({ ...s, notes: v }));
-        if (editingId) setNoteForId(editingId, v);
-      }}
-      placeholder="Info utile sur ce contact..."
-    />
-  </label>
-
-  <label className={`${styles.label} ${styles.col1} ${styles.fImportant}`}>
-    <span>Important</span>
-    <button
-      type="button"
-      className={styles.starToggle}
-      onClick={() => {
-        // If editing: persist on the contact id. If new: just toggle the draft.
-        if (editingId) toggleImportant(editingId);
-        setDraft((s) => ({ ...s, important: !s.important }));
-      }}
-      aria-pressed={draft.important ? "true" : "false"}
-      title={draft.important ? "Contact important" : "Marquer comme important"}
-    >
-      {draft.important ? "★" : "☆"}
-    </button>
-  </label>
-
-<div className={`${styles.formActions} ${styles.col1} ${styles.fActions}`}>
-    {editingId ? (
-      <>
-        <button
-          aria-label="Retour"
-          className={`${styles.ghostBtn} ${styles.iconBtn}`}
-          type="button"
-          onClick={startNew}
-          disabled={saving}
-          title="Retour"
-        >
-          ↩
-        </button>
-        <button
-          aria-label="Mettre à jour"
-          className={`${styles.primaryBtn} ${styles.iconBtn}`}
-          type="button"
-          onClick={save}
-          disabled={saving}
-          title="Mettre à jour"
-        >
-          ✔
-        </button>
-      </>
-    ) : (
-      <button
-        aria-label="Ajouter"
-        className={`${styles.primaryBtn} ${styles.plusBtn} ${styles.iconBtn}`}
-        type="button"
-        onClick={save}
-        disabled={saving}
-        title="Ajouter"
-      >
-        +
-      </button>
-    )}
-  </div>
-</div>
-      </section>
 
       {/* Mobile: ajout/modif contact via bouton + (modal) */}
       {addOpen ? (
@@ -1457,7 +1404,38 @@ const exportExcel = async () => {
                   />
                 </label>
 
-                {/* Ligne 5: Notes */}
+                {/* Ligne 5: TVA + adresse de facturation */}
+                <label className={`${styles.label} ${styles.mfVat} ${styles.fVat}`}>
+                  <span>TVA intracom</span>
+                  <input
+                    className={styles.input}
+                    value={draft.vat_number}
+                    onChange={(e) => setDraft((s) => ({ ...s, vat_number: e.target.value }))}
+                    placeholder="FR12345678901"
+                  />
+                </label>
+
+                <label className={`${styles.label} ${styles.mfBilling} ${styles.fBilling}`}>
+                  <span>Adresse de facturation</span>
+                  <input
+                    className={styles.input}
+                    value={draft.billing_address}
+                    onChange={(e) => setDraft((s) => ({ ...s, billing_address: e.target.value }))}
+                    placeholder="Si différente de l'adresse principale"
+                  />
+                </label>
+
+                <label className={`${styles.label} ${styles.mfDelivery} ${styles.fDelivery}`}>
+                  <span>Adresse de livraison</span>
+                  <input
+                    className={styles.input}
+                    value={draft.delivery_address}
+                    onChange={(e) => setDraft((s) => ({ ...s, delivery_address: e.target.value }))}
+                    placeholder="Si différente de l'adresse principale"
+                  />
+                </label>
+
+                {/* Ligne 6: Notes */}
                 <label className={`${styles.label} ${styles.mfNotes} ${styles.fNotes}`}>
                   <span>Notes</span>
                   <textarea
@@ -1598,6 +1576,37 @@ const exportExcel = async () => {
                 </label>
 
                 {/* Ligne 4 */}
+                <label className={`${styles.label} ${styles.col3} ${styles.fVat}`}>
+                  <span>TVA intracom</span>
+                  <input
+                    className={styles.input}
+                    value={draft.vat_number}
+                    onChange={(e) => setDraft((s) => ({ ...s, vat_number: e.target.value }))}
+                    placeholder="FR12345678901"
+                  />
+                </label>
+
+                <label className={`${styles.label} ${styles.col3} ${styles.fBilling}`}>
+                  <span>Adresse de facturation</span>
+                  <input
+                    className={styles.input}
+                    value={draft.billing_address}
+                    onChange={(e) => setDraft((s) => ({ ...s, billing_address: e.target.value }))}
+                    placeholder="Si différente de l'adresse principale"
+                  />
+                </label>
+
+                <label className={`${styles.label} ${styles.col6} ${styles.fDelivery}`}>
+                  <span>Adresse de livraison</span>
+                  <input
+                    className={styles.input}
+                    value={draft.delivery_address}
+                    onChange={(e) => setDraft((s) => ({ ...s, delivery_address: e.target.value }))}
+                    placeholder="Si différente de l'adresse principale"
+                  />
+                </label>
+
+                {/* Ligne 5 */}
                 <label className={`${styles.label} ${styles.col6} ${styles.fNotes}`}>
                   <span>Notes</span>
                   <textarea
@@ -1617,10 +1626,7 @@ const exportExcel = async () => {
               <button
                 type="button"
                 className={styles.primaryBtn}
-                onClick={async () => {
-                  await save();
-                  setAddOpen(false);
-                }}
+                onClick={save}
                 disabled={saving}
               >
                 {editingId ? "Mettre à jour" : "Ajouter"}
@@ -1630,59 +1636,138 @@ const exportExcel = async () => {
         </div>
       ) : null}
 
-      <section className={`${styles.card} ${styles.tableCard}`} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.cardHead}>
-          <h2 className={styles.h2}>Tableau CRM</h2>
-          <div className={styles.tableToolbar}>
-  <input
-    ref={fileInputRef}
-    type="file"
-    accept=".csv,.json,.xlsx,.xls,text/csv,application/json,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    style={{ display: "none" }}
-    onChange={async (e) => {
-      const f = e.target.files?.[0];
-      if (!f) return;
-      try {
-        await handleImportFile(f);
-      } catch (err: any) {
-        setError(getSimpleFrenchErrorMessage(err, "Import impossible."));
-        setImporting(false);
-      }
-    }}
-  />
+      <section className={`${styles.card} ${styles.tableCard} ${styles.crmBoardCard}`} onClick={(e) => e.stopPropagation()}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,.json,.xlsx,.xls,text/csv,application/json,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          style={{ display: "none" }}
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            try {
+              await handleImportFile(f);
+            } catch (err: any) {
+              setError(getSimpleFrenchErrorMessage(err, "Import impossible."));
+              setImporting(false);
+            }
+          }}
+        />
 
-  <div className={styles.importExportActions}>
-    <button
-      className={styles.ghostBtn}
-      type="button"
-      onClick={triggerImport}
-      disabled={saving || importing}
-      title="Importer un fichier CSV, JSON ou Excel (.xlsx, .xls)"
-    >
-      {importing ? "Import…" : "Importer"}
-    </button>
+        {error ? <div className={styles.error}>{error}</div> : null}
+        {success ? <div className={styles.success}>{success}</div> : null}
 
-    <button
-      className={styles.ghostBtn}
-      type="button"
-      onClick={exportExcel}
-      disabled={saving || Boolean(exportingFormat) || total === 0}
-      title="Exporter en Excel (.xlsx)"
-    >
-      {exportingFormat === "xlsx" ? "Excel…" : "Exporter Excel"}
-    </button>
+        <div className={styles.secondaryToolbar}>
+          <div className={styles.selectionMeta}>
+            {selectedContactIds.size > 0 ? `${selectedContactIds.size} contact${selectedContactIds.size > 1 ? "s" : ""} sélectionné${selectedContactIds.size > 1 ? "s" : ""}` : "Aucune sélection"}
+          </div>
 
-    <button
-      className={styles.ghostBtn}
-      type="button"
-      onClick={exportCsv}
-      disabled={saving || Boolean(exportingFormat) || total === 0}
-      title="Exporter en CSV"
-    >
-      {exportingFormat === "csv" ? "CSV…" : "Exporter CSV"}
-    </button>
-  </div>
+          <div className={styles.bulkActions}>
+            <button
+              aria-label="Désélectionner"
+              className={styles.ghostBtn}
+              type="button"
+              onClick={() => {
+                setSelectedContactIds(new Set());
+                setSelectedContactsById({});
+              }}
+              disabled={selectedContactIds.size === 0 || saving}
+              title={selectedContactIds.size === 0 ? "Aucun contact sélectionné" : "Vider la sélection"}
+            >
+              Désélectionner
+            </button>
 
+            <button
+              aria-label="Supprimer"
+              className={`${styles.smallBtn} ${styles.dangerBtn}`}
+              type="button"
+              onClick={removeSelected}
+              disabled={selectedContactIds.size === 0 || saving}
+              title={selectedContactIds.size === 0 ? "Sélectionne 1 ou plusieurs contacts" : `Supprimer ${selectedContactIds.size} contact(s)`}
+            >
+              🗑️
+            </button>
+
+            <div className={styles.actionsWrap} ref={actionsRef}>
+              <button
+                className={styles.actionsBtn}
+                type="button"
+                onClick={() => setActionsOpen((v) => !v)}
+                disabled={(actionEmails.length === 0 && !primaryContact) || saving}
+                aria-expanded={actionsOpen ? "true" : "false"}
+                title={
+                  primaryContact
+                    ? "Actions sur ce contact"
+                    : selectedContactIds.size > 0
+                    ? "Actions sur la sélection"
+                    : "Sélectionnez un contact"
+                }
+              >
+                Actions <span className={styles.caret}>▾</span>
+              </button>
+
+              {actionsOpen ? (
+                <div className={styles.actionsMenu} role="menu">
+                  <button
+                    className={styles.actionsItem}
+                    type="button"
+                    onClick={() => {
+                      setActionsOpen(false);
+                      sendMailToAction();
+                    }}
+                    disabled={actionEmails.length === 0 || saving}
+                  >
+                    ✉️ Envoyer un mail
+                  </button>
+
+                  <div className={styles.actionsSep} />
+
+                  <button
+                    className={styles.actionsItem}
+                    type="button"
+                    onClick={() => {
+                      if (!primaryContact) return;
+                      setActionsOpen(false);
+                      goNewDevis(primaryContact);
+                    }}
+                    disabled={!primaryContact || saving}
+                  >
+                    📄 Devis
+                  </button>
+
+                  <button
+                    className={styles.actionsItem}
+                    type="button"
+                    onClick={() => {
+                      if (!primaryContact) return;
+                      setActionsOpen(false);
+                      goNewFacture(primaryContact);
+                    }}
+                    disabled={!primaryContact || saving}
+                  >
+                    🧾 Factures
+                  </button>
+
+                  <div className={styles.actionsSep} />
+
+                  <button
+                    className={styles.actionsItem}
+                    type="button"
+                    onClick={() => {
+                      if (!primaryContact) return;
+                      setActionsOpen(false);
+                      goPlanifierIntervention(primaryContact);
+                    }}
+                    disabled={!primaryContact || saving}
+                  >
+                    📅 Planifier une intervention
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className={styles.tableSearchWrap}>
             <div className={styles.searchWrap}>
               <input
                 className={styles.search}
@@ -1692,131 +1777,27 @@ const exportExcel = async () => {
               />
               <span className={styles.count}>{total}</span>
             </div>
-
-            <label className={styles.pageSizeWrap}>
-              <span>Par page</span>
-              <select
-                className={styles.pageSizeSelect}
-                value={pageSize}
-                onChange={(e) => {
-                  setPage(1);
-                  setPageSize(Number(e.target.value) || DEFAULT_PAGE_SIZE);
-                }}
-              >
-                {PAGE_SIZE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className={styles.bulkActions}>
-              <button aria-label="action"
-                className={styles.ghostBtn}
-                type="button"
-                onClick={() => {
-                  setSelectedContactIds(new Set());
-                  setSelectedContactsById({});
-                }}
-                disabled={selectedContactIds.size === 0 || saving}
-                title={selectedContactIds.size === 0 ? "Aucun contact sélectionné" : "Vider la sélection"}
-              >
-                Désélectionner
-              </button>
-
-              <button
-                aria-label="Supprimer"
-                className={`${styles.smallBtn} ${styles.dangerBtn}`}
-                type="button"
-                onClick={removeSelected}
-                disabled={selectedContactIds.size === 0 || saving}
-                title={selectedContactIds.size === 0 ? "Sélectionne 1 ou plusieurs contacts" : `Supprimer ${selectedContactIds.size} contact(s)`}
-              >
-                🗑️
-              </button>
-
-              <div className={styles.actionsWrap} ref={actionsRef}>
-                <button
-                  className={styles.actionsBtn}
-                  type="button"
-                  onClick={() => setActionsOpen((v) => !v)}
-                  disabled={(actionEmails.length === 0 && !primaryContact) || saving}
-                  aria-expanded={actionsOpen ? "true" : "false"}
-                  title={
-                    primaryContact
-                      ? "Actions sur ce contact"
-                      : selectedContactIds.size > 0
-                      ? "Actions sur la sélection"
-                      : "Sélectionnez un contact"
-                  }
-                >
-                  Actions <span className={styles.caret}>▾</span>
-                </button>
-
-                {actionsOpen ? (
-                  <div className={styles.actionsMenu} role="menu">
-                    <button
-                      className={styles.actionsItem}
-                      type="button"
-                      onClick={() => {
-                        setActionsOpen(false);
-                        sendMailToAction();
-                      }}
-                      disabled={actionEmails.length === 0 || saving}
-                    >
-                      ✉️ Envoyer un mail
-                    </button>
-
-                    <div className={styles.actionsSep} />
-
-                    <button
-                      className={styles.actionsItem}
-                      type="button"
-                      onClick={() => {
-                        if (!primaryContact) return;
-                        setActionsOpen(false);
-                        goNewDevis(primaryContact);
-                      }}
-                      disabled={!primaryContact || saving}
-                    >
-                      📄 Devis
-                    </button>
-
-                    <button
-                      className={styles.actionsItem}
-                      type="button"
-                      onClick={() => {
-                        if (!primaryContact) return;
-                        setActionsOpen(false);
-                        goNewFacture(primaryContact);
-                      }}
-                      disabled={!primaryContact || saving}
-                    >
-                      🧾 Factures
-                    </button>
-
-
-                    <div className={styles.actionsSep} />
-
-                    <button
-                      className={styles.actionsItem}
-                      type="button"
-                      onClick={() => {
-                        if (!primaryContact) return;
-                        setActionsOpen(false);
-                        goPlanifierIntervention(primaryContact);
-                      }}
-                      disabled={!primaryContact || saving}
-                    >
-                      📅 Planifier une intervention
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-</div>
           </div>
+
+          <label className={styles.pageSizeWrap}>
+            <span>Par page</span>
+            <select
+              className={styles.pageSizeSelect}
+              value={pageSize}
+              onChange={(e) => {
+                setPage(1);
+                setPageSize(Number(e.target.value) || DEFAULT_PAGE_SIZE);
+              }}
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
+
         {loading ? <div className={styles.muted}>Chargement...</div> : null}
 
         <div className={styles.tableWrap}>

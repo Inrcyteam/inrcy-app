@@ -140,6 +140,7 @@ export default function NewFacturePage() {
   const [crmError, setCrmError] = useState<string | null>(null);
   const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
   const [formMessage, setFormMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [addingToCrm, setAddingToCrm] = useState(false);
   const [currentSaveId, setCurrentSaveId] = useState<string>("");
 
   const [crmOpen, setCrmOpen] = useState(false);
@@ -174,12 +175,21 @@ export default function NewFacturePage() {
     const name = searchParams.get("clientName") || searchParams.get("name") || "";
     const email = searchParams.get("clientEmail") || searchParams.get("email") || "";
     const address = searchParams.get("clientAddress") || searchParams.get("address") || "";
+    const siren = searchParams.get("clientSiren") || "";
+    const vatNumber = searchParams.get("clientVatNumber") || "";
+    const billing = searchParams.get("billingAddress") || "";
+    const delivery = searchParams.get("deliveryAddress") || "";
     if (name) setClientName((prev) => prev || name);
     if (email) setClientEmail((prev) => prev || email);
+    if (siren) setClientSiren((prev) => prev || siren);
+    if (vatNumber) setClientVatNumber((prev) => prev || vatNumber);
     if (address) {
       setClientAddress((prev) => prev || address);
-      setBillingAddress((prev) => prev || address);
-      setDeliveryAddress((prev) => prev || address);
+      setBillingAddress((prev) => prev || billing || address);
+      setDeliveryAddress((prev) => prev || delivery || billing || address);
+    } else {
+      if (billing) setBillingAddress((prev) => prev || billing);
+      if (delivery) setDeliveryAddress((prev) => prev || delivery);
     }
   }, []);
 
@@ -774,6 +784,48 @@ export default function NewFacturePage() {
     }
 
     return savedId as string | undefined;
+  };
+
+  const addCurrentClientToCrm = async () => {
+    const displayName = (clientName || "").trim();
+    const email = (clientEmail || "").trim();
+    const primaryAddress = (clientAddress || billingAddress || "").trim();
+
+    if (!displayName && !email && !primaryAddress) {
+      setFormMessage({ type: "error", text: "Renseignez au moins un nom, un email ou une adresse client avant d’ajouter au CRM." });
+      return;
+    }
+
+    setAddingToCrm(true);
+    try {
+      const response = await fetch("/api/crm/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          display_name: displayName,
+          siret: (clientSiren || "").trim(),
+          vat_number: (clientVatNumber || "").trim(),
+          email,
+          address: primaryAddress,
+          billing_address: (billingAddress || "").trim(),
+          delivery_address: sameAddresses ? "" : (deliveryAddress || "").trim(),
+          contact_type: "client",
+          category: "professionnel",
+          notes: [`Ajouté depuis Factures`, purchaseOrderReference ? `PO: ${purchaseOrderReference}` : ""].filter(Boolean).join(" — "),
+        }),
+      });
+
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(getSimpleFrenchErrorMessage(json?.error, "Impossible d’ajouter ce client au CRM."));
+      }
+
+      setFormMessage({ type: "success", text: "Client ajouté au CRM." });
+    } catch (error) {
+      setFormMessage({ type: "error", text: getSimpleFrenchErrorMessage(error, "Impossible d’ajouter ce client au CRM.") });
+    } finally {
+      setAddingToCrm(false);
+    }
   };
 
   const finalizeInvoice = async (
@@ -1552,13 +1604,16 @@ export default function NewFacturePage() {
         </div>
 
         <div className={styles.actionGrid}>
-          <button type="button" onClick={() => { void saveDraft(); }} disabled={finalizing}>
+          <button type="button" onClick={() => { void saveDraft(); }} disabled={finalizing || addingToCrm}>
             Sauvegarder
+          </button>
+          <button type="button" onClick={() => void addCurrentClientToCrm()} disabled={finalizing || addingToCrm}>
+            {addingToCrm ? "Ajout CRM…" : "Ajouter au CRM"}
           </button>
           {!isFinalized ? (
             <button
               type="button"
-              disabled={finalizing}
+              disabled={finalizing || addingToCrm}
               onClick={async () => {
                 const docSaveId = await saveDraft({ silent: true });
                 if (!docSaveId) return;
@@ -1573,7 +1628,7 @@ export default function NewFacturePage() {
           ) : null}
           <button
             type="button"
-            disabled={finalizing}
+            disabled={finalizing || addingToCrm}
             onClick={async () => {
               const to = (clientEmail || "").trim();
               if (!to) {
@@ -1586,7 +1641,7 @@ export default function NewFacturePage() {
           >
             {finalizing ? "Préparation…" : "Envoyer par mail"}
           </button>
-          <button type="button" onClick={print} disabled={finalizing}>
+          <button type="button" onClick={print} disabled={finalizing || addingToCrm}>
             Imprimer / PDF
           </button>
         </div>
