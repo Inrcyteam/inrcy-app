@@ -8,6 +8,12 @@ import { appendRawMessage, type ImapConfig } from "@/lib/imapClient";
 import { decryptSecret } from "@/lib/imapCrypto";
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml } from "@/lib/inrsendSignature";
 
+export type SendMailBinaryAttachment = {
+  filename: string;
+  mimeType?: string;
+  content: Buffer;
+};
+
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -31,6 +37,10 @@ function toBase64Url(str: string) {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
+}
+
+function wrap76(b64: string) {
+  return b64.replace(/(.{76})/g, "$1\r\n");
 }
 
 async function refreshGoogleAccessToken(refreshToken: string) {
@@ -88,18 +98,56 @@ async function refreshMicrosoftAccessToken(refreshToken: string, scope?: string 
   return { ok: res.ok, status: res.status, data };
 }
 
-function buildSimpleGmailRaw(from: string, to: string, subject: string, text: string, html: string) {
-  const altBoundary = `inr_alt_${Date.now()}`;
+function buildGmailRawMessage(opts: {
+  from: string;
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  attachments?: SendMailBinaryAttachment[];
+}) {
+  const text = opts.text ?? "";
+  const html = opts.html ?? "";
+  const atts = opts.attachments ?? [];
+
   const headers = [
-    from ? `From: ${from}` : "",
-    `To: ${to}`,
-    `Subject: ${subject}`,
+    opts.from ? `From: ${opts.from}` : "",
+    `To: ${opts.to}`,
+    `Subject: ${opts.subject}`,
     `Date: ${new Date().toUTCString()}`,
     "MIME-Version: 1.0",
-    `Content-Type: multipart/alternative; boundary=\"${altBoundary}\"`,
-  ];
+  ].filter(Boolean);
 
-  const parts = [
+  if (atts.length === 0) {
+    const altBoundary = `inr_alt_${Date.now()}`;
+    const parts = [
+      `--${altBoundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: 7bit",
+      "",
+      text || "",
+      "",
+      `--${altBoundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: 7bit",
+      "",
+      html || (text ? `<pre>${text}</pre>` : ""),
+      "",
+      `--${altBoundary}--`,
+      "",
+    ].join("\r\n");
+
+    return toBase64Url(
+      [...headers, `Content-Type: multipart/alternative; boundary=\"${altBoundary}\"`].join("\r\n") + "\r\n\r\n" + parts
+    );
+  }
+
+  const mixedBoundary = `inr_mixed_${Date.now()}`;
+  const altBoundary = `inr_alt_${Date.now()}`;
+  const firstPart = [
+    `--${mixedBoundary}`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    "",
     `--${altBoundary}`,
     'Content-Type: text/plain; charset="UTF-8"',
     "Content-Transfer-Encoding: 7bit",
@@ -116,10 +164,41 @@ function buildSimpleGmailRaw(from: string, to: string, subject: string, text: st
     "",
   ].join("\r\n");
 
-  return toBase64Url(headers.filter(Boolean).join("\r\n") + "\r\n\r\n" + parts);
+  const attachmentParts = atts
+    .map((attachment) => {
+      const filename = attachment.filename || "piece-jointe";
+      const mimeType = attachment.mimeType || "application/octet-stream";
+      const b64 = attachment.content.toString("base64");
+      return [
+        `--${mixedBoundary}`,
+        `Content-Type: ${mimeType}; name="${filename}"`,
+        "Content-Transfer-Encoding: base64",
+        `Content-Disposition: attachment; filename="${filename}"`,
+        "",
+        wrap76(b64),
+        "",
+      ].join("\r\n");
+    })
+    .join("\r\n");
+
+  const raw =
+    [...headers, `Content-Type: multipart/mixed; boundary=\"${mixedBoundary}\"`].join("\r\n") +
+    "\r\n\r\n" +
+    firstPart +
+    attachmentParts +
+    `\r\n--${mixedBoundary}--\r\n`;
+
+  return toBase64Url(raw);
 }
 
-async function sendViaGmail(account: Record<string, unknown>, to: string, subject: string, text: string, html: string) {
+async function sendViaGmail(
+  account: Record<string, unknown>,
+  to: string,
+  subject: string,
+  text: string,
+  html: string,
+  attachments: SendMailBinaryAttachment[] = []
+) {
   const accountId = asString(account.id) || "";
   const accessTokenPlain = tryDecryptToken(asString(account.access_token_enc));
   const refreshTokenPlain = tryDecryptToken(asString(account.refresh_token_enc));
@@ -136,7 +215,7 @@ async function sendViaGmail(account: Record<string, unknown>, to: string, subjec
   }
 
   const from = asString(account.account_email) || "";
-  const raw = buildSimpleGmailRaw(from, to, subject, text, html);
+  const raw = buildGmailRawMessage({ from, to, subject, text, html, attachments });
   let sendRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
@@ -166,7 +245,13 @@ async function sendViaGmail(account: Record<string, unknown>, to: string, subjec
   }
 }
 
-async function sendViaMicrosoft(account: Record<string, unknown>, to: string, subject: string, html: string) {
+async function sendViaMicrosoft(
+  account: Record<string, unknown>,
+  to: string,
+  subject: string,
+  html: string,
+  attachments: SendMailBinaryAttachment[] = []
+) {
   const accountId = asString(account.id) || "";
   const settings = asRecord(account.settings);
   const scopesRaw = asString(settings.scopes_raw);
@@ -183,6 +268,13 @@ async function sendViaMicrosoft(account: Record<string, unknown>, to: string, su
     }
   }
 
+  const graphAttachments = attachments.map((attachment) => ({
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    name: attachment.filename || "piece-jointe",
+    contentType: attachment.mimeType || "application/octet-stream",
+    contentBytes: attachment.content.toString("base64"),
+  }));
+
   const graphRes = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
@@ -191,6 +283,7 @@ async function sendViaMicrosoft(account: Record<string, unknown>, to: string, su
         subject,
         body: { contentType: "HTML", content: html },
         toRecipients: [{ emailAddress: { address: to } }],
+        ...(graphAttachments.length > 0 ? { attachments: graphAttachments } : {}),
       },
       saveToSentItems: true,
     }),
@@ -202,7 +295,14 @@ async function sendViaMicrosoft(account: Record<string, unknown>, to: string, su
   }
 }
 
-async function sendViaImap(account: Record<string, unknown>, to: string, subject: string, text: string, html: string) {
+async function sendViaImap(
+  account: Record<string, unknown>,
+  to: string,
+  subject: string,
+  text: string,
+  html: string,
+  attachments: SendMailBinaryAttachment[] = []
+) {
   const settings = asRecord(account.settings);
   const imapSettings = asRecord(settings.imap);
   const smtp = asRecord(settings.smtp);
@@ -232,11 +332,34 @@ async function sendViaImap(account: Record<string, unknown>, to: string, subject
 
   const fromName = String(imap.user || login);
   const from = `"${fromName}" <${login}>`;
-  await transporter.sendMail({ from, to, subject, text, html });
+  await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text,
+    html,
+    attachments: attachments.map((attachment) => ({
+      filename: attachment.filename || "piece-jointe",
+      content: attachment.content,
+      contentType: attachment.mimeType || "application/octet-stream",
+    })),
+  });
 
   try {
     const raw = await new Promise<Buffer>((resolve, reject) => {
-      const mc = new MailComposer({ from, to, subject, text, html, date: new Date() });
+      const mc = new MailComposer({
+        from,
+        to,
+        subject,
+        text,
+        html,
+        date: new Date(),
+        attachments: attachments.map((attachment) => ({
+          filename: attachment.filename || "piece-jointe",
+          content: attachment.content,
+          contentType: attachment.mimeType || "application/octet-stream",
+        })),
+      });
       mc.compile().build((err: unknown, message: Buffer) => {
         if (err) return reject(err);
         resolve(message);
@@ -267,6 +390,7 @@ export async function sendMailFromIntegration(params: {
   text?: string;
   html?: string;
   includeAutoSignature?: boolean;
+  attachments?: SendMailBinaryAttachment[];
 }) {
   const { userId, accountId, to, subject } = params;
   const accountQuery = await supabaseAdmin
@@ -287,6 +411,7 @@ export async function sendMailFromIntegration(params: {
   const baseText = params.text || "";
   const baseHtml = params.html || textToSimpleHtml(baseText);
   const includeAutoSignature = params.includeAutoSignature !== false;
+  const attachments = Array.isArray(params.attachments) ? params.attachments : [];
 
   let finalText = baseText;
   let finalHtml = baseHtml;
@@ -298,15 +423,15 @@ export async function sendMailFromIntegration(params: {
   }
 
   if (provider === "gmail") {
-    await sendViaGmail(account, to, subject, finalText, finalHtml);
+    await sendViaGmail(account, to, subject, finalText, finalHtml, attachments);
     return { provider };
   }
   if (provider === "microsoft") {
-    await sendViaMicrosoft(account, to, subject, finalHtml);
+    await sendViaMicrosoft(account, to, subject, finalHtml, attachments);
     return { provider };
   }
   if (provider === "imap") {
-    await sendViaImap(account, to, subject, finalText, finalHtml);
+    await sendViaImap(account, to, subject, finalText, finalHtml, attachments);
     return { provider };
   }
 

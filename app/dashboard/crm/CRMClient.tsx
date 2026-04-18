@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./crm.module.css";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
@@ -30,6 +30,18 @@ type CrmContact = {
   contact_type: ContactType;
   created_at: string;
 };
+
+type CrmSummary = {
+  total: number;
+  prospects: number;
+  clients: number;
+  partenaires: number;
+  fournisseurs: number;
+  autres: number;
+};
+
+const DEFAULT_PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 const CATEGORY_LABEL: Record<Exclude<Category, "">, string> = {
   particulier: "Particulier",
@@ -110,6 +122,8 @@ function contactsToCsv(rows: any[]) {
     "postal_code",
     "category",
     "contact_type",
+    "notes",
+    "important",
   ];
   const lines = [
     headers.join(";"),
@@ -167,6 +181,19 @@ function parseCsv(text: string) {
   });
 }
 
+function parseBooleanLike(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  return ["1", "true", "vrai", "oui", "yes", "y", "x", "important", "★"].includes(normalized);
+}
+
+async function loadXlsxModule() {
+  return (await import("@/lib/vendor/xlsx.mjs")) as any;
+}
+
 function normalizeImportedRow(row: any) {
   // mapping souple (CSV/Excel)
   const pick = (...keys: string[]) => {
@@ -189,6 +216,8 @@ function normalizeImportedRow(row: any) {
     postal_code: String(pick("postal_code", "Code postal", "CP")).trim(),
     category: String(pick("category", "Categorie", "Catégorie")).trim(),
     contact_type: String(pick("contact_type", "Type", "Type de contact")).trim(),
+    notes: String(pick("notes", "Notes", "Commentaires", "Commentaire")).trim(),
+    important: parseBooleanLike(pick("important", "Important", "Favori", "Favorite", "Star")),
   };
 }
 
@@ -259,7 +288,21 @@ export default function CRMClient() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const [contacts, setContacts] = useState<CrmContact[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [pageCount, setPageCount] = useState(1);
+  const [kpis, setKpis] = useState<CrmSummary>({
+    total: 0,
+    prospects: 0,
+    clients: 0,
+    partenaires: 0,
+    fournisseurs: 0,
+    autres: 0,
+  });
   const [query, setQuery] = useState("");
+  const [serverQuery, setServerQuery] = useState("");
+  const requestSeqRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -268,10 +311,11 @@ export default function CRMClient() {
   const [statsOpen, setStatsOpen] = useState(false);
   const statsRef = useRef<HTMLDivElement | null>(null);
   const [importing, setImporting] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<"" | "csv" | "xlsx">("");
 
   // ✅ Sélection multi-contacts (pour actions : mail, etc.)
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(() => new Set());
+  const [selectedContactsById, setSelectedContactsById] = useState<Record<string, CrmContact>>({});
   const [importantIds, setImportantIds] = useState<Set<string>>(() => {
     try {
       const raw = readAccountCacheValue("inrcy_crm_important_ids");
@@ -294,45 +338,114 @@ export default function CRMClient() {
   const [draft, setDraft] = useState<ReturnType<typeof emptyDraft>>(() => emptyDraft());
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  async function loadContacts() {
-    setLoading(true);
-    setError(null);
-  setSuccess(null);
-    try {
-      const r = await fetch("/api/crm/contacts", { method: "GET" });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger les contacts du CRM."));
-      const base = Array.isArray(j?.contacts) ? j.contacts : [];
-      // Merge local notes/important (if backend doesn't provide them yet)
-      const merged = base.map((c: any) => ({
-        ...c,
-        notes: (c?.notes ?? notesById?.[c.id] ?? "") as string,
-        important: Boolean(c?.important || importantIds.has(c.id)),
-      }));
-      setContacts(merged);
-    } catch (e: any) {
-      setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les contacts du CRM."));
-    } finally {
-      setLoading(false);
-    }
-  }
+  const mergeContactWithLocalState = useCallback(
+    (contact: CrmContact) => ({
+      ...contact,
+      notes: (contact?.notes ?? notesById?.[contact.id] ?? "") as string,
+      important: Boolean(contact?.important || importantIds.has(contact.id)),
+    }),
+    [importantIds, notesById],
+  );
+
+  const loadContacts = useCallback(
+    async (options?: { page?: number; pageSize?: number; query?: string; preserveSuccess?: boolean }) => {
+      const targetPage = Math.max(1, options?.page ?? page);
+      const targetPageSize = options?.pageSize ?? pageSize;
+      const targetQuery = options?.query ?? serverQuery;
+      const requestId = ++requestSeqRef.current;
+
+      setLoading(true);
+      setError(null);
+      if (!options?.preserveSuccess) setSuccess(null);
+
+      try {
+        const params = new URLSearchParams({
+          page: String(targetPage),
+          pageSize: String(targetPageSize),
+        });
+        if (targetQuery) params.set("q", targetQuery);
+
+        const r = await fetch(`/api/crm/contacts?${params.toString()}`, { method: "GET" });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger les contacts du CRM."));
+        if (requestId !== requestSeqRef.current) return;
+
+        const nextTotal = typeof j?.total === "number" ? j.total : 0;
+        const nextPageCount = Math.max(1, typeof j?.pageCount === "number" ? j.pageCount : 1);
+        const safePage = Math.min(targetPage, nextPageCount);
+
+        if (targetPage > nextPageCount && nextTotal > 0) {
+          setPage(safePage);
+          return;
+        }
+
+        const base = Array.isArray(j?.contacts) ? j.contacts : [];
+        const merged = base.map((c: CrmContact) => mergeContactWithLocalState(c));
+
+        setContacts(merged);
+        setTotal(nextTotal);
+        setPage(safePage);
+        setPageSize(typeof j?.pageSize === "number" ? j.pageSize : targetPageSize);
+        setPageCount(nextPageCount);
+        setKpis({
+          total: Number(j?.summary?.total ?? nextTotal ?? 0),
+          prospects: Number(j?.summary?.prospects ?? 0),
+          clients: Number(j?.summary?.clients ?? 0),
+          partenaires: Number(j?.summary?.partenaires ?? 0),
+          fournisseurs: Number(j?.summary?.fournisseurs ?? 0),
+          autres: Number(j?.summary?.autres ?? 0),
+        });
+      } catch (e: any) {
+        if (requestId !== requestSeqRef.current) return;
+        setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les contacts du CRM."));
+      } finally {
+        if (requestId === requestSeqRef.current) setLoading(false);
+      }
+    },
+    [mergeContactWithLocalState, page, pageSize, serverQuery],
+  );
 
   useEffect(() => {
-    loadContacts();
-  }, []);
+    const timer = window.setTimeout(() => {
+      setServerQuery(query.trim());
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [pageSize, serverQuery]);
+
+  useEffect(() => {
+    void loadContacts();
+  }, [loadContacts]);
 
   useEffect(() => {
     // Keep derived fields in sync when local ⭐ important / notes change
-    setContacts((prev) =>
-      prev.map((c: any) => ({
-        ...c,
-        notes: (c?.notes ?? notesById?.[c.id] ?? "") as string,
-        important: Boolean((c as any)?.important || importantIds.has(c.id)),
-      })),
-    );
-  }, [importantIds, notesById]);
+    setContacts((prev) => prev.map((c) => mergeContactWithLocalState(c)));
+    setSelectedContactsById((prev) => {
+      if (Object.keys(prev).length === 0) return prev;
+      const next: Record<string, CrmContact> = {};
+      for (const [id, contact] of Object.entries(prev)) {
+        next[id] = mergeContactWithLocalState(contact);
+      }
+      return next;
+    });
+  }, [mergeContactWithLocalState]);
 
-
+  useEffect(() => {
+    if (contacts.length === 0 || selectedContactIds.size === 0) return;
+    setSelectedContactsById((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const contact of contacts) {
+        if (!selectedContactIds.has(contact.id)) continue;
+        next[contact.id] = contact;
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [contacts, selectedContactIds]);
 
   useEffect(() => {
     if (!actionsOpen) return;
@@ -357,93 +470,17 @@ export default function CRMClient() {
     return () => window.removeEventListener("mousedown", onDown);
   }, []);
 
-
-  const filtered = useMemo(() => {
-  const raw = query.trim();
-  const q = raw.toLowerCase();
-  if (!q) return contacts;
-
-  // Helpers
-  const digits = raw.replace(/\D/g, ""); // enlève espaces, +33, etc.
-  const hasLetters = /[a-z]/i.test(raw);
-  const isNumericSearch = !hasLetters && digits.length > 0;
-
-  return contacts.filter((c) => {
-    // ✅ Cas "je tape des chiffres"
-    if (isNumericSearch) {
-      const cpDigits = String(c.postal_code ?? "").replace(/\D/g, "");
-      if (digits.length < 6) {
-        // < 6 chiffres => فقط CP
-        return cpDigits.includes(digits);
-      }
-
-      // >= 6 chiffres => téléphone (et on laisse CP aussi, pratique)
-      const phoneDigits = String(c.phone ?? "").replace(/\D/g, "");
-      return phoneDigits.includes(digits) || cpDigits.includes(digits);
-    }
-
-    // ✅ Cas texte "normal" (on garde ton comportement)
-    const blob = [
-      buildDisplayName(c),
-      c.siret ?? "",
-      c.email, // ici OK car ce n'est pas une recherche "chiffres uniquement"
-      c.phone,
-      c.address,
-      c.city ?? "",
-      c.postal_code ?? "",
-      c.category ? CATEGORY_LABEL[c.category as Exclude<Category, "">] : "",
-      c.contact_type ? TYPE_LABEL[c.contact_type as Exclude<ContactType, "">] : "",
-    ]
-      .join(" ")
-      .toLowerCase();
-
-    return blob.includes(q);
-  });
-}, [contacts, query]);
-
-
-  // ✅ KPI (lecture rapide)
-  const kpis = useMemo(() => {
-    const total = contacts.length;
-    const prospects = contacts.filter((c) => c.contact_type === "prospect").length;
-    const clients = contacts.filter((c) => c.contact_type === "client").length;
-    const partenaires = contacts.filter((c) => c.contact_type === "partenaire").length;
-        const fournisseurs = contacts.filter((c) => c.contact_type === "fournisseur").length;
-    const autres = contacts.filter((c) => !c.contact_type || c.contact_type === "autre").length;
-    return { total, prospects, clients, partenaires, fournisseurs, autres };
-  }, [contacts]);
-
-  useEffect(() => {
-    // Re-apply local ⭐ / notes on already loaded contacts when local state changes
-    setContacts((prev) =>
-      prev.map((c) => ({
-        ...c,
-        notes: (c?.notes ?? notesById?.[c.id] ?? "") as string,
-        important: Boolean(c?.important || importantIds.has(c.id)),
-      }))
-    );
-  }, [notesById, importantIds]);
-
-  // ✅ Nettoie la sélection si des contacts disparaissent (après suppression / reload)
-  useEffect(() => {
-    setSelectedContactIds((prev) => {
-      if (prev.size === 0) return prev;
-      const allowed = new Set(contacts.map((c) => c.id));
-      const next = new Set(Array.from(prev).filter((id) => allowed.has(id)));
-      return next;
-    });
-  }, [contacts]);
-
   const selectedContacts = useMemo(() => {
     if (selectedContactIds.size === 0) return [] as CrmContact[];
-    const map = new Map(contacts.map((c) => [c.id, c] as const));
-    return Array.from(selectedContactIds).map((id) => map.get(id)).filter(Boolean) as CrmContact[];
-  }, [selectedContactIds, contacts]);
+    return Array.from(selectedContactIds)
+      .map((id) => selectedContactsById[id])
+      .filter(Boolean) as CrmContact[];
+  }, [selectedContactIds, selectedContactsById]);
 
   const editingContact = useMemo(() => {
     if (!editingId) return null as CrmContact | null;
-    return contacts.find((c) => c.id === editingId) ?? null;
-  }, [editingId, contacts]);
+    return contacts.find((c) => c.id === editingId) ?? selectedContactsById[editingId] ?? null;
+  }, [contacts, editingId, selectedContactsById]);
 
   const primaryContact = useMemo(() => {
     // Priority: clicked contact (editing panel), else single selected contact
@@ -452,6 +489,9 @@ export default function CRMClient() {
     return null;
   }, [editingContact, selectedContacts]);
 
+  const visibleContacts = contacts;
+  const allVisibleSelected = visibleContacts.length > 0 && visibleContacts.every((c) => selectedContactIds.has(c.id));
+  const emptyMessage = query.trim() ? "Aucun contact trouvé pour cette recherche." : "Aucun contact pour le moment.";
 
   const selectedEmails = useMemo(() => {
     const emails = selectedContacts
@@ -469,23 +509,45 @@ export default function CRMClient() {
 
 
   const toggleSelect = (id: string) => {
+    const contact = visibleContacts.find((item) => item.id === id) ?? selectedContactsById[id];
+    const isSelected = selectedContactIds.has(id);
+
     setSelectedContactIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+
+    setSelectedContactsById((prev) => {
+      const next = { ...prev };
+      if (isSelected) delete next[id];
+      else if (contact) next[id] = contact;
+      return next;
+    });
   };
 
-  const toggleSelectAllFiltered = () => {
+  const toggleSelectAllVisible = () => {
     setSelectedContactIds((prev) => {
       const next = new Set(prev);
-      const filteredIds = filtered.map((c) => c.id);
-      const allSelected = filteredIds.length > 0 && filteredIds.every((id) => next.has(id));
-      if (allSelected) {
-        filteredIds.forEach((id) => next.delete(id));
+      if (allVisibleSelected) {
+        visibleContacts.forEach((contact) => next.delete(contact.id));
       } else {
-        filteredIds.forEach((id) => next.add(id));
+        visibleContacts.forEach((contact) => next.add(contact.id));
+      }
+      return next;
+    });
+
+    setSelectedContactsById((prev) => {
+      const next = { ...prev };
+      if (allVisibleSelected) {
+        visibleContacts.forEach((contact) => {
+          delete next[contact.id];
+        });
+      } else {
+        visibleContacts.forEach((contact) => {
+          next[contact.id] = contact;
+        });
       }
       return next;
     });
@@ -568,7 +630,8 @@ async function importContacts(rows: any[]) {
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Import impossible."));
-    await loadContacts();
+    setPage(1);
+    await loadContacts({ page: 1, preserveSuccess: true });
     setSuccess(`Import terminé : ${j?.inserted ?? cleaned.length} contact(s).`);
   } catch (e: any) {
     setError(getSimpleFrenchErrorMessage(e, "Import impossible."));
@@ -581,7 +644,6 @@ async function importContacts(rows: any[]) {
 async function handleImportFile(file: File) {
   const name = (file?.name || "").toLowerCase();
 
-  // JSON array
   if (name.endsWith(".json")) {
     const text = await file.text();
     const parsed = JSON.parse(text);
@@ -590,7 +652,18 @@ async function handleImportFile(file: File) {
     return;
   }
 
-  // CSV (Excel)
+  if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+    const XLSX = await loadXlsxModule();
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
+    const firstSheetName = workbook.SheetNames?.[0];
+    if (!firstSheetName) throw new Error("Le fichier Excel est vide.");
+    const firstSheet = workbook.Sheets[firstSheetName];
+    const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
+    await importContacts(rows);
+    return;
+  }
+
   const text = await file.text();
   const rows = parseCsv(text);
   await importContacts(rows);
@@ -598,10 +671,20 @@ async function handleImportFile(file: File) {
 
 const triggerImport = () => fileInputRef.current?.click();
 
-const exportCsv = () => {
-  setExporting(true);
-  try {
-    const rows = (filtered.length ? filtered : contacts).map((c) => ({
+const fetchAllContactsForCurrentQuery = useCallback(async () => {
+  const params = new URLSearchParams({ all: "1" });
+  if (serverQuery) params.set("q", serverQuery);
+
+  const r = await fetch(`/api/crm/contacts?${params.toString()}`, { method: "GET" });
+  if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Export impossible."));
+  const j = await r.json().catch(() => ({}));
+  const base = Array.isArray(j?.contacts) ? j.contacts : [];
+  return base.map((contact: CrmContact) => mergeContactWithLocalState(contact));
+}, [mergeContactWithLocalState, serverQuery]);
+
+const buildExportRows = useCallback(
+  (rows: CrmContact[]) =>
+    rows.map((c) => ({
       display_name: buildDisplayName(c),
       last_name: c.last_name ?? "",
       first_name: c.first_name ?? "",
@@ -616,16 +699,90 @@ const exportCsv = () => {
       contact_type: c.contact_type ?? "",
       notes: (c.notes ?? "") as string,
       important: Boolean((c as any).important),
-    }));
+    })),
+  [],
+);
+
+const getExportBaseFilename = () => `crm_inrcy_${new Date().toISOString().slice(0, 10)}`;
+
+const exportCsv = async () => {
+  setExportingFormat("csv");
+  setError(null);
+  try {
+    const exportedContacts = await fetchAllContactsForCurrentQuery();
+    const rows = buildExportRows(exportedContacts);
     const csv = contactsToCsv(rows);
-    downloadTextFile(`crm_inrcy_${new Date().toISOString().slice(0, 10)}.csv`, csv, "text/csv;charset=utf-8");
+    downloadTextFile(`${getExportBaseFilename()}.csv`, csv, "text/csv;charset=utf-8");
+  } catch (e: any) {
+    setError(getSimpleFrenchErrorMessage(e, "Export CSV impossible."));
   } finally {
-    setExporting(false);
+    setExportingFormat("");
+  }
+};
+
+const exportExcel = async () => {
+  setExportingFormat("xlsx");
+  setError(null);
+  try {
+    const XLSX = await loadXlsxModule();
+    const exportedContacts = await fetchAllContactsForCurrentQuery();
+    const rows = buildExportRows(exportedContacts);
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet["!cols"] = [
+      { wch: 28 },
+      { wch: 24 },
+      { wch: 18 },
+      { wch: 24 },
+      { wch: 16 },
+      { wch: 28 },
+      { wch: 18 },
+      { wch: 28 },
+      { wch: 18 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 36 },
+      { wch: 12 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Contacts CRM");
+    XLSX.writeFile(workbook, `${getExportBaseFilename()}.xlsx`, {
+      bookType: "xlsx",
+      compression: true,
+    });
+  } catch (e: any) {
+    setError(getSimpleFrenchErrorMessage(e, "Export Excel impossible."));
+  } finally {
+    setExportingFormat("");
   }
 };
 
   const sendMailToAction = () => {
     if (actionEmails.length === 0) return;
+
+    if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.setItem(
+          "inrcy_pending_mail_compose",
+          JSON.stringify({
+            to: actionEmails,
+            from: "crm",
+            contactId: primaryContact?.id || "",
+            contactName: primaryContact ? buildDisplayName(primaryContact) : "",
+            createdAt: Date.now(),
+          }),
+        );
+        const params = new URLSearchParams({ compose: "1", from: "crm", prefillStorage: "session" });
+        if (primaryContact?.id) params.set("contactId", primaryContact.id);
+        if (primaryContact) params.set("contactName", buildDisplayName(primaryContact));
+        router.push(`/dashboard/mails?${params.toString()}`);
+        return;
+      } catch {
+        // fallback URL prefill below
+      }
+    }
+
     const params = new URLSearchParams({ compose: "1", to: actionEmails.join(","), from: "crm" });
     if (primaryContact?.id) params.set("contactId", primaryContact.id);
     if (primaryContact) params.set("contactName", buildDisplayName(primaryContact));
@@ -750,7 +907,9 @@ const exportCsv = () => {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible d'enregistrer."));
-      await loadContacts();
+      const nextPage = editingId ? page : 1;
+      if (!editingId) setPage(1);
+      await loadContacts({ page: nextPage, preserveSuccess: true });
       // If editing, persist ⭐ + notes locally (works even if backend doesn't store it yet)
       if (editingId) {
         setNoteForId(editingId, (draft.notes || "").trim());
@@ -798,8 +957,9 @@ const exportCsv = () => {
       );
 
       // reload + reset states
-      await loadContacts();
+      await loadContacts({ preserveSuccess: true });
       setSelectedContactIds(new Set());
+      setSelectedContactsById({});
       if (editingId && ids.includes(editingId)) startNew();
       setSuccess(n > 1 ? "Contacts supprimés." : "Contact supprimé.");
     } catch (e: any) {
@@ -818,7 +978,17 @@ const exportCsv = () => {
       const r = await fetch(`/api/crm/contacts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de supprimer."));
-      await loadContacts();
+      await loadContacts({ preserveSuccess: true });
+      setSelectedContactIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setSelectedContactsById((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
       if (editingId === id) startNew();
       setSuccess("Contact supprimé.");
     } catch (e: any) {
@@ -1467,7 +1637,7 @@ const exportCsv = () => {
   <input
     ref={fileInputRef}
     type="file"
-    accept=".csv,.json,text/csv,application/json"
+    accept=".csv,.json,.xlsx,.xls,text/csv,application/json,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     style={{ display: "none" }}
     onChange={async (e) => {
       const f = e.target.files?.[0];
@@ -1487,7 +1657,7 @@ const exportCsv = () => {
       type="button"
       onClick={triggerImport}
       disabled={saving || importing}
-      title="Importer un fichier CSV (Excel) ou JSON"
+      title="Importer un fichier CSV, JSON ou Excel (.xlsx, .xls)"
     >
       {importing ? "Import…" : "Importer"}
     </button>
@@ -1495,11 +1665,21 @@ const exportCsv = () => {
     <button
       className={styles.ghostBtn}
       type="button"
-      onClick={exportCsv}
-      disabled={saving || exporting || contacts.length === 0}
-      title="Exporter en CSV (ouvrable dans Excel)"
+      onClick={exportExcel}
+      disabled={saving || Boolean(exportingFormat) || total === 0}
+      title="Exporter en Excel (.xlsx)"
     >
-      {exporting ? "Export…" : "Exporter"}
+      {exportingFormat === "xlsx" ? "Excel…" : "Exporter Excel"}
+    </button>
+
+    <button
+      className={styles.ghostBtn}
+      type="button"
+      onClick={exportCsv}
+      disabled={saving || Boolean(exportingFormat) || total === 0}
+      title="Exporter en CSV"
+    >
+      {exportingFormat === "csv" ? "CSV…" : "Exporter CSV"}
     </button>
   </div>
 
@@ -1510,14 +1690,35 @@ const exportCsv = () => {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
-              <span className={styles.count}>{filtered.length}</span>
+              <span className={styles.count}>{total}</span>
             </div>
+
+            <label className={styles.pageSizeWrap}>
+              <span>Par page</span>
+              <select
+                className={styles.pageSizeSelect}
+                value={pageSize}
+                onChange={(e) => {
+                  setPage(1);
+                  setPageSize(Number(e.target.value) || DEFAULT_PAGE_SIZE);
+                }}
+              >
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             <div className={styles.bulkActions}>
               <button aria-label="action"
                 className={styles.ghostBtn}
                 type="button"
-                onClick={() => setSelectedContactIds(new Set())}
+                onClick={() => {
+                  setSelectedContactIds(new Set());
+                  setSelectedContactsById({});
+                }}
                 disabled={selectedContactIds.size === 0 || saving}
                 title={selectedContactIds.size === 0 ? "Aucun contact sélectionné" : "Vider la sélection"}
               >
@@ -1616,7 +1817,6 @@ const exportCsv = () => {
 </div>
           </div>
         </div>
-
         {loading ? <div className={styles.muted}>Chargement...</div> : null}
 
         <div className={styles.tableWrap}>
@@ -1635,10 +1835,10 @@ const exportCsv = () => {
                 <div className={styles.mhStar}>Imp</div>
               </div>
 
-              {filtered.length === 0 ? (
-                <div className={styles.mobileEmpty}>Aucun contact pour le moment.</div>
+              {visibleContacts.length === 0 ? (
+                <div className={styles.mobileEmpty}>{emptyMessage}</div>
               ) : (
-                filtered.map((c) => (
+                visibleContacts.map((c) => (
                   <div
                     key={c.id}
                     className={`${styles.mobileRow} ${selectedContactIds.has(c.id) ? styles.mobileRowSelected : ""}`.trim()}
@@ -1700,9 +1900,9 @@ const exportCsv = () => {
                       type="checkbox"
                       className={styles.checkbox}
                       onClick={(e) => e.stopPropagation()}
-                      onChange={toggleSelectAllFiltered}
-                      checked={filtered.length > 0 && filtered.every((c) => selectedContactIds.has(c.id))}
-                      aria-label="Sélectionner tous les contacts filtrés"
+                      onChange={toggleSelectAllVisible}
+                      checked={allVisibleSelected}
+                      aria-label="Sélectionner tous les contacts de la page"
                     />
                   </th>
                   <th className={styles.thName}>Nom Prénom / RS</th>
@@ -1715,14 +1915,14 @@ const exportCsv = () => {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {visibleContacts.length === 0 ? (
                   <tr>
                     <td colSpan={8} className={styles.empty}>
-                      Aucun contact pour le moment.
+                      {emptyMessage}
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((c) => (
+                  visibleContacts.map((c) => (
                     <tr
                       key={c.id}
                       className={selectedContactIds.has(c.id) ? styles.rowSelected : undefined}
@@ -1786,6 +1986,33 @@ const exportCsv = () => {
               </tbody>
             </table>
           )}
+        </div>
+
+        <div className={styles.paginationBar}>
+          <div className={styles.paginationMeta}>
+            {total > 0
+              ? `Affichage ${Math.min((page - 1) * pageSize + 1, total)}–${Math.min(page * pageSize, total)} sur ${total}`
+              : "0 contact"}
+          </div>
+          <div className={styles.paginationControls}>
+            <button
+              type="button"
+              className={styles.ghostBtn}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={page <= 1 || loading}
+            >
+              ← Précédent
+            </button>
+            <span className={styles.paginationStatus}>Page {Math.min(page, pageCount)} / {Math.max(pageCount, 1)}</span>
+            <button
+              type="button"
+              className={styles.ghostBtn}
+              onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
+              disabled={page >= pageCount || loading || total === 0}
+            >
+              Suivant →
+            </button>
+          </div>
         </div>
       </section>
     </div>

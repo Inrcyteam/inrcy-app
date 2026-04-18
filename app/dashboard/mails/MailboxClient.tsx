@@ -14,6 +14,7 @@ import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/dashboard/_components/ChannelImageRetouchTool";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
+import { normalizeRecipientEmails } from "@/lib/crmRecipients";
 
 
 const pillBtn: React.CSSProperties = {
@@ -1237,10 +1238,7 @@ export default function MailboxClient() {
   }
 
   function normalizeEmails(v: string) {
-    return v
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    return normalizeRecipientEmails(v);
   }
 
   function toggleEmailInTo(email: string) {
@@ -1724,7 +1722,9 @@ const subTitle = firstNonEmpty(
     return mailAccounts.find((a) => a.id === selectedAccountId) || null;
   }, [mailAccounts, selectedAccountId]);
 
-  
+  const composeRecipientList = useMemo(() => normalizeEmails(to), [to]);
+  const isBulkCampaignCompose = composeRecipientList.length > 1;
+
   const toolCfg = useMemo(() => {
     switch (folder) {
       case "mails":
@@ -1859,7 +1859,27 @@ const subTitle = firstNonEmpty(
     const shouldOpen = openRaw !== "0" && openRaw !== "false" && openRaw !== "";
     if (!shouldOpen) return;
 
-    const toParam = safeDecode(searchParams?.get("to") || "").trim();
+    let toParam = safeDecode(searchParams?.get("to") || "").trim();
+    const prefillStorage = (searchParams?.get("prefillStorage") || "").toLowerCase();
+    if (!toParam && prefillStorage === "session" && typeof window !== "undefined") {
+      try {
+        const raw = window.sessionStorage.getItem("inrcy_pending_mail_compose");
+        if (raw) {
+          const payload = JSON.parse(raw) as { to?: string[] | string; createdAt?: number };
+          const ageMs = Date.now() - Number(payload?.createdAt || 0);
+          const loaded = Array.isArray(payload?.to) ? payload.to.join(", ") : String(payload?.to || "");
+          if (loaded && ageMs >= 0 && ageMs <= 10 * 60 * 1000) {
+            toParam = loaded.trim();
+          }
+        }
+      } catch {
+        // ignore invalid session payload
+      } finally {
+        try {
+          window.sessionStorage.removeItem("inrcy_pending_mail_compose");
+        } catch {}
+      }
+    }
     const subjParam = safeDecode(searchParams?.get("subject") || "");
     const textParam = safeDecode(searchParams?.get("text") || "");
     const nameParam = safeDecode(
@@ -2026,7 +2046,7 @@ const subTitle = firstNonEmpty(
     const timeout = setTimeout(() => ac.abort(), 12000);
     try {
       // We go through the API route so the same auth method is used as the CRM screens.
-      const res = await fetch("/api/crm/contacts", {
+      const res = await fetch("/api/crm/contacts?all=1", {
         method: "GET",
         credentials: "include",
         signal: ac.signal,
@@ -2202,8 +2222,9 @@ async function deleteDraftPermanently(id: string) {
       setToast("Veuillez connecter une boîte d’envoi dans les réglages.");
       return;
     }
-    const recipients = to.trim();
-    if (!recipients) {
+
+    const recipientsList = normalizeEmails(to);
+    if (recipientsList.length === 0) {
       setToast("Veuillez ajouter au moins un destinataire.");
       return;
     }
@@ -2211,11 +2232,50 @@ async function deleteDraftPermanently(id: string) {
       setToast("Veuillez patienter pendant le chargement des pièces jointes.");
       return;
     }
+
+    if (recipientsList.length > 1 && composeType !== "mail") {
+      setToast("L’envoi individuel en masse est disponible uniquement pour les mails classiques.");
+      return;
+    }
+
     setSendBusy(true);
     try {
+      if (recipientsList.length > 1) {
+        const campaignPayload = {
+          accountId: selectedAccount.id,
+          type: composeType,
+          subject: subject.trim() || "(sans objet)",
+          text: text || "",
+          html: "",
+          recipients: recipientsList.map((email) => ({ email })),
+          attachments: composeAttachments,
+          sourceDocSaveId: composeSourceDocSaveId || undefined,
+          sourceDocType: composeSourceDocType || undefined,
+          sourceDocNumber: composeSourceDocNumber || undefined,
+        };
+
+        const res = await fetch("/api/crm/campaigns", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(campaignPayload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setToast(data?.error || "La campagne mail n’a pas pu être lancée pour le moment.");
+          return;
+        }
+
+        setToast(`Campagne lancée : ${recipientsList.length} email${recipientsList.length > 1 ? "s" : ""} vont partir individuellement.`);
+        setComposeOpen(false);
+        resetCompose();
+        await loadHistory();
+        updateFolder("mails");
+        return;
+      }
+
       const payload = {
         accountId: selectedAccount.id,
-        to: recipients,
+        to: recipientsList[0],
         subject: subject.trim() || "(sans objet)",
         text: text || "",
         html: "",
@@ -2238,7 +2298,6 @@ async function deleteDraftPermanently(id: string) {
         return;
       }
 
-      // Log Booster/Fidéliser event ONLY after a successful send.
       if (pendingTrack) {
         try {
           await fetch(`/api/${pendingTrack.kind}/events`, {
@@ -2248,9 +2307,8 @@ async function deleteDraftPermanently(id: string) {
               type: pendingTrack.type,
               payload: {
                 ...(pendingTrack.payload || {}),
-                // Useful context for debugging/analytics
                 integration_id: selectedAccount.id,
-                to: recipients,
+                to: recipientsList[0],
                 subject: subject.trim() || "(sans objet)",
               },
             }),
@@ -2267,12 +2325,12 @@ async function deleteDraftPermanently(id: string) {
       resetCompose();
       await loadHistory();
       updateFolder(
-  composeType === "facture"
-    ? "factures"
-    : composeType === "devis"
-      ? "devis"
-      : "mails"
-);
+        composeType === "facture"
+          ? "factures"
+          : composeType === "devis"
+            ? "devis"
+            : "mails"
+      );
     } finally {
       setSendBusy(false);
     }
@@ -3552,6 +3610,11 @@ async function deleteDraftPermanently(id: string) {
                       placeholder="email@exemple.com, autre@exemple.com"
                       style={inputStyle}
                     />
+                    {isBulkCampaignCompose ? (
+                      <span style={{ fontSize: 12, color: "rgba(125,211,252,0.95)" }}>
+                        {composeRecipientList.length} destinataires détectés : iNr’SEND lancera une campagne avec un envoi individuel par contact.
+                      </span>
+                    ) : null}
                   </label>
 
                   {/* CRM picker (dropdown + checkboxes) */}
