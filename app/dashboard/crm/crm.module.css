@@ -3125,75 +3125,79 @@
 }
 
 
-/* === CRM patch — 20 lignes desktop + toolbar inline + mobile sans pagination === */
-.secondaryToolbar{
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px) auto;
-  align-items: center !important;
-  gap: 12px !important;
-}
+/* =========================
+   CRM responsive header search + branding tweak (Apr 2026)
+   ========================= */
 
-.bulkActions{
-  display: flex !important;
-  align-items: center !important;
-  gap: 10px !important;
-  flex-wrap: nowrap !important;
-  min-width: 0;
-}
-
-.selectionMeta{
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  min-width: fit-content;
-  white-space: nowrap;
-  color: rgba(255,255,255,.74);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.tableSearchWrap{
-  min-width: 0;
-}
-
-.tableSearchWrap .searchWrap{
-  width: 100%;
-  justify-content: flex-end;
-}
-
-.tableSearchWrap .search{
-  width: 100%;
-}
-
-.pageSizeWrap{
-  justify-self: end;
+.headerSearchActive{
+  border-color: rgba(56,189,248,.52) !important;
+  box-shadow: 0 0 0 3px rgba(56,189,248,.12);
 }
 
 @media (max-width: 760px){
-  .secondaryToolbar{
-    display: flex !important;
+  .header{
     align-items: center !important;
-    flex-wrap: wrap !important;
     gap: 10px !important;
   }
 
-  .bulkActions{
-    width: 100%;
-    overflow-x: auto;
-    scrollbar-width: none;
+  .titleWrap{
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 10px !important;
+    flex-wrap: nowrap !important;
+    min-width: 0;
+    flex: 1 1 auto;
   }
 
-  .bulkActions::-webkit-scrollbar{
-    display: none;
+  .titleWrap img{
+    width: 132px !important;
+    height: auto !important;
+    max-width: 40vw;
+    flex: 0 0 auto;
   }
+
+  .subInline{
+    display: block !important;
+    margin: 0 !important;
+    font-size: 11px !important;
+    line-height: 1.15 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: min(34vw, 150px);
+  }
+
+  .headerRight{
+    flex: 0 0 auto;
+    gap: 6px !important;
+    align-items: center !important;
+  }
+
+  .importBtn{ order: 1; }
+  .exportBtn{ order: 2; }
+  .addBtn{ order: 3; }
+  .searchBtn{ order: 4; }
+  .statsWrap{ order: 5; }
+  .closeWrap{ order: 6; }
 
   .tableSearchWrap{
-    width: 100%;
-    order: 2;
+    display: none !important;
   }
 
-  .pageSizeWrap,
-  .paginationBar{
-    display: none !important;
+  .headerSearchWrap{
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .headerSearchDropdown{
+    top: calc(100% + 10px);
+    right: -42px;
+    width: min(300px, calc(100vw - 20px));
+    padding: 10px;
+  }
+
+  .headerSearchDropdown .search{
+    height: 42px;
   }
 }

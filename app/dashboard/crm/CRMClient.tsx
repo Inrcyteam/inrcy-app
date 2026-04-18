@@ -42,8 +42,8 @@ type CrmSummary = {
   autres: number;
 };
 
-const DEFAULT_PAGE_SIZE = 20;
-const PAGE_SIZE_OPTIONS = [20] as const;
+const DEFAULT_PAGE_SIZE = 25;
+const PAGE_SIZE_OPTIONS = [25] as const;
 
 const CATEGORY_LABEL: Record<Exclude<Category, "">, string> = {
   particulier: "Particulier",
@@ -324,7 +324,6 @@ export default function CRMClient() {
   const requestSeqRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const tableWrapRef = useRef<HTMLDivElement | null>(null);
-  const mobileLoadMoreLockRef = useRef(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   // Mobile UI
@@ -333,6 +332,9 @@ export default function CRMClient() {
   const statsRef = useRef<HTMLDivElement | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const headerSearchRef = useRef<HTMLDivElement | null>(null);
+  const headerSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const [headerSearchOpen, setHeaderSearchOpen] = useState(false);
   const [isCompactUi, setIsCompactUi] = useState(false);
   const [desktopRowHeight, setDesktopRowHeight] = useState(30);
   const [importing, setImporting] = useState(false);
@@ -373,11 +375,10 @@ export default function CRMClient() {
   );
 
   const loadContacts = useCallback(
-    async (options?: { page?: number; pageSize?: number; query?: string; preserveSuccess?: boolean; append?: boolean }) => {
+    async (options?: { page?: number; pageSize?: number; query?: string; preserveSuccess?: boolean }) => {
       const targetPage = Math.max(1, options?.page ?? page);
       const targetPageSize = options?.pageSize ?? pageSize;
       const targetQuery = options?.query ?? serverQuery;
-      const shouldAppend = Boolean(options?.append) && isResponsive && targetPage > 1;
       const requestId = ++requestSeqRef.current;
 
       setLoading(true);
@@ -408,15 +409,10 @@ export default function CRMClient() {
         const base = Array.isArray(j?.contacts) ? j.contacts : [];
         const merged = base.map((c: CrmContact) => mergeContactWithLocalState(c));
 
-        setContacts((prev) => {
-          if (!shouldAppend) return merged;
-          const next = new Map(prev.map((contact) => [contact.id, contact] as const));
-          for (const contact of merged) next.set(contact.id, contact);
-          return Array.from(next.values());
-        });
+        setContacts(merged);
         setTotal(nextTotal);
         setPage(safePage);
-        setPageSize(targetPageSize);
+        setPageSize(typeof j?.pageSize === "number" ? j.pageSize : targetPageSize);
         setPageCount(nextPageCount);
         setKpis({
           total: Number(j?.summary?.total ?? nextTotal ?? 0),
@@ -431,10 +427,9 @@ export default function CRMClient() {
         setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les contacts du CRM."));
       } finally {
         if (requestId === requestSeqRef.current) setLoading(false);
-        mobileLoadMoreLockRef.current = false;
       }
     },
-    [isResponsive, mergeContactWithLocalState, page, pageSize, serverQuery],
+    [mergeContactWithLocalState, page, pageSize, serverQuery],
   );
 
   useEffect(() => {
@@ -445,13 +440,12 @@ export default function CRMClient() {
   }, [query]);
 
   useEffect(() => {
-    mobileLoadMoreLockRef.current = false;
     setPage(1);
-  }, [isResponsive, pageSize, serverQuery]);
+  }, [pageSize, serverQuery]);
 
   useEffect(() => {
-    void loadContacts({ page, append: isResponsive && page > 1 });
-  }, [isResponsive, loadContacts, page]);
+    void loadContacts();
+  }, [loadContacts]);
 
   useEffect(() => {
     // Keep derived fields in sync when local ⭐ important / notes change
@@ -515,6 +509,32 @@ export default function CRMClient() {
     return () => window.removeEventListener("mousedown", onDown);
   }, [exportOpen]);
 
+  useEffect(() => {
+    if (!headerSearchOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const el = headerSearchRef.current;
+      if (!el) return;
+      if (el.contains(e.target as any)) return;
+      setHeaderSearchOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [headerSearchOpen]);
+
+  useEffect(() => {
+    if (!headerSearchOpen) return;
+    const timer = window.setTimeout(() => {
+      headerSearchInputRef.current?.focus();
+      headerSearchInputRef.current?.select();
+    }, 10);
+    return () => window.clearTimeout(timer);
+  }, [headerSearchOpen]);
+
+  useEffect(() => {
+    if (isResponsive) return;
+    setHeaderSearchOpen(false);
+  }, [isResponsive]);
+
   const selectedContacts = useMemo(() => {
     if (selectedContactIds.size === 0) return [] as CrmContact[];
     return Array.from(selectedContactIds)
@@ -568,32 +588,6 @@ export default function CRMClient() {
       window.removeEventListener("resize", recompute);
     };
   }, [isResponsive, loading, page, pageSize, visibleContacts.length, showDesktopEmptyMessage]);
-
-  useEffect(() => {
-    if (!isResponsive) return;
-
-    const el = tableWrapRef.current;
-    if (!el) return;
-
-    const maybeLoadMore = () => {
-      if (loading) return;
-      if (mobileLoadMoreLockRef.current) return;
-      if (page >= pageCount) return;
-      if (el.scrollTop + el.clientHeight < el.scrollHeight - 72) return;
-
-      mobileLoadMoreLockRef.current = true;
-      setPage((prev) => (prev < pageCount ? prev + 1 : prev));
-    };
-
-    const onScroll = () => maybeLoadMore();
-    el.addEventListener("scroll", onScroll, { passive: true });
-    const raf = window.requestAnimationFrame(maybeLoadMore);
-
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      window.cancelAnimationFrame(raf);
-    };
-  }, [isResponsive, loading, page, pageCount, visibleContacts.length]);
 
 
   const selectedEmails = useMemo(() => {
@@ -734,7 +728,7 @@ async function importContacts(rows: any[]) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Import impossible."));
     setPage(1);
-    await loadContacts({ page: 1, preserveSuccess: true, append: false });
+    await loadContacts({ page: 1, preserveSuccess: true });
     setSuccess(`Import terminé : ${j?.inserted ?? cleaned.length} contact(s).`);
   } catch (e: any) {
     setError(getSimpleFrenchErrorMessage(e, "Import impossible."));
@@ -1045,9 +1039,9 @@ const exportExcel = async () => {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible d'enregistrer."));
-      const nextPage = isResponsive ? 1 : editingId ? page : 1;
-      if (!editingId || isResponsive) setPage(1);
-      await loadContacts({ page: nextPage, preserveSuccess: true, append: false });
+      const nextPage = editingId ? page : 1;
+      if (!editingId) setPage(1);
+      await loadContacts({ page: nextPage, preserveSuccess: true });
       // If editing, persist ⭐ + notes locally (works even if backend doesn't store it yet)
       if (editingId) {
         setNoteForId(editingId, (draft.notes || "").trim());
@@ -1096,8 +1090,7 @@ const exportExcel = async () => {
       );
 
       // reload + reset states
-      if (isResponsive) setPage(1);
-      await loadContacts({ page: isResponsive ? 1 : page, preserveSuccess: true, append: false });
+      await loadContacts({ preserveSuccess: true });
       setSelectedContactIds(new Set());
       setSelectedContactsById({});
       if (editingId && ids.includes(editingId)) startNew();
@@ -1118,8 +1111,7 @@ const exportExcel = async () => {
       const r = await fetch(`/api/crm/contacts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de supprimer."));
-      if (isResponsive) setPage(1);
-      await loadContacts({ page: isResponsive ? 1 : page, preserveSuccess: true, append: false });
+      await loadContacts({ preserveSuccess: true });
       setSelectedContactIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -1174,6 +1166,9 @@ const exportExcel = async () => {
                 type="button"
                 className={`${styles.headerIconBtn} ${styles.addBtn}`}
                 onClick={() => {
+                  setHeaderSearchOpen(false);
+                  setStatsOpen(false);
+                  setExportOpen(false);
                   startNew();
                   setAddOpen(true);
                 }}
@@ -1185,7 +1180,7 @@ const exportExcel = async () => {
 
               <button
                 type="button"
-                className={styles.headerIconBtn}
+                className={`${styles.headerIconBtn} ${styles.importBtn}`}
                 onClick={triggerImport}
                 disabled={saving || importing}
                 title="Importer des contacts"
@@ -1194,11 +1189,15 @@ const exportExcel = async () => {
                 ↓
               </button>
 
-              <div className={styles.exportWrap} ref={exportRef}>
+              <div className={`${styles.exportWrap} ${styles.exportBtn}`} ref={exportRef}>
                 <button
                   type="button"
                   className={styles.headerIconBtn}
-                  onClick={() => setExportOpen((prev) => !prev)}
+                  onClick={() => {
+                    setHeaderSearchOpen(false);
+                    setStatsOpen(false);
+                    setExportOpen((prev) => !prev);
+                  }}
                   disabled={saving || Boolean(exportingFormat) || total === 0}
                   aria-expanded={exportOpen ? "true" : "false"}
                   title={total === 0 ? "Aucun contact à exporter" : "Exporter les contacts"}
@@ -1303,11 +1302,48 @@ const exportExcel = async () => {
             </>
           )}
 
+          {isResponsive ? (
+            <div className={`${styles.headerSearchWrap} ${styles.searchBtn}`} ref={headerSearchRef}>
+              <button
+                type="button"
+                className={`${styles.headerIconBtn} ${query.trim() ? styles.headerSearchActive : ""}`.trim()}
+                onClick={() => {
+                  setStatsOpen(false);
+                  setExportOpen(false);
+                  setHeaderSearchOpen((prev) => !prev);
+                }}
+                aria-expanded={headerSearchOpen ? "true" : "false"}
+                aria-label="Rechercher un contact"
+                title={query.trim() ? `Recherche active : ${query}` : "Rechercher un contact"}
+              >
+                ⌕
+              </button>
+
+              {headerSearchOpen ? (
+                <div className={styles.headerSearchDropdown}>
+                  <div className={styles.searchWrap}>
+                    <input
+                      ref={headerSearchInputRef}
+                      className={styles.search}
+                      placeholder="Rechercher..."
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className={styles.statsWrap} ref={statsRef}>
             <button
               type="button"
               className={(isResponsive ? styles.headerIconBtn : `${styles.ghostBtn} ${styles.headerActionBtn} ${styles.headerStatsBtn}`).trim()}
-              onClick={() => setStatsOpen((v) => !v)}
+              onClick={() => {
+                setHeaderSearchOpen(false);
+                setExportOpen(false);
+                setStatsOpen((v) => !v);
+              }}
               aria-expanded={statsOpen ? "true" : "false"}
               title="Statistiques"
             >
@@ -1724,10 +1760,11 @@ const exportExcel = async () => {
         {success ? <div className={styles.success}>{success}</div> : null}
 
         <div className={styles.secondaryToolbar}>
+          <div className={styles.selectionMeta}>
+            {selectedContactIds.size > 0 ? `${selectedContactIds.size} contact${selectedContactIds.size > 1 ? "s" : ""} sélectionné${selectedContactIds.size > 1 ? "s" : ""}` : "Aucune sélection"}
+          </div>
+
           <div className={styles.bulkActions}>
-            <div className={styles.selectionMeta}>
-              {selectedContactIds.size > 0 ? `${selectedContactIds.size} contact${selectedContactIds.size > 1 ? "s" : ""} sélectionné${selectedContactIds.size > 1 ? "s" : ""}` : "Aucune sélection"}
-            </div>
             <button
               aria-label="Désélectionner"
               className={styles.ghostBtn}
@@ -1832,17 +1869,18 @@ const exportExcel = async () => {
             </div>
           </div>
 
-          <div className={styles.tableSearchWrap}>
-            <div className={styles.searchWrap}>
-              <input
-                className={styles.search}
-                placeholder="Rechercher..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <span className={styles.count}>{total}</span>
+          {!isResponsive ? (
+            <div className={styles.tableSearchWrap}>
+              <div className={styles.searchWrap}>
+                <input
+                  className={styles.search}
+                  placeholder="Rechercher..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
             </div>
-          </div>
+          ) : null}
 
           {!isResponsive ? (
             <label className={styles.pageSizeWrap}>
@@ -2049,34 +2087,32 @@ const exportExcel = async () => {
           )}
         </div>
 
-        {!isResponsive ? (
-          <div className={styles.paginationBar}>
-            <div className={styles.paginationMeta}>
-              {total > 0
-                ? `Affichage ${Math.min((page - 1) * pageSize + 1, total)}–${Math.min(page * pageSize, total)} sur ${total}`
-                : "0 contact"}
-            </div>
-            <div className={styles.paginationControls}>
-              <button
-                type="button"
-                className={styles.ghostBtn}
-                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                disabled={page <= 1 || loading}
-              >
-                ← Précédent
-              </button>
-              <span className={styles.paginationStatus}>Page {Math.min(page, pageCount)} / {Math.max(pageCount, 1)}</span>
-              <button
-                type="button"
-                className={styles.ghostBtn}
-                onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
-                disabled={page >= pageCount || loading || total === 0}
-              >
-                Suivant →
-              </button>
-            </div>
+        <div className={styles.paginationBar}>
+          <div className={styles.paginationMeta}>
+            {total > 0
+              ? `Affichage ${Math.min((page - 1) * pageSize + 1, total)}–${Math.min(page * pageSize, total)} sur ${total}`
+              : "0 contact"}
           </div>
-        ) : null}
+          <div className={styles.paginationControls}>
+            <button
+              type="button"
+              className={styles.ghostBtn}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={page <= 1 || loading}
+            >
+              ← Précédent
+            </button>
+            <span className={styles.paginationStatus}>Page {Math.min(page, pageCount)} / {Math.max(pageCount, 1)}</span>
+            <button
+              type="button"
+              className={styles.ghostBtn}
+              onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
+              disabled={page >= pageCount || loading || total === 0}
+            >
+              Suivant →
+            </button>
+          </div>
+        </div>
       </section>
     </div>
   );
