@@ -33,6 +33,7 @@ import NotificationsSettingsContent from "./settings/_components/NotificationsSe
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
 import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
+import { runDailyStatsRefreshBootstrap } from "@/lib/dailyStatsRefreshClient";
 import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
@@ -255,6 +256,7 @@ export default function DashboardClient() {
   const activeUserIdRef = useRef<string | null>(null);
 
   const [kpisLoading, setKpisLoading] = useState(false);
+  const [dailyBootReady, setDailyBootReady] = useState(false);
   const [kpis, setKpis] = useState<null | {
     leads: { today: number; week: number; month: number };
     estimatedValue: number;
@@ -2882,6 +2884,91 @@ const checkActivity = useCallback(async () => {
   }, [menuOpen]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const bootstrap = await runDailyStatsRefreshBootstrap();
+        if (cancelled) return;
+
+        if (bootstrap.ran) {
+          const syncAt = Number.isFinite(Number(bootstrap.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
+          const snapshotDate = typeof bootstrap.snapshotDate === "string" ? bootstrap.snapshotDate : expectedUiSnapshotDate();
+          const generator = bootstrap.generator;
+
+          if (generator) {
+            setKpis(generator);
+            const oppMonth = Number(generator?.details?.opportunities?.month);
+            if (Number.isFinite(oppMonth)) {
+              setOppTotal(oppMonth);
+              try {
+                writeUiCacheValue("inrcy_opp30_total_v1", String(oppMonth));
+              } catch {
+                // ignore
+              }
+            }
+
+            try {
+              const generatorSnapshotDate = typeof generator?.meta?.snapshotDate === "string"
+                ? generator.meta.snapshotDate
+                : snapshotDate ?? null;
+              writeUiCacheValue(
+                "inrcy_generator_kpis_v1",
+                JSON.stringify({ syncedAt: syncAt, snapshotDate: generatorSnapshotDate, payload: generator })
+              );
+            } catch {
+              // ignore
+            }
+          }
+
+          for (const [periodKey, payload] of Object.entries(bootstrap.inrstats || {})) {
+            const days = Number(periodKey) as StatsWarmPeriod;
+            if (![7, 30].includes(days)) continue;
+            const overviews = payload?.overviews;
+            if (!overviews || typeof overviews !== "object") continue;
+            const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
+              ? payload.meta.snapshotDate
+              : getOverviewSnapshotDate(overviews) || snapshotDate || null;
+
+            try {
+              writeUiCacheValue(
+                statsCubeSessionKey(days),
+                JSON.stringify({ syncedAt: syncAt, snapshotDate: payloadSnapshotDate, overviews })
+              );
+              writeUiCacheValue(
+                statsSummarySessionKey(days),
+                JSON.stringify({
+                  syncedAt: syncAt,
+                  snapshotDate: payloadSnapshotDate,
+                  total: Number(payload?.opportunities?.total ?? 0),
+                  byCube: payload?.opportunities?.byCube ?? {},
+                  profile: payload?.profile ?? {},
+                  estimatedByCube: payload?.estimatedByCube ?? {},
+                })
+              );
+            } catch {
+              // ignore
+            }
+          }
+
+          notifyStatsRefresh(syncAt);
+        } else {
+          await syncFromServerCacheIfNeeded(true);
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        if (!cancelled) setDailyBootReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [notifyStatsRefresh, syncFromServerCacheIfNeeded]);
+
+  useEffect(() => {
+    if (!dailyBootReady) return;
     try {
       const cached = readGeneratorCache();
       const payload = cached?.payload;
@@ -2895,18 +2982,20 @@ const checkActivity = useCallback(async () => {
     } catch {
       // ignore
     }
-  }, []);
+  }, [dailyBootReady]);
 
   useEffect(() => {
+    if (!dailyBootReady) return;
     const cached = readGeneratorCache();
     const lastChannelSyncAt = getLastChannelSyncAt();
     if (cached?.payload?.leads && cached.syncedAt >= lastChannelSyncAt && cached.snapshotDate === expectedUiSnapshotDate()) {
       return;
     }
     void refreshKpis();
-  }, [refreshKpis]);
+  }, [dailyBootReady, refreshKpis]);
 
   useEffect(() => {
+    if (!dailyBootReady) return;
     void syncFromServerCacheIfNeeded(true);
 
     const handleFocus = () => {
@@ -2924,7 +3013,7 @@ const checkActivity = useCallback(async () => {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [syncFromServerCacheIfNeeded]);
+  }, [dailyBootReady, syncFromServerCacheIfNeeded]);
 
   const leadsToday = kpis?.leads?.today ?? 0;
   const leadsWeek = kpis?.leads?.week ?? 0;

@@ -12,6 +12,7 @@ import { decideAction, type DecisionResult } from "@/lib/decision/decisionEngine
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { readAccountCacheValue, removeAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
+import { runDailyStatsRefreshBootstrap } from "@/lib/dailyStatsRefreshClient";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -1312,6 +1313,7 @@ export default function StatsClient() {
     site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0,
   });
   const [summaryActionsOpen, setSummaryActionsOpen] = useState(false);
+  const [dailyBootReady, setDailyBootReady] = useState(false);
 
   // In-memory cache to avoid duplicate fetch bursts (React strict-mode/dev & quick navigations)
   const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
@@ -1504,6 +1506,93 @@ export default function StatsClient() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const bootstrap = await runDailyStatsRefreshBootstrap();
+        if (cancelled) return;
+
+        if (bootstrap.ran) {
+          const syncAt = Number.isFinite(Number(bootstrap.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
+          const snapshotDate = typeof bootstrap.snapshotDate === "string" ? bootstrap.snapshotDate : expectedUiSnapshotDate();
+          const generator = bootstrap.generator;
+
+          if (generator) {
+            const oppMonth = Number(generator?.details?.opportunities?.month);
+            if (Number.isFinite(oppMonth)) {
+              try {
+                writeUiCacheValue("inrcy_opp30_total_v1", String(oppMonth));
+              } catch {
+                // ignore
+              }
+            }
+
+            try {
+              const generatorSnapshotDate = typeof generator?.meta?.snapshotDate === "string"
+                ? generator.meta.snapshotDate
+                : snapshotDate ?? null;
+              writeUiCacheValue(
+                "inrcy_generator_kpis_v1",
+                JSON.stringify({ syncedAt: syncAt, snapshotDate: generatorSnapshotDate, payload: generator })
+              );
+            } catch {
+              // ignore
+            }
+          }
+
+          for (const [periodKey, payload] of Object.entries(bootstrap.inrstats || {})) {
+            const targetPeriod = Number(periodKey) as Period;
+            const overviews = (payload?.overviews || {}) as Partial<Record<CubeKey, Overview>>;
+            const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
+              ? payload.meta.snapshotDate
+              : getOverviewSnapshotDate(overviews) || snapshotDate || null;
+            const next: BulkFetchResult = {
+              overviews,
+              summary: {
+                total: safeNum(payload?.opportunities?.total),
+                byCube: {
+                  site_inrcy: safeNum(payload?.opportunities?.byCube?.site_inrcy),
+                  site_web: safeNum(payload?.opportunities?.byCube?.site_web),
+                  gmb: safeNum(payload?.opportunities?.byCube?.gmb),
+                  facebook: safeNum(payload?.opportunities?.byCube?.facebook),
+                  instagram: safeNum(payload?.opportunities?.byCube?.instagram),
+                  linkedin: safeNum(payload?.opportunities?.byCube?.linkedin),
+                },
+              },
+              profile: {
+                lead_conversion_rate: safeNum(payload?.profile?.lead_conversion_rate),
+                avg_basket: safeNum(payload?.profile?.avg_basket),
+              },
+              estimatedByCube: {
+                site_inrcy: safeNum(payload?.estimatedByCube?.site_inrcy),
+                site_web: safeNum(payload?.estimatedByCube?.site_web),
+                gmb: safeNum(payload?.estimatedByCube?.gmb),
+                facebook: safeNum(payload?.estimatedByCube?.facebook),
+                instagram: safeNum(payload?.estimatedByCube?.instagram),
+                linkedin: safeNum(payload?.estimatedByCube?.linkedin),
+              },
+              snapshotDate: payloadSnapshotDate ?? null,
+            };
+            applyBulkPayload(targetPeriod, next, syncAt);
+          }
+        } else {
+          await syncFromServerCacheIfNeeded(true);
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        if (!cancelled) setDailyBootReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applyBulkPayload, syncFromServerCacheIfNeeded]);
+
+  useEffect(() => {
+    if (!dailyBootReady) return;
     if (hydratedPeriodsRef.current.has(period)) return;
     hydratedPeriodsRef.current.add(period);
 
@@ -1512,9 +1601,10 @@ export default function StatsClient() {
     } catch {
       // ignore
     }
-  }, [hydrateFromSessionCache, period]);
+  }, [dailyBootReady, hydrateFromSessionCache, period]);
 
 useEffect(() => {
+  if (!dailyBootReady) return;
   let cancelled = false;
   const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"];
 
@@ -1604,7 +1694,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [hydrateFromSessionCache, period, refreshNonce]);
+}, [dailyBootReady, hydrateFromSessionCache, period, refreshNonce]);
 
   useEffect(() => {
     if (!isRefreshing) return;
@@ -1657,6 +1747,7 @@ useEffect(() => {
   }, [triggerRefresh]);
 
   useEffect(() => {
+    if (!dailyBootReady) return;
     void syncFromServerCacheIfNeeded(true);
 
     const handleFocus = () => {
@@ -1674,7 +1765,7 @@ useEffect(() => {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [syncFromServerCacheIfNeeded]);
+  }, [dailyBootReady, syncFromServerCacheIfNeeded]);
 
 
   const models: CubeModel[] = useMemo(() => {

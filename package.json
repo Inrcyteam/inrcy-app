@@ -13,7 +13,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install --with-deps",
     "typecheck": "tsc --noEmit --pretty false --noErrorTruncation",
-    "test:multicompte": "node --test --experimental-strip-types tests/multicompte/*.test.mts"
+    "test:multicompte": "node --test --experimental-strip-types tests/multicompte/*.test.mts",
+    "prebuild": "node scripts/prebuild-clean.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.39.0",
