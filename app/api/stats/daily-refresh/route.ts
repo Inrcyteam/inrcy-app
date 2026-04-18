@@ -88,6 +88,20 @@ async function buildBulkPayload(args: {
   };
 }
 
+async function bumpStatsVersion(
+  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
+  userId: string,
+) {
+  try {
+    await supabase.rpc("bump_profile_version", {
+      p_user_id: userId,
+      p_column: "stats_version",
+    });
+  } catch {
+    // Best effort only: stats are already refreshed even if realtime broadcast fails.
+  }
+}
+
 function isLeaseActive(startedAt: string | null | undefined) {
   if (!startedAt) return false;
   const startedMs = Date.parse(startedAt);
@@ -174,6 +188,8 @@ export async function POST(req: Request) {
       if (completeError) {
         return jsonUserFacingError(`daily_refresh_complete_failed:${completeError.message}`, { status: 500 });
       }
+
+      await bumpStatsVersion(supabase, user.id);
 
       return NextResponse.json({
         ok: true,

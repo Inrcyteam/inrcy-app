@@ -64,7 +64,9 @@ const DASHBOARD_SERVER_CACHE_UI_STATE_KEY = "inrcy_dashboard_server_cache_check_
 const STATS_SERVER_CACHE_UI_STATE_KEY = "inrcy_stats_server_cache_check_ui_v1";
 
 export const UI_BOOTSTRAP_REUSE_TTL_MS = 10 * 60 * 1000;
-export const UI_SERVER_SYNC_REUSE_TTL_MS = 10 * 60 * 1000;
+// Keep the lightweight server cache check effectively always eligible across sessions/devices.
+// An in-memory 60s guard still prevents spam inside a single open tab.
+export const UI_SERVER_SYNC_REUSE_TTL_MS = 0;
 
 type UiCheckState = {
   checkedAt: number;

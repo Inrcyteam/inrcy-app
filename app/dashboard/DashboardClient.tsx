@@ -1375,6 +1375,27 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     await runSync();
   }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshKpis, warmInrStatsUi]);
 
+
+  const handleSharedGeneratorRefresh = useCallback(async () => {
+    if (kpisLoading) return;
+    setKpisLoading(true);
+
+    try {
+      const bootstrap = await runDailyStatsRefreshBootstrap();
+      const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
+      const bootstrapSnapshotDate = typeof bootstrap?.snapshotDate === "string"
+        ? bootstrap.snapshotDate
+        : expectedUiSnapshotDate();
+      markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+    } catch (error) {
+      console.error(error);
+    }
+
+    await triggerGeneratorRefresh();
+  }, [kpisLoading, triggerGeneratorRefresh]);
+
+
+
   useEffect(() => {
     const handleProfileVersionChange = (event: Event) => {
       const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
@@ -1403,6 +1424,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
   // ✅ Opportunités activables (iNrStats) — lues directement depuis /api/metrics/summary.
   const [oppTotal, setOppTotal] = useState<number | null>(null);
+
 
   useEffect(() => {
     try {
@@ -3902,7 +3924,7 @@ const checkActivity = useCallback(async () => {
                 type="button"
                 className={styles.generatorRefreshBtn}
                 onClick={() => {
-                  void refreshKpis({ fresh: true });
+                  void handleSharedGeneratorRefresh();
                 }}
                 disabled={kpisLoading}
                 aria-label="Actualiser le générateur"

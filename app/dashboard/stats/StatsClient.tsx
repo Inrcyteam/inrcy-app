@@ -1358,6 +1358,26 @@ export default function StatsClient() {
     setRefreshNonce((prev) => prev + 1);
   }, [clearCachedSnapshots]);
 
+  const handleSharedStatsRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    setLastRefreshAt(Date.now());
+
+    try {
+      const bootstrap = await runDailyStatsRefreshBootstrap();
+      const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
+      const bootstrapSnapshotDate = typeof bootstrap?.snapshotDate === "string"
+        ? bootstrap.snapshotDate
+        : expectedUiSnapshotDate();
+      markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+    } catch (error) {
+      console.error(error);
+    }
+
+    triggerRefresh("manual");
+  }, [triggerRefresh]);
+
+
+
 
   const hydrateFromSessionCache = useCallback((targetPeriod: Period) => {
     const lastChannelSyncAt = getStatsLastChannelSyncAt();
@@ -2049,7 +2069,9 @@ const provenance = buildProvenance(key, ov);
               <ResponsiveActionButton
                 desktopLabel={isRefreshing ? "Actualisation…" : "Actualiser"}
                 mobileIcon="↻"
-                onClick={() => triggerRefresh("manual")}
+                onClick={() => {
+                  void handleSharedStatsRefresh();
+                }}
                 ariaLabel="Actualiser les données iNrStats"
                 title={lastRefreshAt ? `Dernière actualisation : ${new Date(lastRefreshAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Actualiser les données iNrStats"}
               />
