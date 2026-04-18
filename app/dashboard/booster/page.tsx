@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "../../dashboard/dashboard.module.css";
 import b from "./booster.module.css";
@@ -35,6 +35,7 @@ export default function BoosterPage() {
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
 
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   useEffect(() => {
     const a = (searchParams?.get("action") || "").toLowerCase();
@@ -316,7 +317,8 @@ export default function BoosterPage() {
             <div className={b.closeWrap}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <HelpButton onClick={() => setHelpOpen(true)} title="Aide Booster" />
-                <ResponsiveActionButton desktopLabel="Fidéliser" mobileIcon="Fidéliser" href="/dashboard/fideliser" ariaLabel="Aller vers Fidéliser" title="Fidéliser" />
+                <ResponsiveActionButton desktopLabel="Fidéliser" mobileIcon="Fidéliser" href="/dashboard/fideliser" ariaLabel="Aller vers Fidéliser" title="Fidéliser" className={b.headerBtnFideliser} />
+                <ResponsiveActionButton desktopLabel="iNr'Send" mobileIcon="✉️" href="/dashboard/mails" ariaLabel="Aller vers iNr'Send" title="Ouvrir iNr'Send" className={b.headerBtnInrSend} />
                 <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" />
               </div>
             </div>
@@ -329,6 +331,10 @@ export default function BoosterPage() {
               <li>Débloquez vos UI hebdomadaires avec le multiplicateur Turbo UI.</li>
               <li>Gardez un rythme simple, visible et motivant.</li>
             </ul>
+            <div style={{ marginTop: 14, borderRadius: 14, padding: "12px 14px", border: "1px solid rgba(76,195,255,0.24)", background: "rgba(76,195,255,0.08)", lineHeight: 1.55 }}>
+              <strong>Toutes vos communications sont accessibles dans iNr'Send.</strong><br />
+              Les publications réalisées depuis Booster sont retrouvables dans iNr'Send / Publications, où elles peuvent être consultées, modifiées ou supprimées.
+            </div>
           </HelpModal>
 
           <details className={[styles.blockCard, b.missionAccordion].join(" ")}>
@@ -423,6 +429,19 @@ export default function BoosterPage() {
                 ))}
               </div>
             ) : null}
+            <div style={{ marginTop: 16, display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className={styles.primaryBtn}
+                onClick={() => {
+                  setPublishSuccessOpen(false);
+                  setActive(null);
+                  router.push("/dashboard/mails?folder=publications");
+                }}
+              >
+                Voir dans iNr'Send
+              </button>
+            </div>
           </div>
         </div>
       )}

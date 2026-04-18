@@ -1,5 +1,8 @@
+import HelpButton from "../../_components/HelpButton";
+import HelpModal from "../../_components/HelpModal";
 import StatusMessage from "../../_components/StatusMessage";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { buildBoosterGmbSummary, buildBoosterInstagramCaption, getCtaMode, type BoosterCtaMode } from "@/lib/boosterCta";
 import stylesDash from "../../dashboard/dashboard.module.css";
@@ -713,6 +716,7 @@ export default function PublishModal({
   trackEvent: (type: "publish", payload: Record<string, any>) => Promise<any>;
   onPublishSuccess?: (result?: any) => void;
 }) {
+  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [idea, setIdea] = useState("");
   const [theme, setTheme] = useState<ThemeKey>("");
@@ -726,6 +730,7 @@ export default function PublishModal({
   const [activeCard, setActiveCard] = useState<DisplayKey>("site");
   const [isMobile, setIsMobile] = useState(false);
   const [duplicateFeedback, setDuplicateFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const [publishHelpOpen, setPublishHelpOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const gmbFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1537,6 +1542,16 @@ export default function PublishModal({
 
   return (
     <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+      <HelpModal open={publishHelpOpen} title="Publication et iNr'Send" onClose={() => setPublishHelpOpen(false)}>
+        <div style={{ display: "grid", gap: 12, lineHeight: 1.6 }}>
+          <p style={{ margin: 0 }}>
+            Après publication, retrouvez cette communication dans <strong>iNr'Send / Publications</strong>.
+          </p>
+          <p style={{ margin: 0 }}>
+            Vous pourrez la consulter, la modifier ou la supprimer depuis l'outil.
+          </p>
+        </div>
+      </HelpModal>
       <div className={styles.blockCard} style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Canaux</div>
         <div className={styles.subtitle} style={{ marginBottom: 10 }}>
@@ -1641,8 +1656,8 @@ export default function PublishModal({
 
       <div className={styles.blockCard} style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Contenus par canal</div>
-        <div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}>
-          Relisez et ajustez si nécessaire chaque version avant publication. Les contenus publiés sont modifiables et supprimables depuis le module iNr'Send.
+<div className={styles.subtitle} style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}>
+          Vérifiez chaque contenu et adaptez le si besoin.
         </div>
         {displayCards.length ? (
           <>
@@ -1916,7 +1931,8 @@ export default function PublishModal({
 
 
       <div ref={publishAreaRef} style={{ display: "grid", gap: 8, justifyItems: "end", scrollMarginBottom: 24 }}>
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
+          <HelpButton onClick={() => setPublishHelpOpen(true)} title="Aide publication et iNr'Send" size={32} />
           <button
             type="button"
             className={styles.primaryBtn}

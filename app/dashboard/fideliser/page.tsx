@@ -222,7 +222,7 @@ export default function FideliserPage() {
           <header className={b.headerRow}>
             <div className={b.titleLine}><span aria-hidden className={b.titleIcon}>🚀</span><div className={styles.title}>Fidéliser</div></div>
             <div className={b.tagline}>Faites revenir vos clients. <strong>3 actions</strong>, maintenant.</div>
-            <div className={b.closeWrap}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><HelpButton onClick={() => setHelpOpen(true)} title="Aide Fidéliser" /><ResponsiveActionButton desktopLabel="Booster" mobileIcon="Booster" href="/dashboard/booster" ariaLabel="Aller vers Booster" title="Booster" /><ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" /></div></div>
+            <div className={b.closeWrap}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><HelpButton onClick={() => setHelpOpen(true)} title="Aide Fidéliser" /><ResponsiveActionButton desktopLabel="Booster" mobileIcon="Booster" href="/dashboard/booster" ariaLabel="Aller vers Booster" title="Booster" className={b.headerBtnBooster} /><ResponsiveActionButton desktopLabel="iNr'Send" mobileIcon="✉️" href="/dashboard/mails" ariaLabel="Aller vers iNr'Send" title="Ouvrir iNr'Send" className={b.headerBtnInrSend} /><ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" /></div></div>
           </header>
 
           <HelpModal open={helpOpen} title="Fidéliser" onClose={() => setHelpOpen(false)}>
@@ -232,6 +232,10 @@ export default function FideliserPage() {
               <li>Transformez la relation client en récurrence.</li>
               <li>Débloquez vos UI avec le multiplicateur Turbo UI.</li>
             </ul>
+            <div style={{ marginTop: 14, borderRadius: 14, padding: "12px 14px", border: "1px solid rgba(76,195,255,0.24)", background: "rgba(76,195,255,0.08)", lineHeight: 1.55 }}>
+              <strong>Toutes vos communications sont accessibles dans iNr'Send.</strong><br />
+              Les actions lancées depuis Fidéliser y restent consultables, et les publications réalisées depuis Booster sont aussi retrouvables dans iNr'Send / Publications pour être modifiées ou supprimées.
+            </div>
           </HelpModal>
 
           <details className={[styles.blockCard, b.missionAccordion].join(" ")}>
