@@ -2750,3 +2750,450 @@
     min-width: 0;
   }
 }
+
+/* === CRM modal / stats / bottom alignment polish (Apr 2026) === */
+.col12{ grid-column: 1 / -1; }
+
+.desktopModalGrid{
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.desktopModalGrid .label{
+  gap: 8px;
+}
+
+.desktopModalGrid .input,
+.desktopModalGrid .select,
+.desktopModalGrid .textarea{
+  background: rgba(255,255,255,.055);
+}
+
+.modalImportantField{
+  align-self: end;
+}
+
+.modalImportantField .starToggle{
+  width: 100%;
+  min-height: 46px;
+  border-radius: 16px;
+}
+
+.modalCard{
+  width: min(980px, calc(100vw - 48px));
+}
+
+.statsDropdown{
+  background: linear-gradient(180deg, rgba(14,18,28,.99), rgba(12,16,24,.99));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.statsDropdown .statsItem{
+  background: rgba(255,255,255,.075);
+}
+
+.crmBoardCard{
+  flex: 1 1 auto;
+  min-height: calc(100dvh - 190px);
+}
+
+.crmBoardCard .tableWrap{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.crmBoardCard .table,
+.crmBoardCard .mobileTable{
+  height: 100%;
+}
+
+.crmBoardCard .empty,
+.mobileEmpty{
+  height: 100%;
+}
+
+.paginationBar{
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+@media (max-width: 980px){
+  .crmBoardCard{
+    min-height: calc(100dvh - 175px);
+  }
+}
+
+@media (max-width: 760px){
+  .crmBoardCard{
+    min-height: calc(100dvh - 150px);
+  }
+
+  .modalCard{
+    width: min(760px, 100%);
+  }
+
+  .desktopModalGrid{
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .desktopModalGrid .col12,
+  .desktopModalGrid .col6,
+  .desktopModalGrid .col5,
+  .desktopModalGrid .col4,
+  .desktopModalGrid .col3{
+    grid-column: 1 / -1;
+  }
+
+  .desktopModalGrid .col2,
+  .desktopModalGrid .col1{
+    grid-column: span 3;
+  }
+}
+
+
+/* === CRM modal realignment + full-height board fix (Apr 2026 bis) === */
+.mfName{ grid-column: span 12; }
+.mfPhone{ grid-column: span 6; }
+.mfMail{ grid-column: span 6; }
+.mfCategory{ grid-column: span 4; }
+.mfType{ grid-column: span 4; }
+.mfSiren{ grid-column: span 4; }
+.mfVat{ grid-column: span 8; }
+.mfImportant{ grid-column: span 4; }
+.mfAddress{ grid-column: span 6; }
+.mfCity{ grid-column: span 3; }
+.mfCP{ grid-column: span 3; }
+.mfDeliverySame{ grid-column: 1 / -1; }
+
+.sameAddressField{ align-self: end; }
+.sameAddressLabel{ display:block; }
+.sameAddressCheck{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.055);
+  color: rgba(255,255,255,.88);
+  font-size: 14px;
+  font-weight: 600;
+}
+.sameAddressCheck input{
+  width: 18px;
+  height: 18px;
+  accent-color: #7ddcff;
+  margin: 0;
+}
+.sameAddressCheck span{ line-height: 1.2; }
+
+.shell{
+  min-height: 100dvh !important;
+  height: 100dvh !important;
+  gap: 12px;
+  padding-bottom: 14px !important;
+}
+.header{ margin-bottom: 0 !important; }
+.shell > .crmBoardCard{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  margin-top: 0 !important;
+}
+.crmBoardCard{
+  display:flex !important;
+  flex-direction:column;
+  overflow:hidden;
+}
+.crmBoardCard .tableWrap{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+.paginationBar{
+  padding-top: 14px;
+  padding-bottom: 2px;
+}
+
+@media (max-width: 760px){
+  .sameAddressField{
+    grid-column: 1 / -1;
+    align-self: stretch;
+  }
+  .sameAddressCheck{
+    min-height: 42px;
+    padding-inline: 12px;
+  }
+}
+
+/* =========================
+   CRM compact rows + full-height board (Apr 2026)
+   ========================= */
+
+:root{
+  --crm-row-height: 28px;
+  --crm-head-height: 34px;
+}
+
+.shell > .crmBoardCard{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+.crmBoardCard{
+  display: flex !important;
+  flex-direction: column;
+  min-height: 0 !important;
+}
+
+.crmBoardCard .tableWrap{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+.paginationBar{
+  margin-top: auto !important;
+}
+
+.table thead th{
+  height: var(--crm-head-height);
+}
+
+.table tbody tr{
+  height: var(--crm-row-height);
+}
+
+.table th,
+.table td{
+  padding: 4px 10px !important;
+  font-size: 13px !important;
+  line-height: 1.15 !important;
+}
+
+.checkbox,
+.table input[type="checkbox"]{
+  width: 13px !important;
+  height: 13px !important;
+  transform: none !important;
+}
+
+.typeBadge,
+.catBadge{
+  padding: 2px 8px !important;
+  font-size: 11px !important;
+  line-height: 1.1 !important;
+}
+
+.starStatic{
+  width: 18px !important;
+  height: 18px !important;
+  font-size: 14px !important;
+}
+
+.placeholderRow td{
+  color: transparent !important;
+  user-select: none;
+}
+
+.placeholderRow:hover{
+  background: rgba(255,255,255,.02) !important;
+}
+
+.placeholderMessageRow td{
+  color: var(--inrcy-muted) !important;
+}
+
+@media (min-width: 980px){
+  .shell{
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  .crmBoardCard{
+    overflow: hidden !important;
+  }
+
+  .crmBoardCard .tableWrap{
+    overflow-y: auto !important;
+  }
+}
+
+/* =========================
+   CRM no-scroll fixed 25 rows — FINAL (Apr 2026)
+   ========================= */
+
+:root{
+  --crm-head-height: 34px;
+}
+
+@media (min-width: 980px){
+  .shell{
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    overflow: hidden !important;
+    padding-bottom: 14px !important;
+  }
+
+  .header{
+    flex: 0 0 auto !important;
+    margin-bottom: 0 !important;
+  }
+
+  .shell > .crmBoardCard,
+  .tableCard.crmBoardCard,
+  .crmBoardCard{
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    margin-top: 0 !important;
+  }
+
+  .secondaryToolbar,
+  .muted,
+  .error,
+  .success,
+  .paginationBar{
+    flex: 0 0 auto !important;
+  }
+
+  .crmBoardCard .tableWrap,
+  .tableWrap{
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+
+  .crmBoardCard .table{
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    table-layout: fixed !important;
+  }
+
+  .table thead th{
+    height: var(--crm-head-height) !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    vertical-align: middle !important;
+  }
+
+  .table th,
+  .table td{
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    line-height: 1.1 !important;
+    vertical-align: middle !important;
+  }
+
+  .typeBadge,
+  .catBadge{
+    padding: 2px 8px !important;
+    font-size: 11px !important;
+    line-height: 1.1 !important;
+  }
+
+  .checkbox,
+  .table input[type="checkbox"]{
+    width: 13px !important;
+    height: 13px !important;
+    transform: none !important;
+  }
+
+  .starStatic{
+    width: 18px !important;
+    height: 18px !important;
+    font-size: 14px !important;
+  }
+
+  .paginationBar{
+    margin-top: 0 !important;
+    padding-top: 12px !important;
+    padding-bottom: 2px !important;
+  }
+
+  .pageSizeWrap{
+    display: none !important;
+  }
+}
+
+
+/* === CRM patch — 20 lignes desktop + toolbar inline + mobile sans pagination === */
+.secondaryToolbar{
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px) auto;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+.bulkActions{
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex-wrap: nowrap !important;
+  min-width: 0;
+}
+
+.selectionMeta{
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: fit-content;
+  white-space: nowrap;
+  color: rgba(255,255,255,.74);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tableSearchWrap{
+  min-width: 0;
+}
+
+.tableSearchWrap .searchWrap{
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.tableSearchWrap .search{
+  width: 100%;
+}
+
+.pageSizeWrap{
+  justify-self: end;
+}
+
+@media (max-width: 760px){
+  .secondaryToolbar{
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+
+  .bulkActions{
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .bulkActions::-webkit-scrollbar{
+    display: none;
+  }
+
+  .tableSearchWrap{
+    width: 100%;
+    order: 2;
+  }
+
+  .pageSizeWrap,
+  .paginationBar{
+    display: none !important;
+  }
+}

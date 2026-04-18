@@ -42,8 +42,8 @@ type CrmSummary = {
   autres: number;
 };
 
-const DEFAULT_PAGE_SIZE = 50;
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [20] as const;
 
 const CATEGORY_LABEL: Record<Exclude<Category, "">, string> = {
   particulier: "Particulier",
@@ -323,6 +323,8 @@ export default function CRMClient() {
   const [serverQuery, setServerQuery] = useState("");
   const requestSeqRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const tableWrapRef = useRef<HTMLDivElement | null>(null);
+  const mobileLoadMoreLockRef = useRef(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   // Mobile UI
@@ -332,6 +334,7 @@ export default function CRMClient() {
   const exportRef = useRef<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [isCompactUi, setIsCompactUi] = useState(false);
+  const [desktopRowHeight, setDesktopRowHeight] = useState(30);
   const [importing, setImporting] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<"" | "csv" | "xlsx">("");
 
@@ -370,10 +373,11 @@ export default function CRMClient() {
   );
 
   const loadContacts = useCallback(
-    async (options?: { page?: number; pageSize?: number; query?: string; preserveSuccess?: boolean }) => {
+    async (options?: { page?: number; pageSize?: number; query?: string; preserveSuccess?: boolean; append?: boolean }) => {
       const targetPage = Math.max(1, options?.page ?? page);
       const targetPageSize = options?.pageSize ?? pageSize;
       const targetQuery = options?.query ?? serverQuery;
+      const shouldAppend = Boolean(options?.append) && isResponsive && targetPage > 1;
       const requestId = ++requestSeqRef.current;
 
       setLoading(true);
@@ -404,10 +408,15 @@ export default function CRMClient() {
         const base = Array.isArray(j?.contacts) ? j.contacts : [];
         const merged = base.map((c: CrmContact) => mergeContactWithLocalState(c));
 
-        setContacts(merged);
+        setContacts((prev) => {
+          if (!shouldAppend) return merged;
+          const next = new Map(prev.map((contact) => [contact.id, contact] as const));
+          for (const contact of merged) next.set(contact.id, contact);
+          return Array.from(next.values());
+        });
         setTotal(nextTotal);
         setPage(safePage);
-        setPageSize(typeof j?.pageSize === "number" ? j.pageSize : targetPageSize);
+        setPageSize(targetPageSize);
         setPageCount(nextPageCount);
         setKpis({
           total: Number(j?.summary?.total ?? nextTotal ?? 0),
@@ -422,9 +431,10 @@ export default function CRMClient() {
         setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les contacts du CRM."));
       } finally {
         if (requestId === requestSeqRef.current) setLoading(false);
+        mobileLoadMoreLockRef.current = false;
       }
     },
-    [mergeContactWithLocalState, page, pageSize, serverQuery],
+    [isResponsive, mergeContactWithLocalState, page, pageSize, serverQuery],
   );
 
   useEffect(() => {
@@ -435,12 +445,13 @@ export default function CRMClient() {
   }, [query]);
 
   useEffect(() => {
+    mobileLoadMoreLockRef.current = false;
     setPage(1);
-  }, [pageSize, serverQuery]);
+  }, [isResponsive, pageSize, serverQuery]);
 
   useEffect(() => {
-    void loadContacts();
-  }, [loadContacts]);
+    void loadContacts({ page, append: isResponsive && page > 1 });
+  }, [isResponsive, loadContacts, page]);
 
   useEffect(() => {
     // Keep derived fields in sync when local ⭐ important / notes change
@@ -526,6 +537,64 @@ export default function CRMClient() {
   const visibleContacts = contacts;
   const allVisibleSelected = visibleContacts.length > 0 && visibleContacts.every((c) => selectedContactIds.has(c.id));
   const emptyMessage = query.trim() ? "Aucun contact trouvé pour cette recherche." : "Aucun contact pour le moment.";
+  const showDesktopEmptyMessage = visibleContacts.length === 0;
+  const desktopPlaceholderRowCount = Math.max(0, pageSize - visibleContacts.length - (showDesktopEmptyMessage ? 1 : 0));
+  const desktopPlaceholderRows = Array.from({ length: desktopPlaceholderRowCount });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isResponsive) return;
+
+    const el = tableWrapRef.current;
+    if (!el) return;
+
+    const HEADER_HEIGHT = 34;
+
+    const recompute = () => {
+      const wrapHeight = el.clientHeight || 0;
+      if (wrapHeight <= HEADER_HEIGHT) return;
+      const next = Math.max(18, Math.floor((wrapHeight - HEADER_HEIGHT - 2) / DEFAULT_PAGE_SIZE));
+      setDesktopRowHeight((prev) => (prev === next ? prev : next));
+    };
+
+    const raf = window.requestAnimationFrame(recompute);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(recompute) : null;
+    if (ro) ro.observe(el);
+    window.addEventListener("resize", recompute);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      ro?.disconnect();
+      window.removeEventListener("resize", recompute);
+    };
+  }, [isResponsive, loading, page, pageSize, visibleContacts.length, showDesktopEmptyMessage]);
+
+  useEffect(() => {
+    if (!isResponsive) return;
+
+    const el = tableWrapRef.current;
+    if (!el) return;
+
+    const maybeLoadMore = () => {
+      if (loading) return;
+      if (mobileLoadMoreLockRef.current) return;
+      if (page >= pageCount) return;
+      if (el.scrollTop + el.clientHeight < el.scrollHeight - 72) return;
+
+      mobileLoadMoreLockRef.current = true;
+      setPage((prev) => (prev < pageCount ? prev + 1 : prev));
+    };
+
+    const onScroll = () => maybeLoadMore();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const raf = window.requestAnimationFrame(maybeLoadMore);
+
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      window.cancelAnimationFrame(raf);
+    };
+  }, [isResponsive, loading, page, pageCount, visibleContacts.length]);
+
 
   const selectedEmails = useMemo(() => {
     const emails = selectedContacts
@@ -665,7 +734,7 @@ async function importContacts(rows: any[]) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Import impossible."));
     setPage(1);
-    await loadContacts({ page: 1, preserveSuccess: true });
+    await loadContacts({ page: 1, preserveSuccess: true, append: false });
     setSuccess(`Import terminé : ${j?.inserted ?? cleaned.length} contact(s).`);
   } catch (e: any) {
     setError(getSimpleFrenchErrorMessage(e, "Import impossible."));
@@ -915,6 +984,28 @@ const exportExcel = async () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  const deliverySameAsPrimary = !String(draft.delivery_address || "").trim() || String(draft.delivery_address || "").trim() === String(draft.address || "").trim();
+
+  function updatePrimaryAddress(value: string) {
+    setDraft((current) => {
+      const previousAddress = String(current.address || "").trim();
+      const previousDelivery = String(current.delivery_address || "").trim();
+      const linked = !previousDelivery || previousDelivery === previousAddress;
+      return {
+        ...current,
+        address: value,
+        delivery_address: linked ? value : current.delivery_address,
+      };
+    });
+  }
+
+  function setDeliverySameAsPrimary(checked: boolean) {
+    setDraft((current) => ({
+      ...current,
+      delivery_address: checked ? String(current.address || "") : "",
+    }));
+  }
+
   async function save() {
     setSaving(true);
     setError(null);
@@ -935,7 +1026,7 @@ const exportExcel = async () => {
       email: draft.email.trim(),
       phone: draft.phone.trim(),
       address: draft.address.trim(),
-      billing_address: (draft.billing_address || "").trim(),
+      billing_address: (draft.billing_address || draft.address || "").trim(),
       delivery_address: (draft.delivery_address || "").trim(),
       vat_number: (draft.vat_number || "").trim(),
       city: (draft.city || "").trim(),
@@ -954,9 +1045,9 @@ const exportExcel = async () => {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible d'enregistrer."));
-      const nextPage = editingId ? page : 1;
-      if (!editingId) setPage(1);
-      await loadContacts({ page: nextPage, preserveSuccess: true });
+      const nextPage = isResponsive ? 1 : editingId ? page : 1;
+      if (!editingId || isResponsive) setPage(1);
+      await loadContacts({ page: nextPage, preserveSuccess: true, append: false });
       // If editing, persist ⭐ + notes locally (works even if backend doesn't store it yet)
       if (editingId) {
         setNoteForId(editingId, (draft.notes || "").trim());
@@ -1005,7 +1096,8 @@ const exportExcel = async () => {
       );
 
       // reload + reset states
-      await loadContacts({ preserveSuccess: true });
+      if (isResponsive) setPage(1);
+      await loadContacts({ page: isResponsive ? 1 : page, preserveSuccess: true, append: false });
       setSelectedContactIds(new Set());
       setSelectedContactsById({});
       if (editingId && ids.includes(editingId)) startNew();
@@ -1026,7 +1118,8 @@ const exportExcel = async () => {
       const r = await fetch(`/api/crm/contacts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de supprimer."));
-      await loadContacts({ preserveSuccess: true });
+      if (isResponsive) setPage(1);
+      await loadContacts({ page: isResponsive ? 1 : page, preserveSuccess: true, append: false });
       setSelectedContactIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -1276,7 +1369,6 @@ const exportExcel = async () => {
             */}
             {isResponsive ? (
               <div className={styles.mobileModalForm}>
-                {/* Ligne 1: Nom/RS + SIREN */}
                 <label className={`${styles.label} ${styles.mfName} ${styles.fName}`}>
                   <span>Nom Prénom / Raison sociale</span>
                   <input
@@ -1288,18 +1380,28 @@ const exportExcel = async () => {
                   />
                 </label>
 
-                <label className={`${styles.label} ${styles.mfSiren} ${styles.fSiren}`}>
-                  <span>SIREN</span>
+                <label className={`${styles.label} ${styles.mfPhone} ${styles.fPhone}`}>
+                  <span>Téléphone</span>
                   <input
                     className={styles.input}
-                    value={draft.siret}
-                    onChange={(e) => setDraft((s) => ({ ...s, siret: e.target.value }))}
-                    placeholder="123 456 789"
-                    inputMode="numeric"
+                    value={draft.phone}
+                    onChange={(e) => setDraft((s) => ({ ...s, phone: e.target.value }))}
+                    placeholder="06 00 00 00 00"
+                    autoComplete="tel"
                   />
                 </label>
 
-                {/* Ligne 2: Catégorie + Type + Important */}
+                <label className={`${styles.label} ${styles.mfMail} ${styles.fMail}`}>
+                  <span>Mail</span>
+                  <input
+                    className={styles.input}
+                    value={draft.email}
+                    onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
+                    placeholder="marie@exemple.fr"
+                    autoComplete="email"
+                  />
+                </label>
+
                 <label className={`${styles.label} ${styles.mfCategory} ${styles.fCategory}`}>
                   <span>Catégorie</span>
                   <select
@@ -1330,6 +1432,27 @@ const exportExcel = async () => {
                   </select>
                 </label>
 
+                <label className={`${styles.label} ${styles.mfSiren} ${styles.fSiren}`}>
+                  <span>SIREN</span>
+                  <input
+                    className={styles.input}
+                    value={draft.siret}
+                    onChange={(e) => setDraft((s) => ({ ...s, siret: e.target.value }))}
+                    placeholder="123 456 789"
+                    inputMode="numeric"
+                  />
+                </label>
+
+                <label className={`${styles.label} ${styles.mfVat} ${styles.fVat}`}>
+                  <span>TVA intracom</span>
+                  <input
+                    className={styles.input}
+                    value={draft.vat_number}
+                    onChange={(e) => setDraft((s) => ({ ...s, vat_number: e.target.value }))}
+                    placeholder="FR12345678901"
+                  />
+                </label>
+
                 <label className={`${styles.label} ${styles.mfImportant} ${styles.fImportant}`}>
                   <span>Important</span>
                   <button
@@ -1346,36 +1469,12 @@ const exportExcel = async () => {
                   </button>
                 </label>
 
-                {/* Ligne 3: Téléphone + Mail */}
-                <label className={`${styles.label} ${styles.mfPhone} ${styles.fPhone}`}>
-                  <span>Téléphone</span>
-                  <input
-                    className={styles.input}
-                    value={draft.phone}
-                    onChange={(e) => setDraft((s) => ({ ...s, phone: e.target.value }))}
-                    placeholder="06 00 00 00 00"
-                    autoComplete="tel"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.mfMail} ${styles.fMail}`}>
-                  <span>Mail</span>
-                  <input
-                    className={styles.input}
-                    value={draft.email}
-                    onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
-                    placeholder="marie@exemple.fr"
-                    autoComplete="email"
-                  />
-                </label>
-
-                {/* Ligne 4: Adresse + Ville + CP */}
                 <label className={`${styles.label} ${styles.mfAddress} ${styles.fAddress}`}>
-                  <span>Adresse</span>
+                  <span>Adresse principale</span>
                   <input
                     className={styles.input}
                     value={draft.address}
-                    onChange={(e) => setDraft((s) => ({ ...s, address: e.target.value }))}
+                    onChange={(e) => updatePrimaryAddress(e.target.value)}
                     placeholder="12 rue ..."
                     autoComplete="street-address"
                   />
@@ -1404,38 +1503,18 @@ const exportExcel = async () => {
                   />
                 </label>
 
-                {/* Ligne 5: TVA + adresse de facturation */}
-                <label className={`${styles.label} ${styles.mfVat} ${styles.fVat}`}>
-                  <span>TVA intracom</span>
-                  <input
-                    className={styles.input}
-                    value={draft.vat_number}
-                    onChange={(e) => setDraft((s) => ({ ...s, vat_number: e.target.value }))}
-                    placeholder="FR12345678901"
-                  />
+                <label className={`${styles.label} ${styles.mfDeliverySame}`}>
+                  <span className={styles.sameAddressLabel}>Adresse de livraison identique</span>
+                  <label className={styles.sameAddressCheck}>
+                    <input
+                      type="checkbox"
+                      checked={deliverySameAsPrimary}
+                      onChange={(e) => setDeliverySameAsPrimary(e.target.checked)}
+                    />
+                    <span>Utiliser l'adresse principale</span>
+                  </label>
                 </label>
 
-                <label className={`${styles.label} ${styles.mfBilling} ${styles.fBilling}`}>
-                  <span>Adresse de facturation</span>
-                  <input
-                    className={styles.input}
-                    value={draft.billing_address}
-                    onChange={(e) => setDraft((s) => ({ ...s, billing_address: e.target.value }))}
-                    placeholder="Si différente de l'adresse principale"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.mfDelivery} ${styles.fDelivery}`}>
-                  <span>Adresse de livraison</span>
-                  <input
-                    className={styles.input}
-                    value={draft.delivery_address}
-                    onChange={(e) => setDraft((s) => ({ ...s, delivery_address: e.target.value }))}
-                    placeholder="Si différente de l'adresse principale"
-                  />
-                </label>
-
-                {/* Ligne 6: Notes */}
                 <label className={`${styles.label} ${styles.mfNotes} ${styles.fNotes}`}>
                   <span>Notes</span>
                   <textarea
@@ -1447,9 +1526,8 @@ const exportExcel = async () => {
                 </label>
               </div>
             ) : (
-              <div className={`${styles.formGrid} ${styles.modalFormGrid}`}>
-                {/* Ligne 1 */}
-                <label className={`${styles.label} ${styles.col3} ${styles.fName}`}>
+              <div className={`${styles.formGrid} ${styles.modalFormGrid} ${styles.desktopModalGrid}`}>
+                <label className={`${styles.label} ${styles.col6} ${styles.fName}`}>
                   <span>Nom Prénom / Raison sociale</span>
                   <input
                     className={styles.input}
@@ -1460,14 +1538,25 @@ const exportExcel = async () => {
                   />
                 </label>
 
-                <label className={`${styles.label} ${styles.col2} ${styles.fSiren}`}>
-                  <span>SIREN</span>
+                <label className={`${styles.label} ${styles.col3} ${styles.fPhone}`}>
+                  <span>Téléphone</span>
                   <input
                     className={styles.input}
-                    value={draft.siret}
-                    onChange={(e) => setDraft((s) => ({ ...s, siret: e.target.value }))}
-                    placeholder="123 456 789"
-                    inputMode="numeric"
+                    value={draft.phone}
+                    onChange={(e) => setDraft((s) => ({ ...s, phone: e.target.value }))}
+                    placeholder="06 00 00 00 00"
+                    autoComplete="tel"
+                  />
+                </label>
+
+                <label className={`${styles.label} ${styles.col3} ${styles.fMail}`}>
+                  <span>Mail</span>
+                  <input
+                    className={styles.input}
+                    value={draft.email}
+                    onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
+                    placeholder="marie@exemple.fr"
+                    autoComplete="email"
                   />
                 </label>
 
@@ -1501,30 +1590,28 @@ const exportExcel = async () => {
                   </select>
                 </label>
 
-                {/* Ligne 2 */}
-                <label className={`${styles.label} ${styles.col2} ${styles.phoneField} ${styles.fPhone}`}>
-                  <span>Téléphone</span>
+                <label className={`${styles.label} ${styles.col2} ${styles.fSiren}`}>
+                  <span>SIREN</span>
                   <input
                     className={styles.input}
-                    value={draft.phone}
-                    onChange={(e) => setDraft((s) => ({ ...s, phone: e.target.value }))}
-                    placeholder="06 00 00 00 00"
-                    autoComplete="tel"
+                    value={draft.siret}
+                    onChange={(e) => setDraft((s) => ({ ...s, siret: e.target.value }))}
+                    placeholder="123 456 789"
+                    inputMode="numeric"
                   />
                 </label>
 
-                <label className={`${styles.label} ${styles.col2} ${styles.mailField} ${styles.fMail}`}>
-                  <span>Mail</span>
+                <label className={`${styles.label} ${styles.col2} ${styles.fVat}`}>
+                  <span>TVA</span>
                   <input
                     className={styles.input}
-                    value={draft.email}
-                    onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
-                    placeholder="marie@exemple.fr"
-                    autoComplete="email"
+                    value={draft.vat_number}
+                    onChange={(e) => setDraft((s) => ({ ...s, vat_number: e.target.value }))}
+                    placeholder="FR12345678901"
                   />
                 </label>
 
-                <label className={`${styles.label} ${styles.starField} ${styles.col1} ${styles.fImportant}`}>
+                <label className={`${styles.label} ${styles.col2} ${styles.modalImportantField} ${styles.fImportant}`}>
                   <span>Important</span>
                   <button
                     type="button"
@@ -1540,13 +1627,12 @@ const exportExcel = async () => {
                   </button>
                 </label>
 
-                {/* Ligne 3 */}
-                <label className={`${styles.label} ${styles.col3} ${styles.fAddress}`}>
-                  <span>Adresse</span>
+                <label className={`${styles.label} ${styles.col5} ${styles.fAddress}`}>
+                  <span>Adresse principale</span>
                   <input
                     className={styles.input}
                     value={draft.address}
-                    onChange={(e) => setDraft((s) => ({ ...s, address: e.target.value }))}
+                    onChange={(e) => updatePrimaryAddress(e.target.value)}
                     placeholder="12 rue ..."
                     autoComplete="street-address"
                   />
@@ -1575,39 +1661,19 @@ const exportExcel = async () => {
                   />
                 </label>
 
-                {/* Ligne 4 */}
-                <label className={`${styles.label} ${styles.col3} ${styles.fVat}`}>
-                  <span>TVA intracom</span>
-                  <input
-                    className={styles.input}
-                    value={draft.vat_number}
-                    onChange={(e) => setDraft((s) => ({ ...s, vat_number: e.target.value }))}
-                    placeholder="FR12345678901"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.col3} ${styles.fBilling}`}>
-                  <span>Adresse de facturation</span>
-                  <input
-                    className={styles.input}
-                    value={draft.billing_address}
-                    onChange={(e) => setDraft((s) => ({ ...s, billing_address: e.target.value }))}
-                    placeholder="Si différente de l'adresse principale"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.col6} ${styles.fDelivery}`}>
+                <label className={`${styles.label} ${styles.col3} ${styles.sameAddressField}`}>
                   <span>Adresse de livraison</span>
-                  <input
-                    className={styles.input}
-                    value={draft.delivery_address}
-                    onChange={(e) => setDraft((s) => ({ ...s, delivery_address: e.target.value }))}
-                    placeholder="Si différente de l'adresse principale"
-                  />
+                  <label className={styles.sameAddressCheck}>
+                    <input
+                      type="checkbox"
+                      checked={deliverySameAsPrimary}
+                      onChange={(e) => setDeliverySameAsPrimary(e.target.checked)}
+                    />
+                    <span>Identique</span>
+                  </label>
                 </label>
 
-                {/* Ligne 5 */}
-                <label className={`${styles.label} ${styles.col6} ${styles.fNotes}`}>
+                <label className={`${styles.label} ${styles.col12} ${styles.fNotes}`}>
                   <span>Notes</span>
                   <textarea
                     className={styles.textarea}
@@ -1658,11 +1724,10 @@ const exportExcel = async () => {
         {success ? <div className={styles.success}>{success}</div> : null}
 
         <div className={styles.secondaryToolbar}>
-          <div className={styles.selectionMeta}>
-            {selectedContactIds.size > 0 ? `${selectedContactIds.size} contact${selectedContactIds.size > 1 ? "s" : ""} sélectionné${selectedContactIds.size > 1 ? "s" : ""}` : "Aucune sélection"}
-          </div>
-
           <div className={styles.bulkActions}>
+            <div className={styles.selectionMeta}>
+              {selectedContactIds.size > 0 ? `${selectedContactIds.size} contact${selectedContactIds.size > 1 ? "s" : ""} sélectionné${selectedContactIds.size > 1 ? "s" : ""}` : "Aucune sélection"}
+            </div>
             <button
               aria-label="Désélectionner"
               className={styles.ghostBtn}
@@ -1779,28 +1844,30 @@ const exportExcel = async () => {
             </div>
           </div>
 
-          <label className={styles.pageSizeWrap}>
-            <span>Par page</span>
-            <select
-              className={styles.pageSizeSelect}
-              value={pageSize}
-              onChange={(e) => {
-                setPage(1);
-                setPageSize(Number(e.target.value) || DEFAULT_PAGE_SIZE);
-              }}
-            >
-              {PAGE_SIZE_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
+          {!isResponsive ? (
+            <label className={styles.pageSizeWrap}>
+              <span>Par page</span>
+              <select
+                className={styles.pageSizeSelect}
+                value={pageSize}
+                onChange={(e) => {
+                  setPage(1);
+                  setPageSize(Number(e.target.value) || DEFAULT_PAGE_SIZE);
+                }}
+              >
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </div>
 
         {loading ? <div className={styles.muted}>Chargement...</div> : null}
 
-        <div className={styles.tableWrap}>
+        <div className={styles.tableWrap} ref={tableWrapRef}>
           {/*
             Responsive (mobile): tableau "détaché" du desktop.
             On garde les mêmes infos mais une construction différente (grid) pour coller au design.
@@ -1896,105 +1963,120 @@ const exportExcel = async () => {
                 </tr>
               </thead>
               <tbody>
-                {visibleContacts.length === 0 ? (
-                  <tr>
+                {showDesktopEmptyMessage ? (
+                  <tr className={styles.placeholderMessageRow} style={{ height: `${desktopRowHeight}px` }}>
                     <td colSpan={8} className={styles.empty}>
                       {emptyMessage}
                     </td>
                   </tr>
-                ) : (
-                  visibleContacts.map((c) => (
-                    <tr
-                      key={c.id}
-                      className={selectedContactIds.has(c.id) ? styles.rowSelected : undefined}
-                      onClick={() => startEdit(c)}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <td className={styles.tdSelect}>
-                        <input
-                          type="checkbox"
-                          className={styles.checkbox}
-                          checked={selectedContactIds.has(c.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={() => toggleSelect(c.id)}
-                          aria-label={`Sélectionner ${buildDisplayName(c)}`}
-                        />
-                      </td>
-                      <td className={`${styles.tdName} ${c.important ? styles.nameImportant : ""}`.trim()}>
-                        {buildDisplayName(c)}
-                      </td>
-                      <td className={`${styles.mono} ${styles.tdMail}`}>{c.email}</td>
-                      <td className={`${styles.mono} ${styles.tdTel}`}>{c.phone}</td>
-                      <td className={`${styles.mono} ${styles.tdCp}`}>{c.postal_code ?? ""}</td>
-                      <td className={styles.tdCat}>
-                        {c.category ? (
-                          <span className={categoryBadgeClass(c.category)}>
-                            <span className={styles.badgeLabelFull}>
-                              {CATEGORY_LABEL[c.category as Exclude<Category, "">]}
-                            </span>
-                            <span className={styles.badgeLabelShort}>
-                              {CATEGORY_LABEL_SHORT[c.category as Exclude<Category, "">]}
-                            </span>
+                ) : null}
+
+                {visibleContacts.map((c) => (
+                  <tr
+                    key={c.id}
+                    className={selectedContactIds.has(c.id) ? styles.rowSelected : undefined}
+                    onClick={() => startEdit(c)}
+                    style={{ cursor: "pointer", height: `${desktopRowHeight}px` }}
+                  >
+                    <td className={styles.tdSelect}>
+                      <input
+                        type="checkbox"
+                        className={styles.checkbox}
+                        checked={selectedContactIds.has(c.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => toggleSelect(c.id)}
+                        aria-label={`Sélectionner ${buildDisplayName(c)}`}
+                      />
+                    </td>
+                    <td className={`${styles.tdName} ${c.important ? styles.nameImportant : ""}`.trim()}>
+                      {buildDisplayName(c)}
+                    </td>
+                    <td className={`${styles.mono} ${styles.tdMail}`}>{c.email}</td>
+                    <td className={`${styles.mono} ${styles.tdTel}`}>{c.phone}</td>
+                    <td className={`${styles.mono} ${styles.tdCp}`}>{c.postal_code ?? ""}</td>
+                    <td className={styles.tdCat}>
+                      {c.category ? (
+                        <span className={categoryBadgeClass(c.category)}>
+                          <span className={styles.badgeLabelFull}>
+                            {CATEGORY_LABEL[c.category as Exclude<Category, "">]}
                           </span>
-                        ) : (
-                          <span className={styles.dash}>—</span>
-                        )}
-                      </td>
-                      <td>
-                        {c.contact_type ? (
-                          <span className={typeBadgeClass(c.contact_type)}>
-                            <span className={styles.badgeLabelFull}>
-                              {TYPE_LABEL[c.contact_type as Exclude<ContactType, "">]}
-                            </span>
-                            <span className={styles.badgeLabelShort}>
-                              {TYPE_LABEL_SHORT[c.contact_type as Exclude<ContactType, "">]}
-                            </span>
+                          <span className={styles.badgeLabelShort}>
+                            {CATEGORY_LABEL_SHORT[c.category as Exclude<Category, "">]}
                           </span>
-                        ) : (
-                          <span className={styles.dash}>—</span>
-                        )}
-                      </td>
-                      <td className={styles.tdStar}>
-                        {c.important ? (
-                          <span className={styles.starStatic} title="Important" aria-label="Important">
-                            ★
+                        </span>
+                      ) : (
+                        <span className={styles.dash}>—</span>
+                      )}
+                    </td>
+                    <td>
+                      {c.contact_type ? (
+                        <span className={typeBadgeClass(c.contact_type)}>
+                          <span className={styles.badgeLabelFull}>
+                            {TYPE_LABEL[c.contact_type as Exclude<ContactType, "">]}
                           </span>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                          <span className={styles.badgeLabelShort}>
+                            {TYPE_LABEL_SHORT[c.contact_type as Exclude<ContactType, "">]}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className={styles.dash}>—</span>
+                      )}
+                    </td>
+                    <td className={styles.tdStar}>
+                      {c.important ? (
+                        <span className={styles.starStatic} title="Important" aria-label="Important">
+                          ★
+                        </span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+
+                {desktopPlaceholderRows.map((_, index) => (
+                  <tr key={`placeholder-row-${page}-${index}`} className={styles.placeholderRow} aria-hidden="true" style={{ height: `${desktopRowHeight}px` }}>
+                    <td className={styles.tdSelect}>&nbsp;</td>
+                    <td className={styles.tdName}>&nbsp;</td>
+                    <td className={`${styles.mono} ${styles.tdMail}`}>&nbsp;</td>
+                    <td className={`${styles.mono} ${styles.tdTel}`}>&nbsp;</td>
+                    <td className={`${styles.mono} ${styles.tdCp}`}>&nbsp;</td>
+                    <td className={styles.tdCat}>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td className={styles.tdStar}>&nbsp;</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
         </div>
 
-        <div className={styles.paginationBar}>
-          <div className={styles.paginationMeta}>
-            {total > 0
-              ? `Affichage ${Math.min((page - 1) * pageSize + 1, total)}–${Math.min(page * pageSize, total)} sur ${total}`
-              : "0 contact"}
+        {!isResponsive ? (
+          <div className={styles.paginationBar}>
+            <div className={styles.paginationMeta}>
+              {total > 0
+                ? `Affichage ${Math.min((page - 1) * pageSize + 1, total)}–${Math.min(page * pageSize, total)} sur ${total}`
+                : "0 contact"}
+            </div>
+            <div className={styles.paginationControls}>
+              <button
+                type="button"
+                className={styles.ghostBtn}
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                disabled={page <= 1 || loading}
+              >
+                ← Précédent
+              </button>
+              <span className={styles.paginationStatus}>Page {Math.min(page, pageCount)} / {Math.max(pageCount, 1)}</span>
+              <button
+                type="button"
+                className={styles.ghostBtn}
+                onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
+                disabled={page >= pageCount || loading || total === 0}
+              >
+                Suivant →
+              </button>
+            </div>
           </div>
-          <div className={styles.paginationControls}>
-            <button
-              type="button"
-              className={styles.ghostBtn}
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              disabled={page <= 1 || loading}
-            >
-              ← Précédent
-            </button>
-            <span className={styles.paginationStatus}>Page {Math.min(page, pageCount)} / {Math.max(pageCount, 1)}</span>
-            <button
-              type="button"
-              className={styles.ghostBtn}
-              onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
-              disabled={page >= pageCount || loading || total === 0}
-            >
-              Suivant →
-            </button>
-          </div>
-        </div>
+        ) : null}
       </section>
     </div>
   );
