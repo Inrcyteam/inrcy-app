@@ -33,7 +33,7 @@ import NotificationsSettingsContent from "./settings/_components/NotificationsSe
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
 import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import { runDailyStatsRefreshBootstrap } from "@/lib/dailyStatsRefreshClient";
+import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently } from "@/lib/dailyStatsRefreshClient";
 import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
@@ -118,6 +118,16 @@ function readInrStatsPeriodSyncAt(period: StatsWarmPeriod): number {
   return Math.max(
     readSnapshotSyncAt(statsCubeSessionKey(period)),
     readSnapshotSyncAt(statsSummarySessionKey(period)),
+  );
+}
+
+function hasFreshLocalGeneratorSnapshot() {
+  const cached = readGeneratorCache();
+  const lastChannelSyncAt = getLastChannelSyncAt();
+  return Boolean(
+    cached?.payload?.leads &&
+    cached.syncedAt >= lastChannelSyncAt &&
+    cached.snapshotDate === expectedUiSnapshotDate()
   );
 }
 
@@ -1296,7 +1306,11 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   const syncFromServerCacheIfNeeded = useCallback(async (force = false) => {
     if (typeof window === "undefined") return;
     const now = Date.now();
-    if (!force && now - lastServerCacheCheckAtRef.current < 60_000) return;
+    const snapshotDate = expectedUiSnapshotDate();
+    if (!force) {
+      if (now - lastServerCacheCheckAtRef.current < 60_000) return;
+      if (wasServerCacheSyncCheckedRecently("dashboard", { snapshotDate })) return;
+    }
     if (serverCacheCheckPromiseRef.current) {
       await serverCacheCheckPromiseRef.current;
       return;
@@ -1331,6 +1345,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
             ? warmInrStatsUi({ targetPeriods: stalePeriods, syncByPeriod: periodSyncs })
             : Promise.resolve(),
         ]);
+        markServerCacheSyncChecked("dashboard", { snapshotDate, checkedAt: Date.now() });
       } catch {
         // ignore lightweight sync errors
       }
@@ -2884,6 +2899,30 @@ const checkActivity = useCallback(async () => {
   }, [menuOpen]);
 
   useEffect(() => {
+    const snapshotDate = expectedUiSnapshotDate();
+    const hasFreshGenerator = hasFreshLocalGeneratorSnapshot();
+
+    if (hasFreshGenerator) {
+      try {
+        const cached = readGeneratorCache();
+        const payload = cached?.payload;
+        if (payload?.leads) {
+          setKpis(payload);
+          const oppMonth = Number(payload?.details?.opportunities?.month);
+          if (Number.isFinite(oppMonth)) {
+            setOppTotal(oppMonth);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (hasFreshGenerator && wasDailyStatsRefreshBootstrapCheckedRecently({ snapshotDate })) {
+      setDailyBootReady(true);
+      return;
+    }
+
     let cancelled = false;
 
     (async () => {
@@ -2891,9 +2930,11 @@ const checkActivity = useCallback(async () => {
         const bootstrap = await runDailyStatsRefreshBootstrap();
         if (cancelled) return;
 
+        const syncAt = Number.isFinite(Number(bootstrap.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
+        const bootstrapSnapshotDate = typeof bootstrap.snapshotDate === "string" ? bootstrap.snapshotDate : snapshotDate;
+        markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+
         if (bootstrap.ran) {
-          const syncAt = Number.isFinite(Number(bootstrap.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
-          const snapshotDate = typeof bootstrap.snapshotDate === "string" ? bootstrap.snapshotDate : expectedUiSnapshotDate();
           const generator = bootstrap.generator;
 
           if (generator) {
@@ -2911,7 +2952,7 @@ const checkActivity = useCallback(async () => {
             try {
               const generatorSnapshotDate = typeof generator?.meta?.snapshotDate === "string"
                 ? generator.meta.snapshotDate
-                : snapshotDate ?? null;
+                : bootstrapSnapshotDate ?? null;
               writeUiCacheValue(
                 "inrcy_generator_kpis_v1",
                 JSON.stringify({ syncedAt: syncAt, snapshotDate: generatorSnapshotDate, payload: generator })
@@ -2928,7 +2969,7 @@ const checkActivity = useCallback(async () => {
             if (!overviews || typeof overviews !== "object") continue;
             const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
               ? payload.meta.snapshotDate
-              : getOverviewSnapshotDate(overviews) || snapshotDate || null;
+              : getOverviewSnapshotDate(overviews) || bootstrapSnapshotDate || null;
 
             try {
               writeUiCacheValue(
@@ -2952,7 +2993,7 @@ const checkActivity = useCallback(async () => {
           }
 
           notifyStatsRefresh(syncAt);
-        } else {
+        } else if (!hasFreshGenerator) {
           await syncFromServerCacheIfNeeded(true);
         }
       } catch (error) {
@@ -2996,7 +3037,7 @@ const checkActivity = useCallback(async () => {
 
   useEffect(() => {
     if (!dailyBootReady) return;
-    void syncFromServerCacheIfNeeded(true);
+    void syncFromServerCacheIfNeeded(false);
 
     const handleFocus = () => {
       void syncFromServerCacheIfNeeded(false);

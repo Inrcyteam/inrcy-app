@@ -10,6 +10,9 @@ const ACCOUNT_CACHE_BASE_KEYS = [
   "inrcy_crm_important_ids",
   "inrcy_crm_notes_by_id",
   "inrcy_profile_preview_v1",
+  "inrcy_stats_server_cache_check_ui_v1",
+  "inrcy_dashboard_server_cache_check_ui_v1",
+  "inrcy_daily_stats_bootstrap_ui_v1",
 ] as const;
 
 const ACCOUNT_CACHE_PREFIXES = [

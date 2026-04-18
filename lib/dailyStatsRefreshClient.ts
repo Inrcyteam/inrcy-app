@@ -1,3 +1,6 @@
+import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
+import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
+
 export type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
 export type DailyRefreshBulkPayload = {
@@ -53,4 +56,102 @@ export async function runDailyStatsRefreshBootstrap(): Promise<DailyStatsRefresh
     snapshotDate: null,
     syncAt: Date.now(),
   };
+}
+
+
+const DAILY_BOOTSTRAP_UI_STATE_KEY = "inrcy_daily_stats_bootstrap_ui_v1";
+const DASHBOARD_SERVER_CACHE_UI_STATE_KEY = "inrcy_dashboard_server_cache_check_ui_v1";
+const STATS_SERVER_CACHE_UI_STATE_KEY = "inrcy_stats_server_cache_check_ui_v1";
+
+export const UI_BOOTSTRAP_REUSE_TTL_MS = 10 * 60 * 1000;
+export const UI_SERVER_SYNC_REUSE_TTL_MS = 10 * 60 * 1000;
+
+type UiCheckState = {
+  checkedAt: number;
+  snapshotDate: string | null;
+  syncAt?: number;
+};
+
+function expectedSnapshotDate() {
+  return getDefaultSnapshotDate();
+}
+
+function readUiCheckState(key: string): UiCheckState | null {
+  try {
+    const raw = readAccountCacheValue(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as UiCheckState;
+    const checkedAt = Number(parsed?.checkedAt);
+    return {
+      checkedAt: Number.isFinite(checkedAt) ? checkedAt : 0,
+      snapshotDate: typeof parsed?.snapshotDate === "string" ? parsed.snapshotDate : null,
+      syncAt: Number.isFinite(Number(parsed?.syncAt)) ? Number(parsed?.syncAt) : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeUiCheckState(key: string, value: UiCheckState) {
+  try {
+    writeAccountCacheValue(key, JSON.stringify(value));
+  } catch {
+    // ignore browser storage failures
+  }
+}
+
+function wasCheckRecordedRecently(key: string, snapshotDate = expectedSnapshotDate(), ttlMs = UI_BOOTSTRAP_REUSE_TTL_MS) {
+  const state = readUiCheckState(key);
+  if (!state) return false;
+  if ((state.snapshotDate ?? null) !== (snapshotDate ?? null)) return false;
+  return Date.now() - state.checkedAt < ttlMs;
+}
+
+export function wasDailyStatsRefreshBootstrapCheckedRecently(options?: {
+  snapshotDate?: string | null;
+  ttlMs?: number;
+}) {
+  return wasCheckRecordedRecently(
+    DAILY_BOOTSTRAP_UI_STATE_KEY,
+    options?.snapshotDate ?? expectedSnapshotDate(),
+    options?.ttlMs ?? UI_BOOTSTRAP_REUSE_TTL_MS,
+  );
+}
+
+export function markDailyStatsRefreshBootstrapChecked(options?: {
+  snapshotDate?: string | null;
+  checkedAt?: number;
+  syncAt?: number;
+}) {
+  const checkedAt = Number.isFinite(Number(options?.checkedAt)) ? Number(options?.checkedAt) : Date.now();
+  writeUiCheckState(DAILY_BOOTSTRAP_UI_STATE_KEY, {
+    checkedAt,
+    snapshotDate: options?.snapshotDate ?? expectedSnapshotDate(),
+    syncAt: Number.isFinite(Number(options?.syncAt)) ? Number(options?.syncAt) : checkedAt,
+  });
+}
+
+export function wasServerCacheSyncCheckedRecently(
+  scope: "dashboard" | "stats",
+  options?: { snapshotDate?: string | null; ttlMs?: number }
+) {
+  const key = scope === "dashboard" ? DASHBOARD_SERVER_CACHE_UI_STATE_KEY : STATS_SERVER_CACHE_UI_STATE_KEY;
+  return wasCheckRecordedRecently(
+    key,
+    options?.snapshotDate ?? expectedSnapshotDate(),
+    options?.ttlMs ?? UI_SERVER_SYNC_REUSE_TTL_MS,
+  );
+}
+
+export function markServerCacheSyncChecked(
+  scope: "dashboard" | "stats",
+  options?: { snapshotDate?: string | null; checkedAt?: number; syncAt?: number }
+) {
+  const key = scope === "dashboard" ? DASHBOARD_SERVER_CACHE_UI_STATE_KEY : STATS_SERVER_CACHE_UI_STATE_KEY;
+  const checkedAt = Number.isFinite(Number(options?.checkedAt)) ? Number(options?.checkedAt) : Date.now();
+  writeUiCheckState(key, {
+    checkedAt,
+    snapshotDate: options?.snapshotDate ?? expectedSnapshotDate(),
+    syncAt: Number.isFinite(Number(options?.syncAt)) ? Number(options?.syncAt) : checkedAt,
+  });
 }

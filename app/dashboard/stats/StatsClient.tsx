@@ -12,7 +12,7 @@ import { decideAction, type DecisionResult } from "@/lib/decision/decisionEngine
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { readAccountCacheValue, removeAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import { runDailyStatsRefreshBootstrap } from "@/lib/dailyStatsRefreshClient";
+import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently } from "@/lib/dailyStatsRefreshClient";
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -236,6 +236,21 @@ function getLocalPeriodSyncAt(period: Period): number {
   const cubeSync = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(period)))?.syncedAt || 0;
   const summarySync = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)))?.syncedAt || 0;
   return Math.max(cubeSync, summarySync);
+}
+
+function hasFreshLocalPeriodSnapshot(period: Period) {
+  const lastChannelSyncAt = getStatsLastChannelSyncAt();
+  const cachedCube = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(period)));
+  const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
+  const snapshotDate = expectedUiSnapshotDate();
+  return Boolean(
+    cachedCube?.overviews &&
+    cachedSummary &&
+    cachedCube.syncedAt >= lastChannelSyncAt &&
+    cachedSummary.syncedAt >= lastChannelSyncAt &&
+    cachedCube.snapshotDate === snapshotDate &&
+    cachedSummary.snapshotDate === snapshotDate
+  );
 }
 
 function gmbMetricSeriesTotal(metrics: any, metricNames: string[]) {
@@ -1430,7 +1445,11 @@ export default function StatsClient() {
   const syncFromServerCacheIfNeeded = useCallback(async (force = false) => {
     if (typeof window === "undefined") return;
     const now = Date.now();
-    if (!force && now - lastServerCacheCheckAtRef.current < 60_000) return;
+    const snapshotDate = expectedUiSnapshotDate();
+    if (!force) {
+      if (now - lastServerCacheCheckAtRef.current < 60_000) return;
+      if (wasServerCacheSyncCheckedRecently("stats", { snapshotDate })) return;
+    }
     if (serverCacheCheckPromiseRef.current) {
       await serverCacheCheckPromiseRef.current;
       return;
@@ -1450,6 +1469,7 @@ export default function StatsClient() {
           const next = await fetchBulkStats(item.days, false);
           applyBulkPayload(item.days, next, item.syncedAt);
         }
+        markServerCacheSyncChecked("stats", { snapshotDate, checkedAt: Date.now() });
       } catch {
         // ignore lightweight sync errors
       }
@@ -1506,6 +1526,22 @@ export default function StatsClient() {
   };
 
   useEffect(() => {
+    const snapshotDate = expectedUiSnapshotDate();
+    const hasFreshLocalStats = hasFreshLocalPeriodSnapshot(period);
+
+    if (hasFreshLocalStats) {
+      try {
+        hydrateFromSessionCache(period);
+      } catch {
+        // ignore
+      }
+    }
+
+    if (hasFreshLocalStats && wasDailyStatsRefreshBootstrapCheckedRecently({ snapshotDate })) {
+      setDailyBootReady(true);
+      return;
+    }
+
     let cancelled = false;
 
     (async () => {
@@ -1513,9 +1549,11 @@ export default function StatsClient() {
         const bootstrap = await runDailyStatsRefreshBootstrap();
         if (cancelled) return;
 
+        const syncAt = Number.isFinite(Number(bootstrap.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
+        const bootstrapSnapshotDate = typeof bootstrap.snapshotDate === "string" ? bootstrap.snapshotDate : snapshotDate;
+        markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+
         if (bootstrap.ran) {
-          const syncAt = Number.isFinite(Number(bootstrap.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
-          const snapshotDate = typeof bootstrap.snapshotDate === "string" ? bootstrap.snapshotDate : expectedUiSnapshotDate();
           const generator = bootstrap.generator;
 
           if (generator) {
@@ -1531,7 +1569,7 @@ export default function StatsClient() {
             try {
               const generatorSnapshotDate = typeof generator?.meta?.snapshotDate === "string"
                 ? generator.meta.snapshotDate
-                : snapshotDate ?? null;
+                : bootstrapSnapshotDate ?? null;
               writeUiCacheValue(
                 "inrcy_generator_kpis_v1",
                 JSON.stringify({ syncedAt: syncAt, snapshotDate: generatorSnapshotDate, payload: generator })
@@ -1546,7 +1584,7 @@ export default function StatsClient() {
             const overviews = (payload?.overviews || {}) as Partial<Record<CubeKey, Overview>>;
             const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
               ? payload.meta.snapshotDate
-              : getOverviewSnapshotDate(overviews) || snapshotDate || null;
+              : getOverviewSnapshotDate(overviews) || bootstrapSnapshotDate || null;
             const next: BulkFetchResult = {
               overviews,
               summary: {
@@ -1576,7 +1614,7 @@ export default function StatsClient() {
             };
             applyBulkPayload(targetPeriod, next, syncAt);
           }
-        } else {
+        } else if (!hasFreshLocalStats) {
           await syncFromServerCacheIfNeeded(true);
         }
       } catch (error) {
@@ -1589,7 +1627,7 @@ export default function StatsClient() {
     return () => {
       cancelled = true;
     };
-  }, [applyBulkPayload, syncFromServerCacheIfNeeded]);
+  }, [applyBulkPayload, hydrateFromSessionCache, period, syncFromServerCacheIfNeeded]);
 
   useEffect(() => {
     if (!dailyBootReady) return;
@@ -1748,7 +1786,7 @@ useEffect(() => {
 
   useEffect(() => {
     if (!dailyBootReady) return;
-    void syncFromServerCacheIfNeeded(true);
+    void syncFromServerCacheIfNeeded(false);
 
     const handleFocus = () => {
       void syncFromServerCacheIfNeeded(false);

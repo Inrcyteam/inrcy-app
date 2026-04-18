@@ -27,3 +27,10 @@ before deploying the app.
 Why this fixes the build error:
 - Next.js had stale generated route validator artifacts referencing `/api/cron/daily-metrics-summary`.
 - Cleaning `.next` before `next build` forces validator regeneration from the current routes only.
+
+## Update v3 — mémoire UI pour éviter le refresh à chaque retour
+
+- Added account-scoped UI freshness markers for the daily bootstrap check.
+- Added account-scoped UI freshness markers for dashboard/iNrStats server cache sync checks.
+- Reused cached generator and iNrStats snapshots immediately when they already match the current snapshot date and last channel sync.
+- Added a 10-minute client-side throttle so closing/reopening the page does not re-trigger a visible refresh every time.
