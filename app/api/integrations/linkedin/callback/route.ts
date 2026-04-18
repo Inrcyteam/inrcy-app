@@ -130,6 +130,8 @@ export async function GET(req: Request) {
 
     const expiresIn = Number(token?.expires_in);
     const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
+    const refreshToken = String(token?.refresh_token || "");
+    const refreshTokenExpiresIn = Number(token?.refresh_token_expires_in);
 
     // OpenID Connect userinfo (works when openid scope granted)
     let userinfo: Record<string, unknown> = {};
@@ -147,6 +149,18 @@ export async function GET(req: Request) {
 
     const authorUrn = sub ? `urn:li:person:${sub}` : "";
 
+    const { data: existingIntegration } = await supabaseAdmin
+      .from("integrations")
+      .select("refresh_token_enc,meta")
+      .eq("user_id", userId)
+      .eq("provider", "linkedin")
+      .eq("source", "linkedin")
+      .eq("product", "linkedin")
+      .maybeSingle();
+    const existingRec = asRecord(existingIntegration);
+    const existingMeta = asRecord(existingRec["meta"]);
+    const refreshTokenEncToStore = refreshToken ? encryptToken(refreshToken) : existingRec["refresh_token_enc"] || null;
+
     // Upsert integration
     // Upsert (robuste même si l’utilisateur reconnecte plusieurs fois)
 // Nécessite un UNIQUE INDEX sur (user_id, provider, source, product) côté Supabase.
@@ -162,11 +176,16 @@ const payload: Record<string, unknown> = {
   provider_account_id: sub || null,
   scopes: process.env.LINKEDIN_SCOPE_OVERRIDES || "openid profile email w_member_social",
   access_token_enc: encryptToken(accessToken),
-  refresh_token_enc: null,
+  refresh_token_enc: refreshTokenEncToStore,
   expires_at: expiresAt,
   resource_id: authorUrn || null,
   resource_label: name || null,
-  meta: { profile_url: profileUrl, org_urn: null },
+  meta: {
+    ...existingMeta,
+    profile_url: profileUrl,
+    org_urn: null,
+    refresh_token_expires_in: Number.isFinite(refreshTokenExpiresIn) ? refreshTokenExpiresIn : existingMeta["refresh_token_expires_in"] ?? null,
+  },
 };
 
 await supabaseAdmin

@@ -11,6 +11,7 @@ import { createHash, randomUUID } from "crypto";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 import { log } from "@/lib/observability/logger";
+import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
 
 const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
@@ -661,9 +662,12 @@ async function replaceChannelDelivery(params: {
 
   if (channel === "linkedin") {
     const li = asRecord(liRow);
-    const accessToken = tryDecryptToken(String(li.access_token_enc ?? "")) || "";
-    const authorUrn = String(asRecord(li.meta).org_urn ?? li.resource_id ?? "");
-    if (String(li.status ?? "") !== "connected" || !accessToken || !authorUrn) throw new Error("Votre compte LinkedIn n’est pas encore correctement relié.");
+    const auth = await getLinkedInAccessToken({ userId });
+    const accessToken = auth.accessToken || "";
+    const authorUrn = auth.orgUrn || auth.authorUrn || String(asRecord(li.meta).org_urn ?? li.resource_id ?? "");
+    if (String(li.status ?? "") !== "connected" || !accessToken || !authorUrn) {
+      throw new Error(auth.error || "Votre compte LinkedIn n’est pas encore correctement relié.");
+    }
     if (previousExternalId) await deleteLinkedInPost(previousExternalId, accessToken);
     const linkedInImages = socialFeedImageUrls.filter(Boolean).slice(0, 20);
     const resp = linkedInImages.length > 1
@@ -736,8 +740,9 @@ async function removeChannelDelivery(params: {
   }
 
   if (channel === "linkedin") {
-    const token = tryDecryptToken(String(asRecord(liRow).access_token_enc ?? "")) || "";
-    if (!token) throw new Error("Votre compte LinkedIn n’est pas encore correctement relié.");
+    const auth = await getLinkedInAccessToken({ userId });
+    const token = auth.accessToken || "";
+    if (!token) throw new Error(auth.error || "Votre compte LinkedIn n’est pas encore correctement relié.");
     if (previousExternalId) await deleteLinkedInPost(previousExternalId, token);
     return;
   }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
-import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
+import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
 
 async function fetchJson(url: string, accessToken: string) {
   const res = await fetch(url, {
@@ -28,22 +28,9 @@ export async function GET() {
 
   if (authErr || !user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
-  const { data: rows } = await supabase
-    .from("integrations")
-    .select("access_token_enc")
-    .eq("user_id", user.id)
-    .eq("provider", "linkedin")
-    .eq("source", "linkedin")
-    .eq("product", "linkedin")
-    .order("updated_at", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(1);
-
-  const row = (rows?.[0] as unknown) ?? null;
-  const rowRec = asRecord(row);
-  const tokRaw = String(rowRec["access_token_enc"] || "");
-  const tok = tryDecryptToken(tokRaw) || "";
-  if (!tok) return NextResponse.json({ error: "Compte LinkedIn non connecté." }, { status: 400 });
+  const auth = await getLinkedInAccessToken({ userId: user.id });
+  const tok = auth.accessToken || "";
+  if (!tok) return NextResponse.json({ error: auth.error || "Compte LinkedIn non connecté." }, { status: 400 });
 
   // Try to list organizations where the user is admin (best-effort; may require app review/scopes)
   try {

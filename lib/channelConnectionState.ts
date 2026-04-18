@@ -198,11 +198,13 @@ export async function getChannelConnectionStates(
 
   const li = latestIntegration(rows, "linkedin", "linkedin", "linkedin");
   const liSettings = asRecord(settings.linkedin);
-  const liExpired = isExpired(li.expires_at);
-  const liStatus = asString(li.status);
   const liHasToken = hasTruthyString(li.access_token_enc);
+  const liHasRefreshToken = hasTruthyString(li.refresh_token_enc);
+  const liHasReusableAuth = liHasToken || liHasRefreshToken;
+  const liExpired = isExpired(li.expires_at) && !liHasRefreshToken;
+  const liStatus = asString(li.status);
   const liMeta = asRecord(li.meta);
-  const liConnected = Boolean(((liStatus === "connected" || liStatus === "account_connected") && !liExpired && liHasToken) || liSettings.accountConnected || liSettings.connected);
+  const liConnected = Boolean(((liStatus === "connected" || liStatus === "account_connected") && liHasReusableAuth && !liExpired) || liSettings.accountConnected || liSettings.connected);
 
   const gmb = latestIntegration(rows, "google", "gmb", "gmb");
   const gmbSettings = asRecord(settings.gmb);

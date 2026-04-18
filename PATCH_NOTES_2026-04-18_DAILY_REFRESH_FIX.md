@@ -34,3 +34,18 @@ Why this fixes the build error:
 - Added account-scoped UI freshness markers for dashboard/iNrStats server cache sync checks.
 - Reused cached generator and iNrStats snapshots immediately when they already match the current snapshot date and last channel sync.
 - Added a 10-minute client-side throttle so closing/reopening the page does not re-trigger a visible refresh every time.
+
+
+## 2026-04-18 — V4 stats resilience + LinkedIn refresh
+
+- added a resilience layer in `lib/stats/buildOverview.ts`
+  - when a connected channel refresh returns no usable data or a technical error,
+    the app now restores the last usable snapshot for that channel instead of dropping to 0 / low fallback
+  - this applies to the per-channel overviews used by the dashboard and iNrStats
+- fixed cache rehydration so live connection flags no longer overwrite cached social/GMB metrics
+- added `lib/linkedinOAuth.ts`
+  - stores LinkedIn refresh tokens when provided by OAuth
+  - refreshes LinkedIn access tokens automatically before analytics / publishing calls
+- updated LinkedIn OAuth callback to persist `refresh_token_enc`
+- updated LinkedIn analytics/publishing routes to use the automatic token refresh helper
+- updated channel-state logic so LinkedIn stays operational when a refresh token is available

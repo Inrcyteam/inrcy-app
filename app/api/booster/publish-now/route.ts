@@ -14,6 +14,7 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
+import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
@@ -708,19 +709,21 @@ const body = await req.json().catch(() => null);
 
         if (ch === "linkedin") {
           const li = asRecord(liRow);
-          const accessTokenRaw = String(li["access_token_enc"] ?? "");
-          const accessToken = tryDecryptToken(accessTokenRaw) || "";
-          const authorUrn = String(li["resource_id"] ?? "");
-          const liExpired = isExpired(li["expires_at"]);
-          if (String(li["status"] ?? "") !== "connected" || !accessToken || !authorUrn || liExpired) {
-            await setDelivery(ch, { status: "failed", error: liExpired ? "LinkedIn expiré : reconnectez le compte." : "Votre compte LinkedIn n’est pas encore correctement relié." });
-            results[ch] = { ok: false, error: "Le compte LinkedIn n'est pas encore correctement connecté." };
+          const auth = await getLinkedInAccessToken({ userId });
+          const accessToken = auth.accessToken || "";
+          const authorUrn = auth.authorUrn || String(li["resource_id"] ?? "");
+          const orgUrn = auth.orgUrn || String(asRecord(li["meta"])["org_urn"] ?? "");
+          const useAuthor = orgUrn || authorUrn;
+          if (String(li["status"] ?? "") !== "connected" || !accessToken || !useAuthor) {
+            const liError = auth.error && auth.refreshTokenPresent
+              ? "LinkedIn indisponible pour le moment : le rafraîchissement du token a échoué."
+              : auth.error && !auth.refreshTokenPresent
+                ? "LinkedIn expiré : reconnectez le compte une fois pour activer le refresh automatique."
+                : "Votre compte LinkedIn n’est pas encore correctement relié.";
+            await setDelivery(ch, { status: "failed", error: liError });
+            results[ch] = { ok: false, error: liError };
             continue;
           }
-
-          const liMeta = asRecord(li["meta"]);
-          const orgUrn = String(liMeta["org_urn"] ?? "");
-          const useAuthor = orgUrn || authorUrn;
           const linkedInImages = (getChannelImageSet(ch).socialFeedPublishableUrls.length ? getChannelImageSet(ch).socialFeedPublishableUrls : socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).filter(Boolean).slice(0, 20);
           let resp = linkedInImages.length > 1
             ? await linkedinPublishMultiImage({

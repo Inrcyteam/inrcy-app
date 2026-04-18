@@ -8,6 +8,7 @@ import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { buildSnapshotWindow } from "@/lib/stats/snapshotWindow";
+import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -61,6 +62,200 @@ type LiveSourcesSnapshot = {
   instagram: { connected: boolean };
   linkedin: { connected: boolean };
 };
+
+type OverviewCubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
+
+function mergeCachedSourcesWithLiveState(existingSources: unknown, liveSources: LiveSourcesSnapshot) {
+  const existing = asRecord(existingSources);
+  const out: Record<string, unknown> = { ...existing };
+  for (const [key, liveNodeUnknown] of Object.entries(liveSources)) {
+    const liveNode = asRecord(liveNodeUnknown);
+    const prevNode = asRecord(existing[key]);
+    const nextNode: Record<string, unknown> = { ...prevNode, ...liveNode };
+    if (prevNode["metrics"] !== undefined && (liveNode["metrics"] === undefined || (liveNode["metrics"] === null && prevNode["metrics"] !== null))) {
+      nextNode["metrics"] = prevNode["metrics"];
+    }
+    out[key] = nextNode;
+  }
+  return out;
+}
+
+function normalizeIdentityValue(value: unknown) {
+  return String(value || "").trim().replace(/\/+$/g, "").toLowerCase();
+}
+
+function resolveRequestedCube(includeRaw: string, includeAll: boolean): OverviewCubeKey | null {
+  if (includeAll) return null;
+  const normalized = String(includeRaw || "").trim();
+  if (!normalized) return null;
+  if (normalized === "facebook") return "facebook";
+  if (normalized === "instagram") return "instagram";
+  if (normalized === "linkedin") return "linkedin";
+  if (normalized === "gmb") return "gmb";
+  if (normalized.includes("site_inrcy")) return "site_inrcy";
+  if (normalized.includes("site_web")) return "site_web";
+  return null;
+}
+
+function isCubeConnectedInPayload(payload: Record<string, unknown>, cube: OverviewCubeKey) {
+  const sources = asRecord(payload["sources"]);
+  if (cube === "site_inrcy" || cube === "site_web") {
+    const connected = asRecord(asRecord(sources[cube])["connected"]);
+    return Boolean(connected["ga4"] || connected["gsc"]);
+  }
+  return Boolean(asRecord(sources[cube])["connected"]);
+}
+
+function cubeHasUsableData(payload: Record<string, unknown>, cube: OverviewCubeKey) {
+  if (!isCubeConnectedInPayload(payload, cube)) return false;
+  if (cube === "site_inrcy" || cube === "site_web") {
+    const totals = asRecord(payload["totals"]);
+    const topPages = Array.isArray(payload["topPages"]) ? payload["topPages"] : [];
+    const topQueries = Array.isArray(payload["topQueries"]) ? payload["topQueries"] : [];
+    const channels = Array.isArray(payload["channels"]) ? payload["channels"] : [];
+    return Boolean(
+      Number(totals["sessions"] || 0) > 0 ||
+      Number(totals["pageviews"] || 0) > 0 ||
+      Number(totals["clicks"] || 0) > 0 ||
+      Number(totals["impressions"] || 0) > 0 ||
+      topPages.length > 0 ||
+      topQueries.length > 0 ||
+      channels.length > 0
+    );
+  }
+  const metrics = asRecord(asRecord(payload["sources"])[cube])["metrics"];
+  if (metrics === null || metrics === undefined) return false;
+  const metricsRec = asRecord(metrics);
+  return !String(metricsRec["error"] || "").trim();
+}
+
+function cubeNeedsPreservation(payload: Record<string, unknown>, cube: OverviewCubeKey) {
+  if (!isCubeConnectedInPayload(payload, cube)) return false;
+  return !cubeHasUsableData(payload, cube);
+}
+
+function identitiesCompatible(currentPayload: Record<string, unknown>, candidatePayload: Record<string, unknown>, cube: OverviewCubeKey) {
+  const currentIdentity = asRecord(asRecord(currentPayload["identities"])[cube]);
+  const candidateIdentity = asRecord(asRecord(candidatePayload["identities"])[cube]);
+  const currentLabel = normalizeIdentityValue(currentIdentity["label"]);
+  const candidateLabel = normalizeIdentityValue(candidateIdentity["label"]);
+  const currentUrl = normalizeIdentityValue(currentIdentity["url"]);
+  const candidateUrl = normalizeIdentityValue(candidateIdentity["url"]);
+  if (currentLabel && candidateLabel && currentLabel !== candidateLabel) return false;
+  if (currentUrl && candidateUrl && currentUrl !== candidateUrl) return false;
+  return true;
+}
+
+function mergePreservedSources(candidateSources: unknown, currentSources: unknown) {
+  const candidate = asRecord(candidateSources);
+  const current = asRecord(currentSources);
+  const out: Record<string, unknown> = { ...candidate };
+  for (const key of new Set([...Object.keys(candidate), ...Object.keys(current)])) {
+    const prevNode = asRecord(candidate[key]);
+    const currNode = asRecord(current[key]);
+    const nextNode: Record<string, unknown> = { ...prevNode, ...currNode };
+    const currMetrics = currNode["metrics"];
+    const currMetricsError = String(asRecord(currMetrics)["error"] || "").trim();
+    if ((currMetrics === null || currMetrics === undefined || currMetricsError) && prevNode["metrics"] !== undefined) {
+      nextNode["metrics"] = prevNode["metrics"];
+    }
+    out[key] = nextNode;
+  }
+  return out;
+}
+
+async function loadPreviousOverviewCandidate(args: {
+  supabase: SupabaseClient;
+  userId: string;
+  days: number;
+  includeRaw: string;
+  cube: OverviewCubeKey;
+  currentPayload: Record<string, unknown>;
+}) {
+  const { supabase, userId, days, includeRaw, cube, currentPayload } = args;
+  const prefix = `days=${days}|include=${includeRaw || "all"}|`;
+
+  try {
+    const { data: rows = [] } = await supabase
+      .from("stats_cache")
+      .select("payload, expires_at")
+      .eq("user_id", userId)
+      .eq("source", "overview")
+      .like("range_key", `${prefix}%`)
+      .order("expires_at", { ascending: false })
+      .limit(12);
+
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const candidate = asRecord(asRecord(row)["payload"]);
+      if (!candidate || Object.keys(candidate).length === 0) continue;
+      if (!identitiesCompatible(currentPayload, candidate, cube)) continue;
+      if (!cubeHasUsableData(candidate, cube)) continue;
+      return candidate;
+    }
+  } catch {}
+
+  try {
+    const { data: rows = [] } = await supabase
+      .from("cache_statistiques")
+      .select("charge_utile, cree_a")
+      .eq("id_utilisateur", userId)
+      .eq("source", "apercu")
+      .like("plage_cle", `${prefix}%`)
+      .order("cree_a", { ascending: false })
+      .limit(12);
+
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const candidate = asRecord(asRecord(row)["charge_utile"]);
+      if (!candidate || Object.keys(candidate).length === 0) continue;
+      if (!identitiesCompatible(currentPayload, candidate, cube)) continue;
+      if (!cubeHasUsableData(candidate, cube)) continue;
+      return candidate;
+    }
+  } catch {}
+
+  return null;
+}
+
+async function stabilizeOverviewPayload(args: {
+  supabase: SupabaseClient;
+  userId: string;
+  days: number;
+  includeRaw: string;
+  includeAll: boolean;
+  payload: Record<string, unknown>;
+}) {
+  const { supabase, userId, days, includeRaw, includeAll, payload } = args;
+  const cube = resolveRequestedCube(includeRaw, includeAll);
+  if (!cube) return payload;
+  if (!cubeNeedsPreservation(payload, cube)) return payload;
+
+  const candidate = await loadPreviousOverviewCandidate({ supabase, userId, days, includeRaw, cube, currentPayload: payload });
+  if (!candidate) return payload;
+
+  const currentMeta = asRecord(payload["meta"]);
+  const candidateMeta = asRecord(candidate["meta"]);
+
+  return {
+    ...candidate,
+    days: payload["days"] ?? candidate["days"],
+    selected: payload["selected"] ?? candidate["selected"],
+    inrcySiteOwnership: payload["inrcySiteOwnership"] ?? candidate["inrcySiteOwnership"],
+    identities: { ...asRecord(candidate["identities"]), ...asRecord(payload["identities"]) },
+    sources: mergePreservedSources(candidate["sources"], payload["sources"]),
+    business: { ...asRecord(candidate["business"]), ...asRecord(payload["business"]) },
+    meta: {
+      ...candidateMeta,
+      ...currentMeta,
+      generatedAt: currentMeta["generatedAt"] ?? new Date().toISOString(),
+      snapshotDate: currentMeta["snapshotDate"] ?? candidateMeta["snapshotDate"] ?? null,
+      preservedCube: cube,
+      preservedFromGeneratedAt: candidateMeta["generatedAt"] ?? null,
+      preservedFromSnapshotDate: candidateMeta["snapshotDate"] ?? null,
+      preservedReason: "technical_refresh_failure",
+    },
+  };
+}
+
 
 type SiteSettings = {
   ga4?: { property_id?: string; measurement_id?: string };
@@ -330,7 +525,7 @@ if (!fresh) try {
       // Rehydrate all live connection flags to avoid stale/missing keys in cached payloads.
       try {
         const liveSources = await fetchLiveSourcesStatus();
-        payload["sources"] = { ...asRecord(payload["sources"]), ...liveSources };
+        payload["sources"] = mergeCachedSourcesWithLiveState(payload["sources"], liveSources);
       } catch {}
       return payload as OverviewPayload;
   }
@@ -355,7 +550,7 @@ if (!fresh) try {
     // Rehydrate all live connection flags to avoid stale/missing keys in legacy cached payloads.
     try {
       const liveSources = await fetchLiveSourcesStatus();
-      payload["sources"] = { ...asRecord(payload["sources"]), ...liveSources };
+      payload["sources"] = mergeCachedSourcesWithLiveState(payload["sources"], liveSources);
     } catch {}
     return payload as OverviewPayload;
   }
@@ -691,18 +886,18 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
 // LinkedIn: connected if an OAuth row exists.
     try {
-      const liRow = latestIntegrationAny("linkedin", "linkedin", "linkedin");
       sourcesStatus.linkedin.connected = channelStates.linkedin.connected;
 
       const includeLi = includeAll || includeSet.has("linkedin");
       if (!includeLi) {
         sourcesStatus.linkedin.metrics = null;
-      } else if (sourcesStatus.linkedin.connected && liRow["access_token_enc"] && !isExpired(liRow["expires_at"])) {
+      } else if (sourcesStatus.linkedin.connected) {
         try {
-          const token = tryDecryptToken(String(liRow["access_token_enc"]));
-          if (!token) throw new Error("La connexion LinkedIn a expiré ou n’est plus valide.");
-          const orgUrn = String(asRecord(liRow["meta"])["org_urn"] || "");
-          const authorUrn = String(liRow["resource_id"] || "");
+          const auth = await getLinkedInAccessToken({ userId });
+          const token = auth.accessToken;
+          if (!token) throw new Error(auth.error || "La connexion LinkedIn a expiré ou n’est plus valide.");
+          const orgUrn = auth.orgUrn || "";
+          const authorUrn = auth.authorUrn || "";
           const end = dateWindow.end;
           const start = dateWindow.start;
           if (authorUrn.startsWith("urn:li:person:")) {
@@ -814,61 +1009,68 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
     const generatedAt = new Date().toISOString();
 
-    const payload = {
+    const payload = await stabilizeOverviewPayload({
+      supabase,
+      userId,
       days,
-      selected: includeAll ? null : Array.from(includeSet),
-      inrcySiteOwnership,
-      identities: {
-        site_inrcy: {
-          label: channelStates.site_inrcy.url || null,
-          url: channelStates.site_inrcy.url || null,
+      includeRaw,
+      includeAll,
+      payload: {
+        days,
+        selected: includeAll ? null : Array.from(includeSet),
+        inrcySiteOwnership,
+        identities: {
+          site_inrcy: {
+            label: channelStates.site_inrcy.url || null,
+            url: channelStates.site_inrcy.url || null,
+          },
+          site_web: {
+            label: channelStates.site_web.url || null,
+            url: channelStates.site_web.url || null,
+          },
+          gmb: {
+            label: channelStates.gmb.resource_label || null,
+            url: null,
+          },
+          facebook: {
+            label: channelStates.facebook.resource_label || null,
+            url: channelStates.facebook.page_url || null,
+          },
+          instagram: {
+            label: channelStates.instagram.username ? `@${channelStates.instagram.username}` : null,
+            url: channelStates.instagram.profile_url || null,
+          },
+          linkedin: {
+            label: channelStates.linkedin.display_name || null,
+            url: channelStates.linkedin.profile_url || null,
+          },
         },
-        site_web: {
-          label: channelStates.site_web.url || null,
-          url: channelStates.site_web.url || null,
+        totals: {
+          users: totalUsers,
+          sessions: totalSessions,
+          pageviews: totalPageviews,
+          engagementRate,
+          avgSessionDuration,
+          clicks: totalClicks,
+          impressions: totalImpressions,
+          ctr,
         },
-        gmb: {
-          label: channelStates.gmb.resource_label || null,
-          url: null,
+        topPages,
+        channels,
+        topQueries,
+        business: {
+          sectorCategory: decodedBusinessSector.sectorCategory || null,
+          profession: decodedBusinessSector.profession || null,
         },
-        facebook: {
-          label: channelStates.facebook.resource_label || null,
-          url: channelStates.facebook.page_url || null,
-        },
-        instagram: {
-          label: channelStates.instagram.username ? `@${channelStates.instagram.username}` : null,
-          url: channelStates.instagram.profile_url || null,
-        },
-        linkedin: {
-          label: channelStates.linkedin.display_name || null,
-          url: channelStates.linkedin.profile_url || null,
+        sources: sourcesStatus,
+        note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook, Instagram, LinkedIn.",
+        meta: {
+          generatedAt,
+          snapshotDate: dateWindow.snapshotDate,
+          live: dateWindow.live,
         },
       },
-      totals: {
-        users: totalUsers,
-        sessions: totalSessions,
-        pageviews: totalPageviews,
-        engagementRate,
-        avgSessionDuration,
-        clicks: totalClicks,
-        impressions: totalImpressions,
-        ctr,
-      },
-      topPages,
-      channels,
-      topQueries,
-      business: {
-        sectorCategory: decodedBusinessSector.sectorCategory || null,
-        profession: decodedBusinessSector.profession || null,
-      },
-      sources: sourcesStatus,
-      note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook, Instagram, LinkedIn.",
-      meta: {
-        generatedAt,
-        snapshotDate: dateWindow.snapshotDate,
-        live: dateWindow.live,
-      },
-    };
+    });
 
     // cache write (best-effort)
     try {
