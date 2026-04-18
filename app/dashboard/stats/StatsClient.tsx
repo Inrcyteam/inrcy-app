@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import styles from "./stats.module.css";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -13,6 +13,8 @@ import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { readAccountCacheValue, removeAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently } from "@/lib/dailyStatsRefreshClient";
+
+const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 type Overview = {
   inrcySiteOwnership?: "none" | "sold" | "rented";
@@ -1339,6 +1341,51 @@ export default function StatsClient() {
   const lastServerCacheCheckAtRef = useRef(0);
   const serverCacheCheckPromiseRef = useRef<Promise<void> | null>(null);
 
+  useBrowserLayoutEffect(() => {
+    const cachedCube = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(period)));
+    const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
+
+    if (cachedCube?.overviews) {
+      periodCacheRef.current.set(period, cachedCube.overviews);
+      setDataByCube((prev) => {
+        const next: typeof prev = { ...prev };
+        for (const k of Object.keys(cachedCube.overviews) as CubeKey[]) {
+          next[k] = { ov: cachedCube.overviews[k] ?? null, loading: false, error: undefined };
+        }
+        return next;
+      });
+    }
+
+    if (cachedSummary) {
+      const byCubePartial = cachedSummary.byCube || {};
+      const estimatedByCubePartial = cachedSummary.estimatedByCube || {};
+      setSummaryOpp({
+        loading: false,
+        total: safeNum(cachedSummary.total),
+        byCube: {
+          site_inrcy: safeNum(byCubePartial.site_inrcy),
+          site_web: safeNum(byCubePartial.site_web),
+          gmb: safeNum(byCubePartial.gmb),
+          facebook: safeNum(byCubePartial.facebook),
+          instagram: safeNum(byCubePartial.instagram),
+          linkedin: safeNum(byCubePartial.linkedin),
+        },
+      });
+      setSummaryProfile({
+        lead_conversion_rate: safeNum(cachedSummary.profile?.lead_conversion_rate),
+        avg_basket: safeNum(cachedSummary.profile?.avg_basket),
+      });
+      setSummaryEstimatedByCube({
+        site_inrcy: safeNum(estimatedByCubePartial.site_inrcy),
+        site_web: safeNum(estimatedByCubePartial.site_web),
+        gmb: safeNum(estimatedByCubePartial.gmb),
+        facebook: safeNum(estimatedByCubePartial.facebook),
+        instagram: safeNum(estimatedByCubePartial.instagram),
+        linkedin: safeNum(estimatedByCubePartial.linkedin),
+      });
+    }
+  }, [period]);
+
   const clearCachedSnapshots = useCallback(() => {
     periodCacheRef.current.clear();
     try {
@@ -1928,6 +1975,7 @@ const provenance = buildProvenance(key, ov);
 
   const centralPotential30 = summaryOpp.total;
   const centralByCube = summaryOpp.byCube;
+  const summaryDisplayReady = !summaryOpp.loading;
 
   const computedEstimatedByCube = useMemo<Record<CubeKey, number>>(() => {
     const rate = Math.max(0, safeNum(summaryProfile.lead_conversion_rate)) / 100;
@@ -2098,9 +2146,11 @@ const provenance = buildProvenance(key, ov);
         <div className={styles.summaryMain}>
           <span
             className={styles.summaryValueBubble}
-            aria-label={`+${fmtInt(centralPotential30)} opportunités à activer pour générer + de clients et + de CA potentiel`}
+            aria-label={summaryDisplayReady
+              ? `+${fmtInt(centralPotential30)} opportunités à activer pour générer + de clients et + de CA potentiel`
+              : "Opportunités en cours de chargement"}
           >
-            <span className={styles.summaryValue}>+{fmtInt(centralPotential30)}</span>
+            <span className={styles.summaryValue}>{summaryDisplayReady ? `+${fmtInt(centralPotential30)}` : "—"}</span>
           </span>
           <span className={styles.summaryLabel}>opportunités à activer pour générer + de clients et + de CA potentiel</span>
           <span className={styles.summarySub}>projection sur 30 jours si actions menées</span>
@@ -2108,27 +2158,27 @@ const provenance = buildProvenance(key, ov);
         <div className={styles.summaryModules}>
           <button type="button" className={styles.summaryItem} onClick={() => scrollTo("site_inrcy")}>
             <span>Site iNrCy</span>
-            <b>+{fmtInt(centralByCube.site_inrcy)}</b>
+            <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.site_inrcy)}` : "—"}</b>
           </button>
           <button type="button" className={styles.summaryItem} onClick={() => scrollTo("site_web")}>
             <span>Site Web</span>
-            <b>+{fmtInt(centralByCube.site_web)}</b>
+            <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.site_web)}` : "—"}</b>
           </button>
           <button type="button" className={styles.summaryItem} onClick={() => scrollTo("gmb")}>
             <span>Google Business</span>
-            <b>+{fmtInt(centralByCube.gmb)}</b>
+            <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.gmb)}` : "—"}</b>
           </button>
           <button type="button" className={styles.summaryItem} onClick={() => scrollTo("facebook")}>
             <span>Facebook</span>
-            <b>+{fmtInt(centralByCube.facebook)}</b>
+            <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.facebook)}` : "—"}</b>
           </button>
           <button type="button" className={styles.summaryItem} onClick={() => scrollTo("instagram")}>
             <span>Instagram</span>
-            <b>+{fmtInt(centralByCube.instagram)}</b>
+            <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.instagram)}` : "—"}</b>
           </button>
           <button type="button" className={styles.summaryItem} onClick={() => scrollTo("linkedin")}>
             <span>LinkedIn</span>
-            <b>+{fmtInt(centralByCube.linkedin)}</b>
+            <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.linkedin)}` : "—"}</b>
           </button>
         </div>
         <div className={styles.summaryActionsWrap}>

@@ -2,7 +2,7 @@
 
 import styles from "./dashboard.module.css";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, useCallback, useMemo, type TouchEvent as ReactTouchEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type TouchEvent as ReactTouchEvent } from "react";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import Link from "next/link";
 import SettingsDrawer from "./SettingsDrawer";
@@ -43,6 +43,8 @@ import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants
 import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
 import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, Module, ModuleAction, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
 
+
+const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 
 type StatsWarmPeriod = 7 | 14 | 30 | 60;
@@ -97,6 +99,16 @@ function readGeneratorCache(): { syncedAt: number; payload: any | null; snapshot
       };
     }
     return { syncedAt: 0, payload: parsed, snapshotDate: typeof parsed?.meta?.snapshotDate === "string" ? parsed.meta.snapshotDate : null };
+  } catch {
+    return null;
+  }
+}
+
+function readCachedOppTotal() {
+  try {
+    const raw = readUiCacheValue("inrcy_opp30_total_v1");
+    const n = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(n) ? n : null;
   } catch {
     return null;
   }
@@ -239,7 +251,6 @@ export default function DashboardClient() {
   // ✅ Déconnexion Supabase + retour /login
   const handleLogout = async () => {
     const supabase = createClient();
-    purgeAllBrowserAccountCaches();
     setActiveBrowserUserId(null);
     const { error } = await (supabase.auth.signOut as any)({ scope: "local" }).catch(() => ({ error: null as { message?: string } | null }));
     if (error) {
@@ -271,6 +282,28 @@ export default function DashboardClient() {
     leads: { today: number; week: number; month: number };
     estimatedValue: number;
   }>(null);
+  const [oppTotal, setOppTotal] = useState<number | null>(null);
+
+  useBrowserLayoutEffect(() => {
+    try {
+      const cached = readGeneratorCache();
+      const payload = cached?.payload;
+      if (payload?.leads) {
+        setKpis(payload);
+        const oppMonth = Number(payload?.details?.opportunities?.month);
+        if (Number.isFinite(oppMonth)) {
+          setOppTotal(oppMonth);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    const cachedOppTotal = readCachedOppTotal();
+    if (cachedOppTotal !== null) {
+      setOppTotal((prev) => prev ?? cachedOppTotal);
+    }
+  }, []);
 
   const refreshNotifications = useCallback(async () => {
     const requestSeq = ++notificationsRequestSeqRef.current;
@@ -1421,21 +1454,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
   }, [refreshNotifications, refreshUiBalance, triggerGeneratorRefresh]);
-
-  // ✅ Opportunités activables (iNrStats) — lues directement depuis /api/metrics/summary.
-  const [oppTotal, setOppTotal] = useState<number | null>(null);
-
-
-  useEffect(() => {
-    try {
-      const raw = readUiCacheValue("inrcy_opp30_total_v1");
-      const n = raw ? Number(raw) : NaN;
-      if (Number.isFinite(n)) setOppTotal(n);
-    } catch {
-      // ignore
-    }
-  }, []);
-
 
   // ✅ Auto-refresh Générateur + statuts modules dès qu'un module se connecte / se déconnecte
   // On écoute les changements Postgres sur les tables qui impactent:
@@ -3078,12 +3096,12 @@ const checkActivity = useCallback(async () => {
     };
   }, [dailyBootReady, syncFromServerCacheIfNeeded]);
 
-  const leadsToday = kpis?.leads?.today ?? 0;
-  const leadsWeek = kpis?.leads?.week ?? 0;
-  const leadsMonth = kpis?.leads?.month ?? 0;
+  const leadsToday = typeof kpis?.leads?.today === "number" ? kpis.leads.today : null;
+  const leadsWeek = typeof kpis?.leads?.week === "number" ? kpis.leads.week : null;
+  const leadsMonth = typeof kpis?.leads?.month === "number" ? kpis.leads.month : null;
   const generatorIsActive = inertiaSnapshot.connectedCount > 0;
 
-  const estimatedValue = kpis?.estimatedValue ?? 0;
+  const estimatedValue = typeof kpis?.estimatedValue === "number" ? kpis.estimatedValue : null;
 
   // helper render action
   const renderAction = (a: ModuleAction) => {
@@ -3984,7 +4002,7 @@ const checkActivity = useCallback(async () => {
             <div className={`${styles.metricCard} ${styles.metricCa}`}>
               <div className={styles.metricLabel}>CA POTENTIEL 30 jours</div>
               <div className={styles.metricValue}>
-                {estimatedValue > 0 ? `${estimatedValue.toLocaleString("fr-FR")} €` : "0 €"}
+                {estimatedValue === null ? "—" : `${estimatedValue.toLocaleString("fr-FR")} €`}
               </div>
               <div className={styles.metricHint}>Basé sur profil + opportunités</div>
             </div>
@@ -4018,11 +4036,11 @@ const checkActivity = useCallback(async () => {
               <div className={styles.metricLabel}>Demandes captées</div>
               <div className={styles.metricSplit}>
                 <div className={styles.metricSplitItem}>
-                  <div className={styles.metricSplitValue}>{leadsWeek}</div>
+                  <div className={styles.metricSplitValue}>{leadsWeek === null ? "—" : leadsWeek}</div>
                   <div className={styles.metricSplitLabel}>7 derniers jours</div>
                 </div>
                 <div className={styles.metricSplitItem}>
-                  <div className={styles.metricSplitValue}>{leadsMonth}</div>
+                  <div className={styles.metricSplitValue}>{leadsMonth === null ? "—" : leadsMonth}</div>
                   <div className={styles.metricSplitLabel}>30 derniers jours</div>
                 </div>
               </div>
