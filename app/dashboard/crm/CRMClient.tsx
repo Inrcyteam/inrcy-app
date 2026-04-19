@@ -233,6 +233,26 @@ function normalizeImportedRow(row: any) {
 }
 
 
+function sanitizeDepartmentFilter(value: string) {
+  const cleaned = String(value ?? "")
+    .replace(/[^0-9A-Za-z]/g, "")
+    .toUpperCase();
+
+  if (/^(97|98)\d/.test(cleaned)) return cleaned.slice(0, 3);
+  return cleaned.slice(0, 2);
+}
+
+function getDepartmentCode(postalCode?: string) {
+  const raw = String(postalCode ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+
+  if (!raw) return "";
+  if (/^(97|98)\d/.test(raw)) return raw.slice(0, 3);
+  return raw.slice(0, 2);
+}
+
 function buildDisplayName(c: Pick<CrmContact, "last_name" | "first_name" | "company_name">) {
   const left = [c.last_name ?? "", c.first_name ?? ""].join(" ").replace(/\s+/g, " ").trim();
   const right = (c.company_name ?? "").trim();
@@ -335,6 +355,8 @@ export default function CRMClient() {
   const headerSearchRef = useRef<HTMLDivElement | null>(null);
   const headerSearchInputRef = useRef<HTMLInputElement | null>(null);
   const [headerSearchOpen, setHeaderSearchOpen] = useState(false);
+  const desktopFiltersRef = useRef<HTMLDivElement | null>(null);
+  const [desktopFiltersOpen, setDesktopFiltersOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<Category>("");
   const [typeFilter, setTypeFilter] = useState<ContactType>("");
   const [departmentFilter, setDepartmentFilter] = useState("");
@@ -573,6 +595,18 @@ export default function CRMClient() {
   }, [headerSearchOpen]);
 
   useEffect(() => {
+    if (!desktopFiltersOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const el = desktopFiltersRef.current;
+      if (!el) return;
+      if (el.contains(e.target as any)) return;
+      setDesktopFiltersOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [desktopFiltersOpen]);
+
+  useEffect(() => {
     if (!headerSearchOpen) return;
     const timer = window.setTimeout(() => {
       headerSearchInputRef.current?.focus();
@@ -586,6 +620,14 @@ export default function CRMClient() {
     setHeaderSearchOpen(false);
     setMobileFiltersOpen(false);
     setExpandedMobileContactId(null);
+  }, [isResponsive]);
+
+  useEffect(() => {
+    if (isResponsive) {
+      setDesktopFiltersOpen(false);
+    } else {
+      setHeaderSearchOpen(false);
+    }
   }, [isResponsive]);
 
   const selectedContacts = useMemo(() => {
@@ -721,30 +763,46 @@ export default function CRMClient() {
     });
   };
 
-  const toggleSelectAllVisible = () => {
+  const clearSelection = useCallback(() => {
+    setSelectedContactIds(new Set());
+    setSelectedContactsById({});
+  }, []);
+
+  const selectAllVisible = useCallback(() => {
     setSelectedContactIds((prev) => {
       const next = new Set<string>(prev);
-      if (allVisibleSelected) {
-        visibleContacts.forEach((contact) => next.delete(contact.id));
-      } else {
-        visibleContacts.forEach((contact) => next.add(contact.id));
-      }
+      visibleContacts.forEach((contact) => next.add(contact.id));
       return next;
     });
 
     setSelectedContactsById((prev) => {
       const next = { ...prev };
-      if (allVisibleSelected) {
+      visibleContacts.forEach((contact) => {
+        next[contact.id] = contact;
+      });
+      return next;
+    });
+  }, [visibleContacts]);
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedContactIds((prev) => {
+        const next = new Set<string>(prev);
+        visibleContacts.forEach((contact) => next.delete(contact.id));
+        return next;
+      });
+
+      setSelectedContactsById((prev) => {
+        const next = { ...prev };
         visibleContacts.forEach((contact) => {
           delete next[contact.id];
         });
-      } else {
-        visibleContacts.forEach((contact) => {
-          next[contact.id] = contact;
-        });
-      }
-      return next;
-    });
+        return next;
+      });
+      return;
+    }
+
+    selectAllVisible();
   };
 
 
@@ -1257,10 +1315,12 @@ const exportExcel = async () => {
       }}
     >
       <header className={styles.header}>
-        <div className={styles.titleWrap}>
-          <img src="/inrcrm-logo.png" alt="iNr’CRM" style={{ width: 154, height: 64, display: "block" }} />
-
-          <p className={styles.subInline}>La centrale de tous vos contacts</p>
+        <div className={styles.titleBlock}>
+          <div className={styles.titleWrap}>
+            <img src="/inrcrm-logo.png" alt="iNr’CRM" style={{ width: 154, height: 64, display: "block" }} />
+            {!isResponsive ? <p className={styles.subInline}>La centrale de tous vos contacts</p> : null}
+          </div>
+          {isResponsive ? <p className={styles.mobileTagline}>La centrale de tous vos contacts</p> : null}
         </div>
 
         <div className={styles.headerRight}>
@@ -1268,25 +1328,44 @@ const exportExcel = async () => {
 
           {isResponsive ? (
             <>
-              <button
-                type="button"
-                className={`${styles.headerIconBtn} ${styles.addBtn}`}
-                onClick={() => {
-                  setStatsOpen(false);
-                  startNew();
-                  setAddOpen(true);
-                }}
-                title="Ajouter un contact"
-                aria-label="Ajouter un contact"
-              >
-                +
-              </button>
+              <div className={styles.headerSearchWrap} ref={headerSearchRef}>
+                <button
+                  type="button"
+                  className={`${styles.headerIconBtn} ${styles.searchBtn}`.trim()}
+                  onClick={() => {
+                    setStatsOpen(false);
+                    setHeaderSearchOpen((prev) => !prev);
+                  }}
+                  aria-expanded={headerSearchOpen ? "true" : "false"}
+                  aria-label="Rechercher un contact"
+                  title="Rechercher"
+                >
+                  🔍
+                </button>
+
+                {headerSearchOpen ? (
+                  <div className={styles.headerSearchDropdown}>
+                    <div className={styles.searchWrap}>
+                      <input
+                        ref={headerSearchInputRef}
+                        className={`${styles.search} ${styles.headerSearchActive}`.trim()}
+                        placeholder="Rechercher un contact..."
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
 
               <div className={styles.statsWrap} ref={statsRef}>
                 <button
                   type="button"
                   className={styles.headerIconBtn}
-                  onClick={() => setStatsOpen((v) => !v)}
+                  onClick={() => {
+                    setHeaderSearchOpen(false);
+                    setStatsOpen((v) => !v);
+                  }}
                   aria-expanded={statsOpen ? "true" : "false"}
                   aria-label="Ouvrir le menu CRM"
                   title="Menu CRM"
@@ -1299,6 +1378,18 @@ const exportExcel = async () => {
                     <div className={styles.statsTitle}>Menu CRM</div>
 
                     <div className={styles.mobileMenuActions}>
+                      <button
+                        className={styles.mobileMenuItem}
+                        type="button"
+                        onClick={() => {
+                          setStatsOpen(false);
+                          startNew();
+                          setAddOpen(true);
+                        }}
+                        disabled={saving}
+                      >
+                        Ajouter un contact
+                      </button>
                       <button
                         className={styles.mobileMenuItem}
                         type="button"
@@ -1342,16 +1433,6 @@ const exportExcel = async () => {
                       >
                         Aide
                       </button>
-                      <button
-                        className={styles.mobileMenuItem}
-                        type="button"
-                        onClick={() => {
-                          setStatsOpen(false);
-                          router.push("/dashboard");
-                        }}
-                      >
-                        Fermer
-                      </button>
                     </div>
 
                     <div className={styles.mobileMenuStats}>
@@ -1364,6 +1445,18 @@ const exportExcel = async () => {
                     </div>
                   </div>
                 ) : null}
+              </div>
+
+              <div className={styles.closeWrap}>
+                <button
+                  type="button"
+                  className={styles.backBtn}
+                  onClick={() => router.push("/dashboard")}
+                  aria-label="Fermer"
+                  title="Fermer"
+                >
+                  <span className={styles.closeIcon}>✕</span>
+                </button>
               </div>
             </>
           ) : (
@@ -1857,41 +1950,59 @@ const exportExcel = async () => {
         {success ? <div className={styles.success}>{success}</div> : null}
 
         <div className={styles.secondaryToolbar}>
-          <div className={styles.selectionMeta}>
-            {selectedContactIds.size > 0 ? `${selectedContactIds.size} contact${selectedContactIds.size > 1 ? "s" : ""} sélectionné${selectedContactIds.size > 1 ? "s" : ""}` : "Aucune sélection"}
-          </div>
+          {!isResponsive ? (
+            <div className={styles.selectionMeta}>
+              {selectedContactIds.size > 0 ? `${selectedContactIds.size} contact${selectedContactIds.size > 1 ? "s" : ""} sélectionné${selectedContactIds.size > 1 ? "s" : ""}` : "Aucune sélection"}
+            </div>
+          ) : null}
 
-          <div className={styles.bulkActions}>
-            <button
-              aria-label="Désélectionner"
-              className={styles.ghostBtn}
-              type="button"
-              onClick={() => {
-                setSelectedContactIds(new Set());
-                setSelectedContactsById({});
-              }}
-              disabled={selectedContactIds.size === 0 || saving}
-              title={selectedContactIds.size === 0 ? "Aucun contact sélectionné" : "Vider la sélection"}
-            >
-              Désélectionner
-            </button>
+          <div className={`${styles.bulkActions} ${isResponsive ? styles.mobileBulkActions : ""}`.trim()}>
+            {isResponsive ? (
+              <>
+                <button
+                  aria-label="Tout sélectionner"
+                  className={`${styles.ghostBtn} ${styles.iconOnlyBtn}`.trim()}
+                  type="button"
+                  onClick={selectAllVisible}
+                  disabled={visibleContacts.length === 0 || saving}
+                  title="Tout sélectionner"
+                >
+                  ☑
+                </button>
 
-            <button
-              aria-label="Supprimer"
-              className={`${styles.smallBtn} ${styles.dangerBtn}`}
-              type="button"
-              onClick={removeSelected}
-              disabled={selectedContactIds.size === 0 || saving}
-              title={selectedContactIds.size === 0 ? "Sélectionne 1 ou plusieurs contacts" : `Supprimer ${selectedContactIds.size} contact(s)`}
-            >
-              🗑️
-            </button>
+                <button
+                  aria-label="Désélectionner"
+                  className={`${styles.ghostBtn} ${styles.iconOnlyBtn}`.trim()}
+                  type="button"
+                  onClick={clearSelection}
+                  disabled={selectedContactIds.size === 0 || saving}
+                  title={selectedContactIds.size === 0 ? "Aucun contact sélectionné" : "Désélectionner"}
+                >
+                  ⊟
+                </button>
+              </>
+            ) : (
+              <button
+                aria-label="Désélectionner"
+                className={styles.ghostBtn}
+                type="button"
+                onClick={clearSelection}
+                disabled={selectedContactIds.size === 0 || saving}
+                title={selectedContactIds.size === 0 ? "Aucun contact sélectionné" : "Vider la sélection"}
+              >
+                Désélectionner
+              </button>
+            )}
 
             <div className={styles.actionsWrap} ref={actionsRef}>
               <button
-                className={styles.actionsBtn}
+                className={`${styles.actionsBtn} ${isResponsive ? styles.mobileActionsBtn : ""}`.trim()}
                 type="button"
-                onClick={() => setActionsOpen((v) => !v)}
+                onClick={() => {
+                  if (isResponsive) setMobileFiltersOpen(false);
+                  setDesktopFiltersOpen(false);
+                  setActionsOpen((v) => !v);
+                }}
                 disabled={(actionEmails.length === 0 && !primaryContact) || saving}
                 aria-expanded={actionsOpen ? "true" : "false"}
                 title={
@@ -1964,7 +2075,110 @@ const exportExcel = async () => {
                 </div>
               ) : null}
             </div>
+
+            {isResponsive ? (
+              <button
+                type="button"
+                className={`${styles.ghostBtn} ${styles.mobileFilterActionBtn}`.trim()}
+                onClick={() => {
+                  setActionsOpen(false);
+                  setMobileFiltersOpen((prev) => !prev);
+                }}
+                aria-expanded={mobileFiltersOpen ? "true" : "false"}
+              >
+                Filtres{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ""}
+              </button>
+            ) : null}
+
+            <button
+              aria-label="Supprimer"
+              className={`${styles.smallBtn} ${styles.dangerBtn} ${isResponsive ? styles.mobileDeleteBtn : ""}`.trim()}
+              type="button"
+              onClick={removeSelected}
+              disabled={selectedContactIds.size === 0 || saving}
+              title={selectedContactIds.size === 0 ? "Sélectionne 1 ou plusieurs contacts" : `Supprimer ${selectedContactIds.size} contact(s)`}
+            >
+              🗑️
+            </button>
           </div>
+
+          {!isResponsive ? (
+            <div className={styles.filtersWrap} ref={desktopFiltersRef}>
+              <button
+                type="button"
+                className={styles.ghostBtn}
+                onClick={() => {
+                  setActionsOpen(false);
+                  setDesktopFiltersOpen((prev) => !prev);
+                }}
+                aria-expanded={desktopFiltersOpen ? "true" : "false"}
+              >
+                Filtres{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ""}
+              </button>
+
+              {desktopFiltersOpen ? (
+                <div className={styles.desktopFiltersPanel}>
+                  <label className={styles.label}>
+                    <span>Catégorie</span>
+                    <select className={styles.select} value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as Category)}>
+                      <option value="">Toutes</option>
+                      <option value="particulier">Particulier</option>
+                      <option value="professionnel">Professionnel</option>
+                      <option value="collectivite_publique">Institution</option>
+                    </select>
+                  </label>
+
+                  <label className={styles.label}>
+                    <span>Type</span>
+                    <select className={styles.select} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ContactType)}>
+                      <option value="">Tous</option>
+                      <option value="client">Client</option>
+                      <option value="prospect">Prospect</option>
+                      <option value="fournisseur">Fournisseur</option>
+                      <option value="partenaire">Partenaire</option>
+                      <option value="autre">Autre</option>
+                    </select>
+                  </label>
+
+                  <label className={styles.label}>
+                    <span>Département</span>
+                    <input
+                      className={styles.input}
+                      inputMode="numeric"
+                      placeholder="62"
+                      maxLength={3}
+                      value={departmentFilter}
+                      onChange={(e) => setDepartmentFilter(sanitizeDepartmentFilter(e.target.value))}
+                    />
+                  </label>
+
+                  <label className={`${styles.label} ${styles.desktopImportantToggle}`.trim()}>
+                    <span>Important</span>
+                    <button
+                      type="button"
+                      className={`${styles.ghostBtn} ${importantOnly ? styles.mobileImportantActive : ""}`.trim()}
+                      onClick={() => setImportantOnly((prev) => !prev)}
+                    >
+                      {importantOnly ? "Uniquement les importants" : "Tous les contacts"}
+                    </button>
+                  </label>
+
+                  <button
+                    type="button"
+                    className={styles.mobileFiltersReset}
+                    onClick={() => {
+                      setCategoryFilter("");
+                      setTypeFilter("");
+                      setDepartmentFilter("");
+                      setImportantOnly(false);
+                    }}
+                  >
+                    Réinitialiser
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {!isResponsive ? (
             <div className={styles.tableSearchWrap}>
@@ -2002,23 +2216,6 @@ const exportExcel = async () => {
 
         {isResponsive ? (
           <div className={styles.mobileControls}>
-            <div className={styles.mobileSearchRow}>
-              <input
-                className={`${styles.search} ${styles.mobileSearchInput}`.trim()}
-                placeholder="Rechercher un contact..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <button
-                type="button"
-                className={`${styles.ghostBtn} ${styles.mobileFiltersToggle}`.trim()}
-                onClick={() => setMobileFiltersOpen((prev) => !prev)}
-                aria-expanded={mobileFiltersOpen ? "true" : "false"}
-              >
-                Filtres{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ""}
-              </button>
-            </div>
-
             {activeFilterChips.length > 0 ? (
               <div className={styles.mobileFilterChips}>
                 {activeFilterChips.map((chip) => (
@@ -2071,7 +2268,7 @@ const exportExcel = async () => {
                     placeholder="62"
                     maxLength={3}
                     value={departmentFilter}
-                    onChange={(e) => setDepartmentFilter(e.target.value.replace(/[^0-9A-Za-z]/g, "").slice(0, 3).toUpperCase())}
+                    onChange={(e) => setDepartmentFilter(sanitizeDepartmentFilter(e.target.value))}
                   />
                 </label>
 
@@ -2106,20 +2303,41 @@ const exportExcel = async () => {
                   const isExpanded = expandedMobileContactId === c.id;
                   return (
                     <div key={c.id} className={styles.mobileContactBlock}>
-                      <button
-                        type="button"
-                        className={`${styles.mobileListRow} ${isExpanded ? styles.mobileListRowOpen : ""}`.trim()}
-                        onClick={() => setExpandedMobileContactId((prev) => (prev === c.id ? null : c.id))}
-                        aria-expanded={isExpanded ? "true" : "false"}
-                      >
-                        <span className={`${styles.mobileListName} ${c.important ? styles.nameImportant : ""}`.trim()}>
-                          {buildDisplayName(c) || "Contact sans nom"}
-                        </span>
-                        <span className={styles.mobileListIcons}>
-                          {c.important ? <span className={styles.starStatic}>★</span> : null}
-                          <span className={styles.mobileChevron}>{isExpanded ? "−" : "+"}</span>
-                        </span>
-                      </button>
+                      <div className={`${styles.mobileListRow} ${isExpanded ? styles.mobileListRowOpen : ""}`.trim()}>
+                        <label
+                          className={styles.mobileCheckboxWrap}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            className={styles.checkbox}
+                            checked={selectedContactIds.has(c.id)}
+                            onChange={() => toggleSelect(c.id)}
+                            aria-label={`Sélectionner ${buildDisplayName(c) || "ce contact"}`}
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          className={styles.mobileListMain}
+                          onClick={() => setExpandedMobileContactId((prev) => (prev === c.id ? null : c.id))}
+                          aria-expanded={isExpanded ? "true" : "false"}
+                        >
+                          <span className={`${styles.mobileListName} ${c.important ? styles.nameImportant : ""}`.trim()}>
+                            {buildDisplayName(c) || "Contact sans nom"}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          className={styles.mobileExpandBtn}
+                          onClick={() => setExpandedMobileContactId((prev) => (prev === c.id ? null : c.id))}
+                          aria-label={isExpanded ? "Réduire le détail" : "Afficher le détail"}
+                          aria-expanded={isExpanded ? "true" : "false"}
+                        >
+                          {isExpanded ? "−" : "+"}
+                        </button>
+                      </div>
 
                       {isExpanded ? (
                         <div className={styles.mobileRowDetails}>
@@ -2142,7 +2360,7 @@ const exportExcel = async () => {
                             </div>
                             <div>
                               <span className={styles.mobileDetailLabel}>Département</span>
-                              <strong>{(c.postal_code || "").slice(0, 3) || "—"}</strong>
+                              <strong>{getDepartmentCode(c.postal_code) || "—"}</strong>
                             </div>
                             <div>
                               <span className={styles.mobileDetailLabel}>Adresse</span>

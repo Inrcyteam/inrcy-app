@@ -50,11 +50,13 @@ function cleanString(v: unknown) {
 }
 
 function cleanDepartment(value: string | null) {
-  return (value ?? "")
+  const cleaned = (value ?? "")
     .trim()
     .replace(/\s+/g, "")
-    .slice(0, 3)
     .toUpperCase();
+
+  if (/^(97|98)\d/.test(cleaned)) return cleaned.slice(0, 3);
+  return cleaned.slice(0, 2);
 }
 
 function parseImportantParam(value: string | null) {
