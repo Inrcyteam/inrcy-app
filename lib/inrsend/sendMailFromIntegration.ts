@@ -12,6 +12,8 @@ export type SendMailBinaryAttachment = {
   filename: string;
   mimeType?: string;
   content: Buffer;
+  inline?: boolean;
+  cid?: string;
 };
 
 function asRecord(v: unknown): Record<string, unknown> {
@@ -31,16 +33,12 @@ function isExpired(expiresAt?: string | null, skewSeconds = 60) {
   return t <= Date.now() + skewSeconds * 1000;
 }
 
-function toBase64Url(str: string) {
-  return Buffer.from(str, "utf8")
+function toBase64Url(value: Buffer | string) {
+  return (Buffer.isBuffer(value) ? value : Buffer.from(value, "utf8"))
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
-}
-
-function wrap76(b64: string) {
-  return b64.replace(/(.{76})/g, "$1\r\n");
 }
 
 async function refreshGoogleAccessToken(refreshToken: string) {
@@ -98,7 +96,7 @@ async function refreshMicrosoftAccessToken(refreshToken: string, scope?: string 
   return { ok: res.ok, status: res.status, data };
 }
 
-function buildGmailRawMessage(opts: {
+async function buildGmailRawMessage(opts: {
   from: string;
   to: string;
   subject: string;
@@ -106,89 +104,30 @@ function buildGmailRawMessage(opts: {
   html: string;
   attachments?: SendMailBinaryAttachment[];
 }) {
-  const text = opts.text ?? "";
-  const html = opts.html ?? "";
-  const atts = opts.attachments ?? [];
+  const rawMessage = await new Promise<Buffer>((resolve, reject) => {
+    const composer = new MailComposer({
+      from: opts.from || undefined,
+      to: opts.to,
+      subject: opts.subject,
+      text: opts.text ?? "",
+      html: opts.html ?? "",
+      date: new Date(),
+      attachments: (opts.attachments ?? []).map((attachment) => ({
+        filename: attachment.filename || "piece-jointe",
+        content: attachment.content,
+        contentType: attachment.mimeType || "application/octet-stream",
+        cid: attachment.inline ? attachment.cid : undefined,
+        contentDisposition: attachment.inline ? "inline" : "attachment",
+      })),
+    });
 
-  const headers = [
-    opts.from ? `From: ${opts.from}` : "",
-    `To: ${opts.to}`,
-    `Subject: ${opts.subject}`,
-    `Date: ${new Date().toUTCString()}`,
-    "MIME-Version: 1.0",
-  ].filter(Boolean);
+    composer.compile().build((err: unknown, message: Buffer) => {
+      if (err) return reject(err);
+      resolve(message);
+    });
+  });
 
-  if (atts.length === 0) {
-    const altBoundary = `inr_alt_${Date.now()}`;
-    const parts = [
-      `--${altBoundary}`,
-      'Content-Type: text/plain; charset="UTF-8"',
-      "Content-Transfer-Encoding: 7bit",
-      "",
-      text || "",
-      "",
-      `--${altBoundary}`,
-      'Content-Type: text/html; charset="UTF-8"',
-      "Content-Transfer-Encoding: 7bit",
-      "",
-      html || (text ? `<pre>${text}</pre>` : ""),
-      "",
-      `--${altBoundary}--`,
-      "",
-    ].join("\r\n");
-
-    return toBase64Url(
-      [...headers, `Content-Type: multipart/alternative; boundary=\"${altBoundary}\"`].join("\r\n") + "\r\n\r\n" + parts
-    );
-  }
-
-  const mixedBoundary = `inr_mixed_${Date.now()}`;
-  const altBoundary = `inr_alt_${Date.now()}`;
-  const firstPart = [
-    `--${mixedBoundary}`,
-    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
-    "",
-    `--${altBoundary}`,
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: 7bit",
-    "",
-    text || "",
-    "",
-    `--${altBoundary}`,
-    'Content-Type: text/html; charset="UTF-8"',
-    "Content-Transfer-Encoding: 7bit",
-    "",
-    html || (text ? `<pre>${text}</pre>` : ""),
-    "",
-    `--${altBoundary}--`,
-    "",
-  ].join("\r\n");
-
-  const attachmentParts = atts
-    .map((attachment) => {
-      const filename = attachment.filename || "piece-jointe";
-      const mimeType = attachment.mimeType || "application/octet-stream";
-      const b64 = attachment.content.toString("base64");
-      return [
-        `--${mixedBoundary}`,
-        `Content-Type: ${mimeType}; name="${filename}"`,
-        "Content-Transfer-Encoding: base64",
-        `Content-Disposition: attachment; filename="${filename}"`,
-        "",
-        wrap76(b64),
-        "",
-      ].join("\r\n");
-    })
-    .join("\r\n");
-
-  const raw =
-    [...headers, `Content-Type: multipart/mixed; boundary=\"${mixedBoundary}\"`].join("\r\n") +
-    "\r\n\r\n" +
-    firstPart +
-    attachmentParts +
-    `\r\n--${mixedBoundary}--\r\n`;
-
-  return toBase64Url(raw);
+  return toBase64Url(rawMessage);
 }
 
 async function sendViaGmail(
@@ -215,7 +154,7 @@ async function sendViaGmail(
   }
 
   const from = asString(account.account_email) || "";
-  const raw = buildGmailRawMessage({ from, to, subject, text, html, attachments });
+  const raw = await buildGmailRawMessage({ from, to, subject, text, html, attachments });
   let sendRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
@@ -280,6 +219,7 @@ async function sendViaMicrosoft(
     name: attachment.filename || "piece-jointe",
     contentType: attachment.mimeType || "application/octet-stream",
     contentBytes: attachment.content.toString("base64"),
+    ...(attachment.inline ? { isInline: true, contentId: attachment.cid || attachment.filename || "inline-asset" } : {}),
   }));
 
   const graphRes = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
@@ -351,6 +291,8 @@ async function sendViaImap(
       filename: attachment.filename || "piece-jointe",
       content: attachment.content,
       contentType: attachment.mimeType || "application/octet-stream",
+      cid: attachment.inline ? attachment.cid : undefined,
+      contentDisposition: attachment.inline ? "inline" : "attachment",
     })),
   });
 
@@ -367,6 +309,8 @@ async function sendViaImap(
           filename: attachment.filename || "piece-jointe",
           content: attachment.content,
           contentType: attachment.mimeType || "application/octet-stream",
+          cid: attachment.inline ? attachment.cid : undefined,
+          contentDisposition: attachment.inline ? "inline" : "attachment",
         })),
       });
       mc.compile().build((err: unknown, message: Buffer) => {

@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
@@ -50,18 +52,59 @@ function asNumber(value: unknown, fallback: number) {
 const AGENDA_TIMEZONE = "Europe/Paris";
 const APP_ORIGIN = optionalEnv("NEXT_PUBLIC_SITE_URL", optionalEnv("NEXT_PUBLIC_APP_URL", "https://app.inrcy.com")).replace(/\/$/, "");
 const AGENDA_DASHBOARD_URL = `${APP_ORIGIN}/dashboard/agenda`;
+const INR_CALENDAR_LOGO_CID = "inrcalendar-logo@inrcy";
+const INRCY_LOGO_CID = "inrcy-logo@inrcy";
+
+type InlineMailAttachment = {
+  filename: string;
+  mimeType?: string;
+  content: Buffer;
+  inline?: boolean;
+  cid?: string;
+};
+
 const EMAIL_LOGO_DIMENSIONS = {
   calendar: { width: 188, height: 71 },
   inrcy: { width: 108, height: 41 },
 } as const;
 
-function publicAssetUrl(assetPath: string) {
-  const normalized = assetPath.startsWith("/") ? assetPath : `/${assetPath}`;
-  return `${APP_ORIGIN}${normalized}`;
-}
+const REMINDER_INLINE_ATTACHMENT_SPECS = [
+  {
+    filename: "inrcalendar-logo-email.png",
+    mimeType: "image/png",
+    cid: INR_CALENDAR_LOGO_CID,
+    filePath: path.join(process.cwd(), "public/email/inrcalendar-logo-email.png"),
+  },
+  {
+    filename: "inrcy-logo-email.png",
+    mimeType: "image/png",
+    cid: INRCY_LOGO_CID,
+    filePath: path.join(process.cwd(), "public/email/inrcy-logo-email.png"),
+  },
+] as const;
 
-const INR_CALENDAR_LOGO_SRC = publicAssetUrl("/email/inrcalendar-logo-email.png");
-const INRCY_LOGO_SRC = publicAssetUrl("/email/inrcy-logo-email.png");
+let reminderInlineAttachmentsPromise: Promise<InlineMailAttachment[]> | null = null;
+
+function getReminderInlineAttachments() {
+  if (!reminderInlineAttachmentsPromise) {
+    reminderInlineAttachmentsPromise = Promise.all(
+      REMINDER_INLINE_ATTACHMENT_SPECS.map(async (asset) => ({
+        filename: asset.filename,
+        mimeType: asset.mimeType,
+        content: await readFile(asset.filePath),
+        inline: true,
+        cid: asset.cid,
+      }))
+    );
+  }
+
+  return reminderInlineAttachmentsPromise.then((attachments) =>
+    attachments.map((attachment) => ({
+      ...attachment,
+      content: Buffer.from(attachment.content),
+    }))
+  );
+}
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
@@ -443,10 +486,10 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
                         <tr>
                           <td class="logo-cell-left" align="left" valign="middle" style="padding:0 0 18px 0;">
-                            <img src="${escapeHtml(INR_CALENDAR_LOGO_SRC)}" alt="iNr'Calendar" width="${EMAIL_LOGO_DIMENSIONS.calendar.width}" height="${EMAIL_LOGO_DIMENSIONS.calendar.height}" style="display:block;width:${EMAIL_LOGO_DIMENSIONS.calendar.width}px;max-width:100%;height:auto;border:0;outline:none;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.2;" />
+                            <img src="cid:${escapeHtml(INR_CALENDAR_LOGO_CID)}" alt="iNr'Calendar" width="${EMAIL_LOGO_DIMENSIONS.calendar.width}" height="${EMAIL_LOGO_DIMENSIONS.calendar.height}" style="display:block;width:${EMAIL_LOGO_DIMENSIONS.calendar.width}px;max-width:100%;height:auto;border:0;outline:none;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.2;" />
                           </td>
                           <td class="logo-cell-right" align="right" valign="middle" style="padding:0 0 18px 0;">
-                            <img src="${escapeHtml(INRCY_LOGO_SRC)}" alt="iNrCy" width="${EMAIL_LOGO_DIMENSIONS.inrcy.width}" height="${EMAIL_LOGO_DIMENSIONS.inrcy.height}" style="display:block;width:${EMAIL_LOGO_DIMENSIONS.inrcy.width}px;max-width:100%;height:auto;border:0;outline:none;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.2;" />
+                            <img src="cid:${escapeHtml(INRCY_LOGO_CID)}" alt="iNrCy" width="${EMAIL_LOGO_DIMENSIONS.inrcy.width}" height="${EMAIL_LOGO_DIMENSIONS.inrcy.height}" style="display:block;width:${EMAIL_LOGO_DIMENSIONS.inrcy.width}px;max-width:100%;height:auto;border:0;outline:none;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.2;" />
                           </td>
                         </tr>
                       </table>
@@ -536,6 +579,7 @@ export async function GET(req: Request) {
   const now = new Date();
   const horizon = new Date(now.getTime() + 48 * 3600 * 1000).toISOString();
   const smtpConfigured = Boolean(optionalEnv("TX_SMTP_HOST") && optionalEnv("TX_SMTP_PORT") && optionalEnv("TX_SMTP_USER") && optionalEnv("TX_SMTP_PASS"));
+  const reminderInlineAttachments = await getReminderInlineAttachments();
 
   const { data, error } = await supabaseAdmin
     .from("agenda_events")
@@ -622,6 +666,7 @@ export async function GET(req: Request) {
                 text: mail.text,
                 html: mail.html,
                 includeAutoSignature: false,
+                attachments: reminderInlineAttachments,
               });
               sent = true;
             } catch (integrationError) {
@@ -638,7 +683,7 @@ export async function GET(req: Request) {
 
           if (!sent) {
             if (!smtpConfigured) continue;
-            await sendTxMail({ to: recipient.email, subject: mail.subject, text: mail.text, html: mail.html });
+            await sendTxMail({ to: recipient.email, subject: mail.subject, text: mail.text, html: mail.html, attachments: reminderInlineAttachments });
             sent = true;
           }
 

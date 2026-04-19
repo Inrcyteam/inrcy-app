@@ -4607,6 +4607,21 @@ width: 100%;
   min-width:12px;
 }
 
+.mobileTopTools{
+  display:none;
+  align-items:center;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.mobileOnlyBtn{
+  display:none;
+}
+
+.desktopToolbarIconBtn{
+  display:inline-flex;
+}
+
 .toolbarBtn{
   display:inline-flex;
   align-items:center;
@@ -5176,11 +5191,38 @@ width: 100%;
 @media (max-width: 820px){
   .hamburgerBtn{ display:inline-flex; }
   .folderTabs{ display:none; }
-  .toolbarRow{ flex-direction: column; align-items: stretch; }
-  .toolbarActions{ justify-content: flex-start; }
-
-  /* En mobile: le select prend la largeur dispo sans casser la ligne */
-  .filterSelect{ width: 100%; }
+  .toolbarRow{ flex-direction: column; align-items: stretch; gap: 8px; }
+  .filterRow{
+    display:grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items:center;
+    gap:8px;
+    width:100%;
+  }
+  .filterSelect{
+    width:100%;
+    min-width:0;
+    max-width:none;
+    padding:8px 8px;
+    font-size:12px;
+  }
+  .mobileTopTools{ display:flex; }
+  .mobileOnlyBtn{ display:inline-flex; }
+  .toolbarActions{
+    justify-content:flex-start;
+    flex-wrap:wrap;
+    overflow-x:visible;
+    width:100%;
+    gap:8px;
+  }
+  .desktopToolbarIconBtn{ display:none; }
+  .toolbarSpacer{ display:none; }
+  .toolbarBtn{
+    font-size:12px;
+    height:36px;
+    padding:0 10px;
+  }
+  .bulkToolbarActions{ gap:6px; }
 }
 
 

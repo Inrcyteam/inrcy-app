@@ -3,11 +3,20 @@ import "server-only";
 import nodemailer from "nodemailer";
 import { optionalEnv, requireEnv } from "@/lib/env";
 
+export type TxMailAttachment = {
+  filename: string;
+  mimeType?: string;
+  content: Buffer;
+  inline?: boolean;
+  cid?: string;
+};
+
 export type TxMail = {
   to: string;
   subject: string;
   text: string;
   html?: string;
+  attachments?: TxMailAttachment[];
 };
 
 export async function sendTxMail(mail: TxMail) {
@@ -51,5 +60,12 @@ export async function sendTxMail(mail: TxMail) {
     subject: mail.subject,
     text: mail.text,
     html: mail.html,
+    attachments: (mail.attachments || []).map((attachment) => ({
+      filename: attachment.filename || "piece-jointe",
+      content: attachment.content,
+      contentType: attachment.mimeType || "application/octet-stream",
+      cid: attachment.inline ? attachment.cid : undefined,
+      contentDisposition: attachment.inline ? "inline" : "attachment",
+    })),
   });
 }

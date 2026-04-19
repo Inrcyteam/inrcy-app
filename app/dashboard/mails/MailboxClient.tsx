@@ -3351,6 +3351,29 @@ async function deleteDraftPermanently(id: string) {
                     </option>
                   ))}
                 </select>
+                <div className={styles.mobileTopTools}>
+                  <button
+                    className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.mobileOnlyBtn} ${
+                      !searchOpen && historyQuery.trim() ? styles.toolbarIconBtnActive : ""
+                    }`}
+                    onClick={() => setSearchOpen((v) => !v)}
+                    type="button"
+                    title={searchOpen ? "Fermer la recherche" : "Rechercher (Ctrl/Cmd+K)"}
+                    aria-label="Rechercher"
+                  >
+                    <span className={styles.toolbarIconGlyph}>⌕</span>
+                    {!searchOpen && historyQuery.trim() ? <span className={styles.activeDot} /> : null}
+                  </button>
+                  <button
+                    className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.mobileOnlyBtn}`}
+                    onClick={() => { void loadHistory(); }}
+                    type="button"
+                    title="Actualiser"
+                    aria-label="Actualiser"
+                  >
+                    ↻
+                  </button>
+                </div>
               </div>
 
               <div className={styles.toolbarActions}>
@@ -3422,7 +3445,7 @@ async function deleteDraftPermanently(id: string) {
                   Brouillons
                 </button>
                 <button
-                  className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${
+                  className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.desktopToolbarIconBtn} ${
                     !searchOpen && historyQuery.trim() ? styles.toolbarIconBtnActive : ""
                   }`}
                   onClick={() => setSearchOpen((v) => !v)}
@@ -3435,7 +3458,7 @@ async function deleteDraftPermanently(id: string) {
                 </button>
 
                 <button
-                  className={`${styles.toolbarBtn} ${styles.toolbarIconBtn}`}
+                  className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.desktopToolbarIconBtn}`}
                   onClick={() => { void loadHistory(); }}
                   type="button"
                   title="Actualiser"
