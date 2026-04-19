@@ -114,6 +114,18 @@ function readCachedOppTotal() {
   }
 }
 
+function getInitialGeneratorKpis() {
+  const payload = readGeneratorCache()?.payload;
+  return payload?.leads ? payload : null;
+}
+
+function getInitialOppTotal() {
+  const payload = readGeneratorCache()?.payload;
+  const oppMonth = Number(payload?.details?.opportunities?.month);
+  if (Number.isFinite(oppMonth)) return oppMonth;
+  return readCachedOppTotal();
+}
+
 function readSnapshotSyncAt(key: string): number {
   try {
     const raw = readUiCacheValue(key);
@@ -281,8 +293,8 @@ export default function DashboardClient() {
   const [kpis, setKpis] = useState<null | {
     leads: { today: number; week: number; month: number };
     estimatedValue: number;
-  }>(null);
-  const [oppTotal, setOppTotal] = useState<number | null>(null);
+  }>(() => getInitialGeneratorKpis());
+  const [oppTotal, setOppTotal] = useState<number | null>(() => getInitialOppTotal());
 
   useBrowserLayoutEffect(() => {
     try {

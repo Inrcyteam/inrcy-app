@@ -20,7 +20,7 @@ export default function OrientationGuard() {
   const [isLandscape, setIsLandscape] = useState(false);
 
   const landscapeRoutes = useMemo(
-    () => ["/dashboard/factures", "/dashboard/devis"],
+    () => ["/dashboard/factures", "/dashboard/devis", "/dashboard/crm"],
     []
   );
 

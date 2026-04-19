@@ -3201,3 +3201,258 @@
     height: 42px;
   }
 }
+
+/* =========================
+   CRM mobile refonte portrait (Apr 2026)
+   ========================= */
+
+.mobileControls{
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.mobileSearchRow{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.mobileSearchInput{
+  width: 100%;
+  min-width: 0;
+}
+
+.mobileFiltersToggle{
+  white-space: nowrap;
+  padding-inline: 12px;
+}
+
+.mobileFilterChips{
+  display:flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.mobileFilterChip,
+.mobileFiltersReset{
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 12px;
+  border: 1px solid var(--inrcy-border);
+  background: rgba(255,255,255,.06);
+  color: var(--inrcy-text);
+}
+
+.mobileFiltersReset{
+  cursor: pointer;
+}
+
+.mobileFiltersPanel{
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--inrcy-border);
+  border-radius: 18px;
+  background: rgba(0,0,0,.18);
+}
+
+.mobileImportantToggle button{
+  width: 100%;
+}
+
+.mobileImportantActive{
+  border-color: rgba(250, 204, 21, .48) !important;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, .12);
+}
+
+.mobileMenuDropdown{
+  width: min(320px, calc(100vw - 24px));
+}
+
+.mobileMenuActions{
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.mobileMenuItem{
+  border: 1px solid var(--inrcy-border);
+  background: rgba(255,255,255,.04);
+  color: var(--inrcy-text);
+  border-radius: 14px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobileMenuStats{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobileContactBlock{
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+.mobileContactBlock:last-child{
+  border-bottom: 0;
+}
+
+.mobileListRow{
+  width: 100%;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--inrcy-text);
+  padding: 11px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobileListRowOpen{
+  background: rgba(255,255,255,.03);
+}
+
+.mobileListName{
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobileListIcons{
+  flex: 0 0 auto;
+  display:flex;
+  align-items:center;
+  gap: 8px;
+}
+
+.mobileChevron{
+  display:inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items:center;
+  justify-content:center;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  font-size: 14px;
+}
+
+.mobileRowDetails{
+  padding: 0 12px 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.mobileDetailGrid{
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mobileDetailGrid > div,
+.mobileDetailNotes{
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03);
+}
+
+.mobileDetailLabel{
+  font-size: 11px;
+  color: var(--inrcy-muted-2);
+}
+
+.mobileDetailGrid strong,
+.mobileDetailNotes strong{
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--inrcy-text);
+  word-break: break-word;
+}
+
+.mobileDetailNotes{
+  grid-column: 1 / -1;
+}
+
+.mobileDetailActions{
+  display:flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mobileLoadSentinel{
+  width: 100%;
+  height: 1px;
+}
+
+.mobileLoadMore,
+.mobileListEnd,
+.mobileListSummary{
+  text-align: center;
+  color: var(--inrcy-muted);
+  font-size: 12px;
+  padding: 12px 8px 4px;
+}
+
+@media (max-width: 760px){
+  .shell{
+    min-height: 100dvh;
+    height: auto;
+    overflow: visible;
+    padding: 12px 10px 16px;
+  }
+
+  .card{
+    padding: 12px;
+  }
+
+  .headerRight{
+    gap: 8px !important;
+  }
+
+  .statsWrap{
+    position: relative;
+  }
+
+  .mobileMenuDropdown{
+    right: 0;
+    left: auto;
+  }
+
+  .tableCard{
+    min-height: unset;
+  }
+
+  .tableWrap{
+    max-height: min(62dvh, 620px);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .mobileTable{
+    min-width: 0;
+  }
+
+  .mobileEmpty{
+    padding: 24px 12px;
+    text-align: center;
+    color: var(--inrcy-muted);
+  }
+
+  .mobileMenuStats{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

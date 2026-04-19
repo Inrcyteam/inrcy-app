@@ -255,6 +255,77 @@ function hasFreshLocalPeriodSnapshot(period: Period) {
   );
 }
 
+function emptyCubeState(): Record<CubeKey, { ov: Overview | null; loading: boolean; error?: string }> {
+  return {
+    site_inrcy: { ov: null, loading: true },
+    site_web: { ov: null, loading: true },
+    gmb: { ov: null, loading: true },
+    facebook: { ov: null, loading: true },
+    instagram: { ov: null, loading: true },
+    linkedin: { ov: null, loading: true },
+  };
+}
+
+function getInitialDataByCube(period: Period): Record<CubeKey, { ov: Overview | null; loading: boolean; error?: string }> {
+  const initial = emptyCubeState();
+  const cachedCube = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(period)));
+  if (!cachedCube?.overviews) return initial;
+
+  const next = { ...initial };
+  for (const k of Object.keys(cachedCube.overviews) as CubeKey[]) {
+    next[k] = { ov: cachedCube.overviews[k] ?? null, loading: false, error: undefined };
+  }
+  return next;
+}
+
+function getInitialSummaryOpp(period: Period): { loading: boolean; total: number; byCube: Record<CubeKey, number> } {
+  const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
+  if (!cachedSummary) {
+    return {
+      loading: true,
+      total: 0,
+      byCube: { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0 },
+    };
+  }
+
+  return {
+    loading: false,
+    total: safeNum(cachedSummary.total),
+    byCube: {
+      site_inrcy: safeNum(cachedSummary.byCube?.site_inrcy),
+      site_web: safeNum(cachedSummary.byCube?.site_web),
+      gmb: safeNum(cachedSummary.byCube?.gmb),
+      facebook: safeNum(cachedSummary.byCube?.facebook),
+      instagram: safeNum(cachedSummary.byCube?.instagram),
+      linkedin: safeNum(cachedSummary.byCube?.linkedin),
+    },
+  };
+}
+
+function getInitialSummaryProfile(period: Period): { lead_conversion_rate: number; avg_basket: number } {
+  const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
+  return {
+    lead_conversion_rate: safeNum(cachedSummary?.profile?.lead_conversion_rate),
+    avg_basket: safeNum(cachedSummary?.profile?.avg_basket),
+  };
+}
+
+function getInitialSummaryEstimatedByCube(period: Period): Record<CubeKey, number> {
+  const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
+  return {
+    site_inrcy: safeNum(cachedSummary?.estimatedByCube?.site_inrcy),
+    site_web: safeNum(cachedSummary?.estimatedByCube?.site_web),
+    gmb: safeNum(cachedSummary?.estimatedByCube?.gmb),
+    facebook: safeNum(cachedSummary?.estimatedByCube?.facebook),
+    instagram: safeNum(cachedSummary?.estimatedByCube?.instagram),
+    linkedin: safeNum(cachedSummary?.estimatedByCube?.linkedin),
+  };
+}
+
+function hasInitialSummarySnapshot(period: Period) {
+  return !!parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
+}
+
 function gmbMetricSeriesTotal(metrics: any, metricNames: string[]) {
   const rawSeries = Array.isArray(metrics?.raw?.multiDailyMetricTimeSeries)
     ? metrics.raw.multiDailyMetricTimeSeries
@@ -1311,24 +1382,12 @@ export default function StatsClient() {
   // ✅ Période globale (7j / 30j) pour éviter un mix incohérent entre blocs.
   const period: Period = 30;
 
-  const [dataByCube, setDataByCube] = useState<Record<CubeKey, { ov: Overview | null; loading: boolean; error?: string }>>({
-    site_inrcy: { ov: null, loading: true },
-    site_web: { ov: null, loading: true },
-    gmb: { ov: null, loading: true },
-    facebook: { ov: null, loading: true },
-    instagram: { ov: null, loading: true },
-    linkedin: { ov: null, loading: true },
-  });
+  const [dataByCube, setDataByCube] = useState<Record<CubeKey, { ov: Overview | null; loading: boolean; error?: string }>>(() => getInitialDataByCube(period));
 
-  const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>({
-    loading: true,
-    total: 0,
-    byCube: { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0 },
-  });
-  const [summaryProfile, setSummaryProfile] = useState<{ lead_conversion_rate: number; avg_basket: number }>({ lead_conversion_rate: 0, avg_basket: 0 });
-  const [summaryEstimatedByCube, setSummaryEstimatedByCube] = useState<Record<CubeKey, number>>({
-    site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0,
-  });
+  const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>(() => getInitialSummaryOpp(period));
+  const [summaryProfile, setSummaryProfile] = useState<{ lead_conversion_rate: number; avg_basket: number }>(() => getInitialSummaryProfile(period));
+  const [summaryEstimatedByCube, setSummaryEstimatedByCube] = useState<Record<CubeKey, number>>(() => getInitialSummaryEstimatedByCube(period));
+  const [summaryHydrated, setSummaryHydrated] = useState(() => hasInitialSummarySnapshot(period));
   const [summaryActionsOpen, setSummaryActionsOpen] = useState(false);
   const [dailyBootReady, setDailyBootReady] = useState(false);
 
@@ -1359,6 +1418,7 @@ export default function StatsClient() {
     if (cachedSummary) {
       const byCubePartial = cachedSummary.byCube || {};
       const estimatedByCubePartial = cachedSummary.estimatedByCube || {};
+      setSummaryHydrated(true);
       setSummaryOpp({
         loading: false,
         total: safeNum(cachedSummary.total),
@@ -1446,6 +1506,7 @@ export default function StatsClient() {
 
     const byCubePartial = cachedSummary?.byCube || {};
     const estimatedByCubePartial = cachedSummary?.estimatedByCube || {};
+    setSummaryHydrated(true);
     setSummaryOpp({
       loading: false,
       total: safeNum(cachedSummary?.total),
@@ -1502,6 +1563,7 @@ export default function StatsClient() {
       }
       return updated;
     });
+    setSummaryHydrated(true);
     setSummaryOpp({ loading: false, total: next.summary.total, byCube: next.summary.byCube });
     setSummaryProfile(next.profile);
     setSummaryEstimatedByCube(next.estimatedByCube);
@@ -1975,7 +2037,7 @@ const provenance = buildProvenance(key, ov);
 
   const centralPotential30 = summaryOpp.total;
   const centralByCube = summaryOpp.byCube;
-  const summaryDisplayReady = !summaryOpp.loading;
+  const summaryDisplayReady = summaryHydrated;
 
   const computedEstimatedByCube = useMemo<Record<CubeKey, number>>(() => {
     const rate = Math.max(0, safeNum(summaryProfile.lead_conversion_rate)) / 100;

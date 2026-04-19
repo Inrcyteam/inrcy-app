@@ -335,13 +335,6 @@ export default function CRMClient() {
   const headerSearchRef = useRef<HTMLDivElement | null>(null);
   const headerSearchInputRef = useRef<HTMLInputElement | null>(null);
   const [headerSearchOpen, setHeaderSearchOpen] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<Category>("");
-  const [typeFilter, setTypeFilter] = useState<ContactType>("");
-  const [departmentFilter, setDepartmentFilter] = useState("");
-  const [importantOnly, setImportantOnly] = useState(false);
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const mobileAppendNextRef = useRef(false);
-  const mobileLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const [isCompactUi, setIsCompactUi] = useState(false);
   const [desktopRowHeight, setDesktopRowHeight] = useState(30);
   const [importing, setImporting] = useState(false);
@@ -371,10 +364,9 @@ export default function CRMClient() {
 
   const [draft, setDraft] = useState<ReturnType<typeof emptyDraft>>(() => emptyDraft());
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [expandedMobileContactId, setExpandedMobileContactId] = useState<string | null>(null);
 
   const mergeContactWithLocalState = useCallback(
-    (contact: CrmContact): CrmContact => ({
+    (contact: CrmContact) => ({
       ...contact,
       notes: (contact?.notes ?? notesById?.[contact.id] ?? "") as string,
       important: Boolean(contact?.important || importantIds.has(contact.id)),
@@ -383,13 +375,7 @@ export default function CRMClient() {
   );
 
   const loadContacts = useCallback(
-    async (options?: {
-      page?: number;
-      pageSize?: number;
-      query?: string;
-      preserveSuccess?: boolean;
-      append?: boolean;
-    }) => {
+    async (options?: { page?: number; pageSize?: number; query?: string; preserveSuccess?: boolean }) => {
       const targetPage = Math.max(1, options?.page ?? page);
       const targetPageSize = options?.pageSize ?? pageSize;
       const targetQuery = options?.query ?? serverQuery;
@@ -405,10 +391,6 @@ export default function CRMClient() {
           pageSize: String(targetPageSize),
         });
         if (targetQuery) params.set("q", targetQuery);
-        if (categoryFilter) params.set("category", categoryFilter);
-        if (typeFilter) params.set("contactType", typeFilter);
-        if (departmentFilter.trim()) params.set("department", departmentFilter.trim());
-        if (importantOnly) params.set("important", "1");
 
         const r = await fetch(`/api/crm/contacts?${params.toString()}`, { method: "GET" });
         const j = await r.json().catch(() => ({}));
@@ -425,13 +407,9 @@ export default function CRMClient() {
         }
 
         const base = Array.isArray(j?.contacts) ? j.contacts : [];
-        const merged: CrmContact[] = base.map((c: CrmContact) => mergeContactWithLocalState(c));
+        const merged = base.map((c: CrmContact) => mergeContactWithLocalState(c));
 
-        setContacts((prev: CrmContact[]) => {
-          if (!options?.append) return merged;
-          const known = new Set(prev.map((contact: CrmContact) => contact.id));
-          return [...prev, ...merged.filter((contact: CrmContact) => !known.has(contact.id))];
-        });
+        setContacts(merged);
         setTotal(nextTotal);
         setPage(safePage);
         setPageSize(typeof j?.pageSize === "number" ? j.pageSize : targetPageSize);
@@ -451,16 +429,7 @@ export default function CRMClient() {
         if (requestId === requestSeqRef.current) setLoading(false);
       }
     },
-    [
-      mergeContactWithLocalState,
-      page,
-      pageSize,
-      serverQuery,
-      categoryFilter,
-      typeFilter,
-      departmentFilter,
-      importantOnly,
-    ],
+    [mergeContactWithLocalState, page, pageSize, serverQuery],
   );
 
   useEffect(() => {
@@ -471,32 +440,12 @@ export default function CRMClient() {
   }, [query]);
 
   useEffect(() => {
-    mobileAppendNextRef.current = false;
-    setExpandedMobileContactId(null);
     setPage(1);
-  }, [pageSize, serverQuery, categoryFilter, typeFilter, departmentFilter, importantOnly]);
+  }, [pageSize, serverQuery]);
 
   useEffect(() => {
-    const append = isResponsive && mobileAppendNextRef.current && page > 1;
-    void loadContacts({
-      page,
-      pageSize,
-      query: serverQuery,
-      append,
-      preserveSuccess: append || page > 1,
-    });
-    mobileAppendNextRef.current = false;
-  }, [
-    isResponsive,
-    loadContacts,
-    page,
-    pageSize,
-    serverQuery,
-    categoryFilter,
-    typeFilter,
-    departmentFilter,
-    importantOnly,
-  ]);
+    void loadContacts();
+  }, [loadContacts]);
 
   useEffect(() => {
     // Keep derived fields in sync when local ⭐ important / notes change
@@ -584,8 +533,6 @@ export default function CRMClient() {
   useEffect(() => {
     if (isResponsive) return;
     setHeaderSearchOpen(false);
-    setMobileFiltersOpen(false);
-    setExpandedMobileContactId(null);
   }, [isResponsive]);
 
   const selectedContacts = useMemo(() => {
@@ -609,23 +556,10 @@ export default function CRMClient() {
 
   const visibleContacts = contacts;
   const allVisibleSelected = visibleContacts.length > 0 && visibleContacts.every((c) => selectedContactIds.has(c.id));
-  const activeFiltersCount = [categoryFilter, typeFilter, departmentFilter.trim(), importantOnly ? "important" : ""]
-    .filter(Boolean)
-    .length;
-  const hasActiveSearchOrFilters = Boolean(query.trim()) || activeFiltersCount > 0;
-  const emptyMessage = hasActiveSearchOrFilters
-    ? "Aucun contact trouvé avec ces critères."
-    : "Aucun contact pour le moment.";
+  const emptyMessage = query.trim() ? "Aucun contact trouvé pour cette recherche." : "Aucun contact pour le moment.";
   const showDesktopEmptyMessage = visibleContacts.length === 0;
   const desktopPlaceholderRowCount = Math.max(0, pageSize - visibleContacts.length - (showDesktopEmptyMessage ? 1 : 0));
   const desktopPlaceholderRows = Array.from({ length: desktopPlaceholderRowCount });
-  const mobileHasMore = isResponsive && contacts.length < total;
-  const activeFilterChips = [
-    categoryFilter ? `Catégorie : ${CATEGORY_LABEL[categoryFilter as Exclude<Category, "">]}` : "",
-    typeFilter ? `Type : ${TYPE_LABEL[typeFilter as Exclude<ContactType, "">]}` : "",
-    departmentFilter.trim() ? `Département : ${departmentFilter.trim()}` : "",
-    importantOnly ? "Important" : "",
-  ].filter(Boolean);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -656,37 +590,6 @@ export default function CRMClient() {
   }, [isResponsive, loading, page, pageSize, visibleContacts.length, showDesktopEmptyMessage]);
 
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!isResponsive) return;
-
-    const sentinel = mobileLoadMoreRef.current;
-    if (!sentinel) return;
-
-    const root = tableWrapRef.current;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const first = entries[0];
-        if (!first?.isIntersecting) return;
-        if (loading) return;
-        if (contacts.length >= total) return;
-        if (mobileAppendNextRef.current) return;
-
-        mobileAppendNextRef.current = true;
-        setPage((prev) => (prev >= pageCount ? prev : prev + 1));
-      },
-      {
-        root,
-        rootMargin: "220px 0px 220px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [isResponsive, loading, contacts.length, total, pageCount]);
-
-
   const selectedEmails = useMemo(() => {
     const emails = selectedContacts
       .map((c) => (c.email || "").trim())
@@ -707,7 +610,7 @@ export default function CRMClient() {
     const isSelected = selectedContactIds.has(id);
 
     setSelectedContactIds((prev) => {
-      const next = new Set<string>(prev);
+      const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
@@ -723,7 +626,7 @@ export default function CRMClient() {
 
   const toggleSelectAllVisible = () => {
     setSelectedContactIds((prev) => {
-      const next = new Set<string>(prev);
+      const next = new Set(prev);
       if (allVisibleSelected) {
         visibleContacts.forEach((contact) => next.delete(contact.id));
       } else {
@@ -769,7 +672,7 @@ export default function CRMClient() {
     // Optimistic UI update
     setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, important: nextImportant } : c)));
     setImportantIds((prev) => {
-      const next = new Set<string>(prev);
+      const next = new Set(prev);
       if (nextImportant) next.add(id);
       else next.delete(id);
       persistImportant(next);
@@ -784,7 +687,7 @@ export default function CRMClient() {
       // Revert on network error
       setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, important: !nextImportant } : c)));
       setImportantIds((prev) => {
-        const next = new Set<string>(prev);
+        const next = new Set(prev);
         if (!nextImportant) next.add(id);
         else next.delete(id);
         persistImportant(next);
@@ -868,17 +771,13 @@ const triggerImport = () => fileInputRef.current?.click();
 const fetchAllContactsForCurrentQuery = useCallback(async () => {
   const params = new URLSearchParams({ all: "1" });
   if (serverQuery) params.set("q", serverQuery);
-  if (categoryFilter) params.set("category", categoryFilter);
-  if (typeFilter) params.set("contactType", typeFilter);
-  if (departmentFilter.trim()) params.set("department", departmentFilter.trim());
-  if (importantOnly) params.set("important", "1");
 
   const r = await fetch(`/api/crm/contacts?${params.toString()}`, { method: "GET" });
   if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Export impossible."));
   const j = await r.json().catch(() => ({}));
   const base = Array.isArray(j?.contacts) ? j.contacts : [];
   return base.map((contact: CrmContact) => mergeContactWithLocalState(contact));
-}, [mergeContactWithLocalState, serverQuery, categoryFilter, typeFilter, departmentFilter, importantOnly]);
+}, [mergeContactWithLocalState, serverQuery]);
 
 const buildExportRows = useCallback(
   (rows: CrmContact[]) =>
@@ -1046,7 +945,6 @@ const exportExcel = async () => {
 
   function startNew() {
     setEditingId(null);
-    setExpandedMobileContactId(null);
     setDraft(emptyDraft());
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -1141,22 +1039,22 @@ const exportExcel = async () => {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible d'enregistrer."));
-      const nextPage = isResponsive ? 1 : editingId ? page : 1;
-      if (nextPage === 1) setPage(1);
+      const nextPage = editingId ? page : 1;
+      if (!editingId) setPage(1);
       await loadContacts({ page: nextPage, preserveSuccess: true });
       // If editing, persist ⭐ + notes locally (works even if backend doesn't store it yet)
       if (editingId) {
         setNoteForId(editingId, (draft.notes || "").trim());
         if (draft.important) {
           setImportantIds((prev) => {
-            const next = new Set<string>(prev);
+            const next = new Set(prev);
             next.add(editingId);
             persistImportant(next);
             return next;
           });
         } else {
           setImportantIds((prev) => {
-            const next = new Set<string>(prev);
+            const next = new Set(prev);
             next.delete(editingId);
             persistImportant(next);
             return next;
@@ -1181,7 +1079,7 @@ const exportExcel = async () => {
     setSaving(true);
     setError(null);
     try {
-      const ids = Array.from(selectedContactIds) as string[];
+      const ids = Array.from(selectedContactIds);
       // Suppression en parallèle (API actuelle : 1 id par requête)
       await Promise.all(
         ids.map(async (id) => {
@@ -1192,9 +1090,7 @@ const exportExcel = async () => {
       );
 
       // reload + reset states
-      const targetReloadPage = isResponsive ? 1 : page;
-      if (targetReloadPage === 1) setPage(1);
-      await loadContacts({ page: targetReloadPage, preserveSuccess: true });
+      await loadContacts({ preserveSuccess: true });
       setSelectedContactIds(new Set());
       setSelectedContactsById({});
       if (editingId && ids.includes(editingId)) startNew();
@@ -1215,11 +1111,9 @@ const exportExcel = async () => {
       const r = await fetch(`/api/crm/contacts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de supprimer."));
-      const targetReloadPage = isResponsive ? 1 : page;
-      if (targetReloadPage === 1) setPage(1);
-      await loadContacts({ page: targetReloadPage, preserveSuccess: true });
+      await loadContacts({ preserveSuccess: true });
       setSelectedContactIds((prev) => {
-        const next = new Set<string>(prev);
+        const next = new Set(prev);
         next.delete(id);
         return next;
       });
@@ -1264,7 +1158,7 @@ const exportExcel = async () => {
         </div>
 
         <div className={styles.headerRight}>
-          {!isResponsive ? <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’CRM" /> : null}
+          <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’CRM" />
 
           {isResponsive ? (
             <>
@@ -1272,7 +1166,9 @@ const exportExcel = async () => {
                 type="button"
                 className={`${styles.headerIconBtn} ${styles.addBtn}`}
                 onClick={() => {
+                  setHeaderSearchOpen(false);
                   setStatsOpen(false);
+                  setExportOpen(false);
                   startNew();
                   setAddOpen(true);
                 }}
@@ -1282,89 +1178,62 @@ const exportExcel = async () => {
                 +
               </button>
 
-              <div className={styles.statsWrap} ref={statsRef}>
+              <button
+                type="button"
+                className={`${styles.headerIconBtn} ${styles.importBtn}`}
+                onClick={triggerImport}
+                disabled={saving || importing}
+                title="Importer des contacts"
+                aria-label="Importer des contacts"
+              >
+                ↓
+              </button>
+
+              <div className={`${styles.exportWrap} ${styles.exportBtn}`} ref={exportRef}>
                 <button
                   type="button"
                   className={styles.headerIconBtn}
-                  onClick={() => setStatsOpen((v) => !v)}
-                  aria-expanded={statsOpen ? "true" : "false"}
-                  aria-label="Ouvrir le menu CRM"
-                  title="Menu CRM"
+                  onClick={() => {
+                    setHeaderSearchOpen(false);
+                    setStatsOpen(false);
+                    setExportOpen((prev) => !prev);
+                  }}
+                  disabled={saving || Boolean(exportingFormat) || total === 0}
+                  aria-expanded={exportOpen ? "true" : "false"}
+                  title={total === 0 ? "Aucun contact à exporter" : "Exporter les contacts"}
+                  aria-label="Exporter les contacts"
                 >
-                  ☰
+                  ↑
                 </button>
 
-                {statsOpen ? (
-                  <div className={`${styles.statsDropdown} ${styles.mobileMenuDropdown}`.trim()} role="menu">
-                    <div className={styles.statsTitle}>Menu CRM</div>
-
-                    <div className={styles.mobileMenuActions}>
-                      <button
-                        className={styles.mobileMenuItem}
-                        type="button"
-                        onClick={() => {
-                          setStatsOpen(false);
-                          triggerImport();
-                        }}
-                        disabled={saving || importing}
-                      >
-                        {importing ? "Import…" : "Importer"}
-                      </button>
-                      <button
-                        className={styles.mobileMenuItem}
-                        type="button"
-                        onClick={() => {
-                          setStatsOpen(false);
-                          void exportExcel();
-                        }}
-                        disabled={saving || Boolean(exportingFormat) || total === 0}
-                      >
-                        Export Excel
-                      </button>
-                      <button
-                        className={styles.mobileMenuItem}
-                        type="button"
-                        onClick={() => {
-                          setStatsOpen(false);
-                          void exportCsv();
-                        }}
-                        disabled={saving || Boolean(exportingFormat) || total === 0}
-                      >
-                        Export CSV
-                      </button>
-                      <button
-                        className={styles.mobileMenuItem}
-                        type="button"
-                        onClick={() => {
-                          setStatsOpen(false);
-                          setHelpOpen(true);
-                        }}
-                      >
-                        Aide
-                      </button>
-                      <button
-                        className={styles.mobileMenuItem}
-                        type="button"
-                        onClick={() => {
-                          setStatsOpen(false);
-                          router.push("/dashboard");
-                        }}
-                      >
-                        Fermer
-                      </button>
-                    </div>
-
-                    <div className={styles.mobileMenuStats}>
-                      {statsItems.map((item) => (
-                        <div key={item.label} className={styles.statsItem}>
-                          <span>{item.label}</span>
-                          <strong>{item.value}</strong>
-                        </div>
-                      ))}
-                    </div>
+                {exportOpen ? (
+                  <div className={styles.exportMenu} role="menu">
+                    <button
+                      className={styles.exportItem}
+                      type="button"
+                      onClick={() => {
+                        setExportOpen(false);
+                        void exportExcel();
+                      }}
+                      disabled={Boolean(exportingFormat)}
+                    >
+                      Excel (.xlsx)
+                    </button>
+                    <button
+                      className={styles.exportItem}
+                      type="button"
+                      onClick={() => {
+                        setExportOpen(false);
+                        void exportCsv();
+                      }}
+                      disabled={Boolean(exportingFormat)}
+                    >
+                      CSV (.csv)
+                    </button>
                   </div>
                 ) : null}
               </div>
+
             </>
           ) : (
             <>
@@ -1430,43 +1299,77 @@ const exportExcel = async () => {
                 ) : null}
               </div>
 
-              <div className={styles.statsWrap} ref={statsRef}>
-                <button
-                  type="button"
-                  className={`${styles.ghostBtn} ${styles.headerActionBtn} ${styles.headerStatsBtn}`}
-                  onClick={() => {
-                    setHeaderSearchOpen(false);
-                    setExportOpen(false);
-                    setStatsOpen((v) => !v);
-                  }}
-                  aria-expanded={statsOpen ? "true" : "false"}
-                  title="Statistiques"
-                >
-                  Stats
-                </button>
-
-                {statsOpen ? (
-                  <div className={styles.statsDropdown} role="menu">
-                    <div className={styles.statsTitle}>Statistiques</div>
-                    <div className={styles.statsGrid}>
-                      {statsItems.map((item) => (
-                        <div key={item.label} className={styles.statsItem}>
-                          <span>{item.label}</span>
-                          <strong>{item.value}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className={styles.closeWrap}>
-                <button type="button" className={styles.backBtn} onClick={() => router.push("/dashboard")} aria-label="Fermer" title="Fermer">
-                  {isCompactUi ? <span className={styles.closeIcon}>✕</span> : <span className={styles.closeText}>Fermer</span>}
-                </button>
-              </div>
             </>
           )}
+
+          {isResponsive ? (
+            <div className={`${styles.headerSearchWrap} ${styles.searchBtn}`} ref={headerSearchRef}>
+              <button
+                type="button"
+                className={`${styles.headerIconBtn} ${query.trim() ? styles.headerSearchActive : ""}`.trim()}
+                onClick={() => {
+                  setStatsOpen(false);
+                  setExportOpen(false);
+                  setHeaderSearchOpen((prev) => !prev);
+                }}
+                aria-expanded={headerSearchOpen ? "true" : "false"}
+                aria-label="Rechercher un contact"
+                title={query.trim() ? `Recherche active : ${query}` : "Rechercher un contact"}
+              >
+                ⌕
+              </button>
+
+              {headerSearchOpen ? (
+                <div className={styles.headerSearchDropdown}>
+                  <div className={styles.searchWrap}>
+                    <input
+                      ref={headerSearchInputRef}
+                      className={styles.search}
+                      placeholder="Rechercher..."
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className={styles.statsWrap} ref={statsRef}>
+            <button
+              type="button"
+              className={(isResponsive ? styles.headerIconBtn : `${styles.ghostBtn} ${styles.headerActionBtn} ${styles.headerStatsBtn}`).trim()}
+              onClick={() => {
+                setHeaderSearchOpen(false);
+                setExportOpen(false);
+                setStatsOpen((v) => !v);
+              }}
+              aria-expanded={statsOpen ? "true" : "false"}
+              title="Statistiques"
+            >
+              {isResponsive ? "≡" : "Stats"}
+            </button>
+
+            {statsOpen ? (
+              <div className={styles.statsDropdown} role="menu">
+                <div className={styles.statsTitle}>Statistiques</div>
+                <div className={styles.statsGrid}>
+                  {statsItems.map((item) => (
+                    <div key={item.label} className={styles.statsItem}>
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className={styles.closeWrap}>
+            <button type="button" className={styles.backBtn} onClick={() => router.push("/dashboard")} aria-label="Fermer" title="Fermer">
+              {isCompactUi ? <span className={styles.closeIcon}>✕</span> : <span className={styles.closeText}>Fermer</span>}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -2000,97 +1903,7 @@ const exportExcel = async () => {
           ) : null}
         </div>
 
-        {isResponsive ? (
-          <div className={styles.mobileControls}>
-            <div className={styles.mobileSearchRow}>
-              <input
-                className={`${styles.search} ${styles.mobileSearchInput}`.trim()}
-                placeholder="Rechercher un contact..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <button
-                type="button"
-                className={`${styles.ghostBtn} ${styles.mobileFiltersToggle}`.trim()}
-                onClick={() => setMobileFiltersOpen((prev) => !prev)}
-                aria-expanded={mobileFiltersOpen ? "true" : "false"}
-              >
-                Filtres{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ""}
-              </button>
-            </div>
-
-            {activeFilterChips.length > 0 ? (
-              <div className={styles.mobileFilterChips}>
-                {activeFilterChips.map((chip) => (
-                  <span key={chip} className={styles.mobileFilterChip}>{chip}</span>
-                ))}
-                <button
-                  type="button"
-                  className={styles.mobileFiltersReset}
-                  onClick={() => {
-                    setCategoryFilter("");
-                    setTypeFilter("");
-                    setDepartmentFilter("");
-                    setImportantOnly(false);
-                  }}
-                >
-                  Réinitialiser
-                </button>
-              </div>
-            ) : null}
-
-            {mobileFiltersOpen ? (
-              <div className={styles.mobileFiltersPanel}>
-                <label className={styles.label}>
-                  <span>Catégorie</span>
-                  <select className={styles.select} value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as Category)}>
-                    <option value="">Toutes</option>
-                    <option value="particulier">Particulier</option>
-                    <option value="professionnel">Professionnel</option>
-                    <option value="collectivite_publique">Institution</option>
-                  </select>
-                </label>
-
-                <label className={styles.label}>
-                  <span>Type</span>
-                  <select className={styles.select} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ContactType)}>
-                    <option value="">Tous</option>
-                    <option value="client">Client</option>
-                    <option value="prospect">Prospect</option>
-                    <option value="fournisseur">Fournisseur</option>
-                    <option value="partenaire">Partenaire</option>
-                    <option value="autre">Autre</option>
-                  </select>
-                </label>
-
-                <label className={styles.label}>
-                  <span>Département</span>
-                  <input
-                    className={styles.input}
-                    inputMode="numeric"
-                    placeholder="62"
-                    maxLength={3}
-                    value={departmentFilter}
-                    onChange={(e) => setDepartmentFilter(e.target.value.replace(/[^0-9A-Za-z]/g, "").slice(0, 3).toUpperCase())}
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.mobileImportantToggle}`.trim()}>
-                  <span>Important</span>
-                  <button
-                    type="button"
-                    className={`${styles.ghostBtn} ${importantOnly ? styles.mobileImportantActive : ""}`.trim()}
-                    onClick={() => setImportantOnly((prev) => !prev)}
-                  >
-                    {importantOnly ? "Uniquement les importants" : "Tous les contacts"}
-                  </button>
-                </label>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {loading && !(isResponsive && page > 1) ? <div className={styles.muted}>Chargement...</div> : null}
+        {loading ? <div className={styles.muted}>Chargement...</div> : null}
 
         <div className={styles.tableWrap} ref={tableWrapRef}>
           {/*
@@ -2099,147 +1912,70 @@ const exportExcel = async () => {
           */}
           {isResponsive ? (
             <div className={styles.mobileTable}>
+              <div className={styles.mobileHead}>
+                <div className={styles.mhName}>Nom Prénom / RS</div>
+                <div className={styles.mhMail}>Mail</div>
+                <div className={styles.mhTel}>Tél</div>
+                <div className={styles.mhCat}>Cat</div>
+                <div className={styles.mhType}>Type</div>
+                <div className={styles.mhStar}>Imp</div>
+              </div>
+
               {visibleContacts.length === 0 ? (
                 <div className={styles.mobileEmpty}>{emptyMessage}</div>
               ) : (
-                visibleContacts.map((c) => {
-                  const isExpanded = expandedMobileContactId === c.id;
-                  return (
-                    <div key={c.id} className={styles.mobileContactBlock}>
-                      <button
-                        type="button"
-                        className={`${styles.mobileListRow} ${isExpanded ? styles.mobileListRowOpen : ""}`.trim()}
-                        onClick={() => setExpandedMobileContactId((prev) => (prev === c.id ? null : c.id))}
-                        aria-expanded={isExpanded ? "true" : "false"}
-                      >
-                        <span className={`${styles.mobileListName} ${c.important ? styles.nameImportant : ""}`.trim()}>
-                          {buildDisplayName(c) || "Contact sans nom"}
-                        </span>
-                        <span className={styles.mobileListIcons}>
-                          {c.important ? <span className={styles.starStatic}>★</span> : null}
-                          <span className={styles.mobileChevron}>{isExpanded ? "−" : "+"}</span>
-                        </span>
-                      </button>
-
-                      {isExpanded ? (
-                        <div className={styles.mobileRowDetails}>
-                          <div className={styles.mobileDetailGrid}>
-                            <div>
-                              <span className={styles.mobileDetailLabel}>Mail</span>
-                              <strong>{c.email || "—"}</strong>
-                            </div>
-                            <div>
-                              <span className={styles.mobileDetailLabel}>Téléphone</span>
-                              <strong>{c.phone || "—"}</strong>
-                            </div>
-                            <div>
-                              <span className={styles.mobileDetailLabel}>Catégorie</span>
-                              <strong>{c.category ? CATEGORY_LABEL[c.category as Exclude<Category, "">] : "—"}</strong>
-                            </div>
-                            <div>
-                              <span className={styles.mobileDetailLabel}>Type</span>
-                              <strong>{c.contact_type ? TYPE_LABEL[c.contact_type as Exclude<ContactType, "">] : "—"}</strong>
-                            </div>
-                            <div>
-                              <span className={styles.mobileDetailLabel}>Département</span>
-                              <strong>{(c.postal_code || "").slice(0, 3) || "—"}</strong>
-                            </div>
-                            <div>
-                              <span className={styles.mobileDetailLabel}>Adresse</span>
-                              <strong>{[c.address, c.postal_code, c.city].filter(Boolean).join(" ") || "—"}</strong>
-                            </div>
-                            {(c.notes || "").trim() ? (
-                              <div className={styles.mobileDetailNotes}>
-                                <span className={styles.mobileDetailLabel}>Notes</span>
-                                <strong>{c.notes}</strong>
-                              </div>
-                            ) : null}
-                          </div>
-
-                          <div className={styles.mobileDetailActions}>
-                            <button
-                              type="button"
-                              className={styles.smallBtn}
-                              disabled={!c.email}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                sendMailToContact(c);
-                              }}
-                            >
-                              Mail
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.smallBtn}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                goPlanifierIntervention(c);
-                              }}
-                            >
-                              Agenda
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.smallBtn}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                goNewDevis(c);
-                              }}
-                            >
-                              Devis
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.smallBtn}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                goNewFacture(c);
-                              }}
-                            >
-                              Facture
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.smallBtn}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                startEdit(c);
-                              }}
-                            >
-                              Modifier
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.smallBtn}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleImportant(c.id);
-                              }}
-                            >
-                              {c.important ? "Retirer ★" : "Mettre ★"}
-                            </button>
-                            <button
-                              type="button"
-                              className={`${styles.smallBtn} ${styles.dangerBtn}`.trim()}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void remove(c.id);
-                              }}
-                            >
-                              Supprimer
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
+                visibleContacts.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`${styles.mobileRow} ${selectedContactIds.has(c.id) ? styles.mobileRowSelected : ""}`.trim()}
+                    onClick={() => toggleSelect(c.id)}
+                    onDoubleClick={() => startEdit(c)}
+                    role="row"
+                    aria-label={buildDisplayName(c)}
+                  >
+                    <div className={`${styles.mcName} ${c.important ? styles.nameImportant : ""}`.trim()}>
+                      {buildDisplayName(c)}
                     </div>
-                  );
-                })
+                    <div className={`${styles.mcMail} ${styles.mono}`.trim()} title={c.email}>
+                      {c.email}
+                    </div>
+                    <div className={`${styles.mcTel} ${styles.mono}`.trim()} title={c.phone}>
+                      {c.phone}
+                    </div>
+                    <div className={styles.mcCat}>
+                      {c.category ? (
+                        <span className={categoryBadgeClass(c.category)}>
+                          <span className={styles.badgeLabelShort}>
+                            {CATEGORY_LABEL_SHORT[c.category as Exclude<Category, "">]}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className={styles.dash}>—</span>
+                      )}
+                    </div>
+                    <div className={styles.mcType}>
+                      {c.contact_type ? (
+                        <span className={typeBadgeClass(c.contact_type)}>
+                          <span className={styles.badgeLabelShort}>
+                            {TYPE_LABEL_SHORT[c.contact_type as Exclude<ContactType, "">]}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className={styles.dash}>—</span>
+                      )}
+                    </div>
+                    <div className={styles.mcStar}>
+                      {c.important ? (
+                        <span className={styles.starStatic} title="Important" aria-label="Important">
+                          ★
+                        </span>
+                      ) : (
+                        <span className={styles.dash}> </span>
+                      )}
+                    </div>
+                  </div>
+                ))
               )}
-
-              <div ref={mobileLoadMoreRef} className={styles.mobileLoadSentinel} aria-hidden="true" />
-
-              {loading && page > 1 ? <div className={styles.mobileLoadMore}>Chargement de plus de contacts...</div> : null}
-              {!mobileHasMore && visibleContacts.length > 0 ? <div className={styles.mobileListEnd}>Tous les contacts sont affichés.</div> : null}
             </div>
           ) : (
             <table className={styles.table}>
@@ -2351,38 +2087,32 @@ const exportExcel = async () => {
           )}
         </div>
 
-        {!isResponsive ? (
-          <div className={styles.paginationBar}>
-            <div className={styles.paginationMeta}>
-              {total > 0
-                ? `Affichage ${Math.min((page - 1) * pageSize + 1, total)}–${Math.min(page * pageSize, total)} sur ${total}`
-                : "0 contact"}
-            </div>
-            <div className={styles.paginationControls}>
-              <button
-                type="button"
-                className={styles.ghostBtn}
-                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                disabled={page <= 1 || loading}
-              >
-                ← Précédent
-              </button>
-              <span className={styles.paginationStatus}>Page {Math.min(page, pageCount)} / {Math.max(pageCount, 1)}</span>
-              <button
-                type="button"
-                className={styles.ghostBtn}
-                onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
-                disabled={page >= pageCount || loading || total === 0}
-              >
-                Suivant →
-              </button>
-            </div>
+        <div className={styles.paginationBar}>
+          <div className={styles.paginationMeta}>
+            {total > 0
+              ? `Affichage ${Math.min((page - 1) * pageSize + 1, total)}–${Math.min(page * pageSize, total)} sur ${total}`
+              : "0 contact"}
           </div>
-        ) : (
-          <div className={styles.mobileListSummary}>
-            {total > 0 ? `${visibleContacts.length} / ${total} contact${total > 1 ? "s" : ""}` : "0 contact"}
+          <div className={styles.paginationControls}>
+            <button
+              type="button"
+              className={styles.ghostBtn}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={page <= 1 || loading}
+            >
+              ← Précédent
+            </button>
+            <span className={styles.paginationStatus}>Page {Math.min(page, pageCount)} / {Math.max(pageCount, 1)}</span>
+            <button
+              type="button"
+              className={styles.ghostBtn}
+              onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
+              disabled={page >= pageCount || loading || total === 0}
+            >
+              Suivant →
+            </button>
           </div>
-        )}
+        </div>
       </section>
     </div>
   );
