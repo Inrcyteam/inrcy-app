@@ -2,6 +2,15 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs, type MailAttachmentRef } from "@/lib/mailAttachmentRefs";
 import { providerBatchLimit } from "@/lib/crmRecipients";
+import {
+  appendUnsubscribeFooterToHtml,
+  appendUnsubscribeFooterToText,
+  buildRecipientUnsubscribeUrl,
+  classifyMailFailure,
+  fetchSuppressedEmailsByUser,
+  getSuppressionReasonLabel,
+  upsertSuppressionEntry,
+} from "@/lib/mailSuppression";
 
 export type MailCampaignStatus = "queued" | "processing" | "sent" | "partial" | "failed";
 export type MailCampaignRecipientStatus = "queued" | "processing" | "sent" | "failed";
@@ -43,7 +52,7 @@ async function countRecipientsByStatus(campaignId: string, status: MailCampaignR
   return count ?? 0;
 }
 
-async function refreshCampaignCounters(campaignId: string) {
+export async function refreshCampaignCounters(campaignId: string) {
   const [queuedCount, processingCount, sentCount, failedCount] = await Promise.all([
     countRecipientsByStatus(campaignId, "queued"),
     countRecipientsByStatus(campaignId, "processing"),
@@ -118,7 +127,7 @@ async function claimQueuedRecipients(campaignId: string, limit: number) {
   const now = new Date().toISOString();
   const { data: queuedRows, error: loadError } = await supabaseAdmin
     .from("mail_campaign_recipients")
-    .select("id,email,contact_id,display_name,attempt_count,max_attempts,last_error")
+    .select("id,email,contact_id,display_name,attempt_count,max_attempts,last_error,suppression_reason,bounce_type,unsubscribed_at")
     .eq("campaign_id", campaignId)
     .eq("status", "queued")
     .lte("next_attempt_at", now)
@@ -145,7 +154,7 @@ async function claimQueuedRecipients(campaignId: string, limit: number) {
       })
       .eq("id", id)
       .eq("status", "queued")
-      .select("id,email,contact_id,display_name,attempt_count,max_attempts,last_error")
+      .select("id,email,contact_id,display_name,attempt_count,max_attempts,last_error,suppression_reason,bounce_type,unsubscribed_at")
       .maybeSingle();
 
     if (error) throw error;
@@ -160,23 +169,56 @@ async function resolveCampaignAttachments(refs: MailAttachmentRef[]) {
   return downloadMailAttachmentRefs(supabaseAdmin as any, refs);
 }
 
-async function requeueOrFailRecipient(recipientId: string, row: RecipientRow, message: string) {
+async function markRecipientBlockedBySuppression(args: {
+  recipientId: string;
+  reason: "opt_out" | "blacklist" | "hard_bounce" | "complaint";
+  message?: string;
+}) {
+  const now = new Date().toISOString();
+  const message = args.message || `Envoi bloqué (${getSuppressionReasonLabel(args.reason)}).`;
+  const patch: Record<string, unknown> = {
+    status: "failed",
+    suppression_reason: args.reason,
+    processing_started_at: null,
+    error: message,
+    last_error: message,
+    updated_at: now,
+  };
+  if (args.reason === "hard_bounce") { patch.bounce_type = "hard"; patch.bounced_at = now; }
+  if (args.reason === "opt_out") patch.unsubscribed_at = now;
+  const { error } = await supabaseAdmin
+    .from("mail_campaign_recipients")
+    .update(patch)
+    .eq("id", args.recipientId)
+    .eq("status", "processing");
+  if (error) throw error;
+}
+
+async function requeueOrFailRecipient(
+  recipientId: string,
+  row: RecipientRow,
+  message: string,
+  opts?: { classification?: ReturnType<typeof classifyMailFailure> },
+) {
   const attemptCount = Math.max(1, asNumber(row.attempt_count, 1));
   const maxAttempts = Math.max(1, asNumber(row.max_attempts, DEFAULT_MAX_ATTEMPTS));
+  const classification = opts?.classification || classifyMailFailure(message);
   const now = new Date().toISOString();
 
-  if (attemptCount < maxAttempts) {
+  if (classification.shouldRetry && attemptCount < maxAttempts) {
     const nextAttemptAt = new Date(Date.now() + retryDelayMs(attemptCount)).toISOString();
+    const patch: Record<string, unknown> = {
+      status: "queued",
+      next_attempt_at: nextAttemptAt,
+      processing_started_at: null,
+      error: message,
+      last_error: message,
+      updated_at: now,
+      bounce_type: classification.bounceType,
+    };
     const { error } = await supabaseAdmin
       .from("mail_campaign_recipients")
-      .update({
-        status: "queued",
-        next_attempt_at: nextAttemptAt,
-        processing_started_at: null,
-        error: message,
-        last_error: message,
-        updated_at: now,
-      })
+      .update(patch)
       .eq("id", recipientId)
       .eq("status", "processing");
 
@@ -184,15 +226,20 @@ async function requeueOrFailRecipient(recipientId: string, row: RecipientRow, me
     return "queued" as const;
   }
 
+  const patch: Record<string, unknown> = {
+    status: "failed",
+    processing_started_at: null,
+    error: message,
+    last_error: message,
+    updated_at: now,
+    bounce_type: classification.bounceType,
+  };
+  if (classification.bounceType) patch.bounced_at = now;
+  if (classification.suppressionReason) patch.suppression_reason = classification.suppressionReason;
+
   const { error } = await supabaseAdmin
     .from("mail_campaign_recipients")
-    .update({
-      status: "failed",
-      processing_started_at: null,
-      error: message,
-      last_error: message,
-      updated_at: now,
-    })
+    .update(patch)
     .eq("id", recipientId)
     .eq("status", "processing");
 
@@ -210,7 +257,7 @@ export async function processPendingMailCampaigns(opts?: {
 
   let query = supabaseAdmin
     .from("mail_campaigns")
-    .select("id,user_id,integration_id,provider,type,subject,body_text,body_html,attachments,status")
+    .select("id,user_id,integration_id,provider,type,subject,body_text,body_html,attachments,status,folder")
     .in("status", ["queued", "processing"])
     .order("created_at", { ascending: true })
     .limit(maxCampaigns);
@@ -254,6 +301,11 @@ export async function processPendingMailCampaigns(opts?: {
 
     summary.campaignsProcessed += 1;
 
+    const suppressedByEmail = await fetchSuppressedEmailsByUser(
+      userId,
+      claimedRows.map((row) => asString(row.email) || ""),
+    );
+
     await supabaseAdmin
       .from("mail_campaigns")
       .update({ status: "processing", started_at: new Date().toISOString(), updated_at: new Date().toISOString(), last_activity_at: new Date().toISOString() })
@@ -284,14 +336,30 @@ export async function processPendingMailCampaigns(opts?: {
       const email = asString(row.email) || "";
       if (!recipientId || !email) continue;
 
+      const suppressed = suppressedByEmail.get(String(email).toLowerCase());
+      if (suppressed?.reason) {
+        await markRecipientBlockedBySuppression({
+          recipientId,
+          reason: suppressed.reason,
+          message: `Envoi bloqué (${getSuppressionReasonLabel(suppressed.reason)}).`,
+        });
+        summary.failed += 1;
+        summary.recipientsProcessed += 1;
+        continue;
+      }
+
+      const unsubscribeUrl = buildRecipientUnsubscribeUrl(campaignId, recipientId);
+      const textBody = appendUnsubscribeFooterToText(asString(campaign.body_text) || "", unsubscribeUrl);
+      const htmlBody = appendUnsubscribeFooterToHtml(asString(campaign.body_html) || "", unsubscribeUrl);
+
       try {
         const sendResult = await sendMailFromIntegration({
           userId,
           accountId: integrationId,
           to: email,
           subject: asString(campaign.subject) || "(sans objet)",
-          text: asString(campaign.body_text) || "",
-          html: asString(campaign.body_html) || undefined,
+          text: textBody,
+          html: htmlBody || undefined,
           attachments,
         });
 
@@ -305,6 +373,12 @@ export async function processPendingMailCampaigns(opts?: {
             processing_started_at: null,
             provider_message_id: sendResult.providerMessageId || null,
             updated_at: new Date().toISOString(),
+            bounce_type: null,
+            bounced_at: null,
+            suppression_reason: null,
+            delivery_status: "accepted",
+            delivery_event: "accepted",
+            delivery_last_event_at: new Date().toISOString(),
           })
           .eq("id", recipientId)
           .eq("status", "processing");
@@ -312,7 +386,19 @@ export async function processPendingMailCampaigns(opts?: {
         summary.sent += 1;
       } catch (sendError) {
         const message = sendError instanceof Error ? sendError.message : "Envoi impossible.";
-        const result = await requeueOrFailRecipient(recipientId, row, message);
+        const classification = classifyMailFailure(message);
+        if (classification.shouldSuppress && classification.suppressionReason) {
+          await upsertSuppressionEntry({
+            user_id: userId,
+            email,
+            reason: classification.suppressionReason,
+            source: classification.kind === "complaint" ? "delivery_feedback" : "delivery_bounce",
+            campaign_id: campaignId,
+            recipient_id: recipientId,
+            note: message.slice(0, 500),
+          });
+        }
+        const result = await requeueOrFailRecipient(recipientId, row, message, { classification });
         await supabaseAdmin.from("mail_campaigns").update({ last_error: message, updated_at: new Date().toISOString(), last_activity_at: new Date().toISOString() }).eq("id", campaignId);
         if (result === "failed") summary.failed += 1;
         else summary.retried += 1;

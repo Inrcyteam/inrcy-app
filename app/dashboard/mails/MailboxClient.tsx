@@ -216,6 +216,44 @@ type CampaignRecipientLog = {
   next_attempt_at?: string | null;
   sent_at?: string | null;
   updated_at?: string | null;
+  suppression_reason?: string | null;
+  bounce_type?: string | null;
+  bounced_at?: string | null;
+  unsubscribed_at?: string | null;
+  delivery_status?: string | null;
+  delivery_event?: string | null;
+  delivery_last_event_at?: string | null;
+  delivered_at?: string | null;
+};
+
+type CampaignRecipientsFilterId =
+  | "all"
+  | "sent"
+  | "delivered"
+  | "queued"
+  | "processing"
+  | "failed"
+  | "blocked"
+  | "opt_out"
+  | "blacklist"
+  | "complaint"
+  | "hard_bounce"
+  | "soft_bounce";
+
+type CampaignHealthSummary = {
+  total: number;
+  queued: number;
+  processing: number;
+  sent: number;
+  delivered: number;
+  failed: number;
+  blocked: number;
+  opt_out: number;
+  blacklist: number;
+  complaint: number;
+  hard_bounce: number;
+  soft_bounce: number;
+  retryable: number;
 };
 
 type SendItem = {
@@ -1164,6 +1202,100 @@ function formatCampaignProgress(raw: any) {
   return bits.join(" • ");
 }
 
+
+function applyCampaignRecipientsFilter(query: any, filter: CampaignRecipientsFilterId) {
+  switch (filter) {
+    case "sent":
+      return query.eq("status", "sent");
+    case "delivered":
+      return query.eq("delivery_status", "delivered");
+    case "queued":
+      return query.eq("status", "queued");
+    case "processing":
+      return query.eq("status", "processing");
+    case "failed":
+      return query.eq("status", "failed");
+    case "blocked":
+      return query.eq("status", "failed").not("suppression_reason", "is", null);
+    case "opt_out":
+      return query.eq("suppression_reason", "opt_out");
+    case "blacklist":
+      return query.eq("suppression_reason", "blacklist");
+    case "complaint":
+      return query.eq("suppression_reason", "complaint");
+    case "hard_bounce":
+      return query.eq("suppression_reason", "hard_bounce");
+    case "soft_bounce":
+      return query.eq("status", "failed").eq("bounce_type", "soft");
+    default:
+      return query;
+  }
+}
+
+function formatCampaignFilterLabel(filter: CampaignRecipientsFilterId) {
+  switch (filter) {
+    case "sent":
+      return "Envoyés";
+    case "delivered":
+      return "Délivrés";
+    case "queued":
+      return "En attente";
+    case "processing":
+      return "En cours";
+    case "failed":
+      return "Échecs";
+    case "blocked":
+      return "Bloqués";
+    case "opt_out":
+      return "Désinscrits";
+    case "blacklist":
+      return "Blacklist";
+    case "complaint":
+      return "Plaintes";
+    case "hard_bounce":
+      return "Rebonds durs";
+    case "soft_bounce":
+      return "Rebonds souples";
+    default:
+      return "Tous";
+  }
+}
+
+function getCampaignRecipientStatusLabel(recipient: CampaignRecipientLog) {
+  if (recipient.status === "sent") {
+    if (recipient.unsubscribed_at) {
+      return `Envoyé • désinscrit le ${new Date(recipient.unsubscribed_at).toLocaleString()}`;
+    }
+    if (recipient.delivery_status === "delivered" && recipient.delivered_at) {
+      return `Délivré • ${new Date(recipient.delivered_at).toLocaleString()}`;
+    }
+    if (recipient.delivery_status === "accepted") {
+      return recipient.sent_at ? `Envoyé au provider • ${new Date(recipient.sent_at).toLocaleString()}` : "Envoyé au provider";
+    }
+    if (recipient.sent_at) {
+      return `Envoyé • ${new Date(recipient.sent_at).toLocaleString()}`;
+    }
+    return "Envoyé";
+  }
+
+  if (recipient.status === "failed") {
+    if (recipient.suppression_reason === "opt_out") return "Bloqué • désinscription";
+    if (recipient.suppression_reason === "blacklist") return "Bloqué • blacklist";
+    if (recipient.suppression_reason === "hard_bounce") return "Bloqué • rebond dur";
+    if (recipient.suppression_reason === "complaint") return "Bloqué • plainte spam";
+    if (recipient.bounce_type === "hard") return "Échec final • rebond dur";
+    if (recipient.bounce_type === "soft") return "Échec final • rebond souple";
+    return "Échec final";
+  }
+
+  if (recipient.status === "processing") return "En cours";
+  if (recipient.next_attempt_at) {
+    return `En attente • prochain essai ${new Date(recipient.next_attempt_at).toLocaleString()}`;
+  }
+  return "En attente";
+}
+
+
 function formatOutboxStatusLabel(item: OutboxItem) {
   if (item.source === "mail_campaigns") {
     const raw = (item.raw || {}) as any;
@@ -1230,6 +1362,9 @@ export default function MailboxClient() {
   const [campaignRecipientsPage, setCampaignRecipientsPage] = useState(1);
   const [campaignRecipientsPageCount, setCampaignRecipientsPageCount] = useState(1);
   const [campaignRecipientsTotal, setCampaignRecipientsTotal] = useState(0);
+  const [campaignRecipientsFilter, setCampaignRecipientsFilter] = useState<CampaignRecipientsFilterId>("all");
+  const [campaignHealth, setCampaignHealth] = useState<CampaignHealthSummary | null>(null);
+  const [campaignHealthLoading, setCampaignHealthLoading] = useState(false);
   const [campaignActionBusyId, setCampaignActionBusyId] = useState<string | null>(null);
   const [publicationEditForm, setPublicationEditForm] = useState<PublicationEditForm>({ title: "", content: "", cta: "", hashtags: "" });
   const [publicationEditImagesByChannel, setPublicationEditImagesByChannel] = useState<Record<string, PublicationChannelImagesState>>({});
@@ -1669,7 +1804,7 @@ export default function MailboxClient() {
     return detailsItem && detailsItem.source === "app_events" ? (((detailsItem as any)?.raw?.payload || null) as any) : null;
   }, [detailsItem]);
 
-  const loadCampaignRecipients = useCallback(async (campaignId: string, targetPage = campaignRecipientsPage) => {
+  const loadCampaignRecipients = useCallback(async (campaignId: string, targetPage = campaignRecipientsPage, targetFilter = campaignRecipientsFilter) => {
     if (!campaignId) {
       setCampaignRecipients([]);
       setCampaignRecipientsTotal(0);
@@ -1681,12 +1816,13 @@ export default function MailboxClient() {
       const safePage = Math.max(1, targetPage);
       const from = (safePage - 1) * MAILBOX_RECIPIENTS_PAGE_SIZE;
       const to = from + MAILBOX_RECIPIENTS_PAGE_SIZE - 1;
-      const { data, error, count } = await supabase
+      let query: any = supabase
         .from("mail_campaign_recipients")
-        .select("id,email,display_name,status,error,last_error,attempt_count,max_attempts,next_attempt_at,sent_at,updated_at", { count: "exact" })
+        .select("id,email,display_name,status,error,last_error,attempt_count,max_attempts,next_attempt_at,sent_at,updated_at,suppression_reason,bounce_type,bounced_at,unsubscribed_at,delivery_status,delivery_event,delivery_last_event_at,delivered_at", { count: "exact" })
         .eq("campaign_id", campaignId)
-        .order("created_at", { ascending: true })
-        .range(from, to);
+        .order("created_at", { ascending: true });
+      query = applyCampaignRecipientsFilter(query, targetFilter);
+      const { data, error, count } = await query.range(from, to);
       if (error) throw error;
       const total = Math.max(0, Number(count || 0));
       setCampaignRecipients(((data || []) as any[]).map((row: any) => ({
@@ -1701,6 +1837,14 @@ export default function MailboxClient() {
         next_attempt_at: row.next_attempt_at || null,
         sent_at: row.sent_at || null,
         updated_at: row.updated_at || null,
+        suppression_reason: row.suppression_reason || null,
+        bounce_type: row.bounce_type || null,
+        bounced_at: row.bounced_at || null,
+        unsubscribed_at: row.unsubscribed_at || null,
+        delivery_status: row.delivery_status || null,
+        delivery_event: row.delivery_event || null,
+        delivery_last_event_at: row.delivery_last_event_at || null,
+        delivered_at: row.delivered_at || null,
       })));
       setCampaignRecipientsTotal(total);
       setCampaignRecipientsPageCount(Math.max(1, Math.ceil(total / MAILBOX_RECIPIENTS_PAGE_SIZE)));
@@ -1712,7 +1856,80 @@ export default function MailboxClient() {
     } finally {
       setCampaignRecipientsLoading(false);
     }
-  }, [campaignRecipientsPage, supabase]);
+  }, [campaignRecipientsFilter, campaignRecipientsPage, supabase]);
+
+
+  const loadCampaignHealth = useCallback(async (campaignId: string, raw?: any) => {
+    if (!campaignId) {
+      setCampaignHealth(null);
+      return;
+    }
+
+    const baseCounts = campaignCounts(raw || {});
+    setCampaignHealthLoading(true);
+    try {
+      const countRecipients = async (filter: CampaignRecipientsFilterId | "__blocked__") => {
+        let query: any = supabase
+          .from("mail_campaign_recipients")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", campaignId);
+        if (filter === "__blocked__") {
+          query = query.eq("status", "failed").not("suppression_reason", "is", null);
+        } else {
+          query = applyCampaignRecipientsFilter(query, filter);
+        }
+        const { count, error } = await query;
+        if (error) throw error;
+        return Math.max(0, Number(count || 0));
+      };
+
+      const [delivered, blocked, optOut, blacklist, complaint, hardBounce, softBounce] = await Promise.all([
+        countRecipients("delivered"),
+        countRecipients("__blocked__"),
+        countRecipients("opt_out"),
+        countRecipients("blacklist"),
+        countRecipients("complaint"),
+        countRecipients("hard_bounce"),
+        countRecipients("soft_bounce"),
+      ]);
+
+      setCampaignHealth({
+        ...baseCounts,
+        delivered,
+        blocked,
+        opt_out: optOut,
+        blacklist,
+        complaint,
+        hard_bounce: hardBounce,
+        soft_bounce: softBounce,
+        retryable: Math.max(0, baseCounts.failed - blocked),
+      });
+    } catch (error) {
+      console.error(error);
+      setCampaignHealth({
+        ...baseCounts,
+        delivered: 0,
+        blocked: 0,
+        opt_out: 0,
+        blacklist: 0,
+        complaint: 0,
+        hard_bounce: 0,
+        soft_bounce: 0,
+        retryable: Math.max(0, baseCounts.failed),
+      });
+    } finally {
+      setCampaignHealthLoading(false);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!detailsOpen || !detailsItem || detailsItem.source !== "mail_campaigns") {
+      setCampaignHealth(null);
+      setCampaignHealthLoading(false);
+      return;
+    }
+    void loadCampaignHealth(detailsItem.id, (detailsItem as any).raw || {});
+  }, [detailsOpen, detailsItem, loadCampaignHealth]);
 
   useEffect(() => {
     if (!detailsOpen || !detailsItem || detailsItem.source !== "mail_campaigns") {
@@ -1722,15 +1939,17 @@ export default function MailboxClient() {
       setCampaignRecipientsPageCount(1);
       return;
     }
-    void loadCampaignRecipients(detailsItem.id, campaignRecipientsPage);
-  }, [campaignRecipientsPage, detailsOpen, detailsItem, loadCampaignRecipients]);
+    void loadCampaignRecipients(detailsItem.id, campaignRecipientsPage, campaignRecipientsFilter);
+  }, [campaignRecipientsFilter, campaignRecipientsPage, detailsOpen, detailsItem, loadCampaignRecipients]);
 
   useEffect(() => {
     if (!detailsOpen || !detailsItem || detailsItem.source !== "mail_campaigns") {
       setCampaignRecipientsPage(1);
+      setCampaignRecipientsFilter("all");
       return;
     }
     setCampaignRecipientsPage(1);
+    setCampaignRecipientsFilter("all");
   }, [detailsItem?.id, detailsItem?.source, detailsOpen]);
 
   useEffect(() => {
@@ -2430,9 +2649,17 @@ async function deleteDraftPermanently(id: string) {
         const queuedCount = Math.max(0, Number(data?.queued ?? recipientsList.length));
         const blockedDuplicates = Math.max(0, Number(data?.blockedDuplicates ?? 0));
         const ignoredInvalid = Math.max(0, Number(data?.ignoredInvalid ?? 0));
+        const blockedOptOut = Math.max(0, Number(data?.blockedOptOut ?? 0));
+        const blockedBlacklist = Math.max(0, Number(data?.blockedBlacklist ?? 0));
+        const blockedHardBounce = Math.max(0, Number(data?.blockedHardBounce ?? 0));
+        const blockedComplaint = Math.max(0, Number(data?.blockedComplaint ?? 0));
         const extras: string[] = [];
         if (blockedDuplicates > 0) extras.push(`${blockedDuplicates} doublon${blockedDuplicates > 1 ? "s" : ""} bloqué${blockedDuplicates > 1 ? "s" : ""}`);
         if (ignoredInvalid > 0) extras.push(`${ignoredInvalid} destinataire${ignoredInvalid > 1 ? "s" : ""} ignoré${ignoredInvalid > 1 ? "s" : ""}`);
+        if (blockedOptOut > 0) extras.push(`${blockedOptOut} désinscription${blockedOptOut > 1 ? "s" : ""}`);
+        if (blockedBlacklist > 0) extras.push(`${blockedBlacklist} blacklist`);
+        if (blockedHardBounce > 0) extras.push(`${blockedHardBounce} rebond${blockedHardBounce > 1 ? "s" : ""} dur${blockedHardBounce > 1 ? "s" : ""}`);
+        if (blockedComplaint > 0) extras.push(`${blockedComplaint} plainte${blockedComplaint > 1 ? "s" : ""}`);
         setToast(`Campagne lancée : ${queuedCount} email${queuedCount > 1 ? "s" : ""} vont partir individuellement par vagues de 20.${extras.length ? ` (${extras.join(", ")})` : ""}`);
         setComposeOpen(false);
         resetCompose();
@@ -2710,10 +2937,18 @@ async function deleteDraftPermanently(id: string) {
         setToast(data?.error || "Relance impossible pour le moment.");
         return;
       }
-      setToast(data?.retried ? `${data.retried} contact${data.retried > 1 ? "s" : ""} relancé${data.retried > 1 ? "s" : ""}.` : "Échecs relancés.");
+      const blocked = Math.max(0, Number(data?.blocked ?? 0));
+      setToast(
+        data?.retried
+          ? `${data.retried} contact${data.retried > 1 ? "s" : ""} relancé${data.retried > 1 ? "s" : ""}.${blocked > 0 ? ` ${blocked} blocage${blocked > 1 ? "s" : ""} ignoré${blocked > 1 ? "s" : ""}.` : ""}`
+          : "Échecs relancés.",
+      );
       await loadHistory();
       if (detailsOpen && detailsId === campaignId) {
-        await loadCampaignRecipients(campaignId);
+        await Promise.all([
+          loadCampaignRecipients(campaignId, 1, campaignRecipientsFilter),
+          loadCampaignHealth(campaignId, (detailsItem as any)?.raw || {}),
+        ]);
       }
     } finally {
       setCampaignActionBusyId(null);
@@ -3344,10 +3579,15 @@ async function deleteDraftPermanently(id: string) {
                                 <button
                                   type="button"
                                   className={styles.btnGhost}
-                                  onClick={() => void loadCampaignRecipients(detailsItem.id)}
-                                  disabled={campaignRecipientsLoading}
+                                  onClick={() => {
+                                    void Promise.all([
+                                      loadCampaignRecipients(detailsItem.id, campaignRecipientsPage, campaignRecipientsFilter),
+                                      loadCampaignHealth(detailsItem.id, (detailsItem as any).raw || {}),
+                                    ]);
+                                  }}
+                                  disabled={campaignRecipientsLoading || campaignHealthLoading}
                                 >
-                                  {campaignRecipientsLoading ? "Actualisation…" : "Rafraîchir le suivi"}
+                                  {campaignRecipientsLoading || campaignHealthLoading ? "Actualisation…" : "Rafraîchir le suivi"}
                                 </button>
                                 {detailsItem.reopenHref ? (
                                   <button
@@ -3646,6 +3886,80 @@ async function deleteDraftPermanently(id: string) {
                             <div className={styles.detailSectionHeader}>
                               <div className={styles.messageHeaderTitle}>Suivi destinataires</div>
                             </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
+                              {[
+                                { key: "sent", label: "Envoyés", value: campaignHealth?.sent ?? campaignCounts((detailsItem as any).raw || {}).sent },
+                                { key: "delivered", label: "Délivrés", value: campaignHealth?.delivered ?? 0 },
+                                { key: "queued", label: "En attente", value: campaignHealth?.queued ?? campaignCounts((detailsItem as any).raw || {}).queued },
+                                { key: "processing", label: "En cours", value: campaignHealth?.processing ?? campaignCounts((detailsItem as any).raw || {}).processing },
+                                { key: "failed", label: "Échecs", value: campaignHealth?.failed ?? campaignCounts((detailsItem as any).raw || {}).failed },
+                                { key: "blocked", label: "Bloqués", value: campaignHealth?.blocked ?? 0 },
+                                { key: "opt_out", label: "Désinscrits", value: campaignHealth?.opt_out ?? 0 },
+                                { key: "hard_bounce", label: "Rebonds durs", value: campaignHealth?.hard_bounce ?? 0 },
+                                { key: "soft_bounce", label: "Rebonds souples", value: campaignHealth?.soft_bounce ?? 0 },
+                              ].map((stat) => {
+                                const isActive = campaignRecipientsFilter === stat.key;
+                                return (
+                                  <button
+                                    key={stat.key}
+                                    type="button"
+                                    className={styles.btnGhost}
+                                    onClick={() => {
+                                      setCampaignRecipientsPage(1);
+                                      setCampaignRecipientsFilter((prev) => (prev === stat.key ? "all" : (stat.key as CampaignRecipientsFilterId)));
+                                    }}
+                                    style={{
+                                      textAlign: "left",
+                                      padding: "12px 14px",
+                                      borderRadius: 14,
+                                      background: isActive ? "rgba(76,195,255,0.12)" : "rgba(255,255,255,0.03)",
+                                      border: isActive ? "1px solid rgba(76,195,255,0.35)" : "1px solid rgba(255,255,255,0.10)",
+                                    }}
+                                  >
+                                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginBottom: 4 }}>{stat.label}</div>
+                                    <div style={{ fontSize: 22, fontWeight: 700 }}>{stat.value}</div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                              {([
+                                { key: "all", label: "Tous", value: campaignHealth?.total ?? Number((detailsItem as any).raw?.total_count || 0) },
+                                { key: "delivered", label: "Délivrés", value: campaignHealth?.delivered ?? 0 },
+                                { key: "blocked", label: "Bloqués", value: campaignHealth?.blocked ?? 0 },
+                                { key: "opt_out", label: "Désinscrits", value: campaignHealth?.opt_out ?? 0 },
+                                { key: "blacklist", label: "Blacklist", value: campaignHealth?.blacklist ?? 0 },
+                                { key: "complaint", label: "Plaintes", value: campaignHealth?.complaint ?? 0 },
+                                { key: "hard_bounce", label: "Rebonds durs", value: campaignHealth?.hard_bounce ?? 0 },
+                                { key: "soft_bounce", label: "Rebonds souples", value: campaignHealth?.soft_bounce ?? 0 },
+                              ] as Array<{ key: CampaignRecipientsFilterId | "all"; label: string; value: number }>).map((chip) => {
+                                const active = campaignRecipientsFilter === chip.key;
+                                return (
+                                  <button
+                                    key={chip.key}
+                                    type="button"
+                                    className={styles.btnGhost}
+                                    onClick={() => {
+                                      setCampaignRecipientsPage(1);
+                                      setCampaignRecipientsFilter(chip.key as CampaignRecipientsFilterId);
+                                    }}
+                                    style={{
+                                      ...(active ? pillBtnActive : {}),
+                                      minHeight: 34,
+                                      padding: "0 12px",
+                                      borderRadius: 999,
+                                      background: active ? "rgba(76,195,255,0.10)" : "rgba(255,255,255,0.03)",
+                                    }}
+                                  >
+                                    {chip.label} • {chip.value}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, marginBottom: 12 }}>
+                              {campaignHealthLoading ? "Actualisation des statuts campagne…" : `Filtre actif : ${formatCampaignFilterLabel(campaignRecipientsFilter)}.`}
+                              {campaignHealth && campaignHealth.retryable > 0 ? ` Relançables : ${campaignHealth.retryable}.` : ""}
+                            </div>
                             {campaignRecipientsLoading ? (
                               <div style={{ color: "rgba(255,255,255,0.68)" }}>Chargement des destinataires…</div>
                             ) : campaignRecipients.length === 0 ? (
@@ -3657,17 +3971,7 @@ async function deleteDraftPermanently(id: string) {
                                   const attemptLabel = recipient.attempt_count != null && recipient.max_attempts != null
                                     ? `Tentative ${recipient.attempt_count}/${recipient.max_attempts}`
                                     : null;
-                                  const statusLabel = recipient.status === "sent"
-                                    ? recipient.sent_at
-                                      ? `Envoyé • ${new Date(recipient.sent_at).toLocaleString()}`
-                                      : "Envoyé"
-                                    : recipient.status === "failed"
-                                    ? "Échec final"
-                                    : recipient.status === "processing"
-                                    ? "En cours"
-                                    : recipient.next_attempt_at
-                                    ? `En attente • prochain essai ${new Date(recipient.next_attempt_at).toLocaleString()}`
-                                    : "En attente";
+                                  const statusLabel = getCampaignRecipientStatusLabel(recipient);
                                   return (
                                     <div key={recipient.id} className={styles.attachmentItem}>
                                       <span className={styles.attachmentName}>{recipient.display_name ? `${recipient.display_name} — ${recipient.email}` : recipient.email}</span>
@@ -3683,8 +3987,8 @@ async function deleteDraftPermanently(id: string) {
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
                                 <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12 }}>
                                   {campaignRecipientsTotal > 0
-                                    ? `Affichage ${(campaignRecipientsPage - 1) * MAILBOX_RECIPIENTS_PAGE_SIZE + 1}–${Math.min(campaignRecipientsPage * MAILBOX_RECIPIENTS_PAGE_SIZE, campaignRecipientsTotal)} sur ${campaignRecipientsTotal}`
-                                    : "Aucun destinataire"}
+                                    ? `Affichage ${(campaignRecipientsPage - 1) * MAILBOX_RECIPIENTS_PAGE_SIZE + 1}–${Math.min(campaignRecipientsPage * MAILBOX_RECIPIENTS_PAGE_SIZE, campaignRecipientsTotal)} sur ${campaignRecipientsTotal} (${formatCampaignFilterLabel(campaignRecipientsFilter).toLowerCase()})`
+                                    : `Aucun destinataire (${formatCampaignFilterLabel(campaignRecipientsFilter).toLowerCase()})`}
                                 </div>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                                   <button

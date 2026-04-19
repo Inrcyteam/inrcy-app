@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { processPendingMailCampaigns } from "@/lib/crmCampaigns";
 import { normalizeCampaignRecipients } from "@/lib/crmRecipients";
+import { fetchSuppressedEmailsByUser } from "@/lib/mailSuppression";
 
 export const runtime = "nodejs";
 
@@ -115,17 +116,14 @@ export async function POST(req: Request) {
   const trackType = String(body.trackType || "").trim();
   const templateKey = String(body.templateKey || "").trim();
   const attachments = Array.isArray(body.attachments) ? body.attachments : [];
-  const recipients = normalizeCampaignRecipients(body.recipients);
+  const normalizedRecipients = normalizeCampaignRecipients(body.recipients);
   const recipientStats = parseCampaignRecipientStats(body.recipients);
 
   if (!accountId) {
     return NextResponse.json({ error: "Boîte d’envoi manquante." }, { status: 400 });
   }
-  if (recipients.length === 0) {
+  if (normalizedRecipients.length === 0) {
     return NextResponse.json({ error: "Aucun destinataire valide." }, { status: 400 });
-  }
-  if (recipients.length === 1) {
-    return NextResponse.json({ error: "Une campagne CRM nécessite au moins 2 destinataires." }, { status: 400 });
   }
 
   const defaultFolder: CampaignFolder =
@@ -147,6 +145,43 @@ export async function POST(req: Request) {
   }
   if (!account?.id || !account?.provider) {
     return NextResponse.json({ error: "La boîte d’envoi sélectionnée est introuvable." }, { status: 404 });
+  }
+
+
+  const suppressedByEmail = await fetchSuppressedEmailsByUser(
+    user.id,
+    normalizedRecipients.map((recipient) => recipient.email),
+  );
+
+  let blockedOptOut = 0;
+  let blockedBlacklist = 0;
+  let blockedHardBounce = 0;
+  let blockedComplaint = 0;
+
+  const recipients = normalizedRecipients.filter((recipient) => {
+    const suppression = suppressedByEmail.get(recipient.email.toLowerCase());
+    if (!suppression?.reason) return true;
+    if (suppression.reason === "opt_out") blockedOptOut += 1;
+    else if (suppression.reason === "blacklist") blockedBlacklist += 1;
+    else if (suppression.reason === "hard_bounce") blockedHardBounce += 1;
+    else if (suppression.reason === "complaint") blockedComplaint += 1;
+    return false;
+  });
+
+  if (recipients.length === 0) {
+    const blockedParts = [
+      blockedOptOut > 0 ? `${blockedOptOut} désinscription${blockedOptOut > 1 ? "s" : ""}` : null,
+      blockedBlacklist > 0 ? `${blockedBlacklist} blacklist` : null,
+      blockedHardBounce > 0 ? `${blockedHardBounce} rebond${blockedHardBounce > 1 ? "s" : ""} dur${blockedHardBounce > 1 ? "s" : ""}` : null,
+      blockedComplaint > 0 ? `${blockedComplaint} plainte${blockedComplaint > 1 ? "s" : ""}` : null,
+    ].filter(Boolean);
+    return NextResponse.json(
+      { error: blockedParts.length ? `Tous les destinataires sont bloqués (${blockedParts.join(", ")}).` : "Aucun destinataire autorisé." },
+      { status: 400 },
+    );
+  }
+  if (recipients.length === 1) {
+    return NextResponse.json({ error: "Une campagne CRM nécessite au moins 2 destinataires autorisés." }, { status: 400 });
   }
 
   const now = new Date().toISOString();
@@ -211,6 +246,10 @@ export async function POST(req: Request) {
     queued: recipients.length,
     blockedDuplicates: recipientStats.duplicateCount,
     ignoredInvalid: recipientStats.invalidCount,
+    blockedOptOut,
+    blockedBlacklist,
+    blockedHardBounce,
+    blockedComplaint,
     immediate,
   });
 }
