@@ -14,6 +14,33 @@ type ContactSummary = {
   autres: number;
 };
 
+type ContactPayload = {
+  user_id: string;
+  last_name: string;
+  first_name: string;
+  company_name: string;
+  siret: string;
+  email: string;
+  phone: string;
+  address: string;
+  billing_address: string;
+  delivery_address: string;
+  vat_number: string;
+  city: string;
+  postal_code: string;
+  category: Category;
+  contact_type: ContactType;
+  notes?: string;
+  important?: boolean;
+};
+
+type BulkImportStats = {
+  inserted: number;
+  skipped_duplicates: number;
+  skipped_existing: number;
+  ignored_invalid: number;
+};
+
 const CONTACT_SELECT = [
   "id",
   "user_id",
@@ -75,6 +102,122 @@ function parseDisplayName(v: unknown) {
   // - on stocke "Nom Prénom" dans last_name (first_name vide)
   // - la partie après "/" devient company_name
   return { last_name: left, first_name: "", company_name: right };
+}
+
+function normalizeEmailKey(value: unknown) {
+  return cleanString(value).toLowerCase();
+}
+
+function normalizeFingerprintValue(value: unknown) {
+  return cleanString(value).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function buildContactFingerprint(payload: Pick<ContactPayload, "last_name" | "first_name" | "company_name" | "phone">) {
+  return [payload.last_name, payload.first_name, payload.company_name, payload.phone]
+    .map(normalizeFingerprintValue)
+    .filter(Boolean)
+    .join("|");
+}
+
+function buildContactPayload(row: Record<string, unknown>, userId: string, opts?: { includeNotes?: boolean; includeImportant?: boolean }) {
+  const fromDisplay = parseDisplayName(row.display_name);
+  const payload: ContactPayload = {
+    user_id: userId,
+    last_name: fromDisplay.last_name || cleanString(row.last_name),
+    first_name: fromDisplay.first_name || cleanString(row.first_name),
+    company_name: fromDisplay.company_name || cleanString(row.company_name),
+    siret: cleanString(row.siret),
+    email: cleanString(row.email),
+    phone: cleanString(row.phone),
+    address: cleanString(row.address),
+    billing_address: cleanString((row as any).billing_address),
+    delivery_address: cleanString((row as any).delivery_address),
+    vat_number: cleanString((row as any).vat_number),
+    city: cleanString(row.city),
+    postal_code: cleanString(row.postal_code),
+    category: isCategory(row.category) ? row.category : ("particulier" as Category),
+    contact_type: isContactType(row.contact_type) ? row.contact_type : ("prospect" as ContactType),
+    ...(opts?.includeNotes ? { notes: cleanString(row.notes) } : {}),
+    ...(opts?.includeImportant ? { important: Boolean(row.important) } : {}),
+  };
+
+  if (!payload.last_name && !payload.first_name && !payload.company_name && !payload.email && !payload.phone) {
+    return null;
+  }
+
+  return payload;
+}
+
+async function prepareBulkImportPayloads(
+  supabase: Awaited<ReturnType<typeof createSupabaseServer>>,
+  userId: string,
+  rows: unknown[],
+  opts?: { includeNotes?: boolean; includeImportant?: boolean },
+) {
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const mapped = sourceRows
+    .map((row) => (row && typeof row === "object" && !Array.isArray(row) ? buildContactPayload(row as Record<string, unknown>, userId, opts) : null))
+    .filter(Boolean) as ContactPayload[];
+
+  let skippedDuplicates = 0;
+  const seenEmails = new Set<string>();
+  const seenFingerprints = new Set<string>();
+  const deduped: ContactPayload[] = [];
+
+  for (const payload of mapped) {
+    const emailKey = normalizeEmailKey(payload.email);
+    if (emailKey) {
+      if (seenEmails.has(emailKey)) {
+        skippedDuplicates += 1;
+        continue;
+      }
+      seenEmails.add(emailKey);
+      deduped.push(payload);
+      continue;
+    }
+
+    const fingerprint = buildContactFingerprint(payload);
+    if (fingerprint && seenFingerprints.has(fingerprint)) {
+      skippedDuplicates += 1;
+      continue;
+    }
+    if (fingerprint) seenFingerprints.add(fingerprint);
+    deduped.push(payload);
+  }
+
+  let skippedExisting = 0;
+  let payloads = deduped;
+
+  if (seenEmails.size > 0) {
+    const { data: existingRows, error } = await supabase
+      .from("crm_contacts")
+      .select("email")
+      .eq("user_id", userId)
+      .not("email", "is", null);
+
+    if (error) throw error;
+
+    const existingEmails = new Set((existingRows || []).map((row: any) => normalizeEmailKey(row?.email)).filter(Boolean));
+    payloads = deduped.filter((payload) => {
+      const emailKey = normalizeEmailKey(payload.email);
+      if (!emailKey) return true;
+      if (existingEmails.has(emailKey)) {
+        skippedExisting += 1;
+        return false;
+      }
+      return true;
+    });
+  }
+
+  return {
+    payloads,
+    stats: {
+      inserted: payloads.length,
+      skipped_duplicates: skippedDuplicates,
+      skipped_existing: skippedExisting,
+      ignored_invalid: Math.max(0, sourceRows.length - mapped.length),
+    } satisfies BulkImportStats,
+  };
 }
 
 function parsePositiveInt(value: string | null, fallback: number, max: number) {
@@ -260,49 +403,25 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
 
-  // ✅ Bulk import: PUT { contacts: [...] }
+  // ✅ Bulk import: POST { contacts: [...] }
   if (Array.isArray(body?.contacts)) {
-    const rows = body.contacts;
-    const payloads = rows
-      .map((row: Record<string, unknown>) => {
-        const fromDisplay = parseDisplayName(row.display_name);
-        const p = {
-          user_id: userData.user.id,
-          last_name: fromDisplay.last_name || cleanString(row.last_name),
-          first_name: fromDisplay.first_name || cleanString(row.first_name),
-          company_name: fromDisplay.company_name || cleanString(row.company_name),
-          siret: cleanString(row.siret),
-          email: cleanString(row.email),
-          phone: cleanString(row.phone),
-          address: cleanString(row.address),
-          billing_address: cleanString((row as any).billing_address),
-          delivery_address: cleanString((row as any).delivery_address),
-          vat_number: cleanString((row as any).vat_number),
-          city: cleanString(row.city),
-          postal_code: cleanString(row.postal_code),
-          category: isCategory(row.category) ? row.category : ("particulier" as Category),
-          contact_type: isContactType(row.contact_type) ? row.contact_type : ("prospect" as ContactType),
-          notes: cleanString(row.notes),
-          important: Boolean(row.important),
-        };
+    const { payloads, stats } = await prepareBulkImportPayloads(supabase, userData.user.id, body.contacts, {
+      includeNotes: true,
+      includeImportant: true,
+    });
 
-        // Minimum validation
-        if (!p.last_name && !p.first_name && !p.company_name && !p.email && !p.phone) return null;
-        return p;
-      })
-      .filter(Boolean) as unknown[];
+    if (payloads.length > 0) {
+      const { error } = await supabase.from("crm_contacts").insert(payloads);
+      if (error) {
+        return jsonUserFacingError(error, { status: 500 });
+      }
+    }
 
-    if (payloads.length === 0) {
+    if (stats.inserted === 0 && stats.skipped_duplicates === 0 && stats.skipped_existing === 0) {
       return NextResponse.json({ error: "Aucune ligne importable." }, { status: 400 });
     }
 
-    const { error } = await supabase.from("crm_contacts").insert(payloads);
-
-    if (error) {
-      return jsonUserFacingError(error, { status: 500 });
-    }
-
-    return NextResponse.json({ ok: true, inserted: payloads.length });
+    return NextResponse.json({ ok: true, ...stats });
   }
 
   const fromDisplay = parseDisplayName(body.display_name);
@@ -356,45 +475,20 @@ export async function PUT(req: Request) {
 
   // ✅ Bulk import: PUT { contacts: [...] }
   if (Array.isArray(body?.contacts)) {
-    const rows = body.contacts;
-    const payloads = rows
-      .map((row: Record<string, unknown>) => {
-        const fromDisplay = parseDisplayName(row.display_name);
-        const p = {
-          user_id: userData.user.id,
-          last_name: fromDisplay.last_name || cleanString(row.last_name),
-          first_name: fromDisplay.first_name || cleanString(row.first_name),
-          company_name: fromDisplay.company_name || cleanString(row.company_name),
-          siret: cleanString(row.siret),
-          email: cleanString(row.email),
-          phone: cleanString(row.phone),
-          address: cleanString(row.address),
-          billing_address: cleanString((row as any).billing_address),
-          delivery_address: cleanString((row as any).delivery_address),
-          vat_number: cleanString((row as any).vat_number),
-          city: cleanString(row.city),
-          postal_code: cleanString(row.postal_code),
-          category: isCategory(row.category) ? row.category : ("particulier" as Category),
-          contact_type: isContactType(row.contact_type) ? row.contact_type : ("prospect" as ContactType),
-        };
+    const { payloads, stats } = await prepareBulkImportPayloads(supabase, userData.user.id, body.contacts);
 
-        // Minimum validation
-        if (!p.last_name && !p.first_name && !p.company_name && !p.email && !p.phone) return null;
-        return p;
-      })
-      .filter(Boolean) as unknown[];
+    if (payloads.length > 0) {
+      const { error } = await supabase.from("crm_contacts").insert(payloads);
+      if (error) {
+        return jsonUserFacingError(error, { status: 500 });
+      }
+    }
 
-    if (payloads.length === 0) {
+    if (stats.inserted === 0 && stats.skipped_duplicates === 0 && stats.skipped_existing === 0) {
       return NextResponse.json({ error: "Aucune ligne importable." }, { status: 400 });
     }
 
-    const { error } = await supabase.from("crm_contacts").insert(payloads);
-
-    if (error) {
-      return jsonUserFacingError(error, { status: 500 });
-    }
-
-    return NextResponse.json({ ok: true, inserted: payloads.length });
+    return NextResponse.json({ ok: true, ...stats });
   }
   const id = cleanString(body.id);
   if (!id) return NextResponse.json({ error: "L'identifiant du contact est manquant." }, { status: 400 });

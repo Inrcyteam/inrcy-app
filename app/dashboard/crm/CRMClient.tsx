@@ -903,7 +903,16 @@ async function importContacts(rows: any[]) {
     if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Import impossible."));
     setPage(1);
     await loadContacts({ page: 1, preserveSuccess: true });
-    setSuccess(`Import terminé : ${j?.inserted ?? cleaned.length} contact(s).`);
+
+    const inserted = Math.max(0, Number(j?.inserted ?? cleaned.length));
+    const skippedDuplicates = Math.max(0, Number(j?.skipped_duplicates ?? 0));
+    const skippedExisting = Math.max(0, Number(j?.skipped_existing ?? 0));
+    const ignoredInvalid = Math.max(0, Number(j?.ignored_invalid ?? 0));
+    const parts = [`Import terminé : ${inserted} contact(s) ajouté(s).`];
+    if (skippedDuplicates > 0) parts.push(`${skippedDuplicates} doublon${skippedDuplicates > 1 ? "s" : ""} ignoré${skippedDuplicates > 1 ? "s" : ""} dans le fichier.`);
+    if (skippedExisting > 0) parts.push(`${skippedExisting} email${skippedExisting > 1 ? "s" : ""} déjà présent${skippedExisting > 1 ? "s" : ""} ignoré${skippedExisting > 1 ? "s" : ""}.`);
+    if (ignoredInvalid > 0) parts.push(`${ignoredInvalid} ligne${ignoredInvalid > 1 ? "s" : ""} invalide${ignoredInvalid > 1 ? "s" : ""} ignorée${ignoredInvalid > 1 ? "s" : ""}.`);
+    setSuccess(parts.join(" "));
   } catch (e: any) {
     setError(getSimpleFrenchErrorMessage(e, "Import impossible."));
   } finally {

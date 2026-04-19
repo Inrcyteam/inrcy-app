@@ -50,6 +50,54 @@ function chunkArray<T>(items: T[], size: number) {
   return chunks;
 }
 
+const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+
+function parseCampaignRecipientStats(input: unknown) {
+  const values = Array.isArray(input) ? input : [];
+  let invalidCount = 0;
+  let duplicateCount = 0;
+  const seen = new Set<string>();
+
+  for (const item of values) {
+    if (typeof item === "string") {
+      for (const part of item.split(/[;,\n\r]+/g)) {
+        const email = part.trim();
+        if (!email) continue;
+        const lower = email.toLowerCase();
+        if (!SIMPLE_EMAIL_RE.test(email)) {
+          invalidCount += 1;
+          continue;
+        }
+        if (seen.has(lower)) {
+          duplicateCount += 1;
+          continue;
+        }
+        seen.add(lower);
+      }
+      continue;
+    }
+
+    if (!item || typeof item !== "object") {
+      invalidCount += 1;
+      continue;
+    }
+
+    const email = String((item as any).email || "").trim();
+    const lower = email.toLowerCase();
+    if (!email || !SIMPLE_EMAIL_RE.test(email)) {
+      invalidCount += 1;
+      continue;
+    }
+    if (seen.has(lower)) {
+      duplicateCount += 1;
+      continue;
+    }
+    seen.add(lower);
+  }
+
+  return { duplicateCount, invalidCount };
+}
+
 export async function POST(req: Request) {
   const { supabase, user, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
@@ -68,6 +116,7 @@ export async function POST(req: Request) {
   const templateKey = String(body.templateKey || "").trim();
   const attachments = Array.isArray(body.attachments) ? body.attachments : [];
   const recipients = normalizeCampaignRecipients(body.recipients);
+  const recipientStats = parseCampaignRecipientStats(body.recipients);
 
   if (!accountId) {
     return NextResponse.json({ error: "Boîte d’envoi manquante." }, { status: 400 });
@@ -160,6 +209,8 @@ export async function POST(req: Request) {
     success: true,
     campaignId: campaign.id,
     queued: recipients.length,
+    blockedDuplicates: recipientStats.duplicateCount,
+    ignoredInvalid: recipientStats.invalidCount,
     immediate,
   });
 }

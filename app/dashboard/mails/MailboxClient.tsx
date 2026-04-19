@@ -1215,6 +1215,7 @@ export default function MailboxClient() {
   const [historyPage, setHistoryPage] = useState(1);
   const historyPageRef = useRef(1);
   const [historyHasMorePotential, setHistoryHasMorePotential] = useState(false);
+  const [historyTotalCount, setHistoryTotalCount] = useState<number | null>(null);
 
   // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1592,273 +1593,63 @@ export default function MailboxClient() {
 
   const loadHistory = useCallback(async (options?: { page?: number }) => {
     const targetPage = Math.max(1, options?.page ?? historyPageRef.current ?? 1);
-    const historyTargetCount = Math.max(MAILBOX_PAGE_SIZE, targetPage * MAILBOX_PAGE_SIZE);
-    const sendItemsLimit = Math.max(80, historyTargetCount * 2);
-    const campaignsLimit = Math.max(60, historyTargetCount);
-    const eventsLimit = Math.max(80, historyTargetCount * 2);
 
     setLoading(true);
     try {
-      const { data: auth } = await supabase.auth.getUser();
-      const userId = auth?.user?.id;
-      if (!userId) return;
+      const params = new URLSearchParams();
+      params.set("page", String(targetPage));
+      params.set("pageSize", String(MAILBOX_PAGE_SIZE));
+      params.set("folder", folder);
+      params.set("boxView", boxView);
+      if (filterAccountId) params.set("filterAccountId", filterAccountId);
+      const trimmedQuery = historyQuery.trim();
+      if (trimmedQuery) params.set("q", trimmedQuery);
 
-      const strip = (v: any) =>
-        String(v || "")
-          .toString()
-          .replace(/<[^>]+>/g, "")
-          .trim();
-
-      const safeS = (v: any, fallback = "") => {
-        const s = strip(v);
-        return s || fallback;
-      };
-
-
-      // Conservation max 30 jours (historique visible)
-      const cutoffIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
-      // On charge 2 sources :
-      // 1) send_items (mails / factures / devis)
-      // 2) app_events (Booster + Fidéliser)
-      const [sendRes, campaignsRes, eventsRes] = await Promise.all([
-        supabase
-          .from("send_items")
-          .select(
-            "id, integration_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, provider_thread_id, source_doc_save_id, source_doc_type, source_doc_number, error, sent_at, created_at, updated_at"
-          )
-          .eq("user_id", userId)
-          .in("status", ["sent", "draft"])
-          .gte("created_at", cutoffIso)
-          .order("created_at", { ascending: false })
-          .limit(sendItemsLimit),
-        supabase
-          .from("mail_campaigns")
-          .select("id, integration_id, provider, type, folder, track_kind, track_type, template_key, subject, body_text, body_html, status, total_count, queued_count, processing_count, sent_count, failed_count, source_doc_save_id, source_doc_type, source_doc_number, last_error, started_at, finished_at, created_at, updated_at")
-          .eq("user_id", userId)
-          .gte("created_at", cutoffIso)
-          .order("created_at", { ascending: false })
-          .limit(campaignsLimit),
-        supabase
-          .from("app_events")
-          .select("id, module, type, payload, created_at")
-          .eq("user_id", userId)
-          .in("module", ["booster", "fideliser"])
-          .gte("created_at", cutoffIso)
-          .order("created_at", { ascending: false })
-          .limit(eventsLimit),
-      ]);
-
-      if (sendRes.error) console.error(sendRes.error);
-      if (campaignsRes.error) console.error(campaignsRes.error);
-      if (eventsRes.error) console.error(eventsRes.error);
-
-      const sendItems = ((sendRes.data || []) as SendItem[])
-        .map<OutboxItem | null>((x) => {
-          // Historical deleted items are ignored (trash has been removed).
-          if ((x as any).status === "deleted") return null;
-          const folder: Folder = x.type === "facture" ? "factures" : x.type === "devis" ? "devis" : "mails";
-          const title = safeS(x.subject, folder === "factures" ? "Facture" : folder === "devis" ? "Devis" : "(sans objet)");
-          const preview = safeS(x.body_text || x.body_html, "").slice(0, 140);
-          // status = draft | sent ; error est dérivé du champ error
-          const status: Status = x.status === "sent" && x.error ? "error" : (x.status as any);
-          return {
-            id: x.id,
-            source: "send_items",
-            folder,
-            provider: x.provider || "Mail",
-            status,
-            created_at: x.created_at,
-            sent_at: x.sent_at,
-            error: x.error,
-            title,
-            target: safeS(x.to_emails, ""),
-            preview,
-            detailHtml: x.body_html,
-            detailText: x.body_text,
-            subject: x.subject,
-            to: x.to_emails,
-            raw: x,
-            reopenHref: x.source_doc_save_id && x.source_doc_type
-              ? `/dashboard/${x.source_doc_type === "facture" ? "factures" : "devis"}/new?saveId=${encodeURIComponent(x.source_doc_save_id)}`
-              : null,
-          };
-        })
-        .filter(Boolean) as OutboxItem[];
-
-      const campaignItems = ((campaignsRes.data || []) as any[]).map<OutboxItem>((x: any) => {
-        const folder = resolveCampaignFolder(x);
-        const counts = campaignCounts(x);
-        const target = `${counts.total || 0} contact${counts.total > 1 ? "s" : ""}`;
-        return {
-          id: String(x.id || ""),
-          source: "mail_campaigns",
-          module: String(x.track_kind || "").toLowerCase() === "booster"
-            ? "booster"
-            : String(x.track_kind || "").toLowerCase() === "fideliser"
-              ? "fideliser"
-              : undefined,
-          folder,
-          provider: x.provider || "Mail",
-          status: String(x.status || "processing") as Status,
-          created_at: String(x.created_at || new Date().toISOString()),
-          sent_at: x.finished_at || null,
-          error: x.last_error || null,
-          title: campaignTitleFromFolder(folder, x.subject),
-          target,
-          preview: formatCampaignProgress(x),
-          detailHtml: x.body_html,
-          detailText: x.body_text,
-          subject: x.subject,
-          raw: x,
-          reopenHref: x.source_doc_save_id && x.source_doc_type
-            ? `/dashboard/${x.source_doc_type === "facture" ? "factures" : "devis"}/new?saveId=${encodeURIComponent(x.source_doc_save_id)}`
-            : null,
-        };
+      const response = await fetch(`/api/inrsend/history?${params.toString()}`, {
+        method: "GET",
+        cache: "no-store",
       });
-
-      const eventRows = (eventsRes.data || []) as any[];
-
-      const boosterItems = eventRows
-        .filter((e) => String(e.module) === "booster")
-        .map<OutboxItem>((e: any) => {
-        const t = String(e.type || "");
-        const folder: Folder = t === "publish" ? "publications" : t === "review_mail" ? "recoltes" : "offres";
-        const payload = (e.payload || {}) as any;
-        const title =
-  folder === "publications" ? "Publication" :
-  folder === "recoltes" ? "Récolte" :
-  folder === "offres" ? "Offre" :
-  folder === "informations" ? "Information" :
-  folder === "suivis" ? "Suivi" :
-  folder === "enquetes" ? "Enquête" :
-  "Message";
-
-const subTitle = firstNonEmpty(
-  payload?.post?.title,
-  payload?.title,
-  payload?.subject,
-  payload?.post?.subject
-);
-
-        const target =
-          safeS(payload.channel) ||
-          safeS(payload.platform) ||
-          safeS(payload.to) ||
-          safeS(payload.recipients) ||
-          (folder === "publications" ? "Google / Réseaux" : "Contacts");
-        const preview = safeS(payload.preview || payload.text || payload.message || payload.content, "").slice(0, 140);
-        const extracted = extractMessageFromPayload(payload);
-        return {
-          id: e.id,
-          source: "app_events",
-          module: "booster",
-          folder,
-          provider: "Booster",
-          status: "sent",
-          created_at: e.created_at,
-          title,
-          subTitle: subTitle || undefined,
-          target,
-          preview,
-          detailHtml: extracted.html,
-          detailText: extracted.text,
-          channels: getPublicationChannelStatuses(payload, extractChannelsFromPayload(payload)).map((entry) => entry.key),
-          attachments: extractAttachmentsFromPayload(payload),
-          raw: e,
-        };
-      });
-
-      const fideliserItems = eventRows
-        .filter((e) => String(e.module) === "fideliser")
-        .map<OutboxItem>((e: any) => {
-        const t = String(e.type || "");
-        const folder: Folder = t === "newsletter_mail" ? "informations" : t === "thanks_mail" ? "suivis" : "enquetes";
-        const payload = (e.payload || {}) as any;
-        const title = folder === "informations" ? "Informations" : folder === "suivis" ? "Suivis" : "Enquêtes";
-        // Sous-titre affiché dans la liste (ex: titre / objet)
-        const subTitle = firstNonEmpty(
-          payload?.post?.title,
-          payload?.title,
-          payload?.subject,
-          payload?.post?.subject
-        );
-        const target = safeS(payload.to) || safeS(payload.recipients) || "Contacts";
-        const preview = safeS(payload.preview || payload.text || payload.message || payload.content, "").slice(0, 140);
-        const extracted = extractMessageFromPayload(payload);
-        return {
-          id: e.id,
-          source: "app_events",
-          module: "fideliser",
-          folder,
-          provider: "Fidéliser",
-          status: "sent",
-          created_at: e.created_at,
-          title,
-          subTitle: subTitle || undefined,
-          target,
-          preview,
-          detailHtml: extracted.html,
-          detailText: extracted.text,
-          channels: extractChannelsFromPayload(payload),
-          attachments: extractAttachmentsFromPayload(payload),
-          raw: e,
-        };
-      });
-
-      let combined = [...sendItems, ...campaignItems, ...boosterItems, ...fideliserItems].sort((a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-
-      // Filtre "Boîte d'envoi" (quand disponible dans l'item)
-      if (filterAccountId) {
-        combined = combined.filter((it) => itemMailAccountId(it) === filterAccountId);
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Impossible de charger l’historique iNr’Send.");
       }
 
-      setItems(combined);
-      setHistoryHasMorePotential(
-        ((sendRes.data || []) as any[]).length >= sendItemsLimit ||
-          ((campaignsRes.data || []) as any[]).length >= campaignsLimit ||
-          ((eventsRes.data || []) as any[]).length >= eventsLimit
-      );
+      const nextItems = Array.isArray(payload?.items) ? (payload.items as OutboxItem[]) : [];
+      const nextTotal = typeof payload?.total === "number" ? Math.max(0, Number(payload.total)) : null;
+      const nextPage = typeof payload?.page === "number" ? Math.max(1, Number(payload.page)) : targetPage;
 
-      if (combined.length > 0) setSelectedId((prev) => prev || combined[0].id);
-      else setSelectedId(null);
+      setItems(nextItems);
+      setHistoryPage(nextPage);
+      setHistoryHasMorePotential(Boolean(payload?.hasMore));
+      setHistoryTotalCount(nextTotal);
+      setSelectedId((prev) => (nextItems.some((item) => item.id === prev) ? prev : nextItems[0]?.id ?? null));
+    } catch (error) {
+      console.error(error);
+      setItems([]);
+      setHistoryPage(targetPage);
+      setHistoryHasMorePotential(false);
+      setHistoryTotalCount(0);
+      setSelectedId(null);
     } finally {
       setLoading(false);
     }
-  }, [filterAccountId, supabase]);
-
-  const filteredItems = useMemo(() => {
-    const q = historyQuery.trim().toLowerCase();
-    return items.filter((it) => {
-      if (!isVisibleInFolder(folder, it, boxView)) return false;
-      if (!q) return true;
-      const hay = `${it.title || ""} ${it.subTitle || ""} ${it.target || ""} ${it.preview || ""} ${it.provider || ""}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [items, folder, historyQuery, boxView]);
-
-  const historyPageCount = Math.max(1, Math.ceil(filteredItems.length / MAILBOX_PAGE_SIZE));
-
-  const visibleItems = useMemo(() => {
-    const from = (historyPage - 1) * MAILBOX_PAGE_SIZE;
-    return filteredItems.slice(from, from + MAILBOX_PAGE_SIZE);
-  }, [filteredItems, historyPage]);
-
-  const selected = useMemo(() => {
-    return visibleItems.find((x) => x.id === selectedId) || null;
-  }, [visibleItems, selectedId]);
-
-  useEffect(() => {
-    setHistoryPage(1);
   }, [boxView, filterAccountId, folder, historyQuery]);
 
-  useEffect(() => {
-    if (historyPage <= historyPageCount) return;
-    if (historyHasMorePotential) return;
-    setHistoryPage(historyPageCount);
-  }, [historyHasMorePotential, historyPage, historyPageCount]);
+  const filteredItems = items;
+
+  const historyPageCount = useMemo(() => {
+    if (historyTotalCount == null) {
+      return Math.max(1, historyPage + (historyHasMorePotential ? 1 : 0));
+    }
+    return Math.max(1, Math.ceil(historyTotalCount / MAILBOX_PAGE_SIZE));
+  }, [historyHasMorePotential, historyPage, historyTotalCount]);
+
+  const visibleItems = filteredItems;
+
+  const selected = useMemo(() => {
+    return items.find((x) => x.id === selectedId) || null;
+  }, [items, selectedId]);
+
 
   const detailsItem = useMemo(() => {
     if (!detailsId) return null;
@@ -2101,10 +1892,12 @@ const subTitle = firstNonEmpty(
 
   // initial
   useEffect(() => {
-    (async () => {
-      await loadAccounts();
-      await loadHistory();
-    })();
+    void loadAccounts();
+  }, []);
+
+  // refresh des changements de filtres / recherche
+  useEffect(() => {
+    void loadHistory({ page: 1 });
   }, [loadHistory]);
 
   useEffect(() => {
@@ -2151,11 +1944,6 @@ const subTitle = firstNonEmpty(
     if (!searchOpen) return;
     requestAnimationFrame(() => historySearchRef.current?.focus());
   }, [searchOpen]);
-
-  // Recharger l'historique quand le filtre "boîte d'envoi" change
-  useEffect(() => {
-    void loadHistory();
-  }, [loadHistory]);
 
   useEffect(() => {
     const handleProfileVersionChange = (event: Event) => {
@@ -2639,7 +2427,13 @@ async function deleteDraftPermanently(id: string) {
         }
 
         if (pendingTrack) setPendingTrack(null);
-        setToast(`Campagne lancée : ${recipientsList.length} email${recipientsList.length > 1 ? "s" : ""} vont partir individuellement par vagues de 20.`);
+        const queuedCount = Math.max(0, Number(data?.queued ?? recipientsList.length));
+        const blockedDuplicates = Math.max(0, Number(data?.blockedDuplicates ?? 0));
+        const ignoredInvalid = Math.max(0, Number(data?.ignoredInvalid ?? 0));
+        const extras: string[] = [];
+        if (blockedDuplicates > 0) extras.push(`${blockedDuplicates} doublon${blockedDuplicates > 1 ? "s" : ""} bloqué${blockedDuplicates > 1 ? "s" : ""}`);
+        if (ignoredInvalid > 0) extras.push(`${ignoredInvalid} destinataire${ignoredInvalid > 1 ? "s" : ""} ignoré${ignoredInvalid > 1 ? "s" : ""}`);
+        setToast(`Campagne lancée : ${queuedCount} email${queuedCount > 1 ? "s" : ""} vont partir individuellement par vagues de 20.${extras.length ? ` (${extras.join(", ")})` : ""}`);
         setComposeOpen(false);
         resetCompose();
         await loadHistory();
@@ -3338,33 +3132,41 @@ async function deleteDraftPermanently(id: string) {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px 0", flexWrap: "wrap" }}>
               <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12 }}>
                 {filteredItems.length > 0
-                  ? `Affichage ${(historyPage - 1) * MAILBOX_PAGE_SIZE + 1}–${Math.min(historyPage * MAILBOX_PAGE_SIZE, filteredItems.length)} sur ${filteredItems.length}`
+                  ? (() => {
+                      const start = (historyPage - 1) * MAILBOX_PAGE_SIZE + 1;
+                      const end = start + filteredItems.length - 1;
+                      if (historyTotalCount != null) {
+                        return `Affichage ${start}–${end} sur ${historyTotalCount}`;
+                      }
+                      return historyHasMorePotential
+                        ? `Affichage ${start}–${end} (autres éléments disponibles)`
+                        : `Affichage ${start}–${end}`;
+                    })()
                   : "Aucun élément"}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <button
                   type="button"
                   className={styles.btnGhost}
-                  onClick={() => setHistoryPage((prev) => Math.max(1, prev - 1))}
-                  disabled={historyPage <= 1}
+                  onClick={() => {
+                    const prevPage = Math.max(1, historyPage - 1);
+                    void loadHistory({ page: prevPage });
+                  }}
+                  disabled={historyPage <= 1 || loading}
                 >
                   ← Précédent
                 </button>
                 <div style={{ color: "rgba(255,255,255,0.82)", fontSize: 12 }}>
-                  Page {Math.min(historyPage, historyPageCount)} / {historyHasMorePotential ? `${historyPageCount}+` : historyPageCount}
+                  Page {historyPage}{historyTotalCount != null ? ` / ${historyPageCount}` : historyHasMorePotential ? " / …" : ""}
                 </div>
                 <button
                   type="button"
                   className={styles.btnGhost}
-                  onClick={async () => {
+                  onClick={() => {
                     const nextPage = historyPage + 1;
-                    const loadedEnough = filteredItems.length >= nextPage * MAILBOX_PAGE_SIZE;
-                    if (!loadedEnough && historyHasMorePotential) {
-                      await loadHistory({ page: nextPage });
-                    }
-                    setHistoryPage(nextPage);
+                    void loadHistory({ page: nextPage });
                   }}
-                  disabled={!(historyPage < historyPageCount || historyHasMorePotential)}
+                  disabled={!historyHasMorePotential || loading}
                 >
                   Suivant →
                 </button>
