@@ -12,13 +12,36 @@ import {
   upsertSuppressionEntry,
 } from "@/lib/mailSuppression";
 
-export type MailCampaignStatus = "queued" | "processing" | "sent" | "partial" | "failed";
+export type MailCampaignStatus = "queued" | "processing" | "paused" | "partial" | "completed" | "failed";
 export type MailCampaignRecipientStatus = "queued" | "processing" | "sent" | "failed";
+
+export type MailCampaignDeliveryConfig = {
+  batchSize: number;
+  hourlyLimit: number;
+  dailyLimit: number;
+  maxActivePerIntegration: number;
+};
+
+export type CampaignDispatchState = {
+  state: "ready" | "waiting_turn" | "paused";
+  reason: string | null;
+  batchSize: number;
+  hourlyLimit: number;
+  dailyLimit: number;
+  maxActivePerIntegration: number;
+  sentLastHour: number;
+  sentLastDay: number;
+  hourlyRemaining: number;
+  dailyRemaining: number;
+  availableNow: number;
+};
 
 type RecipientRow = Record<string, unknown>;
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 const STALE_PROCESSING_MINUTES = 20;
+const RECENT_COUNT_PAGE_SIZE = 500;
+const RECENT_COUNT_BATCH_SIZE = 200;
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -35,10 +58,42 @@ function asNumber(v: unknown, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function parsePositiveEnvInt(value: string | undefined, fallback: number, min: number, max: number) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  if (!Number.isFinite(parsed) || parsed < min) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+export function getMailCampaignDeliveryConfig(): MailCampaignDeliveryConfig {
+  return {
+    batchSize: parsePositiveEnvInt(process.env.INRSEND_CAMPAIGN_BATCH_SIZE, 50, 1, 200),
+    hourlyLimit: parsePositiveEnvInt(process.env.INRSEND_CAMPAIGN_HOURLY_LIMIT, 250, 1, 100000),
+    dailyLimit: parsePositiveEnvInt(process.env.INRSEND_CAMPAIGN_DAILY_LIMIT, 1000, 1, 1000000),
+    maxActivePerIntegration: parsePositiveEnvInt(process.env.INRSEND_CAMPAIGN_MAX_ACTIVE_PER_BOX, 1, 1, 10),
+  };
+}
+
 function retryDelayMs(attemptCount: number) {
   if (attemptCount <= 1) return 60_000;
   if (attemptCount === 2) return 5 * 60_000;
   return 15 * 60_000;
+}
+
+function chunkArray<T>(items: T[], size: number) {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+function buildWaitingTurnMessage() {
+  return "Cette boîte traite déjà une autre campagne. La vôtre reste en file d’attente et reprendra automatiquement.";
+}
+
+function buildQuotaPauseMessage(state: Pick<CampaignDispatchState, "hourlyLimit" | "dailyLimit" | "sentLastHour" | "sentLastDay" | "hourlyRemaining" | "dailyRemaining">) {
+  if (state.dailyRemaining <= 0) {
+    return `Quota journalier atteint pour cette boîte (${state.sentLastDay}/${state.dailyLimit} sur 24 h). La campagne reprendra automatiquement.`;
+  }
+  return `Quota horaire atteint pour cette boîte (${state.sentLastHour}/${state.hourlyLimit} sur 1 h). La campagne reprendra automatiquement.`;
 }
 
 async function countRecipientsByStatus(campaignId: string, status: MailCampaignRecipientStatus) {
@@ -53,23 +108,31 @@ async function countRecipientsByStatus(campaignId: string, status: MailCampaignR
 }
 
 export async function refreshCampaignCounters(campaignId: string) {
-  const [queuedCount, processingCount, sentCount, failedCount] = await Promise.all([
+  const [{ data: campaignRow, error: campaignError }, queuedCount, processingCount, sentCount, failedCount] = await Promise.all([
+    supabaseAdmin.from("mail_campaigns").select("status").eq("id", campaignId).maybeSingle(),
     countRecipientsByStatus(campaignId, "queued"),
     countRecipientsByStatus(campaignId, "processing"),
     countRecipientsByStatus(campaignId, "sent"),
     countRecipientsByStatus(campaignId, "failed"),
   ]);
 
-  let status: MailCampaignStatus = "processing";
+  if (campaignError) throw campaignError;
+
+  const currentStatus = String((campaignRow as any)?.status || "").toLowerCase();
+  let status: MailCampaignStatus = currentStatus === "paused" ? "paused" : "processing";
   let finishedAt: string | null = null;
 
   if (queuedCount === 0 && processingCount === 0) {
     finishedAt = new Date().toISOString();
-    if (failedCount === 0) status = "sent";
+    if (failedCount === 0) status = "completed";
     else if (sentCount > 0) status = "partial";
     else status = "failed";
+  } else if (currentStatus === "paused" && processingCount === 0) {
+    status = "paused";
   } else if (sentCount === 0 && failedCount === 0 && processingCount === 0) {
     status = "queued";
+  } else {
+    status = "processing";
   }
 
   const payload: Record<string, unknown> = {
@@ -80,10 +143,10 @@ export async function refreshCampaignCounters(campaignId: string) {
     failed_count: failedCount,
     updated_at: new Date().toISOString(),
     last_activity_at: new Date().toISOString(),
-    ...(finishedAt ? { finished_at: finishedAt } : {}),
+    finished_at: finishedAt,
   };
 
-  if (status === "sent") payload.last_error = null;
+  if (status === "completed") payload.last_error = null;
 
   const { error } = await supabaseAdmin.from("mail_campaigns").update(payload).eq("id", campaignId);
   if (error) throw error;
@@ -184,7 +247,10 @@ async function markRecipientBlockedBySuppression(args: {
     last_error: message,
     updated_at: now,
   };
-  if (args.reason === "hard_bounce") { patch.bounce_type = "hard"; patch.bounced_at = now; }
+  if (args.reason === "hard_bounce") {
+    patch.bounce_type = "hard";
+    patch.bounced_at = now;
+  }
   if (args.reason === "opt_out") patch.unsubscribed_at = now;
   const { error } = await supabaseAdmin
     .from("mail_campaign_recipients")
@@ -247,6 +313,179 @@ async function requeueOrFailRecipient(
   return "failed" as const;
 }
 
+async function listRecentlyUpdatedCampaignIds(userId: string, integrationId: string, sinceIso: string) {
+  const ids: string[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + RECENT_COUNT_PAGE_SIZE - 1;
+    const { data, error } = await supabaseAdmin
+      .from("mail_campaigns")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("integration_id", integrationId)
+      .gte("updated_at", sinceIso)
+      .order("updated_at", { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+    const rows = (data || []) as Array<{ id?: string | null }>;
+    ids.push(...rows.map((row) => String(row?.id || "")).filter(Boolean));
+    if (rows.length < RECENT_COUNT_PAGE_SIZE) break;
+    from += rows.length;
+  }
+
+  return Array.from(new Set(ids));
+}
+
+async function countSentRecipientsSince(args: { campaignIds: string[]; sinceIso: string }) {
+  if (args.campaignIds.length === 0) return 0;
+  let total = 0;
+
+  for (const chunk of chunkArray(args.campaignIds, RECENT_COUNT_BATCH_SIZE)) {
+    const { count, error } = await supabaseAdmin
+      .from("mail_campaign_recipients")
+      .select("id", { count: "exact", head: true })
+      .in("campaign_id", chunk)
+      .eq("status", "sent")
+      .gte("sent_at", args.sinceIso);
+
+    if (error) throw error;
+    total += count ?? 0;
+  }
+
+  return total;
+}
+
+async function countOtherProcessingCampaigns(args: { userId: string; integrationId: string; excludeCampaignId?: string | null }) {
+  let query: any = supabaseAdmin
+    .from("mail_campaigns")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", args.userId)
+    .eq("integration_id", args.integrationId)
+    .eq("status", "processing");
+
+  if (args.excludeCampaignId) query = query.neq("id", args.excludeCampaignId);
+
+  const { count, error } = await query;
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function evaluateCampaignDispatchState(args: {
+  userId: string;
+  integrationId: string;
+  currentCampaignId?: string | null;
+}) {
+  const config = getMailCampaignDeliveryConfig();
+  const processingCount = await countOtherProcessingCampaigns({
+    userId: args.userId,
+    integrationId: args.integrationId,
+    excludeCampaignId: args.currentCampaignId || null,
+  });
+
+  if (processingCount >= config.maxActivePerIntegration) {
+    return {
+      state: "waiting_turn" as const,
+      reason: buildWaitingTurnMessage(),
+      batchSize: config.batchSize,
+      hourlyLimit: config.hourlyLimit,
+      dailyLimit: config.dailyLimit,
+      maxActivePerIntegration: config.maxActivePerIntegration,
+      sentLastHour: 0,
+      sentLastDay: 0,
+      hourlyRemaining: Math.max(0, config.hourlyLimit),
+      dailyRemaining: Math.max(0, config.dailyLimit),
+      availableNow: 0,
+    } satisfies CampaignDispatchState;
+  }
+
+  const hourAgoIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const dayAgoIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const recentSince = hourAgoIso < dayAgoIso ? hourAgoIso : dayAgoIso;
+  const campaignIds = await listRecentlyUpdatedCampaignIds(args.userId, args.integrationId, recentSince);
+
+  const [sentLastHour, sentLastDay] = await Promise.all([
+    countSentRecipientsSince({ campaignIds, sinceIso: hourAgoIso }),
+    countSentRecipientsSince({ campaignIds, sinceIso: dayAgoIso }),
+  ]);
+
+  const hourlyRemaining = Math.max(0, config.hourlyLimit - sentLastHour);
+  const dailyRemaining = Math.max(0, config.dailyLimit - sentLastDay);
+  const availableNow = Math.max(0, Math.min(config.batchSize, providerBatchLimit(null), hourlyRemaining, dailyRemaining));
+
+  if (availableNow <= 0) {
+    const state: CampaignDispatchState = {
+      state: "paused",
+      reason: buildQuotaPauseMessage({
+        hourlyLimit: config.hourlyLimit,
+        dailyLimit: config.dailyLimit,
+        sentLastHour,
+        sentLastDay,
+        hourlyRemaining,
+        dailyRemaining,
+      }),
+      batchSize: config.batchSize,
+      hourlyLimit: config.hourlyLimit,
+      dailyLimit: config.dailyLimit,
+      maxActivePerIntegration: config.maxActivePerIntegration,
+      sentLastHour,
+      sentLastDay,
+      hourlyRemaining,
+      dailyRemaining,
+      availableNow,
+    };
+    return state;
+  }
+
+  const state: CampaignDispatchState = {
+    state: "ready",
+    reason: null,
+    batchSize: config.batchSize,
+    hourlyLimit: config.hourlyLimit,
+    dailyLimit: config.dailyLimit,
+    maxActivePerIntegration: config.maxActivePerIntegration,
+    sentLastHour,
+    sentLastDay,
+    hourlyRemaining,
+    dailyRemaining,
+    availableNow,
+  };
+  return state;
+}
+
+async function markCampaignQueuedWaitingTurn(campaignId: string, reason?: string | null) {
+  const now = new Date().toISOString();
+  const { error } = await supabaseAdmin
+    .from("mail_campaigns")
+    .update({
+      status: "queued",
+      finished_at: null,
+      last_error: reason || buildWaitingTurnMessage(),
+      updated_at: now,
+      last_activity_at: now,
+    })
+    .eq("id", campaignId)
+    .neq("status", "completed");
+  if (error) throw error;
+}
+
+async function pauseCampaignForQuota(campaignId: string, reason: string) {
+  const now = new Date().toISOString();
+  const { error } = await supabaseAdmin
+    .from("mail_campaigns")
+    .update({
+      status: "paused",
+      finished_at: null,
+      last_error: reason,
+      updated_at: now,
+      last_activity_at: now,
+    })
+    .eq("id", campaignId)
+    .neq("status", "completed");
+  if (error) throw error;
+}
+
 export async function processPendingMailCampaigns(opts?: {
   campaignIds?: string[];
   maxCampaigns?: number;
@@ -258,7 +497,7 @@ export async function processPendingMailCampaigns(opts?: {
   let query = supabaseAdmin
     .from("mail_campaigns")
     .select("id,user_id,integration_id,provider,type,subject,body_text,body_html,attachments,status,folder")
-    .in("status", ["queued", "processing"])
+    .in("status", ["queued", "processing", "paused"])
     .order("created_at", { ascending: true })
     .limit(maxCampaigns);
 
@@ -267,10 +506,11 @@ export async function processPendingMailCampaigns(opts?: {
   const { data: campaigns, error } = await query;
   if (error) throw error;
 
+  const config = getMailCampaignDeliveryConfig();
   const budgets = {
-    gmail: opts?.perProviderBudget?.gmail ?? 20,
-    microsoft: opts?.perProviderBudget?.microsoft ?? 20,
-    imap: opts?.perProviderBudget?.imap ?? 20,
+    gmail: opts?.perProviderBudget?.gmail ?? config.batchSize,
+    microsoft: opts?.perProviderBudget?.microsoft ?? config.batchSize,
+    imap: opts?.perProviderBudget?.imap ?? config.batchSize,
   };
 
   const summary = {
@@ -279,7 +519,11 @@ export async function processPendingMailCampaigns(opts?: {
     sent: 0,
     failed: 0,
     retried: 0,
+    paused: 0,
+    waiting: 0,
   };
+
+  const busyIntegrationIds = new Set<string>();
 
   for (const rawCampaign of campaigns || []) {
     const campaign = asRecord(rawCampaign);
@@ -291,11 +535,35 @@ export async function processPendingMailCampaigns(opts?: {
 
     await resetStaleProcessingRecipients(campaignId);
 
-    const budget = Math.max(1, Number((budgets as any)[provider] ?? providerBatchLimit(provider)));
+    const dispatchState = await evaluateCampaignDispatchState({
+      userId,
+      integrationId,
+      currentCampaignId: campaignId,
+    });
+
+    if (busyIntegrationIds.has(integrationId) || dispatchState.state === "waiting_turn") {
+      await markCampaignQueuedWaitingTurn(campaignId, dispatchState.reason);
+      busyIntegrationIds.add(integrationId);
+      summary.waiting += 1;
+      continue;
+    }
+
+    if (dispatchState.state === "paused") {
+      await pauseCampaignForQuota(campaignId, dispatchState.reason || buildQuotaPauseMessage(dispatchState));
+      busyIntegrationIds.add(integrationId);
+      summary.paused += 1;
+      continue;
+    }
+
+    const providerBudget = Math.max(1, Number((budgets as any)[provider] ?? providerBatchLimit(provider)));
+    const budget = Math.max(1, Math.min(dispatchState.availableNow, providerBudget, providerBatchLimit(provider)));
     const claimedRows = await claimQueuedRecipients(campaignId, budget);
 
     if (claimedRows.length === 0) {
-      await refreshCampaignCounters(campaignId);
+      const counters = await refreshCampaignCounters(campaignId);
+      if (counters.status === "processing" || counters.status === "queued" || counters.status === "paused") {
+        busyIntegrationIds.add(integrationId);
+      }
       continue;
     }
 
@@ -308,9 +576,15 @@ export async function processPendingMailCampaigns(opts?: {
 
     await supabaseAdmin
       .from("mail_campaigns")
-      .update({ status: "processing", started_at: new Date().toISOString(), updated_at: new Date().toISOString(), last_activity_at: new Date().toISOString() })
+      .update({
+        status: "processing",
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_activity_at: new Date().toISOString(),
+        last_error: null,
+      })
       .eq("id", campaignId)
-      .in("status", ["queued", "processing"]);
+      .in("status", ["queued", "processing", "paused"]);
 
     let attachments: Array<{ filename: string; mimeType?: string; content: Buffer }> = [];
     try {
@@ -326,8 +600,14 @@ export async function processPendingMailCampaigns(opts?: {
         if (result === "failed") summary.failed += 1;
         else summary.retried += 1;
       }
-      await supabaseAdmin.from("mail_campaigns").update({ last_error: message, updated_at: now, last_activity_at: now }).eq("id", campaignId);
-      await refreshCampaignCounters(campaignId);
+      await supabaseAdmin
+        .from("mail_campaigns")
+        .update({ last_error: message, updated_at: now, last_activity_at: now })
+        .eq("id", campaignId);
+      const counters = await refreshCampaignCounters(campaignId);
+      if (counters.status === "processing" || counters.status === "queued" || counters.status === "paused") {
+        busyIntegrationIds.add(integrationId);
+      }
       continue;
     }
 
@@ -399,7 +679,10 @@ export async function processPendingMailCampaigns(opts?: {
           });
         }
         const result = await requeueOrFailRecipient(recipientId, row, message, { classification });
-        await supabaseAdmin.from("mail_campaigns").update({ last_error: message, updated_at: new Date().toISOString(), last_activity_at: new Date().toISOString() }).eq("id", campaignId);
+        await supabaseAdmin
+          .from("mail_campaigns")
+          .update({ last_error: message, updated_at: new Date().toISOString(), last_activity_at: new Date().toISOString() })
+          .eq("id", campaignId);
         if (result === "failed") summary.failed += 1;
         else summary.retried += 1;
       }
@@ -407,7 +690,10 @@ export async function processPendingMailCampaigns(opts?: {
       summary.recipientsProcessed += 1;
     }
 
-    await refreshCampaignCounters(campaignId);
+    const counters = await refreshCampaignCounters(campaignId);
+    if (counters.status === "processing" || counters.status === "queued" || counters.status === "paused") {
+      busyIntegrationIds.add(integrationId);
+    }
   }
 
   return summary;

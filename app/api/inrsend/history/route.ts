@@ -14,7 +14,7 @@ type Folder =
   | "enquetes";
 
 type BoxView = "sent" | "drafts";
-type Status = "draft" | "sent" | "error" | "queued" | "processing" | "partial" | "failed";
+type Status = "draft" | "sent" | "error" | "queued" | "processing" | "paused" | "partial" | "completed" | "failed";
 
 type OutboxItem = {
   id: string;

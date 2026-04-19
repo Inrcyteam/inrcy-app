@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { evaluateCampaignDispatchState, getMailCampaignDeliveryConfig, processPendingMailCampaigns } from "@/lib/crmCampaigns";
 import { requireUser } from "@/lib/requireUser";
-import { processPendingMailCampaigns } from "@/lib/crmCampaigns";
 import { fetchSuppressedEmailsByUser } from "@/lib/mailSuppression";
 
 export const runtime = "nodejs";
@@ -21,7 +21,7 @@ export async function POST(req: Request, ctx: any) {
 
   const { data: campaign, error: campaignError } = await supabase
     .from("mail_campaigns")
-    .select("id,user_id,status")
+    .select("id,user_id,status,integration_id")
     .eq("id", campaignId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -101,19 +101,42 @@ export async function POST(req: Request, ctx: any) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
+  const dispatchState = await evaluateCampaignDispatchState({
+    userId: user.id,
+    integrationId: String(campaign.integration_id || ""),
+    currentCampaignId: campaignId,
+  });
+  const deliveryConfig = getMailCampaignDeliveryConfig();
+  const targetStatus = dispatchState.state === "paused" ? "paused" : "queued";
+
   await supabase
     .from("mail_campaigns")
-    .update({ status: "queued", finished_at: null, last_error: null, updated_at: now, last_activity_at: now })
+    .update({
+      status: targetStatus,
+      finished_at: null,
+      last_error: dispatchState.state === "ready" ? null : dispatchState.reason,
+      updated_at: now,
+      last_activity_at: now,
+    })
     .eq("id", campaignId)
     .eq("user_id", user.id);
 
-  const immediate = await processPendingMailCampaigns({ campaignIds: [campaignId], maxCampaigns: 1 });
+  let immediate: unknown = null;
+  if (dispatchState.state === "ready") {
+    immediate = await processPendingMailCampaigns({ campaignIds: [campaignId], maxCampaigns: 1 });
+  }
 
   return NextResponse.json({
     success: true,
     campaignId,
     retried: ids.length,
     blocked,
+    campaignStatus: dispatchState.state === "ready" ? "processing" : targetStatus,
+    deferredReason: dispatchState.reason,
+    batchSize: dispatchState.state === "ready" ? Math.max(1, dispatchState.availableNow) : deliveryConfig.batchSize,
+    hourlyLimit: deliveryConfig.hourlyLimit,
+    dailyLimit: deliveryConfig.dailyLimit,
+    activeLimit: deliveryConfig.maxActivePerIntegration,
     immediate,
   });
 }

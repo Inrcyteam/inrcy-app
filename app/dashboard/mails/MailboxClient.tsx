@@ -182,7 +182,7 @@ function isBusinessMailFolder(folder: Folder) {
 
 // Typage historique d'envoi (ancienne table send_items)
 type SendType = "mail" | "facture" | "devis";
-type Status = "draft" | "sent" | "error" | "queued" | "processing" | "partial" | "failed";
+type Status = "draft" | "sent" | "error" | "queued" | "processing" | "paused" | "partial" | "completed" | "failed";
 
 type MailAccount = {
   id: string;
@@ -1303,9 +1303,10 @@ function formatOutboxStatusLabel(item: OutboxItem) {
     const counts = campaignCounts(raw);
     if (status === "queued") return `En attente • ${formatCampaignProgress(raw)}`;
     if (status === "processing") return `Campagne en cours • ${formatCampaignProgress(raw)}`;
+    if (status === "paused") return raw?.last_error ? `Campagne en pause • ${raw.last_error}` : `Campagne en pause • ${formatCampaignProgress(raw)}`;
     if (status === "partial") return `Campagne partielle • ${formatCampaignProgress(raw)}`;
     if (status === "failed") return `Campagne en échec • ${counts.failed}/${counts.total || counts.failed} en échec`;
-    if (status === "sent") return item.sent_at ? `Campagne terminée • ${new Date(item.sent_at).toLocaleString()}` : `Campagne terminée • ${formatCampaignProgress(raw)}`;
+    if (status === "sent" || status === "completed") return item.sent_at ? `Campagne terminée • ${new Date(item.sent_at).toLocaleString()}` : `Campagne terminée • ${formatCampaignProgress(raw)}`;
     return `Campagne • ${formatCampaignProgress(raw)}`;
   }
 
@@ -2660,7 +2661,15 @@ async function deleteDraftPermanently(id: string) {
         if (blockedBlacklist > 0) extras.push(`${blockedBlacklist} blacklist`);
         if (blockedHardBounce > 0) extras.push(`${blockedHardBounce} rebond${blockedHardBounce > 1 ? "s" : ""} dur${blockedHardBounce > 1 ? "s" : ""}`);
         if (blockedComplaint > 0) extras.push(`${blockedComplaint} plainte${blockedComplaint > 1 ? "s" : ""}`);
-        setToast(`Campagne lancée : ${queuedCount} email${queuedCount > 1 ? "s" : ""} vont partir individuellement par vagues de 20.${extras.length ? ` (${extras.join(", ")})` : ""}`);
+        const deliveryState = String(data?.campaignStatus || "").toLowerCase();
+        const deferredReason = String(data?.deferredReason || "").trim();
+        const batchSize = Math.max(1, Number(data?.batchSize || 50));
+        const baseMessage = deliveryState === "paused"
+          ? `Campagne mise en pause : ${queuedCount} email${queuedCount > 1 ? "s" : ""} sont enregistrés et repartiront automatiquement.`
+          : deliveryState === "queued"
+            ? `Campagne mise en file d’attente : ${queuedCount} email${queuedCount > 1 ? "s" : ""} sont enregistrés.`
+            : `Campagne lancée : ${queuedCount} email${queuedCount > 1 ? "s" : ""} vont partir individuellement par vagues de ${batchSize}.`;
+        setToast(`${baseMessage}${deferredReason ? ` ${deferredReason}` : ""}${extras.length ? ` (${extras.join(", ")})` : ""}`);
         setComposeOpen(false);
         resetCompose();
         await loadHistory();
@@ -2938,11 +2947,18 @@ async function deleteDraftPermanently(id: string) {
         return;
       }
       const blocked = Math.max(0, Number(data?.blocked ?? 0));
-      setToast(
-        data?.retried
-          ? `${data.retried} contact${data.retried > 1 ? "s" : ""} relancé${data.retried > 1 ? "s" : ""}.${blocked > 0 ? ` ${blocked} blocage${blocked > 1 ? "s" : ""} ignoré${blocked > 1 ? "s" : ""}.` : ""}`
-          : "Échecs relancés.",
-      );
+      const deliveryState = String(data?.campaignStatus || "").toLowerCase();
+      const deferredReason = String(data?.deferredReason || "").trim();
+      const batchSize = Math.max(1, Number(data?.batchSize || 50));
+      const baseRetryMessage = data?.retried
+        ? `${data.retried} contact${data.retried > 1 ? "s" : ""} relancé${data.retried > 1 ? "s" : ""}.${blocked > 0 ? ` ${blocked} blocage${blocked > 1 ? "s" : ""} ignoré${blocked > 1 ? "s" : ""}.` : ""}`
+        : "Échecs relancés.";
+      const stateMessage = deliveryState === "paused"
+        ? " Campagne mise en pause automatiquement."
+        : deliveryState === "queued"
+          ? " Campagne remise en file d’attente."
+          : ` Relance par vagues de ${batchSize}.`;
+      setToast(`${baseRetryMessage}${stateMessage}${deferredReason ? ` ${deferredReason}` : ""}`);
       await loadHistory();
       if (detailsOpen && detailsId === campaignId) {
         await Promise.all([

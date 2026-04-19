@@ -68,5 +68,7 @@ export function normalizeCampaignRecipients(input: unknown): MailCampaignRecipie
 }
 
 export function providerBatchLimit(_provider: string | null | undefined) {
-  return 20;
+  const raw = Number.parseInt(process.env.INRSEND_CAMPAIGN_BATCH_SIZE || "", 10);
+  if (Number.isFinite(raw) && raw > 0) return Math.min(raw, 200);
+  return 50;
 }

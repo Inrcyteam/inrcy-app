@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { evaluateCampaignDispatchState, getMailCampaignDeliveryConfig, processPendingMailCampaigns } from "@/lib/crmCampaigns";
 import { requireUser } from "@/lib/requireUser";
-import { processPendingMailCampaigns } from "@/lib/crmCampaigns";
 import { normalizeCampaignRecipients } from "@/lib/crmRecipients";
 import { fetchSuppressedEmailsByUser } from "@/lib/mailSuppression";
 
@@ -126,8 +126,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Aucun destinataire valide." }, { status: 400 });
   }
 
-  const defaultFolder: CampaignFolder =
-    type === "facture" ? "factures" : type === "devis" ? "devis" : "mails";
+  const defaultFolder: CampaignFolder = type === "facture" ? "factures" : type === "devis" ? "devis" : "mails";
   const folder = normalizeCampaignFolder(body.folder, defaultFolder);
   const trackKind = trackKindRaw === "booster" || trackKindRaw === "fideliser" ? trackKindRaw : null;
 
@@ -146,7 +145,6 @@ export async function POST(req: Request) {
   if (!account?.id || !account?.provider) {
     return NextResponse.json({ error: "La boîte d’envoi sélectionnée est introuvable." }, { status: 404 });
   }
-
 
   const suppressedByEmail = await fetchSuppressedEmailsByUser(
     user.id,
@@ -184,7 +182,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Une campagne CRM nécessite au moins 2 destinataires autorisés." }, { status: 400 });
   }
 
+  const dispatchState = await evaluateCampaignDispatchState({ userId: user.id, integrationId: accountId });
+  const deliveryConfig = getMailCampaignDeliveryConfig();
   const now = new Date().toISOString();
+  const initialStatus = dispatchState.state === "paused" ? "paused" : "queued";
+  const initialLastError = dispatchState.state === "ready" ? null : dispatchState.reason;
+
   const { data: campaign, error: campaignError } = await supabase
     .from("mail_campaigns")
     .insert({
@@ -196,7 +199,7 @@ export async function POST(req: Request) {
       body_text: text,
       body_html: html || null,
       attachments,
-      status: "queued",
+      status: initialStatus,
       total_count: recipients.length,
       queued_count: recipients.length,
       sent_count: 0,
@@ -210,11 +213,12 @@ export async function POST(req: Request) {
       template_key: templateKey || null,
       started_at: null,
       finished_at: null,
-      last_error: null,
+      last_error: initialLastError,
       created_at: now,
       updated_at: now,
+      last_activity_at: now,
     })
-    .select("id")
+    .select("id,status")
     .single();
 
   if (campaignError || !campaign?.id) {
@@ -238,11 +242,16 @@ export async function POST(req: Request) {
     }
   }
 
-  const immediate = await processPendingMailCampaigns({ campaignIds: [campaign.id], maxCampaigns: 1 });
+  let immediate: unknown = null;
+  if (dispatchState.state === "ready") {
+    immediate = await processPendingMailCampaigns({ campaignIds: [campaign.id], maxCampaigns: 1 });
+  }
 
   return NextResponse.json({
     success: true,
     campaignId: campaign.id,
+    campaignStatus: dispatchState.state === "ready" ? "processing" : initialStatus,
+    deferredReason: dispatchState.reason,
     queued: recipients.length,
     blockedDuplicates: recipientStats.duplicateCount,
     ignoredInvalid: recipientStats.invalidCount,
@@ -250,6 +259,10 @@ export async function POST(req: Request) {
     blockedBlacklist,
     blockedHardBounce,
     blockedComplaint,
+    batchSize: dispatchState.state === "ready" ? Math.max(1, dispatchState.availableNow) : deliveryConfig.batchSize,
+    hourlyLimit: deliveryConfig.hourlyLimit,
+    dailyLimit: deliveryConfig.dailyLimit,
+    activeLimit: deliveryConfig.maxActivePerIntegration,
     immediate,
   });
 }
