@@ -1382,11 +1382,19 @@ function isRetryableCampaignItem(item: OutboxItem | null) {
   return counts.failed > 0;
 }
 
-function canDeleteFactureHistoryItem(item: OutboxItem | null | undefined) {
+function canDeleteHistoryItem(item: OutboxItem | null | undefined) {
   if (!item) return false;
-  if (item.folder !== "factures") return false;
   if (item.status === "draft") return false;
-  return item.source === "send_items" || item.source === "mail_campaigns";
+  return item.source === "send_items" || item.source === "mail_campaigns" || item.source === "app_events";
+}
+
+function canBulkDeleteHistoryItem(item: OutboxItem | null | undefined) {
+  if (!item) return false;
+  return item.source === "send_items" || item.source === "mail_campaigns" || item.source === "app_events";
+}
+
+function historySelectionKey(item: Pick<OutboxItem, "id" | "source">) {
+  return `${item.source}:${item.id}`;
 }
 
 function listGridTemplateColumns(folder: Folder) {
@@ -1543,6 +1551,8 @@ export default function MailboxClient() {
   const [signatureImageWidth, setSignatureImageWidth] = useState(400);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [deletingHistoryItemId, setDeletingHistoryItemId] = useState<string | null>(null);
+  const [deletingHistorySelection, setDeletingHistorySelection] = useState(false);
+  const [selectedHistoryKeys, setSelectedHistoryKeys] = useState<string[]>([]);
 
 
   // Attachments uploaded by Factures / Devis screens are stored here.
@@ -1811,6 +1821,7 @@ export default function MailboxClient() {
       setHistoryHasMorePotential(Boolean(payload?.hasMore));
       setHistoryTotalCount(nextTotal);
       setFolderCounts(nextCounts);
+      setSelectedHistoryKeys([]);
       setSelectedId((prev) => (nextItems.some((item) => item.id === prev) ? prev : nextItems[0]?.id ?? null));
     } catch (error) {
       console.error(error);
@@ -1819,6 +1830,7 @@ export default function MailboxClient() {
       setHistoryHasMorePotential(false);
       setHistoryTotalCount(0);
       setFolderCounts(emptyFolderCounts());
+      setSelectedHistoryKeys([]);
       setSelectedId(null);
     } finally {
       setLoading(false);
@@ -1835,6 +1847,23 @@ export default function MailboxClient() {
   }, [historyHasMorePotential, historyPage, historyTotalCount]);
 
   const visibleItems = filteredItems;
+
+  const visibleBulkDeletableItems = useMemo(
+    () => visibleItems.filter((item) => canBulkDeleteHistoryItem(item)),
+    [visibleItems],
+  );
+  const selectedHistoryKeySet = useMemo(() => new Set(selectedHistoryKeys), [selectedHistoryKeys]);
+  const selectedBulkItems = useMemo(
+    () => visibleBulkDeletableItems.filter((item) => selectedHistoryKeySet.has(historySelectionKey(item))),
+    [selectedHistoryKeySet, visibleBulkDeletableItems],
+  );
+  const selectedBulkCount = selectedBulkItems.length;
+  const allVisibleBulkItemsSelected = useMemo(
+    () =>
+      visibleBulkDeletableItems.length > 0 &&
+      visibleBulkDeletableItems.every((item) => selectedHistoryKeySet.has(historySelectionKey(item))),
+    [selectedHistoryKeySet, visibleBulkDeletableItems],
+  );
 
   const selected = useMemo(() => {
     return items.find((x) => x.id === selectedId) || null;
@@ -2606,6 +2635,7 @@ async function deleteDraftPermanently(id: string) {
 
     // Optimistic UI
     setItems((prev) => prev.filter((x) => x.id !== id));
+    setSelectedHistoryKeys((prev) => prev.filter((key) => key !== `send_items:${id}`));
     if (selectedId === id) setSelectedId(null);
     if (detailsId === id) {
       setDetailsOpen(false);
@@ -2621,12 +2651,85 @@ async function deleteDraftPermanently(id: string) {
 }
 
 
-  async function deleteFactureHistoryEntry(item: OutboxItem) {
-    try {
-      if (!canDeleteFactureHistoryItem(item)) return;
-      if (deletingHistoryItemId) return;
+  function toggleHistorySelection(item: OutboxItem) {
+    if (!canBulkDeleteHistoryItem(item)) return;
+    const key = historySelectionKey(item);
+    setSelectedHistoryKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return Array.from(next);
+    });
+  }
 
-      const ok = window.confirm("Supprimer cet élément de l’historique Factures ?");
+  function toggleSelectVisibleHistoryItems(force?: boolean) {
+    const shouldSelect = typeof force === "boolean" ? force : !allVisibleBulkItemsSelected;
+    const pageKeys = visibleBulkDeletableItems.map((item) => historySelectionKey(item));
+    setSelectedHistoryKeys((prev) => {
+      const next = new Set(prev);
+      if (shouldSelect) pageKeys.forEach((key) => next.add(key));
+      else pageKeys.forEach((key) => next.delete(key));
+      return Array.from(next);
+    });
+  }
+
+  async function deleteSelectedHistoryEntries() {
+    try {
+      if (deletingHistorySelection || deletingHistoryItemId || deletingDraftId) return;
+      if (selectedBulkCount <= 0) return;
+
+      const label = selectedBulkCount > 1 ? `${selectedBulkCount} éléments sélectionnés` : "cet élément sélectionné";
+      const ok = window.confirm(`Supprimer ${label} ?`);
+      if (!ok) return;
+
+      setDeletingHistorySelection(true);
+
+      const entries = selectedBulkItems.map((item) => ({
+        id: item.id,
+        source: item.source,
+        folder: item.folder,
+      }));
+
+      const response = await fetch("/api/inrsend/history/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: entries }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Suppression impossible pour le moment.");
+      }
+
+      const removedKeys = new Set(entries.map((entry) => `${entry.source}:${entry.id}`));
+      const selectedItemKey = selected ? historySelectionKey(selected) : null;
+      const detailsItemKey = detailsItem ? historySelectionKey(detailsItem) : null;
+      setItems((prev) => prev.filter((item) => !removedKeys.has(historySelectionKey(item))));
+      setSelectedHistoryKeys([]);
+      if (selectedItemKey && removedKeys.has(selectedItemKey)) {
+        setSelectedId(null);
+      }
+      if (detailsItemKey && removedKeys.has(detailsItemKey)) {
+        setDetailsOpen(false);
+        setDetailsId(null);
+      }
+
+      const deletedCount = typeof payload?.deletedCount === "number" ? Math.max(0, Number(payload.deletedCount)) : selectedBulkCount;
+      setToast(deletedCount > 1 ? `${deletedCount} éléments supprimés.` : "Élément supprimé.");
+      await loadHistory();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Suppression impossible pour le moment.";
+      setToast(message);
+    } finally {
+      setDeletingHistorySelection(false);
+    }
+  }
+
+  async function deleteHistoryEntry(item: OutboxItem) {
+    try {
+      if (!canDeleteHistoryItem(item)) return;
+      if (deletingHistoryItemId || deletingHistorySelection) return;
+
+      const ok = window.confirm(`Supprimer cet élément de l’historique ${folderLabel(item.folder)} ?`);
       if (!ok) return;
 
       setDeletingHistoryItemId(item.id);
@@ -2641,14 +2744,16 @@ async function deleteDraftPermanently(id: string) {
         throw new Error(payload?.error || "Suppression impossible pour le moment.");
       }
 
+      const removedKey = historySelectionKey(item);
       setItems((prev) => prev.filter((x) => !(x.id === item.id && x.source === item.source)));
+      setSelectedHistoryKeys((prev) => prev.filter((key) => key !== removedKey));
       if (selectedId === item.id) setSelectedId(null);
       if (detailsId === item.id) {
         setDetailsOpen(false);
         setDetailsId(null);
       }
 
-      setToast("Élément Factures supprimé.");
+      setToast(`Élément ${folderLabel(item.folder)} supprimé.`);
       await loadHistory();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Suppression impossible pour le moment.";
@@ -3249,6 +3354,41 @@ async function deleteDraftPermanently(id: string) {
               </div>
 
               <div className={styles.toolbarActions}>
+                <div className={styles.bulkToolbarActions}>
+                  <button
+                    className={`${styles.toolbarBtn} ${styles.toolbarIconBtn}`}
+                    onClick={() => toggleSelectVisibleHistoryItems(true)}
+                    type="button"
+                    title="Tout sélectionner la page"
+                    aria-label="Tout sélectionner la page"
+                    disabled={visibleBulkDeletableItems.length <= 0 || loading || deletingHistorySelection || Boolean(deletingDraftId) || Boolean(deletingHistoryItemId)}
+                  >
+                    <span className={styles.toolbarIconGlyph}>☑</span>
+                  </button>
+                  <button
+                    className={`${styles.toolbarBtn} ${styles.toolbarIconBtn}`}
+                    onClick={() => toggleSelectVisibleHistoryItems(false)}
+                    type="button"
+                    title="Tout désélectionner"
+                    aria-label="Tout désélectionner"
+                    disabled={selectedBulkCount <= 0 || loading || deletingHistorySelection || Boolean(deletingDraftId) || Boolean(deletingHistoryItemId)}
+                  >
+                    <span className={styles.toolbarIconGlyph}>☐</span>
+                  </button>
+                  <button
+                    className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${selectedBulkCount > 0 ? styles.toolbarBtnDanger : ""}`}
+                    onClick={() => void deleteSelectedHistoryEntries()}
+                    type="button"
+                    title={selectedBulkCount > 0 ? `Supprimer la sélection (${selectedBulkCount})` : "Supprimer la sélection"}
+                    aria-label="Supprimer la sélection"
+                    disabled={selectedBulkCount <= 0 || loading || deletingHistorySelection || Boolean(deletingDraftId) || Boolean(deletingHistoryItemId)}
+                  >
+                    <span className={styles.toolbarIconGlyph}>🗑</span>
+                  </button>
+                </div>
+
+                <div className={styles.toolbarSpacer} />
+
                 {/* 🔁 Inversion demandée : bouton d'action passe à droite, à la place de Filtrer */}
                 {toolCfg.href ? (
                   <Link
@@ -3294,8 +3434,6 @@ async function deleteDraftPermanently(id: string) {
                   {!searchOpen && historyQuery.trim() ? <span className={styles.activeDot} /> : null}
                 </button>
 
-
-
                 <button
                   className={`${styles.toolbarBtn} ${styles.toolbarIconBtn}`}
                   onClick={() => { void loadHistory(); }}
@@ -3305,8 +3443,6 @@ async function deleteDraftPermanently(id: string) {
                 >
                   ↻
                 </button>
-
-            
               </div>
             </div>
 
@@ -3372,6 +3508,9 @@ async function deleteDraftPermanently(id: string) {
                   ) : visibleItems.map((it) => {
                     const active = it.id === selectedId;
                     const p = pill(it.provider);
+                    const historyKey = historySelectionKey(it);
+                    const bulkDeletable = canBulkDeleteHistoryItem(it);
+                    const checked = bulkDeletable && selectedHistoryKeySet.has(historyKey);
 
                     const accountLabel = (() => {
                       const acc = mailAccounts.find((a) => a.id === itemMailAccountId(it));
@@ -3394,7 +3533,7 @@ async function deleteDraftPermanently(id: string) {
                     // and can trigger hydration errors in Next.js.
                     return (
                       <div
-                        key={it.id}
+                        key={historyKey}
                         className={`${styles.item} ${active ? styles.itemActive : ""}`}
                         role="button"
                         tabIndex={0}
@@ -3409,6 +3548,21 @@ async function deleteDraftPermanently(id: string) {
                       >
                         <div className={styles.itemTop} style={{ gridTemplateColumns: listGridTemplateColumns(folder) }}>
                           <div className={styles.fromRow}>
+                            {bulkDeletable ? (
+                              <label
+                                style={{ display: "inline-flex", alignItems: "center", gap: 8, marginRight: 10 }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={deletingHistorySelection || deletingDraftId === it.id || deletingHistoryItemId === it.id}
+                                  aria-label={`Sélectionner ${it.title || "cet élément"}`}
+                                  onChange={() => toggleHistorySelection(it)}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </label>
+                            ) : null}
                             <div className={styles.from} title={it.title || "(sans objet)"}>{it.title || "(sans objet)"}</div>
                             <span className={`${styles.badge} ${p.cls}`}>{p.label}</span>
                           </div>
@@ -3432,37 +3586,6 @@ async function deleteDraftPermanently(id: string) {
 
                             <div className={styles.rowActions}>
 
-{it.status === "draft" ? (
-  <button
-    type="button"
-    className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost}`}
-    title="Supprimer (définitif)"
-    disabled={deletingDraftId === it.id}
-    onClick={(e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (it.source === "send_items") void deleteDraftPermanently(it.id);
-    }}
-  >
-    🗑
-  </button>
-) : null}
-
-{canDeleteFactureHistoryItem(it) ? (
-  <button
-    type="button"
-    className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost}`}
-    title="Supprimer de l’historique Factures"
-    disabled={deletingHistoryItemId === it.id}
-    onClick={(e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      void deleteFactureHistoryEntry(it);
-    }}
-  >
-    🗑
-  </button>
-) : null}
 
                               <button
                                 type="button"
@@ -3501,34 +3624,37 @@ async function deleteDraftPermanently(id: string) {
                       })()
                     : historyEmptyState(folder, boxView, historyQuery)}
                 </div>
+                {selectedBulkCount > 0 ? <div style={{ color: "rgba(196,181,253,0.95)" }}>{selectedBulkCount} élément{selectedBulkCount > 1 ? "s" : ""} sélectionné{selectedBulkCount > 1 ? "s" : ""} sur cette page.</div> : null}
                 {loading ? <div style={{ color: "rgba(125,211,252,0.92)" }}>Actualisation de la liste…</div> : null}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className={styles.btnGhost}
-                  onClick={() => {
-                    const prevPage = Math.max(1, historyPage - 1);
-                    void loadHistory({ page: prevPage });
-                  }}
-                  disabled={historyPage <= 1 || loading}
-                >
-                  ← Précédent
-                </button>
-                <div style={{ color: "rgba(255,255,255,0.82)", fontSize: 12 }}>
-                  Page {historyPage}{historyTotalCount != null ? ` / ${historyPageCount}` : historyHasMorePotential ? " / …" : ""}
+              <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className={styles.btnGhost}
+                    onClick={() => {
+                      const prevPage = Math.max(1, historyPage - 1);
+                      void loadHistory({ page: prevPage });
+                    }}
+                    disabled={historyPage <= 1 || loading}
+                  >
+                    ← Précédent
+                  </button>
+                  <div style={{ color: "rgba(255,255,255,0.82)", fontSize: 12 }}>
+                    Page {historyPage}{historyTotalCount != null ? ` / ${historyPageCount}` : historyHasMorePotential ? " / …" : ""}
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.btnGhost}
+                    onClick={() => {
+                      const nextPage = historyPage + 1;
+                      void loadHistory({ page: nextPage });
+                    }}
+                    disabled={!historyHasMorePotential || loading}
+                  >
+                    Suivant →
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className={styles.btnGhost}
-                  onClick={() => {
-                    const nextPage = historyPage + 1;
-                    void loadHistory({ page: nextPage });
-                  }}
-                  disabled={!historyHasMorePotential || loading}
-                >
-                  Suivant →
-                </button>
               </div>
             </div>
           </div>
@@ -3665,14 +3791,14 @@ async function deleteDraftPermanently(id: string) {
                                     Créer la facture
                                   </button>
                                 ) : null}
-                                {canDeleteFactureHistoryItem(detailsItem) ? (
+                                {canDeleteHistoryItem(detailsItem) ? (
                                   <button
                                     type="button"
                                     className={styles.btnGhost}
-                                    onClick={() => void deleteFactureHistoryEntry(detailsItem)}
-                                    disabled={deletingHistoryItemId === detailsItem.id}
+                                    onClick={() => void deleteHistoryEntry(detailsItem)}
+                                    disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
                                   >
-                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : "Supprimer de l’historique"}
+                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
                                   </button>
                                 ) : null}
                               </div>
@@ -3730,14 +3856,14 @@ async function deleteDraftPermanently(id: string) {
                                     Réouvrir dans l’outil
                                   </button>
                                 ) : null}
-                                {canDeleteFactureHistoryItem(detailsItem) ? (
+                                {canDeleteHistoryItem(detailsItem) ? (
                                   <button
                                     type="button"
                                     className={styles.btnGhost}
-                                    onClick={() => void deleteFactureHistoryEntry(detailsItem)}
-                                    disabled={deletingHistoryItemId === detailsItem.id}
+                                    onClick={() => void deleteHistoryEntry(detailsItem)}
+                                    disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
                                   >
-                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : "Supprimer de l’historique"}
+                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
                                   </button>
                                 ) : null}
                               </div>
@@ -3803,6 +3929,27 @@ async function deleteDraftPermanently(id: string) {
                                     disabled={detailsActionBusy}
                                   >
                                     {detailsActionBusy && !detailsEditMode ? "Suppression…" : "Supprimer"}
+                                  </button>
+                                  {canDeleteHistoryItem(detailsItem) ? (
+                                    <button
+                                      type="button"
+                                      className={styles.btnGhost}
+                                      onClick={() => void deleteHistoryEntry(detailsItem)}
+                                      disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id || detailsActionBusy}
+                                    >
+                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : canDeleteHistoryItem(detailsItem) ? (
+                                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
+                                  <button
+                                    type="button"
+                                    className={styles.btnGhost}
+                                    onClick={() => void deleteHistoryEntry(detailsItem)}
+                                    disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
+                                  >
+                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
                                   </button>
                                 </div>
                               ) : null}

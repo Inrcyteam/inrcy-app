@@ -4592,6 +4592,19 @@ width: 100%;
   gap:10px;
   flex-wrap:wrap;
   justify-content:flex-end;
+  width:100%;
+}
+
+.bulkToolbarActions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.toolbarSpacer{
+  flex:1 1 auto;
+  min-width:12px;
 }
 
 .toolbarBtn{
@@ -4613,6 +4626,23 @@ width: 100%;
 
 .toolbarBtn:hover{
   background:rgba(255,255,255,0.09);
+}
+
+.toolbarBtn:disabled{
+  opacity:0.45;
+  cursor:not-allowed;
+  box-shadow:none;
+}
+
+.toolbarBtnDanger{
+  color: rgba(248, 113, 113, 0.98);
+  border-color: rgba(248, 113, 113, 0.38);
+  background: rgba(127, 29, 29, 0.26);
+}
+
+.toolbarBtnDanger:hover:not(:disabled){
+  background: rgba(153, 27, 27, 0.34);
+  border-color: rgba(248, 113, 113, 0.52);
 }
 
 .toolbarBtnCta{
@@ -4774,6 +4804,8 @@ width: 100%;
     -webkit-overflow-scrolling: touch;
     gap:8px;
   }
+  .bulkToolbarActions{ gap:8px; }
+  .toolbarSpacer{ min-width:16px; flex:0 0 16px; }
   .toolbarInfo{ font-size:12px; }
 
   .toolbarBtn{

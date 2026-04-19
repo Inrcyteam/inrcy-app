@@ -207,24 +207,70 @@ export async function cleanupInrSendRetention(now = new Date()): Promise<Cleanup
   return summary;
 }
 
-export async function deleteFactureHistoryItem(userId: string, source: "send_items" | "mail_campaigns", id: string) {
-  if (source === "send_items") {
-    const { error } = await supabaseAdmin
-      .from("send_items")
-      .delete()
-      .eq("id", id)
-      .eq("user_id", userId)
-      .eq("type", "facture");
+async function deleteInrSendHistoryItemsBySource(userId: string, source: "send_items" | "mail_campaigns" | "app_events", ids: string[]) {
+  const uniqueIds = Array.from(new Set(ids.map((value) => String(value || "").trim()).filter(Boolean)));
+  if (!uniqueIds.length) return 0;
+
+  let deleted = 0;
+  for (const part of chunk(uniqueIds)) {
+    if (source === "send_items") {
+      const { error, count } = await supabaseAdmin
+        .from("send_items")
+        .delete({ count: "exact" })
+        .in("id", part)
+        .eq("user_id", userId);
+      if (error) throw error;
+      deleted += count ?? part.length;
+      continue;
+    }
+
+    if (source === "mail_campaigns") {
+      const { error, count } = await supabaseAdmin
+        .from("mail_campaigns")
+        .delete({ count: "exact" })
+        .in("id", part)
+        .eq("user_id", userId);
+      if (error) throw error;
+      deleted += count ?? part.length;
+      continue;
+    }
+
+    const { error, count } = await supabaseAdmin
+      .from("app_events")
+      .delete({ count: "exact" })
+      .in("id", part)
+      .eq("user_id", userId);
     if (error) throw error;
-    return true;
+    deleted += count ?? part.length;
   }
 
-  const { error } = await supabaseAdmin
-    .from("mail_campaigns")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userId)
-    .or("folder.eq.factures,type.eq.facture");
-  if (error) throw error;
-  return true;
+  return deleted;
+}
+
+export async function deleteInrSendHistoryItems(
+  userId: string,
+  entries: Array<{ source: "send_items" | "mail_campaigns" | "app_events"; id: string }>,
+) {
+  const grouped = new Map<"send_items" | "mail_campaigns" | "app_events", string[]>();
+
+  for (const entry of entries) {
+    const id = String(entry?.id || "").trim();
+    if (!id) continue;
+    const source = entry?.source;
+    if (source !== "send_items" && source !== "mail_campaigns" && source !== "app_events") continue;
+    const current = grouped.get(source) || [];
+    current.push(id);
+    grouped.set(source, current);
+  }
+
+  let deleted = 0;
+  for (const [source, ids] of grouped.entries()) {
+    deleted += await deleteInrSendHistoryItemsBySource(userId, source, ids);
+  }
+  return deleted;
+}
+
+export async function deleteInrSendHistoryItem(userId: string, source: "send_items" | "mail_campaigns" | "app_events", id: string) {
+  const deleted = await deleteInrSendHistoryItems(userId, [{ source, id }]);
+  return deleted > 0;
 }
