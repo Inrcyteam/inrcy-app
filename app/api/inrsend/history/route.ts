@@ -41,6 +41,8 @@ type OutboxItem = {
   reopenHref?: string | null;
 };
 
+type FolderCounts = Record<Folder, number>;
+
 type SendType = "mail" | "facture" | "devis";
 
 type SendItemRow = {
@@ -78,6 +80,20 @@ const ALL_FOLDERS: Folder[] = [
   "suivis",
   "enquetes",
 ];
+
+function emptyFolderCounts(): FolderCounts {
+  return {
+    mails: 0,
+    factures: 0,
+    devis: 0,
+    publications: 0,
+    recoltes: 0,
+    offres: 0,
+    informations: 0,
+    suivis: 0,
+    enquetes: 0,
+  };
+}
 
 function parsePositiveInt(value: string | null, fallback: number, max: number) {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -506,6 +522,96 @@ function mapEventItems(rows: any[]): OutboxItem[] {
   return [...boosterItems, ...fideliserItems];
 }
 
+async function fetchAllRows<T>(
+  build: (from: number, to: number) => Promise<{ data: T[] | null; error: any }>,
+  batchSize = 500,
+): Promise<T[]> {
+  const rows: T[] = [];
+
+  for (let from = 0; from < 100000; from += batchSize) {
+    const to = from + batchSize - 1;
+    const { data, error } = await build(from, to);
+    if (error) throw error;
+    const batch = Array.isArray(data) ? data : [];
+    rows.push(...batch);
+    if (batch.length < batchSize) break;
+  }
+
+  return rows;
+}
+
+async function computeFolderCounts(
+  supabase: Awaited<ReturnType<typeof createSupabaseServer>>,
+  userId: string,
+  cutoffIso: string,
+  boxView: BoxView,
+  filterAccountId: string,
+  query: string,
+): Promise<FolderCounts> {
+  const counts = emptyFolderCounts();
+
+  const sendItemsPromise = fetchAllRows<SendItemRow>(async (from, to) => {
+    let builder: any = supabase
+      .from("send_items")
+      .select("id, integration_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, provider_thread_id, source_doc_save_id, source_doc_type, source_doc_number, error, sent_at, created_at, updated_at")
+      .eq("user_id", userId)
+      .gte("created_at", cutoffIso)
+      .order("created_at", { ascending: false });
+
+    if (boxView === "drafts") builder = builder.eq("status", "draft");
+    else builder = builder.neq("status", "draft");
+
+    if (filterAccountId) builder = builder.eq("integration_id", filterAccountId);
+
+    return builder.range(from, to);
+  });
+
+  const campaignsPromise = boxView === "drafts"
+    ? Promise.resolve([] as any[])
+    : fetchAllRows<any>(async (from, to) => {
+        let builder: any = supabase
+          .from("mail_campaigns")
+          .select("id, integration_id, provider, type, folder, track_kind, track_type, template_key, subject, body_text, body_html, status, total_count, queued_count, processing_count, sent_count, failed_count, source_doc_save_id, source_doc_type, source_doc_number, last_error, started_at, finished_at, created_at, updated_at")
+          .eq("user_id", userId)
+          .gte("created_at", cutoffIso)
+          .order("created_at", { ascending: false });
+
+        if (filterAccountId) builder = builder.eq("integration_id", filterAccountId);
+
+        return builder.range(from, to);
+      });
+
+  const eventsPromise = boxView === "drafts"
+    ? Promise.resolve([] as any[])
+    : fetchAllRows<any>(async (from, to) => {
+        const builder: any = supabase
+          .from("app_events")
+          .select("id, module, type, payload, created_at")
+          .eq("user_id", userId)
+          .gte("created_at", cutoffIso)
+          .in("module", ["booster", "fideliser"])
+          .order("created_at", { ascending: false });
+
+        return builder.range(from, to);
+      });
+
+  const [sendRows, campaignRows, eventRows] = await Promise.all([sendItemsPromise, campaignsPromise, eventsPromise]);
+
+  const allItems = [
+    ...mapSendItems(sendRows),
+    ...mapCampaignItems(campaignRows),
+    ...mapEventItems(eventRows),
+  ];
+
+  for (const item of allItems) {
+    if (!isVisibleInFolder(item.folder, item, boxView)) continue;
+    if (!matchesQuery(item, query)) continue;
+    counts[item.folder] += 1;
+  }
+
+  return counts;
+}
+
 export async function GET(req: Request) {
   const supabase = await createSupabaseServer();
 
@@ -648,6 +754,7 @@ export async function GET(req: Request) {
     const allSourcesExhausted = sourceState.send_items.exhausted && sourceState.mail_campaigns.exhausted && sourceState.app_events.exhausted;
     const total = allSourcesExhausted ? filtered.length : null;
     const hasMore = total != null ? end < total : filtered.length > end || !allSourcesExhausted;
+    const folderCounts = await computeFolderCounts(supabase, userData.user.id, cutoffIso, boxView, filterAccountId, query);
 
     return NextResponse.json({
       items,
@@ -656,6 +763,7 @@ export async function GET(req: Request) {
       hasMore,
       total,
       totalKnown: total != null,
+      folderCounts,
     });
   } catch (error) {
     return jsonUserFacingError(error, { status: 500 });

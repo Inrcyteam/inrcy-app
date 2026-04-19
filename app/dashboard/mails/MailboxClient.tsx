@@ -36,6 +36,8 @@ const pillBtnActive: React.CSSProperties = {
 
 const MAILBOX_PAGE_SIZE = 20;
 const MAILBOX_RECIPIENTS_PAGE_SIZE = 20;
+const BULK_CONFIRM_WARNING_THRESHOLD = 100;
+const BULK_CONFIRM_STRONG_THRESHOLD = 500;
 
 function safeDecode(v: string): string {
   try {
@@ -128,6 +130,32 @@ const ALL_FOLDERS: Folder[] = [
   "suivis",
   "enquetes",
 ];
+
+type FolderCounts = Record<Folder, number>;
+
+function emptyFolderCounts(): FolderCounts {
+  return {
+    mails: 0,
+    factures: 0,
+    devis: 0,
+    publications: 0,
+    recoltes: 0,
+    offres: 0,
+    informations: 0,
+    suivis: 0,
+    enquetes: 0,
+  };
+}
+
+function normalizeFolderCounts(input: unknown): FolderCounts {
+  const counts = emptyFolderCounts();
+  if (!input || typeof input !== "object") return counts;
+  for (const folder of ALL_FOLDERS) {
+    const value = Number((input as Record<string, unknown>)[folder] ?? 0);
+    counts[folder] = Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  }
+  return counts;
+}
 
 function isFolderValue(value: string): value is Folder {
   return (ALL_FOLDERS as string[]).includes(value);
@@ -1138,6 +1166,39 @@ function toolbarActionTheme(f: Folder): React.CSSProperties {
 }
 
 
+function bulkConfirmationMessage(recipientCount: number): string {
+  if (recipientCount >= BULK_CONFIRM_STRONG_THRESHOLD) {
+    return `Confirmer l’envoi de cette campagne à ${recipientCount} destinataires ?\n\nChaque contact recevra un email individuel. Les quotas, pauses automatiques et reprises par vagues s’appliqueront si nécessaire.\n\nVérifiez l’objet, le contenu et la boîte d’envoi avant de continuer.`;
+  }
+  return `Confirmer l’envoi de cette campagne à ${recipientCount} destinataires ?\n\nChaque contact recevra un email individuel.`;
+}
+
+function historyEmptyState(folder: Folder, view: BoxView, query: string): string {
+  const trimmed = query.trim();
+  if (trimmed) return `Aucun résultat pour “${trimmed}”.`;
+  if (view === "drafts") return `Aucun brouillon dans ${folderLabel(folder).toLowerCase()}.`;
+  switch (folder) {
+    case "publications":
+      return "Aucune publication pour le moment.";
+    case "recoltes":
+      return "Aucune récolte pour le moment.";
+    case "offres":
+      return "Aucune offre pour le moment.";
+    case "informations":
+      return "Aucune information envoyée pour le moment.";
+    case "suivis":
+      return "Aucun suivi envoyé pour le moment.";
+    case "enquetes":
+      return "Aucune enquête envoyée pour le moment.";
+    case "factures":
+      return "Aucune facture envoyée pour le moment.";
+    case "devis":
+      return "Aucun devis envoyé pour le moment.";
+    default:
+      return "Aucun mail pour le moment.";
+  }
+}
+
 function folderLabel(f: Folder) {
   switch (f) {
     case "mails":
@@ -1349,6 +1410,7 @@ export default function MailboxClient() {
   const historyPageRef = useRef(1);
   const [historyHasMorePotential, setHistoryHasMorePotential] = useState(false);
   const [historyTotalCount, setHistoryTotalCount] = useState<number | null>(null);
+  const [folderCounts, setFolderCounts] = useState<FolderCounts>(() => emptyFolderCounts());
 
   // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1652,26 +1714,7 @@ export default function MailboxClient() {
     return map;
   }, [composeRecipientHints]);
 
-  const counts = useMemo(() => {
-    const c: Record<Folder, number> = {
-      mails: 0,
-      factures: 0,
-      devis: 0,
-      publications: 0,
-      recoltes: 0,
-      offres: 0,
-      informations: 0,
-      suivis: 0,
-      enquetes: 0,
-    };
-    for (const it of items) {
-      // Les compteurs en haut représentent les ENVOIS.
-      // Donc: jamais les brouillons.
-      if (it.status === "draft") continue;
-      c[it.folder] += 1;
-    }
-    return c;
-  }, [items]);
+  const counts = folderCounts;
 
   function resetCompose(nextType: SendType = "mail") {
     setDraftId(null);
@@ -1753,11 +1796,13 @@ export default function MailboxClient() {
       const nextItems = Array.isArray(payload?.items) ? (payload.items as OutboxItem[]) : [];
       const nextTotal = typeof payload?.total === "number" ? Math.max(0, Number(payload.total)) : null;
       const nextPage = typeof payload?.page === "number" ? Math.max(1, Number(payload.page)) : targetPage;
+      const nextCounts = normalizeFolderCounts(payload?.folderCounts);
 
       setItems(nextItems);
       setHistoryPage(nextPage);
       setHistoryHasMorePotential(Boolean(payload?.hasMore));
       setHistoryTotalCount(nextTotal);
+      setFolderCounts(nextCounts);
       setSelectedId((prev) => (nextItems.some((item) => item.id === prev) ? prev : nextItems[0]?.id ?? null));
     } catch (error) {
       console.error(error);
@@ -1765,6 +1810,7 @@ export default function MailboxClient() {
       setHistoryPage(targetPage);
       setHistoryHasMorePotential(false);
       setHistoryTotalCount(0);
+      setFolderCounts(emptyFolderCounts());
       setSelectedId(null);
     } finally {
       setLoading(false);
@@ -2072,6 +2118,31 @@ export default function MailboxClient() {
 
   const composeRecipientList = useMemo(() => normalizeEmails(to), [to]);
   const isBulkCampaignCompose = composeRecipientList.length > 1;
+  const bulkCampaignNotice = useMemo(() => {
+    const count = composeRecipientList.length;
+    if (count >= BULK_CONFIRM_STRONG_THRESHOLD) {
+      return {
+        tone: "strong" as const,
+        title: `Campagne importante : ${count} destinataires`,
+        text: "Une confirmation sera demandée avant l’envoi. Les garde-fous, quotas et reprises automatiques resteront actifs.",
+      };
+    }
+    if (count >= BULK_CONFIRM_WARNING_THRESHOLD) {
+      return {
+        tone: "warning" as const,
+        title: `Campagne multi-destinataires : ${count} destinataires`,
+        text: "Vérifie l’objet, la boîte d’envoi et le segment sélectionné avant de lancer la campagne.",
+      };
+    }
+    if (count > 1) {
+      return {
+        tone: "info" as const,
+        title: `Mode campagne activé : ${count} destinataires`,
+        text: "Chaque contact recevra un email individuel depuis iNr’SEND.",
+      };
+    }
+    return null;
+  }, [composeRecipientList]);
 
   const toolCfg = useMemo(() => {
     switch (folder) {
@@ -2602,6 +2673,11 @@ async function deleteDraftPermanently(id: string) {
     if (recipientsList.length > 1 && composeType !== "mail") {
       setToast("L’envoi individuel en masse est disponible uniquement pour les mails classiques.");
       return;
+    }
+
+    if (recipientsList.length >= BULK_CONFIRM_WARNING_THRESHOLD) {
+      const ok = window.confirm(bulkConfirmationMessage(recipientsList.length));
+      if (!ok) return;
     }
 
     setSendBusy(true);
@@ -3279,7 +3355,7 @@ async function deleteDraftPermanently(id: string) {
                     </div>
                   </div>
                   {visibleItems.length === 0 ? (
-                    <div style={{ padding: 14, color: "rgba(255,255,255,0.65)" }}>Aucun élément.</div>
+                    <div style={{ padding: 14, color: "rgba(255,255,255,0.65)" }}>{historyEmptyState(folder, boxView, historyQuery)}</div>
                   ) : visibleItems.map((it) => {
                     const active = it.id === selectedId;
                     const p = pill(it.provider);
@@ -3380,20 +3456,23 @@ async function deleteDraftPermanently(id: string) {
                 </div>
               )}
             </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px 0", flexWrap: "wrap" }}>
-              <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12 }}>
-                {filteredItems.length > 0
-                  ? (() => {
-                      const start = (historyPage - 1) * MAILBOX_PAGE_SIZE + 1;
-                      const end = start + filteredItems.length - 1;
-                      if (historyTotalCount != null) {
-                        return `Affichage ${start}–${end} sur ${historyTotalCount}`;
-                      }
-                      return historyHasMorePotential
-                        ? `Affichage ${start}–${end} (autres éléments disponibles)`
-                        : `Affichage ${start}–${end}`;
-                    })()
-                  : "Aucun élément"}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px 14px", flexWrap: "wrap" }}>
+              <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, display: "grid", gap: 4 }}>
+                <div>
+                  {filteredItems.length > 0
+                    ? (() => {
+                        const start = (historyPage - 1) * MAILBOX_PAGE_SIZE + 1;
+                        const end = start + filteredItems.length - 1;
+                        if (historyTotalCount != null) {
+                          return `Affichage ${start}–${end} sur ${historyTotalCount}`;
+                        }
+                        return historyHasMorePotential
+                          ? `Affichage ${start}–${end} (autres éléments disponibles)`
+                          : `Affichage ${start}–${end}`;
+                      })()
+                    : historyEmptyState(folder, boxView, historyQuery)}
+                </div>
+                {loading ? <div style={{ color: "rgba(125,211,252,0.92)" }}>Actualisation de la liste…</div> : null}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <button
@@ -4285,6 +4364,28 @@ async function deleteDraftPermanently(id: string) {
                         {composeRecipientList.length} destinataires détectés : iNr’SEND lancera une campagne avec un envoi individuel par contact.
                       </span>
                     ) : null}
+                    {bulkCampaignNotice ? (
+                      <div
+                        style={{
+                          marginTop: 4,
+                          borderRadius: 12,
+                          padding: "10px 12px",
+                          border: bulkCampaignNotice.tone === "strong"
+                            ? "1px solid rgba(251,146,60,0.40)"
+                            : bulkCampaignNotice.tone === "warning"
+                              ? "1px solid rgba(250,204,21,0.34)"
+                              : "1px solid rgba(56,189,248,0.26)",
+                          background: bulkCampaignNotice.tone === "strong"
+                            ? "rgba(251,146,60,0.12)"
+                            : bulkCampaignNotice.tone === "warning"
+                              ? "rgba(250,204,21,0.10)"
+                              : "rgba(56,189,248,0.10)",
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.92)" }}>{bulkCampaignNotice.title}</div>
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)", marginTop: 4 }}>{bulkCampaignNotice.text}</div>
+                      </div>
+                    ) : null}
                   </label>
 
                   {/* CRM picker (dropdown + checkboxes) */}
@@ -4539,6 +4640,9 @@ async function deleteDraftPermanently(id: string) {
                   <label style={{ display: "grid", gap: 6 }}>
                     <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Objet</span>
                     <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Objet" style={inputStyle} />
+                    {!subject.trim() ? (
+                      <span style={{ fontSize: 12, color: "rgba(251,191,36,0.92)" }}>Le message partira avec “(sans objet)” si tu laisses ce champ vide.</span>
+                    ) : null}
                   </label>
 
                   <label style={{ display: "grid", gap: 6 }}>
