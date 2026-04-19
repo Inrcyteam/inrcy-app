@@ -1382,6 +1382,13 @@ function isRetryableCampaignItem(item: OutboxItem | null) {
   return counts.failed > 0;
 }
 
+function canDeleteFactureHistoryItem(item: OutboxItem | null | undefined) {
+  if (!item) return false;
+  if (item.folder !== "factures") return false;
+  if (item.status === "draft") return false;
+  return item.source === "send_items" || item.source === "mail_campaigns";
+}
+
 function listGridTemplateColumns(folder: Folder) {
   if (folder === "factures" || folder === "devis") {
     return "minmax(0, 520px) minmax(180px, 240px) auto";
@@ -1535,6 +1542,7 @@ export default function MailboxClient() {
   const [signatureImageUrl, setSignatureImageUrl] = useState("");
   const [signatureImageWidth, setSignatureImageWidth] = useState(400);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
+  const [deletingHistoryItemId, setDeletingHistoryItemId] = useState<string | null>(null);
 
 
   // Attachments uploaded by Factures / Devis screens are stored here.
@@ -2533,36 +2541,6 @@ export default function MailboxClient() {
     const userId = auth?.user?.id;
     if (!userId) return;
 
-    // Storage guardrail: keep only the latest 20 drafts per user.
-    // Prefer ordering by updated_at (so editing an old draft bumps it),
-    // and fallback to created_at if updated_at doesn't exist.
-    async function enforceDraftLimit() {
-      try {
-        const base = supabase
-          .from("send_items")
-          .select("id")
-          .eq("user_id", userId)
-          .eq("status", "draft");
-
-        // Try updated_at first
-        const { data: recentByUpdate, error: errUpdate } = await base
-          .order("updated_at", { ascending: false })
-          .limit(80);
-
-        const recent = errUpdate
-          ? (await base.order("created_at", { ascending: false }).limit(80)).data
-          : recentByUpdate;
-
-        const ids = (recent || []).map((r: any) => r.id).filter(Boolean);
-        if (ids.length > 20) {
-          const toDelete = ids.slice(20);
-          await supabase.from("send_items").delete().in("id", toDelete);
-        }
-      } catch {
-        // Never block draft saving
-      }
-    }
-
     const payload = {
       user_id: userId,
       integration_id: selectedAccountId || null,
@@ -2582,7 +2560,6 @@ export default function MailboxClient() {
       const { error } = await supabase.from("send_items").update(payload).eq("id", draftId);
       if (!error) {
         setToast("Brouillon sauvegardé");
-        await enforceDraftLimit();
         await loadHistory();
       }
       return;
@@ -2592,7 +2569,6 @@ export default function MailboxClient() {
     if (!error && data?.id) {
       setDraftId(data.id);
       setToast("Brouillon sauvegardé");
-      await enforceDraftLimit();
       await loadHistory();
     }
   }
@@ -2637,13 +2613,50 @@ async function deleteDraftPermanently(id: string) {
     }
 
     setToast("Brouillon supprimé.");
-    // Reload to keep the list consistent (and still capped at 20)
+    // Reload to keep the list consistent
     await loadHistory();
   } finally {
     setDeletingDraftId(null);
   }
 }
 
+
+  async function deleteFactureHistoryEntry(item: OutboxItem) {
+    try {
+      if (!canDeleteFactureHistoryItem(item)) return;
+      if (deletingHistoryItemId) return;
+
+      const ok = window.confirm("Supprimer cet élément de l’historique Factures ?");
+      if (!ok) return;
+
+      setDeletingHistoryItemId(item.id);
+
+      const response = await fetch("/api/inrsend/history/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, source: item.source, folder: item.folder }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Suppression impossible pour le moment.");
+      }
+
+      setItems((prev) => prev.filter((x) => !(x.id === item.id && x.source === item.source)));
+      if (selectedId === item.id) setSelectedId(null);
+      if (detailsId === item.id) {
+        setDetailsOpen(false);
+        setDetailsId(null);
+      }
+
+      setToast("Élément Factures supprimé.");
+      await loadHistory();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Suppression impossible pour le moment.";
+      setToast(message);
+    } finally {
+      setDeletingHistoryItemId(null);
+    }
+  }
 
   function getBulkCampaignFolder(): Folder {
     if (composeType === "facture") return "factures";
@@ -3435,6 +3448,22 @@ async function deleteDraftPermanently(id: string) {
   </button>
 ) : null}
 
+{canDeleteFactureHistoryItem(it) ? (
+  <button
+    type="button"
+    className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost}`}
+    title="Supprimer de l’historique Factures"
+    disabled={deletingHistoryItemId === it.id}
+    onClick={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void deleteFactureHistoryEntry(it);
+    }}
+  >
+    🗑
+  </button>
+) : null}
+
                               <button
                                 type="button"
                                 className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost}`}
@@ -3617,28 +3646,36 @@ async function deleteDraftPermanently(id: string) {
                                   <div className={styles.metaVal}>{(detailsItem as any).raw?.source_doc_number || "—"}</div>
                                 </div>
                               </div>
-                              {(detailsItem.reopenHref || ((detailsItem as any).raw?.source_doc_type === "devis" && (detailsItem as any).raw?.source_doc_save_id)) ? (
-                                <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-                                  {detailsItem.reopenHref ? (
-                                    <button
-                                      type="button"
-                                      className={styles.btnGhost}
-                                      onClick={() => router.push(detailsItem.reopenHref || "/dashboard/mails")}
-                                    >
-                                      Réouvrir dans l’outil
-                                    </button>
-                                  ) : null}
-                                  {(detailsItem as any).raw?.source_doc_type === "devis" && (detailsItem as any).raw?.source_doc_save_id ? (
-                                    <button
-                                      type="button"
-                                      className={styles.btnGhost}
-                                      onClick={() => router.push(`/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent((detailsItem as any).raw.source_doc_save_id)}`)}
-                                    >
-                                      Créer la facture
-                                    </button>
-                                  ) : null}
-                                </div>
-                              ) : null}
+                              <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+                                {detailsItem.reopenHref ? (
+                                  <button
+                                    type="button"
+                                    className={styles.btnGhost}
+                                    onClick={() => router.push(detailsItem.reopenHref || "/dashboard/mails")}
+                                  >
+                                    Réouvrir dans l’outil
+                                  </button>
+                                ) : null}
+                                {(detailsItem as any).raw?.source_doc_type === "devis" && (detailsItem as any).raw?.source_doc_save_id ? (
+                                  <button
+                                    type="button"
+                                    className={styles.btnGhost}
+                                    onClick={() => router.push(`/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent((detailsItem as any).raw.source_doc_save_id)}`)}
+                                  >
+                                    Créer la facture
+                                  </button>
+                                ) : null}
+                                {canDeleteFactureHistoryItem(detailsItem) ? (
+                                  <button
+                                    type="button"
+                                    className={styles.btnGhost}
+                                    onClick={() => void deleteFactureHistoryEntry(detailsItem)}
+                                    disabled={deletingHistoryItemId === detailsItem.id}
+                                  >
+                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : "Supprimer de l’historique"}
+                                  </button>
+                                ) : null}
+                              </div>
                             </>
                           ) : detailsItem.source === "mail_campaigns" ? (
                             <>
@@ -3691,6 +3728,16 @@ async function deleteDraftPermanently(id: string) {
                                     onClick={() => router.push(detailsItem.reopenHref || "/dashboard/mails")}
                                   >
                                     Réouvrir dans l’outil
+                                  </button>
+                                ) : null}
+                                {canDeleteFactureHistoryItem(detailsItem) ? (
+                                  <button
+                                    type="button"
+                                    className={styles.btnGhost}
+                                    onClick={() => void deleteFactureHistoryEntry(detailsItem)}
+                                    disabled={deletingHistoryItemId === detailsItem.id}
+                                  >
+                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : "Supprimer de l’historique"}
                                   </button>
                                 ) : null}
                               </div>

@@ -381,25 +381,6 @@ const handler = async (req: Request) => {
     await supabase.from("send_items").insert(historyPayload);
   }
 
-  // Keep only the latest 20 SENT items in history (trash removed).
-  try {
-    const { data: recent } = await supabase
-      .from("send_items")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("status", "sent")
-      .order("created_at", { ascending: false })
-      .limit(60);
-
-    const ids = (recent || []).map((r: Record<string, unknown>) => r.id).filter(Boolean);
-    if (ids.length > 20) {
-      const toDelete = ids.slice(20);
-      await supabase.from("send_items").delete().in("id", toDelete);
-    }
-  } catch {
-    // Never block sending
-  }
-
 
   return NextResponse.json({
     ok: true,
