@@ -48,6 +48,32 @@ function mapSupabaseRecoveryError(code?: string | null, desc?: string | null, mo
   return null;
 }
 
+function shouldOfferResendLink(message: string | null, mode: "invite" | "reset", email?: string | null) {
+  if (!message || !email) return false;
+  const value = message.toLowerCase();
+
+  const genericSignals = [
+    "lien a expiré",
+    "lien est invalide",
+    "lien invalide",
+    "déjà utilisé",
+    "deja utilise",
+    "session d’activation",
+    "session d'activation",
+    "session de réinitialisation",
+    "session de reinitialisation",
+    "ouvert dans un autre navigateur",
+    "demandez un nouveau lien",
+    "refaites une demande",
+    "accès refusé",
+  ];
+
+  if (genericSignals.some((signal) => value.includes(signal))) return true;
+  if (mode === "invite" && value.includes("invitation")) return true;
+  if (mode === "reset" && value.includes("réinitialisation")) return true;
+  return false;
+}
+
 function getPasswordStrength(pw: string) {
   const rules = {
     minLen: pw.length >= 8,
@@ -98,6 +124,10 @@ function SetPasswordInner() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendInfo, setResendInfo] = useState<string | null>(null);
+  const [resendError, setResendError] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const strength = useMemo(() => getPasswordStrength(password), [password]);
 
@@ -148,6 +178,14 @@ function SetPasswordInner() {
   }, [mode, searchParams]);
 
   useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((value) => (value > 1 ? value - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const verifyExpectedAccount = async () => {
@@ -170,6 +208,46 @@ function SetPasswordInner() {
       cancelled = true;
     };
   }, [expectedEmail, isInvite, supabase]);
+
+  async function onResendLink() {
+    if (!expectedEmail || resendLoading || resendCooldown > 0) return;
+
+    setResendLoading(true);
+    setResendError(null);
+    setResendInfo(null);
+
+    try {
+      const res = await fetch("/api/auth/resend-link", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: expectedEmail,
+          mode,
+        }),
+      });
+
+      const payload = await res.json().catch(() => null) as { error?: string; message?: string } | null;
+
+      if (!res.ok) {
+        setResendError(payload?.error || "Impossible d’envoyer un nouveau lien pour le moment.");
+        return;
+      }
+
+      setResendInfo(
+        payload?.message ||
+          (isInvite
+            ? `Un nouveau lien vient d’être envoyé à ${expectedEmail}.`
+            : `Un nouveau lien de réinitialisation vient d’être envoyé à ${expectedEmail}.`),
+      );
+      setResendCooldown(30);
+    } catch {
+      setResendError("Impossible d’envoyer un nouveau lien pour le moment.");
+    } finally {
+      setResendLoading(false);
+    }
+  }
 
   function validate(): string | null {
     if (!getPasswordStrength(password).isStrong) {
@@ -239,6 +317,7 @@ function SetPasswordInner() {
   const confirmOk = confirmTouched && password === confirm;
 
   const canSubmit = !loading && strength.isStrong && password === confirm;
+  const canResend = shouldOfferResendLink(msg, mode, expectedEmail);
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -418,6 +497,30 @@ function SetPasswordInner() {
             {msg ? (
               <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {msg}
+              </div>
+            ) : null}
+
+            {canResend ? (
+              <div className="space-y-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3">
+                <div className="text-sm text-sky-900">
+                  {isInvite
+                    ? "Besoin d’un nouveau lien d’activation ?"
+                    : "Besoin d’un nouveau lien de réinitialisation ?"}
+                </div>
+                <button
+                  type="button"
+                  onClick={onResendLink}
+                  disabled={resendLoading || resendCooldown > 0}
+                  className="inline-flex w-full items-center justify-center rounded-xl border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {resendLoading
+                    ? "Envoi en cours..."
+                    : resendCooldown > 0
+                    ? `Renvoyer dans ${resendCooldown}s`
+                    : "Envoyer un nouveau lien"}
+                </button>
+                {resendInfo ? <div className="text-sm text-emerald-700">{resendInfo}</div> : null}
+                {resendError ? <div className="text-sm text-rose-700">{resendError}</div> : null}
               </div>
             ) : null}
 
