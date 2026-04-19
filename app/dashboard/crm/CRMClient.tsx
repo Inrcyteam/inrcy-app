@@ -42,8 +42,8 @@ type CrmSummary = {
   autres: number;
 };
 
-const DEFAULT_PAGE_SIZE = 25;
-const PAGE_SIZE_OPTIONS = [25] as const;
+const DEFAULT_PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [20] as const;
 
 const CATEGORY_LABEL: Record<Exclude<Category, "">, string> = {
   particulier: "Particulier",
@@ -743,6 +743,25 @@ export default function CRMClient() {
     return em ? [em] : [];
   }, [selectedEmails, primaryContact]);
 
+  const actionRecipients = useMemo(() => {
+    const source = selectedContacts.length > 0 ? selectedContacts : primaryContact ? [primaryContact] : [];
+    const seen = new Set<string>();
+    return source
+      .map((contact) => {
+        const email = (contact.email || "").trim();
+        if (!email) return null;
+        const lower = email.toLowerCase();
+        if (seen.has(lower)) return null;
+        seen.add(lower);
+        return {
+          email,
+          contact_id: contact.id,
+          display_name: buildDisplayName(contact) || null,
+        };
+      })
+      .filter(Boolean) as Array<{ email: string; contact_id: string; display_name: string | null }>;
+  }, [selectedContacts, primaryContact]);
+
 
   const toggleSelect = (id: string) => {
     const contact = visibleContacts.find((item) => item.id === id) ?? selectedContactsById[id];
@@ -1019,7 +1038,7 @@ const exportExcel = async () => {
 };
 
   const sendMailToAction = () => {
-    if (actionEmails.length === 0) return;
+    if (actionRecipients.length === 0) return;
 
     if (typeof window !== "undefined") {
       try {
@@ -1030,6 +1049,7 @@ const exportExcel = async () => {
             from: "crm",
             contactId: primaryContact?.id || "",
             contactName: primaryContact ? buildDisplayName(primaryContact) : "",
+            recipients: actionRecipients,
             createdAt: Date.now(),
           }),
         );

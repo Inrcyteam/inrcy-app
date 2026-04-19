@@ -145,9 +145,11 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
-  const pageSize = parsePositiveInt(url.searchParams.get("pageSize"), 50, 200);
   const page = parsePositiveInt(url.searchParams.get("page"), 1, 100000);
   const all = ["1", "true", "yes"].includes((url.searchParams.get("all") ?? "").toLowerCase());
+  const pageSize = all
+    ? parsePositiveInt(url.searchParams.get("pageSize"), 20, 200)
+    : 20;
   const query = cleanString(url.searchParams.get("q"));
 
   let builder: any = supabase

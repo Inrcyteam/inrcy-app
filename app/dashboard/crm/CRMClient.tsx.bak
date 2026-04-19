@@ -42,8 +42,8 @@ type CrmSummary = {
   autres: number;
 };
 
-const DEFAULT_PAGE_SIZE = 25;
-const PAGE_SIZE_OPTIONS = [25] as const;
+const DEFAULT_PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [20] as const;
 
 const CATEGORY_LABEL: Record<Exclude<Category, "">, string> = {
   particulier: "Particulier",

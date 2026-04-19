@@ -14,7 +14,7 @@ import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/dashboard/_components/ChannelImageRetouchTool";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
-import { normalizeRecipientEmails } from "@/lib/crmRecipients";
+import { normalizeRecipientEmails, type MailCampaignRecipientInput } from "@/lib/crmRecipients";
 
 
 const pillBtn: React.CSSProperties = {
@@ -33,6 +33,9 @@ const pillBtnActive: React.CSSProperties = {
   boxShadow: "0 0 0 1px rgba(76,195,255,0.18) inset",
   background: "rgba(76,195,255,0.10)",
 };
+
+const MAILBOX_PAGE_SIZE = 20;
+const MAILBOX_RECIPIENTS_PAGE_SIZE = 20;
 
 function safeDecode(v: string): string {
   try {
@@ -198,6 +201,8 @@ type ComposeAttachmentRef = {
   type?: string | null;
   size?: number | null;
 };
+
+type ComposeCrmRecipientHint = MailCampaignRecipientInput;
 
 type CampaignRecipientLog = {
   id: string;
@@ -1207,6 +1212,9 @@ export default function MailboxClient() {
   const [items, setItems] = useState<OutboxItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const historyPageRef = useRef(1);
+  const [historyHasMorePotential, setHistoryHasMorePotential] = useState(false);
 
   // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1218,6 +1226,9 @@ export default function MailboxClient() {
   const [detailsSourceDocPayload, setDetailsSourceDocPayload] = useState<any | null>(null);
   const [campaignRecipients, setCampaignRecipients] = useState<CampaignRecipientLog[]>([]);
   const [campaignRecipientsLoading, setCampaignRecipientsLoading] = useState(false);
+  const [campaignRecipientsPage, setCampaignRecipientsPage] = useState(1);
+  const [campaignRecipientsPageCount, setCampaignRecipientsPageCount] = useState(1);
+  const [campaignRecipientsTotal, setCampaignRecipientsTotal] = useState(0);
   const [campaignActionBusyId, setCampaignActionBusyId] = useState<string | null>(null);
   const [publicationEditForm, setPublicationEditForm] = useState<PublicationEditForm>({ title: "", content: "", cta: "", hashtags: "" });
   const [publicationEditImagesByChannel, setPublicationEditImagesByChannel] = useState<Record<string, PublicationChannelImagesState>>({});
@@ -1234,6 +1245,10 @@ export default function MailboxClient() {
     : null;
   const publicationRetouchAsset =
     publicationRetouchChannelState?.assets.find((asset) => asset.key === publicationRetouchImageKey) || null;
+
+  useEffect(() => {
+    historyPageRef.current = historyPage;
+  }, [historyPage]);
 
   useEffect(() => {
     if (!detailsOpen || !detailsEditMode || !publicationRetouchAsset) return;
@@ -1309,6 +1324,7 @@ export default function MailboxClient() {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [composeAttachments, setComposeAttachments] = useState<ComposeAttachmentRef[]>([]);
+  const [composeRecipientHints, setComposeRecipientHints] = useState<ComposeCrmRecipientHint[]>([]);
   const [attachBusy, setAttachBusy] = useState(false);
   const [composeSourceDocSaveId, setComposeSourceDocSaveId] = useState<string>("");
   const [composeSourceDocType, setComposeSourceDocType] = useState<"devis" | "facture" | "">("");
@@ -1372,6 +1388,30 @@ export default function MailboxClient() {
 
   function normalizeEmails(v: string) {
     return normalizeRecipientEmails(v);
+  }
+
+  function normalizeComposeRecipientHints(input: unknown): ComposeCrmRecipientHint[] {
+    const values = Array.isArray(input) ? input : [];
+    const out: ComposeCrmRecipientHint[] = [];
+    const seen = new Set<string>();
+
+    for (const item of values) {
+      if (!item || typeof item !== "object") continue;
+      const email = String((item as any).email || "").trim();
+      if (!email) continue;
+      const lower = email.toLowerCase();
+      if (seen.has(lower)) continue;
+      seen.add(lower);
+      const contactId = String((item as any).contact_id || "").trim();
+      const displayName = String((item as any).display_name || "").trim();
+      out.push({
+        email,
+        contact_id: contactId || null,
+        display_name: displayName || null,
+      });
+    }
+
+    return out;
   }
 
   function toggleEmailInTo(email: string) {
@@ -1445,6 +1485,36 @@ export default function MailboxClient() {
     return n;
   }, [crmContacts, selectedToSet]);
 
+  const crmRecipientsByEmail = useMemo(() => {
+    const map = new Map<string, ComposeCrmRecipientHint>();
+    for (const contact of crmContacts) {
+      const email = String(contact.email || "").trim();
+      if (!email) continue;
+      const lower = email.toLowerCase();
+      if (map.has(lower)) continue;
+      map.set(lower, {
+        email,
+        contact_id: contact.id,
+        display_name: (contact.full_name || "").trim() || null,
+      });
+    }
+    return map;
+  }, [crmContacts]);
+
+  const composeRecipientHintsByEmail = useMemo(() => {
+    const map = new Map<string, ComposeCrmRecipientHint>();
+    for (const hint of composeRecipientHints) {
+      const email = String(hint.email || "").trim();
+      if (!email) continue;
+      map.set(email.toLowerCase(), {
+        email,
+        contact_id: hint.contact_id || null,
+        display_name: hint.display_name || null,
+      });
+    }
+    return map;
+  }, [composeRecipientHints]);
+
   const counts = useMemo(() => {
     const c: Record<Folder, number> = {
       mails: 0,
@@ -1478,6 +1548,7 @@ export default function MailboxClient() {
     setText(buildDefaultMailText({ kind: nextType, signature }));
     setFiles([]);
     setComposeAttachments([]);
+    setComposeRecipientHints([]);
     setCrmPickerOpen(false);
   }
 
@@ -1519,12 +1590,18 @@ export default function MailboxClient() {
     }
   }
 
-  const loadHistory = useCallback(async () => {
+  const loadHistory = useCallback(async (options?: { page?: number }) => {
+    const targetPage = Math.max(1, options?.page ?? historyPageRef.current ?? 1);
+    const historyTargetCount = Math.max(MAILBOX_PAGE_SIZE, targetPage * MAILBOX_PAGE_SIZE);
+    const sendItemsLimit = Math.max(80, historyTargetCount * 2);
+    const campaignsLimit = Math.max(60, historyTargetCount);
+    const eventsLimit = Math.max(80, historyTargetCount * 2);
+
     setLoading(true);
     try {
       const { data: auth } = await supabase.auth.getUser();
-    const userId = auth?.user?.id;
-    if (!userId) return;
+      const userId = auth?.user?.id;
+      if (!userId) return;
 
       const strip = (v: any) =>
         String(v || "")
@@ -1554,14 +1631,14 @@ export default function MailboxClient() {
           .in("status", ["sent", "draft"])
           .gte("created_at", cutoffIso)
           .order("created_at", { ascending: false })
-          .limit(80),
+          .limit(sendItemsLimit),
         supabase
           .from("mail_campaigns")
           .select("id, integration_id, provider, type, folder, track_kind, track_type, template_key, subject, body_text, body_html, status, total_count, queued_count, processing_count, sent_count, failed_count, source_doc_save_id, source_doc_type, source_doc_number, last_error, started_at, finished_at, created_at, updated_at")
           .eq("user_id", userId)
           .gte("created_at", cutoffIso)
           .order("created_at", { ascending: false })
-          .limit(60),
+          .limit(campaignsLimit),
         supabase
           .from("app_events")
           .select("id, module, type, payload, created_at")
@@ -1569,7 +1646,7 @@ export default function MailboxClient() {
           .in("module", ["booster", "fideliser"])
           .gte("created_at", cutoffIso)
           .order("created_at", { ascending: false })
-          .limit(80),
+          .limit(eventsLimit),
       ]);
 
       if (sendRes.error) console.error(sendRes.error);
@@ -1739,6 +1816,11 @@ const subTitle = firstNonEmpty(
       }
 
       setItems(combined);
+      setHistoryHasMorePotential(
+        ((sendRes.data || []) as any[]).length >= sendItemsLimit ||
+          ((campaignsRes.data || []) as any[]).length >= campaignsLimit ||
+          ((eventsRes.data || []) as any[]).length >= eventsLimit
+      );
 
       if (combined.length > 0) setSelectedId((prev) => prev || combined[0].id);
       else setSelectedId(null);
@@ -1747,22 +1829,36 @@ const subTitle = firstNonEmpty(
     }
   }, [filterAccountId, supabase]);
 
-  const visibleItems = useMemo(() => {
+  const filteredItems = useMemo(() => {
     const q = historyQuery.trim().toLowerCase();
-    const filtered = items.filter((it) => {
+    return items.filter((it) => {
       if (!isVisibleInFolder(folder, it, boxView)) return false;
       if (!q) return true;
       const hay = `${it.title || ""} ${it.subTitle || ""} ${it.target || ""} ${it.preview || ""} ${it.provider || ""}`.toLowerCase();
       return hay.includes(q);
     });
-    // Always show the latest 20 items in the main view.
-    if (boxView === "sent" || boxView === "drafts") return filtered.slice(0, 20);
-    return filtered;
   }, [items, folder, historyQuery, boxView]);
+
+  const historyPageCount = Math.max(1, Math.ceil(filteredItems.length / MAILBOX_PAGE_SIZE));
+
+  const visibleItems = useMemo(() => {
+    const from = (historyPage - 1) * MAILBOX_PAGE_SIZE;
+    return filteredItems.slice(from, from + MAILBOX_PAGE_SIZE);
+  }, [filteredItems, historyPage]);
 
   const selected = useMemo(() => {
     return visibleItems.find((x) => x.id === selectedId) || null;
   }, [visibleItems, selectedId]);
+
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [boxView, filterAccountId, folder, historyQuery]);
+
+  useEffect(() => {
+    if (historyPage <= historyPageCount) return;
+    if (historyHasMorePotential) return;
+    setHistoryPage(historyPageCount);
+  }, [historyHasMorePotential, historyPage, historyPageCount]);
 
   const detailsItem = useMemo(() => {
     if (!detailsId) return null;
@@ -1782,20 +1878,26 @@ const subTitle = firstNonEmpty(
     return detailsItem && detailsItem.source === "app_events" ? (((detailsItem as any)?.raw?.payload || null) as any) : null;
   }, [detailsItem]);
 
-  const loadCampaignRecipients = useCallback(async (campaignId: string) => {
+  const loadCampaignRecipients = useCallback(async (campaignId: string, targetPage = campaignRecipientsPage) => {
     if (!campaignId) {
       setCampaignRecipients([]);
+      setCampaignRecipientsTotal(0);
+      setCampaignRecipientsPageCount(1);
       return;
     }
     setCampaignRecipientsLoading(true);
     try {
-      const { data, error } = await supabase
+      const safePage = Math.max(1, targetPage);
+      const from = (safePage - 1) * MAILBOX_RECIPIENTS_PAGE_SIZE;
+      const to = from + MAILBOX_RECIPIENTS_PAGE_SIZE - 1;
+      const { data, error, count } = await supabase
         .from("mail_campaign_recipients")
-        .select("id,email,display_name,status,error,last_error,attempt_count,max_attempts,next_attempt_at,sent_at,updated_at")
+        .select("id,email,display_name,status,error,last_error,attempt_count,max_attempts,next_attempt_at,sent_at,updated_at", { count: "exact" })
         .eq("campaign_id", campaignId)
         .order("created_at", { ascending: true })
-        .limit(120);
+        .range(from, to);
       if (error) throw error;
+      const total = Math.max(0, Number(count || 0));
       setCampaignRecipients(((data || []) as any[]).map((row: any) => ({
         id: String(row.id || ""),
         email: String(row.email || ""),
@@ -1809,22 +1911,41 @@ const subTitle = firstNonEmpty(
         sent_at: row.sent_at || null,
         updated_at: row.updated_at || null,
       })));
+      setCampaignRecipientsTotal(total);
+      setCampaignRecipientsPageCount(Math.max(1, Math.ceil(total / MAILBOX_RECIPIENTS_PAGE_SIZE)));
     } catch (error) {
       console.error(error);
       setCampaignRecipients([]);
+      setCampaignRecipientsTotal(0);
+      setCampaignRecipientsPageCount(1);
     } finally {
       setCampaignRecipientsLoading(false);
     }
-  }, [supabase]);
+  }, [campaignRecipientsPage, supabase]);
 
   useEffect(() => {
     if (!detailsOpen || !detailsItem || detailsItem.source !== "mail_campaigns") {
       setCampaignRecipients([]);
       setCampaignRecipientsLoading(false);
+      setCampaignRecipientsTotal(0);
+      setCampaignRecipientsPageCount(1);
       return;
     }
-    void loadCampaignRecipients(detailsItem.id);
-  }, [detailsOpen, detailsItem, loadCampaignRecipients]);
+    void loadCampaignRecipients(detailsItem.id, campaignRecipientsPage);
+  }, [campaignRecipientsPage, detailsOpen, detailsItem, loadCampaignRecipients]);
+
+  useEffect(() => {
+    if (!detailsOpen || !detailsItem || detailsItem.source !== "mail_campaigns") {
+      setCampaignRecipientsPage(1);
+      return;
+    }
+    setCampaignRecipientsPage(1);
+  }, [detailsItem?.id, detailsItem?.source, detailsOpen]);
+
+  useEffect(() => {
+    if (campaignRecipientsPage <= campaignRecipientsPageCount) return;
+    setCampaignRecipientsPage(campaignRecipientsPageCount);
+  }, [campaignRecipientsPage, campaignRecipientsPageCount]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2077,15 +2198,17 @@ const subTitle = firstNonEmpty(
 
     let toParam = safeDecode(searchParams?.get("to") || "").trim();
     const prefillStorage = (searchParams?.get("prefillStorage") || "").toLowerCase();
+    let sessionRecipientHints: ComposeCrmRecipientHint[] = [];
     if (!toParam && prefillStorage === "session" && typeof window !== "undefined") {
       try {
         const raw = window.sessionStorage.getItem("inrcy_pending_mail_compose");
         if (raw) {
-          const payload = JSON.parse(raw) as { to?: string[] | string; createdAt?: number };
+          const payload = JSON.parse(raw) as { to?: string[] | string; recipients?: unknown; createdAt?: number };
           const ageMs = Date.now() - Number(payload?.createdAt || 0);
           const loaded = Array.isArray(payload?.to) ? payload.to.join(", ") : String(payload?.to || "");
-          if (loaded && ageMs >= 0 && ageMs <= 10 * 60 * 1000) {
-            toParam = loaded.trim();
+          if (ageMs >= 0 && ageMs <= 10 * 60 * 1000) {
+            if (loaded) toParam = loaded.trim();
+            sessionRecipientHints = normalizeComposeRecipientHints(payload?.recipients);
           }
         }
       } catch {
@@ -2101,6 +2224,7 @@ const subTitle = firstNonEmpty(
     const nameParam = safeDecode(
       searchParams?.get("name") || searchParams?.get("clientName") || searchParams?.get("contactName") || ""
     ).trim();
+    const contactIdParam = safeDecode(searchParams?.get("contactId") || "").trim();
     const attachKey = safeDecode(searchParams?.get("attachKey") || "").trim();
     const attachName = safeDecode(searchParams?.get("attachName") || "").trim();
 
@@ -2123,6 +2247,15 @@ const subTitle = firstNonEmpty(
     if (toParam) setTo(toParam);
     if (subjParam) setSubject(subjParam);
     if (textParam) setText(applySignaturePreview(textParam, signatureEnabled ? signaturePreview : ""));
+
+    const urlRecipientHints = !sessionRecipientHints.length && toParam && contactIdParam
+      ? normalizeEmails(toParam).map((email, index) => ({
+          email,
+          contact_id: index === 0 ? contactIdParam : null,
+          display_name: index === 0 ? (nameParam || null) : null,
+        }))
+      : [];
+    setComposeRecipientHints(sessionRecipientHints.length ? sessionRecipientHints : urlRecipientHints);
 
     // If the caller didn't provide a subject/body, we inject a friendly default template.
     // This keeps the connected tools consistent (CRM/Devis/Factures all go through iNr'SEND compose).
@@ -2478,7 +2611,16 @@ async function deleteDraftPermanently(id: string) {
           subject: subject.trim() || "(sans objet)",
           text: text || "",
           html: "",
-          recipients: recipientsList.map((email) => ({ email })),
+          recipients: recipientsList.map((email) => {
+            const lower = email.toLowerCase();
+            const hint = composeRecipientHintsByEmail.get(lower);
+            const crmContact = crmRecipientsByEmail.get(lower);
+            return {
+              email,
+              contact_id: hint?.contact_id || crmContact?.contact_id || null,
+              display_name: hint?.display_name || crmContact?.display_name || null,
+            };
+          }),
           attachments: composeAttachments,
           sourceDocSaveId: composeSourceDocSaveId || undefined,
           sourceDocType: composeSourceDocType || undefined,
@@ -3022,7 +3164,7 @@ async function deleteDraftPermanently(id: string) {
 
                 <button
                   className={`${styles.toolbarBtn} ${styles.toolbarIconBtn}`}
-                  onClick={loadHistory}
+                  onClick={() => { void loadHistory(); }}
                   type="button"
                   title="Actualiser"
                   aria-label="Actualiser"
@@ -3192,6 +3334,41 @@ async function deleteDraftPermanently(id: string) {
                   })}
                 </div>
               )}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px 0", flexWrap: "wrap" }}>
+              <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12 }}>
+                {filteredItems.length > 0
+                  ? `Affichage ${(historyPage - 1) * MAILBOX_PAGE_SIZE + 1}–${Math.min(historyPage * MAILBOX_PAGE_SIZE, filteredItems.length)} sur ${filteredItems.length}`
+                  : "Aucun élément"}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={styles.btnGhost}
+                  onClick={() => setHistoryPage((prev) => Math.max(1, prev - 1))}
+                  disabled={historyPage <= 1}
+                >
+                  ← Précédent
+                </button>
+                <div style={{ color: "rgba(255,255,255,0.82)", fontSize: 12 }}>
+                  Page {Math.min(historyPage, historyPageCount)} / {historyHasMorePotential ? `${historyPageCount}+` : historyPageCount}
+                </div>
+                <button
+                  type="button"
+                  className={styles.btnGhost}
+                  onClick={async () => {
+                    const nextPage = historyPage + 1;
+                    const loadedEnough = filteredItems.length >= nextPage * MAILBOX_PAGE_SIZE;
+                    if (!loadedEnough && historyHasMorePotential) {
+                      await loadHistory({ page: nextPage });
+                    }
+                    setHistoryPage(nextPage);
+                  }}
+                  disabled={!(historyPage < historyPageCount || historyHasMorePotential)}
+                >
+                  Suivant →
+                </button>
+              </div>
             </div>
           </div>
 
@@ -3672,7 +3849,8 @@ async function deleteDraftPermanently(id: string) {
                             ) : campaignRecipients.length === 0 ? (
                               <div style={{ color: "rgba(255,255,255,0.68)" }}>Aucun destinataire chargé.</div>
                             ) : (
-                              <div className={styles.attachmentsList}>
+                              <>
+                                <div className={styles.attachmentsList}>
                                 {campaignRecipients.map((recipient) => {
                                   const attemptLabel = recipient.attempt_count != null && recipient.max_attempts != null
                                     ? `Tentative ${recipient.attempt_count}/${recipient.max_attempts}`
@@ -3700,6 +3878,35 @@ async function deleteDraftPermanently(id: string) {
                                   );
                                 })}
                               </div>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+                                <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12 }}>
+                                  {campaignRecipientsTotal > 0
+                                    ? `Affichage ${(campaignRecipientsPage - 1) * MAILBOX_RECIPIENTS_PAGE_SIZE + 1}–${Math.min(campaignRecipientsPage * MAILBOX_RECIPIENTS_PAGE_SIZE, campaignRecipientsTotal)} sur ${campaignRecipientsTotal}`
+                                    : "Aucun destinataire"}
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                                  <button
+                                    type="button"
+                                    className={styles.btnGhost}
+                                    onClick={() => setCampaignRecipientsPage((prev) => Math.max(1, prev - 1))}
+                                    disabled={campaignRecipientsPage <= 1 || campaignRecipientsLoading}
+                                  >
+                                    ← Précédent
+                                  </button>
+                                  <div style={{ color: "rgba(255,255,255,0.82)", fontSize: 12 }}>
+                                    Page {campaignRecipientsPage} / {campaignRecipientsPageCount}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className={styles.btnGhost}
+                                    onClick={() => setCampaignRecipientsPage((prev) => Math.min(campaignRecipientsPageCount, prev + 1))}
+                                    disabled={campaignRecipientsPage >= campaignRecipientsPageCount || campaignRecipientsLoading}
+                                  >
+                                    Suivant →
+                                  </button>
+                                </div>
+                                </div>
+                              </>
                             )}
                           </section>
                         ) : null}
