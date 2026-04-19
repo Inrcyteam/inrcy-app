@@ -4840,7 +4840,7 @@ width: 100%;
     padding-right:6px;
   }
 
-  .searchPanel{ padding: 10px 0 0; }
+  .searchPanel{ padding: 10px 0 0; margin-bottom: 8px; }
   .searchPanelInner{ max-width: none; width: 100%; }
 
 }

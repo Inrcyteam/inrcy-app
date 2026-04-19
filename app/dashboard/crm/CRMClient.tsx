@@ -198,37 +198,145 @@ function parseBooleanLike(value: unknown) {
   return ["1", "true", "vrai", "oui", "yes", "y", "x", "important", "★"].includes(normalized);
 }
 
+function normalizeImportKey(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[_/\-]+/g, " ")
+    .replace(/[^a-zA-Z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function buildImportRowMap(row: Record<string, unknown>) {
+  const map = new Map<string, unknown>();
+  Object.entries(row || {}).forEach(([key, value]) => {
+    map.set(key, value);
+    const normalizedKey = normalizeImportKey(key);
+    if (normalizedKey && !map.has(normalizedKey)) {
+      map.set(normalizedKey, value);
+    }
+  });
+  return map;
+}
+
+function pickImportedValue(map: Map<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const direct = map.get(key);
+    if (direct != null && String(direct).trim() !== "") return direct;
+    const normalizedKey = normalizeImportKey(key);
+    const normalized = map.get(normalizedKey);
+    if (normalized != null && String(normalized).trim() !== "") return normalized;
+  }
+  return "";
+}
+
+function normalizeImportedCategory(value: unknown): Category {
+  const normalized = normalizeImportKey(value);
+  if (!normalized) return "";
+  if (["particulier", "personne", "personne physique", "individual"].includes(normalized)) {
+    return "particulier";
+  }
+  if (["professionnel", "professionnelle", "pro", "entreprise", "societe", "societe privee"].includes(normalized)) {
+    return "professionnel";
+  }
+  if (
+    [
+      "institution",
+      "collectivite publique",
+      "collectivite",
+      "collectivite territoriale",
+      "organisme public",
+      "publique",
+      "public",
+      "mairie",
+      "commune",
+    ].includes(normalized)
+  ) {
+    return "collectivite_publique";
+  }
+  return "";
+}
+
+function normalizeImportedContactType(value: unknown): ContactType {
+  const normalized = normalizeImportKey(value);
+  if (!normalized) return "";
+  if (["client", "clients"].includes(normalized)) return "client";
+  if (["prospect", "propsect", "prospects"].includes(normalized)) return "prospect";
+  if (["fournisseur", "fournisseurs", "supplier"].includes(normalized)) return "fournisseur";
+  if (["partenaire", "partenaires", "partner"].includes(normalized)) return "partenaire";
+  if (["autre", "other", "others"].includes(normalized)) return "autre";
+  return "";
+}
+
+function inferImportedDefaults(rows: any[]) {
+  const categoryValues = new Set<Category>();
+  const typeValues = new Set<ContactType>();
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    const map = buildImportRowMap(row as Record<string, unknown>);
+    const category = normalizeImportedCategory(
+      pickImportedValue(map, "category", "Categorie", "Catégorie", "Category"),
+    );
+    const contactType = normalizeImportedContactType(
+      pickImportedValue(map, "contact_type", "Type", "Type de contact", "Contact type"),
+    );
+    if (category) categoryValues.add(category);
+    if (contactType) typeValues.add(contactType);
+  }
+
+  return {
+    category: categoryValues.size === 1 ? Array.from(categoryValues)[0] : ("" as Category),
+    contact_type: typeValues.size === 1 ? Array.from(typeValues)[0] : ("" as ContactType),
+  };
+}
+
 async function loadXlsxModule() {
   return (await import("@/lib/vendor/xlsx.mjs")) as any;
 }
 
-function normalizeImportedRow(row: any) {
-  // mapping souple (CSV/Excel)
-  const pick = (...keys: string[]) => {
-    for (const k of keys) {
-      if (row?.[k] != null && String(row[k]).trim() !== "") return row[k];
-    }
-    return "";
-  };
+function normalizeImportedRow(
+  row: any,
+  defaults?: { category?: Category; contact_type?: ContactType },
+) {
+  const map = buildImportRowMap((row && typeof row === "object" ? row : {}) as Record<string, unknown>);
 
   return {
-    display_name: String(pick("display_name", "Nom / RS", "Nom", "Raison sociale", "Entreprise")).trim(),
-    last_name: String(pick("last_name", "Nom")).trim(),
-    first_name: String(pick("first_name", "Prénom", "Prenom")).trim(),
-    company_name: String(pick("company_name", "Entreprise", "Raison sociale", "Societe", "Société")).trim(),
-    siret: String(pick("siret")).trim(),
-    email: String(pick("email", "Email", "Mail", "E-mail")).trim(),
-    phone: String(pick("phone", "Téléphone", "Telephone", "Tel")).trim(),
-    address: String(pick("address", "Adresse", "Adresse principale")).trim(),
-    billing_address: String(pick("billing_address", "Adresse de facturation", "Billing address")).trim(),
-    delivery_address: String(pick("delivery_address", "Adresse de livraison", "Delivery address")).trim(),
-    vat_number: String(pick("vat_number", "TVA", "TVA intracom", "VAT", "VAT number")).trim(),
-    city: String(pick("city", "Ville")).trim(),
-    postal_code: String(pick("postal_code", "Code postal", "CP")).trim(),
-    category: String(pick("category", "Categorie", "Catégorie")).trim(),
-    contact_type: String(pick("contact_type", "Type", "Type de contact")).trim(),
-    notes: String(pick("notes", "Notes", "Commentaires", "Commentaire")).trim(),
-    important: parseBooleanLike(pick("important", "Important", "Favori", "Favorite", "Star")),
+    display_name: String(
+      pickImportedValue(map, "display_name", "Nom / RS", "Nom", "Raison sociale", "Entreprise"),
+    ).trim(),
+    last_name: String(pickImportedValue(map, "last_name", "Nom")).trim(),
+    first_name: String(pickImportedValue(map, "first_name", "Prénom", "Prenom")).trim(),
+    company_name: String(
+      pickImportedValue(map, "company_name", "Entreprise", "Raison sociale", "Societe", "Société"),
+    ).trim(),
+    siret: String(pickImportedValue(map, "siret", "SIRET")).trim(),
+    email: String(pickImportedValue(map, "email", "Email", "Mail", "E-mail")).trim(),
+    phone: String(pickImportedValue(map, "phone", "Téléphone", "Telephone", "Tel")).trim(),
+    address: String(pickImportedValue(map, "address", "Adresse", "Adresse principale")).trim(),
+    billing_address: String(
+      pickImportedValue(map, "billing_address", "Adresse de facturation", "Billing address"),
+    ).trim(),
+    delivery_address: String(
+      pickImportedValue(map, "delivery_address", "Adresse de livraison", "Delivery address"),
+    ).trim(),
+    vat_number: String(pickImportedValue(map, "vat_number", "TVA", "TVA intracom", "VAT", "VAT number")).trim(),
+    city: String(pickImportedValue(map, "city", "Ville")).trim(),
+    postal_code: String(pickImportedValue(map, "postal_code", "Code postal", "CP")).trim(),
+    category:
+      normalizeImportedCategory(pickImportedValue(map, "category", "Categorie", "Catégorie", "Category")) ||
+      defaults?.category ||
+      "",
+    contact_type:
+      normalizeImportedContactType(
+        pickImportedValue(map, "contact_type", "Type", "Type de contact", "Contact type"),
+      ) ||
+      defaults?.contact_type ||
+      "",
+    notes: String(pickImportedValue(map, "notes", "Notes", "Commentaires", "Commentaire")).trim(),
+    important: parseBooleanLike(pickImportedValue(map, "important", "Important", "Favori", "Favorite", "Star")),
   };
 }
 
@@ -881,8 +989,9 @@ export default function CRMClient() {
 
   
 async function importContacts(rows: any[]) {
+  const inferredDefaults = inferImportedDefaults(rows);
   const cleaned = rows
-    .map(normalizeImportedRow)
+    .map((row) => normalizeImportedRow(row, inferredDefaults))
     .filter((r) => r.display_name || r.email || r.phone || r.last_name || r.company_name);
 
   if (cleaned.length === 0) {

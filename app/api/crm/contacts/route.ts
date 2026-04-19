@@ -76,6 +76,60 @@ function cleanString(v: unknown) {
   return v.trim();
 }
 
+function normalizeImportKey(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[_/\-]+/g, " ")
+    .replace(/[^a-zA-Z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function buildImportRowMap(row: Record<string, unknown>) {
+  const map = new Map<string, unknown>();
+  Object.entries(row || {}).forEach(([key, value]) => {
+    map.set(key, value);
+    const normalizedKey = normalizeImportKey(key);
+    if (normalizedKey && !map.has(normalizedKey)) {
+      map.set(normalizedKey, value);
+    }
+  });
+  return map;
+}
+
+function pickImportedValue(map: Map<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const direct = map.get(key);
+    if (direct != null && String(direct).trim() !== "") return direct;
+    const normalizedKey = normalizeImportKey(key);
+    const normalized = map.get(normalizedKey);
+    if (normalized != null && String(normalized).trim() !== "") return normalized;
+  }
+  return "";
+}
+
+function mapImportedCategory(value: unknown): Category | "" {
+  const normalized = normalizeImportKey(value);
+  if (!normalized) return "";
+  if (["particulier", "personne", "personne physique", "individual"].includes(normalized)) return "particulier";
+  if (["professionnel", "professionnelle", "pro", "entreprise", "societe", "societe privee"].includes(normalized)) return "professionnel";
+  if (["institution", "collectivite publique", "collectivite", "collectivite territoriale", "organisme public", "publique", "public", "mairie", "commune"].includes(normalized)) return "collectivite_publique";
+  return "";
+}
+
+function mapImportedContactType(value: unknown): ContactType | "" {
+  const normalized = normalizeImportKey(value);
+  if (!normalized) return "";
+  if (["client", "clients"].includes(normalized)) return "client";
+  if (["prospect", "propsect", "prospects"].includes(normalized)) return "prospect";
+  if (["fournisseur", "fournisseurs", "supplier"].includes(normalized)) return "fournisseur";
+  if (["partenaire", "partenaires", "partner"].includes(normalized)) return "partenaire";
+  if (["autre", "other", "others"].includes(normalized)) return "autre";
+  return "";
+}
+
 function cleanDepartment(value: string | null) {
   const cleaned = (value ?? "")
     .trim()
@@ -120,24 +174,33 @@ function buildContactFingerprint(payload: Pick<ContactPayload, "last_name" | "fi
 }
 
 function buildContactPayload(row: Record<string, unknown>, userId: string, opts?: { includeNotes?: boolean; includeImportant?: boolean }) {
-  const fromDisplay = parseDisplayName(row.display_name);
+  const map = buildImportRowMap(row);
+  const displayNameValue = pickImportedValue(map, "display_name", "Nom / RS", "Nom", "Raison sociale", "Entreprise");
+  const fromDisplay = parseDisplayName(displayNameValue);
+  const rawCategory = pickImportedValue(map, "category", "Categorie", "Catégorie", "Category");
+  const rawContactType = pickImportedValue(map, "contact_type", "Type", "Type de contact", "Contact type");
+  const mappedCategory = mapImportedCategory(rawCategory);
+  const mappedContactType = mapImportedContactType(rawContactType);
+
   const payload: ContactPayload = {
     user_id: userId,
-    last_name: fromDisplay.last_name || cleanString(row.last_name),
-    first_name: fromDisplay.first_name || cleanString(row.first_name),
-    company_name: fromDisplay.company_name || cleanString(row.company_name),
-    siret: cleanString(row.siret),
-    email: cleanString(row.email),
-    phone: cleanString(row.phone),
-    address: cleanString(row.address),
-    billing_address: cleanString((row as any).billing_address),
-    delivery_address: cleanString((row as any).delivery_address),
-    vat_number: cleanString((row as any).vat_number),
-    city: cleanString(row.city),
-    postal_code: cleanString(row.postal_code),
-    category: isCategory(row.category) ? row.category : ("particulier" as Category),
-    contact_type: isContactType(row.contact_type) ? row.contact_type : ("prospect" as ContactType),
-    ...(opts?.includeNotes ? { notes: cleanString(row.notes) } : {}),
+    last_name: fromDisplay.last_name || cleanString(pickImportedValue(map, "last_name", "Nom")),
+    first_name: fromDisplay.first_name || cleanString(pickImportedValue(map, "first_name", "Prénom", "Prenom")),
+    company_name:
+      fromDisplay.company_name ||
+      cleanString(pickImportedValue(map, "company_name", "Entreprise", "Raison sociale", "Societe", "Société")),
+    siret: cleanString(pickImportedValue(map, "siret", "SIRET")),
+    email: cleanString(pickImportedValue(map, "email", "Email", "Mail", "E-mail")),
+    phone: cleanString(pickImportedValue(map, "phone", "Téléphone", "Telephone", "Tel")),
+    address: cleanString(pickImportedValue(map, "address", "Adresse", "Adresse principale")),
+    billing_address: cleanString(pickImportedValue(map, "billing_address", "Adresse de facturation", "Billing address")),
+    delivery_address: cleanString(pickImportedValue(map, "delivery_address", "Adresse de livraison", "Delivery address")),
+    vat_number: cleanString(pickImportedValue(map, "vat_number", "TVA", "TVA intracom", "VAT", "VAT number")),
+    city: cleanString(pickImportedValue(map, "city", "Ville")),
+    postal_code: cleanString(pickImportedValue(map, "postal_code", "Code postal", "CP")),
+    category: (isCategory(row.category) ? row.category : mappedCategory) || ("particulier" as Category),
+    contact_type: (isContactType(row.contact_type) ? row.contact_type : mappedContactType) || ("prospect" as ContactType),
+    ...(opts?.includeNotes ? { notes: cleanString(pickImportedValue(map, "notes", "Notes", "Commentaires", "Commentaire")) } : {}),
     ...(opts?.includeImportant ? { important: Boolean(row.important) } : {}),
   };
 
