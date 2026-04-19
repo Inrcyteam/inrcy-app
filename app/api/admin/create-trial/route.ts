@@ -25,7 +25,10 @@ export async function POST(req: Request) {
     if (!email) return NextResponse.json({ error: "Email manquant." }, { status: 400 });
 
 
-    const { data: invite, error: invErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
+    const appOrigin = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://app.inrcy.com").replace(/\/$/, "");
+    const { data: invite, error: invErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${appOrigin}/auth/finish-invite`,
+    });
 
     if (invErr) throw new Error(invErr.message);
 

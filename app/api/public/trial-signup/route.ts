@@ -308,6 +308,8 @@ export async function POST(req: Request) {
     }
 
 
+    const appOrigin = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://app.inrcy.com").replace(/\/$/, "");
+
     const { data: invite, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(payload.email, {
       data: {
         first_name: payload.firstName || undefined,
@@ -316,6 +318,7 @@ export async function POST(req: Request) {
         phone: payload.phone || undefined,
         source: payload.source || undefined,
       },
+      redirectTo: `${appOrigin}/auth/finish-invite`,
     });
 
     if (inviteError) {

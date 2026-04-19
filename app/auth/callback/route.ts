@@ -12,6 +12,12 @@ function getFallbackPath(type?: string | null) {
   return "/login";
 }
 
+function getFinishPath(type?: string | null) {
+  if (type === "recovery") return "/auth/finish-reset";
+  if (type === "invite") return "/auth/finish-invite";
+  return null;
+}
+
 function normalizeEmail(input: string | null | undefined) {
   const value = String(input || "").trim().toLowerCase();
   return value || null;
@@ -57,6 +63,18 @@ function buildSwitchAccountUrl(url: URL, currentEmail: string, expectedEmail: st
   return switchUrl;
 }
 
+function buildFinishUrl(origin: string, type: string, tokenHash: string, nextPath: string, expectedEmail?: string | null) {
+  const finishPath = getFinishPath(type) || "/login";
+  const target = new URL(finishPath, origin);
+  target.searchParams.set("token_hash", tokenHash);
+  target.searchParams.set("type", type);
+  target.searchParams.set("next", nextPath);
+  if (expectedEmail) {
+    target.searchParams.set("email", expectedEmail);
+  }
+  return target;
+}
+
 export async function GET(req: Request) {
   const supabase = await createSupabaseServer();
   const url = new URL(req.url);
@@ -81,6 +99,11 @@ export async function GET(req: Request) {
       if (currentEmail && currentEmail !== expectedEmail) {
         return NextResponse.redirect(buildSwitchAccountUrl(url, currentEmail, expectedEmail));
       }
+    }
+
+    const finishPath = getFinishPath(type);
+    if (finishPath) {
+      return NextResponse.redirect(buildFinishUrl(url.origin, type, tokenHash, nextParam, expectedEmail));
     }
 
     const { data, error: verifyError } = await supabase.auth.verifyOtp({

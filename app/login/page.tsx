@@ -244,7 +244,10 @@ useEffect(() => {
       return;
     }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    const appOrigin = (process.env.NEXT_PUBLIC_APP_URL || window.location.origin).replace(/\/$/, "");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${appOrigin}/auth/finish-reset`,
+    });
 
     if (error) {
       setError(getSimpleFrenchErrorMessage(error));
