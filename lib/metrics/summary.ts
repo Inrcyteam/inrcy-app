@@ -10,6 +10,7 @@ import {
   invalidateOverviewCache,
   toInrstatsSnapshot,
   type CubeKey,
+  type Overview,
 } from '@/lib/metrics/computeMetrics';
 
 type AnyRec = Record<string, unknown>;
@@ -144,6 +145,9 @@ export async function buildMetricsSummary(args: {
   debug?: AnyRec;
   fresh?: boolean;
   snapshotDate?: string | null;
+  precomputedProfile?: ProfileMetrics | null;
+  precomputedMonthOverviews?: Partial<Record<CubeKey, Overview>> | null;
+  precomputedWeekOverviews?: Partial<Record<CubeKey, Overview>> | null;
 }): Promise<MetricsSummary> {
   const {
     supabase,
@@ -156,6 +160,9 @@ export async function buildMetricsSummary(args: {
     debug,
     fresh = false,
     snapshotDate,
+    precomputedProfile,
+    precomputedMonthOverviews,
+    precomputedWeekOverviews,
   } = args;
 
   const safe = async <T,>(key: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
@@ -182,7 +189,9 @@ export async function buildMetricsSummary(args: {
 
   const cacheRangeKey = `month=${monthDays}|week=${weekDays}|today=${todayDays}|snapshot=${dateWindow.snapshotDate || 'live'}|conn=${await buildSummaryConnectionsKey(supabase, userId)}`;
 
-  if (!fresh) {
+  const hasPrecomputedInputs = Boolean(precomputedProfile || precomputedMonthOverviews || precomputedWeekOverviews);
+
+  if (!fresh && !hasPrecomputedInputs) {
     try {
       const nowIso = new Date().toISOString();
       const { data: cacheHit } = await supabase
@@ -201,12 +210,18 @@ export async function buildMetricsSummary(args: {
   }
 
   const [profile, monthOverviews, weekOverviews] = await Promise.all([
-    safe('profile', () => getProfile(supabase, userId, debug), {
-      lead_conversion_rate: 0,
-      avg_basket: 0,
-    }),
-    safe('overviews_30d', () => fetchCubeOverviews({ origin, days: monthDays, getHeaders, bypassCache: fresh, supabase, userId, snapshotDate: dateWindow.snapshotDate }), {}),
-    safe('overviews_7d', () => fetchCubeOverviews({ origin, days: weekDays, getHeaders, bypassCache: fresh, supabase, userId, snapshotDate: dateWindow.snapshotDate }), {}),
+    precomputedProfile
+      ? Promise.resolve(precomputedProfile)
+      : safe('profile', () => getProfile(supabase, userId, debug), {
+          lead_conversion_rate: 0,
+          avg_basket: 0,
+        }),
+    precomputedMonthOverviews
+      ? Promise.resolve(precomputedMonthOverviews)
+      : safe('overviews_30d', () => fetchCubeOverviews({ origin, days: monthDays, getHeaders, bypassCache: fresh, supabase, userId, snapshotDate: dateWindow.snapshotDate }), {}),
+    precomputedWeekOverviews
+      ? Promise.resolve(precomputedWeekOverviews)
+      : safe('overviews_7d', () => fetchCubeOverviews({ origin, days: weekDays, getHeaders, bypassCache: fresh, supabase, userId, snapshotDate: dateWindow.snapshotDate }), {}),
   ]);
 
   const [oppResolved, history30Resolved, history7Resolved] = await Promise.all([
