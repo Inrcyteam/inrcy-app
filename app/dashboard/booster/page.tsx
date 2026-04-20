@@ -31,6 +31,7 @@ export default function BoosterPage() {
   const [active, setActive] = useState<ActiveModal>(null);
   const [publishSuccessOpen, setPublishSuccessOpen] = useState(false);
   const [publishSummary, setPublishSummary] = useState<any>(null);
+  const [publishEditorOverlayOpen, setPublishEditorOverlayOpen] = useState(false);
   const [metrics, setMetrics] = useState<any>(null);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
 
@@ -447,8 +448,30 @@ export default function BoosterPage() {
       )}
 
       {active && (
-        <BaseModal title={active === "publish" ? "Publier" : active === "reviews" ? "Récolter" : "Offrir"} moduleLabel="Module Booster" onClose={() => setActive(null)}>
-          {active === "publish" && <PublishModal styles={styles} onClose={() => setActive(null)} trackEvent={trackEvent} onPublishSuccess={(result) => { setPublishSummary(result?.summary || null); setPublishSuccessOpen(true); }} />}
+        <BaseModal
+          title={active === "publish" ? "Publier" : active === "reviews" ? "Récolter" : "Offrir"}
+          moduleLabel="Module Booster"
+          onClose={() => {
+            setPublishEditorOverlayOpen(false);
+            setActive(null);
+          }}
+          headerHidden={active === "publish" && publishEditorOverlayOpen}
+        >
+          {active === "publish" && (
+            <PublishModal
+              styles={styles}
+              onClose={() => {
+                setPublishEditorOverlayOpen(false);
+                setActive(null);
+              }}
+              trackEvent={trackEvent}
+              onOverlayOpenChange={setPublishEditorOverlayOpen}
+              onPublishSuccess={(result) => {
+                setPublishSummary(result?.summary || null);
+                setPublishSuccessOpen(true);
+              }}
+            />
+          )}
           {active === "reviews" && <ReviewModal styles={styles} onClose={() => setActive(null)} />}
           {active === "promo" && <PromoModal styles={styles} onClose={() => setActive(null)} />}
         </BaseModal>

@@ -7,11 +7,13 @@ export default function BaseModal({
   title,
   moduleLabel,
   onClose,
+  headerHidden = false,
   children,
 }: {
   title: string;
   moduleLabel?: string; // ex: "Module Booster", "Module Fidéliser"
   onClose: () => void;
+  headerHidden?: boolean;
   children: React.ReactNode;
 }) {
   useEffect(() => {
@@ -79,50 +81,52 @@ export default function BaseModal({
         }}
       >
         {/* Header sticky (unique) */}
-        <div
-          className={styles.blockHeaderRow}
-          style={{
-            alignItems: "center",
-            padding: `max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))`,
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-            position: "sticky",
-            top: 0,
-            background: "rgba(10,12,24,0.60)",
-            backdropFilter: "blur(10px)",
-            WebkitBackdropFilter: "blur(10px)",
-            zIndex: 2,
-          }}
-        >
+        {!headerHidden ? (
           <div
+            className={styles.blockHeaderRow}
             style={{
-              width: "100%",
-              minWidth: 0,
-              display: "grid",
-              gridTemplateColumns: "auto 1fr auto",
               alignItems: "center",
-              gap: 12,
+              padding: `max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))`,
+              borderBottom: "1px solid rgba(255,255,255,0.08)",
+              position: "sticky",
+              top: 0,
+              background: "rgba(10,12,24,0.60)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              zIndex: 2,
             }}
           >
-            {/* Left badge */}
-            <div style={{ minWidth: 0 }}>
-              {moduleLabel ? (
-                <span style={pillStyle}>{moduleLabel}</span>
-              ) : null}
-            </div>
+            <div
+              style={{
+                width: "100%",
+                minWidth: 0,
+                display: "grid",
+                gridTemplateColumns: "auto 1fr auto",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              {/* Left badge */}
+              <div style={{ minWidth: 0 }}>
+                {moduleLabel ? (
+                  <span style={pillStyle}>{moduleLabel}</span>
+                ) : null}
+              </div>
 
-            {/* Center title */}
-            <div style={{ textAlign: "center" }}>
-              <span style={pillStyle}>{title}</span>
-            </div>
+              {/* Center title */}
+              <div style={{ textAlign: "center" }}>
+                <span style={pillStyle}>{title}</span>
+              </div>
 
-            {/* Right close */}
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button type="button" className={styles.ghostBtn} onClick={onClose} style={closeBtnStyle}>
-                Fermer
-              </button>
+              {/* Right close */}
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button type="button" className={styles.ghostBtn} onClick={onClose} style={closeBtnStyle}>
+                  Fermer
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
 
         {/* Content scroll */}
         <div

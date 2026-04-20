@@ -442,9 +442,6 @@ const body = await req.json().catch(() => null);
     };
 
     const firstPost = getChannelPost(selected[0]);
-    if (!firstPost.content) {
-      return NextResponse.json({ error: "Le contenu est vide." }, { status: 400 });
-    }
 
     // 1) Upload images to Supabase Storage (bucket: booster) + collect diagnostics
     const { imageSet: baseImageSet, uploadErrors } = await uploadImageSet(userId, images);

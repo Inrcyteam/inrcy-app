@@ -870,8 +870,6 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
           : currentPost.hashtags,
       };
 
-      if (!nextPost.content) return jsonUserFacingError("Le contenu est vide.", { status: 400, code: "empty_content" });
-
       const retainedImages = Array.isArray(body.retainedImages)
         ? body.retainedImages.map((value: unknown) => String(value || "").trim()).filter(Boolean)
         : getChannelImageSet(ctx.eventPayload, ctx.publication, channel).images;

@@ -284,6 +284,14 @@ function normalizeHashtagPreview(input: string): string {
     .slice(0, 40);
 }
 
+function parseInstagramHashtagsInput(input: string): string[] {
+  return String(input || "")
+    .split(/[\s,;]+/)
+    .map(normalizeHashtagPreview)
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
 function buildInstagramPreviewCaption(post: ChannelPost) {
   const cleanPost = {
     ...post,
@@ -710,11 +718,13 @@ export default function PublishModal({
   onClose,
   trackEvent,
   onPublishSuccess,
+  onOverlayOpenChange,
 }: {
   styles: typeof stylesDash;
   onClose: () => void;
   trackEvent: (type: "publish", payload: Record<string, any>) => Promise<any>;
   onPublishSuccess?: (result?: any) => void;
+  onOverlayOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -731,6 +741,9 @@ export default function PublishModal({
   const [isMobile, setIsMobile] = useState(false);
   const [duplicateFeedback, setDuplicateFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
   const [publishHelpOpen, setPublishHelpOpen] = useState(false);
+  const [instagramHashtagsInput, setInstagramHashtagsInput] = useState("");
+  const [emptyContentWarningChannels, setEmptyContentWarningChannels] = useState<ChannelKey[]>([]);
+  const [emptyContentWarningIndex, setEmptyContentWarningIndex] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const gmbFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -768,6 +781,18 @@ export default function PublishModal({
   });
   const [didInitChannels, setDidInitChannels] = useState(false);
   const [ctaDefaults, setCtaDefaults] = useState<BoosterCtaDefaults | null>(null);
+
+  useEffect(() => {
+    const nextValue = (normalizePost(postsByChannel.instagram).hashtags || []).join(" ");
+    setInstagramHashtagsInput((prev) => (prev === nextValue ? prev : nextValue));
+  }, [postsByChannel.instagram?.hashtags?.join("|") ?? ""]);
+
+  useEffect(() => {
+    onOverlayOpenChange?.(isImageEditorOpen);
+    return () => {
+      onOverlayOpenChange?.(false);
+    };
+  }, [isImageEditorOpen, onOverlayOpenChange]);
 
   useEffect(() => {
     let alive = true;
@@ -998,6 +1023,8 @@ export default function PublishModal({
     setTheme("");
     setContentStyle("equilibre");
     setPostsByChannel({});
+    setInstagramHashtagsInput("");
+    closeEmptyContentWarnings();
     setGenError("");
     setDuplicateFeedback(null);
     imagePreviews.forEach((url) => URL.revokeObjectURL(url));
@@ -1233,6 +1260,29 @@ export default function PublishModal({
     return normalizePost(postsByChannel[key]);
   };
 
+  const getLiveInstagramHashtags = () => parseInstagramHashtagsInput(instagramHashtagsInput);
+
+  const buildPreparedPostsByChannel = (): Partial<Record<ChannelKey, ChannelPost>> => {
+    const prepared: Partial<Record<ChannelKey, ChannelPost>> = {
+      ...postsByChannel,
+      instagram: normalizePost({ ...postsByChannel.instagram, hashtags: getLiveInstagramHashtags() }),
+    };
+    const sitePost = normalizePost(prepared.site_web || prepared.inrcy_site);
+    prepared.inrcy_site = sitePost;
+    prepared.site_web = sitePost;
+    return prepared;
+  };
+
+  const getPreparedDisplayPost = (key: DisplayKey, preparedPosts: Partial<Record<ChannelKey, ChannelPost>>): ChannelPost => {
+    if (key === "site") return normalizePost(preparedPosts.site_web || preparedPosts.inrcy_site);
+    return normalizePost(preparedPosts[key]);
+  };
+
+  const closeEmptyContentWarnings = () => {
+    setEmptyContentWarningChannels([]);
+    setEmptyContentWarningIndex(0);
+  };
+
   const applyCtaModePrefill = (displayKey: DisplayKey, mode: BoosterCtaMode) => {
     const current = getDisplayPost(displayKey);
     const patch = buildAutoPrefillPatch(displayKey, mode, current, ctaDefaults);
@@ -1434,8 +1484,11 @@ export default function PublishModal({
     return { channelImages, channelSettings };
   };
 
-  const onPublish = async () => {
+  const runPublish = async (options?: { skipEmptyContentWarnings?: boolean; preparedPostsByChannel?: Partial<Record<ChannelKey, ChannelPost>> }) => {
     if (saving) return;
+    const preparedPostsByChannel = options?.preparedPostsByChannel || buildPreparedPostsByChannel();
+    const sitePost = getPreparedDisplayPost("site", preparedPostsByChannel);
+
     setPublishError("");
     setImgError("");
     setPublishProgress(0);
@@ -1447,11 +1500,16 @@ export default function PublishModal({
       return;
     }
 
-    const missingContent = selectedChannels.find((ch) => !String((ch === "inrcy_site" || ch === "site_web" ? getDisplayPost("site") : postsByChannel[ch])?.content || "").trim());
-    if (missingContent) {
-      setPublishError(`Le contenu est vide pour ${CHANNEL_LABELS[missingContent]}.`);
+    const missingContentChannels = selectedChannels.filter((ch) => !String((ch === "inrcy_site" || ch === "site_web" ? sitePost : preparedPostsByChannel[ch])?.content || "").trim());
+    if (missingContentChannels.length && !options?.skipEmptyContentWarnings) {
+      setPostsByChannel(preparedPostsByChannel);
+      setEmptyContentWarningChannels(missingContentChannels);
+      setEmptyContentWarningIndex(0);
       return;
     }
+
+    closeEmptyContentWarnings();
+    setPostsByChannel(preparedPostsByChannel);
 
     if (selectedChannels.includes("instagram")) {
       const instagramImages = channelImageEditors.instagram?.imageKeys || [];
@@ -1493,7 +1551,6 @@ export default function PublishModal({
         });
       }
 
-      const sitePost = getDisplayPost("site");
       setPublishProgress((prev) => Math.max(prev, 74));
       setPublishProgressLabel("Envoi aux canaux...");
       if (publishPulseTimerRef.current) window.clearInterval(publishPulseTimerRef.current);
@@ -1506,7 +1563,7 @@ export default function PublishModal({
         theme,
         channels: selectedChannels,
         postByChannel: {
-          ...postsByChannel,
+          ...preparedPostsByChannel,
           ...(channels.inrcy_site ? { inrcy_site: sitePost } : {}),
           ...(channels.site_web ? { site_web: sitePost } : {}),
         },
@@ -1540,6 +1597,25 @@ export default function PublishModal({
     }
   };
 
+  const onPublish = async () => {
+    await runPublish();
+  };
+
+  const currentEmptyContentWarningChannel = emptyContentWarningChannels[emptyContentWarningIndex] || null;
+
+  const onValidateEmptyContentWarning = async () => {
+    if (!currentEmptyContentWarningChannel) return;
+    const nextIndex = emptyContentWarningIndex + 1;
+    if (nextIndex < emptyContentWarningChannels.length) {
+      setEmptyContentWarningIndex(nextIndex);
+      return;
+    }
+
+    const preparedPostsByChannel = buildPreparedPostsByChannel();
+    closeEmptyContentWarnings();
+    await runPublish({ skipEmptyContentWarnings: true, preparedPostsByChannel });
+  };
+
   return (
     <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
       <HelpModal open={publishHelpOpen} title="Publication et iNr'Send" onClose={() => setPublishHelpOpen(false)}>
@@ -1552,6 +1628,24 @@ export default function PublishModal({
           </p>
         </div>
       </HelpModal>
+
+      {currentEmptyContentWarningChannel ? (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10010, background: "rgba(4, 8, 18, 0.52)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 16 }}>
+          <div className={styles.blockCard} style={{ width: "min(520px, 100%)", display: "grid", gap: 14, boxShadow: "0 30px 80px rgba(0,0,0,0.40)" }}>
+            <div style={{ fontSize: 22 }}>⚠️</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div className={styles.blockTitle} style={{ marginBottom: 0 }}>Avertissement</div>
+              <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(255,255,255,0.82)" }}>
+                Le contenu est vide pour <strong>{CHANNEL_LABELS[currentEmptyContentWarningChannel]}</strong>. Voulez-vous continuer ?
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+              <button type="button" className={styles.secondaryBtn} onClick={closeEmptyContentWarnings}>Annuler</button>
+              <button type="button" className={styles.primaryBtn} onClick={onValidateEmptyContentWarning}>Valider</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className={styles.blockCard} style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>Canaux</div>
         <div className={styles.subtitle} style={{ marginBottom: 10 }}>
@@ -1747,17 +1841,26 @@ export default function PublishModal({
                   <div>
                     <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Hashtags</div>
                     <input
-                      value={Array.isArray(getDisplayPost(activeCard).hashtags) ? getDisplayPost(activeCard).hashtags!.join(" ") : ""}
-                      onChange={(e) => updatePost("instagram", { hashtags: e.target.value.split(/[,\s;]+/).map((v) => v.trim().replace(/^#+/, "")).filter(Boolean) })}
+                      value={instagramHashtagsInput}
+                      onChange={(e) => setInstagramHashtagsInput(e.target.value)}
+                      onBlur={() => updatePost("instagram", { hashtags: getLiveInstagramHashtags() })}
                       style={inputStyle}
                       placeholder="#local #metier"
                     />
-                    {renderLimitCounter("Hashtags", Array.isArray(getDisplayPost(activeCard).hashtags) ? getDisplayPost(activeCard).hashtags!.filter(Boolean).length : 0, CHANNEL_TEXT_GUIDELINES.instagram.hashtags || 20)}
+                    {renderLimitCounter("Hashtags", getLiveInstagramHashtags().length, CHANNEL_TEXT_GUIDELINES.instagram.hashtags || 20)}
                   </div>
                 ) : null}
                 {CHANNEL_TEXT_GUIDELINES[activeCard].totalLabel && CHANNEL_TEXT_GUIDELINES[activeCard].totalMax && CHANNEL_TEXT_GUIDELINES[activeCard].totalValue ? (
                   <div style={{ marginTop: 2 }}>
-                    {renderLimitCounter(CHANNEL_TEXT_GUIDELINES[activeCard].totalLabel!, CHANNEL_TEXT_GUIDELINES[activeCard].totalValue!(getDisplayPost(activeCard)), CHANNEL_TEXT_GUIDELINES[activeCard].totalMax!)}
+                    {renderLimitCounter(
+                      CHANNEL_TEXT_GUIDELINES[activeCard].totalLabel!,
+                      CHANNEL_TEXT_GUIDELINES[activeCard].totalValue!(
+                        activeCard === "instagram"
+                          ? { ...getDisplayPost(activeCard), hashtags: getLiveInstagramHashtags() }
+                          : getDisplayPost(activeCard)
+                      ),
+                      CHANNEL_TEXT_GUIDELINES[activeCard].totalMax!
+                    )}
                   </div>
                 ) : null}
               </div>
