@@ -1465,107 +1465,23 @@ export default function StatsClient() {
     setRefreshNonce((prev) => prev + 1);
   }, [clearCachedSnapshots]);
 
-
-  const applyBulkPayload = useCallback((targetPeriod: Period, next: BulkFetchResult, syncedAt: number) => {
-    const snap = next.overviews as Record<CubeKey, Overview>;
-    periodCacheRef.current.set(targetPeriod, snap);
-    try {
-      writeUiCacheValue(cubeSessionKey(targetPeriod), JSON.stringify({ syncedAt, snapshotDate: next.snapshotDate, overviews: snap }));
-      writeUiCacheValue(
-        summarySessionKey(targetPeriod),
-        JSON.stringify({
-          syncedAt,
-          snapshotDate: next.snapshotDate,
-          ...next.summary,
-          profile: next.profile,
-          estimatedByCube: next.estimatedByCube,
-        }),
-      );
-    } catch {
-      // ignore
-    }
-
-    if (targetPeriod !== period) return;
-
-    setDataByCube((prev) => {
-      const updated: any = { ...prev };
-      for (const k of Object.keys(snap) as CubeKey[]) {
-        updated[k] = { ov: snap[k] ?? null, loading: false, error: undefined };
-      }
-      return updated;
-    });
-    setSummaryHydrated(true);
-    setSummaryOpp({ loading: false, total: next.summary.total, byCube: next.summary.byCube });
-    setSummaryProfile(next.profile);
-    setSummaryEstimatedByCube(next.estimatedByCube);
-    setLastRefreshAt(Date.now());
-    setIsRefreshing(false);
-  }, [period]);
-
   const handleSharedStatsRefresh = useCallback(async () => {
     setIsRefreshing(true);
     setLastRefreshAt(Date.now());
 
     try {
-      const bootstrap = await runDailyStatsRefreshBootstrap({ force: true });
+      const bootstrap = await runDailyStatsRefreshBootstrap();
       const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
       const bootstrapSnapshotDate = typeof bootstrap?.snapshotDate === "string"
         ? bootstrap.snapshotDate
         : expectedUiSnapshotDate();
       markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
-
-      let applied = false;
-      for (const [periodKey, payload] of Object.entries(bootstrap.inrstats || {})) {
-        const targetPeriod = Number(periodKey) as Period;
-        const overviews = (payload?.overviews || {}) as Partial<Record<CubeKey, Overview>>;
-        const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
-          ? payload.meta.snapshotDate
-          : getOverviewSnapshotDate(overviews) || bootstrapSnapshotDate || null;
-        const next: BulkFetchResult = {
-          overviews,
-          summary: {
-            total: safeNum(payload?.opportunities?.total),
-            byCube: {
-              site_inrcy: safeNum(payload?.opportunities?.byCube?.site_inrcy),
-              site_web: safeNum(payload?.opportunities?.byCube?.site_web),
-              gmb: safeNum(payload?.opportunities?.byCube?.gmb),
-              facebook: safeNum(payload?.opportunities?.byCube?.facebook),
-              instagram: safeNum(payload?.opportunities?.byCube?.instagram),
-              linkedin: safeNum(payload?.opportunities?.byCube?.linkedin),
-            },
-          },
-          profile: {
-            lead_conversion_rate: safeNum(payload?.profile?.lead_conversion_rate),
-            avg_basket: safeNum(payload?.profile?.avg_basket),
-          },
-          estimatedByCube: {
-            site_inrcy: safeNum(payload?.estimatedByCube?.site_inrcy),
-            site_web: safeNum(payload?.estimatedByCube?.site_web),
-            gmb: safeNum(payload?.estimatedByCube?.gmb),
-            facebook: safeNum(payload?.estimatedByCube?.facebook),
-            instagram: safeNum(payload?.estimatedByCube?.instagram),
-            linkedin: safeNum(payload?.estimatedByCube?.linkedin),
-          },
-          snapshotDate: payloadSnapshotDate ?? null,
-        };
-        applyBulkPayload(targetPeriod, next, syncAt);
-        applied = true;
-      }
-
-      if (applied) {
-        try {
-          writeUiCacheValue("inrcy_stats_last_channel_sync_v1", String(syncAt));
-        } catch {
-          // ignore
-        }
-        return;
-      }
     } catch (error) {
       console.error(error);
     }
 
     triggerRefresh("manual");
-  }, [applyBulkPayload, triggerRefresh]);
+  }, [triggerRefresh]);
 
 
 
@@ -1619,6 +1535,41 @@ export default function StatsClient() {
   }, []);
 
 
+  const applyBulkPayload = useCallback((targetPeriod: Period, next: BulkFetchResult, syncedAt: number) => {
+    const snap = next.overviews as Record<CubeKey, Overview>;
+    periodCacheRef.current.set(targetPeriod, snap);
+    try {
+      writeUiCacheValue(cubeSessionKey(targetPeriod), JSON.stringify({ syncedAt, snapshotDate: next.snapshotDate, overviews: snap }));
+      writeUiCacheValue(
+        summarySessionKey(targetPeriod),
+        JSON.stringify({
+          syncedAt,
+          snapshotDate: next.snapshotDate,
+          ...next.summary,
+          profile: next.profile,
+          estimatedByCube: next.estimatedByCube,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+
+    if (targetPeriod !== period) return;
+
+    setDataByCube((prev) => {
+      const updated: any = { ...prev };
+      for (const k of Object.keys(snap) as CubeKey[]) {
+        updated[k] = { ov: snap[k] ?? null, loading: false, error: undefined };
+      }
+      return updated;
+    });
+    setSummaryHydrated(true);
+    setSummaryOpp({ loading: false, total: next.summary.total, byCube: next.summary.byCube });
+    setSummaryProfile(next.profile);
+    setSummaryEstimatedByCube(next.estimatedByCube);
+    setLastRefreshAt(Date.now());
+    setIsRefreshing(false);
+  }, [period]);
 
   const syncFromServerCacheIfNeeded = useCallback(async (force = false) => {
     if (typeof window === "undefined") return;
@@ -1953,14 +1904,14 @@ useEffect(() => {
     const handleProfileVersionChange = (event: Event) => {
       const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
       if (detail?.field !== "stats_version") return;
-      void syncFromServerCacheIfNeeded(true);
+      triggerRefresh("channels");
     };
 
     window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     return () => {
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
-  }, [syncFromServerCacheIfNeeded]);
+  }, [triggerRefresh]);
 
   useEffect(() => {
     if (!dailyBootReady) return;

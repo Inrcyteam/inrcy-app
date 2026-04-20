@@ -1405,7 +1405,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   }, [refreshKpis, warmInrStatsUi]);
 
   const triggerGeneratorRefresh = useCallback(async () => {
-    const fallbackSync = async () => {
+    const runSync = async () => {
       const syncAt = Date.now();
       lastGeneratorRefreshAtRef.current = syncAt;
       await Promise.allSettled([
@@ -1417,91 +1417,25 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     };
 
     clearScheduledGeneratorRefreshes();
-    const startedAt = Date.now();
-    lastGeneratorRefreshAtRef.current = startedAt;
-    setKpisLoading(true);
-
-    try {
-      await loadSiteInrcy();
-
-      const bootstrap = await runDailyStatsRefreshBootstrap({ force: true });
-      const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
-      const bootstrapSnapshotDate = typeof bootstrap?.snapshotDate === "string"
-        ? bootstrap.snapshotDate
-        : expectedUiSnapshotDate();
-      markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
-
-      if (!bootstrap?.generator) {
-        await fallbackSync();
-        return;
-      }
-
-      const generator = bootstrap.generator;
-      setKpis(generator);
-      const oppMonth = Number(generator?.details?.opportunities?.month);
-      if (Number.isFinite(oppMonth)) {
-        setOppTotal(oppMonth);
-        try {
-          writeUiCacheValue("inrcy_opp30_total_v1", String(oppMonth));
-        } catch {
-          // ignore
-        }
-      }
-
-      try {
-        const generatorSnapshotDate = typeof generator?.meta?.snapshotDate === "string"
-          ? generator.meta.snapshotDate
-          : bootstrapSnapshotDate ?? null;
-        writeUiCacheValue(
-          "inrcy_generator_kpis_v1",
-          JSON.stringify({ syncedAt: syncAt, snapshotDate: generatorSnapshotDate, payload: generator })
-        );
-      } catch {
-        // ignore
-      }
-
-      for (const [periodKey, payload] of Object.entries(bootstrap.inrstats || {})) {
-        const days = Number(periodKey) as StatsWarmPeriod;
-        if (![7, 30].includes(days)) continue;
-        const overviews = payload?.overviews;
-        if (!overviews || typeof overviews !== "object") continue;
-        const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
-          ? payload.meta.snapshotDate
-          : getOverviewSnapshotDate(overviews) || bootstrapSnapshotDate || null;
-
-        try {
-          writeUiCacheValue(
-            statsCubeSessionKey(days),
-            JSON.stringify({ syncedAt: syncAt, snapshotDate: payloadSnapshotDate, overviews })
-          );
-          writeUiCacheValue(
-            statsSummarySessionKey(days),
-            JSON.stringify({
-              syncedAt: syncAt,
-              snapshotDate: payloadSnapshotDate,
-              total: Number(payload?.opportunities?.total ?? 0),
-              byCube: payload?.opportunities?.byCube ?? {},
-              profile: payload?.profile ?? {},
-              estimatedByCube: payload?.estimatedByCube ?? {},
-            })
-          );
-        } catch {
-          // ignore
-        }
-      }
-
-      notifyStatsRefresh(syncAt);
-    } catch (error) {
-      console.error(error);
-      await fallbackSync();
-    } finally {
-      setKpisLoading(false);
-    }
+    await runSync();
   }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshKpis, warmInrStatsUi]);
 
 
   const handleSharedGeneratorRefresh = useCallback(async () => {
     if (kpisLoading) return;
+    setKpisLoading(true);
+
+    try {
+      const bootstrap = await runDailyStatsRefreshBootstrap();
+      const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
+      const bootstrapSnapshotDate = typeof bootstrap?.snapshotDate === "string"
+        ? bootstrap.snapshotDate
+        : expectedUiSnapshotDate();
+      markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+    } catch (error) {
+      console.error(error);
+    }
+
     await triggerGeneratorRefresh();
   }, [kpisLoading, triggerGeneratorRefresh]);
 
@@ -1523,7 +1457,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       }
 
       if (detail.field === "stats_version") {
-        void syncFromServerCacheIfNeeded(true);
+        void triggerGeneratorRefresh();
       }
     };
 
@@ -1531,7 +1465,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     return () => {
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
-  }, [refreshNotifications, refreshUiBalance, syncFromServerCacheIfNeeded]);
+  }, [refreshNotifications, refreshUiBalance, triggerGeneratorRefresh]);
 
   // ✅ Auto-refresh Générateur + statuts modules dès qu'un module se connecte / se déconnecte
   // On écoute les changements Postgres sur les tables qui impactent:
@@ -1550,7 +1484,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       if (t) window.clearTimeout(t);
       t = window.setTimeout(() => {
         if (disposed) return;
-        void syncFromServerCacheIfNeeded(true);
+        if (Date.now() - lastGeneratorRefreshAtRef.current < 2500) return;
+        triggerGeneratorRefresh();
       }, 500);
     };
 
@@ -1586,15 +1521,16 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         supabase.removeChannel(ch);
       } catch {}
     };
-  }, [clearScheduledGeneratorRefreshes, syncFromServerCacheIfNeeded]);
+  }, [clearScheduledGeneratorRefreshes, triggerGeneratorRefresh]);
 
   useEffect(() => {
     const linked = searchParams.get("linked");
     const activated = searchParams.get("activated");
     const ok = searchParams.get("ok");
-    const shouldRefreshAfterChannelChange = (Boolean(linked) && ok === "1") || activated === "1";
-    if (!shouldRefreshAfterChannelChange) return;
-    void triggerGeneratorRefresh();
+    const toast = searchParams.get("toast");
+    const warning = searchParams.get("warning");
+    if (!linked && !activated && !ok && !toast && !warning) return;
+    triggerGeneratorRefresh();
   }, [searchParams, triggerGeneratorRefresh]);
 
 
