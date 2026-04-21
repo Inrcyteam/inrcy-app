@@ -140,6 +140,59 @@ async function buildUrlsFromStoragePath(path: string): Promise<{ publicUrl: stri
   };
 }
 
+async function canGoogleFetchImageUrl(url: string): Promise<boolean> {
+  const target = String(url || "").trim();
+  if (!target) return false;
+
+  const attempts: Array<"HEAD" | "GET"> = ["HEAD", "GET"];
+  for (const method of attempts) {
+    try {
+      const response = await fetch(target, {
+        method,
+        redirect: "follow",
+        cache: "no-store",
+      });
+      if (!response.ok) continue;
+      const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+      if (contentType.startsWith("image/")) return true;
+      if (method === "GET") return false;
+    } catch {
+      // Ignore and try the next strategy.
+    }
+  }
+
+  return false;
+}
+
+async function getGoogleBusinessPublishableUrl(path: string): Promise<string | null> {
+  const urls = await buildUrlsFromStoragePath(path);
+  if (urls.publicUrl && await canGoogleFetchImageUrl(urls.publicUrl)) {
+    return urls.publicUrl;
+  }
+  if (urls.signedUrl && await canGoogleFetchImageUrl(urls.signedUrl)) {
+    return urls.signedUrl;
+  }
+  return urls.publicUrl || urls.signedUrl || null;
+}
+
+function isGoogleBusinessImageError(error: unknown) {
+  const message = errMessage(error, "").toLowerCase();
+  return [
+    "image",
+    "images",
+    "photo",
+    "media",
+    "sourceurl",
+    "url",
+    "fetch",
+    "download",
+    "content-type",
+    "content type",
+    "invalid media",
+    "mediaitem",
+  ].some((needle) => message.includes(needle));
+}
+
 async function resolveImageInput(img: ImagePayload): Promise<ResolvedImageInput | null> {
   if (img?.storagePath) {
     const download = await supabaseAdmin.storage.from("booster").download(img.storagePath);
@@ -347,12 +400,9 @@ async function uploadImageSet(userId: string, images: ImagePayload[]): Promise<{
       if (gmbUpload.error) {
         uploadErrors.push({ name: img?.name || "image", reason: gmbUpload.error.message, stage: "gmbUpload" });
       } else {
-        const gmbSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(gmbPath, 60 * 60 * 24);
-        const gmbPublic = supabaseAdmin.storage.from("booster").getPublicUrl(gmbPath);
-        if (gmbSigned?.data?.signedUrl) {
-          gmbPublishableUrls.push(gmbSigned.data.signedUrl);
-        } else if (gmbPublic?.data?.publicUrl) {
-          gmbPublishableUrls.push(gmbPublic.data.publicUrl);
+        const gmbUrl = await getGoogleBusinessPublishableUrl(gmbPath);
+        if (gmbUrl) {
+          gmbPublishableUrls.push(gmbUrl);
         } else {
           uploadErrors.push({ name: img?.name || "image", reason: "Google Business optimized image URL unavailable", stage: "gmbUpload" });
         }
@@ -830,8 +880,10 @@ const body = await req.json().catch(() => null);
               if (!gmbChannelImages.length) throw gmbErr;
               gmbResp = await retryWithoutImages();
               gmbWarning = {
-                code: "published_without_image",
-                message: "Google Business a refusé l'image. Le texte a été publié sans image.",
+                code: isGoogleBusinessImageError(gmbErr) ? "published_without_image" : "published_after_retry_without_image",
+                message: isGoogleBusinessImageError(gmbErr)
+                  ? "Google Business a publié le texte, mais n'a pas pu récupérer l'image. Vérifiez que l'image reste publique et accessible sans connexion."
+                  : "Google Business a publié le texte après une reprise automatique. L'image n'a pas pu être jointe cette fois-ci.",
               };
             } catch (retryError: unknown) {
               if (gmbCallToAction) {

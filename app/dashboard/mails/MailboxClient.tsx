@@ -1434,6 +1434,7 @@ export default function MailboxClient() {
   const [detailsEditMode, setDetailsEditMode] = useState(false);
   const [detailsActionBusy, setDetailsActionBusy] = useState(false);
   const [detailsActionError, setDetailsActionError] = useState<string | null>(null);
+  const [detailsActionSuccess, setDetailsActionSuccess] = useState<string | null>(null);
   const [detailsSourceDocPayload, setDetailsSourceDocPayload] = useState<any | null>(null);
   const [campaignRecipients, setCampaignRecipients] = useState<CampaignRecipientLog[]>([]);
   const [campaignRecipientsLoading, setCampaignRecipientsLoading] = useState(false);
@@ -2122,6 +2123,7 @@ export default function MailboxClient() {
     });
     setDetailsEditMode(false);
     setDetailsActionError(null);
+    setDetailsActionSuccess(null);
   }, [detailsOpen, detailsItem, activeDetailsChannelEntry?.key]);
 
   useEffect(() => {
@@ -2943,6 +2945,7 @@ async function deleteDraftPermanently(id: string) {
     setDetailsEditMode(false);
     setDetailsActionBusy(false);
     setDetailsActionError(null);
+    setDetailsActionSuccess(null);
     setDetailsOpen(true);
   }
 
@@ -3036,6 +3039,7 @@ async function deleteDraftPermanently(id: string) {
 
     setDetailsActionBusy(true);
     setDetailsActionError(null);
+    setDetailsActionSuccess(null);
     try {
       const hashtags = publicationEditForm.hashtags
         .split(/[;,\n\s]+/)
@@ -3087,7 +3091,7 @@ async function deleteDraftPermanently(id: string) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Modification impossible.");
-      setToast(`Publication ${formatChannelLabel(channel)} modifiée.`);
+      setDetailsActionSuccess(`Publication ${formatChannelLabel(channel)} modifiée.`);
       setDetailsEditMode(false);
       await loadHistory();
     } catch (e: any) {
@@ -3107,6 +3111,7 @@ async function deleteDraftPermanently(id: string) {
 
     setDetailsActionBusy(true);
     setDetailsActionError(null);
+    setDetailsActionSuccess(null);
     try {
       const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/${encodeURIComponent(channelApiPath(channel))}`, {
         method: "DELETE",
@@ -3115,7 +3120,7 @@ async function deleteDraftPermanently(id: string) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Suppression impossible.");
-      setToast(`Publication ${label} supprimée.`);
+      setDetailsActionSuccess(`Publication ${label} supprimée.`);
       setDetailsEditMode(false);
       await loadHistory();
       setDetailsChannelKey(channel);
@@ -3926,6 +3931,11 @@ async function deleteDraftPermanently(id: string) {
                               </div>
                               {activePublicationEntry ? (
                                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
+                                  {detailsActionSuccess ? (
+                                    <div className={styles.detailsSuccessInline}>
+                                      <b>Action :</b> {detailsActionSuccess}
+                                    </div>
+                                  ) : null}
                                   {detailsEditMode ? (
                                     <button
                                       type="button"
@@ -3939,7 +3949,7 @@ async function deleteDraftPermanently(id: string) {
                                     <button
                                       type="button"
                                       className={styles.btnGhost}
-                                      onClick={() => { setDetailsEditMode(true); setDetailsActionError(null); }}
+                                      onClick={() => { setDetailsEditMode(true); setDetailsActionError(null); setDetailsActionSuccess(null); }}
                                       disabled={detailsActionBusy}
                                     >
                                       Modifier

@@ -82,6 +82,40 @@ function dataUrlToBuffer(dataUrl: string) {
   return { mime, buffer: Buffer.from(b64, "base64") };
 }
 
+async function canGoogleFetchImageUrl(url: string): Promise<boolean> {
+  const target = String(url || "").trim();
+  if (!target) return false;
+
+  for (const method of ["HEAD", "GET"] as const) {
+    try {
+      const response = await fetch(target, {
+        method,
+        redirect: "follow",
+        cache: "no-store",
+      });
+      if (!response.ok) continue;
+      const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+      if (contentType.startsWith("image/")) return true;
+      if (method === "GET") return false;
+    } catch {
+      // Ignore and try the next strategy.
+    }
+  }
+
+  return false;
+}
+
+async function getGoogleBusinessPublishableUrl(path: string): Promise<string | null> {
+  const publicUrl = String(supabaseAdmin.storage.from("booster").getPublicUrl(path)?.data?.publicUrl || "").trim();
+  if (publicUrl && await canGoogleFetchImageUrl(publicUrl)) return publicUrl;
+
+  const signed = await supabaseAdmin.storage.from("booster").createSignedUrl(path, 60 * 60 * 24);
+  const signedUrl = String(signed?.data?.signedUrl || "").trim();
+  if (signedUrl && await canGoogleFetchImageUrl(signedUrl)) return signedUrl;
+
+  return publicUrl || signedUrl || null;
+}
+
 async function uploadPublicationImages(userId: string, newImages: ImagePayload[]): Promise<ImageSet> {
   const uploadedUrls: string[] = [];
   const instagramPublishableUrls: string[] = [];
@@ -152,9 +186,7 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
       upsert: false,
     });
     if (gmbUpload.error) throw gmbUpload.error;
-    const gmbSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(gmbPath, 60 * 60 * 24);
-    const gmbPublic = supabaseAdmin.storage.from("booster").getPublicUrl(gmbPath);
-    const gmbUrl = String(gmbSigned?.data?.signedUrl || gmbPublic?.data?.publicUrl || "").trim();
+    const gmbUrl = await getGoogleBusinessPublishableUrl(gmbPath);
     if (!gmbUrl) throw new Error(`URL Google Business introuvable pour ${img?.name || "image"}.`);
     gmbPublishableUrls.push(gmbUrl);
   }
@@ -350,6 +382,11 @@ async function updateFacebookPost(externalId: string, pageAccessToken: string, m
   if (!res.ok || json?.success === false) {
     throw new Error(json?.error?.message || `Modification Facebook impossible (${res.status})`);
   }
+}
+
+function areImageListsEqual(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => String(value || "").trim() === String(right[index] || "").trim());
 }
 
 async function deleteInstagramMedia(externalId: string, accessToken: string) {
@@ -622,14 +659,21 @@ async function replaceChannelDelivery(params: {
     const pageId = String(fb.resource_id ?? "");
     const pageToken = tryDecryptToken(String(fb.access_token_enc ?? "")) || "";
     if (String(fb.status ?? "") !== "connected" || !pageId || !pageToken) throw new Error("Votre compte Facebook n’est pas encore correctement relié.");
-    if (previousExternalId) {
+
+    const currentImageSet = getChannelImageSet(eventPayload, publication, channel);
+    const facebookImagesChanged = !areImageListsEqual(currentImageSet.images, resolvedImageSet.images);
+
+    if (previousExternalId && !facebookImagesChanged) {
       try {
         await updateFacebookPost(previousExternalId, pageToken, canonMessage);
         return { externalId: previousExternalId, status: "delivered", error: null };
       } catch {
         await deleteFacebookPost(previousExternalId, pageToken);
       }
+    } else if (previousExternalId) {
+      await deleteFacebookPost(previousExternalId, pageToken);
     }
+
     const resp = await facebookPublishToPage({ pageId, pageAccessToken: pageToken, message: canonMessage, imageUrls: socialFeedImageUrls });
     if (!resp.ok) throw new Error(resp.error);
     return { externalId: resp.postId, status: "delivered", error: null };

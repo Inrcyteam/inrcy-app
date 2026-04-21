@@ -2337,6 +2337,25 @@ width: 100%;
   font-size: 13px;
 }
 
+.detailsSuccess {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(94, 234, 212, 0.28);
+  background: rgba(45, 212, 191, 0.10);
+  color: rgba(220, 255, 247, 0.96);
+  font-size: 13px;
+}
+
+.detailsSuccessInline {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(94, 234, 212, 0.28);
+  background: rgba(45, 212, 191, 0.10);
+  color: rgba(220, 255, 247, 0.96);
+  font-size: 13px;
+}
+
 .attachmentsBox {
   margin-top: 12px;
   padding-top: 12px;
