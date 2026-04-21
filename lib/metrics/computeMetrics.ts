@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildStatsOverview, loadOverviewContext, type OverviewBuildPreload, type OverviewPayload } from '@/lib/stats/buildOverview';
+import { buildStatsOverview, type OverviewPayload } from '@/lib/stats/buildOverview';
 
 export type Period = 7 | 30 | 60 | 90;
 export type CubeKey = 'site_inrcy' | 'site_web' | 'gmb' | 'facebook' | 'instagram' | 'linkedin';
@@ -620,9 +620,6 @@ export async function fetchCubeOverviews(args: {
   snapshotDate?: string | null;
 }): Promise<Partial<Record<CubeKey, Overview>>> {
   const { origin, days, getHeaders, extraParams, bypassCache = false, supabase, userId, snapshotDate } = args;
-  const overviewPreloadPromise: Promise<OverviewBuildPreload | undefined> | null = supabase && userId
-    ? loadOverviewContext(supabase, userId).catch(() => undefined)
-    : null;
   const entries = await Promise.all(
     CUBES.map(async (cube) => {
       const includeRaw = INCLUDE_BY_CUBE[cube];
@@ -630,15 +627,7 @@ export async function fetchCubeOverviews(args: {
         const directKey = `direct:${userId}:days=${days}:include=${includeRaw}:snapshot=${snapshotDate || (bypassCache ? 'live' : 'default')}:fresh=${bypassCache ? 1 : 0}`;
         const overview = await resolveOverviewWithCache(
           directKey,
-          async () => (await buildStatsOverview({
-            supabase,
-            userId,
-            days,
-            includeRaw,
-            fresh: bypassCache,
-            snapshotDate,
-            preload: overviewPreloadPromise ? await overviewPreloadPromise : undefined,
-          })) as OverviewPayload,
+          async () => (await buildStatsOverview({ supabase, userId, days, includeRaw, fresh: bypassCache, snapshotDate })) as OverviewPayload,
           bypassCache,
         );
         return [cube, overview] as const;

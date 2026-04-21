@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
-import { envFlag } from "@/lib/env";
 import { requireUser } from "@/lib/requireUser";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { buildMetricsSummary } from "@/lib/metrics/summary";
-import { getChannelConnectionStates, type ChannelStates } from "@/lib/channelConnectionState";
 import {
   fetchCubeOverviews,
   computeOpportunitiesFromOverviews,
@@ -15,64 +13,10 @@ import {
 
 const DAILY_REFRESH_LEASE_SECONDS = 15 * 60;
 
-const DAILY_REFRESH_REASONS = new Set(["first_open", "channel_change", "account_change", "manual"] as const);
-type DailyRefreshReason = "first_open" | "channel_change" | "account_change" | "manual";
-
-function normalizeDailyRefreshReason(value: unknown): DailyRefreshReason {
-  return typeof value === "string" && DAILY_REFRESH_REASONS.has(value as DailyRefreshReason)
-    ? (value as DailyRefreshReason)
-    : "first_open";
-}
-
 type ProfileMetrics = {
   lead_conversion_rate: number;
   avg_basket: number;
 };
-
-type DailyRefreshTimingKey = "profile" | "channelStates" | "monthOverviews" | "weekOverviews" | "generator" | "total";
-type DailyRefreshTimings = Partial<Record<DailyRefreshTimingKey, number>>;
-
-const DAILY_REFRESH_TIMINGS_ENABLED = process.env.NODE_ENV !== "production" || envFlag("INRCY_TIMINGS");
-const DAILY_REFRESH_TIMING_LOG_LABEL = process.env.NODE_ENV !== "production"
-  ? "[daily-refresh][dev]"
-  : "[daily-refresh][timings]";
-
-function createDevTimingCollector() {
-  const timings: DailyRefreshTimings = {};
-
-  return {
-    timings,
-    async measure<T>(label: Exclude<DailyRefreshTimingKey, "total">, run: () => Promise<T>): Promise<T> {
-      const startedAt = Date.now();
-      try {
-        return await run();
-      } finally {
-        if (DAILY_REFRESH_TIMINGS_ENABLED) {
-          timings[label] = Date.now() - startedAt;
-        }
-      }
-    },
-    finalize(startedAt: number) {
-      if (DAILY_REFRESH_TIMINGS_ENABLED) {
-        timings.total = Date.now() - startedAt;
-      }
-      return DAILY_REFRESH_TIMINGS_ENABLED ? timings : undefined;
-    },
-    flush(context: { userId: string; reason: DailyRefreshReason; force: boolean; ran: boolean; snapshotDate: string }) {
-      if (!DAILY_REFRESH_TIMINGS_ENABLED) return;
-      console.info(`${DAILY_REFRESH_TIMING_LOG_LABEL} ${JSON.stringify({
-        userId: context.userId,
-        reason: context.reason,
-        force: context.force,
-        ran: context.ran,
-        snapshotDate: context.snapshotDate,
-        vercelEnv: process.env.VERCEL_ENV ?? null,
-        nodeEnv: process.env.NODE_ENV ?? null,
-        timings,
-      })}`);
-    },
-  };
-}
 
 type BulkResponse = {
   period: number;
@@ -162,73 +106,40 @@ function isLeaseActive(startedAt: string | null | undefined) {
   return Date.now() - startedMs < DAILY_REFRESH_LEASE_SECONDS * 1000;
 }
 
-async function fetchChannelStates(
-  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
-  userId: string,
-): Promise<ChannelStates | undefined> {
-  try {
-    return await getChannelConnectionStates(supabase, userId);
-  } catch {
-    return undefined;
-  }
-}
-
 export async function POST(req: Request) {
   try {
-    const requestBody = await req.json().catch(() => null);
-    const reason = normalizeDailyRefreshReason(requestBody && typeof requestBody === "object" ? (requestBody as { reason?: unknown }).reason : undefined);
-    const force = Boolean(requestBody && typeof requestBody === "object" ? (requestBody as { force?: unknown }).force : false);
-
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const snapshotDate = getDefaultSnapshotDate();
-    const routeStartedAt = Date.now();
-    const timer = createDevTimingCollector();
-    let claimed = false;
+    const { data: claimed, error: claimError } = await supabase.rpc("claim_daily_stats_refresh", {
+      p_snapshot_date: snapshotDate,
+      p_lease_seconds: DAILY_REFRESH_LEASE_SECONDS,
+    });
 
-    if (!force) {
-      const claimResult = await supabase.rpc("claim_daily_stats_refresh", {
-        p_snapshot_date: snapshotDate,
-        p_lease_seconds: DAILY_REFRESH_LEASE_SECONDS,
+    if (claimError) {
+      return jsonUserFacingError(`daily_refresh_claim_failed:${claimError.message}`, { status: 500 });
+    }
+
+    if (!claimed) {
+      const { data: state } = await supabase
+        .from("user_daily_stats_refresh")
+        .select("last_started_snapshot_date, last_started_at, last_completed_snapshot_date")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const inProgress =
+        state?.last_completed_snapshot_date !== snapshotDate &&
+        state?.last_started_snapshot_date === snapshotDate &&
+        isLeaseActive(state?.last_started_at);
+
+      return NextResponse.json({
+        ok: true,
+        ran: false,
+        inProgress,
+        snapshotDate,
+        syncAt: Date.now(),
       });
-
-      if (claimResult.error) {
-        return jsonUserFacingError(`daily_refresh_claim_failed:${claimResult.error.message}`, { status: 500 });
-      }
-
-      claimed = Boolean(claimResult.data);
-
-      if (!claimed) {
-        const [{ data: state }, channelStates] = await Promise.all([
-          supabase
-            .from("user_daily_stats_refresh")
-            .select("last_started_snapshot_date, last_started_at, last_completed_snapshot_date")
-            .eq("user_id", user.id)
-            .maybeSingle(),
-          timer.measure("channelStates", () => fetchChannelStates(supabase, user.id)),
-        ]);
-
-        const inProgress =
-          state?.last_completed_snapshot_date !== snapshotDate &&
-          state?.last_started_snapshot_date === snapshotDate &&
-          isLeaseActive(state?.last_started_at);
-
-        const timings = timer.finalize(routeStartedAt);
-        timer.flush({ userId: user.id, reason, force, ran: false, snapshotDate });
-
-        return NextResponse.json({
-          ok: true,
-          ran: false,
-          inProgress,
-          snapshotDate,
-          syncAt: Date.now(),
-          requestedReason: reason,
-          forced: force,
-          channelStates,
-          timings,
-        });
-      }
     }
 
     const { origin } = new URL(req.url);
@@ -244,9 +155,9 @@ export async function POST(req: Request) {
 
     try {
       const headers = () => (cookie ? { cookie } : undefined);
-      const [profile, monthOverviews, weekOverviews, channelStates] = await Promise.all([
-        timer.measure("profile", () => fetchProfileMetrics(supabase, user.id)),
-        timer.measure("monthOverviews", () => fetchCubeOverviews({
+      const [profile, monthOverviews, weekOverviews] = await Promise.all([
+        fetchProfileMetrics(supabase, user.id),
+        fetchCubeOverviews({
           origin,
           days: 30,
           getHeaders: headers,
@@ -254,8 +165,8 @@ export async function POST(req: Request) {
           supabase,
           userId: user.id,
           snapshotDate,
-        })),
-        timer.measure("weekOverviews", () => fetchCubeOverviews({
+        }),
+        fetchCubeOverviews({
           origin,
           days: 7,
           getHeaders: headers,
@@ -263,11 +174,10 @@ export async function POST(req: Request) {
           supabase,
           userId: user.id,
           snapshotDate,
-        })),
-        timer.measure("channelStates", () => fetchChannelStates(supabase, user.id)),
+        }),
       ]);
 
-      const generator = await timer.measure("generator", () => buildMetricsSummary({
+      const generator = await buildMetricsSummary({
         supabase,
         userId: user.id,
         origin,
@@ -281,7 +191,7 @@ export async function POST(req: Request) {
         profileOverride: profile,
         monthOverviewsOverride: monthOverviews,
         weekOverviewsOverride: weekOverviews,
-      }));
+      });
 
       const inrstatsEntries = [
         ["7", buildBulkPayloadFromOverviews({ period: 7, overviews: weekOverviews, profile, snapshotDate })],
@@ -298,21 +208,14 @@ export async function POST(req: Request) {
 
       await bumpStatsVersion(supabase, user.id);
 
-      const timings = timer.finalize(routeStartedAt);
-      timer.flush({ userId: user.id, reason, force, ran: true, snapshotDate });
-
       return NextResponse.json({
         ok: true,
         ran: true,
         inProgress: false,
         snapshotDate,
         syncAt,
-        requestedReason: reason,
-        forced: force,
         generator,
         inrstats: Object.fromEntries(inrstatsEntries),
-        channelStates,
-        timings,
       }, {
         headers: {
           "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
@@ -321,11 +224,9 @@ export async function POST(req: Request) {
         },
       });
     } catch (error) {
-      if (!force && claimed) {
-        await supabase.rpc("release_daily_stats_refresh_claim", {
-          p_snapshot_date: snapshotDate,
-        }).catch(() => undefined);
-      }
+      await supabase.rpc("release_daily_stats_refresh_claim", {
+        p_snapshot_date: snapshotDate,
+      }).catch(() => undefined);
       throw error;
     }
   } catch (error) {

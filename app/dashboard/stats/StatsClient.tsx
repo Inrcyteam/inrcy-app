@@ -12,7 +12,7 @@ import { decideAction, type DecisionResult } from "@/lib/decision/decisionEngine
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { readAccountCacheValue, removeAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse, type DailyStatsRefreshReason } from "@/lib/dailyStatsRefreshClient";
+import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -1405,7 +1405,6 @@ export default function StatsClient() {
   // In-memory cache to avoid duplicate fetch bursts (React strict-mode/dev & quick navigations)
   const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
   const [refreshNonce, setRefreshNonce] = useState(0);
-  const forceFreshOnceRef = useRef(false);
   const hydratedPeriodsRef = useRef(new Set<number>());
   const lastAutoRefreshAtRef = useRef(0);
   const refreshTimeoutRef = useRef<number | null>(null);
@@ -1472,7 +1471,6 @@ export default function StatsClient() {
 
   const triggerRefresh = useCallback((reason: "manual" | "channels") => {
     clearCachedSnapshots();
-    forceFreshOnceRef.current = true;
     setIsRefreshing(true);
     setLastRefreshAt(Date.now());
     setRefreshNonce((prev) => prev + 1);
@@ -1631,15 +1629,12 @@ export default function StatsClient() {
     }
   }, [applyBulkPayload]);
 
-  const runUnifiedStatsRefresh = useCallback(async (reason: DailyStatsRefreshReason) => {
+  const handleSharedStatsRefresh = useCallback(async () => {
     setIsRefreshing(true);
     setLastRefreshAt(Date.now());
 
     try {
-      const bootstrap = await runDailyStatsRefreshBootstrap({
-        reason,
-        force: reason !== "first_open",
-      });
+      const bootstrap = await runDailyStatsRefreshBootstrap();
       applyBootstrapPayload(bootstrap);
 
       if (!bootstrap?.ran) {
@@ -1651,11 +1646,6 @@ export default function StatsClient() {
       setIsRefreshing(false);
     }
   }, [applyBootstrapPayload, syncFromServerCacheIfNeeded]);
-
-  const handleSharedStatsRefresh = useCallback(async () => {
-    if (isRefreshing) return;
-    await runUnifiedStatsRefresh("manual");
-  }, [isRefreshing, runUnifiedStatsRefresh]);
 
 
 
@@ -1772,7 +1762,7 @@ export default function StatsClient() {
 
     (async () => {
       try {
-        const bootstrap = await runDailyStatsRefreshBootstrap({ reason: "first_open", force: false });
+        const bootstrap = await runDailyStatsRefreshBootstrap();
         if (cancelled) return;
 
         applyBootstrapPayload(bootstrap);
@@ -1871,9 +1861,7 @@ useEffect(() => {
     setSummaryOpp((prev) => ({ ...prev, loading: true }));
 
     try {
-      const forceFresh = forceFreshOnceRef.current;
-      forceFreshOnceRef.current = false;
-      const next = await fetchBulkStats(period, forceFresh);
+      const next = await fetchBulkStats(period, refreshNonce > 0);
       if (cancelled) return;
       try {
         const syncedAt = Date.now();
@@ -1940,14 +1928,14 @@ useEffect(() => {
     const handleProfileVersionChange = (event: Event) => {
       const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
       if (detail?.field !== "stats_version") return;
-      void syncFromServerCacheIfNeeded(true);
+      triggerRefresh("channels");
     };
 
     window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     return () => {
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
-  }, [syncFromServerCacheIfNeeded]);
+  }, [triggerRefresh]);
 
   useEffect(() => {
     if (!dailyBootReady) return;

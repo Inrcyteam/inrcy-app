@@ -33,7 +33,7 @@ import NotificationsSettingsContent from "./settings/_components/NotificationsSe
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
 import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse, type DailyStatsRefreshReason } from "@/lib/dailyStatsRefreshClient";
+import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
 import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
@@ -1373,8 +1373,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
   const refreshTimersRef = useRef<number[]>([]);
   const lastGeneratorRefreshAtRef = useRef(0);
-  const lastBackgroundGeneratorSyncAtRef = useRef(0);
-  const backgroundGeneratorRefreshPromiseRef = useRef<Promise<void> | null>(null);
   const lastServerCacheCheckAtRef = useRef(0);
   const serverCacheCheckPromiseRef = useRef<Promise<void> | null>(null);
 
@@ -1439,35 +1437,21 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     }
   }, [refreshKpis, warmInrStatsUi]);
 
-  const applyBootstrapChannelStates = useCallback((channelStates?: DailyStatsRefreshBootstrapResponse["channelStates"]) => {
-    if (!channelStates) return;
+  const triggerGeneratorRefresh = useCallback(async () => {
+    const runSync = async () => {
+      const syncAt = Date.now();
+      lastGeneratorRefreshAtRef.current = syncAt;
+      await Promise.allSettled([
+        loadSiteInrcy(),
+        refreshKpis({ fresh: true, syncedAt: syncAt }),
+        warmInrStatsUi({ syncedAt: syncAt, fresh: true }),
+      ]);
+      notifyStatsRefresh(syncAt);
+    };
 
-    setSiteInrcyGa4Connected(Boolean(channelStates.site_inrcy?.ga4));
-    setSiteInrcyGscConnected(Boolean(channelStates.site_inrcy?.gsc));
-    setSiteWebGa4Connected(Boolean(channelStates.site_web?.ga4));
-    setSiteWebGscConnected(Boolean(channelStates.site_web?.gsc));
-
-    setGmbConnected(Boolean(channelStates.gmb?.connected));
-    setGmbAccountConnected(Boolean(channelStates.gmb?.accountConnected));
-    setGmbConfigured(Boolean(channelStates.gmb?.configured));
-    setGmbAccountEmail(channelStates.gmb?.email ?? "");
-    setGmbLocationName(channelStates.gmb?.resource_id ?? "");
-    setGmbLocationLabel(channelStates.gmb?.resource_label ?? "");
-
-    setFacebookAccountConnected(Boolean(channelStates.facebook?.accountConnected));
-    setFacebookPageConnected(Boolean(channelStates.facebook?.pageConnected));
-    setFacebookAccountEmail(channelStates.facebook?.user_email ?? "");
-    setFbSelectedPageId(channelStates.facebook?.resource_id ?? "");
-    setFbSelectedPageName(channelStates.facebook?.resource_label ?? "");
-
-    setInstagramAccountConnected(Boolean(channelStates.instagram?.accountConnected));
-    setInstagramConnected(Boolean(channelStates.instagram?.connected));
-    setInstagramUsername(channelStates.instagram?.username ?? "");
-
-    setLinkedinAccountConnected(Boolean(channelStates.linkedin?.accountConnected));
-    setLinkedinConnected(Boolean(channelStates.linkedin?.connected));
-    setLinkedinDisplayName(channelStates.linkedin?.display_name ?? "");
-  }, []);
+    clearScheduledGeneratorRefreshes();
+    await runSync();
+  }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshKpis, warmInrStatsUi]);
 
   const applyBootstrapRefresh = useCallback((bootstrap: DailyStatsRefreshBootstrapResponse) => {
     const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
@@ -1476,7 +1460,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       : expectedUiSnapshotDate();
 
     markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
-    applyBootstrapChannelStates(bootstrap?.channelStates);
 
     if (!bootstrap?.ran) {
       return { syncAt, bootstrapSnapshotDate };
@@ -1541,55 +1524,16 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
     notifyStatsRefresh(syncAt);
     return { syncAt, bootstrapSnapshotDate };
-  }, [applyBootstrapChannelStates, notifyStatsRefresh]);
+  }, [notifyStatsRefresh]);
 
-  const runDeferredGeneratorRefresh = useCallback((reason: DailyStatsRefreshReason) => {
-    if (backgroundGeneratorRefreshPromiseRef.current) {
-      return backgroundGeneratorRefreshPromiseRef.current;
-    }
-
-    const job = (async () => {
-      try {
-        const bootstrap = await runDailyStatsRefreshBootstrap({
-          reason,
-          force: true,
-        });
-        applyBootstrapRefresh(bootstrap);
-
-        if (!bootstrap?.ran) {
-          await syncFromServerCacheIfNeeded(true);
-        }
-      } catch (error) {
-        console.error(error);
-      } finally {
-        lastBackgroundGeneratorSyncAtRef.current = Date.now();
-        backgroundGeneratorRefreshPromiseRef.current = null;
-      }
-    })();
-
-    backgroundGeneratorRefreshPromiseRef.current = job;
-    return job;
-  }, [applyBootstrapRefresh, syncFromServerCacheIfNeeded]);
-
-  const runUnifiedGeneratorRefresh = useCallback(async (reason: DailyStatsRefreshReason) => {
-    const syncAt = Date.now();
-    lastGeneratorRefreshAtRef.current = syncAt;
-    clearScheduledGeneratorRefreshes();
-
-    if (reason === "channel_change") {
-      setKpisLoading(false);
-      void runDeferredGeneratorRefresh(reason);
-      return;
-    }
-
+  const handleSharedGeneratorRefresh = useCallback(async () => {
+    if (kpisLoading) return;
     setKpisLoading(true);
 
     try {
-      const bootstrap = await runDailyStatsRefreshBootstrap({
-        reason,
-        force: reason !== "first_open",
-      });
+      const bootstrap = await runDailyStatsRefreshBootstrap();
       applyBootstrapRefresh(bootstrap);
+      await loadSiteInrcy();
 
       if (!bootstrap?.ran) {
         await syncFromServerCacheIfNeeded(true);
@@ -1599,16 +1543,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     } finally {
       setKpisLoading(false);
     }
-  }, [applyBootstrapRefresh, clearScheduledGeneratorRefreshes, runDeferredGeneratorRefresh, syncFromServerCacheIfNeeded]);
-
-  const triggerGeneratorRefresh = useCallback(async () => {
-    await runUnifiedGeneratorRefresh("channel_change");
-  }, [runUnifiedGeneratorRefresh]);
-
-  const handleSharedGeneratorRefresh = useCallback(async () => {
-    if (kpisLoading) return;
-    await runUnifiedGeneratorRefresh("manual");
-  }, [kpisLoading, runUnifiedGeneratorRefresh]);
+  }, [applyBootstrapRefresh, kpisLoading, loadSiteInrcy, syncFromServerCacheIfNeeded]);
 
 
 
@@ -1628,7 +1563,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       }
 
       if (detail.field === "stats_version") {
-        void syncFromServerCacheIfNeeded(true);
+        void triggerGeneratorRefresh();
       }
     };
 
@@ -1636,7 +1571,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     return () => {
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
-  }, [refreshNotifications, refreshUiBalance, syncFromServerCacheIfNeeded]);
+  }, [refreshNotifications, refreshUiBalance, triggerGeneratorRefresh]);
 
   // ✅ Auto-refresh Générateur + statuts modules dès qu'un module se connecte / se déconnecte
   // On écoute les changements Postgres sur les tables qui impactent:
@@ -1656,11 +1591,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       t = window.setTimeout(() => {
         if (disposed) return;
         if (Date.now() - lastGeneratorRefreshAtRef.current < 2500) return;
-        const preferCacheSync = !!backgroundGeneratorRefreshPromiseRef.current || (Date.now() - lastBackgroundGeneratorSyncAtRef.current < 15_000);
-        if (preferCacheSync) {
-          void syncFromServerCacheIfNeeded(true);
-          return;
-        }
         triggerGeneratorRefresh();
       }, 500);
     };
@@ -1697,7 +1627,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         supabase.removeChannel(ch);
       } catch {}
     };
-  }, [clearScheduledGeneratorRefreshes, syncFromServerCacheIfNeeded, triggerGeneratorRefresh]);
+  }, [clearScheduledGeneratorRefreshes, triggerGeneratorRefresh]);
 
   useEffect(() => {
     const linked = searchParams.get("linked");

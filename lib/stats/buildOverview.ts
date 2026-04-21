@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import type { StatsSourceKey } from "@/lib/googleStats";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
-import { getChannelConnectionStates, type ChannelStates } from "@/lib/channelConnectionState";
+import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { buildSnapshotWindow } from "@/lib/stats/snapshotWindow";
@@ -301,77 +301,15 @@ export type OverviewPayload = {
   };
 };
 
-export type OverviewBuildPreload = {
-  profile?: unknown;
-  inrcySiteConfig?: unknown;
-  proToolsConfig?: unknown;
-  businessProfile?: unknown;
-  integrations?: unknown[];
-  integrationsLegacy?: unknown[];
-  channelStates?: ChannelStates | null;
-};
-
-export async function loadOverviewContext(
-  supabase: SupabaseClient,
-  userId: string,
-): Promise<OverviewBuildPreload> {
-  const [profileRes, inrcyCfgRes, proCfgRes, businessProfileRes, integrationsRes, integrationsLegacyRes] = await Promise.all([
-    supabase.from("profiles").select("inrcy_site_ownership").eq("user_id", userId).maybeSingle(),
-    supabase.from("inrcy_site_configs").select("site_url,settings").eq("user_id", userId).maybeSingle(),
-    supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
-    supabase.from("business_profiles").select("sector").eq("user_id", userId).maybeSingle(),
-    supabase
-      .from("integrations")
-      .select("provider,source,product,status,resource_id,resource_label,display_name,email_address,access_token_enc,refresh_token_enc,expires_at,meta,updated_at,created_at")
-      .eq("user_id", userId),
-    supabase
-      .from("integrations_statistiques")
-      .select("provider,source,product,status,resource_id,updated_at,created_at")
-      .eq("user_id", userId),
-  ]);
-
-  const profile = profileRes.data ?? null;
-  const inrcySiteConfig = inrcyCfgRes.data ?? null;
-  const proToolsConfig = proCfgRes.data ?? null;
-  const businessProfile = businessProfileRes.data ?? null;
-  const integrations = Array.isArray(integrationsRes.data) ? integrationsRes.data : [];
-  const integrationsLegacy = Array.isArray(integrationsLegacyRes.data) ? integrationsLegacyRes.data : [];
-
-  let channelStates: ChannelStates | null = null;
-  try {
-    channelStates = await getChannelConnectionStates(supabase, userId, {
-      profile,
-      inrcySiteConfig,
-      proToolsConfig,
-      integrations,
-    });
-  } catch {
-    channelStates = null;
-  }
-
-  return {
-    profile,
-    inrcySiteConfig,
-    proToolsConfig,
-    businessProfile,
-    integrations,
-    integrationsLegacy,
-    channelStates,
-  };
-}
-
 export async function buildStatsOverview(args: {
-
   supabase: SupabaseClient;
   userId: string;
   days: number;
   includeRaw?: string;
   fresh?: boolean;
   snapshotDate?: string | null;
-  preload?: OverviewBuildPreload;
 }): Promise<OverviewPayload> {
   const { supabase, userId, fresh = false } = args;
-  const preload = args.preload;
   const days = Math.min(Math.max(Number(args.days || 28), 7), 90);
   const includeRaw = (args.includeRaw || "").trim();
   const includeSet = new Set(
@@ -403,24 +341,16 @@ export async function buildStatsOverview(args: {
 // --- Load all integration rows once (avoid Supabase rate-limits) ---
     // iNrStats calls this endpoint several times; repeated per-provider selects can hit Supabase mw:read limits.
     // We fetch the minimal integration snapshot once and reuse it for connection flags + metrics.
-    const integrationsAll = Array.isArray(preload?.integrations)
-      ? preload.integrations
-      : (
-          await supabase
-            .from("integrations")
-            .select("provider,source,product,status,resource_id,resource_label,display_name,email_address,access_token_enc,refresh_token_enc,expires_at,meta,updated_at,created_at")
-            .eq("user_id", userId)
-        ).data || [];
+    const { data: integrationsAll = [] } = await supabase
+      .from("integrations")
+      .select("provider,source,product,status,resource_id,access_token_enc,expires_at,meta,updated_at,created_at")
+      .eq("user_id", userId);
 
     // Legacy table (older installs) used by some utilities (keep best-effort).
-    const integrationsLegacyAll = Array.isArray(preload?.integrationsLegacy)
-      ? preload.integrationsLegacy
-      : (
-          await supabase
-            .from("integrations_statistiques")
-            .select("provider,source,product,status,resource_id,updated_at,created_at")
-            .eq("user_id", userId)
-        ).data || [];
+    const { data: integrationsLegacyAll = [] } = await supabase
+      .from("integrations_statistiques")
+      .select("provider,source,product,status,resource_id,updated_at,created_at")
+      .eq("user_id", userId);
 
     function latestIntegrationAny(provider: string, source: string, product: string) {
       const rows = (Array.isArray(integrationsAll) ? integrationsAll : []).filter((row) => {
@@ -452,37 +382,32 @@ export async function buildStatsOverview(args: {
 
 
 // Ownership du site iNrCy : utile pour l'UI (rented => connexion globale "Suivi")
-const profileRow = preload?.profile ?? (
-  await supabase
-    .from("profiles")
-    .select("inrcy_site_ownership")
-    .eq("user_id", userId)
-    .maybeSingle()
-).data;
+const { data: profileRow } = await supabase
+  .from("profiles")
+  .select("inrcy_site_ownership")
+  .eq("user_id", userId)
+  .maybeSingle();
 
 const inrcySiteOwnership = String(asRecord(profileRow)["inrcy_site_ownership"] ?? "none");
 const hasInrcySite = hasActiveInrcySite(inrcySiteOwnership);
 
+    
 // Load settings from the new schema:
 // - site_inrcy -> inrcy_site_configs.settings
 // - site_web -> pro_tools_configs.settings.site_web
-const inrcyCfgData = preload?.inrcySiteConfig ?? (
-  await supabase.from("inrcy_site_configs").select("site_url,settings").eq("user_id", userId).maybeSingle()
-).data;
-const proCfgData = preload?.proToolsConfig ?? (
-  await supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle()
-).data;
-const businessProfileData = preload?.businessProfile ?? (
-  await supabase.from("business_profiles").select("sector").eq("user_id", userId).maybeSingle()
-).data;
+const [inrcyCfgRes, proCfgRes, businessProfileRes] = await Promise.all([
+  supabase.from("inrcy_site_configs").select("site_url,settings").eq("user_id", userId).maybeSingle(),
+  supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
+  supabase.from("business_profiles").select("sector").eq("user_id", userId).maybeSingle(),
+]);
 
 // NOTE: SiteSettings has only optional fields, so an empty object is a valid fallback.
 // Using `null` breaks TS in production builds (null not assignable to SiteSettings).
-const inrcySettings = safeJsonParse<SiteSettings>(asRecord(inrcyCfgData)["settings"], {});
-const proSettings = safeJsonParse<Record<string, unknown>>(asRecord(proCfgData)["settings"], {});
+const inrcySettings = safeJsonParse<SiteSettings>(asRecord(inrcyCfgRes.data)["settings"], {});
+const proSettings = safeJsonParse<Record<string, unknown>>(asRecord(proCfgRes.data)["settings"], {});
 
 
-const rawBusinessSector = String(asRecord(businessProfileData)["sector"] ?? "").trim();
+const rawBusinessSector = String(asRecord(businessProfileRes.data)["sector"] ?? "").trim();
 const decodedBusinessSector = decodeBusinessSector(rawBusinessSector);
 
 // Flag: en mode rented, on peut couper uniquement la couche iNrCy (sans débrancher GA4/GSC)
@@ -498,14 +423,7 @@ const inrcyTrackingEnabled = Boolean(asRecord(inrcySettings)["inrcy_tracking_ena
 // Use the same direct DB resolution path as /api/integrations/channel-states.
 // The preloaded snapshot used here could diverge from the live dashboard state and
 // make iNrStats show only one site as connected when both bubbles were green.
-const channelStatesPromise: Promise<ChannelStates> = preload?.channelStates
-  ? Promise.resolve(preload.channelStates)
-  : getChannelConnectionStates(supabase, userId, {
-      profile: profileRow,
-      inrcySiteConfig: inrcyCfgData,
-      proToolsConfig: proCfgData,
-      integrations: Array.isArray(integrationsAll) ? integrationsAll : [],
-    });
+const channelStatesPromise = getChannelConnectionStates(supabase, userId);
 
 async function fetchLiveSourcesStatus() {
   const states = await channelStatesPromise;
@@ -572,7 +490,7 @@ async function buildConnectionsKey() {
     const webGa4Cfg = asRecord(proSiteWebCfg["ga4"]);
     const webGscCfg = asRecord(proSiteWebCfg["gsc"]);
     keyParts.push(`profile:ownership=${inrcySiteOwnership}`);
-    keyParts.push(`inrcy:site_url=${String(asRecord(inrcyCfgData)["site_url"] ?? "")}`);
+    keyParts.push(`inrcy:site_url=${String(asRecord(inrcyCfgRes.data)["site_url"] ?? "")}`);
     keyParts.push(`inrcy:ga4:${String(inrcyGa4Cfg["property_id"] ?? "")}:${String(inrcyGa4Cfg["measurement_id"] ?? "")}`);
     keyParts.push(`inrcy:gsc:${String(inrcyGscCfg["property"] ?? "")}`);
     keyParts.push(`site_web:ga4:${String(webGa4Cfg["property_id"] ?? "")}:${String(webGa4Cfg["measurement_id"] ?? "")}`);
