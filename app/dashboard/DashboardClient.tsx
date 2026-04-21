@@ -1373,6 +1373,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
   const refreshTimersRef = useRef<number[]>([]);
   const lastGeneratorRefreshAtRef = useRef(0);
+  const lastBackgroundGeneratorSyncAtRef = useRef(0);
+  const backgroundGeneratorRefreshPromiseRef = useRef<Promise<void> | null>(null);
   const lastServerCacheCheckAtRef = useRef(0);
   const serverCacheCheckPromiseRef = useRef<Promise<void> | null>(null);
 
@@ -1541,10 +1543,45 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     return { syncAt, bootstrapSnapshotDate };
   }, [applyBootstrapChannelStates, notifyStatsRefresh]);
 
+  const runDeferredGeneratorRefresh = useCallback((reason: DailyStatsRefreshReason) => {
+    if (backgroundGeneratorRefreshPromiseRef.current) {
+      return backgroundGeneratorRefreshPromiseRef.current;
+    }
+
+    const job = (async () => {
+      try {
+        const bootstrap = await runDailyStatsRefreshBootstrap({
+          reason,
+          force: true,
+        });
+        applyBootstrapRefresh(bootstrap);
+
+        if (!bootstrap?.ran) {
+          await syncFromServerCacheIfNeeded(true);
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        lastBackgroundGeneratorSyncAtRef.current = Date.now();
+        backgroundGeneratorRefreshPromiseRef.current = null;
+      }
+    })();
+
+    backgroundGeneratorRefreshPromiseRef.current = job;
+    return job;
+  }, [applyBootstrapRefresh, syncFromServerCacheIfNeeded]);
+
   const runUnifiedGeneratorRefresh = useCallback(async (reason: DailyStatsRefreshReason) => {
     const syncAt = Date.now();
     lastGeneratorRefreshAtRef.current = syncAt;
     clearScheduledGeneratorRefreshes();
+
+    if (reason === "channel_change") {
+      setKpisLoading(false);
+      void runDeferredGeneratorRefresh(reason);
+      return;
+    }
+
     setKpisLoading(true);
 
     try {
@@ -1562,7 +1599,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     } finally {
       setKpisLoading(false);
     }
-  }, [applyBootstrapRefresh, clearScheduledGeneratorRefreshes, syncFromServerCacheIfNeeded]);
+  }, [applyBootstrapRefresh, clearScheduledGeneratorRefreshes, runDeferredGeneratorRefresh, syncFromServerCacheIfNeeded]);
 
   const triggerGeneratorRefresh = useCallback(async () => {
     await runUnifiedGeneratorRefresh("channel_change");
@@ -1591,7 +1628,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       }
 
       if (detail.field === "stats_version") {
-        void triggerGeneratorRefresh();
+        void syncFromServerCacheIfNeeded(true);
       }
     };
 
@@ -1599,7 +1636,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     return () => {
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
-  }, [refreshNotifications, refreshUiBalance, triggerGeneratorRefresh]);
+  }, [refreshNotifications, refreshUiBalance, syncFromServerCacheIfNeeded]);
 
   // ✅ Auto-refresh Générateur + statuts modules dès qu'un module se connecte / se déconnecte
   // On écoute les changements Postgres sur les tables qui impactent:
@@ -1619,6 +1656,11 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       t = window.setTimeout(() => {
         if (disposed) return;
         if (Date.now() - lastGeneratorRefreshAtRef.current < 2500) return;
+        const preferCacheSync = !!backgroundGeneratorRefreshPromiseRef.current || (Date.now() - lastBackgroundGeneratorSyncAtRef.current < 15_000);
+        if (preferCacheSync) {
+          void syncFromServerCacheIfNeeded(true);
+          return;
+        }
         triggerGeneratorRefresh();
       }, 500);
     };
@@ -1655,7 +1697,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         supabase.removeChannel(ch);
       } catch {}
     };
-  }, [clearScheduledGeneratorRefreshes, triggerGeneratorRefresh]);
+  }, [clearScheduledGeneratorRefreshes, syncFromServerCacheIfNeeded, triggerGeneratorRefresh]);
 
   useEffect(() => {
     const linked = searchParams.get("linked");

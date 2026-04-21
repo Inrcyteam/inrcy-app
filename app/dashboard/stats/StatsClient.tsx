@@ -1940,14 +1940,14 @@ useEffect(() => {
     const handleProfileVersionChange = (event: Event) => {
       const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
       if (detail?.field !== "stats_version") return;
-      triggerRefresh("channels");
+      void syncFromServerCacheIfNeeded(true);
     };
 
     window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     return () => {
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
-  }, [triggerRefresh]);
+  }, [syncFromServerCacheIfNeeded]);
 
   useEffect(() => {
     if (!dailyBootReady) return;
