@@ -3066,9 +3066,13 @@
   .tableWrap{
     flex: 1 1 auto !important;
     min-height: 0 !important;
-    overflow: hidden !important;
-    max-height: none !important;
-    height: auto !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
   }
 
   .crmBoardCard .table{

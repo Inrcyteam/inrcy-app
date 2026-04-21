@@ -6,11 +6,11 @@
 }
 
 .page {
-  height: auto;
+  height: 100vh;
   min-height: 100vh;
   padding: 18px 18px 40px;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: hidden;
   background:
     radial-gradient(900px 520px at 12% 8%, rgba(56, 189, 248, 0.18), transparent 62%),
     radial-gradient(900px 520px at 90% 12%, rgba(167, 139, 250, 0.18), transparent 62%),
@@ -353,10 +353,10 @@
    This prevents the bottom of iNr'Send from being clipped while preserving the module layout. */
 @media (min-width: 981px) {
   .page {
-    height: auto;
+    height: 100vh;
     min-height: 100vh;
     overflow-x: hidden;
-    overflow-y: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
   }
 }
@@ -589,6 +589,7 @@
 .listCard {
   min-height: 0;
   max-height: none;
+  flex: 1 1 auto;
 }
 
 .cardHeader {
@@ -625,6 +626,44 @@
   .scrollArea {
     padding-right: 10px; /* réserve visuellement une marge équivalente */
   }
+}
+
+.listFooter {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px 14px;
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: rgba(10, 14, 33, 0.74);
+  backdrop-filter: blur(10px);
+}
+
+.listFooterMeta {
+  color: rgba(255,255,255,0.68);
+  font-size: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.listFooterPager {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
+.listFooterPagerRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.listFooterPageText {
+  color: rgba(255,255,255,0.82);
+  font-size: 12px;
 }
 
 /* ✅ NOUVEAU : zone “Charger plus” fixe en bas du cadre */
@@ -681,32 +720,43 @@
 }
 
 /* List items */
-.list { display: grid; }
+.list {
+  display: grid;
+  position: relative;
+  isolation: isolate;
+}
 
 .listHeader {
   position: sticky;
   top: 0;
-  z-index: 2;
-  padding: 10px 14px 10px;
+  z-index: 20;
+  padding: 0;
   background: transparent;
+  overflow: hidden;
+}
+
+.listHeader::before {
+  display: none;
 }
 
 .listHeaderGrid {
+  position: relative;
+  z-index: 1;
   display: grid;
   align-items: center;
   gap: 10px;
-  min-height: 38px;
-  padding: 0 14px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(43,57,111,0.82), rgba(22,30,72,0.88) 48%, rgba(71,46,114,0.78));
-  border: 1px solid rgba(255,255,255,0.10);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 24px rgba(0,0,0,0.16);
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgb(43,57,111), rgb(22,30,72) 48%, rgb(71,46,114));
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 24px rgba(0,0,0,0.14), 0 12px 28px rgba(0,0,0,0.16);
   transition: box-shadow .18s ease, border-color .18s ease, transform .18s ease, background .18s ease;
 }
 
 .listHeaderGrid:hover {
   border-color: rgba(167,139,250,0.34);
-  background: linear-gradient(135deg, rgba(56,189,248,0.22), rgba(43,57,111,0.9) 36%, rgba(71,46,114,0.9) 72%, rgba(244,114,182,0.18));
+  background: linear-gradient(135deg, rgba(56,189,248,0.26), rgba(43,57,111,1) 36%, rgba(71,46,114,1) 72%, rgba(244,114,182,0.22));
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.10),
     0 0 0 1px rgba(255,255,255,0.03),

@@ -12,7 +12,7 @@ import { decideAction, type DecisionResult } from "@/lib/decision/decisionEngine
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { readAccountCacheValue, removeAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently } from "@/lib/dailyStatsRefreshClient";
+import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -1382,12 +1382,23 @@ export default function StatsClient() {
   // ✅ Période globale (7j / 30j) pour éviter un mix incohérent entre blocs.
   const period: Period = 30;
 
-  const [dataByCube, setDataByCube] = useState<Record<CubeKey, { ov: Overview | null; loading: boolean; error?: string }>>(() => getInitialDataByCube(period));
+  const [dataByCube, setDataByCube] = useState<Record<CubeKey, { ov: Overview | null; loading: boolean; error?: string }>>(emptyCubeState);
 
-  const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>(() => getInitialSummaryOpp(period));
-  const [summaryProfile, setSummaryProfile] = useState<{ lead_conversion_rate: number; avg_basket: number }>(() => getInitialSummaryProfile(period));
-  const [summaryEstimatedByCube, setSummaryEstimatedByCube] = useState<Record<CubeKey, number>>(() => getInitialSummaryEstimatedByCube(period));
-  const [summaryHydrated, setSummaryHydrated] = useState(() => hasInitialSummarySnapshot(period));
+  const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>({
+    loading: true,
+    total: 0,
+    byCube: { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0 },
+  });
+  const [summaryProfile, setSummaryProfile] = useState<{ lead_conversion_rate: number; avg_basket: number }>({ lead_conversion_rate: 0, avg_basket: 0 });
+  const [summaryEstimatedByCube, setSummaryEstimatedByCube] = useState<Record<CubeKey, number>>({
+    site_inrcy: 0,
+    site_web: 0,
+    gmb: 0,
+    facebook: 0,
+    instagram: 0,
+    linkedin: 0,
+  });
+  const [summaryHydrated, setSummaryHydrated] = useState(false);
   const [summaryActionsOpen, setSummaryActionsOpen] = useState(false);
   const [dailyBootReady, setDailyBootReady] = useState(false);
 
@@ -1465,23 +1476,176 @@ export default function StatsClient() {
     setRefreshNonce((prev) => prev + 1);
   }, [clearCachedSnapshots]);
 
+  const applyBulkPayload = useCallback((targetPeriod: Period, next: BulkFetchResult, syncedAt: number) => {
+    const snap = next.overviews as Record<CubeKey, Overview>;
+    periodCacheRef.current.set(targetPeriod, snap);
+    try {
+      writeUiCacheValue(cubeSessionKey(targetPeriod), JSON.stringify({ syncedAt, snapshotDate: next.snapshotDate, overviews: snap }));
+      writeUiCacheValue(
+        summarySessionKey(targetPeriod),
+        JSON.stringify({
+          syncedAt,
+          snapshotDate: next.snapshotDate,
+          ...next.summary,
+          profile: next.profile,
+          estimatedByCube: next.estimatedByCube,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+
+    if (targetPeriod !== period) return;
+
+    setDataByCube((prev) => {
+      const updated: any = { ...prev };
+      for (const k of Object.keys(snap) as CubeKey[]) {
+        updated[k] = { ov: snap[k] ?? null, loading: false, error: undefined };
+      }
+      return updated;
+    });
+    setSummaryHydrated(true);
+    setSummaryOpp({ loading: false, total: next.summary.total, byCube: next.summary.byCube });
+    setSummaryProfile(next.profile);
+    setSummaryEstimatedByCube(next.estimatedByCube);
+    setLastRefreshAt(Date.now());
+    setIsRefreshing(false);
+  }, [period]);
+
+  const applyBootstrapPayload = useCallback((bootstrap: DailyStatsRefreshBootstrapResponse) => {
+    const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
+    const bootstrapSnapshotDate = typeof bootstrap?.snapshotDate === "string"
+      ? bootstrap.snapshotDate
+      : expectedUiSnapshotDate();
+
+    markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+
+    if (!bootstrap?.ran) {
+      return { syncAt, bootstrapSnapshotDate };
+    }
+
+    const generator = bootstrap.generator;
+
+    if (generator) {
+      const oppMonth = Number(generator?.details?.opportunities?.month);
+      if (Number.isFinite(oppMonth)) {
+        try {
+          writeUiCacheValue("inrcy_opp30_total_v1", String(oppMonth));
+        } catch {
+          // ignore
+        }
+      }
+
+      try {
+        const generatorSnapshotDate = typeof generator?.meta?.snapshotDate === "string"
+          ? generator.meta.snapshotDate
+          : bootstrapSnapshotDate ?? null;
+        writeUiCacheValue(
+          "inrcy_generator_kpis_v1",
+          JSON.stringify({ syncedAt: syncAt, snapshotDate: generatorSnapshotDate, payload: generator })
+        );
+      } catch {
+        // ignore
+      }
+    }
+
+    for (const [periodKey, payload] of Object.entries(bootstrap.inrstats || {})) {
+      const targetPeriod = Number(periodKey) as Period;
+      const overviews = (payload?.overviews || {}) as Partial<Record<CubeKey, Overview>>;
+      const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
+        ? payload.meta.snapshotDate
+        : getOverviewSnapshotDate(overviews) || bootstrapSnapshotDate || null;
+      const next: BulkFetchResult = {
+        overviews,
+        summary: {
+          total: safeNum(payload?.opportunities?.total),
+          byCube: {
+            site_inrcy: safeNum(payload?.opportunities?.byCube?.site_inrcy),
+            site_web: safeNum(payload?.opportunities?.byCube?.site_web),
+            gmb: safeNum(payload?.opportunities?.byCube?.gmb),
+            facebook: safeNum(payload?.opportunities?.byCube?.facebook),
+            instagram: safeNum(payload?.opportunities?.byCube?.instagram),
+            linkedin: safeNum(payload?.opportunities?.byCube?.linkedin),
+          },
+        },
+        profile: {
+          lead_conversion_rate: safeNum(payload?.profile?.lead_conversion_rate),
+          avg_basket: safeNum(payload?.profile?.avg_basket),
+        },
+        estimatedByCube: {
+          site_inrcy: safeNum(payload?.estimatedByCube?.site_inrcy),
+          site_web: safeNum(payload?.estimatedByCube?.site_web),
+          gmb: safeNum(payload?.estimatedByCube?.gmb),
+          facebook: safeNum(payload?.estimatedByCube?.facebook),
+          instagram: safeNum(payload?.estimatedByCube?.instagram),
+          linkedin: safeNum(payload?.estimatedByCube?.linkedin),
+        },
+        snapshotDate: payloadSnapshotDate ?? null,
+      };
+      applyBulkPayload(targetPeriod, next, syncAt);
+    }
+
+    return { syncAt, bootstrapSnapshotDate };
+  }, [applyBulkPayload]);
+
+  const syncFromServerCacheIfNeeded = useCallback(async (force = false) => {
+    if (typeof window === "undefined") return;
+    const now = Date.now();
+    const snapshotDate = expectedUiSnapshotDate();
+    if (!force) {
+      if (now - lastServerCacheCheckAtRef.current < 60_000) return;
+      if (wasServerCacheSyncCheckedRecently("stats", { snapshotDate })) return;
+    }
+    if (serverCacheCheckPromiseRef.current) {
+      await serverCacheCheckPromiseRef.current;
+      return;
+    }
+
+    const job = (async () => {
+      lastServerCacheCheckAtRef.current = now;
+      try {
+        const res = await fetch("/api/dashboard/cache-status", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json().catch(() => null);
+        const periodsToRefresh = ([7, 30] as Period[])
+          .map((days) => ({ days, syncedAt: Number(json?.inrstats?.[days] ?? json?.inrstats?.[String(days)] ?? 0) }))
+          .filter((item) => item.syncedAt > getLocalPeriodSyncAt(item.days));
+
+        for (const item of periodsToRefresh) {
+          const next = await fetchBulkStats(item.days, false);
+          applyBulkPayload(item.days, next, item.syncedAt);
+        }
+        markServerCacheSyncChecked("stats", { snapshotDate, checkedAt: Date.now() });
+      } catch {
+        // ignore lightweight sync errors
+      }
+    })();
+
+    serverCacheCheckPromiseRef.current = job;
+    try {
+      await job;
+    } finally {
+      serverCacheCheckPromiseRef.current = null;
+    }
+  }, [applyBulkPayload]);
+
   const handleSharedStatsRefresh = useCallback(async () => {
     setIsRefreshing(true);
     setLastRefreshAt(Date.now());
 
     try {
       const bootstrap = await runDailyStatsRefreshBootstrap();
-      const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
-      const bootstrapSnapshotDate = typeof bootstrap?.snapshotDate === "string"
-        ? bootstrap.snapshotDate
-        : expectedUiSnapshotDate();
-      markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+      applyBootstrapPayload(bootstrap);
+
+      if (!bootstrap?.ran) {
+        await syncFromServerCacheIfNeeded(true);
+      }
     } catch (error) {
       console.error(error);
+    } finally {
+      setIsRefreshing(false);
     }
-
-    triggerRefresh("manual");
-  }, [triggerRefresh]);
+  }, [applyBootstrapPayload, syncFromServerCacheIfNeeded]);
 
 
 
@@ -1534,83 +1698,6 @@ export default function StatsClient() {
     return true;
   }, []);
 
-
-  const applyBulkPayload = useCallback((targetPeriod: Period, next: BulkFetchResult, syncedAt: number) => {
-    const snap = next.overviews as Record<CubeKey, Overview>;
-    periodCacheRef.current.set(targetPeriod, snap);
-    try {
-      writeUiCacheValue(cubeSessionKey(targetPeriod), JSON.stringify({ syncedAt, snapshotDate: next.snapshotDate, overviews: snap }));
-      writeUiCacheValue(
-        summarySessionKey(targetPeriod),
-        JSON.stringify({
-          syncedAt,
-          snapshotDate: next.snapshotDate,
-          ...next.summary,
-          profile: next.profile,
-          estimatedByCube: next.estimatedByCube,
-        }),
-      );
-    } catch {
-      // ignore
-    }
-
-    if (targetPeriod !== period) return;
-
-    setDataByCube((prev) => {
-      const updated: any = { ...prev };
-      for (const k of Object.keys(snap) as CubeKey[]) {
-        updated[k] = { ov: snap[k] ?? null, loading: false, error: undefined };
-      }
-      return updated;
-    });
-    setSummaryHydrated(true);
-    setSummaryOpp({ loading: false, total: next.summary.total, byCube: next.summary.byCube });
-    setSummaryProfile(next.profile);
-    setSummaryEstimatedByCube(next.estimatedByCube);
-    setLastRefreshAt(Date.now());
-    setIsRefreshing(false);
-  }, [period]);
-
-  const syncFromServerCacheIfNeeded = useCallback(async (force = false) => {
-    if (typeof window === "undefined") return;
-    const now = Date.now();
-    const snapshotDate = expectedUiSnapshotDate();
-    if (!force) {
-      if (now - lastServerCacheCheckAtRef.current < 60_000) return;
-      if (wasServerCacheSyncCheckedRecently("stats", { snapshotDate })) return;
-    }
-    if (serverCacheCheckPromiseRef.current) {
-      await serverCacheCheckPromiseRef.current;
-      return;
-    }
-
-    const job = (async () => {
-      lastServerCacheCheckAtRef.current = now;
-      try {
-        const res = await fetch("/api/dashboard/cache-status", { cache: "no-store" });
-        if (!res.ok) return;
-        const json = await res.json().catch(() => null);
-        const periodsToRefresh = ([7, 30] as Period[])
-          .map((days) => ({ days, syncedAt: Number(json?.inrstats?.[days] ?? json?.inrstats?.[String(days)] ?? 0) }))
-          .filter((item) => item.syncedAt > getLocalPeriodSyncAt(item.days));
-
-        for (const item of periodsToRefresh) {
-          const next = await fetchBulkStats(item.days, false);
-          applyBulkPayload(item.days, next, item.syncedAt);
-        }
-        markServerCacheSyncChecked("stats", { snapshotDate, checkedAt: Date.now() });
-      } catch {
-        // ignore lightweight sync errors
-      }
-    })();
-
-    serverCacheCheckPromiseRef.current = job;
-    try {
-      await job;
-    } finally {
-      serverCacheCheckPromiseRef.current = null;
-    }
-  }, [applyBulkPayload]);
 
   const fetchBulkStats = async (period: Period, forceFresh = false): Promise<BulkFetchResult> => {
     const params = new URLSearchParams({ days: String(period) });
@@ -1678,72 +1765,9 @@ export default function StatsClient() {
         const bootstrap = await runDailyStatsRefreshBootstrap();
         if (cancelled) return;
 
-        const syncAt = Number.isFinite(Number(bootstrap.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
-        const bootstrapSnapshotDate = typeof bootstrap.snapshotDate === "string" ? bootstrap.snapshotDate : snapshotDate;
-        markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+        applyBootstrapPayload(bootstrap);
 
-        if (bootstrap.ran) {
-          const generator = bootstrap.generator;
-
-          if (generator) {
-            const oppMonth = Number(generator?.details?.opportunities?.month);
-            if (Number.isFinite(oppMonth)) {
-              try {
-                writeUiCacheValue("inrcy_opp30_total_v1", String(oppMonth));
-              } catch {
-                // ignore
-              }
-            }
-
-            try {
-              const generatorSnapshotDate = typeof generator?.meta?.snapshotDate === "string"
-                ? generator.meta.snapshotDate
-                : bootstrapSnapshotDate ?? null;
-              writeUiCacheValue(
-                "inrcy_generator_kpis_v1",
-                JSON.stringify({ syncedAt: syncAt, snapshotDate: generatorSnapshotDate, payload: generator })
-              );
-            } catch {
-              // ignore
-            }
-          }
-
-          for (const [periodKey, payload] of Object.entries(bootstrap.inrstats || {})) {
-            const targetPeriod = Number(periodKey) as Period;
-            const overviews = (payload?.overviews || {}) as Partial<Record<CubeKey, Overview>>;
-            const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
-              ? payload.meta.snapshotDate
-              : getOverviewSnapshotDate(overviews) || bootstrapSnapshotDate || null;
-            const next: BulkFetchResult = {
-              overviews,
-              summary: {
-                total: safeNum(payload?.opportunities?.total),
-                byCube: {
-                  site_inrcy: safeNum(payload?.opportunities?.byCube?.site_inrcy),
-                  site_web: safeNum(payload?.opportunities?.byCube?.site_web),
-                  gmb: safeNum(payload?.opportunities?.byCube?.gmb),
-                  facebook: safeNum(payload?.opportunities?.byCube?.facebook),
-                  instagram: safeNum(payload?.opportunities?.byCube?.instagram),
-                  linkedin: safeNum(payload?.opportunities?.byCube?.linkedin),
-                },
-              },
-              profile: {
-                lead_conversion_rate: safeNum(payload?.profile?.lead_conversion_rate),
-                avg_basket: safeNum(payload?.profile?.avg_basket),
-              },
-              estimatedByCube: {
-                site_inrcy: safeNum(payload?.estimatedByCube?.site_inrcy),
-                site_web: safeNum(payload?.estimatedByCube?.site_web),
-                gmb: safeNum(payload?.estimatedByCube?.gmb),
-                facebook: safeNum(payload?.estimatedByCube?.facebook),
-                instagram: safeNum(payload?.estimatedByCube?.instagram),
-                linkedin: safeNum(payload?.estimatedByCube?.linkedin),
-              },
-              snapshotDate: payloadSnapshotDate ?? null,
-            };
-            applyBulkPayload(targetPeriod, next, syncAt);
-          }
-        } else if (!hasFreshLocalStats) {
+        if (!bootstrap.ran && !hasFreshLocalStats) {
           await syncFromServerCacheIfNeeded(true);
         }
       } catch (error) {
@@ -1756,7 +1780,7 @@ export default function StatsClient() {
     return () => {
       cancelled = true;
     };
-  }, [applyBulkPayload, hydrateFromSessionCache, period, syncFromServerCacheIfNeeded]);
+  }, [applyBootstrapPayload, hydrateFromSessionCache, period, syncFromServerCacheIfNeeded]);
 
   useEffect(() => {
     if (!dailyBootReady) return;

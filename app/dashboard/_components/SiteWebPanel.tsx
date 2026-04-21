@@ -14,18 +14,21 @@ export default function SiteWebPanel(props: any) {
     setSiteWebUrl,
     saveSiteWebUrl,
     deleteSiteWebUrl,
+    siteWebUrlBusy,
     draftSiteWebUrlMeta,
     siteWebUrlNotice,
     siteWebGa4Connected,
     siteWebGa4MeasurementId,
     siteWebGa4PropertyId,
     disconnectSiteWebGa4,
+    siteWebGa4Busy,
     connectSiteWebGa4,
     canConnectSiteWebGoogle,
     siteWebGa4Notice,
     siteWebGscConnected,
     siteWebGscProperty,
     disconnectSiteWebGsc,
+    siteWebGscBusy,
     connectSiteWebGsc,
     siteWebGscNotice,
     siteWebActusLayout,
@@ -122,7 +125,8 @@ export default function SiteWebPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-              onClick={deleteSiteWebUrl}
+              onClick={() => void deleteSiteWebUrl()}
+              disabled={siteWebUrlBusy}
               title="Supprimer le lien"
               aria-label="Supprimer le lien"
               style={{ minWidth: 44, paddingInline: 0, fontSize: 22, fontWeight: 900, lineHeight: 1 }}
@@ -133,7 +137,8 @@ export default function SiteWebPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.iconBtn}`}
-              onClick={saveSiteWebUrl}
+              onClick={() => void saveSiteWebUrl()}
+              disabled={siteWebUrlBusy}
               title="Enregistrer le lien"
               aria-label="Enregistrer le lien"
             >
@@ -217,10 +222,11 @@ export default function SiteWebPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-              onClick={disconnectSiteWebGa4}
+              onClick={() => void disconnectSiteWebGa4()}
+              disabled={siteWebGa4Busy}
               title="Déconnecter (GA4)"
             >
-              Déconnecter
+              {siteWebGa4Busy ? "Déconnexion..." : "Déconnecter"}
             </button>
           ) : (
             <button
@@ -281,10 +287,11 @@ export default function SiteWebPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-              onClick={disconnectSiteWebGsc}
+              onClick={() => void disconnectSiteWebGsc()}
+              disabled={siteWebGscBusy}
               title="Déconnecter (GSC)"
             >
-              Déconnecter
+              {siteWebGscBusy ? "Déconnexion..." : "Déconnecter"}
             </button>
           ) : (
             <button

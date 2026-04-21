@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
 import StatusMessage from "./StatusMessage";
@@ -26,20 +26,10 @@ export default function GoogleBusinessPanel(props: any) {
     gmbUrl,
     gmbUrlNotice,
     gmbUrlError,
-    disconnectGmbBusiness
+    disconnectGmbBusiness,
+    gmbAccountBusy,
+    gmbLocationBusy,
   } = props;
-
-  const [locationPendingState, setLocationPendingState] = useState<null | "connect" | "disconnect">(null);
-
-  useEffect(() => {
-    if (locationPendingState === "connect" && gmbConfigured) {
-      setLocationPendingState(null);
-      return;
-    }
-    if (locationPendingState === "disconnect" && !gmbConfigured) {
-      setLocationPendingState(null);
-    }
-  }, [locationPendingState, gmbConfigured]);
 
   const hasSelectedLocationInList = Boolean(
     gmbLocationName && gmbLocations.some((l: { name: string; title?: string | null }) => l.name === gmbLocationName)
@@ -51,13 +41,11 @@ export default function GoogleBusinessPanel(props: any) {
   }, [gmbLocations, gmbLocationName, gmbLocationLabel, gmbUrl]);
 
   const handleLocationConnect = () => {
-    setLocationPendingState("connect");
-    saveGmbLocation();
+    void saveGmbLocation();
   };
 
   const handleLocationDisconnect = () => {
-    setLocationPendingState("disconnect");
-    disconnectGmbBusiness();
+    void disconnectGmbBusiness();
   };
 
   return (
@@ -130,8 +118,8 @@ export default function GoogleBusinessPanel(props: any) {
           />
 
           {gmbAccountConnected ? (
-            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectGmbAccount}>
-              Déconnexion
+            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectGmbAccount()} disabled={gmbAccountBusy}>
+              {gmbAccountBusy ? "Déconnexion..." : "Déconnexion"}
             </button>
           ) : (
             <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectGmbAccount}>
@@ -163,7 +151,7 @@ export default function GoogleBusinessPanel(props: any) {
               type="button"
               className={`${styles.actionBtn} ${styles.secondaryBtn}`}
               onClick={() => loadGmbAccountsAndLocations()}
-              disabled={gmbLoadingList}
+              disabled={gmbLoadingList || gmbLocationBusy}
             >
               {gmbLoadingList ? "Chargement..." : "Charger mes établissements"}
             </button>
@@ -171,6 +159,7 @@ export default function GoogleBusinessPanel(props: any) {
             <select
               value={gmbLocationName}
               onChange={(e) => setGmbLocationName(e.target.value)}
+              disabled={gmbLocationBusy}
               style={{
                 flex: "1 1 260px",
                 minWidth: 220,
@@ -196,9 +185,9 @@ export default function GoogleBusinessPanel(props: any) {
               type="button"
               className={`${styles.actionBtn} ${gmbConfigured ? styles.disconnectBtn : styles.connectBtn}`}
               onClick={gmbConfigured ? handleLocationDisconnect : handleLocationConnect}
-              disabled={!gmbLocationName}
+              disabled={!gmbLocationName || gmbLocationBusy}
             >
-              {gmbConfigured ? "Déconnecter l'établissement" : "Connecter l'établissement"}
+              {gmbLocationBusy ? (gmbConfigured ? "Déconnexion..." : "Connexion...") : (gmbConfigured ? "Déconnecter l'établissement" : "Connecter l'établissement")}
             </button>
           </div>
 
@@ -208,9 +197,9 @@ export default function GoogleBusinessPanel(props: any) {
             </div>
           ) : null}
 
-          {locationPendingState ? (
+          {gmbLocationBusy ? (
             <StatusMessage variant="success">
-              {locationPendingState === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
+              {gmbConfigured ? "Déconnexion en cours..." : "Connexion en cours..."}
             </StatusMessage>
           ) : null}
 

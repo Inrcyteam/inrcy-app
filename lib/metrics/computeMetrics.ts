@@ -551,14 +551,17 @@ export function invalidateOverviewCache(): void {
 
 async function resolveOverviewWithCache(key: string, loader: () => Promise<Overview | null>, bypassCache = false): Promise<Overview | null> {
   const now = Date.now();
+  const cached = overviewCache.get(key);
 
   if (!bypassCache) {
-    const cached = overviewCache.get(key);
     if (cached) {
       if (cached.value !== undefined && cached.expiresAt > now) return cached.value;
       if (cached.promise) return cached.promise;
     }
   } else {
+    // fresh=1 must ignore stale values, but concurrent fresh requests should still
+    // share the same in-flight promise instead of launching duplicate loaders.
+    if (cached?.promise) return cached.promise;
     overviewCache.delete(key);
   }
 

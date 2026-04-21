@@ -2990,9 +2990,9 @@ async function deleteDraftPermanently(id: string) {
       return;
     }
 
-    const tooBig = picked.find((file) => file.size > 2 * 1024 * 1024);
+    const tooBig = picked.find((file) => file.size > 8 * 1024 * 1024);
     if (tooBig) {
-      setDetailsActionError("Une image dépasse 2 Mo.");
+      setDetailsActionError("Une image dépasse 8 Mo.");
       return;
     }
 
@@ -3631,8 +3631,8 @@ async function deleteDraftPermanently(id: string) {
                 </div>
               )}
             </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px 14px", flexWrap: "wrap" }}>
-              <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, display: "grid", gap: 4 }}>
+            <div className={styles.listFooter}>
+              <div className={styles.listFooterMeta}>
                 <div>
                   {filteredItems.length > 0
                     ? (() => {
@@ -3650,8 +3650,8 @@ async function deleteDraftPermanently(id: string) {
                 {selectedBulkCount > 0 ? <div style={{ color: "rgba(196,181,253,0.95)" }}>{selectedBulkCount} élément{selectedBulkCount > 1 ? "s" : ""} sélectionné{selectedBulkCount > 1 ? "s" : ""} sur cette page.</div> : null}
                 {loading ? <div style={{ color: "rgba(125,211,252,0.92)" }}>Actualisation de la liste…</div> : null}
               </div>
-              <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div className={styles.listFooterPager}>
+                <div className={styles.listFooterPagerRow}>
                   <button
                     type="button"
                     className={styles.btnGhost}
@@ -3663,7 +3663,7 @@ async function deleteDraftPermanently(id: string) {
                   >
                     ← Précédent
                   </button>
-                  <div style={{ color: "rgba(255,255,255,0.82)", fontSize: 12 }}>
+                  <div className={styles.listFooterPageText}>
                     Page {historyPage}{historyTotalCount != null ? ` / ${historyPageCount}` : historyHasMorePotential ? " / …" : ""}
                   </div>
                   <button

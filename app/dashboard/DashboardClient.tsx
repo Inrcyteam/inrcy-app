@@ -33,7 +33,7 @@ import NotificationsSettingsContent from "./settings/_components/NotificationsSe
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
 import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently } from "@/lib/dailyStatsRefreshClient";
+import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
 import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
@@ -293,8 +293,41 @@ export default function DashboardClient() {
   const [kpis, setKpis] = useState<null | {
     leads: { today: number; week: number; month: number };
     estimatedValue: number;
-  }>(() => getInitialGeneratorKpis());
-  const [oppTotal, setOppTotal] = useState<number | null>(() => getInitialOppTotal());
+  }>(null);
+  const [oppTotal, setOppTotal] = useState<number | null>(null);
+  const [drawerMutationState, setDrawerMutationState] = useState<Record<string, boolean>>({});
+  const drawerMutationStateRef = useRef<Record<string, boolean>>({});
+
+  const setDrawerMutationBusy = useCallback((key: string, busy: boolean) => {
+    if (busy) {
+      drawerMutationStateRef.current = { ...drawerMutationStateRef.current, [key]: true };
+      setDrawerMutationState((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+      return;
+    }
+
+    if (!drawerMutationStateRef.current[key]) return;
+    const nextRef = { ...drawerMutationStateRef.current };
+    delete nextRef[key];
+    drawerMutationStateRef.current = nextRef;
+    setDrawerMutationState((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }, []);
+
+  const runDrawerMutation = useCallback(async <T,>(key: string, job: () => Promise<T> | T) => {
+    if (drawerMutationStateRef.current[key]) return null;
+    setDrawerMutationBusy(key, true);
+    try {
+      return await job();
+    } finally {
+      setDrawerMutationBusy(key, false);
+    }
+  }, [setDrawerMutationBusy]);
+
+  const isDrawerMutationPending = useCallback((key: string) => Boolean(drawerMutationState[key]), [drawerMutationState]);
 
   useBrowserLayoutEffect(() => {
     try {
@@ -1420,6 +1453,78 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     await runSync();
   }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshKpis, warmInrStatsUi]);
 
+  const applyBootstrapRefresh = useCallback((bootstrap: DailyStatsRefreshBootstrapResponse) => {
+    const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
+    const bootstrapSnapshotDate = typeof bootstrap?.snapshotDate === "string"
+      ? bootstrap.snapshotDate
+      : expectedUiSnapshotDate();
+
+    markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+
+    if (!bootstrap?.ran) {
+      return { syncAt, bootstrapSnapshotDate };
+    }
+
+    const generator = bootstrap.generator;
+
+    if (generator) {
+      setKpis(generator);
+      const oppMonth = Number(generator?.details?.opportunities?.month);
+      if (Number.isFinite(oppMonth)) {
+        setOppTotal(oppMonth);
+        try {
+          writeUiCacheValue("inrcy_opp30_total_v1", String(oppMonth));
+        } catch {
+          // ignore
+        }
+      }
+
+      try {
+        const generatorSnapshotDate = typeof generator?.meta?.snapshotDate === "string"
+          ? generator.meta.snapshotDate
+          : bootstrapSnapshotDate ?? null;
+        writeUiCacheValue(
+          "inrcy_generator_kpis_v1",
+          JSON.stringify({ syncedAt: syncAt, snapshotDate: generatorSnapshotDate, payload: generator })
+        );
+      } catch {
+        // ignore
+      }
+    }
+
+    for (const [periodKey, payload] of Object.entries(bootstrap.inrstats || {})) {
+      const days = Number(periodKey) as StatsWarmPeriod;
+      if (![7, 30].includes(days)) continue;
+      const overviews = payload?.overviews;
+      if (!overviews || typeof overviews !== "object") continue;
+      const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
+        ? payload.meta.snapshotDate
+        : getOverviewSnapshotDate(overviews) || bootstrapSnapshotDate || null;
+
+      try {
+        writeUiCacheValue(
+          statsCubeSessionKey(days),
+          JSON.stringify({ syncedAt: syncAt, snapshotDate: payloadSnapshotDate, overviews })
+        );
+        writeUiCacheValue(
+          statsSummarySessionKey(days),
+          JSON.stringify({
+            syncedAt: syncAt,
+            snapshotDate: payloadSnapshotDate,
+            total: Number(payload?.opportunities?.total ?? 0),
+            byCube: payload?.opportunities?.byCube ?? {},
+            profile: payload?.profile ?? {},
+            estimatedByCube: payload?.estimatedByCube ?? {},
+          })
+        );
+      } catch {
+        // ignore
+      }
+    }
+
+    notifyStatsRefresh(syncAt);
+    return { syncAt, bootstrapSnapshotDate };
+  }, [notifyStatsRefresh]);
 
   const handleSharedGeneratorRefresh = useCallback(async () => {
     if (kpisLoading) return;
@@ -1427,17 +1532,18 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
     try {
       const bootstrap = await runDailyStatsRefreshBootstrap();
-      const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
-      const bootstrapSnapshotDate = typeof bootstrap?.snapshotDate === "string"
-        ? bootstrap.snapshotDate
-        : expectedUiSnapshotDate();
-      markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+      applyBootstrapRefresh(bootstrap);
+      await loadSiteInrcy();
+
+      if (!bootstrap?.ran) {
+        await syncFromServerCacheIfNeeded(true);
+      }
     } catch (error) {
       console.error(error);
+    } finally {
+      setKpisLoading(false);
     }
-
-    await triggerGeneratorRefresh();
-  }, [kpisLoading, triggerGeneratorRefresh]);
+  }, [applyBootstrapRefresh, kpisLoading, loadSiteInrcy, syncFromServerCacheIfNeeded]);
 
 
 
@@ -2982,70 +3088,9 @@ const checkActivity = useCallback(async () => {
         const bootstrap = await runDailyStatsRefreshBootstrap();
         if (cancelled) return;
 
-        const syncAt = Number.isFinite(Number(bootstrap.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
-        const bootstrapSnapshotDate = typeof bootstrap.snapshotDate === "string" ? bootstrap.snapshotDate : snapshotDate;
-        markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+        applyBootstrapRefresh(bootstrap);
 
-        if (bootstrap.ran) {
-          const generator = bootstrap.generator;
-
-          if (generator) {
-            setKpis(generator);
-            const oppMonth = Number(generator?.details?.opportunities?.month);
-            if (Number.isFinite(oppMonth)) {
-              setOppTotal(oppMonth);
-              try {
-                writeUiCacheValue("inrcy_opp30_total_v1", String(oppMonth));
-              } catch {
-                // ignore
-              }
-            }
-
-            try {
-              const generatorSnapshotDate = typeof generator?.meta?.snapshotDate === "string"
-                ? generator.meta.snapshotDate
-                : bootstrapSnapshotDate ?? null;
-              writeUiCacheValue(
-                "inrcy_generator_kpis_v1",
-                JSON.stringify({ syncedAt: syncAt, snapshotDate: generatorSnapshotDate, payload: generator })
-              );
-            } catch {
-              // ignore
-            }
-          }
-
-          for (const [periodKey, payload] of Object.entries(bootstrap.inrstats || {})) {
-            const days = Number(periodKey) as StatsWarmPeriod;
-            if (![7, 30].includes(days)) continue;
-            const overviews = payload?.overviews;
-            if (!overviews || typeof overviews !== "object") continue;
-            const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
-              ? payload.meta.snapshotDate
-              : getOverviewSnapshotDate(overviews) || bootstrapSnapshotDate || null;
-
-            try {
-              writeUiCacheValue(
-                statsCubeSessionKey(days),
-                JSON.stringify({ syncedAt: syncAt, snapshotDate: payloadSnapshotDate, overviews })
-              );
-              writeUiCacheValue(
-                statsSummarySessionKey(days),
-                JSON.stringify({
-                  syncedAt: syncAt,
-                  snapshotDate: payloadSnapshotDate,
-                  total: Number(payload?.opportunities?.total ?? 0),
-                  byCube: payload?.opportunities?.byCube ?? {},
-                  profile: payload?.profile ?? {},
-                  estimatedByCube: payload?.estimatedByCube ?? {},
-                })
-              );
-            } catch {
-              // ignore
-            }
-          }
-
-          notifyStatsRefresh(syncAt);
-        } else if (!hasFreshGenerator) {
+        if (!bootstrap.ran && !hasFreshGenerator) {
           await syncFromServerCacheIfNeeded(true);
         }
       } catch (error) {
@@ -3058,7 +3103,7 @@ const checkActivity = useCallback(async () => {
     return () => {
       cancelled = true;
     };
-  }, [notifyStatsRefresh, syncFromServerCacheIfNeeded]);
+  }, [applyBootstrapRefresh, syncFromServerCacheIfNeeded]);
 
   useEffect(() => {
     if (!dailyBootReady) return;
@@ -3581,6 +3626,31 @@ const checkActivity = useCallback(async () => {
   const activeDot = hasCarousel
     ? (((carouselIndex - 1) % baseModules.length) + baseModules.length) % baseModules.length
     : 0;
+
+  const saveSiteInrcyUrlFromDrawer = useCallback(() => runDrawerMutation("site_inrcy:url:save", saveSiteInrcyUrl), [runDrawerMutation, saveSiteInrcyUrl]);
+  const deleteSiteInrcyUrlFromDrawer = useCallback(() => runDrawerMutation("site_inrcy:url:delete", deleteSiteInrcyUrl), [runDrawerMutation, deleteSiteInrcyUrl]);
+  const disconnectSiteInrcyGa4FromDrawer = useCallback(() => runDrawerMutation("site_inrcy:ga4:disconnect", disconnectSiteInrcyGa4), [runDrawerMutation, disconnectSiteInrcyGa4]);
+  const disconnectSiteInrcyGscFromDrawer = useCallback(() => runDrawerMutation("site_inrcy:gsc:disconnect", disconnectSiteInrcyGsc), [runDrawerMutation, disconnectSiteInrcyGsc]);
+
+  const saveSiteWebUrlFromDrawer = useCallback(() => runDrawerMutation("site_web:url:save", saveSiteWebUrl), [runDrawerMutation, saveSiteWebUrl]);
+  const deleteSiteWebUrlFromDrawer = useCallback(() => runDrawerMutation("site_web:url:delete", deleteSiteWebUrl), [runDrawerMutation, deleteSiteWebUrl]);
+  const disconnectSiteWebGa4FromDrawer = useCallback(() => runDrawerMutation("site_web:ga4:disconnect", disconnectSiteWebGa4), [runDrawerMutation, disconnectSiteWebGa4]);
+  const disconnectSiteWebGscFromDrawer = useCallback(() => runDrawerMutation("site_web:gsc:disconnect", disconnectSiteWebGsc), [runDrawerMutation, disconnectSiteWebGsc]);
+
+  const saveGmbLocationFromDrawer = useCallback(() => runDrawerMutation("gmb:location:save", saveGmbLocation), [runDrawerMutation, saveGmbLocation]);
+  const disconnectGmbAccountFromDrawer = useCallback(() => runDrawerMutation("gmb:account:disconnect", disconnectGmbAccount), [runDrawerMutation, disconnectGmbAccount]);
+  const disconnectGmbBusinessFromDrawer = useCallback(() => runDrawerMutation("gmb:location:disconnect", disconnectGmbBusiness), [runDrawerMutation, disconnectGmbBusiness]);
+
+  const saveFacebookPageFromDrawer = useCallback(() => runDrawerMutation("facebook:page:save", saveFacebookPage), [runDrawerMutation, saveFacebookPage]);
+  const disconnectFacebookAccountFromDrawer = useCallback(() => runDrawerMutation("facebook:account:disconnect", disconnectFacebookAccount), [runDrawerMutation, disconnectFacebookAccount]);
+  const disconnectFacebookPageFromDrawer = useCallback(() => runDrawerMutation("facebook:page:disconnect", disconnectFacebookPage), [runDrawerMutation, disconnectFacebookPage]);
+
+  const saveInstagramProfileFromDrawer = useCallback(() => runDrawerMutation("instagram:profile:save", saveInstagramProfile), [runDrawerMutation, saveInstagramProfile]);
+  const disconnectInstagramAccountFromDrawer = useCallback(() => runDrawerMutation("instagram:account:disconnect", disconnectInstagramAccount), [runDrawerMutation, disconnectInstagramAccount]);
+  const disconnectInstagramProfileFromDrawer = useCallback(() => runDrawerMutation("instagram:profile:disconnect", disconnectInstagramProfile), [runDrawerMutation, disconnectInstagramProfile]);
+
+  const saveLinkedinProfileUrlFromDrawer = useCallback(() => runDrawerMutation("linkedin:url:save", saveLinkedinProfileUrl), [runDrawerMutation, saveLinkedinProfileUrl]);
+  const disconnectLinkedinAccountFromDrawer = useCallback(() => runDrawerMutation("linkedin:account:disconnect", disconnectLinkedinAccount), [runDrawerMutation, disconnectLinkedinAccount]);
 
 
   return (
@@ -4623,21 +4693,24 @@ const checkActivity = useCallback(async () => {
             hasSiteInrcyUrl={hasSiteInrcyUrl}
             siteInrcyUrl={siteInrcyUrl}
             setSiteInrcyUrl={setSiteInrcyUrl}
-            saveSiteInrcyUrl={saveSiteInrcyUrl}
-            deleteSiteInrcyUrl={deleteSiteInrcyUrl}
+            saveSiteInrcyUrl={saveSiteInrcyUrlFromDrawer}
+            deleteSiteInrcyUrl={deleteSiteInrcyUrlFromDrawer}
+            siteInrcyUrlBusy={isDrawerMutationPending("site_inrcy:url:save") || isDrawerMutationPending("site_inrcy:url:delete")}
             draftSiteInrcyUrlMeta={draftSiteInrcyUrlMeta}
             siteInrcyUrlNotice={siteInrcyUrlNotice}
             siteInrcyGa4Connected={siteInrcyGa4Connected}
             ga4MeasurementId={ga4MeasurementId}
             ga4PropertyId={ga4PropertyId}
-            disconnectSiteInrcyGa4={disconnectSiteInrcyGa4}
+            disconnectSiteInrcyGa4={disconnectSiteInrcyGa4FromDrawer}
+            siteInrcyGa4Busy={isDrawerMutationPending("site_inrcy:ga4:disconnect")}
             connectSiteInrcyGa4={connectSiteInrcyGa4}
             canConnectSiteInrcyGoogle={canConnectSiteInrcyGoogle}
             canConfigureSite={canConfigureSite}
             siteInrcyGa4Notice={siteInrcyGa4Notice}
             siteInrcyGscConnected={siteInrcyGscConnected}
             gscProperty={gscProperty}
-            disconnectSiteInrcyGsc={disconnectSiteInrcyGsc}
+            disconnectSiteInrcyGsc={disconnectSiteInrcyGscFromDrawer}
+            siteInrcyGscBusy={isDrawerMutationPending("site_inrcy:gsc:disconnect")}
             connectSiteInrcyGsc={connectSiteInrcyGsc}
             siteInrcyGscNotice={siteInrcyGscNotice}
             siteInrcyActusLayout={siteInrcyActusLayout}
@@ -4663,20 +4736,23 @@ const checkActivity = useCallback(async () => {
             hasSiteWebUrl={hasSiteWebUrl}
             siteWebUrl={siteWebUrl}
             setSiteWebUrl={setSiteWebUrl}
-            saveSiteWebUrl={saveSiteWebUrl}
-            deleteSiteWebUrl={deleteSiteWebUrl}
+            saveSiteWebUrl={saveSiteWebUrlFromDrawer}
+            deleteSiteWebUrl={deleteSiteWebUrlFromDrawer}
+            siteWebUrlBusy={isDrawerMutationPending("site_web:url:save") || isDrawerMutationPending("site_web:url:delete")}
             draftSiteWebUrlMeta={draftSiteWebUrlMeta}
             siteWebUrlNotice={siteWebUrlNotice}
             siteWebGa4Connected={siteWebGa4Connected}
             siteWebGa4MeasurementId={siteWebGa4MeasurementId}
             siteWebGa4PropertyId={siteWebGa4PropertyId}
-            disconnectSiteWebGa4={disconnectSiteWebGa4}
+            disconnectSiteWebGa4={disconnectSiteWebGa4FromDrawer}
+            siteWebGa4Busy={isDrawerMutationPending("site_web:ga4:disconnect")}
             connectSiteWebGa4={connectSiteWebGa4}
             canConnectSiteWebGoogle={canConnectSiteWebGoogle}
             siteWebGa4Notice={siteWebGa4Notice}
             siteWebGscConnected={siteWebGscConnected}
             siteWebGscProperty={siteWebGscProperty}
-            disconnectSiteWebGsc={disconnectSiteWebGsc}
+            disconnectSiteWebGsc={disconnectSiteWebGscFromDrawer}
+            siteWebGscBusy={isDrawerMutationPending("site_web:gsc:disconnect")}
             connectSiteWebGsc={connectSiteWebGsc}
             siteWebGscNotice={siteWebGscNotice}
             siteWebActusLayout={siteWebActusLayout}
@@ -4705,18 +4781,20 @@ const checkActivity = useCallback(async () => {
             instagramUsername={instagramUsername}
             connectInstagramAccount={connectInstagramAccount}
             connectInstagramBusinessAccount={connectInstagramBusinessAccount}
-            disconnectInstagramAccount={disconnectInstagramAccount}
+            disconnectInstagramAccount={disconnectInstagramAccountFromDrawer}
+            instagramAccountBusy={isDrawerMutationPending("instagram:account:disconnect")}
             igAccountsLoading={igAccountsLoading}
             loadInstagramAccounts={loadInstagramAccounts}
             igSelectedPageId={igSelectedPageId}
             setIgSelectedPageId={setIgSelectedPageId}
             igAccounts={igAccounts}
-            saveInstagramProfile={saveInstagramProfile}
+            saveInstagramProfile={saveInstagramProfileFromDrawer}
+            instagramProfileBusy={isDrawerMutationPending("instagram:profile:save") || isDrawerMutationPending("instagram:profile:disconnect")}
             igAccountsError={igAccountsError}
             instagramUrl={instagramUrl}
             instagramUrlNotice={instagramUrlNotice}
             instagramUrlError={instagramUrlError}
-            disconnectInstagramProfile={disconnectInstagramProfile}
+            disconnectInstagramProfile={disconnectInstagramProfileFromDrawer}
           />
         )}
 
@@ -4728,10 +4806,12 @@ const checkActivity = useCallback(async () => {
             linkedinAccountConnected={linkedinAccountConnected}
             linkedinDisplayName={linkedinDisplayName}
             connectLinkedinAccount={connectLinkedinAccount}
-            disconnectLinkedinAccount={disconnectLinkedinAccount}
+            disconnectLinkedinAccount={disconnectLinkedinAccountFromDrawer}
+            linkedinAccountBusy={isDrawerMutationPending("linkedin:account:disconnect")}
             linkedinUrl={linkedinUrl}
             setLinkedinUrl={setLinkedinUrl}
-            saveLinkedinProfileUrl={saveLinkedinProfileUrl}
+            saveLinkedinProfileUrl={saveLinkedinProfileUrlFromDrawer}
+            linkedinUrlBusy={isDrawerMutationPending("linkedin:url:save")}
             linkedinUrlNotice={linkedinUrlNotice}
             linkedinUrlError={linkedinUrlError}
             setLinkedinUrlNotice={setLinkedinUrlNotice}
@@ -4746,7 +4826,8 @@ const checkActivity = useCallback(async () => {
             gmbAccountConnected={gmbAccountConnected}
             gmbAccountEmail={gmbAccountEmail}
             connectGmbAccount={connectGmbAccount}
-            disconnectGmbAccount={disconnectGmbAccount}
+            disconnectGmbAccount={disconnectGmbAccountFromDrawer}
+            gmbAccountBusy={isDrawerMutationPending("gmb:account:disconnect")}
             gmbConfigured={gmbConfigured}
             gmbAccountName={gmbAccountName}
             gmbAccounts={gmbAccounts}
@@ -4756,12 +4837,13 @@ const checkActivity = useCallback(async () => {
             gmbLocationLabel={gmbLocationLabel}
             setGmbLocationName={setGmbLocationName}
             gmbLocations={gmbLocations}
-            saveGmbLocation={saveGmbLocation}
+            saveGmbLocation={saveGmbLocationFromDrawer}
+            gmbLocationBusy={isDrawerMutationPending("gmb:location:save") || isDrawerMutationPending("gmb:location:disconnect")}
             gmbListError={gmbListError}
             gmbUrl={gmbUrl}
             gmbUrlNotice={gmbUrlNotice}
             gmbUrlError={gmbUrlError}
-            disconnectGmbBusiness={disconnectGmbBusiness}
+            disconnectGmbBusiness={disconnectGmbBusinessFromDrawer}
           />
         )}
 
@@ -4774,19 +4856,21 @@ const checkActivity = useCallback(async () => {
             facebookAccountEmail={facebookAccountEmail}
             connectFacebookAccount={connectFacebookAccount}
             connectFacebookBusinessAccount={connectFacebookBusinessAccount}
-            disconnectFacebookAccount={disconnectFacebookAccount}
+            disconnectFacebookAccount={disconnectFacebookAccountFromDrawer}
+            facebookAccountBusy={isDrawerMutationPending("facebook:account:disconnect")}
             fbPagesLoading={fbPagesLoading}
             loadFacebookPages={loadFacebookPages}
             fbSelectedPageId={fbSelectedPageId}
             fbSelectedPageName={fbSelectedPageName}
             setFbSelectedPageId={setFbSelectedPageId}
             fbPages={fbPages}
-            saveFacebookPage={saveFacebookPage}
+            saveFacebookPage={saveFacebookPageFromDrawer}
+            facebookPageBusy={isDrawerMutationPending("facebook:page:save") || isDrawerMutationPending("facebook:page:disconnect")}
             fbPagesError={fbPagesError}
             facebookUrl={facebookUrl}
             facebookUrlNotice={facebookUrlNotice}
             facebookUrlError={facebookUrlError}
-            disconnectFacebookPage={disconnectFacebookPage}
+            disconnectFacebookPage={disconnectFacebookPageFromDrawer}
           />
         )}
 

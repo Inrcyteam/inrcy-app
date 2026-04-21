@@ -10,6 +10,7 @@ import {
   invalidateOverviewCache,
   toInrstatsSnapshot,
   type CubeKey,
+  type Overview,
 } from '@/lib/metrics/computeMetrics';
 
 type AnyRec = Record<string, unknown>;
@@ -144,6 +145,9 @@ export async function buildMetricsSummary(args: {
   debug?: AnyRec;
   fresh?: boolean;
   snapshotDate?: string | null;
+  profileOverride?: ProfileMetrics;
+  monthOverviewsOverride?: Partial<Record<CubeKey, Overview>>;
+  weekOverviewsOverride?: Partial<Record<CubeKey, Overview>>;
 }): Promise<MetricsSummary> {
   const {
     supabase,
@@ -156,6 +160,9 @@ export async function buildMetricsSummary(args: {
     debug,
     fresh = false,
     snapshotDate,
+    profileOverride,
+    monthOverviewsOverride,
+    weekOverviewsOverride,
   } = args;
 
   const safe = async <T,>(key: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
@@ -180,9 +187,10 @@ export async function buildMetricsSummary(args: {
 
   const dateWindow = buildSnapshotWindow({ days: monthDays, fresh, snapshotDate });
 
-  const cacheRangeKey = `month=${monthDays}|week=${weekDays}|today=${todayDays}|snapshot=${dateWindow.snapshotDate || 'live'}|conn=${await buildSummaryConnectionsKey(supabase, userId)}`;
+  let cacheRangeKey: string | null = null;
 
   if (!fresh) {
+    cacheRangeKey = `month=${monthDays}|week=${weekDays}|today=${todayDays}|snapshot=${dateWindow.snapshotDate || 'live'}|conn=${await buildSummaryConnectionsKey(supabase, userId)}`;
     try {
       const nowIso = new Date().toISOString();
       const { data: cacheHit } = await supabase
@@ -201,12 +209,18 @@ export async function buildMetricsSummary(args: {
   }
 
   const [profile, monthOverviews, weekOverviews] = await Promise.all([
-    safe('profile', () => getProfile(supabase, userId, debug), {
-      lead_conversion_rate: 0,
-      avg_basket: 0,
-    }),
-    safe('overviews_30d', () => fetchCubeOverviews({ origin, days: monthDays, getHeaders, bypassCache: fresh, supabase, userId, snapshotDate: dateWindow.snapshotDate }), {}),
-    safe('overviews_7d', () => fetchCubeOverviews({ origin, days: weekDays, getHeaders, bypassCache: fresh, supabase, userId, snapshotDate: dateWindow.snapshotDate }), {}),
+    profileOverride
+      ? Promise.resolve(profileOverride)
+      : safe('profile', () => getProfile(supabase, userId, debug), {
+          lead_conversion_rate: 0,
+          avg_basket: 0,
+        }),
+    monthOverviewsOverride
+      ? Promise.resolve(monthOverviewsOverride)
+      : safe('overviews_30d', () => fetchCubeOverviews({ origin, days: monthDays, getHeaders, bypassCache: fresh, supabase, userId, snapshotDate: dateWindow.snapshotDate }), {}),
+    weekOverviewsOverride
+      ? Promise.resolve(weekOverviewsOverride)
+      : safe('overviews_7d', () => fetchCubeOverviews({ origin, days: weekDays, getHeaders, bypassCache: fresh, supabase, userId, snapshotDate: dateWindow.snapshotDate }), {}),
   ]);
 
   const [oppResolved, history30Resolved, history7Resolved] = await Promise.all([
@@ -280,11 +294,12 @@ export async function buildMetricsSummary(args: {
   try {
     // Keep the shared generator/iNrStats snapshot warm for a very short period
     // so another device catches up quickly without waiting for hours.
+    const rangeKey = cacheRangeKey ?? `month=${monthDays}|week=${weekDays}|today=${todayDays}|snapshot=${dateWindow.snapshotDate || 'live'}|conn=${await buildSummaryConnectionsKey(supabase, userId)}`;
     const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
     await supabase.from('stats_cache').insert({
       user_id: userId,
       source: 'metrics_summary',
-      range_key: cacheRangeKey,
+      range_key: rangeKey,
       payload,
       expires_at: expiresAt,
     });

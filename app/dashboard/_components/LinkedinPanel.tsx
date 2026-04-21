@@ -16,7 +16,9 @@ export default function LinkedinPanel(props: any) {
     saveLinkedinProfileUrl,
     linkedinUrlNotice,
     linkedinUrlError,
-    setLinkedinUrlNotice
+    setLinkedinUrlNotice,
+    linkedinAccountBusy,
+    linkedinUrlBusy,
   } = props;
 
   return (
@@ -94,8 +96,8 @@ export default function LinkedinPanel(props: any) {
                 Connecter LinkedIn
               </button>
             ) : (
-              <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectLinkedinAccount}>
-                Déconnecter LinkedIn
+              <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectLinkedinAccount()} disabled={linkedinAccountBusy}>
+                {linkedinAccountBusy ? "Déconnexion..." : "Déconnecter LinkedIn"}
               </button>
             )}
           </div>
@@ -146,9 +148,10 @@ export default function LinkedinPanel(props: any) {
     <button
       type="button"
       className={`${styles.actionBtn} ${styles.connectBtn}`}
-      onClick={saveLinkedinProfileUrl}
+      onClick={() => void saveLinkedinProfileUrl()}
+      disabled={linkedinUrlBusy}
     >
-      Enregistrer
+      {linkedinUrlBusy ? "Enregistrement..." : "Enregistrer"}
     </button>
 
             <a

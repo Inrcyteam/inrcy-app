@@ -12,16 +12,17 @@ import {
 } from "@/lib/metrics/computeMetrics";
 
 const DAILY_REFRESH_LEASE_SECONDS = 15 * 60;
-const DAILY_PERIODS = [7, 30] as const;
+
+type ProfileMetrics = {
+  lead_conversion_rate: number;
+  avg_basket: number;
+};
 
 type BulkResponse = {
   period: number;
   overviews: Partial<Record<CubeKey, Overview>>;
   opportunities: ReturnType<typeof toInrstatsSnapshot>;
-  profile: {
-    lead_conversion_rate: number;
-    avg_basket: number;
-  };
+  profile: ProfileMetrics;
   estimatedByCube: Record<CubeKey, number>;
   meta: {
     source: "api/stats/daily-refresh";
@@ -31,28 +32,10 @@ type BulkResponse = {
   };
 };
 
-async function buildBulkPayload(args: {
-  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"];
-  userId: string;
-  origin: string;
-  cookie: string;
-  period: number;
-  snapshotDate: string;
-}): Promise<BulkResponse> {
-  const { supabase, userId, origin, cookie, period, snapshotDate } = args;
-
-  const overviews = await fetchCubeOverviews({
-    origin,
-    days: period,
-    getHeaders: () => (cookie ? { cookie } : undefined),
-    bypassCache: true,
-    supabase,
-    userId,
-    snapshotDate,
-  });
-
-  const opportunities = toInrstatsSnapshot(computeOpportunitiesFromOverviews(overviews, period));
-
+async function fetchProfileMetrics(
+  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
+  userId: string,
+): Promise<ProfileMetrics> {
   const { data: profileRow } = await supabase
     .from("profiles")
     .select("lead_conversion_rate, avg_basket")
@@ -61,6 +44,23 @@ async function buildBulkPayload(args: {
 
   const leadConversionRate = Number(profileRow?.lead_conversion_rate ?? 0);
   const avgBasket = Number(profileRow?.avg_basket ?? 0);
+
+  return {
+    lead_conversion_rate: Number.isFinite(leadConversionRate) ? leadConversionRate : 0,
+    avg_basket: Number.isFinite(avgBasket) ? avgBasket : 0,
+  };
+}
+
+function buildBulkPayloadFromOverviews(args: {
+  period: number;
+  overviews: Partial<Record<CubeKey, Overview>>;
+  profile: ProfileMetrics;
+  snapshotDate: string;
+}): BulkResponse {
+  const { period, overviews, profile, snapshotDate } = args;
+  const opportunities = toInrstatsSnapshot(computeOpportunitiesFromOverviews(overviews, period));
+  const leadConversionRate = Number(profile?.lead_conversion_rate ?? 0);
+  const avgBasket = Number(profile?.avg_basket ?? 0);
   const estimatedByCube: Record<CubeKey, number> = {
     site_inrcy: Math.round((opportunities.byCube.site_inrcy || 0) * (leadConversionRate / 100) * avgBasket),
     site_web: Math.round((opportunities.byCube.site_web || 0) * (leadConversionRate / 100) * avgBasket),
@@ -74,10 +74,7 @@ async function buildBulkPayload(args: {
     period,
     overviews,
     opportunities,
-    profile: {
-      lead_conversion_rate: Number.isFinite(leadConversionRate) ? leadConversionRate : 0,
-      avg_basket: Number.isFinite(avgBasket) ? avgBasket : 0,
-    },
+    profile,
     estimatedByCube,
     meta: {
       source: "api/stats/daily-refresh",
@@ -157,29 +154,49 @@ export async function POST(req: Request) {
     };
 
     try {
+      const headers = () => (cookie ? { cookie } : undefined);
+      const [profile, monthOverviews, weekOverviews] = await Promise.all([
+        fetchProfileMetrics(supabase, user.id),
+        fetchCubeOverviews({
+          origin,
+          days: 30,
+          getHeaders: headers,
+          bypassCache: true,
+          supabase,
+          userId: user.id,
+          snapshotDate,
+        }),
+        fetchCubeOverviews({
+          origin,
+          days: 7,
+          getHeaders: headers,
+          bypassCache: true,
+          supabase,
+          userId: user.id,
+          snapshotDate,
+        }),
+      ]);
+
       const generator = await buildMetricsSummary({
         supabase,
         userId: user.id,
         origin,
-        getHeaders: () => (cookie ? { cookie } : undefined),
+        getHeaders: headers,
         monthDays: 30,
         weekDays: 7,
         todayDays: 2,
         debug,
         fresh: true,
         snapshotDate,
+        profileOverride: profile,
+        monthOverviewsOverride: monthOverviews,
+        weekOverviewsOverride: weekOverviews,
       });
 
-      const inrstatsEntries = await Promise.all(
-        DAILY_PERIODS.map(async (period) => [String(period), await buildBulkPayload({
-          supabase,
-          userId: user.id,
-          origin,
-          cookie,
-          period,
-          snapshotDate,
-        })] as const)
-      );
+      const inrstatsEntries = [
+        ["7", buildBulkPayloadFromOverviews({ period: 7, overviews: weekOverviews, profile, snapshotDate })],
+        ["30", buildBulkPayloadFromOverviews({ period: 30, overviews: monthOverviews, profile, snapshotDate })],
+      ] as const;
 
       const { error: completeError } = await supabase.rpc("complete_daily_stats_refresh", {
         p_snapshot_date: snapshotDate,

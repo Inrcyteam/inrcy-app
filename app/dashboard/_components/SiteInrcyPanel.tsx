@@ -16,12 +16,14 @@ export default function SiteInrcyPanel(props: any) {
     setSiteInrcyUrl,
     saveSiteInrcyUrl,
     deleteSiteInrcyUrl,
+    siteInrcyUrlBusy,
     draftSiteInrcyUrlMeta,
     siteInrcyUrlNotice,
     siteInrcyGa4Connected,
     ga4MeasurementId,
     ga4PropertyId,
     disconnectSiteInrcyGa4,
+    siteInrcyGa4Busy,
     connectSiteInrcyGa4,
     canConnectSiteInrcyGoogle,
     canConfigureSite,
@@ -29,6 +31,7 @@ export default function SiteInrcyPanel(props: any) {
     siteInrcyGscConnected,
     gscProperty,
     disconnectSiteInrcyGsc,
+    siteInrcyGscBusy,
     connectSiteInrcyGsc,
     siteInrcyGscNotice,
     siteInrcyActusLayout,
@@ -143,8 +146,8 @@ export default function SiteInrcyPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-              onClick={deleteSiteInrcyUrl}
-              disabled={siteInrcyOwnership === "none"}
+              onClick={() => void deleteSiteInrcyUrl()}
+              disabled={siteInrcyOwnership === "none" || siteInrcyUrlBusy}
               title="Supprimer le lien"
               aria-label="Supprimer le lien"
               style={{ minWidth: 44, paddingInline: 0, fontSize: 22, fontWeight: 900, lineHeight: 1 }}
@@ -155,8 +158,8 @@ export default function SiteInrcyPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.iconBtn}`}
-              onClick={saveSiteInrcyUrl}
-              disabled={siteInrcyOwnership === "none"}
+              onClick={() => void saveSiteInrcyUrl()}
+              disabled={siteInrcyOwnership === "none" || siteInrcyUrlBusy}
               title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Enregistrer le lien"}
               aria-label="Enregistrer le lien"
             >
@@ -241,11 +244,11 @@ export default function SiteInrcyPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-              onClick={disconnectSiteInrcyGa4}
-              disabled={siteInrcyOwnership === "none"}
+              onClick={() => void disconnectSiteInrcyGa4()}
+              disabled={siteInrcyOwnership === "none" || siteInrcyGa4Busy}
               title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Déconnecter (GA4)"}
             >
-              Déconnecter
+              {siteInrcyGa4Busy ? "Déconnexion..." : "Déconnecter"}
             </button>
           ) : (
             <button
@@ -311,11 +314,11 @@ export default function SiteInrcyPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-              onClick={disconnectSiteInrcyGsc}
-              disabled={siteInrcyOwnership === "none"}
+              onClick={() => void disconnectSiteInrcyGsc()}
+              disabled={siteInrcyOwnership === "none" || siteInrcyGscBusy}
               title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Déconnecter (GSC)"}
             >
-              Déconnecter
+              {siteInrcyGscBusy ? "Déconnexion..." : "Déconnecter"}
             </button>
           ) : (
             <button
