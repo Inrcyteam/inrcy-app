@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { envFlag } from "@/lib/env";
 import { requireUser } from "@/lib/requireUser";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { buildMetricsSummary } from "@/lib/metrics/summary";
@@ -31,7 +32,10 @@ type ProfileMetrics = {
 type DailyRefreshTimingKey = "profile" | "channelStates" | "monthOverviews" | "weekOverviews" | "generator" | "total";
 type DailyRefreshTimings = Partial<Record<DailyRefreshTimingKey, number>>;
 
-const DEV_DAILY_REFRESH_TIMINGS = process.env.NODE_ENV !== "production";
+const DAILY_REFRESH_TIMINGS_ENABLED = process.env.NODE_ENV !== "production" || envFlag("INRCY_TIMINGS");
+const DAILY_REFRESH_TIMING_LOG_LABEL = process.env.NODE_ENV !== "production"
+  ? "[daily-refresh][dev]"
+  : "[daily-refresh][timings]";
 
 function createDevTimingCollector() {
   const timings: DailyRefreshTimings = {};
@@ -43,27 +47,29 @@ function createDevTimingCollector() {
       try {
         return await run();
       } finally {
-        if (DEV_DAILY_REFRESH_TIMINGS) {
+        if (DAILY_REFRESH_TIMINGS_ENABLED) {
           timings[label] = Date.now() - startedAt;
         }
       }
     },
     finalize(startedAt: number) {
-      if (DEV_DAILY_REFRESH_TIMINGS) {
+      if (DAILY_REFRESH_TIMINGS_ENABLED) {
         timings.total = Date.now() - startedAt;
       }
-      return DEV_DAILY_REFRESH_TIMINGS ? timings : undefined;
+      return DAILY_REFRESH_TIMINGS_ENABLED ? timings : undefined;
     },
     flush(context: { userId: string; reason: DailyRefreshReason; force: boolean; ran: boolean; snapshotDate: string }) {
-      if (!DEV_DAILY_REFRESH_TIMINGS) return;
-      console.info("[daily-refresh][dev]", {
+      if (!DAILY_REFRESH_TIMINGS_ENABLED) return;
+      console.info(`${DAILY_REFRESH_TIMING_LOG_LABEL} ${JSON.stringify({
         userId: context.userId,
         reason: context.reason,
         force: context.force,
         ran: context.ran,
         snapshotDate: context.snapshotDate,
+        vercelEnv: process.env.VERCEL_ENV ?? null,
+        nodeEnv: process.env.NODE_ENV ?? null,
         timings,
-      });
+      })}`);
     },
   };
 }
