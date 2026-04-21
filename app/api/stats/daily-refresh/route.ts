@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withApi } from "@/lib/observability/withApi";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
@@ -106,7 +107,18 @@ function isLeaseActive(startedAt: string | null | undefined) {
   return Date.now() - startedMs < DAILY_REFRESH_LEASE_SECONDS * 1000;
 }
 
-export async function POST(req: Request) {
+function devLogDailyRefresh(payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production") return;
+  console.log("[daily-refresh][dev]", payload);
+}
+
+const nowMs = () => (typeof performance !== "undefined" && typeof performance.now === "function"
+  ? performance.now()
+  : Date.now());
+
+async function handler(req: Request) {
+  const totalStarted = nowMs();
+
   try {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
@@ -133,6 +145,17 @@ export async function POST(req: Request) {
         state?.last_started_snapshot_date === snapshotDate &&
         isLeaseActive(state?.last_started_at);
 
+      devLogDailyRefresh({
+        userId: user.id,
+        action: "run",
+        ran: false,
+        inProgress,
+        snapshotDate,
+        timings: {
+          total: Math.round(nowMs() - totalStarted),
+        },
+      });
+
       return NextResponse.json({
         ok: true,
         ran: false,
@@ -155,28 +178,36 @@ export async function POST(req: Request) {
 
     try {
       const headers = () => (cookie ? { cookie } : undefined);
+      const profileStarted = nowMs();
+      const profilePromise = fetchProfileMetrics(supabase, user.id);
+      const monthStarted = nowMs();
+      const monthPromise = fetchCubeOverviews({
+        origin,
+        days: 30,
+        getHeaders: headers,
+        bypassCache: false,
+        supabase,
+        userId: user.id,
+        snapshotDate,
+      });
+      const weekStarted = nowMs();
+      const weekPromise = fetchCubeOverviews({
+        origin,
+        days: 7,
+        getHeaders: headers,
+        bypassCache: false,
+        supabase,
+        userId: user.id,
+        snapshotDate,
+      });
+
       const [profile, monthOverviews, weekOverviews] = await Promise.all([
-        fetchProfileMetrics(supabase, user.id),
-        fetchCubeOverviews({
-          origin,
-          days: 30,
-          getHeaders: headers,
-          bypassCache: true,
-          supabase,
-          userId: user.id,
-          snapshotDate,
-        }),
-        fetchCubeOverviews({
-          origin,
-          days: 7,
-          getHeaders: headers,
-          bypassCache: true,
-          supabase,
-          userId: user.id,
-          snapshotDate,
-        }),
+        profilePromise,
+        monthPromise,
+        weekPromise,
       ]);
 
+      const generatorStarted = nowMs();
       const generator = await buildMetricsSummary({
         supabase,
         userId: user.id,
@@ -186,12 +217,17 @@ export async function POST(req: Request) {
         weekDays: 7,
         todayDays: 2,
         debug,
-        fresh: true,
+        fresh: false,
         snapshotDate,
         profileOverride: profile,
         monthOverviewsOverride: monthOverviews,
         weekOverviewsOverride: weekOverviews,
       });
+
+      const generatorDuration = Math.round(nowMs() - generatorStarted);
+      const profileDuration = Math.round(nowMs() - profileStarted);
+      const monthDuration = Math.round(nowMs() - monthStarted);
+      const weekDuration = Math.round(nowMs() - weekStarted);
 
       const inrstatsEntries = [
         ["7", buildBulkPayloadFromOverviews({ period: 7, overviews: weekOverviews, profile, snapshotDate })],
@@ -207,6 +243,20 @@ export async function POST(req: Request) {
       }
 
       await bumpStatsVersion(supabase, user.id);
+
+      devLogDailyRefresh({
+        userId: user.id,
+        action: "run",
+        ran: true,
+        snapshotDate,
+        timings: {
+          profile: profileDuration,
+          weekOverviews: weekDuration,
+          monthOverviews: monthDuration,
+          generator: generatorDuration,
+          total: Math.round(nowMs() - totalStarted),
+        },
+      });
 
       return NextResponse.json({
         ok: true,
@@ -230,6 +280,16 @@ export async function POST(req: Request) {
       throw error;
     }
   } catch (error) {
+    devLogDailyRefresh({
+      action: "run",
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      timings: {
+        total: Math.round(nowMs() - totalStarted),
+      },
+    });
     return jsonUserFacingError(error, { status: 500 });
   }
 }
+
+export const POST = withApi(handler, { route: "/api/stats/daily-refresh" });
