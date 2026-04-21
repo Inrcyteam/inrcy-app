@@ -261,7 +261,6 @@ export function ChannelImageRetouchModal({
     const onWindowPointerUp = () => {
       textDragRef.current = null;
       textResizeRef.current = null;
-                        setIsTextResizing(false);
       setIsTextResizing(false);
     };
     const onResize = () => setViewportWidth(window.innerWidth);
@@ -283,8 +282,12 @@ export function ChannelImageRetouchModal({
 
   const isMobile = viewportWidth <= 768;
   const isCompact = viewportWidth <= 1180;
-  const modalWidth = isMobile ? "calc(100vw - 8px)" : "min(1580px, calc(100vw - 28px))";
-  const modalHeight = isMobile ? "calc(100vh - 8px)" : "min(940px, calc(100vh - 28px))";
+  const modalWidth = isMobile
+    ? "calc(100vw - max(8px, env(safe-area-inset-left)) - max(8px, env(safe-area-inset-right)))"
+    : "min(1580px, calc(100vw - 28px))";
+  const modalHeight = isMobile
+    ? "calc(100dvh - max(8px, env(safe-area-inset-top)) - max(8px, env(safe-area-inset-bottom)))"
+    : "min(940px, calc(100dvh - 28px))";
   const modalPadding = isMobile ? 10 : 18;
   const previewMinHeight = isMobile ? 120 : isCompact ? 320 : 0;
   const controlsGridColumns = isMobile ? "1fr 1fr" : "48px 48px 1fr 1fr";
@@ -295,24 +298,24 @@ export function ChannelImageRetouchModal({
     : undefined;
 
   return (
-    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? 6 : 16, overflow: "hidden" }}>
-      <div onClick={(event) => event.stopPropagation()} style={{ width: modalWidth, height: modalHeight, alignSelf: isMobile ? "stretch" : undefined, justifySelf: isMobile ? "stretch" : undefined, borderRadius: isMobile ? 20 : 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: modalPadding, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: isMobile ? 10 : 16, overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 12, minHeight: 52, flexWrap: "wrap" }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 900, fontSize: isMobile ? 16 : 18, whiteSpace: isMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.15 }}>{title}</div>
-            <div style={{ fontSize: 12, opacity: 0.74, marginTop: 4 }}>{subtitle}</div>
+    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? "max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left))" : 16, overflow: "hidden" }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: modalWidth, maxWidth: "100%", height: modalHeight, maxHeight: "100%", minWidth: 0, minHeight: 0, alignSelf: isMobile ? "stretch" : undefined, justifySelf: isMobile ? "stretch" : undefined, borderRadius: isMobile ? 20 : 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: modalPadding, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: isMobile ? 10 : 16, overflow: "hidden", boxSizing: "border-box" }}>
+        <div style={{ display: "flex", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 12, minHeight: 52, flexWrap: "wrap", minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: "1 1 280px" }}>
+            <div style={{ fontWeight: 900, fontSize: isMobile ? 16 : 18, whiteSpace: isMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.15, overflowWrap: "anywhere" }}>{title}</div>
+            <div style={{ fontSize: 12, opacity: 0.74, marginTop: 4, overflowWrap: "anywhere" }}>{subtitle}</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end", width: isMobile ? "100%" : undefined }}>
-            {onApplyToSelectedChannels ? <button type="button" className={buttonClassName} onClick={onApplyToSelectedChannels}>Appliquer partout</button> : null}
-            <button type="button" className={primaryButtonClassName || buttonClassName} onClick={onSave}>Enregistrer</button>
-            <button type="button" className={buttonClassName} onClick={onClose}>Fermer</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 1, flexWrap: "wrap", justifyContent: "flex-end", width: isMobile ? "100%" : undefined, minWidth: 0 }}>
+            {onApplyToSelectedChannels ? <button type="button" className={buttonClassName} onClick={onApplyToSelectedChannels} style={{ minWidth: 0, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center" }}>Appliquer partout</button> : null}
+            <button type="button" className={primaryButtonClassName || buttonClassName} onClick={onSave} style={{ minWidth: 0, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center" }}>Enregistrer</button>
+            <button type="button" className={buttonClassName} onClick={onClose} style={{ minWidth: 0, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center" }}>Fermer</button>
           </div>
         </div>
 
-        <div style={{ minHeight: 0, display: isMobile ? "flex" : "grid",
-    flexDirection: isMobile ? "column" : undefined, gridTemplateColumns: contentGridTemplateColumns, gridTemplateRows: contentGridTemplateRows, gap: isMobile ? 24 : 18, alignItems: "stretch", overflowY: "auto", overflowX: "hidden", paddingRight: isMobile ? 2 : 0, paddingBottom: isMobile ? 96 : 0 }}>
+        <div style={{ minHeight: 0, minWidth: 0, display: isMobile ? "flex" : "grid",
+    flexDirection: isMobile ? "column" : undefined, gridTemplateColumns: contentGridTemplateColumns, gridTemplateRows: contentGridTemplateRows, gap: isMobile ? 24 : 18, alignItems: "stretch", overflowY: "auto", overflowX: "hidden", paddingRight: isMobile ? 2 : 0, paddingBottom: isMobile ? "max(96px, env(safe-area-inset-bottom))" : 0, WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", boxSizing: "border-box" }}>
           <div style={{ minWidth: 0, minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, gridTemplateRows: isMobile ? undefined : "minmax(0, 1fr) auto", gap: isMobile ? 10 : undefined, order: isMobile ? 2 : 1, flex: isMobile ? "0 0 auto" : undefined }}>
-            <div style={{ minHeight: previewMinHeight, height: isMobile ? 220 : undefined, maxHeight: isMobile ? 220 : undefined, display: "grid", placeItems: "center", borderRadius: isMobile ? 18 : 24, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.02))", padding: isMobile ? 8 : 14, overflow: "hidden", flex: isMobile ? "0 0 auto" : undefined }}>
+            <div style={{ minWidth: 0, width: "100%", minHeight: previewMinHeight, height: isMobile ? 220 : undefined, maxHeight: isMobile ? 220 : undefined, display: "grid", placeItems: "center", borderRadius: isMobile ? 18 : 24, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.02))", padding: isMobile ? 8 : 14, overflow: "hidden", flex: isMobile ? "0 0 auto" : undefined, boxSizing: "border-box" }}>
               <div
                 ref={previewRef}
                 onWheel={onWheel}
@@ -358,8 +361,7 @@ export function ChannelImageRetouchModal({
                     onPointerUp={(event) => {
                       textDragRef.current = null;
                       textResizeRef.current = null;
-                        setIsTextResizing(false);
-      setIsTextResizing(false);
+                      setIsTextResizing(false);
                       (event.currentTarget as HTMLDivElement).releasePointerCapture?.(event.pointerId);
                     }}
                     style={{
@@ -407,7 +409,6 @@ export function ChannelImageRetouchModal({
                         event.stopPropagation();
                         textResizeRef.current = null;
                         setIsTextResizing(false);
-      setIsTextResizing(false);
                         (event.currentTarget as HTMLDivElement).releasePointerCapture?.(event.pointerId);
                       }}
                       style={{
@@ -435,7 +436,7 @@ export function ChannelImageRetouchModal({
             <div style={{ fontSize: 12, opacity: 0.72, padding: "10px 2px 0" }}>Tout tient dans cette fenêtre. Déplacez l’image, dézoomez, choisissez un fond et glissez le bloc texte directement dans le visuel.</div>
           </div>
 
-          <div style={{ minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, alignContent: "start", gap: 12, order: isMobile ? 2 : 1, flex: isMobile ? "0 0 auto" : undefined }}>
+          <div style={{ minWidth: 0, minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, alignContent: "start", gap: 12, order: isMobile ? 2 : 1, flex: isMobile ? "0 0 auto" : undefined }}>
             <div style={{ display: "grid", gap: 8, padding: 14, borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
               <div style={{ fontSize: 12, opacity: 0.82 }}>Image</div>
               <div style={{ display: "grid", gridTemplateColumns: controlsGridColumns, gap: 8 }}>
@@ -464,7 +465,7 @@ export function ChannelImageRetouchModal({
             {designState && onDesignChange ? <ImageMiniDesignPanel value={designState} onChange={onDesignChange} /> : null}
           </div>
 
-          <div style={{ minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, gridTemplateRows: isMobile ? undefined : "minmax(0, 1fr)", gap: 12, order: isMobile ? 3 : 2, flex: isMobile ? "0 0 auto" : undefined }}>
+          <div style={{ minWidth: 0, minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, gridTemplateRows: isMobile ? undefined : "minmax(0, 1fr)", gap: 12, order: isMobile ? 3 : 2, flex: isMobile ? "0 0 auto" : undefined }}>
             {sidebarItems?.length ? (
               <div style={{ minHeight: 0, height: isMobile ? "auto" : "100%",
                 marginTop: isMobile ? 8 : 0, display: "grid", gridTemplateRows: isMobile ? undefined : isCompact ? "auto auto" : "auto minmax(0, 1fr)", gap: 8, padding: 14, borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>

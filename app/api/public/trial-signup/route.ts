@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { optionalEnv } from "@/lib/env";
-import { ensureNotificationPreferences } from "@/lib/notifications";
+import { ensureNotificationPreferences, seedOnboardingNotifications } from "@/lib/notifications";
 import { ensureProfileRow } from "@/lib/ensureProfileRow";
 import { getClientIp, enforceRateLimit } from "@/lib/rateLimit";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
@@ -363,6 +363,7 @@ export async function POST(req: Request) {
     if (profileError) throw new Error(profileError.message);
 
     await ensureNotificationPreferences(userId);
+    await seedOnboardingNotifications(userId);
     const { trialDays, end } = await ensureTrialSubscription(userId, payload.email);
 
     await sendAdminSubscriptionAlertForUser({

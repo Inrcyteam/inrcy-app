@@ -62,6 +62,121 @@ export async function ensureNotificationPreferences(userId: string) {
   return data as NotificationPreferenceRow;
 }
 
+
+
+type OnboardingNotificationSeed = {
+  category: NotificationCategory;
+  kind: string;
+  title: string;
+  body: string;
+  cta_label: string;
+  cta_url: string;
+  meta?: Record<string, unknown>;
+};
+
+function getOnboardingNotificationSeeds(): OnboardingNotificationSeed[] {
+  return [
+    {
+      category: "action",
+      kind: "onboarding_complete_profile",
+      title: "Complétez votre profil",
+      body: "Ajoutez vos informations clés pour personnaliser iNrCy, fiabiliser vos communications et poser de bonnes bases dès le démarrage.",
+      cta_label: "Ouvrir mon profil",
+      cta_url: "/dashboard?panel=profil",
+      meta: { source: "onboarding", step: "profil" },
+    },
+    {
+      category: "action",
+      kind: "onboarding_complete_activity",
+      title: "Complétez votre activité",
+      body: "Renseignez votre métier, vos services et votre zone d'action pour générer des contenus et recommandations plus utiles.",
+      cta_label: "Ouvrir mon activité",
+      cta_url: "/dashboard?panel=activite",
+      meta: { source: "onboarding", step: "activite" },
+    },
+    {
+      category: "action",
+      kind: "onboarding_connect_gmb",
+      title: "Connectez Google Business",
+      body: "Reliez votre fiche Google Business pour renforcer votre visibilité locale et publier plus facilement depuis iNrCy.",
+      cta_label: "Connecter Google Business",
+      cta_url: "/dashboard?panel=gmb",
+      meta: { source: "onboarding", step: "gmb" },
+    },
+    {
+      category: "action",
+      kind: "onboarding_connect_facebook",
+      title: "Connectez Facebook",
+      body: "Ajoutez votre page Facebook pour centraliser vos prises de parole et gagner du temps sur vos publications.",
+      cta_label: "Connecter Facebook",
+      cta_url: "/dashboard?panel=facebook",
+      meta: { source: "onboarding", step: "facebook" },
+    },
+    {
+      category: "action",
+      kind: "onboarding_connect_instagram",
+      title: "Connectez Instagram",
+      body: "Reliez votre compte Instagram pour préparer vos publications dès les premiers jours et activer un canal supplémentaire rapidement.",
+      cta_label: "Connecter Instagram",
+      cta_url: "/dashboard?panel=instagram",
+      meta: { source: "onboarding", step: "instagram" },
+    },
+    {
+      category: "information",
+      kind: "onboarding_open_booster",
+      title: "Lancez votre premier Booster",
+      body: "Booster vous aide à produire rapidement un contenu utile pour vos canaux. Faites un premier essai pour prendre l'application en main.",
+      cta_label: "Ouvrir Booster",
+      cta_url: "/dashboard/booster",
+      meta: { source: "onboarding", step: "booster" },
+    },
+  ];
+}
+
+export async function seedOnboardingNotifications(userId: string) {
+  const seeds = getOnboardingNotificationSeeds();
+  if (!userId || seeds.length === 0) return [];
+
+  const dedupeKeys = seeds.map((seed) => `onboarding:${userId}:${seed.kind}`);
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from("notifications")
+    .select("dedupe_key")
+    .eq("user_id", userId)
+    .in("dedupe_key", dedupeKeys);
+
+  if (existingError) {
+    throw new Error(`notifications_onboarding_select_failed:${existingError.message}`);
+  }
+
+  const existingSet = new Set((existing ?? []).map((row) => String(row.dedupe_key || "")).filter(Boolean));
+  const rows = seeds
+    .filter((seed) => !existingSet.has(`onboarding:${userId}:${seed.kind}`))
+    .map((seed) => ({
+      user_id: userId,
+      category: seed.category,
+      kind: seed.kind,
+      title: seed.title,
+      body: seed.body,
+      cta_label: seed.cta_label,
+      cta_url: seed.cta_url,
+      dedupe_key: `onboarding:${userId}:${seed.kind}`,
+      meta: seed.meta ?? { source: "onboarding" },
+    }));
+
+  if (rows.length === 0) return [];
+
+  const { data, error } = await supabaseAdmin
+    .from("notifications")
+    .insert(rows)
+    .select("id, user_id, category, kind, title, body, cta_label, cta_url, read_at, meta, dedupe_key, created_at");
+
+  if (error) {
+    throw new Error(`notifications_onboarding_insert_failed:${error.message}`);
+  }
+
+  return (data ?? []) as NotificationRow[];
+}
+
 export function getCategoryLabel(category: NotificationCategory) {
   if (category === "performance") return "Performance";
   if (category === "action") return "Action";

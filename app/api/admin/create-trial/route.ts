@@ -3,7 +3,7 @@ import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireEnv } from "@/lib/env";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
-import { ensureNotificationPreferences } from "@/lib/notifications";
+import { ensureNotificationPreferences, seedOnboardingNotifications } from "@/lib/notifications";
 import { ensureTrialSubscription } from "@/lib/trialSubscription";
 import { ensureProfileRow } from "@/lib/ensureProfileRow";
 
@@ -36,6 +36,7 @@ export async function POST(req: Request) {
 
     await ensureProfileRow(invite.user);
     await ensureNotificationPreferences(userId);
+    await seedOnboardingNotifications(userId);
     const { trialDays, start, end } = await ensureTrialSubscription(userId, email);
 
     await sendAdminSubscriptionAlertForUser({
