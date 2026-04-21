@@ -1,5 +1,6 @@
 import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
+import type { ChannelStates } from "@/lib/channelConnectionState";
 
 export type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
@@ -22,6 +23,15 @@ export type DailyRefreshBulkPayload = {
   };
 };
 
+export type DailyStatsRefreshReason = "first_open" | "channel_change" | "account_change" | "manual";
+
+export type RunDailyStatsRefreshBootstrapOptions = {
+  reason?: DailyStatsRefreshReason;
+  force?: boolean;
+};
+
+export type DailyRefreshTimings = Partial<Record<"profile" | "channelStates" | "monthOverviews" | "weekOverviews" | "generator" | "total", number>>;
+
 export type DailyStatsRefreshBootstrapResponse = {
   ok: boolean;
   ran: boolean;
@@ -30,9 +40,16 @@ export type DailyStatsRefreshBootstrapResponse = {
   syncAt: number;
   generator?: any;
   inrstats?: Record<string, DailyRefreshBulkPayload>;
+  channelStates?: ChannelStates;
+  timings?: DailyRefreshTimings;
 };
 
-export async function runDailyStatsRefreshBootstrap(): Promise<DailyStatsRefreshBootstrapResponse> {
+export async function runDailyStatsRefreshBootstrap(
+  options: RunDailyStatsRefreshBootstrapOptions = {},
+): Promise<DailyStatsRefreshBootstrapResponse> {
+  const reason = options.reason ?? "first_open";
+  const force = options.force === true;
+
   const res = await fetch("/api/stats/daily-refresh", {
     method: "POST",
     cache: "no-store",
@@ -40,7 +57,7 @@ export async function runDailyStatsRefreshBootstrap(): Promise<DailyStatsRefresh
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ action: "run" }),
+    body: JSON.stringify({ action: "run", reason, force }),
   });
 
   const json = (await res.json().catch(() => null)) as DailyStatsRefreshBootstrapResponse | null;

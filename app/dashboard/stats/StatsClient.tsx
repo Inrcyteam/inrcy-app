@@ -12,7 +12,7 @@ import { decideAction, type DecisionResult } from "@/lib/decision/decisionEngine
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { readAccountCacheValue, removeAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
+import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse, type DailyStatsRefreshReason } from "@/lib/dailyStatsRefreshClient";
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -1405,6 +1405,7 @@ export default function StatsClient() {
   // In-memory cache to avoid duplicate fetch bursts (React strict-mode/dev & quick navigations)
   const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const forceFreshOnceRef = useRef(false);
   const hydratedPeriodsRef = useRef(new Set<number>());
   const lastAutoRefreshAtRef = useRef(0);
   const refreshTimeoutRef = useRef<number | null>(null);
@@ -1471,6 +1472,7 @@ export default function StatsClient() {
 
   const triggerRefresh = useCallback((reason: "manual" | "channels") => {
     clearCachedSnapshots();
+    forceFreshOnceRef.current = true;
     setIsRefreshing(true);
     setLastRefreshAt(Date.now());
     setRefreshNonce((prev) => prev + 1);
@@ -1629,12 +1631,15 @@ export default function StatsClient() {
     }
   }, [applyBulkPayload]);
 
-  const handleSharedStatsRefresh = useCallback(async () => {
+  const runUnifiedStatsRefresh = useCallback(async (reason: DailyStatsRefreshReason) => {
     setIsRefreshing(true);
     setLastRefreshAt(Date.now());
 
     try {
-      const bootstrap = await runDailyStatsRefreshBootstrap();
+      const bootstrap = await runDailyStatsRefreshBootstrap({
+        reason,
+        force: reason !== "first_open",
+      });
       applyBootstrapPayload(bootstrap);
 
       if (!bootstrap?.ran) {
@@ -1646,6 +1651,11 @@ export default function StatsClient() {
       setIsRefreshing(false);
     }
   }, [applyBootstrapPayload, syncFromServerCacheIfNeeded]);
+
+  const handleSharedStatsRefresh = useCallback(async () => {
+    if (isRefreshing) return;
+    await runUnifiedStatsRefresh("manual");
+  }, [isRefreshing, runUnifiedStatsRefresh]);
 
 
 
@@ -1762,7 +1772,7 @@ export default function StatsClient() {
 
     (async () => {
       try {
-        const bootstrap = await runDailyStatsRefreshBootstrap();
+        const bootstrap = await runDailyStatsRefreshBootstrap({ reason: "first_open", force: false });
         if (cancelled) return;
 
         applyBootstrapPayload(bootstrap);
@@ -1861,7 +1871,9 @@ useEffect(() => {
     setSummaryOpp((prev) => ({ ...prev, loading: true }));
 
     try {
-      const next = await fetchBulkStats(period, refreshNonce > 0);
+      const forceFresh = forceFreshOnceRef.current;
+      forceFreshOnceRef.current = false;
+      const next = await fetchBulkStats(period, forceFresh);
       if (cancelled) return;
       try {
         const syncedAt = Date.now();

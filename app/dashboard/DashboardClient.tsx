@@ -33,7 +33,7 @@ import NotificationsSettingsContent from "./settings/_components/NotificationsSe
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
 import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
+import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse, type DailyStatsRefreshReason } from "@/lib/dailyStatsRefreshClient";
 import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
@@ -1437,21 +1437,35 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     }
   }, [refreshKpis, warmInrStatsUi]);
 
-  const triggerGeneratorRefresh = useCallback(async () => {
-    const runSync = async () => {
-      const syncAt = Date.now();
-      lastGeneratorRefreshAtRef.current = syncAt;
-      await Promise.allSettled([
-        loadSiteInrcy(),
-        refreshKpis({ fresh: true, syncedAt: syncAt }),
-        warmInrStatsUi({ syncedAt: syncAt, fresh: true }),
-      ]);
-      notifyStatsRefresh(syncAt);
-    };
+  const applyBootstrapChannelStates = useCallback((channelStates?: DailyStatsRefreshBootstrapResponse["channelStates"]) => {
+    if (!channelStates) return;
 
-    clearScheduledGeneratorRefreshes();
-    await runSync();
-  }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshKpis, warmInrStatsUi]);
+    setSiteInrcyGa4Connected(Boolean(channelStates.site_inrcy?.ga4));
+    setSiteInrcyGscConnected(Boolean(channelStates.site_inrcy?.gsc));
+    setSiteWebGa4Connected(Boolean(channelStates.site_web?.ga4));
+    setSiteWebGscConnected(Boolean(channelStates.site_web?.gsc));
+
+    setGmbConnected(Boolean(channelStates.gmb?.connected));
+    setGmbAccountConnected(Boolean(channelStates.gmb?.accountConnected));
+    setGmbConfigured(Boolean(channelStates.gmb?.configured));
+    setGmbAccountEmail(channelStates.gmb?.email ?? "");
+    setGmbLocationName(channelStates.gmb?.resource_id ?? "");
+    setGmbLocationLabel(channelStates.gmb?.resource_label ?? "");
+
+    setFacebookAccountConnected(Boolean(channelStates.facebook?.accountConnected));
+    setFacebookPageConnected(Boolean(channelStates.facebook?.pageConnected));
+    setFacebookAccountEmail(channelStates.facebook?.user_email ?? "");
+    setFbSelectedPageId(channelStates.facebook?.resource_id ?? "");
+    setFbSelectedPageName(channelStates.facebook?.resource_label ?? "");
+
+    setInstagramAccountConnected(Boolean(channelStates.instagram?.accountConnected));
+    setInstagramConnected(Boolean(channelStates.instagram?.connected));
+    setInstagramUsername(channelStates.instagram?.username ?? "");
+
+    setLinkedinAccountConnected(Boolean(channelStates.linkedin?.accountConnected));
+    setLinkedinConnected(Boolean(channelStates.linkedin?.connected));
+    setLinkedinDisplayName(channelStates.linkedin?.display_name ?? "");
+  }, []);
 
   const applyBootstrapRefresh = useCallback((bootstrap: DailyStatsRefreshBootstrapResponse) => {
     const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
@@ -1460,6 +1474,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       : expectedUiSnapshotDate();
 
     markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+    applyBootstrapChannelStates(bootstrap?.channelStates);
 
     if (!bootstrap?.ran) {
       return { syncAt, bootstrapSnapshotDate };
@@ -1524,16 +1539,20 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
     notifyStatsRefresh(syncAt);
     return { syncAt, bootstrapSnapshotDate };
-  }, [notifyStatsRefresh]);
+  }, [applyBootstrapChannelStates, notifyStatsRefresh]);
 
-  const handleSharedGeneratorRefresh = useCallback(async () => {
-    if (kpisLoading) return;
+  const runUnifiedGeneratorRefresh = useCallback(async (reason: DailyStatsRefreshReason) => {
+    const syncAt = Date.now();
+    lastGeneratorRefreshAtRef.current = syncAt;
+    clearScheduledGeneratorRefreshes();
     setKpisLoading(true);
 
     try {
-      const bootstrap = await runDailyStatsRefreshBootstrap();
+      const bootstrap = await runDailyStatsRefreshBootstrap({
+        reason,
+        force: reason !== "first_open",
+      });
       applyBootstrapRefresh(bootstrap);
-      await loadSiteInrcy();
 
       if (!bootstrap?.ran) {
         await syncFromServerCacheIfNeeded(true);
@@ -1543,7 +1562,16 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     } finally {
       setKpisLoading(false);
     }
-  }, [applyBootstrapRefresh, kpisLoading, loadSiteInrcy, syncFromServerCacheIfNeeded]);
+  }, [applyBootstrapRefresh, clearScheduledGeneratorRefreshes, syncFromServerCacheIfNeeded]);
+
+  const triggerGeneratorRefresh = useCallback(async () => {
+    await runUnifiedGeneratorRefresh("channel_change");
+  }, [runUnifiedGeneratorRefresh]);
+
+  const handleSharedGeneratorRefresh = useCallback(async () => {
+    if (kpisLoading) return;
+    await runUnifiedGeneratorRefresh("manual");
+  }, [kpisLoading, runUnifiedGeneratorRefresh]);
 
 
 
