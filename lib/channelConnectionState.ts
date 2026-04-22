@@ -190,8 +190,15 @@ export async function getChannelConnectionStates(
   const igExpired = isExpired(ig.expires_at) && !igHasSelectedProfileToken;
   const igStatus = asString(ig.status);
   const igHasToken = hasTruthyString(ig.access_token_enc);
-  const igAccountConnected = Boolean(((igStatus === "account_connected" || igStatus === "connected") && !igExpired && igHasToken) || igSettings.accountConnected);
-  const igResourceId = asString(ig.resource_id) || asString(igSettings.igId) || asString(igSettings.pageId) || null;
+
+  // Instagram is intentionally stricter than the other social connectors here:
+  // the integrations row is the source of truth for connection/account status.
+  // The pro_tools_configs mirror is still useful for display-only fallbacks
+  // (username / URL) but must never resurrect a stale “connected” state.
+  const igAccountConnected = Boolean(
+    (igStatus === "account_connected" || igStatus === "connected") && !igExpired && igHasToken
+  );
+  const igResourceId = asString(ig.resource_id) || null;
   const igUsername = asString(ig.resource_label) || asString(igSettings.username) || null;
   const igProfileUrl = asString(igSettings.url) || (igUsername ? `https://www.instagram.com/${igUsername}/` : null);
   const igConnected = Boolean(igAccountConnected && igResourceId);

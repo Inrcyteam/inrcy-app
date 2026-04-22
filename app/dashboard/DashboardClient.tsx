@@ -3212,9 +3212,8 @@ const disconnectInstagramAccount = useCallback(async () => {
     igId: "",
   });
   await triggerChannelRefresh("instagram");
-  await syncInstagramStateFromServer();
   setPanelSuccess("instagram", "Compte Instagram déconnecté.");
-}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess, syncInstagramStateFromServer]);
+}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
 
 const disconnectInstagramProfile = useCallback(async () => {
   await fetch("/api/integrations/instagram/disconnect-profile", { method: "POST" });
@@ -3239,9 +3238,8 @@ const disconnectInstagramProfile = useCallback(async () => {
     igId: "",
   });
   await triggerChannelRefresh("instagram");
-  await syncInstagramStateFromServer();
   setPanelSuccess("instagram", "Profil Instagram déconnecté.");
-}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess, syncInstagramStateFromServer]);
+}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
 
 const loadInstagramAccounts = useCallback(async () => {
   if (!instagramAccountConnected) return;
@@ -3286,7 +3284,6 @@ const loadInstagramAccounts = useCallback(async () => {
         igId: String(only.ig_id || only.page_id || ""),
       });
       await triggerChannelRefresh("instagram");
-      await syncInstagramStateFromServer({ preserveSelection: true });
       setPanelSuccess("instagram", "Compte Instagram enregistré.");
     }
   } catch (e: any) {
@@ -3294,7 +3291,7 @@ const loadInstagramAccounts = useCallback(async () => {
   } finally {
     setIgAccountsLoading(false);
   }
-}, [instagramAccountConnected, igSelectedPageId, patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh, updateRootSettingsKey, syncInstagramStateFromServer]);
+}, [instagramAccountConnected, igSelectedPageId, patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh, updateRootSettingsKey]);
 
 useEffect(() => {
   const linked = searchParams.get("linked");
@@ -3352,12 +3349,11 @@ const saveInstagramProfile = useCallback(async () => {
       igId: String(picked.ig_id || picked.page_id || ""),
     });
     await triggerChannelRefresh("instagram");
-    await syncInstagramStateFromServer({ preserveSelection: true });
     setPanelSuccess("instagram", "Compte Instagram enregistré.");
   } else {
     setPanelError("instagram", j?.error, "Impossible d'enregistrer Instagram.");
   }
-}, [igAccounts, igSelectedPageId, patchChannelConnectionLocally, triggerChannelRefresh, updateRootSettingsKey, setPanelSuccess, setPanelError, syncInstagramStateFromServer]);
+}, [igAccounts, igSelectedPageId, patchChannelConnectionLocally, triggerChannelRefresh, updateRootSettingsKey, setPanelSuccess, setPanelError]);
 
 // ===== LinkedIn =====
 const connectLinkedinAccount = useCallback(async () => {
