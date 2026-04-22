@@ -118,17 +118,17 @@ function extractRowsForMetric(metricRow: Record<string, unknown>): Array<{ date:
   return Array.from(byDay.entries()).map(([date, vals]) => ({ date, values: vals }));
 }
 
-async function igFetchAccountMetric(
+async function igFetchAccountMetricRows(
   accessToken: string,
   igUserId: string,
-  metric: string,
+  metrics: string[],
   since: number,
   until: number
-): Promise<Array<{ date: string; values: Record<string, number> }>> {
+): Promise<Array<Record<string, unknown>>> {
   const url =
     `${GRAPH}/${encodeURIComponent(igUserId)}/insights?` +
     new URLSearchParams({
-      metric,
+      metric: metrics.join(","),
       period: "day",
       since: String(since),
       until: String(until),
@@ -136,7 +136,17 @@ async function igFetchAccountMetric(
     }).toString();
 
   const resp = await fetchJson(url);
-  const rows = Array.isArray(resp?.data) ? resp.data : [];
+  return Array.isArray(resp?.data) ? resp.data : [];
+}
+
+async function igFetchAccountMetric(
+  accessToken: string,
+  igUserId: string,
+  metric: string,
+  since: number,
+  until: number
+): Promise<Array<{ date: string; values: Record<string, number> }>> {
+  const rows = await igFetchAccountMetricRows(accessToken, igUserId, [metric], since, until);
   return rows.flatMap((row: Record<string, unknown>) => extractRowsForMetric(row));
 }
 
@@ -154,25 +164,46 @@ export async function igFetchDailyInsights(
   const unsupportedMetrics: string[] = [];
   const metricErrors: Record<string, string> = {};
 
-  for (const metric of IG_ACCOUNT_METRICS) {
-    try {
-      const rows = await igFetchAccountMetric(accessToken, igUserId, metric, since, until);
-      if (!rows.length) {
-        supportedMetrics.push(metric);
-        continue;
-      }
-      supportedMetrics.push(metric);
-      for (const row of rows) {
+  try {
+    const batchRows = await igFetchAccountMetricRows(accessToken, igUserId, [...IG_ACCOUNT_METRICS], since, until);
+    const seenMetrics = new Set<string>();
+    for (const metricRow of batchRows) {
+      const metricName = String(metricRow?.name || "").trim();
+      if (metricName) seenMetrics.add(metricName);
+      for (const row of extractRowsForMetric(metricRow)) {
         const current = byDay.get(row.date) || {};
         for (const [key, value] of Object.entries(row.values)) {
           current[key] = (current[key] || 0) + value;
         }
         byDay.set(row.date, current);
       }
-    } catch (error) {
-      const message = normalizeMetricError(error);
-      unsupportedMetrics.push(metric);
-      metricErrors[metric] = message;
+    }
+    for (const metric of IG_ACCOUNT_METRICS) {
+      if (seenMetrics.has(metric)) {
+        supportedMetrics.push(metric);
+      }
+    }
+  } catch (batchError) {
+    const batchMessage = normalizeMetricError(batchError);
+    const shouldFallbackPerMetric = /valid insights metric|unsupported|not available|metric/i.test(batchMessage);
+    if (!shouldFallbackPerMetric) throw batchError;
+
+    for (const metric of IG_ACCOUNT_METRICS) {
+      try {
+        const rows = await igFetchAccountMetric(accessToken, igUserId, metric, since, until);
+        supportedMetrics.push(metric);
+        for (const row of rows) {
+          const current = byDay.get(row.date) || {};
+          for (const [key, value] of Object.entries(row.values)) {
+            current[key] = (current[key] || 0) + value;
+          }
+          byDay.set(row.date, current);
+        }
+      } catch (error) {
+        const message = normalizeMetricError(error);
+        unsupportedMetrics.push(metric);
+        metricErrors[metric] = message;
+      }
     }
   }
 

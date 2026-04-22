@@ -334,7 +334,7 @@ export async function buildStatsOverview(args: {
     getGoogleTokenForAnyGoogle,
   } = await import("@/lib/googleStats");
   const { gmbFetchDailyMetricsNormalizedWithRecovery } = await import("@/lib/googleBusiness");
-  const { igFetchDailyInsights, igFetchRecentMediaInsights } = await import("@/lib/metaInsights");
+  const { igFetchDailyInsights } = await import("@/lib/metaInsights");
   const { fbFetchDailyInsights } = await import("@/lib/facebookInsights");
   const { extractFacebookUserTokens } = await import("@/lib/metaBusinessAssets");
   const { liFetchOrgAnalytics, liFetchMemberAnalytics, liResolveFirstAdminOrgUrn } = await import("@/lib/linkedinAnalytics");
@@ -845,37 +845,25 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const start = dateWindow.start;
           const token = tryDecryptToken(String(igRow["access_token_enc"]));
           if (!token) throw new Error("La connexion Instagram a expiré ou n’est plus valide.");
-          const [accountInsights, mediaInsights] = await Promise.allSettled([
-            igFetchDailyInsights(token, String(igRow["resource_id"]), start, end),
-            igFetchRecentMediaInsights(token, String(igRow["resource_id"]), start),
-          ]);
-          const baseMetrics = accountInsights.status === "fulfilled" ? accountInsights.value : null;
-          const mediaPayload = mediaInsights.status === "fulfilled" ? mediaInsights.value : null;
-          const mediaTotals = mediaPayload?.totals || {};
+          const baseMetrics = await igFetchDailyInsights(token, String(igRow["resource_id"]), start, end);
           if (!baseMetrics) throw new Error("Impossible de récupérer les statistiques Instagram pour le moment.");
           sourcesStatus.instagram.metrics = {
             ...baseMetrics,
-            totals: {
-              ...baseMetrics.totals,
-              ...Object.fromEntries(
-                Object.entries(mediaTotals).map(([k, v]) => [k, Number(baseMetrics.totals[k] || 0) + Number(v || 0)])
-              ),
-            },
             raw: {
               ...(baseMetrics.raw || {}),
               supportedMetrics: {
                 account: Array.isArray(baseMetrics.raw?.supportedMetrics?.account) ? baseMetrics.raw.supportedMetrics.account : [],
-                media: Array.isArray(mediaPayload?.supportedMetrics) ? mediaPayload.supportedMetrics : [],
+                media: [],
               },
               unsupportedMetrics: {
                 account: Array.isArray(baseMetrics.raw?.unsupportedMetrics?.account) ? baseMetrics.raw.unsupportedMetrics.account : [],
-                media: Array.isArray(mediaPayload?.unsupportedMetrics) ? mediaPayload.unsupportedMetrics : [],
+                media: [],
               },
               metricErrors: {
                 account: baseMetrics.raw?.metricErrors?.account || {},
-                media: mediaPayload?.metricErrors || {},
+                media: {},
               },
-              mediaInsights: mediaPayload ? mediaPayload.totals : { error: getSimpleFrenchErrorMessage(mediaInsights.status === "rejected" ? mediaInsights.reason : null, "media_insights_failed") },
+              mediaInsights: { error: "skipped_for_fast_refresh" },
             },
           };
         } catch (e) {
