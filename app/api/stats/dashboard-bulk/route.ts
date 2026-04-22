@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { jsonUserFacingError } from '@/lib/apiUserFacingErrors';
 import { createSupabaseServer } from '@/lib/supabaseServer';
+import { getChannelConnectionStates } from '@/lib/channelConnectionState';
+import { buildChannelBlocks, type InrstatsChannelBlocksByChannel } from '@/lib/inrstats/channelBlocks';
 import {
   fetchCubeOverviews,
   computeOpportunitiesFromOverviews,
@@ -20,6 +22,7 @@ type BulkResponse = {
     avg_basket: number;
   };
   estimatedByCube: Record<CubeKey, number>;
+  blocks: InrstatsChannelBlocksByChannel;
   meta: {
     source: 'api/stats/dashboard-bulk';
     generatedAt: string;
@@ -67,6 +70,8 @@ export async function GET(req: Request) {
       .eq('user_id', user.id)
       .maybeSingle();
 
+    const channelStates = await getChannelConnectionStates(supabase, user.id);
+
     const leadConversionRate = Number(profileRow?.lead_conversion_rate ?? 0);
     const avgBasket = Number(profileRow?.avg_basket ?? 0);
     const estimatedByCube: Record<CubeKey, number> = {
@@ -78,6 +83,14 @@ export async function GET(req: Request) {
       linkedin: Math.round((opportunities.byCube.linkedin || 0) * (leadConversionRate / 100) * avgBasket),
     };
 
+    const blocks = buildChannelBlocks({
+      periodDays: period,
+      overviews,
+      opportunitiesByCube: opportunities.byCube,
+      estimatedByCube,
+      channelStates,
+    });
+
     const payload: BulkResponse = {
       period,
       overviews,
@@ -87,11 +100,12 @@ export async function GET(req: Request) {
         avg_basket: Number.isFinite(avgBasket) ? avgBasket : 0,
       },
       estimatedByCube,
+      blocks,
       meta: {
         source: 'api/stats/dashboard-bulk',
         generatedAt: new Date().toISOString(),
-      snapshotDate: Object.values(overviews).find((overview) => overview?.meta)?.meta?.snapshotDate ?? snapshotDate ?? null,
-      live: Boolean(Object.values(overviews).find((overview) => overview?.meta)?.meta?.live ?? fresh),
+        snapshotDate: Object.values(overviews).find((overview) => overview?.meta)?.meta?.snapshotDate ?? snapshotDate ?? null,
+        live: Boolean(Object.values(overviews).find((overview) => overview?.meta)?.meta?.live ?? fresh),
       },
     };
 

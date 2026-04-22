@@ -1,20 +1,122 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./mails.module.css";
-import Image from "next/image";
-import SettingsDrawer from "../SettingsDrawer";
-import HelpButton from "../_components/HelpButton";
-import HelpModal from "../_components/HelpModal";
-import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
 import { createClient } from "@/lib/supabaseClient";
-import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/dashboard/_components/ChannelImageRetouchTool";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
-import { normalizeRecipientEmails, type MailCampaignRecipientInput } from "@/lib/crmRecipients";
+import MailboxHeader from "./_components/MailboxHeader";
+import MobileFoldersMenu from "./_components/MobileFoldersMenu";
+import FolderTabs from "./_components/FolderTabs";
+import MailboxToolbar from "./_components/MailboxToolbar";
+import MailboxList from "./_components/MailboxList";
+import {
+  ALL_FOLDERS,
+  BULK_CONFIRM_STRONG_THRESHOLD,
+  BULK_CONFIRM_WARNING_THRESHOLD,
+  MAILBOX_PAGE_SIZE,
+  MAILBOX_RECIPIENTS_PAGE_SIZE,
+  MAIL_ACCOUNTS_UPDATED_EVENT,
+  applyCampaignRecipientsFilter,
+  applySignaturePreview,
+  buildDefaultMailText,
+  bulkConfirmationMessage,
+  campaignCounts,
+  campaignTitleFromFolder,
+  canBulkDeleteHistoryItem,
+  canDeleteHistoryItem,
+  channelApiPath,
+  computePublicationPreviewLayout,
+  defaultFolderFromSendType,
+  emptyFolderCounts,
+  extractAttachmentsFromPayload,
+  extractChannelPublications,
+  extractChannelsFromPayload,
+  extractMessageFromPayload,
+  extractPublicationParts,
+  extractPublicationResults,
+  folderFromTrack,
+  folderLabel,
+  folderTheme,
+  formatCampaignFilterLabel,
+  formatCampaignProgress,
+  formatChannelLabel,
+  formatOutboxStatusLabel,
+  getPublicationChannelPreset,
+  getCampaignRecipientStatusLabel,
+  getChannelIndicatorMeta,
+  getFailedChannelMessage,
+  getPublicationBackgroundMode,
+  buildPublicationDefaultTransform,
+  getPublicationChannelStatuses,
+  getPublicationDesign,
+  hasAttachmentFields,
+  firstNonEmpty,
+  historyEmptyState,
+  historySelectionKey,
+  isBusinessMailFolder,
+  isDeletedChannelResult,
+  isFailedChannelResult,
+  isFolderValue,
+  isImageAttachment,
+  isPublicationTransformModified,
+  isRetryableCampaignItem,
+  isVideoAttachment,
+  isVisibleInFolder,
+  listGridTemplateColumns,
+  makePublicationImageAssetKey,
+  normalizeChannelKey,
+  normalizeFolderCounts,
+  offsetFromPublicationDrawPosition,
+  orderChannelKeys,
+  pill,
+  publicationClamp,
+  renderPublicationChannelsWithFailures,
+  renderPublicationImageAsset,
+  resolveCampaignFolder,
+  safeDecode,
+  safeS,
+  splitList,
+  stripText,
+  tagsToEditorString,
+  toolbarActionTheme,
+  withPublicationBackgroundMode,
+  type BoxView,
+  type CampaignHealthSummary,
+  type CampaignRecipientLog,
+  type CampaignRecipientsFilterId,
+  type ChannelPublication,
+  type ComposeAttachmentRef,
+  type ComposeCrmRecipientHint,
+  type EditablePublicationAttachment,
+  type Folder,
+  type FolderCounts,
+  type MailAccount,
+  type OutboxItem,
+  type PublicationChannelImagesState,
+  type PublicationImageAsset,
+  type PublicationImageBackgroundMode,
+  type PublicationImageDesign,
+  type PublicationImageFitMode,
+  type PublicationImageTransform,
+  type PublicationEditForm,
+  type PublicationParts,
+  type SendItem,
+  type SendType,
+  type Status,
+} from "./_lib/mailboxPhase1";
+
+import {
+  MAILBOX_FILE_INPUT_ID,
+  PUBLICATION_EDIT_FILE_INPUT_ID,
+  itemMailAccountId,
+  makeAttachmentPath,
+  normalizeComposeRecipientHints,
+  normalizeEmails,
+  providerSendEndpoint,
+} from "./_lib/mailboxPhase25";
 
 
 const pillBtn: React.CSSProperties = {
@@ -34,1378 +136,7 @@ const pillBtnActive: React.CSSProperties = {
   background: "rgba(76,195,255,0.10)",
 };
 
-const MAILBOX_PAGE_SIZE = 20;
-const MAILBOX_RECIPIENTS_PAGE_SIZE = 20;
-const BULK_CONFIRM_WARNING_THRESHOLD = 100;
-const BULK_CONFIRM_STRONG_THRESHOLD = 500;
 
-function safeDecode(v: string): string {
-  try {
-    return decodeURIComponent(v);
-  } catch {
-    return v;
-  }
-}
-
-function stripText(v: unknown): string {
-  return String(v || "")
-    .replace(/<[^>]+>/g, "")
-    .trim();
-}
-
-function safeS(v: unknown, fallback = ""): string {
-  const s = stripText(v);
-  return s || fallback;
-}
-
-function applySignaturePreview(text: string, signature: string): string {
-  const base = String(text || "").trimEnd();
-  const sig = String(signature || "").trim();
-  if (!sig) return base;
-  if (!base) return sig;
-  if (base.replace(/\r\n/g, "\n").trim().endsWith(sig.replace(/\r\n/g, "\n").trim())) return base;
-  return `${base}\n\n${sig}`;
-}
-
-function buildDefaultMailText(opts: { kind: SendType; name?: string; docRef?: string; signature?: string }): string {
-  const name = (opts.name || "").trim();
-  const hello = name ? `Bonjour ${name},` : "Bonjour,";
-
-  const ref = (opts.docRef || "").trim();
-  const refPart = ref ? ` ${ref}` : "";
-  const closing = opts.signature?.trim() || "Cordialement,";
-
-  if (opts.kind === "facture") {
-    return [
-      hello,
-      "",
-      `Veuillez trouver ci-joint votre facture${refPart}.`,
-      "",
-      "Je reste à votre disposition si besoin.",
-      "",
-      closing,
-    ].join("\n");
-  }
-
-  if (opts.kind === "devis") {
-    return [
-      hello,
-      "",
-      `Veuillez trouver ci-joint votre devis${refPart}.`,
-      "",
-      "Je reste disponible pour toute question ou modification.",
-      "",
-      closing,
-    ].join("\n");
-  }
-
-  return [
-    hello,
-    "",
-    "Je me permets de vous contacter.",
-    "",
-    closing,
-  ].join("\n");
-}
-// iNrSend : centre d'historique des envois + envoi simple de mails.
-type Folder =
-  | "mails"
-  | "factures"
-  | "devis"
-  | "publications"
-  | "recoltes"
-  | "offres"
-  | "informations"
-  | "suivis"
-  | "enquetes";
-
-const ALL_FOLDERS: Folder[] = [
-  "mails",
-  "factures",
-  "devis",
-  "publications",
-  "recoltes",
-  "offres",
-  "informations",
-  "suivis",
-  "enquetes",
-];
-
-type FolderCounts = Record<Folder, number>;
-
-function emptyFolderCounts(): FolderCounts {
-  return {
-    mails: 0,
-    factures: 0,
-    devis: 0,
-    publications: 0,
-    recoltes: 0,
-    offres: 0,
-    informations: 0,
-    suivis: 0,
-    enquetes: 0,
-  };
-}
-
-function normalizeFolderCounts(input: unknown): FolderCounts {
-  const counts = emptyFolderCounts();
-  if (!input || typeof input !== "object") return counts;
-  for (const folder of ALL_FOLDERS) {
-    const value = Number((input as Record<string, unknown>)[folder] ?? 0);
-    counts[folder] = Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
-  }
-  return counts;
-}
-
-function isFolderValue(value: string): value is Folder {
-  return (ALL_FOLDERS as string[]).includes(value);
-}
-
-function folderFromTrack(trackKind: string | null | undefined, trackType: string | null | undefined, fallback: Folder = "mails"): Folder {
-  const kind = String(trackKind || "").toLowerCase();
-  const type = String(trackType || "").toLowerCase();
-
-  if (kind === "booster") {
-    if (type === "review_mail") return "recoltes";
-    if (type === "promo_mail") return "offres";
-  }
-
-  if (kind === "fideliser") {
-    if (type === "newsletter_mail") return "informations";
-    if (type === "thanks_mail") return "suivis";
-    if (type === "satisfaction_mail") return "enquetes";
-  }
-
-  return fallback;
-}
-
-function defaultFolderFromSendType(type: SendType | string | null | undefined): Folder {
-  if (type === "facture") return "factures";
-  if (type === "devis") return "devis";
-  return "mails";
-}
-
-function resolveCampaignFolder(raw: any): Folder {
-  const explicit = String(raw?.folder || "").toLowerCase();
-  if (isFolderValue(explicit)) return explicit;
-  const tracked = folderFromTrack(raw?.track_kind, raw?.track_type, defaultFolderFromSendType(raw?.type));
-  return tracked;
-}
-
-function campaignTitleFromFolder(folder: Folder, subject: string) {
-  const safeSubject = safeS(subject, "(sans objet)");
-  if (folder === "offres") return `Offre — ${safeSubject}`;
-  if (folder === "recoltes") return `Récolte — ${safeSubject}`;
-  if (folder === "informations") return `Information — ${safeSubject}`;
-  if (folder === "suivis") return `Suivi — ${safeSubject}`;
-  if (folder === "enquetes") return `Enquête — ${safeSubject}`;
-  if (folder === "factures") return `Envoi facture — ${safeSubject}`;
-  if (folder === "devis") return `Envoi devis — ${safeSubject}`;
-  return `Campagne — ${safeSubject}`;
-}
-
-function isBusinessMailFolder(folder: Folder) {
-  return folder === "recoltes" || folder === "offres" || folder === "informations" || folder === "suivis" || folder === "enquetes";
-}
-
-// Typage historique d'envoi (ancienne table send_items)
-type SendType = "mail" | "facture" | "devis";
-type Status = "draft" | "sent" | "error" | "queued" | "processing" | "paused" | "partial" | "completed" | "failed";
-
-type MailAccount = {
-  id: string;
-  provider: "gmail" | "microsoft" | "imap";
-  email_address: string;
-  display_name: string | null;
-  status: string;
-};
-
-const MAIL_ACCOUNTS_UPDATED_EVENT = "inrsend:mail-accounts-updated";
-
-type ComposeAttachmentRef = {
-  bucket: string;
-  path: string;
-  name: string;
-  type?: string | null;
-  size?: number | null;
-};
-
-type ComposeCrmRecipientHint = MailCampaignRecipientInput;
-
-type CampaignRecipientLog = {
-  id: string;
-  email: string;
-  display_name?: string | null;
-  status: string;
-  error?: string | null;
-  last_error?: string | null;
-  attempt_count?: number | null;
-  max_attempts?: number | null;
-  next_attempt_at?: string | null;
-  sent_at?: string | null;
-  updated_at?: string | null;
-  suppression_reason?: string | null;
-  bounce_type?: string | null;
-  bounced_at?: string | null;
-  unsubscribed_at?: string | null;
-  delivery_status?: string | null;
-  delivery_event?: string | null;
-  delivery_last_event_at?: string | null;
-  delivered_at?: string | null;
-};
-
-type CampaignRecipientsFilterId =
-  | "all"
-  | "sent"
-  | "delivered"
-  | "queued"
-  | "processing"
-  | "failed"
-  | "blocked"
-  | "opt_out"
-  | "blacklist"
-  | "complaint"
-  | "hard_bounce"
-  | "soft_bounce";
-
-type CampaignHealthSummary = {
-  total: number;
-  queued: number;
-  processing: number;
-  sent: number;
-  delivered: number;
-  failed: number;
-  blocked: number;
-  opt_out: number;
-  blacklist: number;
-  complaint: number;
-  hard_bounce: number;
-  soft_bounce: number;
-  retryable: number;
-};
-
-type SendItem = {
-  id: string;
-  integration_id: string | null;
-  type: SendType;
-  status: Status;
-  to_emails: string;
-  subject: string | null;
-  body_text: string | null;
-  body_html: string | null;
-  provider: string | null;
-  provider_message_id: string | null;
-  // present in DB (used by Gmail), but not always selected previously
-  provider_thread_id?: string | null;
-  source_doc_save_id?: string | null;
-  source_doc_type?: "devis" | "facture" | null;
-  source_doc_number?: string | null;
-  error: string | null;
-  sent_at: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-type OutboxItem = {
-  id: string;
-  source: "send_items" | "app_events" | "mail_campaigns";
-  module?: "booster" | "fideliser";
-  folder: Folder;
-  provider: string | null; // Gmail / Microsoft / IMAP / Booster / Fidéliser / Admin
-  status: Status;
-  created_at: string;
-  sent_at?: string | null;
-  error?: string | null;
-
-  // Affichage liste
-  title: string;
-  subTitle?: string;
-  target: string;
-  preview: string;
-
-  // Détails
-  detailHtml?: string | null;
-  detailText?: string | null;
-  // Optional richer details (when available)
-  subject?: string | null;
-  to?: string | null;
-  from?: string | null;
-  channels?: string[];
-  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null }[];
-  raw?: any;
-  reopenHref?: string | null;
-};
-
-type PublicationParts = {
-  title?: string | null;
-  content?: string | null;
-  cta?: string | null;
-  hashtags?: string[];
-  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null }[];
-};
-
-type ChannelPublication = {
-  key: string;
-  label: string;
-  parts: PublicationParts;
-};
-
-type PublicationEditForm = {
-  title: string;
-  content: string;
-  cta: string;
-  hashtags: string;
-};
-
-type EditablePublicationAttachment = {
-  name: string;
-  type?: string | null;
-  size?: number | null;
-  url?: string | null;
-};
-
-type PublicationImageFitMode = "contain" | "cover";
-type PublicationImageBackgroundMode = "blur" | "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
-type PublicationDesignPosition = "top" | "center" | "bottom";
-type PublicationImageDesign = { enabled: boolean; text: string; color: string; background: string; position: PublicationDesignPosition; size: number; x?: number; y?: number; };
-
-type PublicationImageTransform = {
-  fit: PublicationImageFitMode;
-  zoom: number;
-  offsetX: number;
-  offsetY: number;
-  blurBackground: boolean;
-  backgroundMode?: PublicationImageBackgroundMode;
-  backgroundColor?: string;
-  design?: PublicationImageDesign;
-};
-
-type PublicationImageAsset = {
-  key: string;
-  name: string;
-  type: string;
-  previewUrl: string;
-  sourceUrl: string | null;
-  file: File | null;
-  selected: boolean;
-  transform: PublicationImageTransform;
-};
-
-type PublicationChannelImagesState = {
-  assets: PublicationImageAsset[];
-};
-
-type PublicationImageRenderPreset = {
-  width: number;
-  height: number;
-  defaultFit: PublicationImageFitMode;
-  defaultBlurBackground: boolean;
-};
-
-type PublicationPreviewLayout = {
-  drawW: number;
-  drawH: number;
-  dx: number;
-  dy: number;
-};
-
-const DEFAULT_PUBLICATION_DESIGN: PublicationImageDesign = { enabled: false, text: "", color: "#ffffff", background: "#111827", position: "bottom", size: 30, x: 50, y: 88 };
-
-const PUBLICATION_CHANNEL_PRESETS: Record<string, PublicationImageRenderPreset> = {
-  inrcy_site: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
-  site_web: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
-  gmb: { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: true },
-  facebook: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
-  instagram: { width: 1080, height: 1350, defaultFit: "cover", defaultBlurBackground: false },
-  linkedin: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
-};
-
-function publicationClamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function getPublicationChannelPreset(channel: string): PublicationImageRenderPreset {
-  return PUBLICATION_CHANNEL_PRESETS[normalizeChannelKey(channel)] || { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: true };
-}
-
-function buildPublicationDefaultTransform(channel: string): PublicationImageTransform {
-  const preset = getPublicationChannelPreset(channel);
-  return {
-    fit: preset.defaultFit,
-    zoom: 1,
-    offsetX: 0,
-    offsetY: 0,
-    blurBackground: preset.defaultBlurBackground,
-    backgroundMode: preset.defaultBlurBackground ? "blur" : "black",
-    backgroundColor: "#e8f6ff",
-    design: { ...DEFAULT_PUBLICATION_DESIGN },
-  };
-}
-
-function getPublicationBackgroundMode(transform: PublicationImageTransform): PublicationImageBackgroundMode {
-  if (transform.backgroundMode) return transform.backgroundMode;
-  return transform.blurBackground ? "blur" : "black";
-}
-
-function withPublicationBackgroundMode(transform: PublicationImageTransform, backgroundMode: PublicationImageBackgroundMode): PublicationImageTransform {
-  return {
-    ...transform,
-    backgroundMode,
-    blurBackground: backgroundMode === "blur",
-  };
-}
-
-function getPublicationBackgroundFill(mode: PublicationImageBackgroundMode, backgroundColor?: string): string {
-  if (backgroundColor) return backgroundColor;
-  switch (mode) {
-    case "white": return "#ffffff";
-    case "gray": return "#d6dae2";
-    case "sand": return "#efe4d3";
-    case "brand": return "#e8f6ff";
-    case "color": return "#e8f6ff";
-    default: return "#0d1320";
-  }
-}
-
-function getPublicationDesign(transform: PublicationImageTransform): PublicationImageDesign {
-  const design = { ...DEFAULT_PUBLICATION_DESIGN, ...(transform.design || {}) };
-  if (typeof design.x !== "number") design.x = 50;
-  if (typeof design.y !== "number") design.y = design.position === "top" ? 12 : design.position === "center" ? 50 : 88;
-  return design;
-}
-
-function drawPublicationDesignOverlay(ctx: CanvasRenderingContext2D, cw: number, ch: number, transform: PublicationImageTransform) {
-  const design = getPublicationDesign(transform);
-  const text = String(design.text || "").trim();
-  if (!design.enabled || !text) return;
-  const size = publicationClamp(design.size || 30, 18, 72);
-  ctx.save();
-  ctx.font = `900 ${size}px Inter, Arial, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const maxTextWidth = cw * 0.78;
-  const metrics = ctx.measureText(text);
-  const textWidth = Math.min(metrics.width, maxTextWidth);
-  const padX = 22;
-  const padY = 14;
-  const boxW = textWidth + padX * 2;
-  const boxH = size + padY * 2;
-  const x = publicationClamp((typeof design.x === "number" ? design.x : 50) / 100 * cw, boxW / 2 + 16, cw - boxW / 2 - 16);
-  const fallbackY = design.position === "top" ? 12 : design.position === "center" ? 50 : 88;
-  const y = publicationClamp((typeof design.y === "number" ? design.y : fallbackY) / 100 * ch, boxH / 2 + 16, ch - boxH / 2 - 16);
-  const rx = x - boxW / 2;
-  const ry = y - boxH / 2;
-  const radius = 18;
-  ctx.fillStyle = `${design.background || "#111827"}cc`;
-  ctx.beginPath();
-  ctx.moveTo(rx + radius, ry);
-  ctx.lineTo(rx + boxW - radius, ry);
-  ctx.quadraticCurveTo(rx + boxW, ry, rx + boxW, ry + radius);
-  ctx.lineTo(rx + boxW, ry + boxH - radius);
-  ctx.quadraticCurveTo(rx + boxW, ry + boxH, rx + boxW - radius, ry + boxH);
-  ctx.lineTo(rx + radius, ry + boxH);
-  ctx.quadraticCurveTo(rx, ry + boxH, rx, ry + boxH - radius);
-  ctx.lineTo(rx, ry + radius);
-  ctx.quadraticCurveTo(rx, ry, rx + radius, ry);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = design.color || "#ffffff";
-  ctx.fillText(text, x, y, maxTextWidth);
-  ctx.restore();
-}
-
-function isPublicationTransformModified(transform: PublicationImageTransform, channel: string): boolean {
-  const defaults = buildPublicationDefaultTransform(channel);
-  return (
-    transform.fit !== defaults.fit ||
-    Math.abs((transform.zoom || 1) - 1) > 0.001 ||
-    Math.abs(transform.offsetX || 0) > 0.001 ||
-    Math.abs(transform.offsetY || 0) > 0.001 ||
-    getPublicationBackgroundMode(transform) !== getPublicationBackgroundMode(defaults) ||
-    JSON.stringify(getPublicationDesign(transform)) !== JSON.stringify(getPublicationDesign(defaults))
-  );
-}
-
-function computePublicationPreviewLayout(params: {
-  containerWidth: number;
-  containerHeight: number;
-  imageWidth: number;
-  imageHeight: number;
-  transform: PublicationImageTransform;
-}): PublicationPreviewLayout {
-  const { containerWidth, containerHeight, imageWidth, imageHeight, transform } = params;
-  if (!containerWidth || !containerHeight || !imageWidth || !imageHeight) {
-    return { drawW: 0, drawH: 0, dx: 0, dy: 0 };
-  }
-
-  const baseScale = transform.fit === "cover"
-    ? Math.max(containerWidth / imageWidth, containerHeight / imageHeight)
-    : Math.min(containerWidth / imageWidth, containerHeight / imageHeight);
-  const scale = baseScale * publicationClamp(transform.zoom || 1, 0.4, 3);
-  const drawW = imageWidth * scale;
-  const drawH = imageHeight * scale;
-  const maxX = Math.abs(drawW - containerWidth) / 2;
-  const maxY = Math.abs(drawH - containerHeight) / 2;
-  const dx = (containerWidth - drawW) / 2 - maxX * publicationClamp(transform.offsetX || 0, -100, 100) / 100;
-  const dy = (containerHeight - drawH) / 2 - maxY * publicationClamp(transform.offsetY || 0, -100, 100) / 100;
-
-  return { drawW, drawH, dx, dy };
-}
-
-function offsetFromPublicationDrawPosition(params: {
-  containerWidth: number;
-  containerHeight: number;
-  drawW: number;
-  drawH: number;
-  dx: number;
-  dy: number;
-}): Pick<PublicationImageTransform, "offsetX" | "offsetY"> {
-  const { containerWidth, containerHeight, drawW, drawH, dx, dy } = params;
-  const maxX = Math.abs(drawW - containerWidth) / 2;
-  const maxY = Math.abs(drawH - containerHeight) / 2;
-  const offsetX = maxX ? publicationClamp((((containerWidth - drawW) / 2 - dx) / maxX) * 100, -100, 100) : 0;
-  const offsetY = maxY ? publicationClamp((((containerHeight - drawH) / 2 - dy) / maxY) * 100, -100, 100) : 0;
-  return { offsetX, offsetY };
-}
-
-function makePublicationImageAssetKey(prefix: string, name: string, suffix: string) {
-  return `${prefix}:${name}:${suffix}`;
-}
-
-function loadPublicationHtmlImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new window.Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Impossible de charger l'image."));
-    img.src = src;
-  });
-}
-
-async function renderPublicationImageAsset(params: {
-  source: string | File;
-  transform: PublicationImageTransform;
-  channel: string;
-  name: string;
-  type: string;
-}): Promise<{ name: string; type: string; dataUrl: string }> {
-  const { source, transform, channel, name, type } = params;
-  const preset = getPublicationChannelPreset(channel);
-  const sourceUrl = typeof source === "string" ? source : URL.createObjectURL(source);
-  try {
-    const img = await loadPublicationHtmlImage(sourceUrl);
-    const canvas = document.createElement("canvas");
-    canvas.width = preset.width;
-    canvas.height = preset.height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas indisponible.");
-
-    const cw = canvas.width;
-    const ch = canvas.height;
-    const iw = img.naturalWidth || img.width;
-    const ih = img.naturalHeight || img.height;
-    const baseScale = transform.fit === "cover" ? Math.max(cw / iw, ch / ih) : Math.min(cw / iw, ch / ih);
-    const scale = baseScale * publicationClamp(transform.zoom || 1, 0.4, 3);
-    const drawW = iw * scale;
-    const drawH = ih * scale;
-    const maxX = Math.abs(drawW - cw) / 2;
-    const maxY = Math.abs(drawH - ch) / 2;
-    const dx = (cw - drawW) / 2 - maxX * publicationClamp(transform.offsetX || 0, -100, 100) / 100;
-    const dy = (ch - drawH) / 2 - maxY * publicationClamp(transform.offsetY || 0, -100, 100) / 100;
-
-    ctx.clearRect(0, 0, cw, ch);
-
-    const backgroundMode = getPublicationBackgroundMode(transform);
-    if (transform.fit === "contain") {
-      if (backgroundMode !== "blur" && backgroundMode !== "transparent") {
-        ctx.fillStyle = getPublicationBackgroundFill(backgroundMode, transform.backgroundColor);
-        ctx.fillRect(0, 0, cw, ch);
-      } else if (backgroundMode === "blur") {
-        const blurScale = Math.max(cw / iw, ch / ih);
-        const blurW = iw * blurScale;
-        const blurH = ih * blurScale;
-        const blurX = (cw - blurW) / 2;
-        const blurY = (ch - blurH) / 2;
-        ctx.save();
-        ctx.filter = "blur(28px) saturate(1.05)";
-        ctx.drawImage(img, blurX, blurY, blurW, blurH);
-        ctx.restore();
-        ctx.fillStyle = "rgba(8, 12, 24, 0.24)";
-        ctx.fillRect(0, 0, cw, ch);
-      }
-    }
-
-    ctx.drawImage(img, dx, dy, drawW, drawH);
-    drawPublicationDesignOverlay(ctx, cw, ch, transform);
-    const outputType = backgroundMode === "transparent" ? "image/png" : (type || "image/jpeg");
-    return { name: name.replace(/\.[^.]+$/, "") + (backgroundMode === "transparent" ? ".png" : name.match(/\.[^.]+$/)?.[0] || ".jpg"), type: outputType, dataUrl: canvas.toDataURL(outputType, 0.92) };
-  } finally {
-    if (typeof source !== "string") URL.revokeObjectURL(sourceUrl);
-  }
-}
-
-function splitList(v?: string | null): string[] {
-  if (!v) return [];
-  return String(v)
-    .split(/[;,\n]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-function firstNonEmpty(...vals: any[]) {
-  for (const v of vals) {
-    const s = typeof v === "string" ? v.trim() : "";
-    if (s) return s;
-  }
-  return "";
-}
-
-function extractChannelsFromPayload(payload: any): string[] {
-  if (!payload || typeof payload !== "object") return [];
-
-  const candidates: any[] = [];
-  // common patterns
-  if (Array.isArray(payload.channels)) candidates.push(...payload.channels);
-  if (Array.isArray(payload.platforms)) candidates.push(...payload.platforms);
-  if (Array.isArray(payload.targets)) candidates.push(...payload.targets);
-  if (Array.isArray(payload.destinations)) candidates.push(...payload.destinations);
-
-  const single = firstNonEmpty(payload.channel, payload.platform, payload.target, payload.destination);
-  if (single) candidates.push(single);
-
-  return candidates
-    .flat()
-    .map((x) => (typeof x === "string" ? x : x?.name || x?.label || ""))
-    .map((s: string) => String(s).trim())
-    .filter(Boolean);
-}
-
-function extractMessageFromPayload(payload: any): { html?: string | null; text?: string | null } {
-  if (!payload || typeof payload !== "object") return { text: null };
-
-  const pickStr = (obj: any, ...keys: string[]) => {
-    for (const k of keys) {
-      const v = obj?.[k];
-      if (typeof v === "string" && v.trim()) return v;
-    }
-    return null;
-  };
-
-  const coerceText = (v: any): string | null => {
-    if (typeof v === "string") {
-      const t = v.trim();
-      return t ? t : null;
-    }
-    if (Array.isArray(v)) {
-      const parts = v
-        .map((x) => (typeof x === "string" ? x.trim() : ""))
-        .filter(Boolean);
-      return parts.length ? parts.join("\n") : null;
-    }
-    if (v && typeof v === "object") {
-      return (
-        pickStr(v, "text", "message", "content", "caption", "description", "body_text", "bodyText") ||
-        pickStr(v, "prompt")
-      );
-    }
-    return null;
-  };
-
-  // 1) HTML (flat or nested)
-  const html =
-    pickStr(payload, "html", "body_html", "bodyHtml", "content_html", "contentHtml", "message_html", "messageHtml") ||
-    pickStr(payload?.post, "html", "body_html", "bodyHtml", "content_html", "contentHtml") ||
-    pickStr(payload?.mail, "html", "body_html", "bodyHtml", "content_html", "contentHtml") ||
-    null;
-
-  // 2) Text (flat or nested)
-  let text =
-    pickStr(
-      payload,
-      "text",
-      "body_text",
-      "bodyText",
-      "message",
-      "content",
-      "caption",
-      "description",
-      "prompt"
-    ) ||
-    coerceText(payload?.post?.content) ||
-    coerceText(payload?.post?.text) ||
-    coerceText(payload?.post?.message) ||
-    coerceText(payload?.mail?.text) ||
-    coerceText(payload?.mail?.body_text) ||
-    coerceText(payload?.mail?.bodyText) ||
-    coerceText(payload?.message) ||
-    null;
-
-  // Booster "publish-now" payload: payload.post is an object { title, content, cta, hashtags }
-  if (!text && payload?.post && typeof payload.post === "object") {
-    const title = pickStr(payload.post, "title") || pickStr(payload, "title");
-    const content =
-      coerceText(payload.post.content) || coerceText(payload.post.text) || coerceText(payload.post.caption) || null;
-    const cta = pickStr(payload.post, "cta") || pickStr(payload, "cta");
-    const parts = [title, content, cta].filter(Boolean);
-    if (parts.length) text = parts.join("\n");
-  }
-
-  // If there are hashtags, append them at the end (nice for publications)
-  const tags = (payload as any).hashtags ?? (payload as any)?.post?.hashtags;
-  if (Array.isArray(tags) && tags.length) {
-    const hashLine = tags
-      .map((t) => String(t || "").trim())
-      .filter(Boolean)
-      .join(" ");
-    if (hashLine) text = `${text ? text.trim() + "\n\n" : ""}${hashLine}`;
-  }
-
-  return { html, text };
-}
-
-function extractAttachmentsFromPayload(payload: any): { name: string; type?: string | null; size?: number | null; url?: string | null }[] {
-  if (!payload || typeof payload !== "object") return [];
-  const candidates =
-    payload.attachments ||
-    payload.files ||
-    payload.images ||
-    payload.media ||
-    payload?.post?.attachments ||
-    payload?.post?.files ||
-    payload?.post?.images ||
-    payload?.post?.media ||
-    [];
-
-  if (!Array.isArray(candidates)) return [];
-
-  const isLikelyUrl = (value: string) => /^https?:\/\//i.test(value) || value.startsWith("/");
-  const buildNameFromUrl = (value: string) => {
-    const cleaned = String(value || "").split("?")[0].trim();
-    if (!cleaned) return "Pièce jointe";
-    const last = cleaned.split("/").filter(Boolean).pop() || cleaned;
-    return safeDecode(last);
-  };
-
-  return candidates
-    .map((a: any) => {
-      if (!a) return null;
-      if (typeof a === "string") {
-        const raw = String(a).trim();
-        if (!raw) return null;
-        return isLikelyUrl(raw)
-          ? { name: buildNameFromUrl(raw), url: raw }
-          : { name: raw };
-      }
-      const url = a.url || a.href || a.publicUrl || a.public_url || (typeof a.path === "string" && isLikelyUrl(a.path) ? a.path : null);
-      const name = a.name || a.filename || a.fileName || a.originalname || (typeof a.path === "string" && !isLikelyUrl(a.path) ? a.path : null) || url;
-      if (!name && !url) return null;
-      return {
-        name: String(name || buildNameFromUrl(String(url || ""))),
-        type: a.type || a.mime || a.mimeType || null,
-        size: typeof a.size === "number" ? a.size : typeof a.bytes === "number" ? a.bytes : null,
-        url: url || null,
-      };
-    })
-    .filter(Boolean) as any;
-}
-
-
-function hasAttachmentFields(payload: any): boolean {
-  if (!payload || typeof payload !== "object") return false;
-  return [
-    payload.attachments,
-    payload.files,
-    payload.images,
-    payload.media,
-    payload?.post?.attachments,
-    payload?.post?.files,
-    payload?.post?.images,
-    payload?.post?.media,
-  ].some((value) => Array.isArray(value));
-}
-
-function extractPublicationParts(payload: any): PublicationParts {
-  if (!payload || typeof payload !== "object") return {};
-  const post = payload.post && typeof payload.post === "object" ? payload.post : payload;
-
-  const title =
-    (typeof post.title === "string" && post.title.trim() ? post.title.trim() : null) ||
-    (typeof payload.title === "string" && payload.title.trim() ? payload.title.trim() : null) ||
-    null;
-
-  const content =
-    (typeof post.content === "string" && post.content.trim() ? post.content.trim() : null) ||
-    (typeof post.text === "string" && post.text.trim() ? post.text.trim() : null) ||
-    (typeof post.message === "string" && post.message.trim() ? post.message.trim() : null) ||
-    null;
-
-  const cta =
-    (typeof post.cta === "string" && post.cta.trim() ? post.cta.trim() : null) ||
-    (typeof payload.cta === "string" && payload.cta.trim() ? payload.cta.trim() : null) ||
-    null;
-
-  const hashtagsRaw = (post as any).hashtags ?? (payload as any).hashtags;
-  const hashtags = Array.isArray(hashtagsRaw)
-    ? hashtagsRaw.map((x: any) => String(x || "").trim()).filter(Boolean)
-    : [];
-
-  const attachments = extractAttachmentsFromPayload(payload);
-
-  return { title, content, cta, hashtags, attachments };
-}
-
-function normalizeChannelKey(channel: string): string {
-  const normalized = String(channel || "").trim().toLowerCase();
-  switch (normalized) {
-    case "inrcy_site":
-    case "site_inrcy":
-    case "site inrcy":
-      return "inrcy_site";
-    case "site_web":
-    case "site web":
-    case "website":
-    case "web":
-      return "site_web";
-    case "gmb":
-    case "google_business":
-    case "google business":
-    case "googlebusiness":
-      return "gmb";
-    case "linked in":
-      return "linkedin";
-    default:
-      return normalized;
-  }
-}
-
-function formatChannelLabel(channel: string): string {
-  const normalized = normalizeChannelKey(channel);
-  switch (normalized) {
-    case "inrcy_site":
-      return "Site iNrCy";
-    case "site_web":
-      return "Site web";
-    case "gmb":
-      return "Google Business";
-    case "facebook":
-      return "Facebook";
-    case "instagram":
-      return "Instagram";
-    case "linkedin":
-      return "LinkedIn";
-    default:
-      return normalized || "canal";
-  }
-}
-
-function channelApiPath(channel: string): string {
-  const normalized = normalizeChannelKey(channel);
-  switch (normalized) {
-    case "inrcy_site":
-      return "site-inrcy";
-    case "site_web":
-      return "site-web";
-    case "gmb":
-      return "gmb";
-    case "facebook":
-      return "facebook";
-    case "instagram":
-      return "instagram";
-    case "linkedin":
-      return "linkedin";
-    default:
-      return normalized || channel;
-  }
-}
-
-function isDeletedChannelResult(result: any): boolean {
-  if (!result || typeof result !== "object") return false;
-  return result.deleted === true || String(result.status || "").toLowerCase() === "deleted";
-}
-
-function orderChannelKeys(channels: string[]): string[] {
-  const priority = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"];
-  const normalizedUnique = Array.from(new Set(channels.map((channel) => normalizeChannelKey(channel)).filter(Boolean)));
-  return normalizedUnique.sort((a, b) => {
-    const indexA = priority.indexOf(a);
-    const indexB = priority.indexOf(b);
-    const rankA = indexA === -1 ? Number.MAX_SAFE_INTEGER : indexA;
-    const rankB = indexB === -1 ? Number.MAX_SAFE_INTEGER : indexB;
-    if (rankA !== rankB) return rankA - rankB;
-    return a.localeCompare(b);
-  });
-}
-
-function extractPublicationResults(payload: any): Record<string, any> {
-  return payload?.results && typeof payload.results === "object" ? payload.results : {};
-}
-
-function isFailedChannelResult(result: any): boolean {
-  if (!result || typeof result !== "object") return false;
-  if (isDeletedChannelResult(result)) return false;
-  if (result.ok === false) return true;
-  const status = String(result.status || "").toLowerCase();
-  return status === "failed" || status === "error";
-}
-
-function getChannelIndicatorMeta(result: any): { kind: "failed" | "deleted"; title: string; className: string } | null {
-  if (isDeletedChannelResult(result)) {
-    return {
-      kind: "deleted",
-      title: "Publication supprimée sur ce canal",
-      className: styles.channelDeletedDot,
-    };
-  }
-  if (isFailedChannelResult(result)) {
-    return {
-      kind: "failed",
-      title: "Échec sur ce canal",
-      className: styles.channelFailedDot,
-    };
-  }
-  return null;
-}
-
-function getFailedChannelMessage(result: any): string {
-  if (!isFailedChannelResult(result)) return "";
-  const message = result?.error ?? result?.message ?? result?.last_error ?? "";
-  return typeof message === "string" ? message.trim() : String(message || "").trim();
-}
-
-function getPublicationChannelStatuses(payload: any, fallbackChannels: string[] = []) {
-  const results = extractPublicationResults(payload);
-  const channels = orderChannelKeys([
-    ...fallbackChannels,
-    ...extractChannelsFromPayload(payload),
-    ...Object.keys(results),
-  ]);
-
-  return channels.map((channel) => {
-    const result = (results as any)?.[channel] || null;
-    const indicator = getChannelIndicatorMeta(result);
-    return {
-      key: channel,
-      label: formatChannelLabel(channel),
-      failed: indicator?.kind === "failed",
-      deleted: indicator?.kind === "deleted",
-      indicator,
-      result,
-    };
-  });
-}
-
-function renderPublicationChannelsWithFailures(payload: any, fallbackChannels: string[] = []) {
-  const channels = getPublicationChannelStatuses(payload, fallbackChannels);
-  if (!channels.length) return null;
-
-  return (
-    <span className={styles.channelStatusInlineWrap}>
-      {channels.map((entry, index) => (
-        <React.Fragment key={`${entry.key}-${index}`}>
-          <span className={styles.channelStatusInline}>
-            <span className={styles.channelStatusLabel}>{entry.label}</span>
-            {entry.indicator ? (
-              <span
-                className={entry.indicator.className}
-                title={entry.indicator.title}
-                aria-label={entry.indicator.title}
-              />
-            ) : null}
-          </span>
-          {index < channels.length - 1 ? <span className={styles.channelStatusSeparator}> / </span> : null}
-        </React.Fragment>
-      ))}
-    </span>
-  );
-}
-
-function extractChannelPublications(payload: any): ChannelPublication[] {
-  if (!payload || typeof payload !== "object") return [];
-
-  const explicitChannels = [
-    ...extractChannelsFromPayload(payload),
-    ...Object.keys(payload?.results && typeof payload.results === "object" ? payload.results : {}),
-  ]
-    .map((ch) => normalizeChannelKey(String(ch || "")))
-    .filter(Boolean);
-
-  const channelSet = new Set(explicitChannels);
-  const postByChannel = payload?.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : {};
-  const postByNormalizedChannel = Object.entries(postByChannel).reduce<Record<string, any>>((acc, [key, value]) => {
-    const cleaned = normalizeChannelKey(String(key || ""));
-    if (!cleaned) return acc;
-    if (!(cleaned in acc)) acc[cleaned] = value;
-    if (channelSet.has(cleaned)) return acc;
-
-    const isSiteMirror = (cleaned === "inrcy_site" || cleaned === "site_web") && (channelSet.has("inrcy_site") || channelSet.has("site_web"));
-    if (!channelSet.size || !isSiteMirror) {
-      channelSet.add(cleaned);
-    }
-    return acc;
-  }, {});
-
-  const orderedChannels = orderChannelKeys(Array.from(channelSet));
-  if (!orderedChannels.length) {
-    const baseParts = extractPublicationParts(payload);
-    const hasBase = !!(baseParts.title || baseParts.content || baseParts.cta || baseParts.hashtags?.length || baseParts.attachments?.length);
-    return hasBase ? [{ key: "default", label: "publication", parts: baseParts }] : [];
-  }
-
-  return orderedChannels.map((channel) => {
-    const channelPayload = postByNormalizedChannel[channel];
-    const channelParts = extractPublicationParts(channelPayload);
-    const fallbackParts = extractPublicationParts(payload);
-
-    const channelOwnsAttachments = hasAttachmentFields(channelPayload);
-
-    return {
-      key: channel,
-      label: formatChannelLabel(channel),
-      parts: {
-        title: channelParts.title || fallbackParts.title || null,
-        content: channelParts.content || fallbackParts.content || null,
-        cta: channelParts.cta || fallbackParts.cta || null,
-        hashtags: channelParts.hashtags?.length ? channelParts.hashtags : fallbackParts.hashtags || [],
-        attachments: channelOwnsAttachments ? channelParts.attachments || [] : fallbackParts.attachments || [],
-      },
-    };
-  });
-}
-
-function tagsToEditorString(tags?: string[]): string {
-  return Array.isArray(tags) ? tags.map((tag) => String(tag || "").trim().replace(/^#/, "")).filter(Boolean).join(" ") : "";
-}
-
-function isImageAttachment(att: { name: string; type?: string | null; url?: string | null }): boolean {
-  const type = String(att.type || "").toLowerCase();
-  const raw = String(att.url || att.name || "").toLowerCase().split("?")[0];
-  return type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|svg|avif)$/.test(raw);
-}
-
-function isVideoAttachment(att: { name: string; type?: string | null; url?: string | null }): boolean {
-  const type = String(att.type || "").toLowerCase();
-  const raw = String(att.url || att.name || "").toLowerCase().split("?")[0];
-  return type.startsWith("video/") || /\.(mp4|mov|webm|ogg|m4v)$/.test(raw);
-}
-
-function folderTheme(f: Folder): React.CSSProperties {
-  const themes: Record<Folder, { start: string; end: string; glow: string; border: string }> = {
-    mails: {
-      start: "rgba(56,189,248,0.30)",
-      end: "rgba(167,139,250,0.26)",
-      glow: "rgba(56,189,248,0.30)",
-      border: "rgba(56,189,248,0.42)",
-    },
-    factures: {
-      start: "rgba(251,146,60,0.30)",
-      end: "rgba(244,114,182,0.22)",
-      glow: "rgba(251,146,60,0.26)",
-      border: "rgba(251,146,60,0.40)",
-    },
-    devis: {
-      start: "rgba(167,139,250,0.30)",
-      end: "rgba(56,189,248,0.24)",
-      glow: "rgba(167,139,250,0.28)",
-      border: "rgba(167,139,250,0.42)",
-    },
-    publications: {
-      start: "rgba(244,114,182,0.28)",
-      end: "rgba(251,146,60,0.22)",
-      glow: "rgba(244,114,182,0.26)",
-      border: "rgba(244,114,182,0.40)",
-    },
-    recoltes: {
-      start: "rgba(56,189,248,0.26)",
-      end: "rgba(34,197,94,0.20)",
-      glow: "rgba(56,189,248,0.26)",
-      border: "rgba(56,189,248,0.38)",
-    },
-    offres: {
-      start: "rgba(251,146,60,0.28)",
-      end: "rgba(167,139,250,0.22)",
-      glow: "rgba(251,146,60,0.24)",
-      border: "rgba(251,146,60,0.38)",
-    },
-    informations: {
-      start: "rgba(56,189,248,0.24)",
-      end: "rgba(244,114,182,0.18)",
-      glow: "rgba(56,189,248,0.24)",
-      border: "rgba(56,189,248,0.34)",
-    },
-    suivis: {
-      start: "rgba(34,197,94,0.22)",
-      end: "rgba(56,189,248,0.20)",
-      glow: "rgba(34,197,94,0.20)",
-      border: "rgba(34,197,94,0.34)",
-    },
-    enquetes: {
-      start: "rgba(244,114,182,0.26)",
-      end: "rgba(167,139,250,0.24)",
-      glow: "rgba(244,114,182,0.24)",
-      border: "rgba(244,114,182,0.36)",
-    },
-  };
-
-  const theme = themes[f];
-  return {
-    ["--folder-accent-start" as any]: theme.start,
-    ["--folder-accent-end" as any]: theme.end,
-    ["--folder-accent-glow" as any]: theme.glow,
-    ["--folder-accent-border" as any]: theme.border,
-  } as React.CSSProperties;
-}
-
-function toolbarActionTheme(f: Folder): React.CSSProperties {
-  const base = folderTheme(f) as React.CSSProperties & Record<string, string>;
-  return {
-    ["--toolbar-cta-start" as any]: String(base["--folder-accent-start"] || "rgba(56,189,248,0.26)"),
-    ["--toolbar-cta-end" as any]: String(base["--folder-accent-end"] || "rgba(167,139,250,0.22)"),
-    ["--toolbar-cta-glow" as any]: String(base["--folder-accent-glow"] || "rgba(56,189,248,0.16)"),
-    ["--toolbar-cta-border" as any]: String(base["--folder-accent-border"] || "rgba(56,189,248,0.42)"),
-  } as React.CSSProperties;
-}
-
-
-function bulkConfirmationMessage(recipientCount: number): string {
-  if (recipientCount >= BULK_CONFIRM_STRONG_THRESHOLD) {
-    return `Confirmer l’envoi de cette campagne à ${recipientCount} destinataires ?\n\nChaque contact recevra un email individuel. Les quotas, pauses automatiques et reprises par vagues s’appliqueront si nécessaire.\n\nVérifiez l’objet, le contenu et la boîte d’envoi avant de continuer.`;
-  }
-  return `Confirmer l’envoi de cette campagne à ${recipientCount} destinataires ?\n\nChaque contact recevra un email individuel.`;
-}
-
-function historyEmptyState(folder: Folder, view: BoxView, query: string): string {
-  const trimmed = query.trim();
-  if (trimmed) return `Aucun résultat pour “${trimmed}”.`;
-  if (view === "drafts") return `Aucun brouillon dans ${folderLabel(folder).toLowerCase()}.`;
-  switch (folder) {
-    case "publications":
-      return "Aucune publication pour le moment.";
-    case "recoltes":
-      return "Aucune récolte pour le moment.";
-    case "offres":
-      return "Aucune offre pour le moment.";
-    case "informations":
-      return "Aucune information envoyée pour le moment.";
-    case "suivis":
-      return "Aucun suivi envoyé pour le moment.";
-    case "enquetes":
-      return "Aucune enquête envoyée pour le moment.";
-    case "factures":
-      return "Aucune facture envoyée pour le moment.";
-    case "devis":
-      return "Aucun devis envoyé pour le moment.";
-    default:
-      return "Aucun mail pour le moment.";
-  }
-}
-
-function folderLabel(f: Folder) {
-  switch (f) {
-    case "mails":
-      return "Mails";
-    case "factures":
-      return "Factures";
-    case "devis":
-      return "Devis";
-    // Booster (actions: Publier / Récolter / Offrir)
-    case "publications":
-      return "Publications";
-    case "recoltes":
-      return "Récoltes";
-    case "offres":
-      return "Offres";
-    // Fidéliser (actions: Informer / Suivre / Enquêter)
-    case "informations":
-      return "Informations";
-    case "suivis":
-      return "Suivis";
-    case "enquetes":
-      return "Enquêtes";
-  }
-}
-
-type BoxView = "sent" | "drafts";
-
-function isVisibleInFolder(folder: Folder, item: OutboxItem, view: BoxView) {
-  if (item.folder !== folder) return false;
-
-  // Brouillons : uniquement pour l'historique send_items.
-  if (view === "drafts") return item.source === "send_items" && item.status === "draft";
-
-  // Vue principale: uniquement les éléments réellement "envoyés" (ou en erreur), jamais les drafts.
-  return item.status !== "draft";
-}
-
-function pill(provider?: string | null) {
-  const p = (provider || "").toLowerCase();
-  if (p === "gmail") return { label: "Gmail", cls: styles.badgeGmail };
-  if (p === "microsoft") return { label: "Microsoft", cls: styles.badgeMicrosoft };
-  if (p === "imap") return { label: "IMAP", cls: styles.badgeImap };
-  return { label: provider || "Mail", cls: styles.badgeDefault };
-}
-
-function campaignCounts(raw: any) {
-  return {
-    total: Math.max(0, Number(raw?.total_count || 0) || 0),
-    queued: Math.max(0, Number(raw?.queued_count || 0) || 0),
-    processing: Math.max(0, Number(raw?.processing_count || 0) || 0),
-    sent: Math.max(0, Number(raw?.sent_count || 0) || 0),
-    failed: Math.max(0, Number(raw?.failed_count || 0) || 0),
-  };
-}
-
-function formatCampaignProgress(raw: any) {
-  const counts = campaignCounts(raw);
-  const bits = [`${counts.sent}/${counts.total || counts.sent} envoyés`];
-  if (counts.processing > 0) bits.push(`${counts.processing} en cours`);
-  if (counts.queued > 0) bits.push(`${counts.queued} en attente`);
-  if (counts.failed > 0) bits.push(`${counts.failed} en échec`);
-  return bits.join(" • ");
-}
-
-
-function applyCampaignRecipientsFilter(query: any, filter: CampaignRecipientsFilterId) {
-  switch (filter) {
-    case "sent":
-      return query.eq("status", "sent");
-    case "delivered":
-      return query.eq("delivery_status", "delivered");
-    case "queued":
-      return query.eq("status", "queued");
-    case "processing":
-      return query.eq("status", "processing");
-    case "failed":
-      return query.eq("status", "failed");
-    case "blocked":
-      return query.eq("status", "failed").not("suppression_reason", "is", null);
-    case "opt_out":
-      return query.eq("suppression_reason", "opt_out");
-    case "blacklist":
-      return query.eq("suppression_reason", "blacklist");
-    case "complaint":
-      return query.eq("suppression_reason", "complaint");
-    case "hard_bounce":
-      return query.eq("suppression_reason", "hard_bounce");
-    case "soft_bounce":
-      return query.eq("status", "failed").eq("bounce_type", "soft");
-    default:
-      return query;
-  }
-}
-
-function formatCampaignFilterLabel(filter: CampaignRecipientsFilterId) {
-  switch (filter) {
-    case "sent":
-      return "Envoyés";
-    case "delivered":
-      return "Délivrés";
-    case "queued":
-      return "En attente";
-    case "processing":
-      return "En cours";
-    case "failed":
-      return "Échecs";
-    case "blocked":
-      return "Bloqués";
-    case "opt_out":
-      return "Désinscrits";
-    case "blacklist":
-      return "Blacklist";
-    case "complaint":
-      return "Plaintes";
-    case "hard_bounce":
-      return "Rebonds durs";
-    case "soft_bounce":
-      return "Rebonds souples";
-    default:
-      return "Tous";
-  }
-}
-
-function getCampaignRecipientStatusLabel(recipient: CampaignRecipientLog) {
-  if (recipient.status === "sent") {
-    if (recipient.unsubscribed_at) {
-      return `Envoyé • désinscrit le ${new Date(recipient.unsubscribed_at).toLocaleString()}`;
-    }
-    if (recipient.delivery_status === "delivered" && recipient.delivered_at) {
-      return `Délivré • ${new Date(recipient.delivered_at).toLocaleString()}`;
-    }
-    if (recipient.delivery_status === "accepted") {
-      return recipient.sent_at ? `Envoyé au provider • ${new Date(recipient.sent_at).toLocaleString()}` : "Envoyé au provider";
-    }
-    if (recipient.sent_at) {
-      return `Envoyé • ${new Date(recipient.sent_at).toLocaleString()}`;
-    }
-    return "Envoyé";
-  }
-
-  if (recipient.status === "failed") {
-    if (recipient.suppression_reason === "opt_out") return "Bloqué • désinscription";
-    if (recipient.suppression_reason === "blacklist") return "Bloqué • blacklist";
-    if (recipient.suppression_reason === "hard_bounce") return "Bloqué • rebond dur";
-    if (recipient.suppression_reason === "complaint") return "Bloqué • plainte spam";
-    if (recipient.bounce_type === "hard") return "Échec final • rebond dur";
-    if (recipient.bounce_type === "soft") return "Échec final • rebond souple";
-    return "Échec final";
-  }
-
-  if (recipient.status === "processing") return "En cours";
-  if (recipient.next_attempt_at) {
-    return `En attente • prochain essai ${new Date(recipient.next_attempt_at).toLocaleString()}`;
-  }
-  return "En attente";
-}
-
-
-function formatOutboxStatusLabel(item: OutboxItem) {
-  if (item.source === "mail_campaigns") {
-    const raw = (item.raw || {}) as any;
-    const status = String(raw?.status || item.status || "").toLowerCase();
-    const counts = campaignCounts(raw);
-    if (status === "queued") return `En attente • ${formatCampaignProgress(raw)}`;
-    if (status === "processing") return `Campagne en cours • ${formatCampaignProgress(raw)}`;
-    if (status === "paused") return raw?.last_error ? `Campagne en pause • ${raw.last_error}` : `Campagne en pause • ${formatCampaignProgress(raw)}`;
-    if (status === "partial") return `Campagne partielle • ${formatCampaignProgress(raw)}`;
-    if (status === "failed") return `Campagne en échec • ${counts.failed}/${counts.total || counts.failed} en échec`;
-    if (status === "sent" || status === "completed") return item.sent_at ? `Campagne terminée • ${new Date(item.sent_at).toLocaleString()}` : `Campagne terminée • ${formatCampaignProgress(raw)}`;
-    return `Campagne • ${formatCampaignProgress(raw)}`;
-  }
-
-  if (item.status === "draft") return "Brouillon";
-  if (item.status === "error" || item.status === "failed") return "En échec";
-  return item.sent_at ? `Envoyé • ${new Date(item.sent_at).toLocaleString()}` : `Historique • ${new Date(item.created_at).toLocaleString()}`;
-}
-
-function isRetryableCampaignItem(item: OutboxItem | null) {
-  if (!item || item.source !== "mail_campaigns") return false;
-  const counts = campaignCounts((item.raw || {}) as any);
-  return counts.failed > 0;
-}
-
-function canDeleteHistoryItem(item: OutboxItem | null | undefined) {
-  if (!item) return false;
-  if (item.status === "draft") return false;
-  return item.source === "send_items" || item.source === "mail_campaigns" || item.source === "app_events";
-}
-
-function canBulkDeleteHistoryItem(item: OutboxItem | null | undefined) {
-  if (!item) return false;
-  return item.source === "send_items" || item.source === "mail_campaigns" || item.source === "app_events";
-}
-
-function historySelectionKey(item: Pick<OutboxItem, "id" | "source">) {
-  return `${item.source}:${item.id}`;
-}
-
-function listGridTemplateColumns(folder: Folder) {
-  if (folder === "factures" || folder === "devis") {
-    return "minmax(0, 520px) minmax(180px, 240px) auto";
-  }
-  if (folder === "publications") {
-    return "minmax(0, 360px) minmax(240px, 1fr) auto";
-  }
-  return "minmax(0, 380px) minmax(180px, 280px) auto";
-}
 
 export default function MailboxClient() {
   const [helpOpen, setHelpOpen] = useState(false);
@@ -1591,46 +322,11 @@ export default function MailboxClient() {
   const [crmImportantOnly, setCrmImportantOnly] = useState(false);
 
   // Used to trigger the hidden file input with a nice button
-  const fileInputId = "inrsend-attachments";
-  const publicationEditFileInputId = "inrsend-publication-edit-attachments";
+  const fileInputId = MAILBOX_FILE_INPUT_ID;
+  const publicationEditFileInputId = PUBLICATION_EDIT_FILE_INPUT_ID;
 
-  function itemMailAccountId(it: OutboxItem): string {
-    try {
-      if (it.source === "send_items" || it.source === "mail_campaigns") return String((it.raw as any)?.integration_id || "");
-      const payload = (it.raw as any)?.payload || (it.raw as any)?.raw?.payload || (it.raw as any)?.meta || {};
-      return String((payload as any)?.integration_id || (payload as any)?.mailAccountId || (payload as any)?.accountId || "");
-    } catch {
-      return "";
-    }
-  }
 
-  function normalizeEmails(v: string) {
-    return normalizeRecipientEmails(v);
-  }
 
-  function normalizeComposeRecipientHints(input: unknown): ComposeCrmRecipientHint[] {
-    const values = Array.isArray(input) ? input : [];
-    const out: ComposeCrmRecipientHint[] = [];
-    const seen = new Set<string>();
-
-    for (const item of values) {
-      if (!item || typeof item !== "object") continue;
-      const email = String((item as any).email || "").trim();
-      if (!email) continue;
-      const lower = email.toLowerCase();
-      if (seen.has(lower)) continue;
-      seen.add(lower);
-      const contactId = String((item as any).contact_id || "").trim();
-      const displayName = String((item as any).display_name || "").trim();
-      out.push({
-        email,
-        contact_id: contactId || null,
-        display_name: displayName || null,
-      });
-    }
-
-    return out;
-  }
 
   function toggleEmailInTo(email: string) {
     const list = normalizeEmails(to);
@@ -1640,11 +336,6 @@ export default function MailboxClient() {
     setTo(next.join(", "));
   }
 
-  function makeAttachmentPath(fileName: string) {
-    const safeName = fileName.replace(/[^a-zA-Z0-9._-]+/g, "-");
-    const rand = Math.random().toString(36).slice(2, 10);
-    return `mail-attachments/${Date.now()}-${rand}-${safeName}`;
-  }
 
   async function uploadComposeFiles(nextFiles: File[]) {
     if (!nextFiles.length) return [] as ComposeAttachmentRef[];
@@ -2604,11 +1295,6 @@ export default function MailboxClient() {
     }
   }
 
-  function providerSendEndpoint(provider: string) {
-    if (provider === "gmail") return "/api/inbox/gmail/send";
-    if (provider === "microsoft") return "/api/inbox/microsoft/send";
-    return "/api/inbox/imap/send";
-  }
 
 async function deleteDraftPermanently(id: string) {
   try {
@@ -3188,293 +1874,52 @@ async function deleteDraftPermanently(id: string) {
   return (
     <div className={styles.page}>
       <div className={styles.wrap}>
-        {/* Header (aligné avec les autres modules iNrCy) */}
-        <div className={styles.header}>
-          {/* Logo (gauche) */}
-          <div className={styles.brand}>
-            <Image
-              src="/inrsend-logo.png"
-              alt="iNr’Send"
-              width={154}
-              height={64}
-              priority
-              className={styles.brandIcon}
-            />
+        <MailboxHeader
+          helpOpen={helpOpen}
+          settingsOpen={settingsOpen}
+          onOpenHelp={() => setHelpOpen(true)}
+          onCloseHelp={() => setHelpOpen(false)}
+          onOpenFolders={() => setMobileFoldersOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onCloseSettings={() => setSettingsOpen(false)}
+        />
 
-            <div className={styles.brandText}>
-              <div className={styles.brandRow}>
-                <span className={styles.tagline}>
-                  Toutes vos communications, depuis une seule et même machine.
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Actions (droite) */}
-          <div className={styles.actions}>
-            <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Send" />
-
-            <button
-              className={`${styles.btnGhost} ${styles.iconOnlyBtn} ${styles.hamburgerBtn}`}
-              onClick={() => setMobileFoldersOpen(true)}
-              type="button"
-              aria-label="Dossiers"
-              title="Dossiers"
-            >
-              <span aria-hidden>☰</span>
-              <span className={styles.srOnly}>Dossiers</span>
-            </button>
-
-            <ResponsiveActionButton
-              desktopLabel="Réglages"
-              mobileIcon="⚙️"
-              onClick={() => setSettingsOpen(true)}
-            />
-
-            <SettingsDrawer
-              title="Réglages iNr’Send"
-              isOpen={settingsOpen}
-              onClose={() => setSettingsOpen(false)}
-            >
-              <MailsSettingsContent />
-            </SettingsDrawer>
-
-            <ResponsiveActionButton
-              desktopLabel="Fermer"
-              mobileIcon="✕"
-              href="/dashboard"
-              title="Fermer iNr’Send"
-            />
-          </div>
-</div>
-
-        <HelpModal open={helpOpen} title="iNr’Send" onClose={() => setHelpOpen(false)}>
-          <p style={{ marginTop: 0 }}>
-            iNr’Send est le centre d’envoi de votre communication.
-          </p>
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            <li>Centralisez vos échanges et vos messages.</li>
-            <li>Gagnez du temps pour communiquer sur vos canaux.</li>
-            <li>Utilisez les réglages pour connecter/configurer les envois.</li>
-          </ul>
-        </HelpModal>
-
-        {/* Mobile: menu dossiers (hamburger) */}
-        {mobileFoldersOpen ? (
-          <div className={styles.mobileMenuOverlay} onClick={() => setMobileFoldersOpen(false)}>
-            <div className={styles.mobileMenu} onClick={(e) => e.stopPropagation()}>
-              <div className={styles.mobileMenuHeader}>
-                <div className={styles.mobileMenuTitle}>Dossiers</div>
-                <button className={styles.btnGhost} onClick={() => setMobileFoldersOpen(false)} type="button">
-                  ✕
-                </button>
-              </div>
-              <div className={styles.mobileMenuBody}>
-                {([
-                  "mails",
-                  "factures",
-                  "devis",
-                  "publications",
-                  "recoltes",
-                  "offres",
-                  "informations",
-                  "suivis",
-                  "enquetes",
-                ] as Folder[]).map((f) => {
-                  const active = f === folder;
-                  return (
-                    <button
-                      key={f}
-                      className={`${styles.mobileFolderBtn} ${active ? styles.mobileFolderBtnActive : ""}`}
-                      style={folderTheme(f)}
-                      onClick={() => {
-                        updateFolder(f);
-                        setMobileFoldersOpen(false);
-                      }}
-                      type="button"
-                    >
-                      <span>{folderLabel(f)}</span>
-                      <span className={styles.badgeCount}>{counts[f] || 0}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <MobileFoldersMenu
+          open={mobileFoldersOpen}
+          folder={folder}
+          counts={counts}
+          onClose={() => setMobileFoldersOpen(false)}
+          onSelectFolder={updateFolder}
+        />
 
         <div className={styles.grid}>
-          {/* List */}
-          {/* IMPORTANT: la liste doit occuper toute la hauteur disponible (pas de max-height),
-              même s'il n'y a aucun élément. */}
           <div className={`${styles.card} ${styles.listCard}`}>
-            {/* Tabs (en haut comme iNr'Box) */}
-            <div className={styles.folderTabs}>
-              {([
-                "mails",
-                "factures",
-                "devis",
-                "publications",
-                "recoltes",
-                "offres",
-                "informations",
-                "suivis",
-                "enquetes",
-              ] as Folder[]).map((f) => {
-                const active = f === folder;
-                return (
-                  <button
-                    key={f}
-                    className={`${styles.folderTabBtn} ${active ? styles.folderTabBtnActive : ""}`}
-                    style={folderTheme(f)}
-                    onClick={() => updateFolder(f)}
-                    type="button"
-                    title={folderLabel(f)}
-                  >
-                    <span className={styles.folderTabLabel}>{folderLabel(f)}</span>
-                    <span className={styles.badgeCount}>{counts[f] || 0}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <FolderTabs folder={folder} counts={counts} onSelectFolder={updateFolder} />
 
-            {/* Toolbar (recherche + sélection boîte + refresh) */}
-            <div className={styles.toolbarRow}>
-              {/* Filtre boîte: en mobile, le libellé + le select doivent rester sur la même ligne */}
-              <div className={styles.filterRow}>
-                <div className={styles.toolbarInfo}>Filtrer</div>
-                <select
-                  className={styles.filterSelect}
-                  value={filterAccountId}
-                  onChange={(e) => setFilterAccountId(e.target.value)}
-                  title="Filtrer par boîte d’envoi"
-                >
-                  <option value="">Toutes les boîtes</option>
-                  {mailAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {(a.display_name ? `${a.display_name} — ` : "") + a.email_address + ` (${a.provider})`}
-                    </option>
-                  ))}
-                </select>
-                <div className={styles.mobileTopTools}>
-                  <button
-                    className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.mobileOnlyBtn} ${
-                      !searchOpen && historyQuery.trim() ? styles.toolbarIconBtnActive : ""
-                    }`}
-                    onClick={() => setSearchOpen((v) => !v)}
-                    type="button"
-                    title={searchOpen ? "Fermer la recherche" : "Rechercher (Ctrl/Cmd+K)"}
-                    aria-label="Rechercher"
-                  >
-                    <span className={styles.toolbarIconGlyph}>⌕</span>
-                    {!searchOpen && historyQuery.trim() ? <span className={styles.activeDot} /> : null}
-                  </button>
-                  <button
-                    className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.mobileOnlyBtn}`}
-                    onClick={() => { void loadHistory(); }}
-                    type="button"
-                    title="Actualiser"
-                    aria-label="Actualiser"
-                  >
-                    ↻
-                  </button>
-                </div>
-              </div>
+            <MailboxToolbar
+              folder={folder}
+              filterAccountId={filterAccountId}
+              setFilterAccountId={setFilterAccountId}
+              mailAccounts={mailAccounts}
+              searchOpen={searchOpen}
+              historyQuery={historyQuery}
+              setSearchOpen={setSearchOpen}
+              loadHistory={() => loadHistory()}
+              toggleSelectVisibleHistoryItems={toggleSelectVisibleHistoryItems}
+              visibleBulkDeletableItemsLength={visibleBulkDeletableItems.length}
+              selectedBulkCount={selectedBulkCount}
+              loading={loading}
+              deletingHistorySelection={deletingHistorySelection}
+              deletingDraftId={deletingDraftId}
+              deletingHistoryItemId={deletingHistoryItemId}
+              deleteSelectedHistoryEntries={deleteSelectedHistoryEntries}
+              toolCfg={toolCfg}
+              resetCompose={resetCompose}
+              setComposeOpen={setComposeOpen}
+              boxView={boxView}
+              setBoxView={setBoxView}
+            />
 
-              <div className={styles.toolbarActions}>
-                <div className={styles.bulkToolbarActions}>
-                  <button
-                    className={`${styles.toolbarBtn} ${styles.toolbarIconBtn}`}
-                    onClick={() => toggleSelectVisibleHistoryItems(true)}
-                    type="button"
-                    title="Tout sélectionner la page"
-                    aria-label="Tout sélectionner la page"
-                    disabled={visibleBulkDeletableItems.length <= 0 || loading || deletingHistorySelection || Boolean(deletingDraftId) || Boolean(deletingHistoryItemId)}
-                  >
-                    <span className={styles.toolbarIconGlyph}>☑</span>
-                  </button>
-                  <button
-                    className={`${styles.toolbarBtn} ${styles.toolbarIconBtn}`}
-                    onClick={() => toggleSelectVisibleHistoryItems(false)}
-                    type="button"
-                    title="Tout désélectionner"
-                    aria-label="Tout désélectionner"
-                    disabled={selectedBulkCount <= 0 || loading || deletingHistorySelection || Boolean(deletingDraftId) || Boolean(deletingHistoryItemId)}
-                  >
-                    <span className={styles.toolbarIconGlyph}>☐</span>
-                  </button>
-                  <button
-                    className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${selectedBulkCount > 0 ? styles.toolbarBtnDanger : ""}`}
-                    onClick={() => void deleteSelectedHistoryEntries()}
-                    type="button"
-                    title={selectedBulkCount > 0 ? `Supprimer la sélection (${selectedBulkCount})` : "Supprimer la sélection"}
-                    aria-label="Supprimer la sélection"
-                    disabled={selectedBulkCount <= 0 || loading || deletingHistorySelection || Boolean(deletingDraftId) || Boolean(deletingHistoryItemId)}
-                  >
-                    <span className={styles.toolbarIconGlyph}>🗑</span>
-                  </button>
-                </div>
-
-                <div className={styles.toolbarSpacer} />
-
-                {/* 🔁 Inversion demandée : bouton d'action passe à droite, à la place de Filtrer */}
-                {toolCfg.href ? (
-                  <Link
-                    className={`${styles.toolbarBtn} ${styles.toolbarBtnCta}`}
-                    style={toolbarActionTheme(folder)}
-                    href={toolCfg.href}
-                    title={toolCfg.label}
-                  >
-                    {toolCfg.label}
-                  </Link>
-                ) : (
-                  <button
-                    className={`${styles.toolbarBtn} ${styles.toolbarBtnCta}`}
-                    style={toolbarActionTheme(folder)}
-                    onClick={() => {
-                      resetCompose("mail");
-                      setComposeOpen(true);
-                    }}
-                    type="button"
-                  >
-                    {toolCfg.label}
-                  </button>
-                )}
-
-                <button
-                  className={`${styles.toolbarBtn} ${boxView === "drafts" ? styles.toolbarBtnActive : ""}`}
-                  onClick={() => setBoxView((v) => (v === "drafts" ? "sent" : "drafts"))}
-                  type="button"
-                  title="Brouillons"
-                >
-                  Brouillons
-                </button>
-                <button
-                  className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.desktopToolbarIconBtn} ${
-                    !searchOpen && historyQuery.trim() ? styles.toolbarIconBtnActive : ""
-                  }`}
-                  onClick={() => setSearchOpen((v) => !v)}
-                  type="button"
-                  title={searchOpen ? "Fermer la recherche" : "Rechercher (Ctrl/Cmd+K)"}
-                  aria-label="Rechercher"
-                >
-                  <span className={styles.toolbarIconGlyph}>⌕</span>
-                  {!searchOpen && historyQuery.trim() ? <span className={styles.activeDot} /> : null}
-                </button>
-
-                <button
-                  className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.desktopToolbarIconBtn}`}
-                  onClick={() => { void loadHistory(); }}
-                  type="button"
-                  title="Actualiser"
-                  aria-label="Actualiser"
-                >
-                  ↻
-                </button>
-              </div>
-            </div>
-
-            
             {searchOpen ? (
               <div className={styles.searchPanel}>
                 <div className={styles.searchPanelInner}>
@@ -3512,179 +1957,30 @@ async function deleteDraftPermanently(id: string) {
               </div>
             ) : null}
 
-<div className={styles.scrollArea}>
-              {loading ? (
-                <div style={{ padding: 14, color: "rgba(255,255,255,0.75)" }}>Chargement…</div>
-              ) : (
-                <div className={styles.list}>
-                  <div className={styles.listHeader}>
-                    <div
-                      className={styles.listHeaderGrid}
-                      style={{ gridTemplateColumns: listGridTemplateColumns(folder) }}
-                    >
-                      <div className={styles.listHeaderCell}>Objet</div>
-                      <div
-                        className={`${styles.listHeaderCell} ${styles.listHeaderCellCenter} ${folder === "publications" ? styles.listHeaderCellPublications : ""}`}
-                      >
-                        {folder === "publications" ? "Canaux" : "Boîte d’envoi"}
-                      </div>
-                      <div className={`${styles.listHeaderCell} ${styles.listHeaderCellRight}`}>Date · Heure</div>
-                    </div>
-                  </div>
-                  {visibleItems.length === 0 ? (
-                    <div style={{ padding: 14, color: "rgba(255,255,255,0.65)" }}>{historyEmptyState(folder, boxView, historyQuery)}</div>
-                  ) : visibleItems.map((it) => {
-                    const active = it.id === selectedId;
-                    const p = pill(it.provider);
-                    const historyKey = historySelectionKey(it);
-                    const bulkDeletable = canBulkDeleteHistoryItem(it);
-                    const checked = bulkDeletable && selectedHistoryKeySet.has(historyKey);
-
-                    const accountLabel = (() => {
-                      const acc = mailAccounts.find((a) => a.id === itemMailAccountId(it));
-                      if (!acc) return "";
-                      return (acc.display_name ? `${acc.display_name} — ` : "") + acc.email_address;
-                    })();
-
-                    const midLabel =
-                      it.source === "send_items" || it.source === "mail_campaigns"
-                        ? [accountLabel, it.source === "mail_campaigns" ? formatCampaignProgress((it.raw || {}) as any) : ""].filter(Boolean).join(" • ")
-                        : (it.channels && it.channels.length
-                            ? it.channels.map((channel) => formatChannelLabel(channel)).join(" / ")
-                            : formatChannelLabel(it.target || ""));
-                    const midLabelNode = folder === "publications" && it.source === "app_events"
-                      ? (renderPublicationChannelsWithFailures((it as any)?.raw?.payload || null, it.channels && it.channels.length ? it.channels : [it.target]) || (midLabel || ""))
-                      : (midLabel || "");
-
-                    // NOTE: this is a clickable row that contains action buttons.
-                    // Using a <button> wrapper would create invalid HTML (nested buttons)
-                    // and can trigger hydration errors in Next.js.
-                    return (
-                      <div
-                        key={historyKey}
-                        className={`${styles.item} ${active ? styles.itemActive : ""}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => openItem(it)}
-                        onDoubleClick={() => openDetails(it)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            openItem(it);
-                          }
-                        }}
-                      >
-                        <div className={styles.itemTop} style={{ gridTemplateColumns: listGridTemplateColumns(folder) }}>
-                          <div className={styles.fromRow}>
-                            {bulkDeletable ? (
-                              <label
-                                style={{ display: "inline-flex", alignItems: "center", gap: 8, marginRight: 10 }}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  disabled={deletingHistorySelection || deletingDraftId === it.id || deletingHistoryItemId === it.id}
-                                  aria-label={`Sélectionner ${it.title || "cet élément"}`}
-                                  onChange={() => toggleHistorySelection(it)}
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                              </label>
-                            ) : null}
-                            <div className={styles.from} title={it.title || "(sans objet)"}>{it.title || "(sans objet)"}</div>
-                            <span className={`${styles.badge} ${p.cls}`}>{p.label}</span>
-                          </div>
-
-                          {/* Au centre
-
-                          {it.subTitle ? (
-                            <div className={styles.itemSubTitle} title={it.subTitle}>
-                              {it.subTitle}
-                            </div>
-                          ) : null}
-
-                          {/* Au centre : boîte d'envoi (mails/factures/devis) ou canaux (publications, etc.) */}
-                          <div className={styles.itemMid} title={midLabel || it.target}>
-                            {midLabelNode}
-                          </div>
-
-                          <div className={styles.itemRight}>
-                            <div className={styles.date}>{new Date(it.created_at).toLocaleString()}</div>
-
-
-                            <div className={styles.rowActions}>
-
-
-                              <button
-                                type="button"
-                                className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost}`}
-                                title="Ouvrir"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  openDetails(it);
-                                }}
-                              >
-                                ↗
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            <div className={styles.listFooter}>
-              <div className={styles.listFooterMeta}>
-                <div>
-                  {filteredItems.length > 0
-                    ? (() => {
-                        const start = (historyPage - 1) * MAILBOX_PAGE_SIZE + 1;
-                        const end = start + filteredItems.length - 1;
-                        if (historyTotalCount != null) {
-                          return `Affichage ${start}–${end} sur ${historyTotalCount}`;
-                        }
-                        return historyHasMorePotential
-                          ? `Affichage ${start}–${end} (autres éléments disponibles)`
-                          : `Affichage ${start}–${end}`;
-                      })()
-                    : historyEmptyState(folder, boxView, historyQuery)}
-                </div>
-                {selectedBulkCount > 0 ? <div style={{ color: "rgba(196,181,253,0.95)" }}>{selectedBulkCount} élément{selectedBulkCount > 1 ? "s" : ""} sélectionné{selectedBulkCount > 1 ? "s" : ""} sur cette page.</div> : null}
-                {loading ? <div style={{ color: "rgba(125,211,252,0.92)" }}>Actualisation de la liste…</div> : null}
-              </div>
-              <div className={styles.listFooterPager}>
-                <div className={styles.listFooterPagerRow}>
-                  <button
-                    type="button"
-                    className={styles.btnGhost}
-                    onClick={() => {
-                      const prevPage = Math.max(1, historyPage - 1);
-                      void loadHistory({ page: prevPage });
-                    }}
-                    disabled={historyPage <= 1 || loading}
-                  >
-                    ← Précédent
-                  </button>
-                  <div className={styles.listFooterPageText}>
-                    Page {historyPage}{historyTotalCount != null ? ` / ${historyPageCount}` : historyHasMorePotential ? " / …" : ""}
-                  </div>
-                  <button
-                    type="button"
-                    className={styles.btnGhost}
-                    onClick={() => {
-                      const nextPage = historyPage + 1;
-                      void loadHistory({ page: nextPage });
-                    }}
-                    disabled={!historyHasMorePotential || loading}
-                  >
-                    Suivant →
-                  </button>
-                </div>
-              </div>
-            </div>
+            <MailboxList
+              folder={folder}
+              boxView={boxView}
+              loading={loading}
+              visibleItems={visibleItems}
+              selectedId={selectedId}
+              selectedHistoryKeySet={selectedHistoryKeySet}
+              deletingHistorySelection={deletingHistorySelection}
+              deletingDraftId={deletingDraftId}
+              deletingHistoryItemId={deletingHistoryItemId}
+              openItem={openItem}
+              openDetails={openDetails}
+              toggleHistorySelection={toggleHistorySelection}
+              mailAccounts={mailAccounts}
+              itemMailAccountId={itemMailAccountId}
+              filteredItemsLength={filteredItems.length}
+              historyPage={historyPage}
+              historyTotalCount={historyTotalCount}
+              historyHasMorePotential={historyHasMorePotential}
+              historyPageCount={historyPageCount}
+              loadHistory={loadHistory}
+              selectedBulkCount={selectedBulkCount}
+              historyQuery={historyQuery}
+            />
           </div>
 
         </div>

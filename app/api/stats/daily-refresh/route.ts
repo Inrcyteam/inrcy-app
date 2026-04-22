@@ -4,6 +4,8 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { buildMetricsSummary } from "@/lib/metrics/summary";
+import { getChannelConnectionStates } from "@/lib/channelConnectionState";
+import { buildChannelBlocks, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
 import {
   fetchCubeOverviews,
   computeOpportunitiesFromOverviews,
@@ -25,6 +27,7 @@ type BulkResponse = {
   opportunities: ReturnType<typeof toInrstatsSnapshot>;
   profile: ProfileMetrics;
   estimatedByCube: Record<CubeKey, number>;
+  blocks: InrstatsChannelBlocksByChannel;
   meta: {
     source: "api/stats/daily-refresh";
     generatedAt: string;
@@ -57,8 +60,9 @@ function buildBulkPayloadFromOverviews(args: {
   overviews: Partial<Record<CubeKey, Overview>>;
   profile: ProfileMetrics;
   snapshotDate: string;
+  channelStates: Awaited<ReturnType<typeof getChannelConnectionStates>>;
 }): BulkResponse {
-  const { period, overviews, profile, snapshotDate } = args;
+  const { period, overviews, profile, snapshotDate, channelStates } = args;
   const opportunities = toInrstatsSnapshot(computeOpportunitiesFromOverviews(overviews, period));
   const leadConversionRate = Number(profile?.lead_conversion_rate ?? 0);
   const avgBasket = Number(profile?.avg_basket ?? 0);
@@ -71,12 +75,21 @@ function buildBulkPayloadFromOverviews(args: {
     linkedin: Math.round((opportunities.byCube.linkedin || 0) * (leadConversionRate / 100) * avgBasket),
   };
 
+  const blocks = buildChannelBlocks({
+    periodDays: period,
+    overviews,
+    opportunitiesByCube: opportunities.byCube,
+    estimatedByCube,
+    channelStates,
+  });
+
   return {
     period,
     overviews,
     opportunities,
     profile,
     estimatedByCube,
+    blocks,
     meta: {
       source: "api/stats/daily-refresh",
       generatedAt: new Date().toISOString(),
@@ -206,6 +219,7 @@ async function handler(req: Request) {
         monthPromise,
         weekPromise,
       ]);
+      const channelStates = await getChannelConnectionStates(supabase, user.id);
 
       const generatorStarted = nowMs();
       const generator = await buildMetricsSummary({
@@ -230,8 +244,8 @@ async function handler(req: Request) {
       const weekDuration = Math.round(nowMs() - weekStarted);
 
       const inrstatsEntries = [
-        ["7", buildBulkPayloadFromOverviews({ period: 7, overviews: weekOverviews, profile, snapshotDate })],
-        ["30", buildBulkPayloadFromOverviews({ period: 30, overviews: monthOverviews, profile, snapshotDate })],
+        ["7", buildBulkPayloadFromOverviews({ period: 7, overviews: weekOverviews, profile, snapshotDate, channelStates })],
+        ["30", buildBulkPayloadFromOverviews({ period: 30, overviews: monthOverviews, profile, snapshotDate, channelStates })],
       ] as const;
 
       const { error: completeError } = await supabase.rpc("complete_daily_stats_refresh", {

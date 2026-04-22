@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildSnapshotWindow } from '@/lib/stats/snapshotWindow';
+import { buildGeneratorChannelBlocks, summarizeGeneratorChannelBlocks, type GeneratorChannelBlocksByChannel } from '@/lib/generator/channelBlocks';
 import {
   EMPTY_CUBE_RECORD,
   computeHistoryFromOverviews,
@@ -28,6 +29,7 @@ export type MetricsSummary = {
     byTool: Record<CubeKey, number>;
   };
   estimatedValue: number;
+  generatorBlocks: GeneratorChannelBlocksByChannel;
   details: {
     opportunities: ReturnType<typeof toInrstatsSnapshot>;
     profile: ProfileMetrics;
@@ -267,25 +269,36 @@ export async function buildMetricsSummary(args: {
     ),
   ]);
 
-  const leads = {
-    month: Number(history30Resolved.total) || 0,
-    week: Number(history7Resolved.total) || 0,
-    today: 0,
-    byTool: history30Resolved.perTool || { ...EMPTY_CUBE_RECORD },
-  };
+  const generatedAt = new Date().toISOString();
+  const generatorBlocks = buildGeneratorChannelBlocks({
+    monthLeadsByCube: history30Resolved.perTool || { ...EMPTY_CUBE_RECORD },
+    weekLeadsByCube: history7Resolved.perTool || { ...EMPTY_CUBE_RECORD },
+    opportunitiesByCube: oppResolved.byCube || { ...EMPTY_CUBE_RECORD },
+    leadConversionRate: profile.lead_conversion_rate,
+    avgBasket: profile.avg_basket,
+    generatedAt,
+    snapshotDate: dateWindow.snapshotDate,
+    live: dateWindow.live,
+  });
 
-  const estimatedValue = Math.round(oppResolved.total * (profile.lead_conversion_rate / 100) * profile.avg_basket);
+  const generatorTotals = summarizeGeneratorChannelBlocks({
+    blocks: generatorBlocks,
+    monthDays,
+    weekDays,
+    todayDays,
+  });
 
   const payload: MetricsSummary = {
-    leads,
-    estimatedValue,
+    leads: generatorTotals.leads,
+    estimatedValue: generatorTotals.estimatedValue,
+    generatorBlocks,
     details: {
-      opportunities: oppResolved,
+      opportunities: generatorTotals.opportunities,
       profile,
     },
     meta: {
       source: 'api/metrics/summary',
-      generatedAt: new Date().toISOString(),
+      generatedAt,
       snapshotDate: dateWindow.snapshotDate,
       live: dateWindow.live,
     },

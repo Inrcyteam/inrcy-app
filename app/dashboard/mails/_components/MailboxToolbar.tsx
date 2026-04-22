@@ -1,0 +1,195 @@
+import React from "react";
+import Link from "next/link";
+import styles from "../mails.module.css";
+import { toolbarActionTheme, type BoxView, type Folder, type MailAccount } from "../_lib/mailboxPhase1";
+
+type Props = {
+  folder: Folder;
+  filterAccountId: string;
+  setFilterAccountId: (value: string) => void;
+  mailAccounts: MailAccount[];
+  searchOpen: boolean;
+  historyQuery: string;
+  setSearchOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  loadHistory: () => Promise<void> | void;
+  toggleSelectVisibleHistoryItems: (selected: boolean) => void;
+  visibleBulkDeletableItemsLength: number;
+  selectedBulkCount: number;
+  loading: boolean;
+  deletingHistorySelection: boolean;
+  deletingDraftId: string | null;
+  deletingHistoryItemId: string | null;
+  deleteSelectedHistoryEntries: () => Promise<void> | void;
+  toolCfg: { href?: string | null; label: string };
+  resetCompose: (type: any) => void;
+  setComposeOpen: (open: boolean) => void;
+  boxView: BoxView;
+  setBoxView: React.Dispatch<React.SetStateAction<BoxView>>;
+};
+
+export default function MailboxToolbar(props: Props) {
+  const {
+    folder,
+    filterAccountId,
+    setFilterAccountId,
+    mailAccounts,
+    searchOpen,
+    historyQuery,
+    setSearchOpen,
+    loadHistory,
+    toggleSelectVisibleHistoryItems,
+    visibleBulkDeletableItemsLength,
+    selectedBulkCount,
+    loading,
+    deletingHistorySelection,
+    deletingDraftId,
+    deletingHistoryItemId,
+    deleteSelectedHistoryEntries,
+    toolCfg,
+    resetCompose,
+    setComposeOpen,
+    boxView,
+    setBoxView,
+  } = props;
+
+  return (
+    <div className={styles.toolbarRow}>
+      <div className={styles.filterRow}>
+        <div className={styles.toolbarInfo}>Filtrer</div>
+        <select
+          className={styles.filterSelect}
+          value={filterAccountId}
+          onChange={(e) => setFilterAccountId(e.target.value)}
+          title="Filtrer par boîte d’envoi"
+        >
+          <option value="">Toutes les boîtes</option>
+          {mailAccounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {(a.display_name ? `${a.display_name} — ` : "") + a.email_address + ` (${a.provider})`}
+            </option>
+          ))}
+        </select>
+        <div className={styles.mobileTopTools}>
+          <button
+            className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.mobileOnlyBtn} ${
+              !searchOpen && historyQuery.trim() ? styles.toolbarIconBtnActive : ""
+            }`}
+            onClick={() => setSearchOpen((v) => !v)}
+            type="button"
+            title={searchOpen ? "Fermer la recherche" : "Rechercher (Ctrl/Cmd+K)"}
+            aria-label="Rechercher"
+          >
+            <span className={styles.toolbarIconGlyph}>⌕</span>
+            {!searchOpen && historyQuery.trim() ? <span className={styles.activeDot} /> : null}
+          </button>
+          <button
+            className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.mobileOnlyBtn}`}
+            onClick={() => {
+              void loadHistory();
+            }}
+            type="button"
+            title="Actualiser"
+            aria-label="Actualiser"
+          >
+            ↻
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.toolbarActions}>
+        <div className={styles.bulkToolbarActions}>
+          <button
+            className={`${styles.toolbarBtn} ${styles.toolbarIconBtn}`}
+            onClick={() => toggleSelectVisibleHistoryItems(true)}
+            type="button"
+            title="Tout sélectionner la page"
+            aria-label="Tout sélectionner la page"
+            disabled={visibleBulkDeletableItemsLength <= 0 || loading || deletingHistorySelection || Boolean(deletingDraftId) || Boolean(deletingHistoryItemId)}
+          >
+            <span className={styles.toolbarIconGlyph}>☑</span>
+          </button>
+          <button
+            className={`${styles.toolbarBtn} ${styles.toolbarIconBtn}`}
+            onClick={() => toggleSelectVisibleHistoryItems(false)}
+            type="button"
+            title="Tout désélectionner"
+            aria-label="Tout désélectionner"
+            disabled={selectedBulkCount <= 0 || loading || deletingHistorySelection || Boolean(deletingDraftId) || Boolean(deletingHistoryItemId)}
+          >
+            <span className={styles.toolbarIconGlyph}>☐</span>
+          </button>
+          <button
+            className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${selectedBulkCount > 0 ? styles.toolbarBtnDanger : ""}`}
+            onClick={() => {
+              void deleteSelectedHistoryEntries();
+            }}
+            type="button"
+            title={selectedBulkCount > 0 ? `Supprimer la sélection (${selectedBulkCount})` : "Supprimer la sélection"}
+            aria-label="Supprimer la sélection"
+            disabled={selectedBulkCount <= 0 || loading || deletingHistorySelection || Boolean(deletingDraftId) || Boolean(deletingHistoryItemId)}
+          >
+            <span className={styles.toolbarIconGlyph}>🗑</span>
+          </button>
+        </div>
+
+        <div className={styles.toolbarSpacer} />
+
+        {toolCfg.href ? (
+          <Link
+            className={`${styles.toolbarBtn} ${styles.toolbarBtnCta}`}
+            style={toolbarActionTheme(folder)}
+            href={toolCfg.href}
+            title={toolCfg.label}
+          >
+            {toolCfg.label}
+          </Link>
+        ) : (
+          <button
+            className={`${styles.toolbarBtn} ${styles.toolbarBtnCta}`}
+            style={toolbarActionTheme(folder)}
+            onClick={() => {
+              resetCompose("mail");
+              setComposeOpen(true);
+            }}
+            type="button"
+          >
+            {toolCfg.label}
+          </button>
+        )}
+
+        <button
+          className={`${styles.toolbarBtn} ${boxView === "drafts" ? styles.toolbarBtnActive : ""}`}
+          onClick={() => setBoxView((v: BoxView) => (v === "drafts" ? "sent" : "drafts"))}
+          type="button"
+          title="Brouillons"
+        >
+          Brouillons
+        </button>
+        <button
+          className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.desktopToolbarIconBtn} ${
+            !searchOpen && historyQuery.trim() ? styles.toolbarIconBtnActive : ""
+          }`}
+          onClick={() => setSearchOpen((v) => !v)}
+          type="button"
+          title={searchOpen ? "Fermer la recherche" : "Rechercher (Ctrl/Cmd+K)"}
+          aria-label="Rechercher"
+        >
+          <span className={styles.toolbarIconGlyph}>⌕</span>
+          {!searchOpen && historyQuery.trim() ? <span className={styles.activeDot} /> : null}
+        </button>
+
+        <button
+          className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.desktopToolbarIconBtn}`}
+          onClick={() => {
+            void loadHistory();
+          }}
+          type="button"
+          title="Actualiser"
+          aria-label="Actualiser"
+        >
+          ↻
+        </button>
+      </div>
+    </div>
+  );
+}

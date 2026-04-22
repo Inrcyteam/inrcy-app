@@ -4,19 +4,15 @@ import styles from "./dashboard.module.css";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type TouchEvent as ReactTouchEvent } from "react";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
-import Link from "next/link";
 import SettingsDrawer from "./SettingsDrawer";
 import HelpButton from "./_components/HelpButton";
-import HelpModal from "./_components/HelpModal";
 import ConnectionPill from "./_components/ConnectionPill";
-import SiteInrcyPanel from "./_components/SiteInrcyPanel";
-import SiteWebPanel from "./_components/SiteWebPanel";
-import InstagramPanel from "./_components/InstagramPanel";
-import LinkedinPanel from "./_components/LinkedinPanel";
-import GoogleBusinessPanel from "./_components/GoogleBusinessPanel";
-import FacebookPanel from "./_components/FacebookPanel";
-import NotificationMenu from "./_components/NotificationMenu";
-import UserMenu from "./_components/UserMenu";
+import SiteInrcyPanelBlock from "./_components/SiteInrcyPanelBlock";
+import SiteWebPanelBlock from "./_components/SiteWebPanelBlock";
+import InstagramPanelBlock from "./_components/InstagramPanelBlock";
+import LinkedinPanelBlock from "./_components/LinkedinPanelBlock";
+import GmbPanelBlock from "./_components/GmbPanelBlock";
+import FacebookPanelBlock from "./_components/FacebookPanelBlock";
 import ProfilContent from "./settings/_components/ProfilContent";
 import AccountContent from "./settings/_components/AccountContent";
 import ActivityContent from "./settings/_components/ActivityContent";
@@ -28,131 +24,179 @@ import RgpdContent from "./settings/_components/RgpdContent";
 import InertiaContent from "./settings/_components/InertiaContent";
 import BoutiqueContent from "./settings/_components/BoutiqueContent";
 import NotificationsSettingsContent from "./settings/_components/NotificationsSettingsContent";
-
+import DashboardHelpModals from "./_components/DashboardHelpModals";
+import ReferralPanel from "./_components/ReferralPanel";
+import DashboardModulesCard from "./_components/DashboardModulesCard";
+import DashboardHero from "./_components/DashboardHero";
+import DashboardFluxBubble, { type DashboardFluxBubbleData } from "./_components/DashboardFluxBubble";
+import DashboardTopbar from "./_components/DashboardTopbar";
 
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
 import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
+import { expectedUiSnapshotDate, getInitialGeneratorKpis, getInitialOppTotal, getLastChannelSyncAt, getOverviewSnapshotDate, hasFreshLocalGeneratorSnapshot, markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, mergeGeneratorChannelBlockIntoCachedKpis, readCachedChannelBlocks, readCachedChannelSyncAt, readCachedGeneratorChannelSyncAt, readCachedOppTotal, readGeneratorCache, readInrStatsPeriodSyncAt, readUiCacheValue, statsCubeSessionKey, statsSummarySessionKey, type StatsWarmPeriod, writeUiCacheValue } from "./dashboard.client-cache";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
 import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
-import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants";
 import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
-import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, Module, ModuleAction, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
+import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
+import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
+import { createEmptyChannelBlock, createEmptyChannelBlocks, type InrstatsChannelBlock, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
 
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-
-type StatsWarmPeriod = 7 | 14 | 30 | 60;
-
-function statsCubeSessionKey(period: StatsWarmPeriod) {
-  return `inrcy_stats_cube_snapshot_v1:${period}`;
+function normalizeExternalHref(input: string | null | undefined) {
+  const value = (input || "").trim();
+  if (!value) return null;
+  return value.startsWith("http") ? value : `https://${value}`;
 }
 
-function statsSummarySessionKey(period: StatsWarmPeriod) {
-  return `inrcy_stats_summary_snapshot_v2:${period}`;
+function hasMeaningfulChannelBlock(block: InrstatsChannelBlock | null | undefined) {
+  if (!block) return false;
+  return Boolean(
+    block.connection.connected ||
+    block.connection.accountConnected ||
+    block.connection.configured ||
+    block.connection.statsConnected ||
+    block.connection.expired ||
+    block.syncAt ||
+    block.snapshotDate ||
+    block.opportunities > 0 ||
+    block.estimatedValue > 0 ||
+    block.error ||
+    block.connection.resourceUrl ||
+    block.connection.resourceLabel ||
+    block.connection.resourceId
+  );
 }
 
-function readUiCacheValue(key: string): string | null {
-  return readAccountCacheValue(key);
+function getBubbleStatusFromBlock(channel: DashboardChannelKey, block: InrstatsChannelBlock): { status: ModuleStatus; text: string } | null {
+  if (!hasMeaningfulChannelBlock(block)) return null;
+
+  if (channel === "site_inrcy") {
+    if (!block.connection.connected) return null;
+    return { status: "connected", text: "Connecté" };
+  }
+
+  if (block.connection.expired) {
+    return { status: "available", text: "Reconnexion requise" };
+  }
+
+  if (block.connection.connected) {
+    return { status: "connected", text: "Connecté" };
+  }
+
+  return { status: "available", text: "A connecter" };
 }
 
-function writeUiCacheValue(key: string, value: string) {
-  writeAccountCacheValue(key, value);
-}
-
-function getLastChannelSyncAt() {
-  const raw = readUiCacheValue("inrcy_stats_last_channel_sync_v1");
-  const n = raw ? Number(raw) : Number.NaN;
-  return Number.isFinite(n) ? n : 0;
-}
-
-function expectedUiSnapshotDate() {
-  return getDefaultSnapshotDate();
-}
-
-function getOverviewSnapshotDate(overviews: unknown): string | null {
-  if (!overviews || typeof overviews !== "object") return null;
-  for (const overview of Object.values(overviews as Record<string, unknown>)) {
-    const snapshotDate = typeof (overview as any)?.meta?.snapshotDate === "string"
-      ? (overview as any).meta.snapshotDate
-      : null;
-    if (snapshotDate) return snapshotDate;
+function getBubbleViewHrefFromBlock(channel: DashboardChannelKey, block: InrstatsChannelBlock | null | undefined) {
+  if (!block) return null;
+  const raw = block.connection.resourceUrl;
+  if (!raw) return null;
+  if (channel === "gmb" || channel === "facebook" || channel === "instagram" || channel === "linkedin" || channel === "site_inrcy" || channel === "site_web") {
+    return normalizeExternalHref(raw);
   }
   return null;
 }
 
-function readGeneratorCache(): { syncedAt: number; payload: any | null; snapshotDate: string | null } | null {
+function areJsonValuesEqual(a: unknown, b: unknown) {
   try {
-    const raw = readUiCacheValue("inrcy_generator_kpis_v1");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && "payload" in parsed) {
-      return {
-        syncedAt: Number.isFinite(Number((parsed as any).syncedAt)) ? Number((parsed as any).syncedAt) : 0,
-        payload: (parsed as any).payload ?? null,
-        snapshotDate: typeof (parsed as any).snapshotDate === "string" ? (parsed as any).snapshotDate : (typeof (parsed as any)?.payload?.meta?.snapshotDate === "string" ? (parsed as any).payload.meta.snapshotDate : null),
-      };
+    return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  } catch {
+    return a === b;
+  }
+}
+
+function getChannelsFromSettingsDiff(previousSettings: unknown, nextSettings: unknown): DashboardChannelKey[] {
+  const previous = previousSettings && typeof previousSettings === "object" ? previousSettings as Record<string, unknown> : {};
+  const next = nextSettings && typeof nextSettings === "object" ? nextSettings as Record<string, unknown> : {};
+  const impacted: DashboardChannelKey[] = [];
+
+  const map: Array<[DashboardChannelKey, string]> = [
+    ["site_web", "site_web"],
+    ["gmb", "gmb"],
+    ["facebook", "facebook"],
+    ["instagram", "instagram"],
+    ["linkedin", "linkedin"],
+  ];
+
+  for (const [channel, key] of map) {
+    if (!areJsonValuesEqual(previous[key], next[key])) {
+      impacted.push(channel);
     }
-    return { syncedAt: 0, payload: parsed, snapshotDate: typeof parsed?.meta?.snapshotDate === "string" ? parsed.meta.snapshotDate : null };
-  } catch {
-    return null;
   }
+
+  return Array.from(new Set(impacted));
 }
 
-function readCachedOppTotal() {
-  try {
-    const raw = readUiCacheValue("inrcy_opp30_total_v1");
-    const n = raw ? Number(raw) : Number.NaN;
-    return Number.isFinite(n) ? n : null;
-  } catch {
-    return null;
+function getChannelsFromProfilesDiff(previousRow: unknown, nextRow: unknown): DashboardChannelKey[] {
+  const previous = previousRow && typeof previousRow === "object" ? previousRow as Record<string, unknown> : {};
+  const next = nextRow && typeof nextRow === "object" ? nextRow as Record<string, unknown> : {};
+  const impacted: DashboardChannelKey[] = [];
+
+  if ((previous.inrcy_site_ownership ?? null) !== (next.inrcy_site_ownership ?? null)) {
+    impacted.push("site_inrcy");
   }
+
+  return impacted;
 }
 
-function getInitialGeneratorKpis() {
-  const payload = readGeneratorCache()?.payload;
-  return payload?.leads ? payload : null;
-}
-
-function getInitialOppTotal() {
-  const payload = readGeneratorCache()?.payload;
-  const oppMonth = Number(payload?.details?.opportunities?.month);
-  if (Number.isFinite(oppMonth)) return oppMonth;
-  return readCachedOppTotal();
-}
-
-function readSnapshotSyncAt(key: string): number {
-  try {
-    const raw = readUiCacheValue(key);
-    if (!raw) return 0;
-    const parsed = JSON.parse(raw) as any;
-    const syncedAt = Number(parsed?.syncedAt);
-    return Number.isFinite(syncedAt) ? syncedAt : 0;
-  } catch {
-    return 0;
+function inferChannelsFromRealtimePayload(payload: any): DashboardChannelKey[] {
+  const table = typeof payload?.table === "string" ? payload.table : "";
+  if (table === "inrcy_site_configs") {
+    return ["site_inrcy"];
   }
+
+  if (table === "profiles") {
+    return getChannelsFromProfilesDiff(payload?.old, payload?.new);
+  }
+
+  if (table === "pro_tools_configs") {
+    return getChannelsFromSettingsDiff(payload?.old?.settings, payload?.new?.settings);
+  }
+
+  if (table !== "integrations") {
+    return [];
+  }
+
+  const rows = [payload?.new, payload?.old];
+  const impacted = new Set<DashboardChannelKey>();
+
+  for (const row of rows) {
+    const source = typeof row?.source === "string" ? row.source : "";
+    const provider = typeof row?.provider === "string" ? row.provider : "";
+
+    if (source === "site_inrcy" || source === "site_web" || source === "gmb" || source === "facebook" || source === "instagram" || source === "linkedin") {
+      impacted.add(source);
+      continue;
+    }
+
+    if (provider === "facebook") impacted.add("facebook");
+    if (provider === "linkedin") impacted.add("linkedin");
+    if (provider === "google" && source === "gmb") impacted.add("gmb");
+  }
+
+  return Array.from(impacted);
 }
 
-function readInrStatsPeriodSyncAt(period: StatsWarmPeriod): number {
-  return Math.max(
-    readSnapshotSyncAt(statsCubeSessionKey(period)),
-    readSnapshotSyncAt(statsSummarySessionKey(period)),
-  );
-}
+function inferChannelsFromSearchParams(linked: string | null, targetPanel: string | null): DashboardChannelKey[] {
+  if (linked === "gmb" || linked === "facebook" || linked === "instagram" || linked === "linkedin") {
+    return [linked];
+  }
 
-function hasFreshLocalGeneratorSnapshot() {
-  const cached = readGeneratorCache();
-  const lastChannelSyncAt = getLastChannelSyncAt();
-  return Boolean(
-    cached?.payload?.leads &&
-    cached.syncedAt >= lastChannelSyncAt &&
-    cached.snapshotDate === expectedUiSnapshotDate()
-  );
+  if ((linked === "ga4" || linked === "gsc") && (targetPanel === "site_inrcy" || targetPanel === "site_web")) {
+    return [targetPanel];
+  }
+
+  if (targetPanel === "site_inrcy" || targetPanel === "site_web" || targetPanel === "gmb" || targetPanel === "facebook" || targetPanel === "instagram" || targetPanel === "linkedin") {
+    return [targetPanel];
+  }
+
+  return [];
 }
 
 export default function DashboardClient() {
@@ -295,6 +339,12 @@ export default function DashboardClient() {
     estimatedValue: number;
   }>(null);
   const [oppTotal, setOppTotal] = useState<number | null>(null);
+  const [channelBlocks, setChannelBlocks] = useState<InrstatsChannelBlocksByChannel | null>(() => readCachedChannelBlocks());
+  const channelBlocksRef = useRef<InrstatsChannelBlocksByChannel | null>(channelBlocks);
+
+  useEffect(() => {
+    channelBlocksRef.current = channelBlocks;
+  }, [channelBlocks]);
   const [drawerMutationState, setDrawerMutationState] = useState<Record<string, boolean>>({});
   const drawerMutationStateRef = useRef<Record<string, boolean>>({});
 
@@ -347,6 +397,11 @@ export default function DashboardClient() {
     const cachedOppTotal = readCachedOppTotal();
     if (cachedOppTotal !== null) {
       setOppTotal((prev) => prev ?? cachedOppTotal);
+    }
+
+    const cachedBlocks = readCachedChannelBlocks();
+    if (cachedBlocks) {
+      setChannelBlocks(cachedBlocks);
     }
   }, []);
 
@@ -1058,6 +1113,7 @@ const canConnectSiteInrcyGoogle = canConfigureSite && hasSiteInrcyUrl;
 const canConnectSiteWebGoogle = hasSiteWebUrl;
 
 const siteInrcyAllGreen = hasActiveInrcySite(siteInrcyOwnership) && hasSiteInrcyUrl && siteInrcyGa4Connected && siteInrcyGscConnected;
+const siteWebConnected = Boolean(siteWebUrl?.trim() && siteWebGa4Connected && siteWebGscConnected);
 const siteWebAllGreen = hasSiteWebUrl && siteWebGa4Connected && siteWebGscConnected;
 const profileCompleted = !profileIncomplete;
 const activityCompleted = !activityIncomplete;
@@ -1248,6 +1304,42 @@ const connectSiteInrcyGsc = useCallback(() => {
   window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
 }, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl]);
 
+const applyGeneratorCacheToState = useCallback(() => {
+    const mergedPayload = readGeneratorCache()?.payload;
+    if (!mergedPayload || typeof mergedPayload !== "object") return false;
+
+    setKpis(mergedPayload as any);
+    const oppMonth = Number((mergedPayload as any)?.details?.opportunities?.month);
+    if (Number.isFinite(oppMonth)) {
+      setOppTotal(oppMonth);
+      try {
+        writeUiCacheValue("inrcy_opp30_total_v1", String(oppMonth));
+      } catch {
+        // ignore
+      }
+    }
+
+    return true;
+  }, []);
+
+  const notifyGeneratorRefresh = useCallback((at?: number, channels?: readonly DashboardChannelKey[]) => {
+    if (typeof window === "undefined") return;
+    const syncAt = Number.isFinite(Number(at)) ? Number(at) : Date.now();
+    const normalizedChannels = Array.isArray(channels)
+      ? Array.from(new Set(channels.filter((channel): channel is DashboardChannelKey => typeof channel === "string" && channel.length > 0)))
+      : [];
+
+    if (normalizedChannels.length) {
+      for (const channel of normalizedChannels) {
+        window.dispatchEvent(new CustomEvent("inrcy:generator-channel-updated", { detail: { channel, at: syncAt } }));
+      }
+    }
+
+    window.dispatchEvent(new CustomEvent("inrcy:generator-channels-updated", {
+      detail: { at: syncAt, channels: normalizedChannels.length ? normalizedChannels : DASHBOARD_CHANNEL_KEYS },
+    }));
+  }, []);
+
 const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: number; silent?: boolean }) => {
     const requestSeq = ++kpisRequestSeqRef.current;
     const fresh = options?.fresh === true;
@@ -1283,6 +1375,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         const syncedAt = Number.isFinite(Number(options?.syncedAt)) ? Number(options?.syncedAt) : Date.now();
         const responseSnapshotDate = typeof json?.meta?.snapshotDate === "string" ? json.meta.snapshotDate : null;
         writeUiCacheValue("inrcy_generator_kpis_v1", JSON.stringify({ syncedAt, snapshotDate: responseSnapshotDate || snapshotDate || null, payload: json }));
+        notifyGeneratorRefresh(syncedAt, DASHBOARD_CHANNEL_KEYS);
       } catch {
         // ignore
       }
@@ -1296,17 +1389,29 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         setKpisLoading(false);
       }
     }
-  }, []);
+  }, [kpis, notifyGeneratorRefresh]);
 
-  const notifyStatsRefresh = useCallback((at?: number) => {
+  const notifyStatsRefresh = useCallback((at?: number, channels?: readonly DashboardChannelKey[]) => {
     if (typeof window === "undefined") return;
     const syncAt = Number.isFinite(Number(at)) ? Number(at) : Date.now();
-    try {
-      writeUiCacheValue("inrcy_stats_last_channel_sync_v1", String(syncAt));
-    } catch {
-      // ignore
+    const normalizedChannels = Array.isArray(channels)
+      ? Array.from(new Set(channels.filter((channel): channel is DashboardChannelKey => typeof channel === "string" && channel.length > 0)))
+      : [];
+
+    if (normalizedChannels.length) {
+      markChannelsSynced(normalizedChannels, syncAt);
+      for (const channel of normalizedChannels) {
+        window.dispatchEvent(new CustomEvent("inrcy:channel-updated", { detail: { channel, at: syncAt } }));
+      }
+    } else {
+      try {
+        writeUiCacheValue("inrcy_stats_last_channel_sync_v1", String(syncAt));
+      } catch {
+        // ignore
+      }
     }
-    window.dispatchEvent(new CustomEvent("inrcy:channels-updated", { detail: { at: syncAt } }));
+
+    window.dispatchEvent(new CustomEvent("inrcy:channels-updated", { detail: { at: syncAt, channels: normalizedChannels.length ? normalizedChannels : undefined } }));
   }, []);
 
   const warmInrStatsUi = useCallback(async (options?: {
@@ -1339,17 +1444,24 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         const json = await res.json().catch(() => null);
         const overviews = json?.overviews;
         const opportunities = json?.opportunities;
+        const blocks = json?.blocks;
         const snapshotDate = typeof json?.meta?.snapshotDate === "string" ? json.meta.snapshotDate : getOverviewSnapshotDate(overviews) || expectedSnapshotDate;
 
         if (!overviews || typeof overviews !== "object") return;
 
+        const normalizedBlocks = blocks && typeof blocks === "object" ? (blocks as InrstatsChannelBlocksByChannel) : null;
+
         try {
           writeUiCacheValue(
             statsCubeSessionKey(days),
-            JSON.stringify({ syncedAt: Number.isFinite(Number(syncByPeriod[days])) ? Number(syncByPeriod[days]) : syncAt, snapshotDate, overviews })
+            JSON.stringify({ syncedAt: Number.isFinite(Number(syncByPeriod[days])) ? Number(syncByPeriod[days]) : syncAt, snapshotDate, overviews, blocks: normalizedBlocks })
           );
         } catch {
           // ignore
+        }
+
+        if (normalizedBlocks) {
+          setChannelBlocks(normalizedBlocks);
         }
 
         try {
@@ -1381,6 +1493,227 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     refreshTimersRef.current = [];
   }, []);
 
+  const applyChannelRefreshPayload = useCallback((channel: DashboardChannelKey, payload: {
+    periods?: Partial<Record<string, { block?: InrstatsChannelBlock; overview?: unknown; syncedAt?: number; snapshotDate?: string | null }>>;
+  } | null | undefined, fallbackSyncAt?: number) => {
+    const syncAt = Number.isFinite(Number(fallbackSyncAt)) ? Number(fallbackSyncAt) : Date.now();
+    let preferredBlock: InrstatsChannelBlock | null = null;
+    let latestSyncAt = syncAt;
+
+    for (const period of [7, 30] as StatsWarmPeriod[]) {
+      const periodPayload = payload?.periods?.[String(period)];
+      const block = periodPayload?.block;
+      if (!block || typeof block !== "object") continue;
+
+      const periodSyncAt = Number.isFinite(Number(periodPayload?.syncedAt)) ? Number(periodPayload?.syncedAt) : (block.syncAt ?? syncAt);
+      latestSyncAt = Math.max(latestSyncAt, periodSyncAt);
+
+      mergeChannelBlockIntoCachedSnapshots({
+        period,
+        channel,
+        block,
+        overview: periodPayload?.overview,
+        syncedAt: periodSyncAt,
+        snapshotDate: typeof periodPayload?.snapshotDate === "string" ? periodPayload.snapshotDate : block.snapshotDate ?? null,
+      });
+
+      if (period === 30 || !preferredBlock) {
+        preferredBlock = block;
+      }
+    }
+
+    if (preferredBlock) {
+      setChannelBlocks((previous) => ({
+        ...(previous ?? createEmptyChannelBlocks()),
+        [channel]: preferredBlock as InrstatsChannelBlock,
+      }));
+      markChannelsSynced([channel], latestSyncAt);
+    }
+
+    return { preferredBlock, syncAt: latestSyncAt };
+  }, []);
+
+  const updateChannelBlockLocally = useCallback((
+    channel: DashboardChannelKey,
+    updater: (current: InrstatsChannelBlock) => InrstatsChannelBlock,
+  ) => {
+    const currentBlocks = channelBlocksRef.current ?? createEmptyChannelBlocks();
+    const currentBlock = currentBlocks[channel] ?? createEmptyChannelBlock(channel);
+    const nextBlock = updater({
+      ...currentBlock,
+      connection: { ...currentBlock.connection },
+    });
+    const nextSyncAt = Number.isFinite(Number(nextBlock.syncAt)) ? Number(nextBlock.syncAt) : Date.now();
+    const nextBlocks = { ...currentBlocks, [channel]: nextBlock };
+
+    channelBlocksRef.current = nextBlocks;
+    setChannelBlocks(nextBlocks);
+
+    for (const period of [7, 30] as StatsWarmPeriod[]) {
+      mergeChannelBlockIntoCachedSnapshots({
+        period,
+        channel,
+        block: nextBlock,
+        syncedAt: nextSyncAt,
+        snapshotDate: nextBlock.snapshotDate ?? expectedUiSnapshotDate(),
+      });
+    }
+
+    notifyStatsRefresh(nextSyncAt, [channel]);
+    return nextBlock;
+  }, [notifyStatsRefresh]);
+
+  const patchChannelConnectionLocally = useCallback((
+    channel: DashboardChannelKey,
+    patch: Partial<InrstatsChannelBlock["connection"]>,
+    options?: { clearData?: boolean; clearError?: boolean },
+  ) => updateChannelBlockLocally(channel, (current) => ({
+    ...current,
+    connection: {
+      ...current.connection,
+      ...patch,
+    },
+    overview: options?.clearData ? null : current.overview,
+    opportunities: options?.clearData ? 0 : current.opportunities,
+    estimatedValue: options?.clearData ? 0 : current.estimatedValue,
+    live: options?.clearData ? false : current.live,
+    error: options?.clearError === false ? current.error : null,
+    syncAt: Date.now(),
+    snapshotDate: expectedUiSnapshotDate(),
+  })), [updateChannelBlockLocally]);
+
+  const refreshChannelBlocksFromApi = useCallback(async (channel: DashboardChannelKey, fallbackSyncAt?: number) => {
+    const res = await fetch("/api/stats/channel-refresh", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ channel }),
+      cache: "no-store",
+      credentials: "include",
+    });
+
+    if (!res.ok) {
+      throw new Error(`Channel refresh failed: ${res.status}`);
+    }
+
+    const json = await res.json().catch(() => null) as {
+      periods?: Partial<Record<string, { block?: InrstatsChannelBlock; overview?: unknown; syncedAt?: number; snapshotDate?: string | null }>>;
+    } | null;
+
+    return applyChannelRefreshPayload(channel, json, fallbackSyncAt);
+  }, [applyChannelRefreshPayload]);
+
+  const refreshAllChannelBlocksFromApi = useCallback(async (fallbackSyncAt?: number) => {
+    for (const channel of DASHBOARD_CHANNEL_KEYS) {
+      await refreshChannelBlocksFromApi(channel, fallbackSyncAt);
+    }
+  }, [refreshChannelBlocksFromApi]);
+
+  const applyGeneratorChannelRefreshPayload = useCallback((channel: DashboardChannelKey, payload: {
+    syncAt?: number;
+    generator?: {
+      block?: {
+        channel?: DashboardChannelKey;
+        leads?: { today?: number; week?: number; month?: number };
+        opportunities?: { month?: number };
+        estimatedValue?: number;
+        syncAt?: number | null;
+        snapshotDate?: string | null;
+        live?: boolean;
+        error?: string | null;
+      };
+      details?: { profile?: unknown };
+      meta?: { snapshotDate?: string | null; live?: boolean };
+    };
+  } | null | undefined, fallbackSyncAt?: number) => {
+    const block = payload?.generator?.block;
+    if (!block || typeof block !== "object") {
+      return { block: null, syncAt: Number.isFinite(Number(fallbackSyncAt)) ? Number(fallbackSyncAt) : Date.now() };
+    }
+
+    const syncAt = Number.isFinite(Number(payload?.syncAt))
+      ? Number(payload?.syncAt)
+      : Number.isFinite(Number(fallbackSyncAt))
+        ? Number(fallbackSyncAt)
+        : Date.now();
+    const resolvedSnapshotDate = typeof payload?.generator?.meta?.snapshotDate === "string"
+      ? payload.generator.meta.snapshotDate
+      : (typeof block.snapshotDate === "string" ? block.snapshotDate : expectedUiSnapshotDate());
+
+    mergeGeneratorChannelBlockIntoCachedKpis({
+      channel,
+      block: {
+        channel,
+        leads: {
+          today: Math.max(0, Math.round(Number(block.leads?.today ?? 0))),
+          week: Math.max(0, Math.round(Number(block.leads?.week ?? 0))),
+          month: Math.max(0, Math.round(Number(block.leads?.month ?? 0))),
+        },
+        opportunities: {
+          month: Math.max(0, Math.round(Number(block.opportunities?.month ?? 0))),
+        },
+        estimatedValue: Math.max(0, Math.round(Number(block.estimatedValue ?? 0))),
+        syncAt,
+        snapshotDate: resolvedSnapshotDate ?? null,
+        live: typeof payload?.generator?.meta?.live === "boolean" ? payload.generator.meta.live : Boolean(block.live),
+        error: typeof block.error === "string" ? block.error : null,
+      },
+      syncedAt: syncAt,
+      snapshotDate: resolvedSnapshotDate ?? null,
+      live: typeof payload?.generator?.meta?.live === "boolean" ? payload.generator.meta.live : Boolean(block.live),
+      profile: payload?.generator?.details?.profile,
+    });
+
+    applyGeneratorCacheToState();
+    notifyGeneratorRefresh(syncAt, [channel]);
+
+    return { block, syncAt };
+  }, [applyGeneratorCacheToState, notifyGeneratorRefresh]);
+
+  const refreshGeneratorChannelFromApi = useCallback(async (channel: DashboardChannelKey, fallbackSyncAt?: number) => {
+    const res = await fetch("/api/metrics/channel-refresh", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ channel }),
+      cache: "no-store",
+      credentials: "include",
+    });
+
+    if (!res.ok) {
+      throw new Error(`Generator channel refresh failed: ${res.status}`);
+    }
+
+    const json = await res.json().catch(() => null) as {
+      syncAt?: number;
+      generator?: {
+        block?: {
+          channel?: DashboardChannelKey;
+          leads?: { today?: number; week?: number; month?: number };
+          opportunities?: { month?: number };
+          estimatedValue?: number;
+          syncAt?: number | null;
+          snapshotDate?: string | null;
+          live?: boolean;
+          error?: string | null;
+        };
+        details?: { profile?: unknown };
+        meta?: { snapshotDate?: string | null; live?: boolean };
+      };
+    } | null;
+
+    return applyGeneratorChannelRefreshPayload(channel, json, fallbackSyncAt);
+  }, [applyGeneratorChannelRefreshPayload]);
+
+  const refreshGeneratorChannelsFromApi = useCallback(async (channelsInput: readonly DashboardChannelKey[], fallbackSyncAt?: number) => {
+    const channels = Array.from(new Set(channelsInput.filter((channel): channel is DashboardChannelKey => typeof channel === "string" && channel.length > 0)));
+    for (const channel of channels) {
+      await refreshGeneratorChannelFromApi(channel, fallbackSyncAt);
+    }
+  }, [refreshGeneratorChannelFromApi]);
+
+  const refreshAllGeneratorChannelsFromApi = useCallback(async (fallbackSyncAt?: number) => {
+    await refreshGeneratorChannelsFromApi(DASHBOARD_CHANNEL_KEYS, fallbackSyncAt);
+  }, [refreshGeneratorChannelsFromApi]);
+
   const syncFromServerCacheIfNeeded = useCallback(async (force = false) => {
     if (typeof window === "undefined") return;
     const now = Date.now();
@@ -1404,24 +1737,54 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         if (!res.ok) return;
         const json = await res.json().catch(() => null);
         const generatorSyncedAt = Number(json?.generator?.syncedAt ?? 0);
+        const generatorChannelStatuses = json?.generator?.channels && typeof json.generator.channels === "object"
+          ? json.generator.channels as Partial<Record<DashboardChannelKey, number>>
+          : null;
         const localGeneratorSyncedAt = readGeneratorCache()?.syncedAt || 0;
+        const staleGeneratorChannels = generatorChannelStatuses
+          ? Object.entries(generatorChannelStatuses)
+              .filter(([channel, serverTs]) => Number(serverTs ?? 0) > readCachedGeneratorChannelSyncAt(channel as DashboardChannelKey))
+              .map(([channel]) => channel as DashboardChannelKey)
+          : [];
 
-        const periodSyncs: Partial<Record<StatsWarmPeriod, number>> = {
-          7: Number(json?.inrstats?.[7] ?? json?.inrstats?.["7"] ?? 0),
-          30: Number(json?.inrstats?.[30] ?? json?.inrstats?.["30"] ?? 0),
+        const periodStatuses: Partial<Record<StatsWarmPeriod, { syncedAt?: number; channels?: Partial<Record<DashboardChannelKey, number>> }>> = {
+          7: json?.inrstats?.[7] ?? json?.inrstats?.["7"] ?? null,
+          30: json?.inrstats?.[30] ?? json?.inrstats?.["30"] ?? null,
         };
+        const periodSyncs: Partial<Record<StatsWarmPeriod, number>> = {
+          7: Number(periodStatuses[7]?.syncedAt ?? 0),
+          30: Number(periodStatuses[30]?.syncedAt ?? 0),
+        };
+        const staleChannelsByPeriod = ([7, 30] as StatsWarmPeriod[]).reduce((acc, days) => {
+          const channels = periodStatuses[days]?.channels;
+          acc[days] = !channels || typeof channels !== "object"
+            ? []
+            : Object.entries(channels)
+                .filter(([channel, serverTs]) => Number(serverTs ?? 0) > readCachedChannelSyncAt(days, channel as DashboardChannelKey))
+                .map(([channel]) => channel as DashboardChannelKey);
+          return acc;
+        }, {} as Partial<Record<StatsWarmPeriod, DashboardChannelKey[]>>);
         const stalePeriods = ([7, 30] as StatsWarmPeriod[]).filter((days) => {
           const serverTs = Number(periodSyncs[days] ?? 0);
-          return serverTs > readInrStatsPeriodSyncAt(days);
+          if (serverTs <= readInrStatsPeriodSyncAt(days)) return false;
+          return readInrStatsPeriodSyncAt(days) === 0 || !(staleChannelsByPeriod[days]?.length);
         });
+        const staleChannels = Array.from(new Set((([7, 30] as StatsWarmPeriod[])
+          .filter((days) => !stalePeriods.includes(days))
+          .flatMap((days) => staleChannelsByPeriod[days] || []))));
+
+        const generatorChannelsToRefresh = staleGeneratorChannels.length
+          ? staleGeneratorChannels
+          : (generatorSyncedAt > localGeneratorSyncedAt ? DASHBOARD_CHANNEL_KEYS : []);
 
         await Promise.allSettled([
-          generatorSyncedAt > localGeneratorSyncedAt
-            ? refreshKpis({ syncedAt: generatorSyncedAt, silent: true })
+          generatorChannelsToRefresh.length
+            ? refreshGeneratorChannelsFromApi(generatorChannelsToRefresh, generatorSyncedAt || undefined)
             : Promise.resolve(),
           stalePeriods.length
             ? warmInrStatsUi({ targetPeriods: stalePeriods, syncByPeriod: periodSyncs })
             : Promise.resolve(),
+          ...staleChannels.map((channel) => refreshChannelBlocksFromApi(channel)),
         ]);
         markServerCacheSyncChecked("dashboard", { snapshotDate, checkedAt: Date.now() });
       } catch {
@@ -1435,7 +1798,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     } finally {
       serverCacheCheckPromiseRef.current = null;
     }
-  }, [refreshKpis, warmInrStatsUi]);
+  }, [readCachedGeneratorChannelSyncAt, refreshChannelBlocksFromApi, refreshGeneratorChannelsFromApi, warmInrStatsUi]);
 
   const triggerGeneratorRefresh = useCallback(async () => {
     const runSync = async () => {
@@ -1443,15 +1806,76 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       lastGeneratorRefreshAtRef.current = syncAt;
       await Promise.allSettled([
         loadSiteInrcy(),
-        refreshKpis({ fresh: true, syncedAt: syncAt }),
-        warmInrStatsUi({ syncedAt: syncAt, fresh: true }),
+        refreshAllGeneratorChannelsFromApi(syncAt),
+        refreshAllChannelBlocksFromApi(syncAt),
       ]);
-      notifyStatsRefresh(syncAt);
+      notifyStatsRefresh(syncAt, DASHBOARD_CHANNEL_KEYS);
     };
 
     clearScheduledGeneratorRefreshes();
     await runSync();
-  }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshKpis, warmInrStatsUi]);
+  }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshAllChannelBlocksFromApi, refreshAllGeneratorChannelsFromApi]);
+
+  const fallbackToServerSyncThenGlobal = useCallback(async () => {
+    try {
+      await syncFromServerCacheIfNeeded(true);
+    } catch {
+      await triggerGeneratorRefresh();
+    }
+  }, [syncFromServerCacheIfNeeded, triggerGeneratorRefresh]);
+
+  const triggerChannelRefresh = useCallback(async (channel: DashboardChannelKey) => {
+    const syncAt = Date.now();
+    lastGeneratorRefreshAtRef.current = syncAt;
+
+    try {
+      clearScheduledGeneratorRefreshes();
+
+      const results = await Promise.allSettled([
+        channel === "site_inrcy" ? loadSiteInrcy() : Promise.resolve(),
+        refreshGeneratorChannelFromApi(channel, syncAt),
+        refreshChannelBlocksFromApi(channel, syncAt),
+      ]);
+
+      const rejected = results.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
+      if (rejected) throw rejected.reason;
+
+      notifyStatsRefresh(syncAt, [channel]);
+    } catch (error) {
+      console.error(error);
+      await fallbackToServerSyncThenGlobal();
+    }
+  }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, loadSiteInrcy, notifyStatsRefresh, refreshChannelBlocksFromApi, refreshGeneratorChannelFromApi]);
+
+  const triggerChannelsRefresh = useCallback(async (channelsInput: DashboardChannelKey[]) => {
+    const channels = Array.from(new Set(channelsInput.filter((channel): channel is DashboardChannelKey => typeof channel === "string" && channel.length > 0)));
+    if (!channels.length) return;
+    if (channels.length === 1) {
+      await triggerChannelRefresh(channels[0]);
+      return;
+    }
+
+    const syncAt = Date.now();
+    lastGeneratorRefreshAtRef.current = syncAt;
+
+    try {
+      clearScheduledGeneratorRefreshes();
+
+      const results = await Promise.allSettled([
+        channels.includes("site_inrcy") ? loadSiteInrcy() : Promise.resolve(),
+        refreshGeneratorChannelsFromApi(channels, syncAt),
+        ...channels.map((channel) => refreshChannelBlocksFromApi(channel, syncAt)),
+      ]);
+
+      const rejected = results.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
+      if (rejected) throw rejected.reason;
+
+      notifyStatsRefresh(syncAt, channels);
+    } catch (error) {
+      console.error(error);
+      await fallbackToServerSyncThenGlobal();
+    }
+  }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, loadSiteInrcy, notifyStatsRefresh, refreshChannelBlocksFromApi, refreshGeneratorChannelsFromApi, triggerChannelRefresh]);
 
   const applyBootstrapRefresh = useCallback((bootstrap: DailyStatsRefreshBootstrapResponse) => {
     const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
@@ -1500,11 +1924,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
         ? payload.meta.snapshotDate
         : getOverviewSnapshotDate(overviews) || bootstrapSnapshotDate || null;
+      const payloadBlocks = payload?.blocks && typeof payload.blocks === "object"
+        ? payload.blocks as InrstatsChannelBlocksByChannel
+        : null;
 
       try {
         writeUiCacheValue(
           statsCubeSessionKey(days),
-          JSON.stringify({ syncedAt: syncAt, snapshotDate: payloadSnapshotDate, overviews })
+          JSON.stringify({ syncedAt: syncAt, snapshotDate: payloadSnapshotDate, overviews, blocks: payloadBlocks })
         );
         writeUiCacheValue(
           statsSummarySessionKey(days),
@@ -1519,6 +1946,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         );
       } catch {
         // ignore
+      }
+
+      if (payloadBlocks) {
+        setChannelBlocks(payloadBlocks);
       }
     }
 
@@ -1548,6 +1979,35 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
 
   useEffect(() => {
+    const applyFromGeneratorCache = () => {
+      applyGeneratorCacheToState();
+    };
+
+    const handleGeneratorChannelUpdated = () => {
+      applyFromGeneratorCache();
+    };
+
+    const handleGeneratorChannelsUpdated = () => {
+      applyFromGeneratorCache();
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key || !event.key.includes("inrcy_generator_kpis_v1")) return;
+      applyFromGeneratorCache();
+    };
+
+    window.addEventListener("inrcy:generator-channel-updated", handleGeneratorChannelUpdated as EventListener);
+    window.addEventListener("inrcy:generator-channels-updated", handleGeneratorChannelsUpdated as EventListener);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener("inrcy:generator-channel-updated", handleGeneratorChannelUpdated as EventListener);
+      window.removeEventListener("inrcy:generator-channels-updated", handleGeneratorChannelsUpdated as EventListener);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [applyGeneratorCacheToState]);
+
+  useEffect(() => {
     const handleProfileVersionChange = (event: Event) => {
       const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
       if (!detail) return;
@@ -1563,7 +2023,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       }
 
       if (detail.field === "stats_version") {
-        void triggerGeneratorRefresh();
+        void syncFromServerCacheIfNeeded(true);
       }
     };
 
@@ -1571,7 +2031,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     return () => {
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
-  }, [refreshNotifications, refreshUiBalance, triggerGeneratorRefresh]);
+  }, [refreshNotifications, refreshUiBalance, syncFromServerCacheIfNeeded]);
 
   // ✅ Auto-refresh Générateur + statuts modules dès qu'un module se connecte / se déconnecte
   // On écoute les changements Postgres sur les tables qui impactent:
@@ -1582,16 +2042,22 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     let disposed = false;
     let t: any = null;
 
-    const scheduleRefresh = () => {
+    const scheduleRefresh = (payload?: any) => {
       if (disposed) return;
-      // Évite le "double refresh" juste après une action manuelle
-      // (déconnexion/connexion => refresh immédiat déjà lancé côté client).
       if (Date.now() - lastGeneratorRefreshAtRef.current < 2500) return;
       if (t) window.clearTimeout(t);
+
+      const impactedChannels = inferChannelsFromRealtimePayload(payload);
+
       t = window.setTimeout(() => {
         if (disposed) return;
         if (Date.now() - lastGeneratorRefreshAtRef.current < 2500) return;
-        triggerGeneratorRefresh();
+        if (impactedChannels.length) {
+          void triggerChannelsRefresh(impactedChannels);
+          return;
+        }
+
+        void fallbackToServerSyncThenGlobal();
       }, 500);
     };
 
@@ -1600,22 +2066,22 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "integrations" },
-        () => scheduleRefresh()
+        (payload: any) => scheduleRefresh(payload)
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "pro_tools_configs" },
-        () => scheduleRefresh()
+        (payload: any) => scheduleRefresh(payload)
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "inrcy_site_configs" },
-        () => scheduleRefresh()
+        (payload: any) => scheduleRefresh(payload)
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "profiles" },
-        () => scheduleRefresh()
+        (payload: any) => scheduleRefresh(payload)
       )
       .subscribe();
 
@@ -1627,7 +2093,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         supabase.removeChannel(ch);
       } catch {}
     };
-  }, [clearScheduledGeneratorRefreshes, triggerGeneratorRefresh]);
+  }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, triggerChannelsRefresh]);
 
   useEffect(() => {
     const linked = searchParams.get("linked");
@@ -1635,9 +2101,18 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     const ok = searchParams.get("ok");
     const toast = searchParams.get("toast");
     const warning = searchParams.get("warning");
+    const targetPanel = searchParams.get("panel");
+
     if (!linked && !activated && !ok && !toast && !warning) return;
-    triggerGeneratorRefresh();
-  }, [searchParams, triggerGeneratorRefresh]);
+
+    const impactedChannels = inferChannelsFromSearchParams(linked, targetPanel);
+    if (ok === "1" && impactedChannels.length) {
+      void triggerChannelsRefresh(impactedChannels);
+      return;
+    }
+
+    void fallbackToServerSyncThenGlobal();
+  }, [fallbackToServerSyncThenGlobal, searchParams, triggerChannelsRefresh]);
 
 
   useEffect(() => {
@@ -1785,9 +2260,18 @@ const activateSiteInrcyTracking = useCallback(async () => {
     setSiteInrcyGscNotice(null);
   }, 2500);
 
-  // Rafraîchit le générateur sans recharger la page
-  triggerGeneratorRefresh();
-}, [siteInrcyOwnership, siteInrcyUrl, triggerGeneratorRefresh]);
+  // Aligne immédiatement le bloc canal, puis confirme via le refresh ciblé.
+  patchChannelConnectionLocally("site_inrcy", {
+    connected: true,
+    accountConnected: true,
+    configured: true,
+    statsConnected: true,
+    resourceId: siteUrl,
+    resourceLabel: siteUrl,
+    resourceUrl: siteUrl,
+  });
+  triggerChannelRefresh("site_inrcy");
+}, [patchChannelConnectionLocally, siteInrcyOwnership, siteInrcyUrl, triggerChannelRefresh]);
 
 // ✅ Mode rented : désactive le suivi (GA4+GSC) et nettoie les settings.
 const deactivateSiteInrcyTracking = useCallback(async () => {
@@ -1829,9 +2313,18 @@ const deactivateSiteInrcyTracking = useCallback(async () => {
 
   setSiteInrcyTrackingBusy(false);
 
-  // Rafraîchit le générateur sans recharger la page
-  triggerGeneratorRefresh();
-}, [siteInrcyOwnership, triggerGeneratorRefresh]);
+  // Coupe immédiatement le bloc stats du canal, puis confirme via le refresh ciblé.
+  patchChannelConnectionLocally("site_inrcy", {
+    connected: Boolean(siteInrcySavedUrl.trim()),
+    accountConnected: Boolean(siteInrcySavedUrl.trim()),
+    configured: Boolean(siteInrcySavedUrl.trim()),
+    statsConnected: false,
+    resourceId: siteInrcySavedUrl || null,
+    resourceLabel: siteInrcySavedUrl || null,
+    resourceUrl: siteInrcySavedUrl || null,
+  }, { clearData: true });
+  triggerChannelRefresh("site_inrcy");
+}, [patchChannelConnectionLocally, siteInrcyOwnership, siteInrcySavedUrl, triggerChannelRefresh]);
 
 
 const disconnectGoogleStats = useCallback(
@@ -1871,6 +2364,16 @@ const disconnectGoogleStats = useCallback(
         setSiteInrcyGscConnected(false);
         setSiteInrcyGscNotice("Search Console déconnecté.");
       }
+
+      patchChannelConnectionLocally("site_inrcy", {
+        connected: Boolean(siteInrcySavedUrl.trim()),
+        accountConnected: Boolean(siteInrcySavedUrl.trim()),
+        configured: Boolean(siteInrcySavedUrl.trim()),
+        statsConnected: product === "ga4" ? Boolean(siteInrcyGscConnected) : Boolean(siteInrcyGa4Connected),
+        resourceId: siteInrcySavedUrl || null,
+        resourceLabel: siteInrcySavedUrl || null,
+        resourceUrl: siteInrcySavedUrl || null,
+      });
     } else {
       let nextSettings: any = {};
       try {
@@ -1891,15 +2394,32 @@ const disconnectGoogleStats = useCallback(
         setSiteWebGscConnected(false);
         setSiteWebGscNotice("Search Console déconnecté.");
       }
+
+      patchChannelConnectionLocally("site_web", {
+        connected: Boolean(siteWebSavedUrl.trim()),
+        accountConnected: Boolean(siteWebSavedUrl.trim()),
+        configured: Boolean(siteWebSavedUrl.trim()),
+        statsConnected: product === "ga4" ? Boolean(siteWebGscConnected) : Boolean(siteWebGa4Connected),
+        resourceId: siteWebSavedUrl || null,
+        resourceLabel: siteWebSavedUrl || null,
+        resourceUrl: siteWebSavedUrl || null,
+      });
     }
 
-    triggerGeneratorRefresh();
+    void triggerChannelRefresh(source);
   },
   [
+    patchChannelConnectionLocally,
     removeGoogleProductFromSettings,
+    siteInrcyGa4Connected,
+    siteInrcyGscConnected,
+    siteInrcySavedUrl,
     siteInrcySettingsText,
+    siteWebGa4Connected,
+    siteWebGscConnected,
+    siteWebSavedUrl,
     siteWebSettingsText,
-    triggerGeneratorRefresh,
+    triggerChannelRefresh,
   ]
 );
 
@@ -2077,12 +2597,21 @@ const saveSiteInrcyUrl = useCallback(async () => {
   setSiteInrcyUrl(valueToSave);
   setSiteInrcySavedUrl(valueToSave);
   setSiteInrcyUrlNotice(valueToSave ? "✅ Lien du site enregistré" : null);
-  triggerGeneratorRefresh();
+  patchChannelConnectionLocally("site_inrcy", {
+    connected: Boolean(valueToSave),
+    accountConnected: Boolean(valueToSave),
+    configured: Boolean(valueToSave),
+    statsConnected: Boolean(siteInrcyGa4Connected || siteInrcyGscConnected),
+    resourceId: valueToSave || null,
+    resourceLabel: valueToSave || null,
+    resourceUrl: valueToSave || null,
+  }, { clearData: !valueToSave });
+  triggerChannelRefresh("site_inrcy");
   await syncSitePresenceState();
   if (valueToSave) {
     window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
   }
-}, [normalizeSiteUrl, siteInrcyOwnership, siteInrcySavedUrl, siteInrcyUrl, triggerGeneratorRefresh, syncSitePresenceState]);
+}, [normalizeSiteUrl, patchChannelConnectionLocally, siteInrcyGa4Connected, siteInrcyGscConnected, siteInrcyOwnership, siteInrcySavedUrl, siteInrcyUrl, triggerChannelRefresh, syncSitePresenceState]);
 
 
 const deleteSiteInrcyUrl = useCallback(async () => {
@@ -2114,10 +2643,19 @@ const deleteSiteInrcyUrl = useCallback(async () => {
   setSiteInrcySavedUrl("");
   setShowSiteInrcyWidgetCode(false);
   setSiteInrcyUrlNotice("✅ Lien du site supprimé. GA4 et Search Console ont été déconnectés.");
-  triggerGeneratorRefresh();
+  patchChannelConnectionLocally("site_inrcy", {
+    connected: false,
+    accountConnected: false,
+    configured: false,
+    statsConnected: false,
+    resourceId: null,
+    resourceLabel: null,
+    resourceUrl: null,
+  }, { clearData: true });
+  triggerChannelRefresh("site_inrcy");
   await syncSitePresenceState();
   window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
-}, [disconnectAllGoogleStatsForSource, siteInrcyOwnership, siteInrcySavedUrl, triggerGeneratorRefresh, syncSitePresenceState]);
+}, [disconnectAllGoogleStatsForSource, patchChannelConnectionLocally, siteInrcyOwnership, siteInrcySavedUrl, triggerChannelRefresh, syncSitePresenceState]);
 
 // ✅ Enregistrer uniquement le lien du site web (settings.site_web.url)
 const saveSiteWebUrl = useCallback(async () => {
@@ -2147,13 +2685,22 @@ const saveSiteWebUrl = useCallback(async () => {
   await updateSiteWebSettings(parsed);
   setSiteWebUrl(valueToSave);
   setSiteWebSavedUrl(valueToSave);
-  triggerGeneratorRefresh();
+  patchChannelConnectionLocally("site_web", {
+    connected: Boolean(valueToSave),
+    accountConnected: Boolean(valueToSave),
+    configured: Boolean(valueToSave),
+    statsConnected: Boolean(siteWebGa4Connected || siteWebGscConnected),
+    resourceId: valueToSave || null,
+    resourceLabel: valueToSave || null,
+    resourceUrl: valueToSave || null,
+  }, { clearData: !valueToSave });
+  triggerChannelRefresh("site_web");
   await syncSitePresenceState();
   setSiteWebUrlNotice(valueToSave ? "✅ Lien du site enregistré" : null);
   if (valueToSave) {
     window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
   }
-}, [normalizeSiteUrl, siteWebSavedUrl, siteWebSettingsText, siteWebUrl, triggerGeneratorRefresh, updateSiteWebSettings, syncSitePresenceState]);
+}, [normalizeSiteUrl, patchChannelConnectionLocally, siteWebGa4Connected, siteWebGscConnected, siteWebSavedUrl, siteWebSettingsText, siteWebUrl, triggerChannelRefresh, updateSiteWebSettings, syncSitePresenceState]);
 
 const deleteSiteWebUrl = useCallback(async () => {
   if (!siteWebSavedUrl.trim()) return;
@@ -2181,11 +2728,20 @@ const deleteSiteWebUrl = useCallback(async () => {
   setSiteWebUrl("");
   setSiteWebSavedUrl("");
   setShowSiteWebWidgetCode(false);
-  triggerGeneratorRefresh();
+  patchChannelConnectionLocally("site_web", {
+    connected: false,
+    accountConnected: false,
+    configured: false,
+    statsConnected: false,
+    resourceId: null,
+    resourceLabel: null,
+    resourceUrl: null,
+  }, { clearData: true });
+  triggerChannelRefresh("site_web");
   await syncSitePresenceState();
   setSiteWebUrlNotice("✅ Lien du site supprimé. GA4 et Search Console ont été déconnectés.");
   window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
-}, [disconnectAllGoogleStatsForSource, siteWebSavedUrl, siteWebSettingsText, triggerGeneratorRefresh, updateSiteWebSettings, syncSitePresenceState]);
+}, [disconnectAllGoogleStatsForSource, patchChannelConnectionLocally, siteWebSavedUrl, siteWebSettingsText, triggerChannelRefresh, updateSiteWebSettings, syncSitePresenceState]);
 
 const resetSiteInrcyAll = useCallback(async () => {
   if (!confirm("Réinitialiser la configuration (lien + GA4 + Search Console) ?")) return;
@@ -2210,8 +2766,17 @@ const resetSiteInrcyAll = useCallback(async () => {
   setGscProperty("");
   setSiteInrcyGa4Connected(false);
   setSiteInrcyGscConnected(false);
-  triggerGeneratorRefresh();
-}, [resetGoogleStats, siteInrcyOwnership, triggerGeneratorRefresh, updateSiteInrcySettings]);
+  patchChannelConnectionLocally("site_inrcy", {
+    connected: false,
+    accountConnected: false,
+    configured: false,
+    statsConnected: false,
+    resourceId: null,
+    resourceLabel: null,
+    resourceUrl: null,
+  }, { clearData: true });
+  triggerChannelRefresh("site_inrcy");
+}, [patchChannelConnectionLocally, resetGoogleStats, siteInrcyOwnership, triggerChannelRefresh, updateSiteInrcySettings]);
 
 const resetSiteWebAll = useCallback(async () => {
   if (!confirm("Réinitialiser la configuration (lien + GA4 + Search Console) ?")) return;
@@ -2229,8 +2794,17 @@ const resetSiteWebAll = useCallback(async () => {
   setSiteWebGscProperty("");
   setSiteWebGa4Connected(false);
   setSiteWebGscConnected(false);
-  triggerGeneratorRefresh();
-}, [resetGoogleStats, updateSiteWebSettings, triggerGeneratorRefresh]);
+  patchChannelConnectionLocally("site_web", {
+    connected: false,
+    accountConnected: false,
+    configured: false,
+    statsConnected: false,
+    resourceId: null,
+    resourceLabel: null,
+    resourceUrl: null,
+  }, { clearData: true });
+  triggerChannelRefresh("site_web");
+}, [patchChannelConnectionLocally, resetGoogleStats, updateSiteWebSettings, triggerChannelRefresh]);
 
 // ✅ Houzz / Pages Jaunes (liens uniquement, stockés dans inrcy_site_configs.settings)
 const updateRootSettingsKey = useCallback(
@@ -2271,7 +2845,6 @@ const disconnectGmbAccount = useCallback(async () => {
   await fetch("/api/integrations/google-business/disconnect-account", { method: "POST" });
   setGmbConnected(false);
   setGmbAccountConnected(false);
-  triggerGeneratorRefresh();
   setGmbConfigured(false);
   setGmbAccountEmail("");
   setGmbUrl("");
@@ -2281,8 +2854,18 @@ const disconnectGmbAccount = useCallback(async () => {
   setGmbLocationName("");
   setGmbLocationLabel("");
   await updateRootSettingsKey("gmb", { url: "", connected: false, configured: false, accountEmail: "", accountName: "", locationName: "", locationTitle: "", resource_id: "" });
+  patchChannelConnectionLocally("gmb", {
+    connected: false,
+    accountConnected: false,
+    configured: false,
+    expired: false,
+    resourceId: null,
+    resourceLabel: null,
+    resourceUrl: null,
+  }, { clearData: true });
+  await triggerChannelRefresh("gmb");
   setPanelSuccess("gmb", "Compte Google déconnecté.");
-}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
+}, [patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh, updateRootSettingsKey]);
 
 const disconnectGmbBusiness = useCallback(async () => {
   // Disconnect Google Business ONLY (keeps Google account connected)
@@ -2297,10 +2880,18 @@ const disconnectGmbBusiness = useCallback(async () => {
   setGmbUrl("");
   setGmbLocationName("");
   setGmbLocationLabel("");
-  triggerGeneratorRefresh();
   await updateRootSettingsKey("gmb", { url: "", resource_id: "", locationName: "", locationTitle: "", configured: false, connected: true });
+  patchChannelConnectionLocally("gmb", {
+    connected: false,
+    accountConnected: true,
+    configured: false,
+    resourceId: null,
+    resourceLabel: null,
+    resourceUrl: null,
+  }, { clearData: true });
+  await triggerChannelRefresh("gmb");
   setPanelSuccess("gmb", "Établissement Google Business déconnecté.");
-}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelError, setPanelSuccess]);
+}, [patchChannelConnectionLocally, setPanelError, setPanelSuccess, triggerChannelRefresh, updateRootSettingsKey]);
 
 
   // Facebook pages (selection)
@@ -2343,7 +2934,16 @@ const disconnectFacebookAccount = useCallback(async () => {
 	  await fetch("/api/integrations/facebook/disconnect-account", { method: "POST" });
 	  setFacebookAccountConnected(false);
 	  setFacebookPageConnected(false);
-	  triggerGeneratorRefresh();
+	  patchChannelConnectionLocally("facebook", {
+	    connected: false,
+	    accountConnected: false,
+	    configured: false,
+	    expired: false,
+	    resourceId: null,
+	    resourceLabel: null,
+	    resourceUrl: null,
+	  }, { clearData: true });
+	  triggerChannelRefresh("facebook");
 	  setFacebookAccountEmail("");
 	  // Keep a lightweight mirror in pro_tools_configs for instant UI updates.
 	  await updateRootSettingsKey("facebook", {
@@ -2359,12 +2959,21 @@ const disconnectFacebookAccount = useCallback(async () => {
 	  setFbSelectedPageId("");
 	  setFbSelectedPageName("");
 	  setPanelSuccess("facebook", "Compte Facebook déconnecté.");
-}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
+}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
 
 const disconnectFacebookPage = useCallback(async () => {
 	  await fetch("/api/integrations/facebook/disconnect-page", { method: "POST" });
 	  setFacebookPageConnected(false);
-	  triggerGeneratorRefresh();
+	  patchChannelConnectionLocally("facebook", {
+	    connected: false,
+	    accountConnected: true,
+	    configured: false,
+	    expired: false,
+	    resourceId: null,
+	    resourceLabel: null,
+	    resourceUrl: null,
+	  }, { clearData: true });
+	  triggerChannelRefresh("facebook");
 	  await updateRootSettingsKey("facebook", {
 	    accountConnected: true,
 	    pageConnected: false,
@@ -2376,7 +2985,7 @@ const disconnectFacebookPage = useCallback(async () => {
 	  setFbSelectedPageId("");
 	  setFbSelectedPageName("");
 	  setPanelSuccess("facebook", "Page Facebook déconnectée.");
-}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
+}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
 const loadFacebookPages = useCallback(async () => {
 	  if (!facebookAccountConnected) return;
   setFbPagesLoading(true);
@@ -2413,6 +3022,14 @@ const loadFacebookPages = useCallback(async () => {
         setFbSelectedPageName(String(only.name || ""));
         setFacebookPageConnected(true);
         setFacebookUrl(`https://www.facebook.com/${only.id}`);
+        patchChannelConnectionLocally("facebook", {
+          connected: true,
+          accountConnected: true,
+          configured: true,
+          resourceId: only.id,
+          resourceLabel: only.name || null,
+          resourceUrl: `https://www.facebook.com/${only.id}`,
+        });
       }
     }
   } catch (e: any) {
@@ -2420,7 +3037,7 @@ const loadFacebookPages = useCallback(async () => {
   } finally {
     setFbPagesLoading(false);
   }
-	}, [facebookAccountConnected, fbSelectedPageId]);
+	}, [facebookAccountConnected, fbSelectedPageId, patchChannelConnectionLocally]);
 
 useEffect(() => {
   const linked = searchParams.get("linked");
@@ -2460,16 +3077,25 @@ const saveFacebookPage = useCallback(async () => {
 
   const j = await r.json().catch(() => ({}));
   if (r.ok) {
-    setFacebookUrl(String(j?.pageUrl || `https://www.facebook.com/${picked.id}`));
+    const nextFacebookUrl = String(j?.pageUrl || `https://www.facebook.com/${picked.id}`);
+    setFacebookUrl(nextFacebookUrl);
 	    setFacebookPageConnected(true);
 	    setFbSelectedPageName(picked.name || "");
-    triggerGeneratorRefresh();
+    patchChannelConnectionLocally("facebook", {
+      connected: true,
+      accountConnected: true,
+      configured: true,
+      resourceId: picked.id,
+      resourceLabel: picked.name || null,
+      resourceUrl: nextFacebookUrl,
+    });
+    triggerChannelRefresh("facebook");
     setPanelSuccess("facebook", "Page Facebook enregistrée.");
   } else {
     setPanelError("facebook", j?.error, "Impossible d'enregistrer la page Facebook.");
   }
 
-}, [fbPages, fbSelectedPageId, triggerGeneratorRefresh]);
+}, [fbPages, fbSelectedPageId, patchChannelConnectionLocally, triggerChannelRefresh]);
 
 // ===== Instagram (Meta) =====
 const connectInstagramAccount = useCallback(async () => {
@@ -2486,11 +3112,19 @@ const disconnectInstagramAccount = useCallback(async () => {
   await fetch("/api/integrations/instagram/disconnect-account", { method: "POST" });
   setInstagramAccountConnected(false);
   setInstagramConnected(false);
-  triggerGeneratorRefresh();
   setInstagramUsername("");
   setInstagramUrl("");
   setIgAccounts([]);
   setIgSelectedPageId("");
+  patchChannelConnectionLocally("instagram", {
+    connected: false,
+    accountConnected: false,
+    configured: false,
+    expired: false,
+    resourceId: null,
+    resourceLabel: null,
+    resourceUrl: null,
+  }, { clearData: true });
   await updateRootSettingsKey("instagram", {
     accountConnected: false,
     connected: false,
@@ -2499,16 +3133,24 @@ const disconnectInstagramAccount = useCallback(async () => {
     pageId: "",
     igId: "",
   });
+  triggerChannelRefresh("instagram");
   setPanelSuccess("instagram", "Compte Instagram déconnecté.");
-}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
+}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
 
 const disconnectInstagramProfile = useCallback(async () => {
   await fetch("/api/integrations/instagram/disconnect-profile", { method: "POST" });
   setInstagramConnected(false);
-  triggerGeneratorRefresh();
   setInstagramUsername("");
   setInstagramUrl("");
   setIgSelectedPageId("");
+  patchChannelConnectionLocally("instagram", {
+    connected: false,
+    accountConnected: true,
+    configured: false,
+    resourceId: null,
+    resourceLabel: null,
+    resourceUrl: null,
+  }, { clearData: true });
   await updateRootSettingsKey("instagram", {
     accountConnected: true,
     connected: false,
@@ -2517,8 +3159,9 @@ const disconnectInstagramProfile = useCallback(async () => {
     pageId: "",
     igId: "",
   });
+  triggerChannelRefresh("instagram");
   setPanelSuccess("instagram", "Profil Instagram déconnecté.");
-}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
+}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
 
 const loadInstagramAccounts = useCallback(async () => {
   if (!instagramAccountConnected) return;
@@ -2541,8 +3184,17 @@ const loadInstagramAccounts = useCallback(async () => {
       });
       setInstagramConnected(true);
       setInstagramUsername(String(only.username || ""));
-      setInstagramUrl(only.username ? `https://www.instagram.com/${only.username}/` : "");
-      triggerGeneratorRefresh();
+      const nextInstagramUrl = only.username ? `https://www.instagram.com/${only.username}/` : "";
+      setInstagramUrl(nextInstagramUrl);
+      patchChannelConnectionLocally("instagram", {
+        connected: true,
+        accountConnected: true,
+        configured: true,
+        resourceId: only.ig_id || only.page_id,
+        resourceLabel: only.username || null,
+        resourceUrl: nextInstagramUrl || null,
+      });
+      triggerChannelRefresh("instagram");
       setPanelSuccess("instagram", "Compte Instagram enregistré.");
     }
   } catch (e: any) {
@@ -2550,7 +3202,7 @@ const loadInstagramAccounts = useCallback(async () => {
   } finally {
     setIgAccountsLoading(false);
   }
-}, [instagramAccountConnected, igSelectedPageId, triggerGeneratorRefresh]);
+}, [instagramAccountConnected, igSelectedPageId, patchChannelConnectionLocally, triggerChannelRefresh]);
 
 useEffect(() => {
   const linked = searchParams.get("linked");
@@ -2587,14 +3239,24 @@ const saveInstagramProfile = useCallback(async () => {
   const j = await r.json().catch(() => ({}));
   if (r.ok) {
     setInstagramConnected(true);
-    if (j?.username) setInstagramUsername(String(j.username));
-    if (j?.profileUrl) setInstagramUrl(String(j.profileUrl));
-    triggerGeneratorRefresh();
+    const nextUsername = j?.username ? String(j.username) : String(picked.username || "");
+    const nextProfileUrl = j?.profileUrl ? String(j.profileUrl) : (picked.username ? `https://www.instagram.com/${picked.username}/` : "");
+    if (nextUsername) setInstagramUsername(nextUsername);
+    if (nextProfileUrl) setInstagramUrl(nextProfileUrl);
+    patchChannelConnectionLocally("instagram", {
+      connected: true,
+      accountConnected: true,
+      configured: true,
+      resourceId: picked.ig_id || picked.page_id,
+      resourceLabel: nextUsername || null,
+      resourceUrl: nextProfileUrl || null,
+    });
+    triggerChannelRefresh("instagram");
     setPanelSuccess("instagram", "Compte Instagram enregistré.");
   } else {
     setPanelError("instagram", j?.error, "Impossible d'enregistrer Instagram.");
   }
-}, [igAccounts, igSelectedPageId, triggerGeneratorRefresh]);
+}, [igAccounts, igSelectedPageId, patchChannelConnectionLocally, triggerChannelRefresh]);
 
 // ===== LinkedIn =====
 const connectLinkedinAccount = useCallback(async () => {
@@ -2606,17 +3268,26 @@ const disconnectLinkedinAccount = useCallback(async () => {
   await fetch("/api/integrations/linkedin/disconnect-account", { method: "POST" });
   setLinkedinAccountConnected(false);
   setLinkedinConnected(false);
-  triggerGeneratorRefresh();
   setLinkedinDisplayName("");
   setLinkedinUrl("");
+  patchChannelConnectionLocally("linkedin", {
+    connected: false,
+    accountConnected: false,
+    configured: false,
+    expired: false,
+    resourceId: null,
+    resourceLabel: null,
+    resourceUrl: null,
+  }, { clearData: true });
   await updateRootSettingsKey("linkedin", {
     accountConnected: false,
     connected: false,
     displayName: "",
     url: "",
   });
+  triggerChannelRefresh("linkedin");
   setPanelSuccess("linkedin", "Compte LinkedIn déconnecté.");
-}, [updateRootSettingsKey, triggerGeneratorRefresh, setPanelSuccess]);
+}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
 
 
 const saveLinkedinProfileUrl = useCallback(async () => {
@@ -2642,9 +3313,16 @@ const saveLinkedinProfileUrl = useCallback(async () => {
     url: raw,
   });
 
-  triggerGeneratorRefresh();
+  patchChannelConnectionLocally("linkedin", {
+    connected: linkedinConnected,
+    accountConnected: linkedinAccountConnected,
+    configured: linkedinConnected,
+    resourceLabel: linkedinDisplayName || null,
+    resourceUrl: raw || null,
+  }, { clearData: false });
+  triggerChannelRefresh("linkedin");
   setPanelSuccess("linkedin", "Lien LinkedIn enregistré.", 1800);
-}, [linkedinUrl, linkedinAccountConnected, linkedinConnected, linkedinDisplayName, updateRootSettingsKey, triggerGeneratorRefresh]);
+}, [linkedinUrl, linkedinAccountConnected, linkedinConnected, linkedinDisplayName, patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh]);
 
 
 const loadGmbAccountsAndLocations = useCallback(async () => {
@@ -2690,7 +3368,15 @@ const loadGmbAccountsAndLocations = useCallback(async () => {
       setGmbConfigured(true);
       setGmbConnected(true);
       if (autoJson?.url) setGmbUrl(String(autoJson.url));
-      triggerGeneratorRefresh();
+      patchChannelConnectionLocally("gmb", {
+        connected: true,
+        accountConnected: true,
+        configured: true,
+        resourceId: only.name || null,
+        resourceLabel: only.title || null,
+        resourceUrl: autoJson?.url ? String(autoJson.url) : null,
+      });
+      await triggerChannelRefresh("gmb");
       setPanelSuccess("gmb", "Établissement Google Business enregistré.");
     }
   } catch (e: any) {
@@ -2698,7 +3384,7 @@ const loadGmbAccountsAndLocations = useCallback(async () => {
   } finally {
     setGmbLoadingList(false);
   }
-}, [gmbAccountConnected, gmbLocationName, triggerGeneratorRefresh, setPanelSuccess]);
+}, [gmbAccountConnected, gmbLocationName, patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh]);
 
 
 useEffect(() => {
@@ -2744,12 +3430,20 @@ const saveGmbLocation = useCallback(async () => {
     setGmbConnected(true);
     setGmbLocationLabel(String(picked?.title || ""));
     if (js?.url) setGmbUrl(String(js.url));
-    triggerGeneratorRefresh();
+    patchChannelConnectionLocally("gmb", {
+      connected: true,
+      accountConnected: true,
+      configured: true,
+      resourceId: gmbLocationName || null,
+      resourceLabel: picked?.title || null,
+      resourceUrl: js?.url ? String(js.url) : null,
+    });
+    triggerChannelRefresh("gmb");
     setPanelSuccess("gmb", "Établissement Google Business enregistré.", 1800);
   } catch (error) {
     setPanelError("gmb", error, "Impossible d'enregistrer l'établissement Google Business.");
   }
-}, [gmbAccountName, gmbLocationName, gmbLocations, triggerGeneratorRefresh, setPanelError, setPanelSuccess]);
+}, [gmbAccountName, gmbLocationName, gmbLocations, patchChannelConnectionLocally, triggerChannelRefresh, setPanelError, setPanelSuccess]);
 
 
 const saveSiteWebSettings = useCallback(async () => {
@@ -2765,11 +3459,11 @@ const saveSiteWebSettings = useCallback(async () => {
   parsed.url = siteWebUrl.trim();
 
   await updateSiteWebSettings(parsed);
-  triggerGeneratorRefresh();
+  triggerChannelRefresh("site_web");
   setSiteWebGa4Notice("✅ Enregistrement GA4 validé");
   window.setTimeout(() => setSiteWebGa4Notice(null), 2500);
 
-}, [siteWebSettingsText, siteWebUrl, updateSiteWebSettings]);
+}, [siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerChannelRefresh]);
 
 const attachWebsiteGoogleAnalytics = useCallback(async () => {
   const measurement = siteWebGa4MeasurementId.trim();
@@ -2796,10 +3490,11 @@ const attachWebsiteGoogleAnalytics = useCallback(async () => {
   parsed.ga4 = { ...(parsed.ga4 ?? {}), measurement_id: measurement, property_id: propertyIdRaw };
 
   await updateSiteWebSettings(parsed);
+  await triggerChannelRefresh("site_web");
   setSiteWebGa4Notice("✅ Enregistrement GA4 validé");
   window.setTimeout(() => setSiteWebGa4Notice(null), 2500);
 
-}, [siteWebGa4MeasurementId, siteWebGa4PropertyId, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
+}, [siteWebGa4MeasurementId, siteWebGa4PropertyId, siteWebSettingsText, siteWebUrl, triggerChannelRefresh, updateSiteWebSettings]);
 
 const attachWebsiteGoogleSearchConsole = useCallback(async () => {
   const property = siteWebGscProperty.trim();
@@ -2820,8 +3515,8 @@ const attachWebsiteGoogleSearchConsole = useCallback(async () => {
   parsed.gsc = { ...(parsed.gsc ?? {}), property };
 
   await updateSiteWebSettings(parsed);
-  triggerGeneratorRefresh();
-}, [siteWebGscProperty, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerGeneratorRefresh]);
+  triggerChannelRefresh("site_web");
+}, [siteWebGscProperty, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerChannelRefresh]);
 
 
 
@@ -3129,8 +3824,17 @@ const checkActivity = useCallback(async () => {
     if (cached?.payload?.leads && cached.syncedAt >= lastChannelSyncAt && cached.snapshotDate === expectedUiSnapshotDate()) {
       return;
     }
-    void refreshKpis();
-  }, [dailyBootReady, refreshKpis]);
+    void Promise.allSettled([
+      refreshAllGeneratorChannelsFromApi(),
+      refreshAllChannelBlocksFromApi(),
+    ]).then((results) => {
+      const failed = results.some((result) => result.status === "rejected");
+      if (!failed) return;
+      void syncFromServerCacheIfNeeded(true).catch(() => {
+        void refreshKpis();
+      });
+    });
+  }, [dailyBootReady, refreshAllChannelBlocksFromApi, refreshAllGeneratorChannelsFromApi, refreshKpis, syncFromServerCacheIfNeeded]);
 
   useEffect(() => {
     if (!dailyBootReady) return;
@@ -3159,37 +3863,6 @@ const checkActivity = useCallback(async () => {
   const generatorIsActive = inertiaSnapshot.connectedCount > 0;
 
   const estimatedValue = typeof kpis?.estimatedValue === "number" ? kpis.estimatedValue : null;
-
-  // helper render action
-  const renderAction = (a: ModuleAction) => {
-    const className =
-      a.variant === "connect"
-        ? `${styles.actionBtn} ${styles.connectBtn}`
-        : a.variant === "danger"
-        ? `${styles.actionBtn} ${styles.actionDanger}`
-        : `${styles.actionBtn} ${styles.actionView}`;
-
-    if (a.href) {
-      // Pour l’instant href="#" (tu replaceras par les vraies URLs)
-      return (
-        <Link
-          key={a.key}
-          href={a.href}
-          className={className}
-          target={a.href.startsWith("http") ? "_blank" : undefined}
-          rel={a.href.startsWith("http") ? "noreferrer" : undefined}
-        >
-          {a.label}
-        </Link>
-      );
-    }
-
-    return (
-      <button key={a.key} type="button" className={className} onClick={a.onClick} disabled={a.disabled}>
-        {a.label}
-      </button>
-    );
-  };
 
   // =========================
   // Mobile-only: list vs carousel for the 6 bubbles (Canaux)
@@ -3239,54 +3912,46 @@ const checkActivity = useCallback(async () => {
 }, [bubbleView, isMobile]);
 
 
-  const renderFluxBubble = (m: Module, keyOverride?: string) => {
+  const fluxBubbleItems = useMemo<DashboardFluxBubbleData[]>(() => fluxModules.map((m) => {
+    const channelKey = m.key as DashboardChannelKey;
+    const channelBlock = channelBlocks?.[channelKey] ?? null;
+    const blockDrivenStatus = getBubbleStatusFromBlock(channelKey, channelBlock as InrstatsChannelBlock);
+    const blockDrivenViewHref = getBubbleViewHrefFromBlock(channelKey, channelBlock);
+
     const viewActionRaw = m.actions.find((a) => a.variant === "view");
     const viewAction =
       (m.key === "site_inrcy" && viewActionRaw)
         ? {
             ...viewActionRaw,
-            href: siteInrcyUrl
-              ? (siteInrcyUrl.startsWith("http") ? siteInrcyUrl : `https://${siteInrcyUrl}`)
-              : "#",
+            href: normalizeExternalHref(blockDrivenViewHref || siteInrcyUrl) || "#",
           }
         : (m.key === "site_web" && viewActionRaw)
-        ? {
-            ...viewActionRaw,
-            href: siteWebUrl
-              ? (siteWebUrl.startsWith("http") ? siteWebUrl : `https://${siteWebUrl}`)
-              : "#",
-          }
-                : (m.key === "instagram" && viewActionRaw)
-        ? {
-            ...viewActionRaw,
-            href: instagramUrl
-              ? (instagramUrl.startsWith("http") ? instagramUrl : `https://${instagramUrl}`)
-              : "#",
-          }
-        : (m.key === "linkedin" && viewActionRaw)
-        ? {
-            ...viewActionRaw,
-            href: linkedinUrl
-              ? (linkedinUrl.startsWith("http") ? linkedinUrl : `https://${linkedinUrl}`)
-              : "#",
-          }
-        : viewActionRaw;
+          ? {
+              ...viewActionRaw,
+              href: normalizeExternalHref(blockDrivenViewHref || siteWebUrl) || "#",
+            }
+          : (m.key === "instagram" && viewActionRaw)
+            ? {
+                ...viewActionRaw,
+                href: normalizeExternalHref(blockDrivenViewHref || instagramUrl) || "#",
+              }
+            : (m.key === "linkedin" && viewActionRaw)
+              ? {
+                  ...viewActionRaw,
+                  href: normalizeExternalHref(blockDrivenViewHref || linkedinUrl) || "#",
+                }
+              : viewActionRaw;
 
-    // ✅ Pastilles (statuts) dynamiques selon tes règles
-    const { status: bubbleStatus, text: bubbleStatusText } = (() => {
+    const { status: bubbleStatus, text: bubbleStatusText } = blockDrivenStatus ?? (() => {
       if (m.key === "site_inrcy") {
         if (!hasActiveInrcySite(siteInrcyOwnership)) return { status: "coming" as ModuleStatus, text: "Aucun site" };
         const hasUrl = !!siteInrcyUrl?.trim();
-        const connectedCount = (hasUrl ? 1 : 0) + (siteInrcyGa4Connected ? 1 : 0) + (siteInrcyGscConnected ? 1 : 0);
-        if (connectedCount === 0) return { status: "available" as ModuleStatus, text: "A connecter · 0 / 3" };
-        return { status: "connected" as ModuleStatus, text: `Connecté · ${connectedCount} / 3` };
+        return { status: hasUrl ? "connected" as ModuleStatus : "available" as ModuleStatus, text: hasUrl ? "Connecté" : "A configurer" };
       }
 
       if (m.key === "site_web") {
-        const hasUrl = !!siteWebUrl?.trim();
-        const connectedCount = (hasUrl ? 1 : 0) + (siteWebGa4Connected ? 1 : 0) + (siteWebGscConnected ? 1 : 0);
-        if (connectedCount === 0) return { status: "available" as ModuleStatus, text: "A connecter · 0 / 3" };
-        return { status: "connected" as ModuleStatus, text: `Connecté · ${connectedCount} / 3` };
+        if (siteWebConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
+        return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
       if (m.key === "instagram") {
@@ -3299,185 +3964,132 @@ const checkActivity = useCallback(async () => {
         return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
-	      // Google Business + Facebook: “Connecté” = établissement/page sélectionné(e)
       if (m.key === "gmb") {
         if (gmbConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
         return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
       if (m.key === "facebook") {
-	        if (facebookPageConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
+        if (facebookPageConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
         return { status: "available" as ModuleStatus, text: "A connecter" };
       }
 
       return { status: m.status, text: statusLabel(m.status) };
     })();
 
+    const specialViewHref = m.key === "site_inrcy"
+      ? (blockDrivenViewHref || normalizeExternalHref(siteInrcyUrl) || "#")
+      : m.key === "site_web"
+        ? (blockDrivenViewHref || normalizeExternalHref(siteWebUrl) || "#")
+        : m.key === "instagram"
+          ? (blockDrivenViewHref || normalizeExternalHref(instagramUrl) || "#")
+          : m.key === "linkedin"
+            ? (blockDrivenViewHref || normalizeExternalHref(linkedinUrl) || "#")
+            : m.key === "gmb"
+              ? (blockDrivenViewHref || normalizeExternalHref(gmbUrl) || "#")
+              : m.key === "facebook"
+                ? (blockDrivenViewHref || normalizeExternalHref(facebookUrl) || "#")
+                : undefined;
 
-    return (
-      <article
-        key={keyOverride ?? m.key}
-        className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles[`accent_${m.accent}`]}`}
-      >
-        <div className={styles.bubbleStack}>
-          <div className={styles.bubbleLogo} aria-hidden>
-            <img className={styles.bubbleLogoImg} src={MODULE_ICONS[m.key]?.src} alt={MODULE_ICONS[m.key]?.alt} />
-          </div>
+    const specialViewLabel = m.key === "site_inrcy"
+      ? "Voir le site"
+      : m.key === "site_web"
+        ? "Voir le site"
+        : m.key === "gmb"
+          ? "Voir la page"
+          : ["instagram", "linkedin", "facebook"].includes(m.key)
+            ? "Voir le compte"
+            : undefined;
 
-          <div className={styles.bubbleTitleRow}>
-            <div className={styles.bubbleTitle}>{m.name}</div>
-            {m.key === "site_inrcy" ? (
-              <HelpButton onClick={() => setHelpSiteInrcyOpen(true)} title="Aide : Site iNrCy" size={22} />
-            ) : m.key === "site_web" ? (
-              <HelpButton onClick={() => setHelpSiteWebOpen(true)} title="Aide : Site web" size={22} />
-            ) : null}
-          </div>
+    const canViewSpecial = m.key === "site_inrcy"
+      ? Boolean(blockDrivenViewHref || canViewSite)
+      : m.key === "site_web"
+        ? Boolean(blockDrivenViewHref || siteWebUrl)
+        : m.key === "instagram"
+          ? Boolean(blockDrivenViewHref || instagramUrl)
+          : m.key === "linkedin"
+            ? Boolean(blockDrivenViewHref || linkedinUrl)
+            : m.key === "gmb"
+              ? Boolean(blockDrivenViewHref || gmbUrl)
+              : m.key === "facebook"
+                ? Boolean(blockDrivenViewHref || facebookUrl)
+                : undefined;
 
-          <div className={styles.bubbleStatusCompact}>
-            <span
-              className={[
-                styles.statusDot,
-                bubbleStatus === "connected"
-                  ? styles.dotConnected
-                  : bubbleStatus === "available"
-                  ? styles.dotAvailable
-                  : styles.dotComing,
-              ].join(" ")}
-              aria-hidden
-            />
-            <span className={styles.bubbleStatusText}>{bubbleStatusText}</span>
-          </div>
+    const onConfigure = () => {
+      if (m.key === "site_inrcy") {
+        if (!canConfigureSite) return;
+        openPanel("site_inrcy");
+        return;
+      }
+      if (m.key === "site_web") {
+        openPanel("site_web");
+        return;
+      }
+      if (m.key === "instagram") {
+        openPanel("instagram");
+        return;
+      }
+      if (m.key === "linkedin") {
+        openPanel("linkedin");
+        return;
+      }
+      if (m.key === "gmb") {
+        openPanel("gmb");
+        return;
+      }
+      if (m.key === "facebook") {
+        openPanel("facebook");
+        return;
+      }
+    };
 
-          <div className={styles.bubbleTagline}>{m.description}</div>
+    return {
+      key: m.key,
+      name: m.name,
+      description: m.description,
+      accent: m.accent,
+      logoSrc: MODULE_ICONS[m.key]?.src,
+      logoAlt: MODULE_ICONS[m.key]?.alt,
+      bubbleStatus,
+      bubbleStatusText,
+      helpKind: m.key === "site_inrcy" ? "site_inrcy" : m.key === "site_web" ? "site_web" : undefined,
+      onHelpSiteInrcy: () => setHelpSiteInrcyOpen(true),
+      onHelpSiteWeb: () => setHelpSiteWebOpen(true),
+      specialViewHref,
+      specialViewLabel,
+      canViewSpecial,
+      viewAction: specialViewHref ? undefined : viewAction,
+      onConfigure,
+      configureDisabled: m.key === "site_inrcy" ? !canConfigureSite : false,
+      configureTitle: m.key === "site_inrcy" && !canConfigureSite
+        ? "Disponible uniquement si vous avez un site iNrCy"
+        : undefined,
+    };
+  }), [
+    canConfigureSite,
+    canViewSite,
+    facebookPageConnected,
+    facebookUrl,
+    gmbConnected,
+    gmbUrl,
+    instagramConnected,
+    instagramUrl,
+    linkedinConnected,
+    linkedinUrl,
+    openPanel,
+    siteInrcyOwnership,
+    siteInrcyUrl,
+    siteWebConnected,
+    siteWebUrl,
+    channelBlocks,
+  ]);
 
-          <div className={styles.bubbleActions}>
-            {m.key === "site_inrcy" ? (
-              <a
-                href={canViewSite ? (siteInrcyUrl.startsWith("http") ? siteInrcyUrl : `https://${siteInrcyUrl}`) : "#"}
-                className={`${styles.actionBtn} ${styles.actionView}`}
-                target={canViewSite ? "_blank" : undefined}
-                rel="noreferrer"
-                aria-disabled={!canViewSite}
-                style={{ opacity: !canViewSite ? 0.5 : 1, pointerEvents: !canViewSite ? "none" : "auto" }}
-              >
-                Voir le site
-              </a>
-            ) : m.key === "site_web" ? (
-              <a
-                href={siteWebUrl ? (siteWebUrl.startsWith("http") ? siteWebUrl : `https://${siteWebUrl}`) : "#"}
-                className={`${styles.actionBtn} ${styles.actionView}`}
-                target={siteWebUrl ? "_blank" : undefined}
-                rel="noreferrer"
-                aria-disabled={!siteWebUrl}
-                style={{ opacity: !siteWebUrl ? 0.5 : 1, pointerEvents: !siteWebUrl ? "none" : "auto" }}
-              >
-                Voir le site
-              </a>
-            ) : m.key === "instagram" ? (
-              <a
-                href={instagramUrl ? (instagramUrl.startsWith("http") ? instagramUrl : `https://${instagramUrl}`) : "#"}
-                className={`${styles.actionBtn} ${styles.actionView}`}
-                target={instagramUrl ? "_blank" : undefined}
-                rel="noreferrer"
-                aria-disabled={!instagramUrl}
-                style={{ opacity: !instagramUrl ? 0.5 : 1, pointerEvents: !instagramUrl ? "none" : "auto" }}
-              >
-                Voir le compte
-              </a>
-            ) : m.key === "linkedin" ? (
-              <a
-                href={linkedinUrl ? (linkedinUrl.startsWith("http") ? linkedinUrl : `https://${linkedinUrl}`) : "#"}
-                className={`${styles.actionBtn} ${styles.actionView}`}
-                target={linkedinUrl ? "_blank" : undefined}
-                rel="noreferrer"
-                aria-disabled={!linkedinUrl}
-                style={{ opacity: !linkedinUrl ? 0.5 : 1, pointerEvents: !linkedinUrl ? "none" : "auto" }}
-              >
-                Voir le compte
-              </a>
-            ) : m.key === "gmb" ? (
-              <a
-                href={gmbUrl ? (gmbUrl.startsWith("http") ? gmbUrl : `https://${gmbUrl}`) : "#"}
-                className={`${styles.actionBtn} ${styles.actionView}`}
-                target={gmbUrl ? "_blank" : undefined}
-                rel="noreferrer"
-                aria-disabled={!gmbUrl}
-                style={{ opacity: !gmbUrl ? 0.5 : 1, pointerEvents: !gmbUrl ? "none" : "auto" }}
-              >
-                Voir la page
-              </a>
-            ) : m.key === "facebook" ? (
-              <a
-                href={facebookUrl ? (facebookUrl.startsWith("http") ? facebookUrl : `https://${facebookUrl}`) : "#"}
-                className={`${styles.actionBtn} ${styles.actionView}`}
-                target={facebookUrl ? "_blank" : undefined}
-                rel="noreferrer"
-                aria-disabled={!facebookUrl}
-                style={{ opacity: !facebookUrl ? 0.5 : 1, pointerEvents: !facebookUrl ? "none" : "auto" }}
-              >
-                Voir le compte
-              </a>
-            ) : viewAction ? (
-              renderAction(viewAction)
-            ) : (
-              <button className={`${styles.actionBtn} ${styles.actionView}`} type="button">
-                Voir
-              </button>
-            )}
-
-            <button
-              className={`${styles.actionBtn} ${styles.connectBtn} ${styles.actionMain}`}
-              type="button"
-              onClick={() => {
-                if (m.key === "site_inrcy") {
-                  if (!canConfigureSite) return;
-                  openPanel("site_inrcy");
-                  return;
-                }
-                if (m.key === "site_web") {
-                  openPanel("site_web");
-                  return;
-                }
-                if (m.key === "instagram") {
-                  openPanel("instagram");
-                  return;
-                }
-                if (m.key === "linkedin") {
-                  openPanel("linkedin");
-                  return;
-                }
-                if (m.key === "gmb") {
-                  openPanel("gmb");
-                  return;
-                }
-                if (m.key === "facebook") {
-                  openPanel("facebook");
-                  return;
-                }
-              }}
-              disabled={
-                m.key === "site_inrcy"
-                  ? !canConfigureSite
-                  : false
-              }
-              title={
-                m.key === "site_inrcy" && !canConfigureSite
-                  ? "Disponible uniquement si vous avez un site iNrCy"
-                  : undefined
-              }
-            >
-              {"Configurer"}
-            </button>
-          </div>
-        </div>
-
-        <div className={styles.moduleGlow} aria-hidden />
-      </article>
-    );
-  };
+  const renderFluxBubble = (item: DashboardFluxBubbleData, keyOverride?: string) => (
+    <DashboardFluxBubble key={keyOverride ?? item.key} item={item} itemKey={keyOverride ?? item.key} />
+  );
 
   // Carousel state (infinite loop)
-  const baseModules = fluxModules;
+  const baseModules = fluxBubbleItems;
   const hasCarousel = baseModules.length > 1;
 
   // clones: [last, ...real, first]
@@ -3653,492 +4265,185 @@ const checkActivity = useCallback(async () => {
   const disconnectLinkedinAccountFromDrawer = useCallback(() => runDrawerMutation("linkedin:account:disconnect", disconnectLinkedinAccount), [runDrawerMutation, disconnectLinkedinAccount]);
 
 
+  const siteWebPanelProps = {
+    siteWebAllGreen,
+    hasSiteWebUrl,
+    siteWebUrl,
+    setSiteWebUrl,
+    saveSiteWebUrl: saveSiteWebUrlFromDrawer,
+    deleteSiteWebUrl: deleteSiteWebUrlFromDrawer,
+    siteWebUrlBusy: isDrawerMutationPending("site_web:url:save") || isDrawerMutationPending("site_web:url:delete"),
+    draftSiteWebUrlMeta,
+    siteWebUrlNotice,
+    siteWebGa4Connected,
+    siteWebGa4MeasurementId,
+    siteWebGa4PropertyId,
+    disconnectSiteWebGa4: disconnectSiteWebGa4FromDrawer,
+    siteWebGa4Busy: isDrawerMutationPending("site_web:ga4:disconnect"),
+    connectSiteWebGa4,
+    canConnectSiteWebGoogle,
+    siteWebGa4Notice,
+    siteWebGscConnected,
+    siteWebGscProperty,
+    disconnectSiteWebGsc: disconnectSiteWebGscFromDrawer,
+    siteWebGscBusy: isDrawerMutationPending("site_web:gsc:disconnect"),
+    connectSiteWebGsc,
+    siteWebGscNotice,
+    siteWebActusLayout,
+    setSiteWebActusLayout,
+    siteWebActusLimit,
+    setSiteWebActusLimit,
+    siteWebActusFont,
+    setSiteWebActusFont,
+    siteWebActusTheme,
+    setSiteWebActusTheme,
+    siteWebSavedUrl,
+    widgetTokenSiteWeb,
+    showSiteWebWidgetCode,
+    setShowSiteWebWidgetCode,
+    siteWebSettingsError,
+    resetSiteWebAll,
+  };
+
+  const gmbPanelProps = {
+    gmbConnected,
+    gmbAccountConnected,
+    gmbAccountEmail,
+    connectGmbAccount,
+    disconnectGmbAccount: disconnectGmbAccountFromDrawer,
+    gmbAccountBusy: isDrawerMutationPending("gmb:account:disconnect"),
+    gmbConfigured,
+    gmbAccountName,
+    gmbAccounts,
+    gmbLoadingList,
+    loadGmbAccountsAndLocations,
+    gmbLocationName,
+    gmbLocationLabel,
+    setGmbLocationName,
+    gmbLocations,
+    saveGmbLocation: saveGmbLocationFromDrawer,
+    gmbLocationBusy: isDrawerMutationPending("gmb:location:save") || isDrawerMutationPending("gmb:location:disconnect"),
+    gmbListError,
+    gmbUrl,
+    gmbUrlNotice,
+    gmbUrlError,
+    disconnectGmbBusiness: disconnectGmbBusinessFromDrawer,
+  };
+
+  const linkedinPanelProps = {
+    linkedinConnected,
+    linkedinAccountConnected,
+    linkedinDisplayName,
+    connectLinkedinAccount,
+    disconnectLinkedinAccount: disconnectLinkedinAccountFromDrawer,
+    linkedinAccountBusy: isDrawerMutationPending("linkedin:account:disconnect"),
+    linkedinUrl,
+    setLinkedinUrl,
+    saveLinkedinProfileUrl: saveLinkedinProfileUrlFromDrawer,
+    linkedinUrlBusy: isDrawerMutationPending("linkedin:url:save"),
+    linkedinUrlNotice,
+    linkedinUrlError,
+    setLinkedinUrlNotice,
+  };
+
+  const siteInrcyPanelProps = {
+    siteInrcyOwnership,
+    siteInrcyAllGreen,
+    siteInrcyContactEmail,
+    hasSiteInrcyUrl,
+    siteInrcyUrl,
+    setSiteInrcyUrl,
+    saveSiteInrcyUrl: saveSiteInrcyUrlFromDrawer,
+    deleteSiteInrcyUrl: deleteSiteInrcyUrlFromDrawer,
+    siteInrcyUrlBusy: isDrawerMutationPending("site_inrcy:url:save") || isDrawerMutationPending("site_inrcy:url:delete"),
+    draftSiteInrcyUrlMeta,
+    siteInrcyUrlNotice,
+    siteInrcyGa4Connected,
+    ga4MeasurementId,
+    ga4PropertyId,
+    disconnectSiteInrcyGa4: disconnectSiteInrcyGa4FromDrawer,
+    siteInrcyGa4Busy: isDrawerMutationPending("site_inrcy:ga4:disconnect"),
+    connectSiteInrcyGa4,
+    canConnectSiteInrcyGoogle,
+    canConfigureSite,
+    siteInrcyGa4Notice,
+    siteInrcyGscConnected,
+    gscProperty,
+    disconnectSiteInrcyGsc: disconnectSiteInrcyGscFromDrawer,
+    siteInrcyGscBusy: isDrawerMutationPending("site_inrcy:gsc:disconnect"),
+    connectSiteInrcyGsc,
+    siteInrcyGscNotice,
+    siteInrcyActusLayout,
+    setSiteInrcyActusLayout,
+    siteInrcyActusLimit,
+    setSiteInrcyActusLimit,
+    siteInrcyActusFont,
+    setSiteInrcyActusFont,
+    siteInrcyActusTheme,
+    setSiteInrcyActusTheme,
+    siteInrcySavedUrl,
+    widgetTokenInrcySite,
+    showSiteInrcyWidgetCode,
+    setShowSiteInrcyWidgetCode,
+    siteInrcySettingsError,
+    resetSiteInrcyAll,
+  };
+
   return (
     <main className={styles.page}>
-      <header className={styles.topbar}>
-        <div className={styles.brand}>
-          <img className={styles.logoImg} src="/logo-inrcy.png" alt="iNrCy" />
-          <div className={styles.brandText}>
-                       <div className={styles.brandTag}>Générateur de business</div>
-          </div>
-        </div>
+      <DashboardTopbar
+        desktopNotificationMenuRef={desktopNotificationMenuRef}
+        mobileNotificationMenuRef={mobileNotificationMenuRef}
+        userMenuRef={userMenuRef}
+        menuRef={menuRef}
+        notificationMenuOpen={notificationMenuOpen}
+        setNotificationMenuOpen={setNotificationMenuOpen}
+        unreadNotificationsCount={unreadNotificationsCount}
+        refreshNotifications={refreshNotifications}
+        notificationsLoading={notificationsLoading}
+        notifications={notifications}
+        notificationsError={notificationsError}
+        markAllNotificationsRead={markAllNotificationsRead}
+        markNotificationRead={markNotificationRead}
+        deleteNotification={deleteNotification}
+        onNavigateCta={(ctaUrl) => {
+          if (ctaUrl.startsWith('/')) {
+            router.push(ctaUrl);
+          } else {
+            window.location.href = ctaUrl;
+          }
+        }}
+        openPanel={openPanel}
+        userEmail={userEmail}
+        userFirstLetter={userFirstLetter}
+        profileIncomplete={profileIncomplete}
+        activityIncomplete={activityIncomplete}
+        userMenuOpen={userMenuOpen}
+        setUserMenuOpen={setUserMenuOpen}
+        goToGps={() => router.push("/dashboard/gps")}
+        handleLogout={handleLogout}
+        menuOpen={menuOpen}
+        setMenuOpen={setMenuOpen}
+      />
 
-        {/* Desktop actions */}
-        <div className={styles.topbarActions}>
-          <div className={styles.notificationWrap} ref={desktopNotificationMenuRef}>
-            <NotificationMenu
-              notificationMenuOpen={notificationMenuOpen}
-              setNotificationMenuOpen={setNotificationMenuOpen}
-              unreadNotificationsCount={unreadNotificationsCount}
-              refreshNotifications={refreshNotifications}
-              notificationsLoading={notificationsLoading}
-              notifications={notifications}
-              notificationsError={notificationsError}
-              openPanel={() => openPanel("notifications")}
-              markAllNotificationsRead={markAllNotificationsRead}
-              markNotificationRead={markNotificationRead}
-              deleteNotification={deleteNotification}
-              onNavigate={(ctaUrl) => {
-                if (ctaUrl.startsWith('/')) {
-                  router.push(ctaUrl);
-                } else {
-                  window.location.href = ctaUrl;
-                }
-              }}
-            />
-          </div>
-
-          <button type="button" className={styles.ghostBtn} onClick={() => openPanel("contact")}>
-            Nous contacter
-          </button>
-
-          {/* ✅ Menu utilisateur (remplace OUT) */}
-          <div ref={userMenuRef}>
-            <UserMenu
-              userEmail={userEmail}
-              userFirstLetter={userFirstLetter}
-              profileIncomplete={profileIncomplete}
-              activityIncomplete={activityIncomplete}
-              userMenuOpen={userMenuOpen}
-              setUserMenuOpen={setUserMenuOpen}
-              openPanel={openPanel}
-              goToGps={() => router.push("/dashboard/gps")}
-              handleLogout={handleLogout}
-            />
-          </div>
-        </div>
-
-        {/* Mobile notifications */}
-        <div className={styles.mobileBellWrap}>
-          <div className={styles.notificationWrap} ref={mobileNotificationMenuRef}>
-            <NotificationMenu
-              notificationMenuOpen={notificationMenuOpen}
-              setNotificationMenuOpen={setNotificationMenuOpen}
-              unreadNotificationsCount={unreadNotificationsCount}
-              refreshNotifications={refreshNotifications}
-              notificationsLoading={notificationsLoading}
-              notifications={notifications}
-              notificationsError={notificationsError}
-              openPanel={() => openPanel("notifications")}
-              markAllNotificationsRead={markAllNotificationsRead}
-              markNotificationRead={markNotificationRead}
-              deleteNotification={deleteNotification}
-              onNavigate={(ctaUrl) => {
-                if (ctaUrl.startsWith('/')) {
-                  router.push(ctaUrl);
-                } else {
-                  window.location.href = ctaUrl;
-                }
-              }}
-              mobile
-            />
-          </div>
-        </div>
-
-        {/* Mobile hamburger */}
-        <div className={styles.mobileMenuWrap} ref={menuRef}>
-          <button
-  type="button"
-  className={styles.hamburgerBtn}
-  aria-label="Ouvrir le menu"
-  aria-expanded={menuOpen}
-  onClick={() => setMenuOpen((v) => !v)}
->
-  <span className={styles.hamburgerIcon} aria-hidden />
-
-  {(profileIncomplete || activityIncomplete) && (
-    <span
-      className={styles.hamburgerWarnDot}
-      aria-hidden
-    />
-  )}
-</button>
-
-          {menuOpen && (
-            <div className={styles.mobileMenuPanel} role="menu" aria-label="Menu">
-
-{profileIncomplete && (
-  <button
-    className={styles.mobileMenuItem}
-    type="button"
-    role="menuitem"
-    onClick={() => {
-      setMenuOpen(false);
-      openPanel("profil");
-    }}
-  >
-    ⚠️ Profil incomplet — compléter
-  </button>
-)}
-
-{activityIncomplete && (
-  <button
-    className={styles.mobileMenuItem}
-    type="button"
-    role="menuitem"
-    onClick={() => {
-      setMenuOpen(false);
-      openPanel("activite");
-    }}
-  >
-    ⚠️ Activité incomplète — compléter
-  </button>
-)}
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("contact");
-                }}
-              >
-                Nous contacter
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("compte");
-                }}
-              >
-                Mon compte
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("profil");
-                }}
-              >
-                Mon profil
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("activite");
-                }}
-              >
-                Mon activité
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("notifications");
-                }}
-              >
-                Notifications
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("abonnement");
-                }}
-              >
-                Mon abonnement
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("inertie");
-                }}
-              >
-                Mon inertie
-              </button>
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("boutique");
-                }}
-              >
-                Boutique
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("parrainage");
-                }}
-              >
-                Parrainer avec iNrCy
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  router.push("/dashboard/gps");
-                }}
-              >
-                GPS d’utilisation
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("legal");
-                }}
-              >
-                Informations légales
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("rgpd");
-                }}
-              >
-                Mes données (RGPD)
-              </button>
-
-              <div className={styles.mobileMenuDivider} />
-
-              <button
-                className={`${styles.mobileMenuItem} ${styles.mobileMenuDanger}`}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  handleLogout();
-                }}
-              >
-                Déconnexion
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      <section className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div className={styles.heroTop}>
-            <div className={styles.kicker}>
-              <span className={styles.kickerText}>Votre cockpit iNrCy</span>
-            </div>
-
-            <h1 className={styles.title}>
-              <span className={styles.titleAccent}>Le Générateur est lancé&nbsp;!</span>
-            </h1>
-
-            <p className={styles.subtitle}>
-              Tous vos canaux alimentent maintenant une seule et même machine.
-            </p>
-
-            <div className={styles.signatureFlow}>
-              <span>Contacts</span>
-              <span className={styles.flowArrow}>→</span>
-              <span>Devis</span>
-              <span className={styles.flowArrow}>→</span>
-              <span>Chiffre d'affaires</span>
-            </div>
-          </div>
-
-          <div className={styles.powerBlock}>
-            <div className={styles.powerHeader}>
-              <div className={styles.powerInlineTitle}>
-                Puissance du générateur : <span className={styles.powerInlineValue}>{generatorPower}%</span>
-              </div>
-              <div className={styles.powerMeta}>
-                {remainingGeneratorPowerSteps === 0
-                  ? "Pleine puissance"
-                  : `${remainingGeneratorPowerSteps} étape${remainingGeneratorPowerSteps > 1 ? "s" : ""} restante${remainingGeneratorPowerSteps > 1 ? "s" : ""}`}
-              </div>
-            </div>
-
-            <div
-              className={styles.powerBar}
-              role="progressbar"
-              aria-label="Puissance du générateur"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={generatorPower}
-            >
-              <div className={styles.powerBarFill} style={{ width: `${generatorPower}%` }} />
-            </div>
-
-            <div className={styles.powerFooter}>
-              {nextGeneratorPowerStep ? (
-                <span className={styles.powerHint}>
-                  Prochaine montée : {nextGeneratorPowerStep.label} <strong>(+{nextGeneratorPowerStep.weight}%)</strong>
-                </span>
-              ) : (
-                <span className={styles.powerHintComplete}>Tous vos leviers alimentent la machine à pleine puissance.</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.generatorCard}>
-          <div className={styles.generatorFX} aria-hidden />
-          <div className={styles.generatorFX2} aria-hidden />
-          <div className={styles.generatorFX3} aria-hidden />
-
-          <div className={styles.generatorHeader}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div className={styles.generatorTitle}>Générateur iNrCy</div>
-                <HelpButton onClick={() => setHelpGeneratorOpen(true)} title="Aide : Générateur iNrCy" />
-              </div>
-              <div className={styles.generatorDesc}>Production de prospects et de clients dès qu’un module est connecté</div>
-            </div>
-
-            <div className={styles.generatorHeaderRight}>
-              <button
-                type="button"
-                className={styles.generatorRefreshBtn}
-                onClick={() => {
-                  void handleSharedGeneratorRefresh();
-                }}
-                disabled={kpisLoading}
-                aria-label="Actualiser le générateur"
-                title="Actualiser"
-              >
-                {kpisLoading ? (
-                  <span className={styles.miniSpinner} aria-hidden />
-                ) : (
-                  <svg
-                    className={styles.refreshIcon}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    aria-hidden
-                  >
-                    <path
-                      d="M20 12a8 8 0 1 1-2.343-5.657"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M20 4v6h-6"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                )}
-              </button>
-
-              <div className={`${styles.generatorStatus} ${generatorIsActive ? styles.statusLive : styles.statusSetup}`}>
-                <span className={generatorIsActive ? styles.liveDot : styles.setupDot} aria-hidden />
-                {generatorIsActive ? "Actif" : "En attente"}
-              </div>
-            </div>
-          </div>
-
-          <div className={styles.generatorGrid}>
-            <div className={`${styles.metricCard} ${styles.metricInertia}`}>
-              <div className={styles.metricLabel}>Unités d&apos;Inertie</div>
-              <div className={styles.metricValue}>{uiBalance}</div>
-              <div className={styles.metricHint}>
-                Turbo UI ×{inertiaSnapshot.multiplier} — {inertiaSnapshot.connectedCount}/{inertiaSnapshot.totalChannels} canaux
-              </div>
-            </div>
-
-
-            <div className={styles.generatorCoreCenter} aria-hidden>
-              <div className={styles.miniCoreRing} />
-              <div className={styles.miniCoreRotor} />
-              <div className={styles.miniCoreGlass} />
-              <div className={styles.miniCoreGlow} />
-            </div>
-
-            <div className={`${styles.metricCard} ${styles.metricCa}`}>
-              <div className={styles.metricLabel}>CA POTENTIEL 30 jours</div>
-              <div className={styles.metricValue}>
-                {estimatedValue === null ? "—" : `${estimatedValue.toLocaleString("fr-FR")} €`}
-              </div>
-              <div className={styles.metricHint}>Basé sur profil + opportunités</div>
-            </div>
-
-            {/* ✅ Carte libérée : Opportunités activables (futur possible) */}
-            <div className={`${styles.metricCard} ${styles.metricOpportunities}`}>
-              <div className={styles.metricLabel}>Opportunités activables</div>
-
-              {/* ✅ Responsive : GO sur la même ligne que la valeur (via CSS). Desktop inchangé (bouton en corner). */}
-              <div className={styles.metricValueRow}>
-                <div className={styles.metricValue}>
-                  <span>{oppTotal === null ? "—" : `+${oppTotal}`}</span>
-                </div>
-
-                <button
-                  type="button"
-                  className={styles.generatorGoBtnCorner}
-                  onClick={() => router.push("/dashboard/stats")}
-                  aria-label="Voir iNrStats"
-                  title="Voir iNrStats"
-                >
-                  <span className={styles.generatorGoBtnLabel}>GO</span>
-                </button>
-              </div>
-
-              <div className={styles.metricHint}>Projection 30 jours</div>
-            </div>
-
-            {/* ✅ Fusion 7j + 30j dans une seule carte (lecture plus simple) */}
-            <div className={`${styles.metricCard} ${styles.metricDemandes}`}>
-              <div className={styles.metricLabel}>Demandes captées</div>
-              <div className={styles.metricSplit}>
-                <div className={styles.metricSplitItem}>
-                  <div className={styles.metricSplitValue}>{leadsWeek === null ? "—" : leadsWeek}</div>
-                  <div className={styles.metricSplitLabel}>7 derniers jours</div>
-                </div>
-                <div className={styles.metricSplitItem}>
-                  <div className={styles.metricSplitValue}>{leadsMonth === null ? "—" : leadsMonth}</div>
-                  <div className={styles.metricSplitLabel}>30 derniers jours</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className={styles.generatorFooter}>
-            {/* ✅ On enlève le bouton "Connecter un outil" si tu veux éviter "connecter un module" partout */}
-            {/* <button className={`${styles.primaryBtn} ${styles.connectBtn}`} type="button">
-              Connecter un outil
-            </button> */}
-          </div>
-
-          <div className={styles.generatorGlow} aria-hidden />
-        </div>
-      </section>
+      <DashboardHero
+        generatorPower={generatorPower}
+        remainingGeneratorPowerSteps={remainingGeneratorPowerSteps}
+        nextGeneratorPowerStep={nextGeneratorPowerStep}
+        onOpenGeneratorHelp={() => setHelpGeneratorOpen(true)}
+        onRefreshGenerator={() => {
+          void handleSharedGeneratorRefresh();
+        }}
+        kpisLoading={kpisLoading}
+        generatorIsActive={generatorIsActive}
+        uiBalance={uiBalance}
+        inertiaSnapshot={inertiaSnapshot}
+        estimatedValue={estimatedValue}
+        oppTotal={oppTotal}
+        onOpenStats={() => router.push("/dashboard/stats")}
+        leadsWeek={leadsWeek}
+        leadsMonth={leadsMonth}
+      />
 
       <section className={styles.contentFull}>
         <div className={styles.sectionHead}>
@@ -4209,242 +4514,13 @@ const checkActivity = useCallback(async () => {
             )}
           </>
         ) : (
-          <div className={styles.moduleGrid}>{fluxModules.map((m) => renderFluxBubble(m))}</div>
+          <div className={styles.moduleGrid}>
+  {fluxBubbleItems.map((item) => renderFluxBubble(item, item.key))}
+</div>
         )}
 
 
-        <div className={styles.lowerRow}>
-          <div className={styles.blockCard}>
-            <div className={styles.blockHead}>
-              <h3 className={styles.h3}>Tableau de bord</h3>
-              <span className={styles.smallMuted}>Pilotage</span>
-            </div>
-
-            <div className={styles.loopWrap}>
-              {/* ✅ TON CONTENU PILOTAGE (inchangé) */}
-              {/* (tout ton SVG + loopGrid est conservé tel quel) */}
-              {/* --- START --- */}
-              <svg className={styles.loopWheel} viewBox="0 0 300 300" aria-hidden="true">
-                <defs>
-                  <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
-                    <feGaussianBlur stdDeviation="2.4" result="b" />
-                    <feMerge>
-                      <feMergeNode in="b" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-
-                  <radialGradient id="rimGrad" cx="50%" cy="45%" r="65%">
-                    <stop offset="0%" stopColor="rgba(255,255,255,0.28)" />
-                    <stop offset="55%" stopColor="rgba(255,255,255,0.10)" />
-                    <stop offset="100%" stopColor="rgba(255,255,255,0.04)" />
-                  </radialGradient>
-
-                  <radialGradient id="rimInner" cx="50%" cy="50%" r="60%">
-                    <stop offset="0%" stopColor="rgba(56,189,248,0.18)" />
-                    <stop offset="70%" stopColor="rgba(255,255,255,0.06)" />
-                    <stop offset="100%" stopColor="rgba(255,255,255,0.02)" />
-                  </radialGradient>
-
-                  <marker id="chev" markerWidth="10" markerHeight="10" refX="6.5" refY="5" orient="auto">
-                    <path
-                      d="M1,1 L7,5 L1,9"
-                      fill="none"
-                      stroke="rgba(255,255,255,0.70)"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </marker>
-                </defs>
-
-                <circle cx="150" cy="150" r="92" fill="none" stroke="url(#rimGrad)" strokeWidth="10" filter="url(#softGlow)" />
-                <circle cx="150" cy="150" r="84" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="2" />
-
-                <circle cx="150" cy="150" r="70" fill="none" stroke="url(#rimInner)" strokeWidth="18" opacity="0.55" />
-
-                <g filter="url(#softGlow)">
-                  <path d="M150 150 L150 78" stroke="rgba(255,255,255,0.18)" strokeWidth="6" strokeLinecap="round" />
-                  <path d="M150 150 L222 150" stroke="rgba(255,255,255,0.18)" strokeWidth="6" strokeLinecap="round" />
-                  <path d="M150 150 L150 222" stroke="rgba(255,255,255,0.18)" strokeWidth="6" strokeLinecap="round" />
-                  <path d="M150 150 L78 150" stroke="rgba(255,255,255,0.18)" strokeWidth="6" strokeLinecap="round" />
-                </g>
-
-                <g>
-                  <path d="M150 150 L150 78" stroke="rgba(255,255,255,0.55)" strokeWidth="1.6" strokeLinecap="round" />
-                  <path d="M150 150 L222 150" stroke="rgba(255,255,255,0.55)" strokeWidth="1.6" strokeLinecap="round" />
-                  <path d="M150 150 L150 222" stroke="rgba(255,255,255,0.55)" strokeWidth="1.6" strokeLinecap="round" />
-                  <path d="M150 150 L78 150" stroke="rgba(255,255,255,0.55)" strokeWidth="1.6" strokeLinecap="round" />
-                </g>
-
-                <g filter="url(#softGlow)">
-                  <circle cx="150" cy="150" r="18" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.35)" strokeWidth="1.4" />
-                  <circle cx="150" cy="150" r="8" fill="rgba(56,189,248,0.20)" stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
-                </g>
-              </svg>
-
-              <div className={styles.loopGrid}>
-    <div className={`${styles.loopNode} ${styles.loopTop} ${styles.loop_cyan}`}>
-<span className={`${styles.loopBadge} ${styles.badgeCyan}`}></span>
-
-      <div className={styles.loopTopRow}>
-        <div className={styles.loopTitle}>STATS</div>
-      </div>
-      <div className={styles.loopSub}>Tous vos leads, enfin visibles</div>
-      <div className={styles.loopActions}>
-        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button" onClick={() => goToModule("/dashboard/stats")}>
-          Voir les stats
-        </button>
-      </div>
-    </div>
-
-    <div className={`${styles.loopNode} ${styles.loopRight} ${styles.loop_purple}`}>
-<span className={`${styles.loopBadge} ${styles.badgePurple}`}></span>
-
-     <div className={styles.loopTopRow}>
-  <div className={styles.loopTitle}>COMS</div>
-</div>
-
-<button
-  className={styles.loopGearBtn}
-  type="button"
-  aria-label="Réglages Mails"
-  title="Réglages"
-  onClick={() => openPanel("mails")}
->
-  <svg className={styles.loopGearSvg} viewBox="0 0 24 24" aria-hidden="true">
-  <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-  <path d="M19.4 15a7.9 7.9 0 0 0 .1-1 7.9 7.9 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7.7 7.7 0 0 0-1.7-1l-.4-2.6H10l-.4 2.6a7.7 7.7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.9 7.9 0 0 0-.1 1 7.9 7.9 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.5-2-1.5Z" />
-</svg>
-</button>
-
-      <div className={styles.loopSub}>Tous vos messages partent d'ici</div>
-      <div className={styles.loopActions}>
-        <button
-  className={`${styles.actionBtn} ${styles.connectBtn}`}
-  type="button"
-  onClick={() => goToModule("/dashboard/mails")}
->
-  Ouvrir iNr'Send
-</button>
-      </div>
-    </div>
-
-    <div className={`${styles.loopNode} ${styles.loopBottom} ${styles.loop_orange}`}>
-<span className={`${styles.loopBadge} ${styles.badgeOrange}`}></span>
-
-      <div className={styles.loopTopRow}>
-  <div className={styles.loopTitle}>AGENDA</div>
-</div>
-
-
-
-      <div className={styles.loopSub}>Transformez les contacts en RDV</div>
-      <div className={styles.loopActions}>
-        <button
-  className={`${styles.actionBtn} ${styles.connectBtn}`}
-  type="button"
-  onClick={() => goToModule("/dashboard/agenda")}
->
-  Voir l’agenda
-</button>
-      </div>
-    </div>
-
-    <div className={`${styles.loopNode} ${styles.loopLeft} ${styles.loop_pink}`}>
-<span className={`${styles.loopBadge} ${styles.badgePink}`}></span>
-
-      <div className={styles.loopTopRow}>
-        <div className={styles.loopTitle}>CRM</div>
-      </div>
-      <div className={styles.loopSub}>Vos prospects et clients centralisés</div>
-      <div className={styles.loopActions}>
-        <button
-          className={`${styles.actionBtn} ${styles.connectBtn}`}
-          type="button"
-          onClick={() => goToModule("/dashboard/crm")}
-        >
-          Ouvrir le CRM
-        </button>
-      </div>
-    </div>
-
-    <div className={styles.signalHub} aria-hidden="true">
-      <span className={styles.signalCore} />
-      <span className={`${styles.signalWave} ${styles.wave1}`} />
-      <span className={`${styles.signalWave} ${styles.wave2}`} />
-      <span className={`${styles.signalWave} ${styles.wave3}`} />
-      <span className={`${styles.signalWave} ${styles.wave4}`} />
-    </div>
-  </div>
-</div>
-
-          </div>
-
-          <div className={styles.blockCard}>
-            <div className={styles.blockHead}>
-              <h3 className={styles.h3}>Boîte de vitesse</h3>
-              <span className={styles.smallMuted}>Conversion</span>
-            </div>
-
-            <div className={styles.gearWrap}>
-              {/* ✅ TON CONTENU BOÎTE DE VITESSE (inchangé) */}
-              {/* --- START --- */}
-              <div className={styles.gearRail} aria-hidden />
-
-              <div className={styles.gearGrid}>
-                <button
-    type="button"
-    className={`${styles.gearCapsule} ${styles.gear_cyan}`}
-    onClick={() => goToModule("/dashboard/booster")}
-  >
-    <div className={styles.gearInner}>
-      <div className={styles.gearTitle}>Booster</div>
-      <div className={styles.gearSub}>Active tous vos canaux</div>
-      <div className={styles.gearBtn}>Agir maintenant</div>
-    </div>
-  </button>
-
-                <button
-                  className={`${styles.gearCapsule} ${styles.gear_purple}`}
-                  type="button"
-                  onClick={() => goToModule("/dashboard/devis/new")}
-                >
-                  <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>Devis</div>
-                    <div className={styles.gearSub}>Déclenche des opportunités</div>
-                    <div className={styles.gearBtn}>Créer un devis</div>
-                  </div>
-                </button>
-
-                <button
-                  className={`${styles.gearCapsule} ${styles.gear_pink}`}
-                  type="button"
-                  onClick={() => goToModule("/dashboard/factures/new")}
-                >
-                  <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>Facturer</div>
-                    <div className={styles.gearSub}>Transforme en CA</div>
-                    <div className={styles.gearBtn}>Créer une facture</div>
-                  </div>
-                </button>
-
-                <button
-    type="button"
-    className={`${styles.gearCapsule} ${styles.gear_purple}`}
-    onClick={() => goToModule("/dashboard/fideliser")}
-  >
-    <div className={styles.gearInner}>
-      <div className={styles.gearTitle}>Fidéliser</div>
-      <div className={styles.gearSub}>Pérennise votre activité</div>
-      <div className={styles.gearBtn}>Communiquer</div>
-    </div>
-  </button>
-              </div>
-              {/* --- END --- */}
-            </div>
-          </div>
-        </div>
+        <DashboardModulesCard goToModule={goToModule} openPanel={openPanel} />
       </section>
 
       <SettingsDrawer
@@ -4480,489 +4556,110 @@ const checkActivity = useCallback(async () => {
 )}
 
 {panel === "parrainage" && (
-  <div style={{ display: "grid", gap: 14 }}>
-    <div
-      style={{
-        border: "1px solid rgba(96,165,250,0.22)",
-        background:
-          "linear-gradient(135deg, rgba(14,25,56,0.96) 0%, rgba(33,16,66,0.92) 52%, rgba(10,21,53,0.96) 100%)",
-        borderRadius: 20,
-        padding: 18,
-        display: "grid",
-        gap: 16,
-        boxShadow: "0 20px 60px rgba(2,6,23,0.32), inset 0 1px 0 rgba(255,255,255,0.06)",
-        overflow: "hidden",
-        position: "relative",
-      }}
-    >
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          right: -36,
-          top: -36,
-          width: 140,
-          height: 140,
-          borderRadius: 999,
-          background: "radial-gradient(circle, rgba(236,72,153,0.26) 0%, rgba(236,72,153,0.04) 55%, transparent 72%)",
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          left: -50,
-          bottom: -56,
-          width: 170,
-          height: 170,
-          borderRadius: 999,
-          background: "radial-gradient(circle, rgba(59,130,246,0.24) 0%, rgba(59,130,246,0.04) 58%, transparent 76%)",
-          pointerEvents: "none",
-        }}
-      />
-
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", position: "relative", zIndex: 1 }}>
-        <div style={{ display: "grid", gap: 8, maxWidth: 560 }}>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              width: "fit-content",
-              padding: "8px 12px",
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.06)",
-              fontSize: 12,
-              fontWeight: 700,
-              letterSpacing: 0.3,
-              color: "rgba(255,255,255,0.92)",
-            }}
-          >
-            🎁 Programme de parrainage iNrCy
-          </div>
-          <div style={{ fontSize: 26, lineHeight: 1.08, fontWeight: 800, color: "white" }}>
-            Recommandez un professionnel et débloquez <span style={{ color: "#f9a8d4" }}>50 €</span> de chèque cadeau.
-          </div>
-          <div style={{ color: "rgba(226,232,240,0.9)", fontSize: 14, lineHeight: 1.65 }}>
-            Dès qu’un client recommandé rejoint iNrCy et reste engagé au minimum <strong>6 mois</strong>,
-            nous validons votre récompense. Remplissez le formulaire ci-dessous : l’équipe contacte directement votre recommandation.
-          </div>
-        </div>
-
-        <div
-          style={{
-            minWidth: 220,
-            flex: "0 1 250px",
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(255,255,255,0.06)",
-            borderRadius: 18,
-            padding: 14,
-            display: "grid",
-            gap: 10,
-            alignSelf: "start",
-          }}
-        >
-          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.68)", textTransform: "uppercase", letterSpacing: 0.5 }}>
-            Conditions
-          </div>
-          <div style={{ display: "grid", gap: 8, color: "white", fontSize: 14, lineHeight: 1.45 }}>
-            <div>• 1 contact recommandé qualifié</div>
-            <div>• 50 € de chèque cadeau après validation</div>
-            <div>• Client engagé au minimum 6 mois</div>
-            <div>• Envoi direct à l’équipe iNrCy</div>
-          </div>
-        </div>
-      </div>
-
-      <div
-        style={{
-          position: "relative",
-          zIndex: 1,
-          border: "1px solid rgba(255,255,255,0.12)",
-          background: "rgba(8,15,32,0.48)",
-          borderRadius: 18,
-          padding: 16,
-          display: "grid",
-          gap: 14,
-        }}
-      >
-        <div style={{ display: "grid", gap: 6 }}>
-          <div className={styles.blockTitle}>Coordonnées à transmettre</div>
-          <div className={styles.blockSub}>Les informations seront envoyées automatiquement à <strong>parrainage@inrcy.com</strong>.</div>
-        </div>
-
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))" }}>
-          <input
-            value={referralName}
-            onChange={(e) => setReferralName(e.target.value)}
-            placeholder="Nom Prénom ou raison sociale"
-            style={{
-              width: "100%",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(15,23,42,0.72)",
-              colorScheme: "dark",
-              padding: "12px 14px",
-              color: "white",
-              outline: "none",
-            }}
-          />
-
-          <input
-            value={referralPhone}
-            onChange={(e) => setReferralPhone(e.target.value)}
-            placeholder="Téléphone"
-            inputMode="tel"
-            style={{
-              width: "100%",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(15,23,42,0.72)",
-              colorScheme: "dark",
-              padding: "12px 14px",
-              color: "white",
-              outline: "none",
-            }}
-          />
-
-          <input
-            value={referralEmail}
-            onChange={(e) => setReferralEmail(e.target.value)}
-            placeholder="Mail"
-            inputMode="email"
-            style={{
-              width: "100%",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(15,23,42,0.72)",
-              colorScheme: "dark",
-              padding: "12px 14px",
-              color: "white",
-              outline: "none",
-            }}
-          />
-
-          <input
-            value={referralFrom}
-            onChange={(e) => setReferralFrom(e.target.value)}
-            placeholder="Parrain / de la part de"
-            style={{
-              width: "100%",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(15,23,42,0.72)",
-              colorScheme: "dark",
-              padding: "12px 14px",
-              color: "white",
-              outline: "none",
-            }}
-          />
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ color: "rgba(255,255,255,0.66)", fontSize: 12, lineHeight: 1.5 }}>
-            Votre recommandation est transmise à l’équipe iNrCy pour prise de contact manuelle.
-          </div>
-          <button
-            type="button"
-            className={`${styles.actionBtn} ${styles.connectBtn}`}
-            onClick={submitReferral}
-            disabled={referralSubmitting}
-          >
-            {referralSubmitting ? "Envoi..." : "Envoyer la recommandation"}
-          </button>
-        </div>
-
-        {referralNotice && <div className={styles.successNote}>{referralNotice}</div>}
-        {referralError && <div style={{ color: "rgba(248,113,113,0.95)", fontSize: 13 }}>{referralError}</div>}
-      </div>
-    </div>
-  </div>
+  <ReferralPanel
+    referralName={referralName}
+    referralPhone={referralPhone}
+    referralEmail={referralEmail}
+    referralFrom={referralFrom}
+    referralSubmitting={referralSubmitting}
+    referralNotice={referralNotice}
+    referralError={referralError}
+    onReferralNameChange={setReferralName}
+    onReferralPhoneChange={setReferralPhone}
+    onReferralEmailChange={setReferralEmail}
+    onReferralFromChange={setReferralFrom}
+    onSubmit={submitReferral}
+  />
 )}
 
 {panel === "notifications" && <NotificationsSettingsContent />}
 
 
-        {panel === "site_inrcy" && (
-          <SiteInrcyPanel
-            siteInrcyOwnership={siteInrcyOwnership}
-            siteInrcyAllGreen={siteInrcyAllGreen}
-            siteInrcyContactEmail={siteInrcyContactEmail}
-            hasSiteInrcyUrl={hasSiteInrcyUrl}
-            siteInrcyUrl={siteInrcyUrl}
-            setSiteInrcyUrl={setSiteInrcyUrl}
-            saveSiteInrcyUrl={saveSiteInrcyUrlFromDrawer}
-            deleteSiteInrcyUrl={deleteSiteInrcyUrlFromDrawer}
-            siteInrcyUrlBusy={isDrawerMutationPending("site_inrcy:url:save") || isDrawerMutationPending("site_inrcy:url:delete")}
-            draftSiteInrcyUrlMeta={draftSiteInrcyUrlMeta}
-            siteInrcyUrlNotice={siteInrcyUrlNotice}
-            siteInrcyGa4Connected={siteInrcyGa4Connected}
-            ga4MeasurementId={ga4MeasurementId}
-            ga4PropertyId={ga4PropertyId}
-            disconnectSiteInrcyGa4={disconnectSiteInrcyGa4FromDrawer}
-            siteInrcyGa4Busy={isDrawerMutationPending("site_inrcy:ga4:disconnect")}
-            connectSiteInrcyGa4={connectSiteInrcyGa4}
-            canConnectSiteInrcyGoogle={canConnectSiteInrcyGoogle}
-            canConfigureSite={canConfigureSite}
-            siteInrcyGa4Notice={siteInrcyGa4Notice}
-            siteInrcyGscConnected={siteInrcyGscConnected}
-            gscProperty={gscProperty}
-            disconnectSiteInrcyGsc={disconnectSiteInrcyGscFromDrawer}
-            siteInrcyGscBusy={isDrawerMutationPending("site_inrcy:gsc:disconnect")}
-            connectSiteInrcyGsc={connectSiteInrcyGsc}
-            siteInrcyGscNotice={siteInrcyGscNotice}
-            siteInrcyActusLayout={siteInrcyActusLayout}
-            setSiteInrcyActusLayout={setSiteInrcyActusLayout}
-            siteInrcyActusLimit={siteInrcyActusLimit}
-            setSiteInrcyActusLimit={setSiteInrcyActusLimit}
-            siteInrcyActusFont={siteInrcyActusFont}
-            setSiteInrcyActusFont={setSiteInrcyActusFont}
-            siteInrcyActusTheme={siteInrcyActusTheme}
-            setSiteInrcyActusTheme={setSiteInrcyActusTheme}
-            siteInrcySavedUrl={siteInrcySavedUrl}
-            widgetTokenInrcySite={widgetTokenInrcySite}
-            showSiteInrcyWidgetCode={showSiteInrcyWidgetCode}
-            setShowSiteInrcyWidgetCode={setShowSiteInrcyWidgetCode}
-            siteInrcySettingsError={siteInrcySettingsError}
-            resetSiteInrcyAll={resetSiteInrcyAll}
-          />
-        )}
+        <SiteInrcyPanelBlock panel={panel} panelProps={siteInrcyPanelProps} />
 
-{panel === "site_web" && (
-          <SiteWebPanel
-            siteWebAllGreen={siteWebAllGreen}
-            hasSiteWebUrl={hasSiteWebUrl}
-            siteWebUrl={siteWebUrl}
-            setSiteWebUrl={setSiteWebUrl}
-            saveSiteWebUrl={saveSiteWebUrlFromDrawer}
-            deleteSiteWebUrl={deleteSiteWebUrlFromDrawer}
-            siteWebUrlBusy={isDrawerMutationPending("site_web:url:save") || isDrawerMutationPending("site_web:url:delete")}
-            draftSiteWebUrlMeta={draftSiteWebUrlMeta}
-            siteWebUrlNotice={siteWebUrlNotice}
-            siteWebGa4Connected={siteWebGa4Connected}
-            siteWebGa4MeasurementId={siteWebGa4MeasurementId}
-            siteWebGa4PropertyId={siteWebGa4PropertyId}
-            disconnectSiteWebGa4={disconnectSiteWebGa4FromDrawer}
-            siteWebGa4Busy={isDrawerMutationPending("site_web:ga4:disconnect")}
-            connectSiteWebGa4={connectSiteWebGa4}
-            canConnectSiteWebGoogle={canConnectSiteWebGoogle}
-            siteWebGa4Notice={siteWebGa4Notice}
-            siteWebGscConnected={siteWebGscConnected}
-            siteWebGscProperty={siteWebGscProperty}
-            disconnectSiteWebGsc={disconnectSiteWebGscFromDrawer}
-            siteWebGscBusy={isDrawerMutationPending("site_web:gsc:disconnect")}
-            connectSiteWebGsc={connectSiteWebGsc}
-            siteWebGscNotice={siteWebGscNotice}
-            siteWebActusLayout={siteWebActusLayout}
-            setSiteWebActusLayout={setSiteWebActusLayout}
-            siteWebActusLimit={siteWebActusLimit}
-            setSiteWebActusLimit={setSiteWebActusLimit}
-            siteWebActusFont={siteWebActusFont}
-            setSiteWebActusFont={setSiteWebActusFont}
-            siteWebActusTheme={siteWebActusTheme}
-            setSiteWebActusTheme={setSiteWebActusTheme}
-            siteWebSavedUrl={siteWebSavedUrl}
-            widgetTokenSiteWeb={widgetTokenSiteWeb}
-            showSiteWebWidgetCode={showSiteWebWidgetCode}
-            setShowSiteWebWidgetCode={setShowSiteWebWidgetCode}
-            siteWebSettingsError={siteWebSettingsError}
-            resetSiteWebAll={resetSiteWebAll}
-          />
-        )}
+        <SiteWebPanelBlock panel={panel} panelProps={siteWebPanelProps} />
 
               {/* ✅ AJOUT : callbacks pour mise à jour immédiate de la pastille */}
         
-{panel === "instagram" && (
-          <InstagramPanel
-            instagramConnected={instagramConnected}
-            instagramAccountConnected={instagramAccountConnected}
-            instagramUsername={instagramUsername}
-            connectInstagramAccount={connectInstagramAccount}
-            connectInstagramBusinessAccount={connectInstagramBusinessAccount}
-            disconnectInstagramAccount={disconnectInstagramAccountFromDrawer}
-            instagramAccountBusy={isDrawerMutationPending("instagram:account:disconnect")}
-            igAccountsLoading={igAccountsLoading}
-            loadInstagramAccounts={loadInstagramAccounts}
-            igSelectedPageId={igSelectedPageId}
-            setIgSelectedPageId={setIgSelectedPageId}
-            igAccounts={igAccounts}
-            saveInstagramProfile={saveInstagramProfileFromDrawer}
-            instagramProfileBusy={isDrawerMutationPending("instagram:profile:save") || isDrawerMutationPending("instagram:profile:disconnect")}
-            igAccountsError={igAccountsError}
-            instagramUrl={instagramUrl}
-            instagramUrlNotice={instagramUrlNotice}
-            instagramUrlError={instagramUrlError}
-            disconnectInstagramProfile={disconnectInstagramProfileFromDrawer}
-          />
-        )}
+<InstagramPanelBlock
+          panel={panel}
+          panelProps={{
+            instagramConnected,
+            instagramAccountConnected,
+            instagramUsername,
+            connectInstagramAccount,
+            connectInstagramBusinessAccount,
+            disconnectInstagramAccount: disconnectInstagramAccountFromDrawer,
+            instagramAccountBusy: isDrawerMutationPending("instagram:account:disconnect"),
+            igAccountsLoading,
+            loadInstagramAccounts,
+            igSelectedPageId,
+            setIgSelectedPageId,
+            igAccounts,
+            saveInstagramProfile: saveInstagramProfileFromDrawer,
+            instagramProfileBusy:
+              isDrawerMutationPending("instagram:profile:save") ||
+              isDrawerMutationPending("instagram:profile:disconnect"),
+            igAccountsError,
+            instagramUrl,
+            instagramUrlNotice,
+            instagramUrlError,
+            disconnectInstagramProfile: disconnectInstagramProfileFromDrawer,
+          }}
+        />
 
 
 
-{panel === "linkedin" && (
-          <LinkedinPanel
-            linkedinConnected={linkedinConnected}
-            linkedinAccountConnected={linkedinAccountConnected}
-            linkedinDisplayName={linkedinDisplayName}
-            connectLinkedinAccount={connectLinkedinAccount}
-            disconnectLinkedinAccount={disconnectLinkedinAccountFromDrawer}
-            linkedinAccountBusy={isDrawerMutationPending("linkedin:account:disconnect")}
-            linkedinUrl={linkedinUrl}
-            setLinkedinUrl={setLinkedinUrl}
-            saveLinkedinProfileUrl={saveLinkedinProfileUrlFromDrawer}
-            linkedinUrlBusy={isDrawerMutationPending("linkedin:url:save")}
-            linkedinUrlNotice={linkedinUrlNotice}
-            linkedinUrlError={linkedinUrlError}
-            setLinkedinUrlNotice={setLinkedinUrlNotice}
-          />
-        )}
+        <LinkedinPanelBlock panel={panel} panelProps={linkedinPanelProps} />
+
+        <GmbPanelBlock panel={panel} panelProps={gmbPanelProps} />
 
 
 
-{panel === "gmb" && (
-          <GoogleBusinessPanel
-            gmbConnected={gmbConnected}
-            gmbAccountConnected={gmbAccountConnected}
-            gmbAccountEmail={gmbAccountEmail}
-            connectGmbAccount={connectGmbAccount}
-            disconnectGmbAccount={disconnectGmbAccountFromDrawer}
-            gmbAccountBusy={isDrawerMutationPending("gmb:account:disconnect")}
-            gmbConfigured={gmbConfigured}
-            gmbAccountName={gmbAccountName}
-            gmbAccounts={gmbAccounts}
-            gmbLoadingList={gmbLoadingList}
-            loadGmbAccountsAndLocations={loadGmbAccountsAndLocations}
-            gmbLocationName={gmbLocationName}
-            gmbLocationLabel={gmbLocationLabel}
-            setGmbLocationName={setGmbLocationName}
-            gmbLocations={gmbLocations}
-            saveGmbLocation={saveGmbLocationFromDrawer}
-            gmbLocationBusy={isDrawerMutationPending("gmb:location:save") || isDrawerMutationPending("gmb:location:disconnect")}
-            gmbListError={gmbListError}
-            gmbUrl={gmbUrl}
-            gmbUrlNotice={gmbUrlNotice}
-            gmbUrlError={gmbUrlError}
-            disconnectGmbBusiness={disconnectGmbBusinessFromDrawer}
-          />
-        )}
-
-
-
-        {panel === "facebook" && (
-          <FacebookPanel
-            facebookPageConnected={facebookPageConnected}
-            facebookAccountConnected={facebookAccountConnected}
-            facebookAccountEmail={facebookAccountEmail}
-            connectFacebookAccount={connectFacebookAccount}
-            connectFacebookBusinessAccount={connectFacebookBusinessAccount}
-            disconnectFacebookAccount={disconnectFacebookAccountFromDrawer}
-            facebookAccountBusy={isDrawerMutationPending("facebook:account:disconnect")}
-            fbPagesLoading={fbPagesLoading}
-            loadFacebookPages={loadFacebookPages}
-            fbSelectedPageId={fbSelectedPageId}
-            fbSelectedPageName={fbSelectedPageName}
-            setFbSelectedPageId={setFbSelectedPageId}
-            fbPages={fbPages}
-            saveFacebookPage={saveFacebookPageFromDrawer}
-            facebookPageBusy={isDrawerMutationPending("facebook:page:save") || isDrawerMutationPending("facebook:page:disconnect")}
-            fbPagesError={fbPagesError}
-            facebookUrl={facebookUrl}
-            facebookUrlNotice={facebookUrlNotice}
-            facebookUrlError={facebookUrlError}
-            disconnectFacebookPage={disconnectFacebookPageFromDrawer}
-          />
-        )}
+        <FacebookPanelBlock
+          panel={panel}
+          panelProps={{
+            facebookPageConnected,
+            facebookAccountConnected,
+            facebookAccountEmail,
+            connectFacebookAccount,
+            connectFacebookBusinessAccount,
+            disconnectFacebookAccount: disconnectFacebookAccountFromDrawer,
+            facebookAccountBusy: isDrawerMutationPending("facebook:account:disconnect"),
+            fbPagesLoading,
+            loadFacebookPages,
+            fbSelectedPageId,
+            fbSelectedPageName,
+            setFbSelectedPageId,
+            fbPages,
+            saveFacebookPage: saveFacebookPageFromDrawer,
+            facebookPageBusy:
+              isDrawerMutationPending("facebook:page:save") ||
+              isDrawerMutationPending("facebook:page:disconnect"),
+            fbPagesError,
+            facebookUrl,
+            facebookUrlNotice,
+            facebookUrlError,
+            disconnectFacebookPage: disconnectFacebookPageFromDrawer,
+          }}
+        />
 
 
 
       </SettingsDrawer>
 
-      {/* ✅ Bulles d'aide globales (toujours au-dessus grâce à HelpModal) */}
-      <HelpModal open={helpGeneratorOpen} title="Générateur iNrCy" onClose={() => setHelpGeneratorOpen(false)}>
-        <p style={{ marginTop: 0 }}>
-          Le Générateur iNrCy est le moteur de votre activité. Il connecte vos canaux pour capter des prospects et générer des
-          opportunités.
-        </p>
-        <ol style={{ margin: 0, paddingLeft: 18 }}>
-          <li>Connectez vos canaux</li>
-          <li>Activez des actions (Booster / Fidéliser)</li>
-          <li>Suivez vos opportunités et vos contacts</li>
-        </ol>
-      </HelpModal>
-
-      <HelpModal open={helpCanauxOpen} title="Canaux" onClose={() => setHelpCanauxOpen(false)}>
-        <p style={{ marginTop: 0 }}>
-          Connectez chaque canal pour créer une synergie entre tous vos outils de communication et capter davantage de prospects
-          et de clients.
-        </p>
-        <p style={{ marginBottom: 0 }}>
-          Pour connecter un canal : ouvrez le panneau <strong>Configurer</strong>, cliquez sur les boutons indiqués, puis suivez les étapes
-          demandées.
-        </p>
-      </HelpModal>
-
-      <HelpModal open={helpSiteInrcyOpen} title="Site iNrCy" onClose={() => setHelpSiteInrcyOpen(false)}>
-        <p style={{ marginTop: 0 }}>
-          La bulle <strong>Site iNrCy</strong> est accessible uniquement si vous êtes détenteur d'un site internet chez nous.
-        </p>
-        <p>
-          Si c'est le cas, nous nous occupons directement de la performance du site et vous pouvez activer et désactiver le suivi des résultats. Vos publications via l'outil Booster remontent automatiquement sur le site en page d'accueil.
-        </p>
-              </HelpModal>
-
-      <HelpModal open={helpSiteWebOpen} title="Site web" onClose={() => setHelpSiteWebOpen(false)}>
-        <p style={{ marginTop: 0 }}>
-          La bulle <strong>Site web</strong> correspond à votre site existant. Une fois relié, il devient un canal supplémentaire dans votre générateur
-          iNrCy.
-        </p>
-        <p>
-          Cette connexion permet de centraliser vos informations et de vérifier que votre site travaille bien avec vos autres outils.
-        </p>
-        <ol style={{ margin: 0, paddingLeft: 18 }}>
-          <li>Ajoutez l&apos;URL de votre site web.</li>
-          <li>Cliquez sur les boutons de connexion pour relier automatiquement Google Analytics et Search Console pour remonter les statistiques. Ces outils doivent évidemment être enregistrés sur votre compte Google.</li>
-          <li>Ajouter le code du "widget iNrCy" fourni n'importe où sur votre site internet pour que les publications de l'outil Booster arrivent automatiquement dessus.</li>
-        </ol>
-      </HelpModal>
-
-      <HelpModal open={helpInertieOpen} title="Mon inertie — Tableau des gains UI" onClose={() => setHelpInertieOpen(false)}>
-        <p style={{ marginTop: 0 }}>
-          Voici les actions qui rapportent des <strong>UI</strong> (Unités d’Inertie).
-        </p>
-
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.10)" }}>Action</th>
-                <th style={{ textAlign: "left", padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.10)" }}>Gain</th>
-                <th style={{ textAlign: "left", padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.10)" }}>Fréquence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                { a: "Ouverture du compte", g: "+50 UI", f: "1 fois" },
-                { a: "Compléter Mon profil", g: "+100 UI", f: "1 fois" },
-                { a: "Compléter Mon activité", g: "+100 UI", f: "1 fois" },
-                { a: "Créer une actu", g: "+10 UI", f: "1 fois / semaine" },
-                { a: "Utiliser Booster / Fidéliser", g: "+10 UI", f: "1 fois / semaine" },
-                { a: "Ancienneté", g: "+50 UI", f: "1re fois au 30e jour, puis tous les 30 jours" },
-              ].map((r) => (
-                <tr key={r.a}>
-                  <td style={{ padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{r.a}</td>
-                  <td style={{ padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{r.g}</td>
-                  <td style={{ padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{r.f}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <p style={{ marginBottom: 0, marginTop: 12, opacity: 0.9 }}>
-          Le Turbo UI multiplie certaines actions selon vos canaux connectés. Tout est visible dans l’Historique de Mon inertie.
-        </p>
-      </HelpModal>
+      <DashboardHelpModals
+        helpGeneratorOpen={helpGeneratorOpen}
+        helpCanauxOpen={helpCanauxOpen}
+        helpSiteInrcyOpen={helpSiteInrcyOpen}
+        helpSiteWebOpen={helpSiteWebOpen}
+        helpInertieOpen={helpInertieOpen}
+        onCloseGenerator={() => setHelpGeneratorOpen(false)}
+        onCloseCanaux={() => setHelpCanauxOpen(false)}
+        onCloseSiteInrcy={() => setHelpSiteInrcyOpen(false)}
+        onCloseSiteWeb={() => setHelpSiteWebOpen(false)}
+        onCloseInertie={() => setHelpInertieOpen(false)}
+      />
 
       <footer className={styles.footer}>
         <div className={styles.footerLeft}>© 2026 iNrCy</div>

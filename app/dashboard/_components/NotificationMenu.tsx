@@ -7,14 +7,14 @@ export default function NotificationMenu(props: {
   notificationMenuOpen: boolean;
   setNotificationMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
   unreadNotificationsCount: number;
-  refreshNotifications: () => Promise<void>;
+  refreshNotifications: () => void | Promise<void>;
   notificationsLoading: boolean;
   notifications: NotificationItem[];
   notificationsError: string | null;
   openPanel: (panel?: "notifications") => void;
-  markAllNotificationsRead: () => Promise<void>;
-  markNotificationRead: (id: string) => Promise<void>;
-  deleteNotification: (id: string) => Promise<void>;
+  markAllNotificationsRead: () => void | Promise<void>;
+  markNotificationRead: (id: string) => void | Promise<void>;
+  deleteNotification: (id: string) => void | Promise<void>;
   onNavigate: (ctaUrl: string) => void;
   mobile?: boolean;
 }) {

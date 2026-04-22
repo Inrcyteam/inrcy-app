@@ -3,6 +3,7 @@ const ACTIVE_USER_STORAGE_KEY = "inrcy_active_user_id_v1";
 
 const ACCOUNT_CACHE_BASE_KEYS = [
   "inrcy_stats_last_channel_sync_v1",
+  "inrcy_stats_last_channel_syncs_v1",
   "inrcy_generator_kpis_v1",
   "inrcy_opp30_total_v1",
   "inrcy_ui_balance_v1",

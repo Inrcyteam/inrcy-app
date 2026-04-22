@@ -1,5 +1,6 @@
 import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
+import type { InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
 
 export type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
@@ -15,6 +16,7 @@ export type DailyRefreshBulkPayload = {
     avg_basket?: number;
   };
   estimatedByCube?: Partial<Record<CubeKey, number>>;
+  blocks?: InrstatsChannelBlocksByChannel;
   meta?: {
     generatedAt?: string;
     snapshotDate?: string | null;

@@ -12,7 +12,10 @@ import { decideAction, type DecisionResult } from "@/lib/decision/decisionEngine
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { readAccountCacheValue, removeAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
+import { type DashboardChannelKey, isDashboardChannelKey } from "@/lib/dashboardChannels";
+import { type InrstatsChannelBlock } from "@/lib/inrstats/channelBlocks";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
+import { markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, readCachedChannelSyncAt, type StatsWarmPeriod } from "../dashboard.client-cache";
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -61,6 +64,15 @@ type StatsBulkResponse = {
   };
   estimatedByCube?: Partial<Record<CubeKey, number>>;
   meta?: { snapshotDate?: string | null; live?: boolean };
+};
+
+type ChannelRefreshResponse = {
+  periods?: Partial<Record<string, {
+    block?: InrstatsChannelBlock;
+    overview?: unknown;
+    syncedAt?: number;
+    snapshotDate?: string | null;
+  }>>;
 };
 
 type BulkFetchResult = {
@@ -1512,6 +1524,89 @@ export default function StatsClient() {
     setIsRefreshing(false);
   }, [period]);
 
+  const applyChannelRefreshPayload = useCallback((channel: DashboardChannelKey, payload: ChannelRefreshResponse | null | undefined, fallbackSyncAt?: number) => {
+    const syncAt = Number.isFinite(Number(fallbackSyncAt)) ? Number(fallbackSyncAt) : Date.now();
+    let latestSyncAt = syncAt;
+
+    for (const targetPeriod of [7, 30] as const) {
+      const periodPayload = payload?.periods?.[String(targetPeriod)];
+      const block = periodPayload?.block;
+      if (!block || typeof block !== "object") continue;
+
+      const periodSyncAt = Number.isFinite(Number(periodPayload?.syncedAt)) ? Number(periodPayload?.syncedAt) : (block.syncAt ?? syncAt);
+      latestSyncAt = Math.max(latestSyncAt, periodSyncAt);
+
+      mergeChannelBlockIntoCachedSnapshots({
+        period: targetPeriod,
+        channel,
+        block,
+        overview: periodPayload?.overview,
+        syncedAt: periodSyncAt,
+        snapshotDate: typeof periodPayload?.snapshotDate === "string" ? periodPayload.snapshotDate : block.snapshotDate ?? null,
+      });
+
+      if (targetPeriod !== period) continue;
+
+      setDataByCube((prev) => ({
+        ...prev,
+        [channel]: {
+          ov: ((periodPayload?.overview as Overview | undefined) ?? (block.overview as Overview | null | undefined) ?? prev[channel]?.ov ?? null),
+          loading: false,
+          error: block.error ?? undefined,
+        },
+      }));
+
+      const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(targetPeriod)));
+      if (cachedSummary) {
+        setSummaryHydrated(true);
+        setSummaryOpp({
+          loading: false,
+          total: safeNum(cachedSummary.total),
+          byCube: {
+            site_inrcy: safeNum(cachedSummary.byCube?.site_inrcy),
+            site_web: safeNum(cachedSummary.byCube?.site_web),
+            gmb: safeNum(cachedSummary.byCube?.gmb),
+            facebook: safeNum(cachedSummary.byCube?.facebook),
+            instagram: safeNum(cachedSummary.byCube?.instagram),
+            linkedin: safeNum(cachedSummary.byCube?.linkedin),
+          },
+        });
+        setSummaryProfile({
+          lead_conversion_rate: safeNum(cachedSummary.profile?.lead_conversion_rate),
+          avg_basket: safeNum(cachedSummary.profile?.avg_basket),
+        });
+        setSummaryEstimatedByCube({
+          site_inrcy: safeNum(cachedSummary.estimatedByCube?.site_inrcy),
+          site_web: safeNum(cachedSummary.estimatedByCube?.site_web),
+          gmb: safeNum(cachedSummary.estimatedByCube?.gmb),
+          facebook: safeNum(cachedSummary.estimatedByCube?.facebook),
+          instagram: safeNum(cachedSummary.estimatedByCube?.instagram),
+          linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
+        });
+      }
+    }
+
+    markChannelsSynced([channel], latestSyncAt);
+    setLastRefreshAt(Date.now());
+    setIsRefreshing(false);
+    return latestSyncAt;
+  }, [period]);
+
+  const refreshChannelFromApi = useCallback(async (channel: DashboardChannelKey, fallbackSyncAt?: number) => {
+    const res = await fetch("/api/stats/channel-refresh", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ channel }),
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!res.ok) {
+      throw new Error(await getSimpleFrenchApiError(res));
+    }
+    const json = await res.json().catch(() => null) as ChannelRefreshResponse | null;
+    return applyChannelRefreshPayload(channel, json, fallbackSyncAt);
+  }, [applyChannelRefreshPayload]);
+
   const applyBootstrapPayload = useCallback((bootstrap: DailyStatsRefreshBootstrapResponse) => {
     const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
     const bootstrapSnapshotDate = typeof bootstrap?.snapshotDate === "string"
@@ -1607,13 +1702,37 @@ export default function StatsClient() {
         const res = await fetch("/api/dashboard/cache-status", { cache: "no-store" });
         if (!res.ok) return;
         const json = await res.json().catch(() => null);
+        const periodStatuses: Partial<Record<Period, { syncedAt?: number; channels?: Partial<Record<DashboardChannelKey, number>> }>> = {
+          7: json?.inrstats?.[7] ?? json?.inrstats?.["7"] ?? null,
+          30: json?.inrstats?.[30] ?? json?.inrstats?.["30"] ?? null,
+        };
+        const staleChannelsByPeriod = ([7, 30] as Period[]).reduce((acc, days) => {
+          const channels = periodStatuses[days]?.channels;
+          acc[days] = !channels || typeof channels !== "object"
+            ? []
+            : Object.entries(channels)
+                .filter(([channel, serverTs]) => Number(serverTs ?? 0) > readCachedChannelSyncAt(days as StatsWarmPeriod, channel as DashboardChannelKey))
+                .map(([channel]) => channel as DashboardChannelKey);
+          return acc;
+        }, {} as Partial<Record<Period, DashboardChannelKey[]>>);
         const periodsToRefresh = ([7, 30] as Period[])
-          .map((days) => ({ days, syncedAt: Number(json?.inrstats?.[days] ?? json?.inrstats?.[String(days)] ?? 0) }))
-          .filter((item) => item.syncedAt > getLocalPeriodSyncAt(item.days));
+          .map((days) => ({
+            days,
+            syncedAt: Number(periodStatuses[days]?.syncedAt ?? 0),
+            staleChannels: staleChannelsByPeriod[days] || [],
+          }))
+          .filter((item) => item.syncedAt > getLocalPeriodSyncAt(item.days) && (getLocalPeriodSyncAt(item.days) === 0 || item.staleChannels.length === 0));
+        const staleChannels = Array.from(new Set((([7, 30] as Period[])
+          .filter((days) => !periodsToRefresh.some((item) => item.days === days))
+          .flatMap((days) => staleChannelsByPeriod[days] || []))));
 
         for (const item of periodsToRefresh) {
           const next = await fetchBulkStats(item.days, false);
           applyBulkPayload(item.days, next, item.syncedAt);
+        }
+
+        for (const channel of staleChannels) {
+          await refreshChannelFromApi(channel);
         }
         markServerCacheSyncChecked("stats", { snapshotDate, checkedAt: Date.now() });
       } catch {
@@ -1627,7 +1746,7 @@ export default function StatsClient() {
     } finally {
       serverCacheCheckPromiseRef.current = null;
     }
-  }, [applyBulkPayload]);
+  }, [applyBulkPayload, refreshChannelFromApi]);
 
   const handleSharedStatsRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -1906,6 +2025,21 @@ useEffect(() => {
   }, [isRefreshing, refreshNonce]);
 
   useEffect(() => {
+    const handleChannelUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ channel?: DashboardChannelKey }>).detail;
+      if (!isDashboardChannelKey(detail?.channel)) {
+        triggerRefresh("channels");
+        return;
+      }
+      if (hydrateFromSessionCache(period)) {
+        const now = Date.now();
+        setLastRefreshAt(now);
+        setIsRefreshing(false);
+        return;
+      }
+      triggerRefresh("channels");
+    };
+
     const handleChannelsUpdated = () => {
       const now = Date.now();
       if (now - lastAutoRefreshAtRef.current < 1500) return;
@@ -1918,8 +2052,10 @@ useEffect(() => {
       triggerRefresh("channels");
     };
 
+    window.addEventListener("inrcy:channel-updated", handleChannelUpdated as EventListener);
     window.addEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
     return () => {
+      window.removeEventListener("inrcy:channel-updated", handleChannelUpdated as EventListener);
       window.removeEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
     };
   }, [hydrateFromSessionCache, period, triggerRefresh]);

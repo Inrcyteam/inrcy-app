@@ -1,12 +1,38 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
 
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const PERIODS = [7, 30] as const;
 
 type PeriodKey = (typeof PERIODS)[number];
-
 type AnyRec = Record<string, unknown>;
+type ChannelStatus = {
+  syncedAt: number;
+  channels: Record<DashboardChannelKey, number>;
+};
+
+ type PeriodStatus = ChannelStatus;
+ type GeneratorStatus = ChannelStatus;
+
+const INCLUDE_TO_CHANNEL: Record<string, DashboardChannelKey> = {
+  site_inrcy: "site_inrcy",
+  site_web: "site_web",
+  gmb: "gmb",
+  facebook: "facebook",
+  instagram: "instagram",
+  linkedin: "linkedin",
+};
+
+function emptyChannelStatus(): ChannelStatus {
+  return {
+    syncedAt: 0,
+    channels: DASHBOARD_CHANNEL_KEYS.reduce((acc, channel) => {
+      acc[channel] = 0;
+      return acc;
+    }, {} as Record<DashboardChannelKey, number>),
+  };
+}
 
 function asRecord(value: unknown): AnyRec {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as AnyRec) : {};
@@ -26,6 +52,25 @@ function inferSnapshotTs(row: AnyRec): number {
   const expiresAt = toTs(row.expires_at);
   if (expiresAt > 0) return Math.max(0, expiresAt - CACHE_TTL_MS);
   return 0;
+}
+
+function inferChannelTs(payload: AnyRec, channel: DashboardChannelKey, fallbackTs: number): number {
+  const blocks = asRecord(payload.blocks);
+  const blockSyncAt = Number(asRecord(blocks[channel]).syncAt);
+  if (Number.isFinite(blockSyncAt) && blockSyncAt > 0) return blockSyncAt;
+
+  const overviews = asRecord(payload.overviews);
+  const overviewMeta = asRecord(asRecord(overviews[channel]).meta);
+  const overviewTs = toTs(overviewMeta.generatedAt);
+  if (overviewTs > 0) return overviewTs;
+
+  return fallbackTs;
+}
+
+function inferChannelFromRangeKey(rangeKey: string): DashboardChannelKey | null {
+  const match = rangeKey.match(/(?:^|\|)include=([^|]+)(?:\||$)/);
+  if (!match) return null;
+  return INCLUDE_TO_CHANNEL[match[1] || ""] ?? null;
 }
 
 export async function GET() {
@@ -48,7 +93,11 @@ export async function GET() {
       .gt("expires_at", nowIso);
 
     let generatorSyncedAt = 0;
-    const inrstats: Record<PeriodKey, number> = { 7: 0, 30: 0 };
+    const generator: GeneratorStatus = emptyChannelStatus();
+    const inrstats: Record<PeriodKey, PeriodStatus> = {
+      7: emptyChannelStatus(),
+      30: emptyChannelStatus(),
+    };
 
     for (const row of Array.isArray(rows) ? rows : []) {
       const rec = asRecord(row);
@@ -58,6 +107,16 @@ export async function GET() {
 
       if (source === "metrics_summary") {
         if (ts > generatorSyncedAt) generatorSyncedAt = ts;
+        generator.syncedAt = Math.max(generator.syncedAt, ts);
+        const payload = asRecord(rec.payload);
+        const blocks = asRecord(payload.generatorBlocks);
+        for (const channel of DASHBOARD_CHANNEL_KEYS) {
+          const blockSyncAt = Number(asRecord(blocks[channel]).syncAt);
+          generator.channels[channel] = Math.max(
+            generator.channels[channel],
+            Number.isFinite(blockSyncAt) && blockSyncAt > 0 ? blockSyncAt : ts,
+          );
+        }
         continue;
       }
 
@@ -65,13 +124,31 @@ export async function GET() {
       const rangeKey = String(rec.range_key ?? "");
       const match = rangeKey.match(/(?:^|\|)days=(\d+)(?:\||$)/);
       const period = match ? Number(match[1]) : 0;
-      if (period === 7 || period === 30) {
-        inrstats[period] = Math.max(inrstats[period], ts);
+      if (period !== 7 && period !== 30) continue;
+
+      const periodStatus = inrstats[period];
+      periodStatus.syncedAt = Math.max(periodStatus.syncedAt, ts);
+
+      const payload = asRecord(rec.payload);
+      const rangeChannel = inferChannelFromRangeKey(rangeKey);
+      if (rangeChannel) {
+        periodStatus.channels[rangeChannel] = Math.max(
+          periodStatus.channels[rangeChannel],
+          inferChannelTs(payload, rangeChannel, ts),
+        );
+        continue;
+      }
+
+      for (const channel of DASHBOARD_CHANNEL_KEYS) {
+        periodStatus.channels[channel] = Math.max(
+          periodStatus.channels[channel],
+          inferChannelTs(payload, channel, ts),
+        );
       }
     }
 
     return NextResponse.json({
-      generator: { syncedAt: generatorSyncedAt },
+      generator: { syncedAt: generatorSyncedAt, channels: generator.channels },
       inrstats,
       checkedAt: new Date().toISOString(),
     });
