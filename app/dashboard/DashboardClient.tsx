@@ -2945,7 +2945,6 @@ const disconnectFacebookAccount = useCallback(async () => {
 	    resourceLabel: null,
 	    resourceUrl: null,
 	  }, { clearData: true });
-	  triggerChannelRefresh("facebook");
 	  setFacebookAccountEmail("");
 	  // Keep a lightweight mirror in pro_tools_configs for instant UI updates.
 	  await updateRootSettingsKey("facebook", {
@@ -2956,6 +2955,7 @@ const disconnectFacebookAccount = useCallback(async () => {
 	    pageId: "",
 	    pageName: "",
 	  });
+	  await triggerChannelRefresh("facebook");
 	  setFacebookUrl("");
 	  setFbPages([]);
 	  setFbSelectedPageId("");
@@ -2975,7 +2975,6 @@ const disconnectFacebookPage = useCallback(async () => {
 	    resourceLabel: null,
 	    resourceUrl: null,
 	  }, { clearData: true });
-	  triggerChannelRefresh("facebook");
 	  await updateRootSettingsKey("facebook", {
 	    accountConnected: true,
 	    pageConnected: false,
@@ -2983,6 +2982,7 @@ const disconnectFacebookPage = useCallback(async () => {
 	    pageId: "",
 	    pageName: "",
 	  });
+	  await triggerChannelRefresh("facebook");
 	  setFacebookUrl("");
 	  setFbSelectedPageId("");
 	  setFbSelectedPageName("");
@@ -3012,7 +3012,7 @@ const loadFacebookPages = useCallback(async () => {
     if (pages.length === 1) {
       const only = pages[0];
       if (only?.id) {
-        await fetch("/api/integrations/facebook/select-page", {
+        const autoRes = await fetch("/api/integrations/facebook/select-page", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -3020,18 +3020,31 @@ const loadFacebookPages = useCallback(async () => {
             pageName: only.name || null,
           }),
         });
+        const autoJson = await autoRes.json().catch(() => ({}));
+        if (!autoRes.ok) throw new Error(autoJson?.error || "Impossible d’enregistrer la page Facebook.");
+        const nextFacebookUrl = String(autoJson?.pageUrl || `https://www.facebook.com/${only.id}`);
         setFbSelectedPageId(only.id);
         setFbSelectedPageName(String(only.name || ""));
         setFacebookPageConnected(true);
-        setFacebookUrl(`https://www.facebook.com/${only.id}`);
+        setFacebookUrl(nextFacebookUrl);
         patchChannelConnectionLocally("facebook", {
           connected: true,
           accountConnected: true,
           configured: true,
           resourceId: only.id,
           resourceLabel: only.name || null,
-          resourceUrl: `https://www.facebook.com/${only.id}`,
+          resourceUrl: nextFacebookUrl,
         });
+        await updateRootSettingsKey("facebook", {
+          accountConnected: true,
+          pageConnected: true,
+          userEmail: facebookAccountEmail,
+          url: nextFacebookUrl,
+          pageId: only.id,
+          pageName: String(only.name || ""),
+        });
+        await triggerChannelRefresh("facebook");
+        setPanelSuccess("facebook", "Page Facebook enregistrée.");
       }
     }
   } catch (e: any) {
@@ -3039,7 +3052,7 @@ const loadFacebookPages = useCallback(async () => {
   } finally {
     setFbPagesLoading(false);
   }
-	}, [facebookAccountConnected, fbSelectedPageId, patchChannelConnectionLocally]);
+	}, [facebookAccountConnected, fbSelectedPageId, facebookAccountEmail, patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh, updateRootSettingsKey]);
 
 useEffect(() => {
   const linked = searchParams.get("linked");
@@ -3091,13 +3104,21 @@ const saveFacebookPage = useCallback(async () => {
       resourceLabel: picked.name || null,
       resourceUrl: nextFacebookUrl,
     });
-    triggerChannelRefresh("facebook");
+    await updateRootSettingsKey("facebook", {
+      accountConnected: true,
+      pageConnected: true,
+      userEmail: facebookAccountEmail,
+      url: nextFacebookUrl,
+      pageId: picked.id,
+      pageName: String(picked.name || ""),
+    });
+    await triggerChannelRefresh("facebook");
     setPanelSuccess("facebook", "Page Facebook enregistrée.");
   } else {
     setPanelError("facebook", j?.error, "Impossible d'enregistrer la page Facebook.");
   }
 
-}, [fbPages, fbSelectedPageId, patchChannelConnectionLocally, triggerChannelRefresh]);
+}, [fbPages, fbSelectedPageId, facebookAccountEmail, patchChannelConnectionLocally, triggerChannelRefresh, updateRootSettingsKey, setPanelSuccess, setPanelError]);
 
 // ===== Instagram (Meta) =====
 const connectInstagramAccount = useCallback(async () => {
@@ -3135,7 +3156,7 @@ const disconnectInstagramAccount = useCallback(async () => {
     pageId: "",
     igId: "",
   });
-  triggerChannelRefresh("instagram");
+  await triggerChannelRefresh("instagram");
   setPanelSuccess("instagram", "Compte Instagram déconnecté.");
 }, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
 
@@ -3161,7 +3182,7 @@ const disconnectInstagramProfile = useCallback(async () => {
     pageId: "",
     igId: "",
   });
-  triggerChannelRefresh("instagram");
+  await triggerChannelRefresh("instagram");
   setPanelSuccess("instagram", "Profil Instagram déconnecté.");
 }, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
 
@@ -3179,24 +3200,35 @@ const loadInstagramAccounts = useCallback(async () => {
     // Auto-connect if exactly 1 eligible account
     if ((j.accounts || []).length === 1) {
       const only = j.accounts[0];
-      await fetch("/api/integrations/instagram/select-profile", {
+      const autoRes = await fetch("/api/integrations/instagram/select-profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pageId: only.page_id }),
       });
+      const autoJson = await autoRes.json().catch(() => ({}));
+      if (!autoRes.ok) throw new Error(autoJson?.error || "Impossible d’enregistrer Instagram.");
       setInstagramConnected(true);
-      setInstagramUsername(String(only.username || ""));
-      const nextInstagramUrl = only.username ? `https://www.instagram.com/${only.username}/` : "";
+      const nextUsername = autoJson?.username ? String(autoJson.username) : String(only.username || "");
+      if (nextUsername) setInstagramUsername(nextUsername);
+      const nextInstagramUrl = autoJson?.profileUrl ? String(autoJson.profileUrl) : (only.username ? `https://www.instagram.com/${only.username}/` : "");
       setInstagramUrl(nextInstagramUrl);
       patchChannelConnectionLocally("instagram", {
         connected: true,
         accountConnected: true,
         configured: true,
         resourceId: only.ig_id || only.page_id,
-        resourceLabel: only.username || null,
+        resourceLabel: nextUsername || null,
         resourceUrl: nextInstagramUrl || null,
       });
-      triggerChannelRefresh("instagram");
+      await updateRootSettingsKey("instagram", {
+        accountConnected: true,
+        connected: true,
+        username: nextUsername,
+        url: nextInstagramUrl,
+        pageId: String(only.page_id || ""),
+        igId: String(only.ig_id || only.page_id || ""),
+      });
+      await triggerChannelRefresh("instagram");
       setPanelSuccess("instagram", "Compte Instagram enregistré.");
     }
   } catch (e: any) {
@@ -3204,7 +3236,7 @@ const loadInstagramAccounts = useCallback(async () => {
   } finally {
     setIgAccountsLoading(false);
   }
-}, [instagramAccountConnected, igSelectedPageId, patchChannelConnectionLocally, triggerChannelRefresh]);
+}, [instagramAccountConnected, igSelectedPageId, patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh, updateRootSettingsKey]);
 
 useEffect(() => {
   const linked = searchParams.get("linked");
@@ -3253,12 +3285,20 @@ const saveInstagramProfile = useCallback(async () => {
       resourceLabel: nextUsername || null,
       resourceUrl: nextProfileUrl || null,
     });
-    triggerChannelRefresh("instagram");
+    await updateRootSettingsKey("instagram", {
+      accountConnected: true,
+      connected: true,
+      username: nextUsername,
+      url: nextProfileUrl,
+      pageId: String(picked.page_id || ""),
+      igId: String(picked.ig_id || picked.page_id || ""),
+    });
+    await triggerChannelRefresh("instagram");
     setPanelSuccess("instagram", "Compte Instagram enregistré.");
   } else {
     setPanelError("instagram", j?.error, "Impossible d'enregistrer Instagram.");
   }
-}, [igAccounts, igSelectedPageId, patchChannelConnectionLocally, triggerChannelRefresh]);
+}, [igAccounts, igSelectedPageId, patchChannelConnectionLocally, triggerChannelRefresh, updateRootSettingsKey, setPanelSuccess, setPanelError]);
 
 // ===== LinkedIn =====
 const connectLinkedinAccount = useCallback(async () => {

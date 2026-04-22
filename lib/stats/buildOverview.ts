@@ -336,6 +336,7 @@ export async function buildStatsOverview(args: {
   const { gmbFetchDailyMetricsNormalizedWithRecovery } = await import("@/lib/googleBusiness");
   const { igFetchDailyInsights, igFetchRecentMediaInsights } = await import("@/lib/metaInsights");
   const { fbFetchDailyInsights } = await import("@/lib/facebookInsights");
+  const { extractFacebookUserTokens } = await import("@/lib/metaBusinessAssets");
   const { liFetchOrgAnalytics, liFetchMemberAnalytics, liResolveFirstAdminOrgUrn } = await import("@/lib/linkedinAnalytics");
 
 // --- Load all integration rows once (avoid Supabase rate-limits) ---
@@ -809,11 +810,12 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       const includeFb = includeAll || includeSet.has("facebook");
       if (!includeFb) {
         sourcesStatus.facebook.metrics = null;
-      } else if (sourcesStatus.facebook.connected && fbRow["resource_id"] && fbRow["access_token_enc"] && !isExpired(fbRow["expires_at"])) {
+      } else if (sourcesStatus.facebook.connected && fbRow["resource_id"] && (fbRow["access_token_enc"] || asRecord(fbRow["meta"])["user_access_token_enc"] || asRecord(fbRow["meta"])["standard_user_access_token_enc"] || asRecord(fbRow["meta"])["business_user_access_token_enc"])) {
         try {
           const end = dateWindow.end;
           const start = dateWindow.start;
-          const token = tryDecryptToken(String(fbRow["access_token_enc"]));
+          const fbEncryptedToken = extractFacebookUserTokens(fbRow["meta"], String(fbRow["access_token_enc"] || "") || null)[0] || String(fbRow["access_token_enc"] || "");
+          const token = tryDecryptToken(fbEncryptedToken);
           if (!token) throw new Error("La connexion Facebook a expiré ou n’est plus valide.");
           sourcesStatus.facebook.metrics = await fbFetchDailyInsights(
             token,
@@ -837,7 +839,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       const includeIg = includeAll || includeSet.has("instagram");
       if (!includeIg) {
         sourcesStatus.instagram.metrics = null;
-      } else if (sourcesStatus.instagram.connected && igRow["resource_id"] && igRow["access_token_enc"] && !isExpired(igRow["expires_at"])) {
+      } else if (sourcesStatus.instagram.connected && igRow["resource_id"] && igRow["access_token_enc"]) {
         try {
           const end = dateWindow.end;
           const start = dateWindow.start;
