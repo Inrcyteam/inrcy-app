@@ -30,8 +30,8 @@ export async function GET() {
   ]);
 
   const snapshot = computeInertiaSnapshot({
-    site_inrcy: states.site_inrcy.connected,
-    site_web: states.site_web.connected,
+    site_inrcy: states.site_inrcy.connected && states.site_inrcy.statsConnected,
+    site_web: states.site_web.connected && states.site_web.statsConnected,
     gmb: states.gmb.connected,
     facebook: states.facebook.connected,
     instagram: states.instagram.connected,

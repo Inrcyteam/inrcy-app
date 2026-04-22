@@ -29,6 +29,7 @@ export default function GoogleBusinessPanel(props: any) {
     disconnectGmbBusiness,
     gmbAccountBusy,
     gmbLocationBusy,
+    gmbLocationAction,
   } = props;
 
   const hasSelectedLocationInList = Boolean(
@@ -187,7 +188,7 @@ export default function GoogleBusinessPanel(props: any) {
               onClick={gmbConfigured ? handleLocationDisconnect : handleLocationConnect}
               disabled={!gmbLocationName || gmbLocationBusy}
             >
-              {gmbLocationBusy ? (gmbConfigured ? "Déconnexion..." : "Connexion...") : (gmbConfigured ? "Déconnecter l'établissement" : "Connecter l'établissement")}
+              {gmbLocationBusy ? (gmbLocationAction === "disconnect" ? "Déconnexion..." : "Connexion...") : (gmbConfigured ? "Déconnecter l'établissement" : "Connecter l'établissement")}
             </button>
           </div>
 
@@ -199,7 +200,7 @@ export default function GoogleBusinessPanel(props: any) {
 
           {gmbLocationBusy ? (
             <StatusMessage variant="success">
-              {gmbConfigured ? "Déconnexion en cours..." : "Connexion en cours..."}
+              {gmbLocationAction === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
             </StatusMessage>
           ) : null}
 

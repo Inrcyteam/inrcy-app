@@ -101,7 +101,7 @@ async function getTurboMultiplier(supabase: TurboSupabaseLike, userId: string) {
   const hasGoogleStats = (source: "site_inrcy" | "site_web") => {
     const hasGa4 = rows.some((r) => r.provider === "google" && r.status === "connected" && r.source === source && r.product === "ga4");
     const hasGsc = rows.some((r) => r.provider === "google" && r.status === "connected" && r.source === source && r.product === "gsc");
-    return hasGa4 && hasGsc;
+    return hasGa4 || hasGsc;
   };
 
   const channels = {

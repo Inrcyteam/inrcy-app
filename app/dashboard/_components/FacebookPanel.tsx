@@ -27,6 +27,7 @@ export default function FacebookPanel(props: any) {
     disconnectFacebookPage,
     facebookAccountBusy,
     facebookPageBusy,
+    facebookPageAction,
   } = props;
 
   const hasSelectedPageInList = Boolean(
@@ -200,13 +201,13 @@ export default function FacebookPanel(props: any) {
               onClick={facebookPageConnected ? handlePageDisconnect : handlePageConnect}
               disabled={!fbSelectedPageId || facebookPageBusy}
             >
-              {facebookPageBusy ? (facebookPageConnected ? "Déconnexion..." : "Connexion...") : (facebookPageConnected ? "Déconnecter la page" : "Connecter la page")}
+              {facebookPageBusy ? (facebookPageAction === "disconnect" ? "Déconnexion..." : "Connexion...") : (facebookPageConnected ? "Déconnecter la page" : "Connecter la page")}
             </button>
           </div>
 
           {facebookPageBusy ? (
             <StatusMessage variant="success">
-              {facebookPageConnected ? "Déconnexion en cours..." : "Connexion en cours..."}
+              {facebookPageAction === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
             </StatusMessage>
           ) : null}
           {fbPagesError && <StatusMessage variant="error">{fbPagesError}</StatusMessage>}

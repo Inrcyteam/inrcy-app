@@ -26,6 +26,7 @@ export default function InstagramPanel(props: any) {
     disconnectInstagramProfile,
     instagramAccountBusy,
     instagramProfileBusy,
+    instagramProfileAction,
   } = props;
 
   const startStandard = () => {
@@ -202,13 +203,13 @@ export default function InstagramPanel(props: any) {
               disabled={!igSelectedPageId || instagramProfileBusy}
               style={{ width: "100%" }}
             >
-              {instagramProfileBusy ? (instagramConnected ? "Déconnexion..." : "Connexion...") : (instagramConnected ? "Déconnecter le compte" : "Connecter")}
+              {instagramProfileBusy ? (instagramProfileAction === "disconnect" ? "Déconnexion..." : "Connexion...") : (instagramConnected ? "Déconnecter le compte" : "Connecter")}
             </button>
           </div>
 
           {instagramProfileBusy ? (
             <StatusMessage variant="success">
-              {instagramConnected ? "Déconnexion en cours..." : "Connexion en cours..."}
+              {instagramProfileAction === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
             </StatusMessage>
           ) : null}
           {displayAccountsError && <StatusMessage variant="error">{displayAccountsError}</StatusMessage>}

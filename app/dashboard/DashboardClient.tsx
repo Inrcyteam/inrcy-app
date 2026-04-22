@@ -667,8 +667,8 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
     () =>
       computeInertiaSnapshot(
         {
-          site_inrcy: Boolean(hasActiveInrcySite(siteInrcyOwnership) && normalizeSiteUrl(siteInrcySavedUrl)),
-          site_web: Boolean(normalizeSiteUrl(siteWebSavedUrl)),
+          site_inrcy: Boolean(hasActiveInrcySite(siteInrcyOwnership) && normalizeSiteUrl(siteInrcySavedUrl) && (siteInrcyGa4Connected || siteInrcyGscConnected)),
+          site_web: Boolean(normalizeSiteUrl(siteWebSavedUrl) && (siteWebGa4Connected || siteWebGscConnected)),
           // IMPORTANT: on ne compte les réseaux sociaux que si le compte est réellement connecté (OAuth),
           // pas seulement si un lien est renseigné.
           // Google Business : compte + fiche (location) configurée.
@@ -685,7 +685,11 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
       normalizeSiteUrl,
       siteInrcyOwnership,
       siteInrcySavedUrl,
+      siteInrcyGa4Connected,
+      siteInrcyGscConnected,
       siteWebSavedUrl,
+      siteWebGa4Connected,
+      siteWebGscConnected,
       gmbAccountConnected,
       gmbConfigured,
       facebookAccountConnected,
@@ -1114,17 +1118,22 @@ const hasSiteWebUrl = !!savedSiteWebUrlMeta;
 const canConnectSiteInrcyGoogle = canConfigureSite && hasSiteInrcyUrl;
 const canConnectSiteWebGoogle = hasSiteWebUrl;
 
-const siteInrcyAllGreen = hasActiveInrcySite(siteInrcyOwnership) && hasSiteInrcyUrl && siteInrcyGa4Connected && siteInrcyGscConnected;
-const siteWebConnected = Boolean(hasSiteWebUrl);
-const siteWebAllGreen = hasSiteWebUrl && siteWebGa4Connected && siteWebGscConnected;
+const siteInrcyProgressCount = (hasSiteInrcyUrl ? 1 : 0) + (hasSiteInrcyUrl && siteInrcyGa4Connected ? 1 : 0) + (hasSiteInrcyUrl && siteInrcyGscConnected ? 1 : 0);
+const siteWebProgressCount = (hasSiteWebUrl ? 1 : 0) + (hasSiteWebUrl && siteWebGa4Connected ? 1 : 0) + (hasSiteWebUrl && siteWebGscConnected ? 1 : 0);
+const siteInrcyAllGreen = hasActiveInrcySite(siteInrcyOwnership) && siteInrcyProgressCount === 3;
+const siteWebAllGreen = siteWebProgressCount === 3;
 const profileCompleted = !profileIncomplete;
 const activityCompleted = !activityIncomplete;
-const sitePowerConnected = siteInrcyAllGreen || siteWebAllGreen;
+const sitePowerLinkConnected = hasSiteInrcyUrl || hasSiteWebUrl;
+const sitePowerGa4Connected = (hasSiteInrcyUrl && siteInrcyGa4Connected) || (hasSiteWebUrl && siteWebGa4Connected);
+const sitePowerGscConnected = (hasSiteInrcyUrl && siteInrcyGscConnected) || (hasSiteWebUrl && siteWebGscConnected);
 
 const generatorPowerSteps = [
   { key: "profile", label: "Compléter mon profil", shortLabel: "Profil", weight: 15, completed: profileCompleted },
   { key: "activity", label: "Compléter mon activité", shortLabel: "Activité", weight: 15, completed: activityCompleted },
-  { key: "site", label: "Connecter le site internet", shortLabel: "Site internet", weight: 20, completed: sitePowerConnected },
+  { key: "site_link", label: "Connecter un site internet", shortLabel: "Site internet", weight: 10, completed: sitePowerLinkConnected },
+  { key: "site_ga4", label: "Brancher GA4", shortLabel: "GA4", weight: 5, completed: sitePowerGa4Connected },
+  { key: "site_gsc", label: "Brancher GSC", shortLabel: "GSC", weight: 5, completed: sitePowerGscConnected },
   { key: "gmb", label: "Connecter Google Business", shortLabel: "Google Business", weight: 20, completed: gmbConnected },
   { key: "facebook", label: "Connecter Facebook", shortLabel: "Facebook", weight: 10, completed: facebookPageConnected },
   { key: "instagram", label: "Connecter Instagram", shortLabel: "Instagram", weight: 10, completed: instagramConnected },
@@ -3961,7 +3970,14 @@ const checkActivity = useCallback(async () => {
   const leadsToday = typeof kpis?.leads?.today === "number" ? kpis.leads.today : null;
   const leadsWeek = typeof kpis?.leads?.week === "number" ? kpis.leads.week : null;
   const leadsMonth = typeof kpis?.leads?.month === "number" ? kpis.leads.month : null;
-  const generatorIsActive = inertiaSnapshot.connectedCount > 0;
+  const generatorIsActive = Boolean(
+    hasSiteInrcyUrl ||
+    hasSiteWebUrl ||
+    gmbConnected ||
+    facebookPageConnected ||
+    instagramConnected ||
+    linkedinConnected
+  );
 
   const estimatedValue = typeof kpis?.estimatedValue === "number" ? kpis.estimatedValue : null;
 
@@ -4013,6 +4029,21 @@ const checkActivity = useCallback(async () => {
 }, [bubbleView, isMobile]);
 
 
+  const getSiteBubbleProgress = useCallback((kind: "site_inrcy" | "site_web") => {
+    const progress = kind === "site_inrcy" ? siteInrcyProgressCount : siteWebProgressCount;
+    const hasUrl = kind === "site_inrcy" ? hasSiteInrcyUrl : hasSiteWebUrl;
+    const canUseSite = kind === "site_inrcy" ? hasActiveInrcySite(siteInrcyOwnership) : true;
+
+    if (kind === "site_inrcy" && !canUseSite) {
+      return { status: "coming" as ModuleStatus, text: "Aucun site" };
+    }
+
+    return {
+      status: hasUrl ? "connected" as ModuleStatus : "available" as ModuleStatus,
+      text: `${hasUrl ? "Connecté" : "A configurer"} ${progress}/3`,
+    };
+  }, [hasSiteInrcyUrl, hasSiteWebUrl, siteInrcyOwnership, siteInrcyProgressCount, siteWebProgressCount]);
+
   const fluxBubbleItems = useMemo<DashboardFluxBubbleData[]>(() => fluxModules.map((m) => {
     const channelKey = m.key as DashboardChannelKey;
     const channelBlock = channelBlocks?.[channelKey] ?? null;
@@ -4043,17 +4074,11 @@ const checkActivity = useCallback(async () => {
                 }
               : viewActionRaw;
 
-    const { status: bubbleStatus, text: bubbleStatusText } = blockDrivenStatus ?? (() => {
-      if (m.key === "site_inrcy") {
-        if (!hasActiveInrcySite(siteInrcyOwnership)) return { status: "coming" as ModuleStatus, text: "Aucun site" };
-        const hasUrl = Boolean(savedSiteInrcyUrlMeta);
-        return { status: hasUrl ? "connected" as ModuleStatus : "available" as ModuleStatus, text: hasUrl ? "Connecté" : "A configurer" };
-      }
-
-      if (m.key === "site_web") {
-        if (siteWebConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
-        return { status: "available" as ModuleStatus, text: "A connecter" };
-      }
+    const { status: bubbleStatus, text: bubbleStatusText } = (m.key === "site_inrcy")
+      ? getSiteBubbleProgress("site_inrcy")
+      : (m.key === "site_web")
+        ? getSiteBubbleProgress("site_web")
+        : blockDrivenStatus ?? (() => {
 
       if (m.key === "instagram") {
         if (instagramConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
@@ -4171,6 +4196,7 @@ const checkActivity = useCallback(async () => {
     canViewSite,
     facebookPageConnected,
     facebookUrl,
+    getSiteBubbleProgress,
     gmbConnected,
     gmbUrl,
     instagramConnected,
@@ -4178,10 +4204,8 @@ const checkActivity = useCallback(async () => {
     linkedinConnected,
     linkedinUrl,
     openPanel,
-    siteInrcyOwnership,
-    siteInrcyUrl,
-    siteWebConnected,
-    siteWebUrl,
+    siteInrcySavedUrl,
+    siteWebSavedUrl,
     channelBlocks,
   ]);
 
@@ -4424,6 +4448,11 @@ const checkActivity = useCallback(async () => {
     gmbLocations,
     saveGmbLocation: saveGmbLocationFromDrawer,
     gmbLocationBusy: isDrawerMutationPending("gmb:location:save") || isDrawerMutationPending("gmb:location:disconnect"),
+    gmbLocationAction: isDrawerMutationPending("gmb:location:disconnect")
+      ? "disconnect"
+      : isDrawerMutationPending("gmb:location:save")
+        ? "connect"
+        : null,
     gmbListError,
     gmbUrl,
     gmbUrlNotice,
@@ -4701,6 +4730,11 @@ const checkActivity = useCallback(async () => {
             instagramProfileBusy:
               isDrawerMutationPending("instagram:profile:save") ||
               isDrawerMutationPending("instagram:profile:disconnect"),
+            instagramProfileAction: isDrawerMutationPending("instagram:profile:disconnect")
+              ? "disconnect"
+              : isDrawerMutationPending("instagram:profile:save")
+                ? "connect"
+                : null,
             igAccountsError,
             instagramUrl,
             instagramUrlNotice,
@@ -4737,6 +4771,11 @@ const checkActivity = useCallback(async () => {
             facebookPageBusy:
               isDrawerMutationPending("facebook:page:save") ||
               isDrawerMutationPending("facebook:page:disconnect"),
+            facebookPageAction: isDrawerMutationPending("facebook:page:disconnect")
+              ? "disconnect"
+              : isDrawerMutationPending("facebook:page:save")
+                ? "connect"
+                : null,
             fbPagesError,
             facebookUrl,
             facebookUrlNotice,
