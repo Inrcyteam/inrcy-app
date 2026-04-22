@@ -249,17 +249,21 @@ export default function DashboardClient() {
   const closePanel = () => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("panel");
+    ["linked", "ok", "error", "message", "warning", "toast", "activated", "skipped"].forEach((key) => {
+      params.delete(key);
+    });
     const qs = params.toString();
     // ✅ Quand on ferme, on remet le marqueur à zéro.
     // (Sinon un refresh pourrait relancer un panneau si une logique externe remet ?panel=...)
     try {
       sessionStorage.removeItem("inrcy_panel_explicit_open");
+      sessionStorage.removeItem("inrcy_last_panel");
     } catch {}
     // ✅ En mobile, on garde la position de scroll (pas de jump en haut)
     try {
       sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
     } catch {}
-    router.push(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false });
+    router.replace(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false });
   };
 
   // ✅ Sécurité UX: si l'URL arrive avec ?panel=profil (ou compte) sans action explicite
@@ -663,8 +667,8 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
     () =>
       computeInertiaSnapshot(
         {
-          site_inrcy: Boolean(siteInrcyOwnership !== "none" && siteInrcyGa4Connected && siteInrcyGscConnected),
-          site_web: Boolean(siteWebUrl?.trim() && siteWebGa4Connected && siteWebGscConnected),
+          site_inrcy: Boolean(hasActiveInrcySite(siteInrcyOwnership) && normalizeSiteUrl(siteInrcySavedUrl)),
+          site_web: Boolean(normalizeSiteUrl(siteWebSavedUrl)),
           // IMPORTANT: on ne compte les réseaux sociaux que si le compte est réellement connecté (OAuth),
           // pas seulement si un lien est renseigné.
           // Google Business : compte + fiche (location) configurée.
@@ -678,12 +682,10 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
         { maxMultiplier: 7 }
       ),
     [
+      normalizeSiteUrl,
       siteInrcyOwnership,
-      siteInrcyGa4Connected,
-      siteInrcyGscConnected,
-      siteWebUrl,
-      siteWebGa4Connected,
-      siteWebGscConnected,
+      siteInrcySavedUrl,
+      siteWebSavedUrl,
       gmbAccountConnected,
       gmbConfigured,
       facebookAccountConnected,
@@ -1103,7 +1105,7 @@ const savedSiteWebUrlMeta = normalizeSiteUrl(siteWebSavedUrl);
 const draftSiteInrcyUrlMeta = normalizeSiteUrl(siteInrcyUrl);
 const draftSiteWebUrlMeta = normalizeSiteUrl(siteWebUrl);
 
-const canViewSite = canAccessSiteInrcy && !!draftSiteInrcyUrlMeta;
+const canViewSite = canAccessSiteInrcy && !!savedSiteInrcyUrlMeta;
 const canConfigureSite = canAccessSiteInrcy;
 
 // ✅ UX : Google ne devient connectable qu'une fois un vrai lien enregistré
@@ -1113,7 +1115,7 @@ const canConnectSiteInrcyGoogle = canConfigureSite && hasSiteInrcyUrl;
 const canConnectSiteWebGoogle = hasSiteWebUrl;
 
 const siteInrcyAllGreen = hasActiveInrcySite(siteInrcyOwnership) && hasSiteInrcyUrl && siteInrcyGa4Connected && siteInrcyGscConnected;
-const siteWebConnected = Boolean(siteWebUrl?.trim() && siteWebGa4Connected && siteWebGscConnected);
+const siteWebConnected = Boolean(hasSiteWebUrl);
 const siteWebAllGreen = hasSiteWebUrl && siteWebGa4Connected && siteWebGscConnected;
 const profileCompleted = !profileIncomplete;
 const activityCompleted = !activityIncomplete;
@@ -3923,12 +3925,12 @@ const checkActivity = useCallback(async () => {
       (m.key === "site_inrcy" && viewActionRaw)
         ? {
             ...viewActionRaw,
-            href: normalizeExternalHref(blockDrivenViewHref || siteInrcyUrl) || "#",
+            href: normalizeExternalHref(blockDrivenViewHref || siteInrcySavedUrl) || "#",
           }
         : (m.key === "site_web" && viewActionRaw)
           ? {
               ...viewActionRaw,
-              href: normalizeExternalHref(blockDrivenViewHref || siteWebUrl) || "#",
+              href: normalizeExternalHref(blockDrivenViewHref || siteWebSavedUrl) || "#",
             }
           : (m.key === "instagram" && viewActionRaw)
             ? {
@@ -3945,7 +3947,7 @@ const checkActivity = useCallback(async () => {
     const { status: bubbleStatus, text: bubbleStatusText } = blockDrivenStatus ?? (() => {
       if (m.key === "site_inrcy") {
         if (!hasActiveInrcySite(siteInrcyOwnership)) return { status: "coming" as ModuleStatus, text: "Aucun site" };
-        const hasUrl = !!siteInrcyUrl?.trim();
+        const hasUrl = Boolean(savedSiteInrcyUrlMeta);
         return { status: hasUrl ? "connected" as ModuleStatus : "available" as ModuleStatus, text: hasUrl ? "Connecté" : "A configurer" };
       }
 
@@ -3978,9 +3980,9 @@ const checkActivity = useCallback(async () => {
     })();
 
     const specialViewHref = m.key === "site_inrcy"
-      ? (blockDrivenViewHref || normalizeExternalHref(siteInrcyUrl) || "#")
+      ? (blockDrivenViewHref || normalizeExternalHref(siteInrcySavedUrl) || "#")
       : m.key === "site_web"
-        ? (blockDrivenViewHref || normalizeExternalHref(siteWebUrl) || "#")
+        ? (blockDrivenViewHref || normalizeExternalHref(siteWebSavedUrl) || "#")
         : m.key === "instagram"
           ? (blockDrivenViewHref || normalizeExternalHref(instagramUrl) || "#")
           : m.key === "linkedin"
@@ -4004,7 +4006,7 @@ const checkActivity = useCallback(async () => {
     const canViewSpecial = m.key === "site_inrcy"
       ? Boolean(blockDrivenViewHref || canViewSite)
       : m.key === "site_web"
-        ? Boolean(blockDrivenViewHref || siteWebUrl)
+        ? Boolean(blockDrivenViewHref || savedSiteWebUrlMeta)
         : m.key === "instagram"
           ? Boolean(blockDrivenViewHref || instagramUrl)
           : m.key === "linkedin"

@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/requireUser";
 import { renderWithContext, buildDefaultContext } from "@/lib/templateEngine";
 import { asRecord } from "@/lib/tsSafe";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
+import { normalizeMailSubject } from "@/lib/mailEncoding";
 
 // POST /api/templates/render
 // Body: { template_key?: string, subject_override?: string, body_override?: string }
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
     const ctx = buildDefaultContext({ profile, business, links });
 
     // Render overrides (subject/body already selected/edited in UI)
-    const subject = renderWithContext(subjectOverride, ctx);
+    const subject = normalizeMailSubject(renderWithContext(subjectOverride, ctx));
     const bodyText = renderWithContext(bodyOverride, ctx);
 
     return NextResponse.json({ subject, body_text: bodyText, ctx, links });

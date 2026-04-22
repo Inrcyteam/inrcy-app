@@ -7,6 +7,7 @@ import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { appendRawMessage, type ImapConfig } from "@/lib/imapClient";
 import { decryptSecret } from "@/lib/imapCrypto";
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml } from "@/lib/inrsendSignature";
+import { normalizeMailSubject } from "@/lib/mailEncoding";
 
 export type SendMailBinaryAttachment = {
   filename: string;
@@ -351,7 +352,8 @@ export async function sendMailFromIntegration(params: {
   includeAutoSignature?: boolean;
   attachments?: SendMailBinaryAttachment[];
 }) {
-  const { userId, accountId, to, subject } = params;
+  const { userId, accountId, to } = params;
+  const subject = normalizeMailSubject(params.subject || "(sans objet)") || "(sans objet)";
   const accountQuery = await supabaseAdmin
     .from("integrations")
     .select("id,user_id,provider,category,status,account_email,access_token_enc,refresh_token_enc,expires_at,settings")

@@ -5,6 +5,7 @@ import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 import { withApi } from "@/lib/observability/withApi";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
+import { normalizeMailSubject } from "@/lib/mailEncoding";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -204,7 +205,7 @@ const handler = async (req: Request) => {
     sourceDocType = String(fd.get("sourceDocType") || "").trim();
     sourceDocNumber = String(fd.get("sourceDocNumber") || "").trim();
     to = String(fd.get("to") || "").trim();
-    subject = String(fd.get("subject") || "").trim() || "(sans objet)";
+    subject = normalizeMailSubject(String(fd.get("subject") || "").trim() || "(sans objet)");
     text = String(fd.get("text") || "");
     html = String(fd.get("html") || "");
     threadId = String(fd.get("threadId") || "");

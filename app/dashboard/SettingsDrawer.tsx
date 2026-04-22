@@ -17,15 +17,25 @@ export default function SettingsDrawer({ title, isOpen, onClose, headerActions, 
 
     document.body.style.overflow = "hidden";
 
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
     return () => {
       document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKeyDown);
     };
-  }, [isOpen]);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   return (
     <div
+      onClick={onClose}
       style={{
         position: "fixed",
         inset: 0,

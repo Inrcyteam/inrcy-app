@@ -10,6 +10,7 @@ import { withApi } from "@/lib/observability/withApi";
 import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
+import { normalizeMailSubject } from "@/lib/mailEncoding";
 
 
 // IMAP + SMTP require Node.js runtime (Edge runtime can't open raw TCP sockets)
@@ -43,7 +44,7 @@ const handler = async (req: Request) => {
       sourceDocType = String(formData.get("sourceDocType") || "").trim();
       sourceDocNumber = String(formData.get("sourceDocNumber") || "").trim();
       to = String(formData.get("to") || "").trim();
-      subject = String(formData.get("subject") || "(sans objet)");
+      subject = normalizeMailSubject(String(formData.get("subject") || "(sans objet)"));
       text = String(formData.get("text") || "");
       html = String(formData.get("html") || "").trim();
 
@@ -69,7 +70,7 @@ const handler = async (req: Request) => {
     sourceDocType = String(body.sourceDocType || "").trim();
     sourceDocNumber = String(body.sourceDocNumber || "").trim();
       to = String(body.to || "").trim();
-      subject = String(body.subject || "(sans objet)");
+      subject = normalizeMailSubject(String(body.subject || "(sans objet)"));
       text = String(body.text || "");
       html = String(body.html || "").trim();
       attachmentRefs = parseMailAttachmentRefs(body.attachments);

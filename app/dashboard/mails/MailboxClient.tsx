@@ -117,6 +117,7 @@ import {
   normalizeEmails,
   providerSendEndpoint,
 } from "./_lib/mailboxPhase25";
+import { normalizeMailSubject } from "@/lib/mailEncoding";
 
 
 const pillBtn: React.CSSProperties = {
@@ -1054,7 +1055,7 @@ export default function MailboxClient() {
     setComposeSourceDocNumber(sourceDocNumberParam || (attachName || attachKey.split("/").pop() || "").replace(/\.pdf$/i, ""));
 
     if (toParam) setTo(toParam);
-    if (subjParam) setSubject(subjParam);
+    if (subjParam) setSubject(normalizeMailSubject(subjParam));
     if (textParam) setText(applySignaturePreview(textParam, signatureEnabled ? signaturePreview : ""));
 
     const urlRecipientHints = !sessionRecipientHints.length && toParam && contactIdParam
@@ -1162,17 +1163,17 @@ export default function MailboxClient() {
             }),
           });
           const j = await r.json().catch(() => ({}));
-          if (j?.subject) setSubject(String(j.subject));
-          else if (preSubject) setSubject(preSubject);
+          if (j?.subject) setSubject(normalizeMailSubject(String(j.subject)));
+          else if (preSubject) setSubject(normalizeMailSubject(preSubject));
 
           if (j?.body_text) setText(applySignaturePreview(String(j.body_text), signatureEnabled ? signaturePreview : ""));
           else if (preText) setText(applySignaturePreview(preText, signatureEnabled ? signaturePreview : ""));
         } catch {
-          if (preSubject) setSubject(preSubject);
+          if (preSubject) setSubject(normalizeMailSubject(preSubject));
           if (preText) setText(applySignaturePreview(preText, signatureEnabled ? signaturePreview : ""));
         }
       } else {
-        if (preSubject) setSubject(preSubject);
+        if (preSubject) setSubject(normalizeMailSubject(preSubject));
         if (preText) setText(applySignaturePreview(preText, signatureEnabled ? signaturePreview : ""));
       }
 
@@ -1498,7 +1499,7 @@ async function deleteDraftPermanently(id: string) {
           trackKind: pendingTrack?.kind || undefined,
           trackType: pendingTrack?.type || undefined,
           templateKey: templateKey || undefined,
-          subject: subject.trim() || "(sans objet)",
+          subject: normalizeMailSubject(subject.trim() || "(sans objet)"),
           text: text || "",
           html: "",
           recipients: recipientsList.map((email) => {
@@ -1562,7 +1563,7 @@ async function deleteDraftPermanently(id: string) {
       const payload = {
         accountId: selectedAccount.id,
         to: recipientsList[0],
-        subject: subject.trim() || "(sans objet)",
+        subject: normalizeMailSubject(subject.trim() || "(sans objet)"),
         text: text || "",
         html: "",
         type: composeType,
@@ -1595,7 +1596,7 @@ async function deleteDraftPermanently(id: string) {
                 ...(pendingTrack.payload || {}),
                 integration_id: selectedAccount.id,
                 to: recipientsList[0],
-                subject: subject.trim() || "(sans objet)",
+                subject: normalizeMailSubject(subject.trim() || "(sans objet)"),
               },
             }),
           });
@@ -1865,7 +1866,7 @@ async function deleteDraftPermanently(id: string) {
       const raw = (it.raw || {}) as any;
       setComposeType(raw.type as SendType);
       setTo(raw.to_emails || "");
-      setSubject(raw.subject || "");
+      setSubject(normalizeMailSubject(raw.subject || ""));
       setText(raw.body_text || "");
       setFiles([]);
     }
@@ -3162,7 +3163,7 @@ async function deleteDraftPermanently(id: string) {
 
                   <label style={{ display: "grid", gap: 6 }}>
                     <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Objet</span>
-                    <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Objet" style={inputStyle} />
+                    <input value={subject} onChange={(e) => setSubject(normalizeMailSubject(e.target.value))} placeholder="Objet" style={inputStyle} />
                     {!subject.trim() ? (
                       <span style={{ fontSize: 12, color: "rgba(251,191,36,0.92)" }}>Le message partira avec “(sans objet)” si tu laisses ce champ vide.</span>
                     ) : null}

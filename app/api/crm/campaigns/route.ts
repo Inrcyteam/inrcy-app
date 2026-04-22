@@ -3,6 +3,7 @@ import { evaluateCampaignDispatchState, getMailCampaignDeliveryConfig, processPe
 import { requireUser } from "@/lib/requireUser";
 import { normalizeCampaignRecipients } from "@/lib/crmRecipients";
 import { fetchSuppressedEmailsByUser } from "@/lib/mailSuppression";
+import { normalizeMailSubject } from "@/lib/mailEncoding";
 
 export const runtime = "nodejs";
 
@@ -106,7 +107,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const accountId = String(body.accountId || "").trim();
   const type = String(body.type || "mail").trim() || "mail";
-  const subject = String(body.subject || "").trim() || "(sans objet)";
+  const subject = normalizeMailSubject(String(body.subject || "").trim() || "(sans objet)");
   const text = String(body.text || "");
   const html = String(body.html || "");
   const sourceDocSaveId = String(body.sourceDocSaveId || "").trim();

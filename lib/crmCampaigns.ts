@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
+import { textToSimpleHtml } from "@/lib/inrsendSignature";
+import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs, type MailAttachmentRef } from "@/lib/mailAttachmentRefs";
 import { providerBatchLimit } from "@/lib/crmRecipients";
 import {
@@ -629,15 +631,18 @@ export async function processPendingMailCampaigns(opts?: {
       }
 
       const unsubscribeUrl = buildRecipientUnsubscribeUrl(campaignId, recipientId);
-      const textBody = appendUnsubscribeFooterToText(asString(campaign.body_text) || "", unsubscribeUrl);
-      const htmlBody = appendUnsubscribeFooterToHtml(asString(campaign.body_html) || "", unsubscribeUrl);
+      const rawTextBody = asString(campaign.body_text) || "";
+      const rawHtmlBody = asString(campaign.body_html) || "";
+      const textBody = appendUnsubscribeFooterToText(rawTextBody, unsubscribeUrl);
+      const htmlBase = rawHtmlBody.trim() ? rawHtmlBody : textToSimpleHtml(rawTextBody);
+      const htmlBody = appendUnsubscribeFooterToHtml(htmlBase, unsubscribeUrl);
 
       try {
         const sendResult = await sendMailFromIntegration({
           userId,
           accountId: integrationId,
           to: email,
-          subject: asString(campaign.subject) || "(sans objet)",
+          subject: normalizeMailSubject(asString(campaign.subject) || "(sans objet)"),
           text: textBody,
           html: htmlBody || undefined,
           attachments,
