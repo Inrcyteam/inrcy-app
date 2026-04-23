@@ -2,34 +2,16 @@
 
 import styles from "./dashboard.module.css";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type TouchEvent as ReactTouchEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import SettingsDrawer from "./SettingsDrawer";
 import HelpButton from "./_components/HelpButton";
-import ConnectionPill from "./_components/ConnectionPill";
-import SiteInrcyPanelBlock from "./_components/SiteInrcyPanelBlock";
-import SiteWebPanelBlock from "./_components/SiteWebPanelBlock";
-import InstagramPanelBlock from "./_components/InstagramPanelBlock";
-import LinkedinPanelBlock from "./_components/LinkedinPanelBlock";
-import GmbPanelBlock from "./_components/GmbPanelBlock";
-import FacebookPanelBlock from "./_components/FacebookPanelBlock";
-import ProfilContent from "./settings/_components/ProfilContent";
-import AccountContent from "./settings/_components/AccountContent";
-import ActivityContent from "./settings/_components/ActivityContent";
-import AbonnementContent from "./settings/_components/AbonnementContent";
-import ContactContent from "./settings/_components/ContactContent";
-import MailsSettingsContent from "./settings/_components/MailsSettingsContent";
-import LegalContent from "./settings/_components/LegalContent";
-import RgpdContent from "./settings/_components/RgpdContent";
-import InertiaContent from "./settings/_components/InertiaContent";
-import BoutiqueContent from "./settings/_components/BoutiqueContent";
-import NotificationsSettingsContent from "./settings/_components/NotificationsSettingsContent";
 import DashboardHelpModals from "./_components/DashboardHelpModals";
-import ReferralPanel from "./_components/ReferralPanel";
-import DashboardModulesCard from "./_components/DashboardModulesCard";
 import DashboardHero from "./_components/DashboardHero";
-import DashboardFluxBubble, { type DashboardFluxBubbleData } from "./_components/DashboardFluxBubble";
 import DashboardTopbar from "./_components/DashboardTopbar";
+import DashboardChannelsSection from "./_components/DashboardChannelsSection";
+import type { DashboardFluxBubbleData } from "./_components/DashboardFluxBubble";
+import DashboardSettingsDrawerContent from "./_components/DashboardSettingsDrawerContent";
 
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
@@ -42,162 +24,13 @@ import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants";
 import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
+import { getBubbleStatusFromBlock, getBubbleViewHrefFromBlock, inferChannelsFromRealtimePayload, inferChannelsFromSearchParams, normalizeExternalHref } from "./dashboard.shared";
 import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
 import { createEmptyChannelBlock, createEmptyChannelBlocks, type InrstatsChannelBlock, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
 
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
-
-function normalizeExternalHref(input: string | null | undefined) {
-  const value = (input || "").trim();
-  if (!value) return null;
-  return value.startsWith("http") ? value : `https://${value}`;
-}
-
-function hasMeaningfulChannelBlock(block: InrstatsChannelBlock | null | undefined) {
-  if (!block) return false;
-  return Boolean(
-    block.connection.connected ||
-    block.connection.accountConnected ||
-    block.connection.configured ||
-    block.connection.statsConnected ||
-    block.connection.expired ||
-    block.syncAt ||
-    block.snapshotDate ||
-    block.opportunities > 0 ||
-    block.estimatedValue > 0 ||
-    block.error ||
-    block.connection.resourceUrl ||
-    block.connection.resourceLabel ||
-    block.connection.resourceId
-  );
-}
-
-function getBubbleStatusFromBlock(channel: DashboardChannelKey, block: InrstatsChannelBlock): { status: ModuleStatus; text: string } | null {
-  if (!hasMeaningfulChannelBlock(block)) return null;
-
-  if (channel === "site_inrcy") {
-    if (!block.connection.connected) return null;
-    return { status: "connected", text: "Connecté" };
-  }
-
-  if (block.connection.expired) {
-    return { status: "available", text: "Reconnexion requise" };
-  }
-
-  if (block.connection.connected) {
-    return { status: "connected", text: "Connecté" };
-  }
-
-  return { status: "available", text: "A connecter" };
-}
-
-function getBubbleViewHrefFromBlock(channel: DashboardChannelKey, block: InrstatsChannelBlock | null | undefined) {
-  if (!block) return null;
-  const raw = block.connection.resourceUrl;
-  if (!raw) return null;
-  if (channel === "gmb" || channel === "facebook" || channel === "instagram" || channel === "linkedin" || channel === "site_inrcy" || channel === "site_web") {
-    return normalizeExternalHref(raw);
-  }
-  return null;
-}
-
-function areJsonValuesEqual(a: unknown, b: unknown) {
-  try {
-    return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-  } catch {
-    return a === b;
-  }
-}
-
-function getChannelsFromSettingsDiff(previousSettings: unknown, nextSettings: unknown): DashboardChannelKey[] {
-  const previous = previousSettings && typeof previousSettings === "object" ? previousSettings as Record<string, unknown> : {};
-  const next = nextSettings && typeof nextSettings === "object" ? nextSettings as Record<string, unknown> : {};
-  const impacted: DashboardChannelKey[] = [];
-
-  const map: Array<[DashboardChannelKey, string]> = [
-    ["site_web", "site_web"],
-    ["gmb", "gmb"],
-    ["facebook", "facebook"],
-    ["instagram", "instagram"],
-    ["linkedin", "linkedin"],
-  ];
-
-  for (const [channel, key] of map) {
-    if (!areJsonValuesEqual(previous[key], next[key])) {
-      impacted.push(channel);
-    }
-  }
-
-  return Array.from(new Set(impacted));
-}
-
-function getChannelsFromProfilesDiff(previousRow: unknown, nextRow: unknown): DashboardChannelKey[] {
-  const previous = previousRow && typeof previousRow === "object" ? previousRow as Record<string, unknown> : {};
-  const next = nextRow && typeof nextRow === "object" ? nextRow as Record<string, unknown> : {};
-  const impacted: DashboardChannelKey[] = [];
-
-  if ((previous.inrcy_site_ownership ?? null) !== (next.inrcy_site_ownership ?? null)) {
-    impacted.push("site_inrcy");
-  }
-
-  return impacted;
-}
-
-function inferChannelsFromRealtimePayload(payload: any): DashboardChannelKey[] {
-  const table = typeof payload?.table === "string" ? payload.table : "";
-  if (table === "inrcy_site_configs") {
-    return ["site_inrcy"];
-  }
-
-  if (table === "profiles") {
-    return getChannelsFromProfilesDiff(payload?.old, payload?.new);
-  }
-
-  if (table === "pro_tools_configs") {
-    return getChannelsFromSettingsDiff(payload?.old?.settings, payload?.new?.settings);
-  }
-
-  if (table !== "integrations") {
-    return [];
-  }
-
-  const rows = [payload?.new, payload?.old];
-  const impacted = new Set<DashboardChannelKey>();
-
-  for (const row of rows) {
-    const source = typeof row?.source === "string" ? row.source : "";
-    const provider = typeof row?.provider === "string" ? row.provider : "";
-
-    if (source === "site_inrcy" || source === "site_web" || source === "gmb" || source === "facebook" || source === "instagram" || source === "linkedin") {
-      impacted.add(source);
-      continue;
-    }
-
-    if (provider === "facebook") impacted.add("facebook");
-    if (provider === "linkedin") impacted.add("linkedin");
-    if (provider === "google" && source === "gmb") impacted.add("gmb");
-  }
-
-  return Array.from(impacted);
-}
-
-function inferChannelsFromSearchParams(linked: string | null, targetPanel: string | null): DashboardChannelKey[] {
-  if (linked === "gmb" || linked === "facebook" || linked === "instagram" || linked === "linkedin") {
-    return [linked];
-  }
-
-  if ((linked === "ga4" || linked === "gsc") && (targetPanel === "site_inrcy" || targetPanel === "site_web")) {
-    return [targetPanel];
-  }
-
-  if (targetPanel === "site_inrcy" || targetPanel === "site_web" || targetPanel === "gmb" || targetPanel === "facebook" || targetPanel === "instagram" || targetPanel === "linkedin") {
-    return [targetPanel];
-  }
-
-  return [];
-}
 
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
@@ -3981,54 +3814,6 @@ const checkActivity = useCallback(async () => {
 
   const estimatedValue = typeof kpis?.estimatedValue === "number" ? kpis.estimatedValue : null;
 
-  // =========================
-  // Mobile-only: list vs carousel for the 6 bubbles (Canaux)
-  // =========================
-  type BubbleViewMode = "list" | "carousel";
-  const [bubbleView, setBubbleView] = useState<BubbleViewMode>("list");
-  const [isMobile, setIsMobile] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mq = window.matchMedia("(max-width: 560px)");
-    const update = () => setIsMobile(mq.matches);
-    update();
-
-    // Safari fallback for older addListener/removeListener
-    if (mq.addEventListener) mq.addEventListener("change", update);
-    else mq.addListener(update);
-
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", update);
-      else mq.removeListener(update);
-    };
-  }, []);
-
-  // Load saved preference
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = window.localStorage.getItem("inrcy_bubble_view");
-    if (saved === "list" || saved === "carousel") setBubbleView(saved);
-  }, []);
-
-  useEffect(() => {
-  if (typeof window === "undefined") return;
-
-  // ⛔ tant qu'on ne sait pas encore si c'est mobile, on ne fait rien
-  if (isMobile === null) return;
-
-  if (isMobile === false) {
-    // desktop: toujours list
-    setBubbleView("list");
-    return;
-  }
-
-  // mobile: on persiste le choix
-  window.localStorage.setItem("inrcy_bubble_view", bubbleView);
-}, [bubbleView, isMobile]);
-
-
   const getSiteBubbleProgress = useCallback((kind: "site_inrcy" | "site_web") => {
     const progress = kind === "site_inrcy" ? siteInrcyProgressCount : siteWebProgressCount;
     const hasUrl = kind === "site_inrcy" ? hasSiteInrcyUrl : hasSiteWebUrl;
@@ -4208,161 +3993,6 @@ const checkActivity = useCallback(async () => {
     siteWebSavedUrl,
     channelBlocks,
   ]);
-
-  const renderFluxBubble = (item: DashboardFluxBubbleData, keyOverride?: string) => (
-    <DashboardFluxBubble key={keyOverride ?? item.key} item={item} itemKey={keyOverride ?? item.key} />
-  );
-
-  // Carousel state (infinite loop)
-  const baseModules = fluxBubbleItems;
-  const hasCarousel = baseModules.length > 1;
-
-  // clones: [last, ...real, first]
-  const carouselItems = hasCarousel
-    ? [baseModules[baseModules.length - 1], ...baseModules, baseModules[0]]
-    : baseModules;
-
-  const carouselRef = useRef<HTMLDivElement | null>(null);
-
-  // index in carouselItems (includes clones)
-  const [carouselIndex, setCarouselIndex] = useState(1);
-  const [carouselTransition, setCarouselTransition] = useState(true);
-
-  // prevent swipe spamming / interrupted transitions on mobile
-  const isAnimating = useRef(false);
-
-  // drag (track follows finger)
-  const touchStartX = useRef<number | null>(null);
-  const isDragging = useRef(false);
-  const [dragPx, setDragPx] = useState(0);
-
-  const goPrev = useCallback(() => {
-    if (!hasCarousel) return;
-    if (isAnimating.current) return;
-    isAnimating.current = true;
-    setCarouselIndex((i) => i - 1);
-  }, [hasCarousel]);
-
-  const goNext = useCallback(() => {
-    if (!hasCarousel) return;
-    if (isAnimating.current) return;
-    isAnimating.current = true;
-    setCarouselIndex((i) => i + 1);
-  }, [hasCarousel]);
-
-  // reset cleanly when switching to carousel (mobile)
-  useEffect(() => {
-    if (!isMobile) return;
-    if (bubbleView !== "carousel") return;
-
-    setCarouselTransition(false);
-    setCarouselIndex(1);
-    setDragPx(0);
-
-    const id = window.setTimeout(() => setCarouselTransition(true), 0);
-    return () => window.clearTimeout(id);
-  }, [bubbleView, isMobile]);
-
-  const onCarouselTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
-    if (!hasCarousel) return;
-    if (isAnimating.current) return;
-    touchStartX.current = e.touches[0]?.clientX ?? null;
-    isDragging.current = true;
-
-    // during drag: no transition
-    setCarouselTransition(false);
-    setDragPx(0);
-  };
-
-  const onCarouselTouchMove = (e: ReactTouchEvent<HTMLDivElement>) => {
-    if (!hasCarousel) return;
-    if (!isDragging.current || touchStartX.current == null) return;
-
-    const x = e.touches[0]?.clientX ?? 0;
-    setDragPx(x - touchStartX.current);
-  };
-
-  const onCarouselTouchEnd = () => {
-    if (!hasCarousel) return;
-
-    const dx = dragPx;
-
-    isDragging.current = false;
-    touchStartX.current = null;
-
-    const threshold = 60;
-
-    // snap back to slide positions with transition
-    setCarouselTransition(true);
-    setDragPx(0);
-
-    if (Math.abs(dx) < threshold) return;
-
-    if (dx < 0) goNext();
-    else goPrev();
-  };
-
-  const onCarouselTransitionEnd = () => {
-  if (!hasCarousel) return;
-  if (isDragging.current) return;
-
-  const lastReal = baseModules.length;
-
-  // clone -> vrai dernier (boucle arrière)
-  if (carouselIndex === 0) {
-    setCarouselTransition(false);
-    setCarouselIndex(lastReal);
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setCarouselTransition(true);
-        isAnimating.current = false;
-      });
-    });
-    return;
-  }
-
-  // clone -> vrai premier (boucle avant)
-  if (carouselIndex === lastReal + 1) {
-    setCarouselTransition(false);
-    setCarouselIndex(1);
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setCarouselTransition(true);
-        isAnimating.current = false;
-      });
-    });
-    return;
-  }
-
-  // normal slide end
-  isAnimating.current = false;
-};
-
-  // Safety net: if transitionend doesn't fire (mobile can cancel transitions),
-  // keep index within [0, lastReal + 1] so we never drift to huge translateX values.
-  useEffect(() => {
-    if (!hasCarousel) return;
-    const lastReal = baseModules.length;
-
-    if (carouselIndex < 0) {
-      setCarouselTransition(false);
-      setCarouselIndex(lastReal);
-      requestAnimationFrame(() => requestAnimationFrame(() => setCarouselTransition(true)));
-      isAnimating.current = false;
-    } else if (carouselIndex > lastReal + 1) {
-      setCarouselTransition(false);
-      setCarouselIndex(1);
-      requestAnimationFrame(() => requestAnimationFrame(() => setCarouselTransition(true)));
-      isAnimating.current = false;
-    }
-  }, [carouselIndex, baseModules.length, hasCarousel]);
-
-
-  const activeDot = hasCarousel
-    ? (((carouselIndex - 1) % baseModules.length) + baseModules.length) % baseModules.length
-    : 0;
 
   const saveSiteInrcyUrlFromDrawer = useCallback(() => runDrawerMutation("site_inrcy:url:save", saveSiteInrcyUrl), [runDrawerMutation, saveSiteInrcyUrl]);
   const deleteSiteInrcyUrlFromDrawer = useCallback(() => runDrawerMutation("site_inrcy:url:delete", deleteSiteInrcyUrl), [runDrawerMutation, deleteSiteInrcyUrl]);
@@ -4575,83 +4205,12 @@ const checkActivity = useCallback(async () => {
         leadsMonth={leadsMonth}
       />
 
-      <section className={styles.contentFull}>
-        <div className={styles.sectionHead}>
-          <div className={styles.sectionHeadTop}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <h2 className={styles.h2} style={{ margin: 0 }}>Canaux</h2>
-              <HelpButton onClick={() => setHelpCanauxOpen(true)} title="Aide : Canaux" />
-            </div>
-
-            {/* Mobile only: choix Liste / Carrousel */}
-            <div className={styles.mobileViewToggle} aria-label="Affichage des canaux">
-              <button
-                type="button"
-                className={`${styles.viewToggleBtn} ${bubbleView === "list" ? styles.viewToggleActive : ""}`}
-                onClick={() => setBubbleView("list")}
-              >
-                Liste
-              </button>
-              <button
-                type="button"
-                className={`${styles.viewToggleBtn} ${bubbleView === "carousel" ? styles.viewToggleActive : ""}`}
-                onClick={() => setBubbleView("carousel")}
-              >
-                Carrousel
-              </button>
-            </div>
-          </div>
-
-          <p className={styles.h2Sub}>Votre autoroute de contacts entrants</p>
-        </div>
-
-        {/* ✅ Mobile: carrousel infini / Desktop: liste */}
-        {isMobile && bubbleView === "carousel" ? (
-          <>
-            <div
-              className={styles.mobileCarousel}
-              ref={carouselRef}
-              onTouchStart={onCarouselTouchStart}
-              onTouchMove={onCarouselTouchMove}
-              onTouchEnd={onCarouselTouchEnd}
-            >
-              <div
-                className={styles.carouselTrack}
-                style={{
-                  transform: `translateX(calc(-${carouselIndex * 100}% + ${dragPx}px))`,
-                  transition: carouselTransition ? "transform 260ms ease" : "none",
-                }}
-                onTransitionEnd={onCarouselTransitionEnd}
-              >
-                {carouselItems.map((m, idx) => (
-                  <div className={styles.carouselSlide} key={`${m.key}_${idx}`}>
-                    {renderFluxBubble(m, `${m.key}_${idx}`)}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {hasCarousel && (
-              <div className={styles.carouselDots} aria-label="Position dans le carrousel">
-                {baseModules.map((_, i) => (
-                  <span
-                    key={i}
-                    className={`${styles.carouselDot} ${i === activeDot ? styles.carouselDotActive : ""}`}
-                    aria-hidden="true"
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        ) : (
-          <div className={styles.moduleGrid}>
-  {fluxBubbleItems.map((item) => renderFluxBubble(item, item.key))}
-</div>
-        )}
-
-
-        <DashboardModulesCard goToModule={goToModule} openPanel={openPanel} />
-      </section>
+      <DashboardChannelsSection
+        fluxBubbleItems={fluxBubbleItems}
+        goToModule={goToModule}
+        openPanel={openPanel}
+        onOpenChannelsHelp={() => setHelpCanauxOpen(true)}
+      />
 
       <SettingsDrawer
         title={getDrawerTitle(panel)}
@@ -4661,59 +4220,27 @@ const checkActivity = useCallback(async () => {
           panel === "inertie" ? <HelpButton onClick={() => setHelpInertieOpen(true)} title="Aide : Mon inertie" /> : null
         }
       >
-        {panel === "contact" && <ContactContent mode="drawer" />}
-        {panel === "compte" && <AccountContent mode="drawer" />}
-        {panel === "profil" && <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} />}
-        {panel === "activite" && <ActivityContent mode="drawer" onActivitySaved={checkActivity} onActivityReset={checkActivity} />}
-        {panel === "abonnement" && <AbonnementContent mode="drawer" />}
-        {panel === "legal" && <LegalContent mode="drawer" />}
-        {panel === "rgpd" && <RgpdContent mode="drawer" />}
-        {panel === "mails" && <MailsSettingsContent />}
-        {panel === "inertie" && (
-          <InertiaContent
-            mode="drawer"
-            snapshot={inertiaSnapshot}
-            onOpenBoutique={() => openPanel("boutique")}
-          />
-        )}
-
-
-{panel === "boutique" && (
-  <BoutiqueContent
-    mode="drawer"
-    onOpenInertia={() => openPanel("inertie")}
-  />
-)}
-
-{panel === "parrainage" && (
-  <ReferralPanel
-    referralName={referralName}
-    referralPhone={referralPhone}
-    referralEmail={referralEmail}
-    referralFrom={referralFrom}
-    referralSubmitting={referralSubmitting}
-    referralNotice={referralNotice}
-    referralError={referralError}
-    onReferralNameChange={setReferralName}
-    onReferralPhoneChange={setReferralPhone}
-    onReferralEmailChange={setReferralEmail}
-    onReferralFromChange={setReferralFrom}
-    onSubmit={submitReferral}
-  />
-)}
-
-{panel === "notifications" && <NotificationsSettingsContent />}
-
-
-        <SiteInrcyPanelBlock panel={panel} panelProps={siteInrcyPanelProps} />
-
-        <SiteWebPanelBlock panel={panel} panelProps={siteWebPanelProps} />
-
-              {/* ✅ AJOUT : callbacks pour mise à jour immédiate de la pastille */}
-        
-<InstagramPanelBlock
+        <DashboardSettingsDrawerContent
           panel={panel}
-          panelProps={{
+          checkProfile={checkProfile}
+          checkActivity={checkActivity}
+          inertiaSnapshot={inertiaSnapshot}
+          openPanel={openPanel}
+          referralName={referralName}
+          referralPhone={referralPhone}
+          referralEmail={referralEmail}
+          referralFrom={referralFrom}
+          referralSubmitting={referralSubmitting}
+          referralNotice={referralNotice}
+          referralError={referralError}
+          onReferralNameChange={setReferralName}
+          onReferralPhoneChange={setReferralPhone}
+          onReferralEmailChange={setReferralEmail}
+          onReferralFromChange={setReferralFrom}
+          submitReferral={submitReferral}
+          siteInrcyPanelProps={siteInrcyPanelProps}
+          siteWebPanelProps={siteWebPanelProps}
+          instagramPanelProps={{
             instagramConnected,
             instagramAccountConnected,
             instagramUsername,
@@ -4741,19 +4268,9 @@ const checkActivity = useCallback(async () => {
             instagramUrlError,
             disconnectInstagramProfile: disconnectInstagramProfileFromDrawer,
           }}
-        />
-
-
-
-        <LinkedinPanelBlock panel={panel} panelProps={linkedinPanelProps} />
-
-        <GmbPanelBlock panel={panel} panelProps={gmbPanelProps} />
-
-
-
-        <FacebookPanelBlock
-          panel={panel}
-          panelProps={{
+          linkedinPanelProps={linkedinPanelProps}
+          gmbPanelProps={gmbPanelProps}
+          facebookPanelProps={{
             facebookPageConnected,
             facebookAccountConnected,
             facebookAccountEmail,
@@ -4783,9 +4300,6 @@ const checkActivity = useCallback(async () => {
             disconnectFacebookPage: disconnectFacebookPageFromDrawer,
           }}
         />
-
-
-
       </SettingsDrawer>
 
       <DashboardHelpModals

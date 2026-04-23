@@ -67,42 +67,11 @@
   gap: 44px;
 }
 
-.h1 {
-  font-size: 28px;
-  font-weight: 900;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  margin: 0;
-}
-
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 0;
-}
-
-.logoMark {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(10px);
-}
-
-.brandText {
-  display: flex;
-  flex-direction: column;
-}
-
-.brandRow {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
 }
 
 .tagline {
@@ -116,31 +85,6 @@
 .taglineDesktop { display: inline-flex; }
 .taglineMobile { display: none; }
 
-.closeBtn {
-  padding: 9px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(0, 0, 0, 0.22);
-  color: rgba(255, 255, 255, 0.88);
-  font-weight: 900;
-  cursor: pointer;
-  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.closeText {
-  display: inline;
-}
-
-.closeIcon {
-  display: none;
-  line-height: 1;
-}
-
-
 /* Header right controls (period + close) */
 .headerActions {
   display: flex;
@@ -149,38 +93,10 @@
   justify-content: flex-end;
 }
 
-.headerPills {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-
-.headerClose {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .headerCloseControls {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.closeBtn:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.26);
-  background: rgba(0, 0, 0, 0.28);
-}
-
-.sub {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 14px;
-  max-width: 62ch;
 }
 
 /* Summary bar (CRM-like) */
@@ -428,14 +344,12 @@
   line-height: 1.5;
 }
 
-
 .grid {
   display: grid;
   grid-template-columns: 1fr;
   column-gap: 18px;
   row-gap: 20px;
 }
-
 
 @media (min-width: 980px) {
   .grid {
@@ -445,89 +359,6 @@
     position: relative;
   }
 }
-/* Center summary removed (replaced by summaryBar). */
-
-.centerRing {
-  width: 260px;
-  height: 260px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: radial-gradient(circle at 30% 20%, rgba(56, 189, 248, 0.18), transparent 55%),
-              radial-gradient(circle at 70% 80%, rgba(157, 78, 255, 0.18), transparent 55%),
-              rgba(255, 255, 255, 0.06);
-  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(14px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 14px 0 12px;
-  animation: pulse 3.6s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { transform: translateZ(0) scale(1); }
-  50% { transform: translateZ(0) scale(1.02); }
-}
-
-.centerValue {
-  font-size: 40px;
-  font-weight: 950;
-  color: rgba(239, 246, 255, 0.95);
-  letter-spacing: -0.02em;
-}
-
-.centerLabel {
-  margin-top: 2px;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.78);
-  font-weight: 800;
-}
-
-.centerSub {
-  margin-top: 6px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.62);
-}
-
-.centerRing { pointer-events: auto; }
-
-.centerBreakdown {
-  margin-top: 12px;
-  width: 82%;
-  display: grid;
-  gap: 7px;
-}
-
-.centerLine {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  padding: 7px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(0, 0, 0, 0.18);
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 12px;
-  font-weight: 850;
-  cursor: pointer;
-  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
-}
-
-.centerLine:hover {
-  transform: translateY(-1px);
-  background: rgba(0, 0, 0, 0.26);
-  border-color: rgba(255, 255, 255, 0.18);
-}
-
-.centerLine b {
-  font-weight: 950;
-}
-
 
 .cube {
   border-radius: var(--r);
@@ -665,15 +496,6 @@
     text-overflow: clip;
   }
 
-  /* En responsive : bouton = icône X uniquement */
-  .closeText {
-    display: none;
-  }
-
-  .closeIcon {
-    display: inline;
-  }
-
   /* Les actions restent dans le flux, sans positionnement absolu */
   .headerActions {
     grid-column: 2;
@@ -691,27 +513,10 @@
     flex-wrap: nowrap;
   }
 
-  .headerPills {
-    position: static;
-    justify-content: flex-end;
-    z-index: auto;
-    pointer-events: auto;
-    flex: 0 1 auto;
-    gap: 8px;
-  }
-
-  .headerClose {
-    position: static;
-    z-index: auto;
-    pointer-events: auto;
-    flex: 0 0 auto;
-  }
-
   .headerCloseControls {
     gap: 8px;
     flex-wrap: nowrap;
   }
-
 
   /* Cube header: 1) titre 2) sous-texte 3) bulles centrées */
   .cubeTop {
@@ -788,7 +593,6 @@
   }
 
 }
-
 
 .pills {
   display: flex;
@@ -972,7 +776,6 @@
   font-size: 13px;
 }
 
-.action,
 .actionCompact {
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: radial-gradient(circle at 10% 10%, rgba(56, 189, 248, 0.14), transparent 55%),

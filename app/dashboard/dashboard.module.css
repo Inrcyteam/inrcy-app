@@ -48,12 +48,6 @@
 
 .brandText { line-height: 1.1; }
 
-.brandName {
-  font-weight: 950;
-  letter-spacing: -0.3px;
-  font-size: 22px;
-}
-
 .brandTag {
   margin-top: 3px;
   font-size: 18px;
@@ -233,10 +227,6 @@
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.32);
 }
 
-.kickerDot {
-  display: none;
-}
-
 .kicker::before {
   content: "";
   position: absolute;
@@ -291,13 +281,6 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-}
-
-.titleLine2 {
-  display: block;
-  margin-top: 8px;
-  font-size: 28px;
-  color: rgba(255, 255, 255, 0.88);
 }
 
 .subtitle {
@@ -442,13 +425,6 @@
 
 .powerHintComplete {
   font-weight: 700;
-}
-
-.ctaRow {
-  margin-top: 14px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
 }
 
 /* =========================
@@ -597,20 +573,6 @@
   box-shadow: 0 0 0 7px rgba(56, 189, 248, 0.16);
 }
 
-/* Mini Core */
-.miniCore {
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  position: relative;
-  flex: 0 0 auto;
-
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.30);
-  overflow: hidden;
-}
-
 .miniCoreRing {
   position: absolute;
   inset: 6px;
@@ -747,7 +709,6 @@
   backface-visibility: hidden;
 }
 
-
 .metricLabel { font-size: 14px; color: rgba(255, 255, 255, 0.70); }
 .metricValue { margin-top: 6px; font-size: 22px; font-weight: 950; letter-spacing: -0.3px; }
 .metricHint  { margin-top: 4px; font-size: 14px; color: rgba(255, 255, 255, 0.60); }
@@ -789,49 +750,6 @@
 }
 
 /* Bouton "GO" aligné sur iNrStats */
-.generatorGoBtn {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: linear-gradient(135deg, #5B5CFF 0%, #9F6BFF 100%);
-  border: none;
-  box-shadow: 0 8px 22px rgba(91, 92, 255, 0.35);
-  color: white;
-  font-weight: 950;
-  cursor: pointer;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
-  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
-  white-space: nowrap;
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-}
-
-.generatorGoBtn::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: linear-gradient(
-    135deg,
-    rgba(56, 189, 248, 0.32),
-    rgba(157, 78, 255, 0.30),
-    rgba(255, 60, 120, 0.20)
-  );
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-.generatorGoBtn:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.28);
-  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.52);
-}
-
-.generatorGoBtn:focus-visible {
-  outline: 2px solid rgba(56, 189, 248, 0.60);
-  outline-offset: 2px;
-}
 
 .generatorGoBtnLabel {
   display: inline;
@@ -973,7 +891,6 @@
   justify-content: center;
 }
 
-
 .carouselDots{
   display: flex;
   justify-content: center;
@@ -993,7 +910,6 @@
   background: rgba(255,255,255,0.9);
   transform: scale(1.05);
 }
-
 
 .h2 { margin: 0; font-size: 20px; letter-spacing: -0.2px; }
 
@@ -1036,7 +952,6 @@
 @media (hover: none), (pointer: coarse) {
   .moduleCard,
   .actionBtn,
-  .quickBtn,
   .primaryBtn,
   .secondaryBtn,
   .ghostBtn,
@@ -1050,7 +965,6 @@
 
   .moduleCard:hover,
   .actionBtn:hover,
-  .quickBtn:hover,
   .primaryBtn:hover,
   .secondaryBtn:hover,
   .ghostBtn:hover,
@@ -1086,41 +1000,12 @@
   pointer-events: none;
 }
 
-.moduleTop {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.moduleName { font-weight: 950; letter-spacing: -0.2px; }
-
 .moduleDesc {
   margin-top: 8px;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.70);
   line-height: 1.45;
   min-height: 34px;
-}
-
-.moduleBottom {
-  margin-top: 12px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: end;
-  gap: 10px;
-}
-
-.moduleMetaLabel { font-size: 11px; color: rgba(255, 255, 255, 0.60); }
-.moduleMetaValue { margin-top: 4px; font-weight: 950; letter-spacing: -0.2px; color: rgba(255, 255, 255, 0.82); }
-
-/* ✅ NOUVEAU : zone actions (multi-boutons) */
-.moduleActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-  max-width: 320px;
 }
 
 /* ✅ NOUVEAU : boutons d’action (plus compacts) */
@@ -1194,102 +1079,7 @@
 
 .smallMuted { font-size: 12px; color: rgba(255, 255, 255, 0.62); }
 
-.blockGrid2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.miniCard {
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  padding: 12px;
-}
-
-.miniTop {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.miniTitle { font-weight: 950; }
-.miniDesc  { margin-top: 6px; font-size: 12px; color: rgba(255, 255, 255, 0.70); min-height: 32px; line-height: 1.4; }
-.miniBottom{ margin-top: 10px; display: flex; justify-content: flex-end; }
-
-/* Quick actions */
-.quickGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.quickBtn {
-  text-align: left;
-  border-radius: 16px;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
-  color: rgba(255, 255, 255, 0.92);
-  position: relative;
-  overflow: hidden;
-}
-
-.quickBtn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.quickBtn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.quickTitle { display: block; font-weight: 950; }
-.quickSub { display: block; margin-top: 4px; font-size: 12px; color: rgba(255, 255, 255, 0.70); }
-
-.quickBadge {
-  display: inline-flex;
-  margin-top: 10px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.82);
-}
-
-.quick_cyan::after,
-.quick_purple::after,
-.quick_pink::after,
-.quick_orange::after {
-  content: "";
-  position: absolute;
-  inset: auto -60px -60px auto;
-  width: 220px;
-  height: 220px;
-  border-radius: 999px;
-  opacity: 0.26;
-  pointer-events: none;
-}
-
-.quick_cyan::after { background: radial-gradient(circle at 30% 30%, rgba(56, 189, 248, 0.4), transparent 60%); }
-.quick_purple::after { background: radial-gradient(circle at 30% 30%, rgba(167, 139, 250, 0.4), transparent 60%); }
-.quick_pink::after { background: radial-gradient(circle at 30% 30%, rgba(244, 114, 182, 0.4), transparent 60%); }
-.quick_orange::after { background: radial-gradient(circle at 30% 30%, rgba(251, 146, 60, 0.4), transparent 60%); }
-
 /* badges + buttons */
-.badge {
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 255, 255, 0.82);
-  white-space: nowrap;
-}
-
 .badgeOk { border-color: rgba(34, 197, 94, 0.30); background: rgba(34, 197, 94, 0.12); }
 .badgeWarn { border-color: rgba(56, 189, 248, 0.28); background: rgba(56, 189, 248, 0.12); }
 .badgeSoon { border-color: rgba(167, 139, 250, 0.24); background: rgba(167, 139, 250, 0.10); }
@@ -1368,39 +1158,7 @@
 }
 
 .footerLeft {}
-.footerRight {}
 
-/* responsive */
-@media (max-width: 1080px) {
-  .hero { grid-template-columns: 1fr; }
-  .generatorGrid { grid-template-columns: 1fr 1fr; }
-
-  .lowerRow { grid-template-columns: minmax(0, 1fr); } /* ✅ */
-  .blockGrid2 { grid-template-columns: 1fr; }
-}
-
-@media (max-width: 560px) {
-  .title { font-size: 28px; }
-  .titleLine2 { font-size: 22px; }
-  .generatorGrid { grid-template-columns: 1fr; }
-
-  /* hide desktop actions / show hamburger + bell */
-  .topbarActions { display: none; }
-  .mobileBellWrap { display: block; }
-  .mobileMenuWrap { display: block; }
-
-  .logoImg { width: 64px; height: 64px; }
-
-  .miniCore { width: 38px; height: 38px; }
-
-  .brandName { font-size: 16px; }
-  .brandTag { margin-top: 0; font-size: 13px; line-height: 1.15; }
-
-  /* ✅ actions dans les cartes : largeur propre sur mobile */
-  .moduleBottom { grid-template-columns: 1fr; }
-  .moduleActions { justify-content: flex-start; max-width: 100%; }
-  .actionBtn { flex: 1 1 auto; }
-}
 
 /* ===== iNrCy signature flow ===== */
 .signatureFlow {
@@ -1434,7 +1192,6 @@
   opacity: 0.7;
   font-weight: 900;
 }
-
 
 /* Générateur central */
 .generatorCoreCenter {
@@ -1503,7 +1260,6 @@
   }
 }
 
-
 @media (max-width: 560px) {
   .powerBlock {
     width: 100%;
@@ -1527,79 +1283,6 @@
    Flux - Site iNrCy en BULLE
 ========================= */
 
-.moduleBubble{
-position: relative;     /* ✅ ajoute ça */
-  border-radius: 9999px;
-  padding: 22px 26px;
-  overflow: hidden;
-padding: 26px 22px 28px;   /* + de padding en bas */
-  min-height: 220px;
-  border: 1px solid rgba(255,255,255,0.16);
-  background: rgba(255,255,255,0.045);
-  box-shadow:
-    0 30px 120px rgba(0,0,0,0.55),
-    inset 0 0 0 1px rgba(255,255,255,0.06);
-
-  /* ✅ AJOUTE ÇA */
-  max-width: 560px;          /* empêche la bulle géante */
-  margin: 0 auto;            /* centre dans la cellule */
-  display: flex;             /* centre le contenu */
-  flex-direction: column;
-  justify-content: center;
-}
-
-/* ✅ Sur la bulle : on coupe le gros décor des cartes */
-.moduleBubble .moduleGlow{
-  display: none !important;
-}
-
-/* Si ta carte utilise aussi des pseudo-éléments décoratifs */
-.moduleBubble::after{
-  content: none !important;
-  display: none !important;
-}
-
-
-/* Halo “bulle” (vraiment rond) */
-.moduleBubble::before{
-  content:"";
-  position:absolute;
-  inset:-15%;
-  border-radius: 9999px;
-  background:
-    radial-gradient(circle at 25% 35%, rgba(56,189,248,0.22), transparent 55%),
-    radial-gradient(circle at 70% 45%, rgba(167,139,250,0.16), transparent 60%),
-    radial-gradient(circle at 55% 80%, rgba(244,114,182,0.14), transparent 62%);
-  opacity: 0.9;
-  pointer-events:none;
-  z-index:0;
-}
-
-.moduleBubble > *{
-  position: relative;
-  z-index: 1;
-}
-
-/* texte */
-.moduleBubble .moduleDesc{
-  min-height: unset;
-  margin-top: 10px;
-}
-
-/* Footer version bulle */
-.moduleBottomBubble{
-  margin-top: 16px;
-}
-
-/* ✅ seulement 2 boutons */
-.moduleActionsBubble{
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
 /* bouton principal “Configurer” */
 .actionMain{
   min-width: 180px;
@@ -1607,100 +1290,6 @@ padding: 26px 22px 28px;   /* + de padding en bas */
   padding: 12px 16px;
   font-size: 12px;
 }
-
-/* Mobile : 2 boutons en colonne */
-@media (max-width: 560px){
-  .moduleActionsBubble{
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-  .moduleActionsBubble .actionBtn{
-    width: 100%;
-    justify-content: center;
-  }
-}
-
-/* =========================
-   Bulle verticale - étages
-========================= */
-
-.moduleBubble{
-  position: relative;
-
-  /* ✅ vraie forme de bulle (stable) */
-  width: 100%;
-  max-width: 360px;
-aspect-ratio: 2.8 / 4;
-  margin: 0 auto;
-
-  border-radius: 9999px;
-  padding: 26px 22px 30px; /* + padding en bas (pour le bouton) */
-  overflow: hidden;
-
-  border: 1px solid rgba(255,255,255,0.16);
-
-  /* ✅ fond “orb” */
-  background:
-    radial-gradient(circle at 28% 22%,
-      rgba(56,189,248,0.16),
-      rgba(255,255,255,0.04) 44%,
-      rgba(255,255,255,0.01) 60%,
-      rgba(0,0,0,0.00) 75%),
-    rgba(255,255,255,0.04);
-
-  box-shadow:
-    0 40px 140px rgba(0,0,0,0.60),
-    inset 0 0 0 1px rgba(255,255,255,0.06),
-    inset 0 -40px 80px rgba(0,0,0,0.25);
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* ✅ halo couleur interne */
-.moduleBubble::before{
-  content:"";
-  position:absolute;
-  inset:-15%;
-  border-radius: 9999px;
-  background:
-    radial-gradient(circle at 25% 35%, rgba(56,189,248,0.18), transparent 58%),
-    radial-gradient(circle at 75% 55%, rgba(167,139,250,0.14), transparent 62%),
-    radial-gradient(circle at 55% 85%, rgba(244,114,182,0.12), transparent 64%);
-  opacity: 0.9;
-  pointer-events:none;
-  z-index:0;
-}
-
-/* ✅ reflet “bulle” */
-.moduleBubble::after{
-  content:"";
-  position:absolute;
-  left: 10%;
-  top: 7%;
-  width: 58%;
-  height: 36%;
-  border-radius: 9999px;
-  background: radial-gradient(circle at 30% 30%,
-    rgba(255,255,255,0.22),
-    rgba(255,255,255,0.10) 35%,
-    transparent 70%);
-  filter: blur(2px);
-  opacity: 0.85;
-  pointer-events:none;
-  z-index:0;
-}
-
-.moduleBubble > *{
-  position: relative;
-  z-index: 1;
-}
-
-/* coupe le décor des autres cartes sur la bulle */
-.moduleBubble .moduleGlow{ display:none !important; }
-.moduleBubble::after{ content:none !important; display:none !important; }
 
 /* Contenu vertical */
 .bubbleStack{
@@ -1710,74 +1299,6 @@ aspect-ratio: 2.8 / 4;
   gap: 10px;
   justify-items: center;
   text-align: center;
-}
-
-/* Picto couleur */
-.bubbleIcon{
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(255,255,255,0.16);
-  background: rgba(255,255,255,0.06);
-  box-shadow:
-    0 12px 40px rgba(0,0,0,0.35),
-    inset 0 0 0 1px rgba(255,255,255,0.06);
-}
-
-.bubbleIconDot{
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: rgba(56,189,248,0.95);
-  box-shadow: 0 0 18px rgba(56,189,248,0.55);
-}
-
-.bubbleTitle{
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: -0.4px;
-  margin-top: 2px;
-}
-
-.bubbleTitleRow{
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex-wrap: nowrap;
-}
-
-/* Statut */
-.bubbleStatusRow{
-  display: flex;
-  justify-content: center;
-}
-
-/* “Accélération” */
-.bubbleBoost{
-  width: 92%;
-  border-radius: 999px;
-  padding: 10px 12px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.05);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.bubbleBoostLabel{
-  opacity: 0.8;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.bubbleBoostValue{
-  font-size: 12px;
-  font-weight: 900;
-  opacity: 0.95;
 }
 
 /* Boutons en colonne */
@@ -1826,15 +1347,6 @@ aspect-ratio: 2.8 / 4;
 }
 
 /* Mobile */
-@media (max-width: 560px){
-  .moduleBubble{ max-width: 100%; }
-  .bubbleBoost{ width: 100%; }
-  /* ✅ mobile : on garde des boutons nettement plus étroits */
-  .bubbleActions .actionBtn,
-  .bubbleActions .actionMain{
-    width: min(60%, 180px);
-  }
-}
 
 /* Mini logo au-dessus */
 .bubbleLogo{
@@ -1866,7 +1378,6 @@ aspect-ratio: 2.8 / 4;
     inset 0 0 0 1px rgba(255,255,255,0.06),
     0 0 12px rgba(56,189,248,0.25); /* glow léger */
 }
-
 
 /* Status compact (dot + label) */
 .bubbleStatusCompact{
@@ -2306,11 +1817,6 @@ font-size: 12px;
     margin: 0 !important;
   }
 
-  /* ✅ Ligne 2 : badge "À connecter" */
-  :global(html.isTouch) .bubbleStatusRow{
-    margin: 0 !important;
-  }
-
   /* ✅ Ligne 3 : tagline */
   :global(html.isTouch) .bubbleTagline{
     margin: 2px 0 0 !important;
@@ -2441,29 +1947,6 @@ overflow: hidden;
   transform: translateY(-1px);
   border-color: rgba(255,255,255,0.18);
   background: rgba(255,255,255,0.08);
-}
-
-.loopGearIcon{
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  border: 2px solid rgba(255,255,255,0.72);
-  position: relative;
-  opacity: 0.9;
-}
-
-.loopGearIcon::before,
-.loopGearIcon::after{
-  content:"";
-  position:absolute;
-  inset:-6px;
-  border-radius: 999px;
-  border: 1px dashed rgba(255,255,255,0.22);
-}
-
-.loopGearIcon::after{
-  inset:-10px;
-  border: 1px solid rgba(255,255,255,0.10);
 }
 
 /* Accent glows (cohérent avec tes quick_*) */
@@ -3024,7 +2507,6 @@ transform: scale(1.50);
   transform: translate3d(0,-10px,0) scale(1.04);
 }
 
-
 /* reflet verre */
 .gearCapsule::after{
   content:"";
@@ -3050,7 +2532,6 @@ transform: scale(1.50);
 .gear_cyan::before{ background: radial-gradient(circle, rgba(56,189,248,0.55), transparent 60%); }
 .gear_purple::before{ background: radial-gradient(circle, rgba(167,139,250,0.55), transparent 60%); }
 .gear_pink::before{ background: radial-gradient(circle, rgba(244,114,182,0.55), transparent 60%); }
-.gear_orange::before{ background: radial-gradient(circle, rgba(251,146,60,0.55), transparent 60%); }
 
 /* contenu */
 .gearInner{
@@ -3248,10 +2729,6 @@ transform: scale(1.50);
     font-size: 18px !important;
   }
 
-  :global(html.isTouch) .gearDesc{
-    font-size: 14px !important;
-  }
-
   :global(html.isTouch) .gearBtn{
     padding: 10px 18px !important;
     font-size: 13px !important;
@@ -3295,7 +2772,6 @@ transform: scale(1.50);
   gap: 6px;
   padding: 10px 0 6px; /* au lieu de padding-top uniquement */
 }
-
 
 /* === Config drawer actions (GA4/GSC) === */
 .iconBtn{
@@ -3375,33 +2851,8 @@ transform: scale(1.50);
   font-weight: 800;
 }
 
-.errNote{
-  margin-top: 8px;
-  color: rgba(248, 113, 113, 0.95);
-  font-size: 12px;
-  font-weight: 800;
-}
-
 .viewBtn{
   opacity: 0.95;
-}
-
-/* Ensure <select>/<option> are readable on desktop (Chrome uses white option background). */
-.selectReadable{
-  /* Force readable native select + dropdown on Windows/Chrome */
-  color: #fff;
-  background-color: rgba(15, 23, 42, 0.95);
-  color-scheme: dark;
-}
-
-.selectReadable option{
-  background-color: #0f172a;
-  color: #fff;
-}
-
-.selectReadable option{
-  color: #111;
-  background: #fff;
 }
 
 /* === Drawer blocks (title + status aligned) === */
@@ -3434,146 +2885,6 @@ transform: scale(1.50);
   background: rgba(248, 113, 113, 0.16);
 }
 
-/* =========================
-   Hub pages (Booster / Fidéliser)
-========================= */
-
-.hubHero{
-  max-width: 1220px;
-  margin: 0 auto 14px;
-  display: grid;
-  grid-template-columns: 1.15fr 0.85fr;
-  gap: 14px;
-  align-items: stretch;
-}
-
-.hubHeroLeft{
-  position: relative;
-  overflow: hidden;
-  border-radius: 22px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.05);
-  box-shadow: 0 26px 90px rgba(0,0,0,0.42);
-  backdrop-filter: blur(14px);
-  padding: 18px;
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 14px;
-  align-items: center;
-}
-
-.hubHeroRight{
-  display: grid;
-  gap: 10px;
-}
-
-.hubOrb,
-.hubOrbAlt{
-  width: 110px;
-  height: 110px;
-  border-radius: 999px;
-  filter: blur(0px);
-  box-shadow:
-    0 0 28px rgba(56,189,248,0.20),
-    0 0 60px rgba(167,139,250,0.18),
-    0 0 90px rgba(244,114,182,0.12);
-  border: 1px solid rgba(255,255,255,0.12);
-}
-
-.hubOrb{
-  background:
-    radial-gradient(circle at 30% 30%, rgba(56,189,248,0.95), transparent 60%),
-    radial-gradient(circle at 70% 50%, rgba(167,139,250,0.85), transparent 62%),
-    radial-gradient(circle at 55% 80%, rgba(244,114,182,0.65), transparent 62%),
-    rgba(255,255,255,0.02);
-}
-
-.hubOrbAlt{
-  background:
-    radial-gradient(circle at 30% 30%, rgba(244,114,182,0.85), transparent 60%),
-    radial-gradient(circle at 70% 50%, rgba(56,189,248,0.80), transparent 62%),
-    radial-gradient(circle at 55% 80%, rgba(251,146,60,0.55), transparent 62%),
-    rgba(255,255,255,0.02);
-}
-
-.hubHeroText{
-  display: grid;
-  gap: 8px;
-}
-
-.hubHeroTitle{
-  font-size: 18px;
-  font-weight: 950;
-  color: rgba(255,255,255,0.95);
-  letter-spacing: -0.02em;
-}
-
-.hubHeroSub{
-  font-size: 13px;
-  color: rgba(255,255,255,0.72);
-  line-height: 1.45;
-}
-
-.hubHeroActions{
-  margin-top: 10px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.hubSection{
-  max-width: 1220px;
-  margin: 0 auto;
-  padding-top: 6px;
-}
-
-.hubGrid{
-  margin-top: 12px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.hubCardBtn{
-  text-align: left;
-  width: 100%;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-}
-
-.hubCardBtn:hover{
-  transform: translateY(-2px);
-  border-color: rgba(56,189,248,0.28);
-  background: rgba(255,255,255,0.06);
-}
-
-.hubCardBtn:active{
-  transform: translateY(0px) scale(0.995);
-}
-
-.hubCardFooter{
-  margin-top: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-/* Responsive */
-@media (max-width: 980px){
-  .hubHero{
-    grid-template-columns: 1fr;
-  }
-  .hubHeroLeft{
-    grid-template-columns: 92px 1fr;
-  }
-  .hubGrid{
-    grid-template-columns: 1fr;
-  }
-}
-
 /* ----------------------------
    Spinners / refresh controls
 ----------------------------- */
@@ -3586,12 +2897,6 @@ transform: scale(1.50);
   border-top-color: rgba(255,255,255,.85);
   display: inline-block;
   animation: inrcySpin 0.9s linear infinite;
-}
-
-/* Utilisé quand on veut garder la valeur visible et juste indiquer un refresh */
-.miniSpinnerInline{
-  margin-left: 10px;
-  transform: translateY(2px);
 }
 
 @keyframes inrcySpin{ to{ transform: rotate(360deg); } }
@@ -3616,12 +2921,6 @@ transform: scale(1.50);
   height: 18px;
   opacity: .85;
 }
-
-.refreshIconSpinning{
-  animation: inrcySpin 0.9s linear infinite;
-}
-
-
 
 /* =========================
    Notifications bell + panel
