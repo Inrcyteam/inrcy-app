@@ -3,6 +3,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { NextResponse } from "next/server";
 
 import { requireEnv } from "@/lib/env";
+import { shouldBypassUpstashInCurrentEnv } from "@/lib/upstashMode";
 
 type Window = `${number} ${"ms" | "s" | "m" | "h" | "d"}`;
 
@@ -50,7 +51,7 @@ function getLimiter(name: string, limit: number, window: Window) {
     g.__inrcy_limiters[key] = new Ratelimit({
       redis: getRedis(),
       limiter: Ratelimit.slidingWindow(limit, window),
-      analytics: true,
+      analytics: false,
       prefix: `inrcy_rl:${name}`,
     });
   }
@@ -64,6 +65,8 @@ function getLimiter(name: string, limit: number, window: Window) {
 export async function enforceRateLimit(config: RateLimitConfig): Promise<NextResponse | null> {
   // If KV not configured yet, do not block (but keep app functional).
   // You can remove this try/catch once KV is mandatory.
+  if (shouldBypassUpstashInCurrentEnv()) return null;
+
   try {
     const limiter = getLimiter(config.name, config.limit, config.window);
     const res = await limiter.limit(config.identifier);
@@ -119,6 +122,8 @@ type QuotaConfig = {
  * Returns `null` if allowed, otherwise a NextResponse(429).
  */
 export async function enforceQuota(config: QuotaConfig): Promise<NextResponse | null> {
+  if (shouldBypassUpstashInCurrentEnv()) return null;
+
   try {
     const redis = getRedis();
     const key = `inrcy_q:${config.name}:${config.identifier}`;

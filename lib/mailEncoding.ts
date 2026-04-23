@@ -46,6 +46,17 @@ export function repairCommonMojibake(value: string, maxPasses = 2) {
   return current;
 }
 
+function normalizeSubjectTypography(value: string) {
+  return value
+    .replace(/[‘’′]/g, "'")
+    .replace(/[“”″]/g, '"')
+    .replace(/[–—−]/g, " - ")
+    .replace(/[\u00A0\u202F]/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[\t\r\n]+/g, " ")
+    .replace(/\s{2,}/g, " ");
+}
+
 export function normalizeMailSubject(value: string) {
-  return repairCommonMojibake(String(value || "")).trim();
+  return normalizeSubjectTypography(repairCommonMojibake(String(value || ""))).trim();
 }

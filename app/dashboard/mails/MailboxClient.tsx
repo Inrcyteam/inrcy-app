@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./mails.module.css";
 import { createClient } from "@/lib/supabaseClient";
-import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/dashboard/_components/ChannelImageRetouchTool";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import MailboxHeader from "./_components/MailboxHeader";
@@ -12,6 +11,10 @@ import MobileFoldersMenu from "./_components/MobileFoldersMenu";
 import FolderTabs from "./_components/FolderTabs";
 import MailboxToolbar from "./_components/MailboxToolbar";
 import MailboxList from "./_components/MailboxList";
+import MailboxSearchPanel from "./_components/MailboxSearchPanel";
+import MailboxDetailsModal from "./_components/MailboxDetailsModal";
+import MailboxPublicationRetouchModal from "./_components/MailboxPublicationRetouchModal";
+import MailboxComposeModal from "./_components/MailboxComposeModal";
 import {
   ALL_FOLDERS,
   BULK_CONFIRM_STRONG_THRESHOLD,
@@ -118,26 +121,7 @@ import {
   providerSendEndpoint,
 } from "./_lib/mailboxPhase25";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
-
-
-const pillBtn: React.CSSProperties = {
-  minHeight: 38,
-  borderRadius: 999,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(255,255,255,0.03)",
-  color: "inherit",
-  padding: "0 14px",
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-};
-
-const pillBtnActive: React.CSSProperties = {
-  border: "1px solid rgba(76,195,255,0.45)",
-  boxShadow: "0 0 0 1px rgba(76,195,255,0.18) inset",
-  background: "rgba(76,195,255,0.10)",
-};
-
-
+import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 
 export default function MailboxClient() {
   const [helpOpen, setHelpOpen] = useState(false);
@@ -1166,15 +1150,27 @@ export default function MailboxClient() {
           if (j?.subject) setSubject(normalizeMailSubject(String(j.subject)));
           else if (preSubject) setSubject(normalizeMailSubject(preSubject));
 
-          if (j?.body_text) setText(applySignaturePreview(String(j.body_text), signatureEnabled ? signaturePreview : ""));
-          else if (preText) setText(applySignaturePreview(preText, signatureEnabled ? signaturePreview : ""));
+          if (j?.body_text) {
+            const renderedBody = String(j.body_text);
+            const sanitizedBody = signatureEnabled ? stripTemplateSignatureBlock(renderedBody) : renderedBody;
+            setText(applySignaturePreview(sanitizedBody, signatureEnabled ? signaturePreview : ""));
+          } else if (preText) {
+            const sanitizedBody = signatureEnabled ? stripTemplateSignatureBlock(preText) : preText;
+            setText(applySignaturePreview(sanitizedBody, signatureEnabled ? signaturePreview : ""));
+          }
         } catch {
           if (preSubject) setSubject(normalizeMailSubject(preSubject));
-          if (preText) setText(applySignaturePreview(preText, signatureEnabled ? signaturePreview : ""));
+          if (preText) {
+            const sanitizedBody = signatureEnabled ? stripTemplateSignatureBlock(preText) : preText;
+            setText(applySignaturePreview(sanitizedBody, signatureEnabled ? signaturePreview : ""));
+          }
         }
       } else {
         if (preSubject) setSubject(normalizeMailSubject(preSubject));
-        if (preText) setText(applySignaturePreview(preText, signatureEnabled ? signaturePreview : ""));
+        if (preText) {
+          const sanitizedBody = signatureEnabled ? stripTemplateSignatureBlock(preText) : preText;
+          setText(applySignaturePreview(sanitizedBody, signatureEnabled ? signaturePreview : ""));
+        }
       }
 
       setComposeType("mail");
@@ -1921,42 +1917,17 @@ async function deleteDraftPermanently(id: string) {
               setBoxView={setBoxView}
             />
 
-            {searchOpen ? (
-              <div className={styles.searchPanel}>
-                <div className={styles.searchPanelInner}>
-                  <input
-                    ref={historySearchRef}
-                    className={styles.searchInputInline}
-                    placeholder="Rechercher un envoi…"
-                    value={historyQuery}
-                    onChange={(e) => setHistoryQuery(e.target.value)}
-                  />
-                  {historyQuery.trim() ? (
-                    <button
-                      className={styles.searchClearBtn}
-                      type="button"
-                      onClick={() => {
-                        setHistoryQuery("");
-                        requestAnimationFrame(() => historySearchRef.current?.focus());
-                      }}
-                      title="Effacer"
-                      aria-label="Effacer"
-                    >
-                      ×
-                    </button>
-                  ) : null}
-                  <button
-                    className={styles.searchCloseBtn}
-                    type="button"
-                    onClick={() => setSearchOpen(false)}
-                    title="Fermer"
-                    aria-label="Fermer"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            ) : null}
+            <MailboxSearchPanel
+              open={searchOpen}
+              value={historyQuery}
+              inputRef={historySearchRef}
+              onChange={setHistoryQuery}
+              onClose={() => setSearchOpen(false)}
+              onClear={() => {
+                setHistoryQuery("");
+                requestAnimationFrame(() => historySearchRef.current?.focus());
+              }}
+            />
 
             <MailboxList
               folder={folder}
@@ -1986,1310 +1957,123 @@ async function deleteDraftPermanently(id: string) {
 
         </div>
 
-        {/* Details modal (double-clic sur un message) */}
-        {detailsOpen ? (
-          <div className={styles.modalOverlay} onClick={() => setDetailsOpen(false)}>
-            <div className={`${styles.modalCard} ${styles.detailsModalCard}`} onClick={(e) => e.stopPropagation()}>
-              <div className={styles.modalHeader}>
-                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                  <div className={styles.modalTitle}>Détails</div>
-                  {detailsItem ? (
-                    <>
-                      <span className={`${styles.badge} ${pill(detailsItem.provider).cls}`}>{pill(detailsItem.provider).label}</span>
-                      {detailsItem.source !== "app_events" && detailsAccountLabel ? (
-                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>• {detailsAccountLabel}</span>
-                      ) : null}
-                    </>
-                  ) : null}
-                </div>
+        <MailboxDetailsModal
+          open={detailsOpen}
+          onClose={() => setDetailsOpen(false)}
+          detailsItem={detailsItem}
+          detailsAccountLabel={detailsAccountLabel}
+          detailsChannelKey={detailsChannelKey}
+          setDetailsChannelKey={setDetailsChannelKey}
+          detailsEditMode={detailsEditMode}
+          setDetailsEditMode={setDetailsEditMode}
+          detailsActionBusy={detailsActionBusy}
+          detailsActionError={detailsActionError}
+          detailsActionSuccess={detailsActionSuccess}
+          setDetailsActionError={setDetailsActionError}
+          setDetailsActionSuccess={setDetailsActionSuccess}
+          detailsSourceDocPayload={detailsSourceDocPayload}
+          deletingHistoryItemId={deletingHistoryItemId}
+          deletingHistorySelection={deletingHistorySelection}
+          campaignRecipients={campaignRecipients}
+          campaignRecipientsLoading={campaignRecipientsLoading}
+          campaignRecipientsPage={campaignRecipientsPage}
+          setCampaignRecipientsPage={setCampaignRecipientsPage}
+          campaignRecipientsPageCount={campaignRecipientsPageCount}
+          campaignRecipientsTotal={campaignRecipientsTotal}
+          campaignRecipientsFilter={campaignRecipientsFilter}
+          setCampaignRecipientsFilter={setCampaignRecipientsFilter}
+          campaignHealth={campaignHealth}
+          campaignHealthLoading={campaignHealthLoading}
+          campaignActionBusyId={campaignActionBusyId}
+          publicationEditForm={publicationEditForm}
+          setPublicationEditForm={setPublicationEditForm}
+          publicationEditFileInputId={publicationEditFileInputId}
+          activePublicationEditChannelKey={activePublicationEditChannelKey}
+          activePublicationEditPreset={activePublicationEditPreset}
+          activePublicationEditAssets={activePublicationEditAssets}
+          togglePublicationImage={togglePublicationImage}
+          openPublicationRetouch={openPublicationRetouch}
+          removePublicationImage={removePublicationImage}
+          addPublicationFiles={addPublicationFiles}
+          saveChannelPublication={saveChannelPublication}
+          deleteChannelPublication={deleteChannelPublication}
+          retryCampaignFailedRecipients={retryCampaignFailedRecipients}
+          deleteHistoryEntry={deleteHistoryEntry}
+          loadCampaignRecipients={loadCampaignRecipients}
+          loadCampaignHealth={loadCampaignHealth}
+        />
 
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {/* Trash removed intentionally */}
-                  <button className={styles.btnGhost} onClick={() => setDetailsOpen(false)} type="button">
-                    ✕
-                  </button>
-                </div>
-              </div>
+        <MailboxPublicationRetouchModal
+          open={detailsOpen}
+          detailsEditMode={detailsEditMode}
+          publicationRetouchAsset={publicationRetouchAsset}
+          publicationRetouchChannelKey={publicationRetouchChannelKey}
+          publicationRetouchStageRef={publicationRetouchStageRef}
+          publicationRetouchStageSize={publicationRetouchStageSize}
+          publicationRetouchImageMeta={publicationRetouchImageMeta}
+          isPublicationRetouchDragging={isPublicationRetouchDragging}
+          publicationEditImagesByChannel={publicationEditImagesByChannel}
+          setPublicationRetouchImageKey={setPublicationRetouchImageKey}
+          publicationRetouchDragRef={publicationRetouchDragRef}
+          setIsPublicationRetouchDragging={setIsPublicationRetouchDragging}
+          updatePublicationChannelAssets={updatePublicationChannelAssets}
+          closePublicationRetouch={closePublicationRetouch}
+        />
 
-              <div className={styles.modalBody}>
-                {!detailsItem ? (
-                  <div style={{ color: "rgba(255,255,255,0.65)" }}>Sélectionne un élément.</div>
-                ) : (() => {
-                  const payload = detailsItem.source === "app_events" ? ((detailsItem as any)?.raw?.payload || null) : null;
-                  const channelPublications = detailsItem.source === "app_events" ? extractChannelPublications(payload) : [];
-                  const defaultParts = detailsItem.source === "app_events" ? extractPublicationParts(payload) : {};
-                  const publicationChannelEntries = detailsItem.source === "app_events"
-                    ? channelPublications.length
-                      ? channelPublications
-                      : orderChannelKeys((detailsItem.channels && detailsItem.channels.length ? detailsItem.channels : [detailsItem.target]).filter(Boolean).map((channel) => String(channel))).map((channel) => ({
-                          key: channel,
-                          label: formatChannelLabel(channel),
-                          parts: defaultParts,
-                        }))
-                    : [];
-                  const activePublicationEntry = detailsItem.source === "app_events"
-                    ? (publicationChannelEntries.find((entry) => entry.key === detailsChannelKey) || publicationChannelEntries[0] || null)
-                    : null;
-                  const activePublicationResult = detailsItem.source === "app_events" && activePublicationEntry
-                    ? ((payload?.results && typeof payload.results === "object" ? (payload.results as any)[activePublicationEntry.key] : null) || null)
-                    : null;
-                  const activePublicationDeleted = isDeletedChannelResult(activePublicationResult);
-                  const activePublicationFailed = isFailedChannelResult(activePublicationResult);
-                  const activePublicationFailureMessage = getFailedChannelMessage(activePublicationResult);
-                  const activeParts = activePublicationEntry?.parts || defaultParts;
-                  const sourceDocAttachments = detailsItem.source === "send_items"
-                    ? extractAttachmentsFromPayload(detailsSourceDocPayload)
-                    : [];
-                  const attachmentCandidates = detailsItem.source === "send_items"
-                    ? [...(detailsItem.attachments || []), ...sourceDocAttachments]
-                    : detailsItem.source === "app_events"
-                    ? [...(activeParts.attachments || [])]
-                    : [];
-                  const dedupedAttachments = attachmentCandidates.filter((att, idx, arr) => {
-                    const key = `${att.url || ""}|${att.name || ""}`;
-                    return arr.findIndex((x) => `${x.url || ""}|${x.name || ""}` === key) === idx;
-                  });
-                  const imageAttachments = dedupedAttachments.filter((att) => att?.url && isImageAttachment(att));
-                  const videoAttachments = dedupedAttachments.filter((att) => att?.url && isVideoAttachment(att));
-                  const fileAttachments = dedupedAttachments.filter((att) => !imageAttachments.includes(att) && !videoAttachments.includes(att));
-                  const hasAttachments = imageAttachments.length > 0 || videoAttachments.length > 0 || fileAttachments.length > 0;
-                  const showFallbackMessage = (() => {
-                    if (detailsItem.source !== "app_events") return true;
-                    const activeHasStructured = !!(activeParts.title || activeParts.content || activeParts.cta || activeParts.hashtags?.length || activeParts.attachments?.length);
-                    const fallbackTitle = firstNonEmpty(payload?.post?.title, payload?.subject, payload?.title);
-                    const fallbackContent = firstNonEmpty(payload?.post?.content, payload?.post?.text, payload?.content, payload?.text, payload?.message);
-                    const fallbackCta = firstNonEmpty(payload?.post?.cta, payload?.cta);
-                    const fallbackHashtags = Array.isArray(payload?.post?.hashtags || payload?.hashtags)
-                      ? (payload?.post?.hashtags || payload?.hashtags).map((x: any) => String(x || "").trim()).filter(Boolean)
-                      : [];
-                    const fallbackAttachments = extractAttachmentsFromPayload(payload);
-                    return !(activeHasStructured || fallbackTitle || fallbackContent || fallbackCta || fallbackHashtags.length || fallbackAttachments.length);
-                  })();
-
-                  return (
-                    <>
-                      <div className={styles.detailsStack}>
-                        <section className={styles.detailSectionCard}>
-                          <div className={styles.detailSectionHeader}>
-                            <div>
-                              <div className={styles.detailsTitle}>{detailsItem.title || "(sans objet)"}</div>
-                              <div className={styles.detailsSub}>{formatOutboxStatusLabel(detailsItem)}</div>
-                            </div>
-                          </div>
-
-                          {detailsItem.source === "send_items" ? (
-                            <>
-                              <div className={styles.metaGrid}>
-                                <div className={styles.metaRow}>
-                                  <div className={styles.metaKey}>Boîte d’envoi</div>
-                                  <div className={styles.metaVal}>{detailsAccountLabel || "—"}</div>
-                                </div>
-                                <div className={styles.metaRow}>
-                                  <div className={styles.metaKey}>Destinataires</div>
-                                  <div className={styles.metaVal}>{splitList(detailsItem.to || detailsItem.target).join(", ") || "—"}</div>
-                                </div>
-                                <div className={styles.metaRow}>
-                                  <div className={styles.metaKey}>Objet</div>
-                                  <div className={styles.metaVal}>{detailsItem.subject || detailsItem.title || "—"}</div>
-                                </div>
-                                <div className={styles.metaRow}>
-                                  <div className={styles.metaKey}>Document source</div>
-                                  <div className={styles.metaVal}>{(detailsItem as any).raw?.source_doc_number || "—"}</div>
-                                </div>
-                              </div>
-                              <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-                                {detailsItem.reopenHref ? (
-                                  <button
-                                    type="button"
-                                    className={styles.btnGhost}
-                                    onClick={() => router.push(detailsItem.reopenHref || "/dashboard/mails")}
-                                  >
-                                    Réouvrir dans l’outil
-                                  </button>
-                                ) : null}
-                                {(detailsItem as any).raw?.source_doc_type === "devis" && (detailsItem as any).raw?.source_doc_save_id ? (
-                                  <button
-                                    type="button"
-                                    className={styles.btnGhost}
-                                    onClick={() => router.push(`/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent((detailsItem as any).raw.source_doc_save_id)}`)}
-                                  >
-                                    Créer la facture
-                                  </button>
-                                ) : null}
-                                {canDeleteHistoryItem(detailsItem) ? (
-                                  <button
-                                    type="button"
-                                    className={styles.btnGhost}
-                                    onClick={() => void deleteHistoryEntry(detailsItem)}
-                                    disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
-                                  >
-                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
-                                  </button>
-                                ) : null}
-                              </div>
-                            </>
-                          ) : detailsItem.source === "mail_campaigns" ? (
-                            <>
-                              <div className={styles.metaGrid}>
-                                <div className={styles.metaRow}>
-                                  <div className={styles.metaKey}>Boîte d’envoi</div>
-                                  <div className={styles.metaVal}>{detailsAccountLabel || "—"}</div>
-                                </div>
-                                <div className={styles.metaRow}>
-                                  <div className={styles.metaKey}>Destinataires</div>
-                                  <div className={styles.metaVal}>{(detailsItem as any).raw?.total_count || 0} contact{Number((detailsItem as any).raw?.total_count || 0) > 1 ? "s" : ""}</div>
-                                </div>
-                                <div className={styles.metaRow}>
-                                  <div className={styles.metaKey}>Progression</div>
-                                  <div className={styles.metaVal}>{formatCampaignProgress((detailsItem as any).raw || {})}</div>
-                                </div>
-                                <div className={styles.metaRow}>
-                                  <div className={styles.metaKey}>Objet</div>
-                                  <div className={styles.metaVal}>{detailsItem.subject || detailsItem.title || "—"}</div>
-                                </div>
-                              </div>
-                              <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-                                {isRetryableCampaignItem(detailsItem) ? (
-                                  <button
-                                    type="button"
-                                    className={styles.btnPrimary}
-                                    onClick={() => void retryCampaignFailedRecipients(detailsItem.id)}
-                                    disabled={campaignActionBusyId === detailsItem.id}
-                                  >
-                                    {campaignActionBusyId === detailsItem.id ? "Relance…" : "Relancer les échecs"}
-                                  </button>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  className={styles.btnGhost}
-                                  onClick={() => {
-                                    void Promise.all([
-                                      loadCampaignRecipients(detailsItem.id, campaignRecipientsPage, campaignRecipientsFilter),
-                                      loadCampaignHealth(detailsItem.id, (detailsItem as any).raw || {}),
-                                    ]);
-                                  }}
-                                  disabled={campaignRecipientsLoading || campaignHealthLoading}
-                                >
-                                  {campaignRecipientsLoading || campaignHealthLoading ? "Actualisation…" : "Rafraîchir le suivi"}
-                                </button>
-                                {detailsItem.reopenHref ? (
-                                  <button
-                                    type="button"
-                                    className={styles.btnGhost}
-                                    onClick={() => router.push(detailsItem.reopenHref || "/dashboard/mails")}
-                                  >
-                                    Réouvrir dans l’outil
-                                  </button>
-                                ) : null}
-                                {canDeleteHistoryItem(detailsItem) ? (
-                                  <button
-                                    type="button"
-                                    className={styles.btnGhost}
-                                    onClick={() => void deleteHistoryEntry(detailsItem)}
-                                    disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
-                                  >
-                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
-                                  </button>
-                                ) : null}
-                              </div>
-                            </>
-                          ) : (
-                            <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-                              <div className={styles.detailPillsWrap}>
-                                {publicationChannelEntries.length ? (
-                                  publicationChannelEntries.map((entry, idx) => {
-                                    const entryResult = detailsItem.source === "app_events" && payload?.results && typeof payload.results === "object"
-                                      ? ((payload.results as any)[entry.key] || null)
-                                      : null;
-                                    const entryIndicator = getChannelIndicatorMeta(entryResult);
-                                    return (
-                                      <button
-                                        key={`${entry.key}-${idx}`}
-                                        type="button"
-                                        className={`${styles.channelBubbleBtn} ${activePublicationEntry?.key === entry.key ? styles.channelBubbleBtnActive : ""}`}
-                                        onClick={() => setDetailsChannelKey(entry.key)}
-                                      >
-                                        <span className={styles.channelBubble}>
-                                          <span>{entry.label}</span>
-                                          {entryIndicator ? (
-                                            <span
-                                              className={entryIndicator.className}
-                                              title={entryIndicator.title}
-                                              aria-label={entryIndicator.title}
-                                            />
-                                          ) : null}
-                                        </span>
-                                      </button>
-                                    );
-                                  })
-                                ) : (
-                                  <span className={styles.metaVal}>—</span>
-                                )}
-                              </div>
-                              {activePublicationEntry ? (
-                                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
-                                  {detailsActionSuccess ? (
-                                    <div className={styles.detailsSuccessInline}>
-                                      <b>Action :</b> {detailsActionSuccess}
-                                    </div>
-                                  ) : null}
-                                  {detailsEditMode ? (
-                                    <button
-                                      type="button"
-                                      className={styles.btnPrimary}
-                                      onClick={saveChannelPublication}
-                                      disabled={detailsActionBusy}
-                                    >
-                                      {detailsActionBusy ? "Enregistrement…" : "Enregistrer"}
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      className={styles.btnGhost}
-                                      onClick={() => { setDetailsEditMode(true); setDetailsActionError(null); setDetailsActionSuccess(null); }}
-                                      disabled={detailsActionBusy}
-                                    >
-                                      Modifier
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    className={styles.btnDangerSmall}
-                                    onClick={deleteChannelPublication}
-                                    disabled={detailsActionBusy}
-                                  >
-                                    {detailsActionBusy && !detailsEditMode ? "Suppression…" : "Supprimer"}
-                                  </button>
-                                  {canDeleteHistoryItem(detailsItem) ? (
-                                    <button
-                                      type="button"
-                                      className={styles.btnGhost}
-                                      onClick={() => void deleteHistoryEntry(detailsItem)}
-                                      disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id || detailsActionBusy}
-                                    >
-                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
-                                    </button>
-                                  ) : null}
-                                </div>
-                              ) : canDeleteHistoryItem(detailsItem) ? (
-                                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
-                                  <button
-                                    type="button"
-                                    className={styles.btnGhost}
-                                    onClick={() => void deleteHistoryEntry(detailsItem)}
-                                    disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
-                                  >
-                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-                          )}
-
-                          {detailsActionError ? (
-                            <div className={styles.detailsError}>
-                              <b>Action :</b> {detailsActionError}
-                            </div>
-                          ) : null}
-
-                          {detailsItem.source === "app_events" && activePublicationFailed && !activePublicationDeleted ? (
-                            <div className={styles.detailsError}>
-                              <b>Statut :</b> Publication échouée
-                            </div>
-                          ) : null}
-
-                          {detailsItem.source === "app_events" && activePublicationFailed && activePublicationFailureMessage ? (
-                            <div className={styles.detailsError}>
-                              <b>Détail :</b> {activePublicationFailureMessage}
-                            </div>
-                          ) : null}
-
-                          {detailsItem.error ? (
-                            <div className={styles.detailsError}>
-                              <b>Détail :</b> {detailsItem.error}
-                            </div>
-                          ) : null}
-                        </section>
-
-                        <section className={styles.detailSectionCard}>
-                          <div className={styles.detailSectionHeader}>
-                            <div className={styles.messageHeaderTitle}>Message</div>
-                          </div>
-
-                          {detailsItem.source !== "app_events" ? (
-                            <div className={styles.messageBody}>
-                              {detailsItem.detailHtml ? (
-                                <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
-                              ) : (
-                                <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
-                              )}
-                            </div>
-                          ) : activePublicationEntry ? (
-                            (() => {
-                              const parts = activeParts;
-                              const showInstagramHashtags = activePublicationEntry.key === "instagram";
-                              const deletedAt = activePublicationResult?.deleted_at ? new Date(String(activePublicationResult.deleted_at)).toLocaleString() : null;
-                              const hasAny = !!(parts.title || parts.content || parts.cta || (showInstagramHashtags && parts.hashtags?.length));
-                              if (!hasAny && showFallbackMessage) {
-                                return (
-                                  <div className={styles.messageBody}>
-                                    {detailsItem.detailHtml ? (
-                                      <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
-                                    ) : (
-                                      <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
-                                    )}
-                                  </div>
-                                );
-                              }
-                              if (!hasAny && !detailsEditMode) return <div className={styles.emptyDetailText}>Aucun message disponible pour ce canal.</div>;
-                              return (
-                                <article key={activePublicationEntry.key} className={styles.channelPublicationCard}>
-                                  {activePublicationDeleted ? (
-                                    <div className={styles.detailsError} style={{ marginBottom: 12 }}>
-                                      <b>Statut :</b> Supprimé{deletedAt ? ` le ${deletedAt}` : ""}
-                                    </div>
-                                  ) : null}
-                                  <div className={styles.publicationParts}>
-                                    {detailsEditMode && !activePublicationDeleted ? (
-                                      <>
-                                        <div>
-                                          <div className={styles.publicationLabel}>Titre</div>
-                                          <input
-                                            type="text"
-                                            value={publicationEditForm.title}
-                                            onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, title: e.target.value }))}
-                                            className={styles.publicationFieldInput}
-                                            placeholder="Titre"
-                                            disabled={detailsActionBusy}
-                                          />
-                                        </div>
-                                        <div>
-                                          <div className={styles.publicationLabel}>Contenu</div>
-                                          <textarea
-                                            value={publicationEditForm.content}
-                                            onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, content: e.target.value }))}
-                                            className={styles.publicationFieldTextarea}
-                                            placeholder="Contenu"
-                                            rows={8}
-                                            disabled={detailsActionBusy}
-                                          />
-                                        </div>
-                                        <div>
-                                          <div className={styles.publicationLabel}>CTA</div>
-                                          <input
-                                            type="text"
-                                            value={publicationEditForm.cta}
-                                            onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, cta: e.target.value }))}
-                                            className={styles.publicationFieldInput}
-                                            placeholder="CTA"
-                                            disabled={detailsActionBusy}
-                                          />
-                                        </div>
-                                        {activePublicationEntry.key === "instagram" ? (
-                                          <div>
-                                            <div className={styles.publicationLabel}>Hashtags</div>
-                                            <input
-                                              type="text"
-                                              value={publicationEditForm.hashtags}
-                                              onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, hashtags: e.target.value }))}
-                                              className={styles.publicationFieldInput}
-                                              placeholder="maçonnerie lens btp"
-                                              disabled={detailsActionBusy}
-                                            />
-                                          </div>
-                                        ) : null}
-                                        <div style={{ display: "grid", gap: 12 }}>
-                                          <div className={styles.publicationLabel}>Pièces jointes</div>
-                                          <input
-                                            id={publicationEditFileInputId}
-                                            type="file"
-                                            accept="image/*"
-                                            multiple
-                                            className={styles.hiddenFileInput}
-                                            onChange={(e) => {
-                                              addPublicationFiles(e.target.files);
-                                              e.currentTarget.value = "";
-                                            }}
-                                          />
-                                          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                                            <label htmlFor={publicationEditFileInputId} className={styles.btnAttach}>📎 Ajouter des images</label>
-                                            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                                              {activePublicationEditAssets.length} image(s) pour {activePublicationEntry?.label || "ce canal"}
-                                            </span>
-                                          </div>
-
-
-                                          <div style={{ display: "grid", gap: 8 }}>
-                                            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
-                                              Cochez les images à publier puis ouvrez la retouche uniquement quand vous voulez recadrer une image.
-                                            </div>
-                                            <ChannelImageRetouchCardsPanel
-                                              tabs={[{ key: activePublicationEditChannelKey, label: activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey) }]}
-                                              activeChannel={activePublicationEditChannelKey}
-                                              onActiveChannelChange={() => {}}
-                                              channelTitle={activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey)}
-                                              formatLabel={`Format final : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`}
-                                              aspectRatio={`${activePublicationEditPreset.width} / ${activePublicationEditPreset.height}`}
-                                              items={activePublicationEditAssets.map((asset, index) => ({
-                                                key: asset.key,
-                                                previewUrl: asset.previewUrl,
-                                                included: asset.selected,
-                                                title: `Image ${index + 1}`,
-                                                subtitle: asset.selected ? "Publiée sur ce canal" : "Non publiée sur ce canal",
-                                                fitLabel: asset.transform.fit === "cover" ? "Remplir" : "Adapter",
-                                                backgroundMode: getPublicationBackgroundMode(asset.transform),
-                                                onToggle: () => togglePublicationImage(activePublicationEditChannelKey, asset.key),
-                                                onRetouch: () => openPublicationRetouch(activePublicationEditChannelKey, asset.key),
-                                                onRemove: () => removePublicationImage(activePublicationEditChannelKey, asset.key),
-                                              }))}
-                                              buttonClassName={styles.btnGhost}
-                                              pillButtonStyle={pillBtn}
-                                              pillButtonActiveStyle={pillBtnActive}
-                                              showTabs={false}
-                                              emptyMessage="Aucune image pour ce canal."
-                                            />
-                                          </div>
-                                        </div>
-                                      </>
-                                    ) : (
-                                      <>
-                                        {parts.title ? (
-                                          <div>
-                                            <div className={styles.publicationLabel}>Titre</div>
-                                            <div className={styles.publicationValue}>{parts.title}</div>
-                                          </div>
-                                        ) : null}
-                                        {parts.content ? (
-                                          <div>
-                                            <div className={styles.publicationLabel}>Contenu</div>
-                                            <pre className={styles.publicationPre}>{parts.content}</pre>
-                                          </div>
-                                        ) : null}
-                                        {parts.cta ? (
-                                          <div>
-                                            <div className={styles.publicationLabel}>CTA</div>
-                                            <div className={styles.publicationCtaBox}>{parts.cta}</div>
-                                          </div>
-                                        ) : null}
-                                        {activePublicationEntry.key === "instagram" && parts.hashtags && parts.hashtags.length ? (
-                                          <div>
-                                            <div className={styles.publicationLabel}>Hashtags</div>
-                                            <div className={styles.publicationTagRow}>
-                                              {parts.hashtags.map((t, idx) => (
-                                                <span key={idx} className={styles.publicationTag}>#{t.replace(/^#/, "")}</span>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        ) : null}
-                                      </>
-                                    )}
-                                  </div>
-                                </article>
-                              );
-                            })()
-                          ) : showFallbackMessage ? (
-                            <div className={styles.messageBody}>
-                              {detailsItem.detailHtml ? (
-                                <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
-                              ) : (
-                                <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
-                              )}
-                            </div>
-                          ) : (
-                            <div className={styles.emptyDetailText}>Aucun message disponible.</div>
-                          )}
-                        </section>
-
-                        {detailsItem.source === "mail_campaigns" ? (
-                          <section className={styles.detailSectionCard}>
-                            <div className={styles.detailSectionHeader}>
-                              <div className={styles.messageHeaderTitle}>Suivi destinataires</div>
-                            </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
-                              {[
-                                { key: "sent", label: "Envoyés", value: campaignHealth?.sent ?? campaignCounts((detailsItem as any).raw || {}).sent },
-                                { key: "delivered", label: "Délivrés", value: campaignHealth?.delivered ?? 0 },
-                                { key: "queued", label: "En attente", value: campaignHealth?.queued ?? campaignCounts((detailsItem as any).raw || {}).queued },
-                                { key: "processing", label: "En cours", value: campaignHealth?.processing ?? campaignCounts((detailsItem as any).raw || {}).processing },
-                                { key: "failed", label: "Échecs", value: campaignHealth?.failed ?? campaignCounts((detailsItem as any).raw || {}).failed },
-                                { key: "blocked", label: "Bloqués", value: campaignHealth?.blocked ?? 0 },
-                                { key: "opt_out", label: "Désinscrits", value: campaignHealth?.opt_out ?? 0 },
-                                { key: "hard_bounce", label: "Rebonds durs", value: campaignHealth?.hard_bounce ?? 0 },
-                                { key: "soft_bounce", label: "Rebonds souples", value: campaignHealth?.soft_bounce ?? 0 },
-                              ].map((stat) => {
-                                const isActive = campaignRecipientsFilter === stat.key;
-                                return (
-                                  <button
-                                    key={stat.key}
-                                    type="button"
-                                    className={styles.btnGhost}
-                                    onClick={() => {
-                                      setCampaignRecipientsPage(1);
-                                      setCampaignRecipientsFilter((prev) => (prev === stat.key ? "all" : (stat.key as CampaignRecipientsFilterId)));
-                                    }}
-                                    style={{
-                                      textAlign: "left",
-                                      padding: "12px 14px",
-                                      borderRadius: 14,
-                                      background: isActive ? "rgba(76,195,255,0.12)" : "rgba(255,255,255,0.03)",
-                                      border: isActive ? "1px solid rgba(76,195,255,0.35)" : "1px solid rgba(255,255,255,0.10)",
-                                    }}
-                                  >
-                                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginBottom: 4 }}>{stat.label}</div>
-                                    <div style={{ fontSize: 22, fontWeight: 700 }}>{stat.value}</div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                              {([
-                                { key: "all", label: "Tous", value: campaignHealth?.total ?? Number((detailsItem as any).raw?.total_count || 0) },
-                                { key: "delivered", label: "Délivrés", value: campaignHealth?.delivered ?? 0 },
-                                { key: "blocked", label: "Bloqués", value: campaignHealth?.blocked ?? 0 },
-                                { key: "opt_out", label: "Désinscrits", value: campaignHealth?.opt_out ?? 0 },
-                                { key: "blacklist", label: "Blacklist", value: campaignHealth?.blacklist ?? 0 },
-                                { key: "complaint", label: "Plaintes", value: campaignHealth?.complaint ?? 0 },
-                                { key: "hard_bounce", label: "Rebonds durs", value: campaignHealth?.hard_bounce ?? 0 },
-                                { key: "soft_bounce", label: "Rebonds souples", value: campaignHealth?.soft_bounce ?? 0 },
-                              ] as Array<{ key: CampaignRecipientsFilterId | "all"; label: string; value: number }>).map((chip) => {
-                                const active = campaignRecipientsFilter === chip.key;
-                                return (
-                                  <button
-                                    key={chip.key}
-                                    type="button"
-                                    className={styles.btnGhost}
-                                    onClick={() => {
-                                      setCampaignRecipientsPage(1);
-                                      setCampaignRecipientsFilter(chip.key as CampaignRecipientsFilterId);
-                                    }}
-                                    style={{
-                                      ...(active ? pillBtnActive : {}),
-                                      minHeight: 34,
-                                      padding: "0 12px",
-                                      borderRadius: 999,
-                                      background: active ? "rgba(76,195,255,0.10)" : "rgba(255,255,255,0.03)",
-                                    }}
-                                  >
-                                    {chip.label} • {chip.value}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, marginBottom: 12 }}>
-                              {campaignHealthLoading ? "Actualisation des statuts campagne…" : `Filtre actif : ${formatCampaignFilterLabel(campaignRecipientsFilter)}.`}
-                              {campaignHealth && campaignHealth.retryable > 0 ? ` Relançables : ${campaignHealth.retryable}.` : ""}
-                            </div>
-                            {campaignRecipientsLoading ? (
-                              <div style={{ color: "rgba(255,255,255,0.68)" }}>Chargement des destinataires…</div>
-                            ) : campaignRecipients.length === 0 ? (
-                              <div style={{ color: "rgba(255,255,255,0.68)" }}>Aucun destinataire chargé.</div>
-                            ) : (
-                              <>
-                                <div className={styles.attachmentsList}>
-                                {campaignRecipients.map((recipient) => {
-                                  const attemptLabel = recipient.attempt_count != null && recipient.max_attempts != null
-                                    ? `Tentative ${recipient.attempt_count}/${recipient.max_attempts}`
-                                    : null;
-                                  const statusLabel = getCampaignRecipientStatusLabel(recipient);
-                                  return (
-                                    <div key={recipient.id} className={styles.attachmentItem}>
-                                      <span className={styles.attachmentName}>{recipient.display_name ? `${recipient.display_name} — ${recipient.email}` : recipient.email}</span>
-                                      <span className={styles.attachmentMeta}>{statusLabel}</span>
-                                      {attemptLabel ? <span className={styles.attachmentMeta}>{attemptLabel}</span> : null}
-                                      {recipient.last_error || recipient.error ? (
-                                        <span className={styles.attachmentMeta} style={{ color: "#ffb0b0" }}>{recipient.last_error || recipient.error}</span>
-                                      ) : null}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
-                                <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12 }}>
-                                  {campaignRecipientsTotal > 0
-                                    ? `Affichage ${(campaignRecipientsPage - 1) * MAILBOX_RECIPIENTS_PAGE_SIZE + 1}–${Math.min(campaignRecipientsPage * MAILBOX_RECIPIENTS_PAGE_SIZE, campaignRecipientsTotal)} sur ${campaignRecipientsTotal} (${formatCampaignFilterLabel(campaignRecipientsFilter).toLowerCase()})`
-                                    : `Aucun destinataire (${formatCampaignFilterLabel(campaignRecipientsFilter).toLowerCase()})`}
-                                </div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                                  <button
-                                    type="button"
-                                    className={styles.btnGhost}
-                                    onClick={() => setCampaignRecipientsPage((prev) => Math.max(1, prev - 1))}
-                                    disabled={campaignRecipientsPage <= 1 || campaignRecipientsLoading}
-                                  >
-                                    ← Précédent
-                                  </button>
-                                  <div style={{ color: "rgba(255,255,255,0.82)", fontSize: 12 }}>
-                                    Page {campaignRecipientsPage} / {campaignRecipientsPageCount}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className={styles.btnGhost}
-                                    onClick={() => setCampaignRecipientsPage((prev) => Math.min(campaignRecipientsPageCount, prev + 1))}
-                                    disabled={campaignRecipientsPage >= campaignRecipientsPageCount || campaignRecipientsLoading}
-                                  >
-                                    Suivant →
-                                  </button>
-                                </div>
-                                </div>
-                              </>
-                            )}
-                          </section>
-                        ) : null}
-
-                        {hasAttachments ? (
-                          <section className={styles.detailSectionCard}>
-                            <div className={styles.detailSectionHeader}>
-                              <div className={styles.messageHeaderTitle}>Pièces jointes</div>
-                            </div>
-
-                            <div className={styles.attachmentsPanel}>
-                              {imageAttachments.length ? (
-                                <div className={styles.attachmentGallery}>
-                                  {imageAttachments.map((a, idx) => (
-                                    <a
-                                      key={`${a.url || a.name}-${idx}`}
-                                      className={styles.attachmentPreviewCard}
-                                      href={a.url || undefined}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                    >
-                                      <img src={a.url || ""} alt={a.name || `Pièce jointe ${idx + 1}`} className={styles.attachmentPreviewImage} />
-                                      <div className={styles.attachmentPreviewCaption}>{a.name}</div>
-                                    </a>
-                                  ))}
-                                </div>
-                              ) : null}
-
-                              {videoAttachments.length ? (
-                                <div className={styles.attachmentGallery}>
-                                  {videoAttachments.map((a, idx) => (
-                                    <div key={`${a.url || a.name}-${idx}`} className={styles.attachmentPreviewCard}>
-                                      <video
-                                        src={a.url || ""}
-                                        className={styles.attachmentPreviewImage}
-                                        controls
-                                        preload="metadata"
-                                      />
-                                      <div className={styles.attachmentPreviewCaption}>{a.name}</div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : null}
-
-                              {fileAttachments.length ? (
-                                <div className={styles.attachmentsList}>
-                                  {fileAttachments.map((a, idx) => (
-                                    <div key={`${a.url || a.name}-${idx}`} className={styles.attachmentItem}>
-                                      <span className={styles.attachmentName}>{a.name}</span>
-                                      {a.type ? <span className={styles.attachmentMeta}>{a.type}</span> : null}
-                                      {typeof a.size === "number" ? <span className={styles.attachmentMeta}>{Math.round(a.size / 1024)} Ko</span> : null}
-                                      {a.url ? (
-                                        <a className={styles.attachmentLink} href={a.url} target="_blank" rel="noreferrer">
-                                          Ouvrir
-                                        </a>
-                                      ) : null}
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : null}
-                            </div>
-                          </section>
-                        ) : null}
-                      </div>
-
-                      {detailsItem.source === "send_items" && (detailsItem as any).raw?.status === "draft" ? (
-                        <div style={{ marginTop: 14, color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
-                          Astuce : clique sur ce brouillon dans la liste pour l’ouvrir en édition.
-                        </div>
-                      ) : null}
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {detailsOpen && detailsEditMode && publicationRetouchAsset && publicationRetouchChannelKey ? (() => {
-          const channel = publicationRetouchChannelKey;
-          const preset = getPublicationChannelPreset(channel);
-          const transform = publicationRetouchAsset.transform;
-          const imageMeta = publicationRetouchImageMeta[publicationRetouchAsset.key];
-          const previewLayout = computePublicationPreviewLayout({
-            containerWidth: publicationRetouchStageSize.width,
-            containerHeight: publicationRetouchStageSize.height,
-            imageWidth: imageMeta?.width || 0,
-            imageHeight: imageMeta?.height || 0,
-            transform,
-          });
-          const backgroundMode = getPublicationBackgroundMode(transform);
-          const zoomLabel = `zoom ${Number(transform.zoom || 1).toFixed(2)}×`;
-          return (
-            <ChannelImageRetouchModal
-              open
-              title={`Retoucher ${publicationRetouchAsset.name}`}
-              subtitle={`${formatChannelLabel(channel)} • ${preset.width}×${preset.height}`}
-              aspectRatio={`${preset.width} / ${preset.height}`}
-              backgroundMode={backgroundMode}
-              backgroundColor={publicationRetouchAsset.transform.backgroundColor}
-              fitLabel={transform.fit === "cover" ? "Remplir" : "Adapter"}
-              zoomLabel={zoomLabel}
-              previewSrc={publicationRetouchAsset.previewUrl}
-              previewLayout={previewLayout}
-              previewRef={publicationRetouchStageRef}
-              isDragging={isPublicationRetouchDragging}
-              onClose={closePublicationRetouch}
-              buttonClassName={styles.btnGhost}
-              primaryButtonClassName={styles.btnPrimary}
-              onWheel={(event) => {
-                if (!publicationRetouchStageRef.current || !imageMeta?.width || !imageMeta?.height) return;
-                event.preventDefault();
-                const rect = publicationRetouchStageRef.current.getBoundingClientRect();
-                const pointerX = event.clientX - rect.left;
-                const pointerY = event.clientY - rect.top;
-                const nextZoom = publicationClamp((transform.zoom || 1) + (event.deltaY < 0 ? 0.08 : -0.08), 0.4, 3);
-                const nextLayout = computePublicationPreviewLayout({
-                  containerWidth: rect.width,
-                  containerHeight: rect.height,
-                  imageWidth: imageMeta.width,
-                  imageHeight: imageMeta.height,
-                  transform: { ...transform, zoom: nextZoom },
-                });
-                const currentDrawW = previewLayout.drawW || nextLayout.drawW;
-                const currentDrawH = previewLayout.drawH || nextLayout.drawH;
-                const ux = currentDrawW ? (pointerX - previewLayout.dx) / currentDrawW : 0.5;
-                const uy = currentDrawH ? (pointerY - previewLayout.dy) / currentDrawH : 0.5;
-                const nextDx = pointerX - ux * nextLayout.drawW;
-                const nextDy = pointerY - uy * nextLayout.drawH;
-                const offsets = offsetFromPublicationDrawPosition({
-                  containerWidth: rect.width,
-                  containerHeight: rect.height,
-                  drawW: nextLayout.drawW,
-                  drawH: nextLayout.drawH,
-                  dx: nextDx,
-                  dy: nextDy,
-                });
-                updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...asset.transform, zoom: nextZoom, ...offsets } } : asset));
-              }}
-              onPointerDown={(event) => {
-                publicationRetouchDragRef.current = {
-                  channel,
-                  imageKey: publicationRetouchAsset.key,
-                  startX: event.clientX,
-                  startY: event.clientY,
-                  startOffsetX: transform.offsetX || 0,
-                  startOffsetY: transform.offsetY || 0,
-                };
-                setIsPublicationRetouchDragging(true);
-                event.currentTarget.setPointerCapture?.(event.pointerId);
-              }}
-              onPointerMove={(event) => {
-                const drag = publicationRetouchDragRef.current;
-                if (!drag || drag.imageKey !== publicationRetouchAsset.key) return;
-                const maxX = Math.abs(previewLayout.drawW - publicationRetouchStageSize.width) / 2;
-                const maxY = Math.abs(previewLayout.drawH - publicationRetouchStageSize.height) / 2;
-                const nextOffsetX = maxX ? publicationClamp(drag.startOffsetX - ((event.clientX - drag.startX) / maxX) * 100, -100, 100) : 0;
-                const nextOffsetY = maxY ? publicationClamp(drag.startOffsetY - ((event.clientY - drag.startY) / maxY) * 100, -100, 100) : 0;
-                updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...asset.transform, offsetX: nextOffsetX, offsetY: nextOffsetY } } : asset));
-              }}
-              onPointerUp={(event) => {
-                if (publicationRetouchDragRef.current) {
-                  event.currentTarget.releasePointerCapture?.(event.pointerId);
-                }
-                publicationRetouchDragRef.current = null;
-                setIsPublicationRetouchDragging(false);
-              }}
-              onPointerCancel={(event) => {
-                if (publicationRetouchDragRef.current) {
-                  event.currentTarget.releasePointerCapture?.(event.pointerId);
-                }
-                publicationRetouchDragRef.current = null;
-                setIsPublicationRetouchDragging(false);
-              }}
-              onZoomOut={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...asset.transform, zoom: publicationClamp((asset.transform.zoom || 1) - 0.08, 0.4, 3) } } : asset))}
-              onZoomIn={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...asset.transform, zoom: publicationClamp((asset.transform.zoom || 1) + 0.08, 0.4, 3) } } : asset))}
-              onContain={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: withPublicationBackgroundMode({ ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, getPublicationBackgroundMode(asset.transform)) } : asset))}
-              onCover={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: withPublicationBackgroundMode({ ...asset.transform, fit: "cover", zoom: 1, offsetX: 0, offsetY: 0 }, "black") } : asset))}
-              onReset={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: buildPublicationDefaultTransform(channel) } : asset))}
-              onDoubleClick={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...asset.transform, offsetX: 0, offsetY: 0 } } : asset))}
-              onSave={closePublicationRetouch}
-              onBackgroundModeChange={(mode) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: mode === "blur" ? withPublicationBackgroundMode({ ...asset.transform, fit: "contain" }, "blur") : mode === "transparent" ? withPublicationBackgroundMode({ ...asset.transform, fit: "contain" }, "transparent") : { ...withPublicationBackgroundMode({ ...asset.transform, fit: "contain" }, "color"), backgroundColor: asset.transform.backgroundColor || "#e8f6ff" } } : asset))}
-              onBackgroundColorChange={(color) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...withPublicationBackgroundMode({ ...asset.transform, fit: "contain" }, "color"), backgroundColor: color } } : asset))}
-              designState={getPublicationDesign(publicationRetouchAsset.transform)}
-              onDesignChange={(patch) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationRetouchAsset.key ? { ...asset, transform: { ...asset.transform, design: { ...getPublicationDesign(asset.transform), ...patch } } } : asset))}
-              pillButtonStyle={pillBtn}
-              pillButtonActiveStyle={pillBtnActive}
-              sidebarItems={(publicationEditImagesByChannel[channel]?.assets || []).map((asset, index) => ({
-                key: asset.key,
-                previewUrl: asset.previewUrl,
-                title: `Image ${index + 1}`,
-                subtitle: asset.selected ? "Publiée sur ce canal" : "Non publiée sur ce canal",
-                active: asset.key === publicationRetouchAsset.key,
-                onClick: () => setPublicationRetouchImageKey(asset.key),
-              }))}
-            />
-          );
-        })() : null}
-
-        {/* Compose modal */}
-        {composeOpen ? (
-          <div className={styles.modalOverlay} onClick={() => setComposeOpen(false)}>
-            <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-              <div className={styles.modalHeader}>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: "rgba(255,255,255,0.95)" }}>
-                    {draftId ? "Éditer le brouillon" : "Nouveau message"}
-                  </div>
-                  <span className={styles.badge} style={{ opacity: 0.9 }}>Mail</span>
-                </div>
-
-                <button className={styles.btnGhost} onClick={() => setComposeOpen(false)} type="button">
-                  ✕
-                </button>
-              </div>
-
-              <div className={styles.modalBody}>
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)" }}>Boîte d’envoi :</div>
-                    <select
-                      className={styles.selectDark}
-                      value={selectedAccountId}
-                      onChange={(e) => setSelectedAccountId(e.target.value)}
-                      style={{
-                        width: "min(520px, 100%)",
-                        flex: "1 1 280px",
-                        minWidth: 0,
-                        paddingRight: 36,
-                        boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
-                      }}
-                    >
-                      {mailAccounts.map((a) => (
-                        <option key={a.id} value={a.id} style={{ background: "#ffffff", color: "#0b1020" }}>
-                          {(a.display_name ? `${a.display_name} — ` : "") + a.email_address + ` (${a.provider})`}
-                        </option>
-                      ))}
-                    </select>
-                    {selectedAccount ? (
-                      <span className={`${styles.badge} ${pill(selectedAccount.provider).cls}`}>{pill(selectedAccount.provider).label}</span>
-                    ) : null}
-                  </div>
-
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>À</span>
-                    <input
-                      value={to}
-                      onChange={(e) => setTo(e.target.value)}
-                      placeholder="email@exemple.com, autre@exemple.com"
-                      style={inputStyle}
-                    />
-                    {isBulkCampaignCompose ? (
-                      <span style={{ fontSize: 12, color: "rgba(125,211,252,0.95)" }}>
-                        {composeRecipientList.length} destinataires détectés : iNr’SEND lancera une campagne avec un envoi individuel par contact.
-                      </span>
-                    ) : null}
-                    {bulkCampaignNotice ? (
-                      <div
-                        style={{
-                          marginTop: 4,
-                          borderRadius: 12,
-                          padding: "10px 12px",
-                          border: bulkCampaignNotice.tone === "strong"
-                            ? "1px solid rgba(251,146,60,0.40)"
-                            : bulkCampaignNotice.tone === "warning"
-                              ? "1px solid rgba(250,204,21,0.34)"
-                              : "1px solid rgba(56,189,248,0.26)",
-                          background: bulkCampaignNotice.tone === "strong"
-                            ? "rgba(251,146,60,0.12)"
-                            : bulkCampaignNotice.tone === "warning"
-                              ? "rgba(250,204,21,0.10)"
-                              : "rgba(56,189,248,0.10)",
-                        }}
-                      >
-                        <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.92)" }}>{bulkCampaignNotice.title}</div>
-                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)", marginTop: 4 }}>{bulkCampaignNotice.text}</div>
-                      </div>
-                    ) : null}
-                  </label>
-
-                  {/* CRM picker (dropdown + checkboxes) */}
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <button
-                      type="button"
-                      className={styles.btnGhost}
-                      onClick={() => setCrmPickerOpen((v) => !v)}
-                      style={{
-                        justifyContent: "space-between",
-                        width: "100%",
-                        padding: "10px 12px",
-                        borderRadius: 14,
-                        borderColor: "rgba(255,255,255,0.14)",
-                        background: "rgba(0,0,0,0.18)",
-                      }}
-                    >
-                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.78)", fontWeight: 700 }}>Contacts CRM</span>
-                        <span className={styles.badge} style={{ opacity: 0.9 }}>
-                          {selectedCrmCount} sélectionné{selectedCrmCount > 1 ? "s" : ""}
-                        </span>
-                      </span>
-                      <span style={{ opacity: 0.85 }}>{crmPickerOpen ? "▴" : "▾"}</span>
-                    </button>
-
-                    {crmPickerOpen ? (
-                      <div
-                        style={{
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          borderRadius: 14,
-                          padding: 10,
-                          background: "rgba(0,0,0,0.16)",
-                        }}
-                      >
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
-                          
-                          <div className={styles.crmFilterRow}>
-                            <select
-                              value={crmCategory ?? "all"}
-                              onChange={(e) => setCrmCategory(e.target.value as any)}
-                              className={styles.crmSelect}
-                              title="Filtrer par catégorie"
-                            >
-                              <option value="all">Catégories</option>
-                              <option value="particulier">Particuliers</option>
-                              <option value="professionnel">Professionnels</option>
-                              <option value="collectivite_publique">Collectivités</option>
-                            </select>
-
-                            <select
-                              value={crmContactType ?? "all"}
-                              onChange={(e) => setCrmContactType(e.target.value as any)}
-                              className={styles.crmSelect}
-                              title="Filtrer par type"
-                            >
-                              <option value="all">Types</option>
-                              <option value="client">Clients</option>
-                              <option value="prospect">Prospects</option>
-                              <option value="fournisseur">Fournisseurs</option>
-                              <option value="partenaire">Partenaires</option>
-                              <option value="autre">Autres</option>
-                            </select>
-
-                            <button
-                              type="button"
-                              className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.crmIconBtn}`}
-                              onClick={() => {
-                                setCrmSearchOpen((v) => !v);
-                                // focus next tick (after render)
-                                setTimeout(() => crmSearchRef.current?.focus(), 0);
-                              }}
-                              title="Rechercher"
-                              aria-label="Rechercher"
-                            >
-                              <span className={styles.iconWrap}>
-                                🔎
-                                {!crmSearchOpen && crmFilter.trim() ? <span className={styles.searchDot} /> : null}
-                              </span>
-                            </button>
-
-                            <button
-                              type="button"
-                              className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.crmIconBtn} ${styles.starToggleBtn} ${
-                                crmImportantOnly ? styles.starActive : styles.starInactive
-                              }`}
-                              onClick={() => setCrmImportantOnly((v) => !v)}
-                              title={crmImportantOnly ? "Important uniquement" : "Tous les contacts"}
-                              aria-label="Important"
-                            >
-                              {crmImportantOnly ? "★" : "☆"}
-                            </button>
-                          </div>
-
-                          {crmSearchOpen ? (
-                            <div className={styles.crmSearchRow}>
-                              <input
-                                ref={crmSearchRef}
-                                value={crmFilter}
-                                onChange={(e) => setCrmFilter(e.target.value)}
-                                placeholder="Rechercher…"
-                                className={styles.crmSearchInput}
-                              />
-                              {crmFilter.trim() ? (
-                                <button
-                                  type="button"
-                                  className={styles.searchClearBtn}
-                                  onClick={() => {
-                                    setCrmFilter("");
-                                    setTimeout(() => crmSearchRef.current?.focus(), 0);
-                                  }}
-                                  aria-label="Effacer la recherche"
-                                  title="Effacer"
-                                >
-                                  ×
-                                </button>
-                              ) : null}
-                              <button
-                                type="button"
-                                className={styles.btnGhost}
-                                onClick={() => setCrmSearchOpen(false)}
-                                style={{ padding: "8px 10px" }}
-                                aria-label="Fermer la recherche"
-                                title="Fermer"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          ) : null}
-
-                        </div>
-
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-                          <button
-                            type="button"
-                            className={styles.btnGhost}
-                            onClick={() => {
-                              const current = normalizeEmails(to);
-                              const setLower = new Set(current.map((e) => e.toLowerCase()));
-                              const add = filteredContacts
-                                .map((c) => c.email)
-                                .filter(Boolean)
-                                .map((e) => String(e));
-                              const next = [...current];
-                              for (const e of add) {
-                                if (!setLower.has(e.toLowerCase())) {
-                                  next.push(e);
-                                  setLower.add(e.toLowerCase());
-                                }
-                              }
-                              setTo(next.join(", "));
-                            }}
-                            disabled={crmLoading || filteredContacts.length === 0}
-                          >
-                            Tout sélectionner
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.btnGhost}
-                            onClick={() => {
-                              const removeSet = new Set(
-                                filteredContacts
-                                  .map((c) => c.email)
-                                  .filter(Boolean)
-                                  .map((e) => String(e).toLowerCase())
-                              );
-                              const current = normalizeEmails(to);
-                              const next = current.filter((e) => !removeSet.has(e.toLowerCase()));
-                              setTo(next.join(", "));
-                            }}
-                            disabled={crmLoading || filteredContacts.length === 0}
-                          >
-                            Tout désélectionner
-                          </button>
-                          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
-                            {filteredContacts.length} contact{filteredContacts.length > 1 ? "s" : ""} (filtrés)
-                          </div>
-                        </div>
-
-                        <div
-                          style={{
-                            marginTop: 10,
-                            border: "1px solid rgba(255,255,255,0.10)",
-                            borderRadius: 12,
-                            padding: 8,
-                            maxHeight: 190,
-                            overflow: "auto",
-                          }}
-                        >
-                          {crmLoading ? (
-                            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)" }}>Chargement des contacts…</div>
-                          ) : crmError ? (
-                            <div style={{ display: "grid", gap: 8 }}>
-                              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)" }}>{crmError}</div>
-                              <button
-                                className={styles.btnPrimary}
-                                type="button"
-                                onClick={() => void loadCrmContacts()}
-                                style={{ width: "fit-content" }}
-                              >
-                                Réessayer
-                              </button>
-                            </div>
-                          ) : filteredContacts.length === 0 ? (
-                            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)" }}>Aucun contact.</div>
-                          ) : (
-                            <div style={{ display: "grid", gap: 6 }}>
-                              {filteredContacts.slice(0, 200).map((c) => {
-                                const email = c.email ? String(c.email) : "";
-                                const checked = email ? selectedToSet.has(email.toLowerCase()) : false;
-                                return (
-                                  <label
-                                    key={c.id}
-                                    style={{
-                                      display: "flex",
-                                      gap: 10,
-                                      alignItems: "center",
-                                      padding: "8px 10px",
-                                      borderRadius: 12,
-                                      border: "1px solid rgba(255,255,255,0.10)",
-                                      background: checked ? "rgba(56,189,248,0.10)" : "rgba(0,0,0,0.10)",
-                                      cursor: email ? "pointer" : "not-allowed",
-                                      opacity: email ? 1 : 0.6,
-                                    }}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      disabled={!email}
-                                      checked={checked}
-                                      onChange={() => {
-                                        if (!email) return;
-                                        toggleEmailInTo(email);
-                                      }}
-                                    />
-                                    <div style={{ display: "grid", lineHeight: 1.15 }}>
-                                      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.92)", fontWeight: 700 }}>
-                                        {c.full_name || "(Sans nom)"}
-                                        {c.important ? <span style={{ marginLeft: 8, opacity: 0.75 }}>★</span> : null}
-                                      </div>
-                                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.70)" }}>{email}</div>
-                                    </div>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Objet</span>
-                    <input value={subject} onChange={(e) => setSubject(normalizeMailSubject(e.target.value))} placeholder="Objet" style={inputStyle} />
-                    {!subject.trim() ? (
-                      <span style={{ fontSize: 12, color: "rgba(251,191,36,0.92)" }}>Le message partira avec “(sans objet)” si tu laisses ce champ vide.</span>
-                    ) : null}
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Message (texte)</span>
-                    <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} style={textareaStyle} />
-                    {signatureEnabled && signatureImageUrl ? (
-                      <div
-                        style={{
-                          borderRadius: 12,
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          background: "rgba(255,255,255,0.04)",
-                          padding: 10,
-                        }}
-                      >
-                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)", marginBottom: 8 }}>
-                          Image de signature ajoutée automatiquement au mail :
-                        </div>
-                        <img
-                          src={signatureImageUrl}
-                          alt="Signature automatique"
-                          style={{ width: `${signatureImageWidth}px`, maxWidth: "100%", maxHeight: 220, objectFit: "contain", borderRadius: 10, display: "block" }}
-                        />
-                      </div>
-                    ) : null}
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Pièces jointes</span>
-                    <input
-                      id={fileInputId}
-                      type="file"
-                      multiple
-                      onChange={async (e) => {
-                        const next = Array.from(e.target.files || []);
-                        setFiles(next);
-                        if (!next.length) return;
-                        try {
-                          const uploaded = await uploadComposeFiles(next);
-                          setComposeAttachments((prev) => {
-                            const merged = [...prev];
-                            for (const item of uploaded) {
-                              const exists = merged.some((x) => x.bucket === item.bucket && x.path === item.path);
-                              if (!exists) merged.push(item);
-                            }
-                            return merged;
-                          });
-                        } catch (err) {
-                          console.error("Attachment upload failed", err);
-                          setToast("Impossible de préparer cette pièce jointe. Veuillez vérifier son format ou sa taille.");
-                        } finally {
-                          e.currentTarget.value = "";
-                          setFiles([]);
-                        }
-                      }}
-                      className={styles.hiddenFileInput}
-                    />
-
-                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      <label htmlFor={fileInputId} className={styles.btnAttach}>
-                        📎 Joindre
-                      </label>
-                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                        {composeAttachments.length > 0 ? `${composeAttachments.length} fichier(s)` : attachBusy ? "Préparation des fichiers..." : "Aucun fichier"}
-                      </span>
-                    </div>
-
-                    {composeAttachments.length > 0 ? (
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {composeAttachments.map((f, idx) => (
-                          <span key={`${f.bucket}:${f.path}:${idx}`} className={styles.fileChip} title={f.name}>
-                            {f.name}
-                            <button
-                              type="button"
-                              className={styles.fileChipRemove}
-                              onClick={() => setComposeAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                              aria-label={`Retirer ${f.name}`}
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </label>
-                </div>
-              </div>
-
-              <div className={styles.modalFooter}>
-                <button className={styles.btnGhost} onClick={saveDraft} type="button" disabled={sendBusy}>
-                  💾 Sauvegarder brouillon
-                </button>
-                <button className={styles.btnPrimary} onClick={doSend} type="button" disabled={sendBusy}>
-                  {sendBusy ? "Envoi…" : "Envoyer"}
-                </button>
-              </div>
-
-              {toast ? (
-                <div style={{ padding: "10px 14px", color: "rgba(255,255,255,0.75)", fontSize: 12 }}>
-                  {toast}{" "}
-                  <button className={styles.btnGhost} onClick={() => setToast(null)} type="button">
-                    OK
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+        <MailboxComposeModal
+          open={composeOpen}
+          onClose={() => setComposeOpen(false)}
+          draftId={draftId}
+          mailAccounts={mailAccounts}
+          selectedAccountId={selectedAccountId}
+          setSelectedAccountId={setSelectedAccountId}
+          selectedAccount={selectedAccount}
+          to={to}
+          setTo={setTo}
+          subject={subject}
+          setSubject={setSubject}
+          text={text}
+          setText={setText}
+          composeRecipientList={composeRecipientList}
+          isBulkCampaignCompose={isBulkCampaignCompose}
+          bulkCampaignNotice={bulkCampaignNotice}
+          crmPickerOpen={crmPickerOpen}
+          setCrmPickerOpen={setCrmPickerOpen}
+          crmSearchOpen={crmSearchOpen}
+          setCrmSearchOpen={setCrmSearchOpen}
+          crmSearchRef={crmSearchRef}
+          crmFilter={crmFilter}
+          setCrmFilter={setCrmFilter}
+          crmCategory={crmCategory}
+          setCrmCategory={setCrmCategory}
+          crmContactType={crmContactType}
+          setCrmContactType={setCrmContactType}
+          crmImportantOnly={crmImportantOnly}
+          setCrmImportantOnly={setCrmImportantOnly}
+          selectedCrmCount={selectedCrmCount}
+          filteredContacts={filteredContacts}
+          selectedToSet={selectedToSet}
+          crmLoading={crmLoading}
+          crmError={crmError}
+          loadCrmContacts={loadCrmContacts}
+          toggleEmailInTo={toggleEmailInTo}
+          fileInputId={fileInputId}
+          attachBusy={attachBusy}
+          composeAttachments={composeAttachments}
+          setComposeAttachments={setComposeAttachments}
+          setFiles={setFiles}
+          uploadComposeFiles={uploadComposeFiles}
+          signatureEnabled={signatureEnabled}
+          signatureImageUrl={signatureImageUrl}
+          signatureImageWidth={signatureImageWidth}
+          saveDraft={saveDraft}
+          doSend={doSend}
+          sendBusy={sendBusy}
+          toast={toast}
+          setToast={setToast}
+        />
       </div>
     </div>
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  background: "rgba(0,0,0,0.22)",
-  border: "1px solid rgba(255,255,255,0.18)",
-  color: "rgba(255,255,255,0.92)",
-  borderRadius: 12,
-  padding: "10px 12px",
-  outline: "none",
-};
-
-const textareaStyle: React.CSSProperties = {
-  ...inputStyle,
-  resize: "vertical",
-  fontFamily: "inherit",
-};

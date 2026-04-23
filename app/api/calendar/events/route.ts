@@ -57,11 +57,14 @@ function safeObj(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function buildAgendaMeta(input: unknown, previous?: unknown) {
+function buildAgendaMeta(input: unknown, previous?: unknown, rootContact?: unknown) {
   const next = safeObj(input);
   const prev = safeObj(previous);
   const prevReminders = safeObj(prev.reminders);
   const nextReminders = safeObj(next.reminders);
+  const nextContact = safeObj(next.contact);
+  const prevContact = safeObj(prev.contact);
+  const bodyContact = safeObj(rootContact);
 
   const nextMailAccountId = typeof nextReminders.mailAccountId === "string" ? nextReminders.mailAccountId.trim() : nextReminders.mailAccountId === null ? null : undefined;
   const prevMailAccountId = typeof prevReminders.mailAccountId === "string" ? prevReminders.mailAccountId.trim() : prevReminders.mailAccountId === null ? null : undefined;
@@ -74,9 +77,18 @@ function buildAgendaMeta(input: unknown, previous?: unknown) {
     lastEmailReminderAt: typeof prevReminders.lastEmailReminderAt === "string" ? prevReminders.lastEmailReminderAt : null,
   };
 
+  const contact = Object.keys(nextContact).length
+    ? nextContact
+    : Object.keys(bodyContact).length
+      ? bodyContact
+      : Object.keys(prevContact).length
+        ? prevContact
+        : undefined;
+
   return {
     ...prev,
     ...next,
+    ...(contact ? { contact } : {}),
     reminders,
   };
 }
@@ -177,7 +189,7 @@ export async function POST(req: Request) {
     endAt = new Date(body.end!).toISOString();
   }
 
-  const meta = buildAgendaMeta(body.inrcy);
+  const meta = buildAgendaMeta(body.inrcy, undefined, body.contact);
 
   const { data, error } = await supabase
     .from("agenda_events")
@@ -222,7 +234,7 @@ export async function PATCH(req: Request) {
     description: body.description ?? undefined,
     location: body.location ?? undefined,
     all_day: allDay,
-    meta: buildAgendaMeta(body.inrcy, current?.meta) ?? undefined,
+    meta: buildAgendaMeta(body.inrcy, current?.meta, body.contact) ?? undefined,
   };
 
   if (allDay) {

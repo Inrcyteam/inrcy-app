@@ -5,94 +5,21 @@ import { useRouter } from "next/navigation";
 import styles from "./crm.module.css";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
-
-type Category = "" | "particulier" | "professionnel" | "collectivite_publique";
-type ContactType = "" | "client" | "prospect" | "fournisseur" | "partenaire" | "autre";
-
-type CrmContact = {
-  id: string;
-  last_name: string;
-  first_name: string;
-  company_name?: string;
-  siret?: string;
-  email: string;
-  phone: string;
-  address: string;
-  billing_address?: string;
-  delivery_address?: string;
-  vat_number?: string;
-  city?: string;
-  postal_code?: string;
-  category: Category;
-  notes?: string;
-  important?: boolean;
-
-  contact_type: ContactType;
-  created_at: string;
-};
-
-type CrmSummary = {
-  total: number;
-  prospects: number;
-  clients: number;
-  partenaires: number;
-  fournisseurs: number;
-  autres: number;
-};
-
-const DEFAULT_PAGE_SIZE = 20;
-const PAGE_SIZE_OPTIONS = [20] as const;
-
-const CATEGORY_LABEL: Record<Exclude<Category, "">, string> = {
-  particulier: "Particulier",
-  professionnel: "Professionnel",
-  collectivite_publique: "Institution",
-};
-
-const TYPE_LABEL: Record<Exclude<ContactType, "">, string> = {
-  client: "Client",
-  prospect: "Prospect",
-  fournisseur: "Fournisseur",
-  partenaire: "Partenaire",
-  autre: "Autre",
-};
-
-const CATEGORY_LABEL_SHORT: Record<Exclude<Category, "">, string> = {
-  particulier: "Part",
-  professionnel: "Pro",
-  collectivite_publique: "Inst",
-};
-
-const TYPE_LABEL_SHORT: Record<Exclude<ContactType, "">, string> = {
-  client: "Client",
-  prospect: "Prosp",
-  fournisseur: "Fourn",
-  partenaire: "Parten",
-  autre: "Autre",
-};
-
-
-function emptyDraft() {
-  return {
-    display_name: "",
-    siret: "",
-    email: "",
-    phone: "",
-    address: "",
-    billing_address: "",
-    delivery_address: "",
-    vat_number: "",
-    city: "",
-    postal_code: "",
-    category: "" as Category,
-    contact_type: "" as ContactType,
-    notes: "",
-    important: false,
-  };
-
-}
+import CRMContactModal from "./_components/CRMContactModal";
+import CRMContactsView from "./_components/CRMContactsView";
+import CRMHeader from "./_components/CRMHeader";
+import CRMPagination from "./_components/CRMPagination";
+import CRMToolbar from "./_components/CRMToolbar";
+import {
+  buildDisplayName,
+  CATEGORY_LABEL,
+  DEFAULT_PAGE_SIZE,
+  emptyDraft,
+  parseDisplayName,
+  TYPE_LABEL,
+} from "./crm.shared";
+import type { Category, ContactType, CrmContact, CrmSummary } from "./crm.types";
 
 function downloadTextFile(filename: string, content: string, mime = "text/plain;charset=utf-8") {
   const blob = new Blob([content], { type: mime });
@@ -341,60 +268,6 @@ function normalizeImportedRow(
 }
 
 
-function sanitizeDepartmentFilter(value: string) {
-  const cleaned = String(value ?? "")
-    .replace(/[^0-9A-Za-z]/g, "")
-    .toUpperCase();
-
-  if (/^(97|98)\d/.test(cleaned)) return cleaned.slice(0, 3);
-  return cleaned.slice(0, 2);
-}
-
-function getDepartmentCode(postalCode?: string) {
-  const raw = String(postalCode ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "");
-
-  if (!raw) return "";
-  if (/^(97|98)\d/.test(raw)) return raw.slice(0, 3);
-  return raw.slice(0, 2);
-}
-
-function buildDisplayName(c: Pick<CrmContact, "last_name" | "first_name" | "company_name">) {
-  const left = [c.last_name ?? "", c.first_name ?? ""].join(" ").replace(/\s+/g, " ").trim();
-  const right = (c.company_name ?? "").trim();
-  if (left && right) return `${left} / ${right}`;
-  return left || right;
-}
-
-function parseDisplayName(v: string) {
-  const raw = (v || "").trim();
-  if (!raw) return { last_name: "", first_name: "", company_name: "" };
-
-  const parts = raw.split("/");
-  const left = (parts[0] || "").trim();
-  const right = (parts.slice(1).join("/") || "").trim();
-
-  // ⚠️ Heuristique simple (en attendant Supabase): on stocke "Nom Prénom" dans last_name,
-  // first_name reste vide, et la partie après "/" va dans company_name.
-  return { last_name: left, first_name: "", company_name: right };
-}
-
-function typeBadgeClass(t: ContactType) {
-  if (!t) return `${styles.typeBadge}`;
-  if (t === "client") return `${styles.typeBadge} ${styles.typeClient}`;
-  if (t === "prospect") return `${styles.typeBadge} ${styles.typeProspect}`;
-  if (t === "fournisseur") return `${styles.typeBadge} ${styles.typeFournisseur}`;
-  return `${styles.typeBadge} ${styles.typePartenaire}`;
-}
-
-function categoryBadgeClass(c: Category) {
-  if (!c) return `${styles.catBadge}`;
-  if (c === "professionnel") return `${styles.catBadge} ${styles.catPro}`;
-  if (c === "collectivite_publique") return `${styles.catBadge} ${styles.catPublic}`;
-  return `${styles.catBadge} ${styles.catPart}`;
-}
 
 export default function CRMClient() {
   const [helpOpen, setHelpOpen] = useState(false);
@@ -1442,269 +1315,53 @@ const exportExcel = async () => {
     { label: "Autres", value: kpis.autres },
   ];
 
+  const openAddModal = () => setAddOpen(true);
+
+  const toggleDraftImportant = () => {
+    if (editingId) toggleImportant(editingId);
+    setDraft((s) => ({ ...s, important: !s.important }));
+  };
+
   return (
     <div
       className={styles.shell}
       onClick={(e) => {
         const t = e.target as HTMLElement;
-        // Clique "vide" = en dehors des cards
         if (t.closest(`.${styles.card}`)) return;
         startNew();
       }}
     >
-      <header className={styles.header}>
-        <div className={styles.titleBlock}>
-          <div className={styles.titleWrap}>
-            <img src="/inrcrm-logo.png" alt="iNr’CRM" style={{ width: 154, height: 64, display: "block" }} />
-            {!isResponsive ? <p className={styles.subInline}>La centrale de tous vos contacts</p> : null}
-          </div>
-          {isResponsive ? <p className={styles.mobileTagline}>La centrale de tous vos contacts</p> : null}
-        </div>
-
-        <div className={styles.headerRight}>
-          {!isResponsive ? <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’CRM" /> : null}
-
-          {isResponsive ? (
-            <>
-              <div className={styles.headerSearchWrap} ref={headerSearchRef}>
-                <button
-                  type="button"
-                  className={`${styles.headerIconBtn} ${styles.searchBtn}`.trim()}
-                  onClick={() => {
-                    setStatsOpen(false);
-                    setHeaderSearchOpen((prev) => !prev);
-                  }}
-                  aria-expanded={headerSearchOpen ? "true" : "false"}
-                  aria-label="Rechercher un contact"
-                  title="Rechercher"
-                >
-                  🔍
-                </button>
-
-                {headerSearchOpen ? (
-                  <div className={styles.headerSearchDropdown}>
-                    <div className={styles.searchWrap}>
-                      <input
-                        ref={headerSearchInputRef}
-                        className={`${styles.search} ${styles.headerSearchActive}`.trim()}
-                        placeholder="Rechercher un contact..."
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className={styles.statsWrap} ref={statsRef}>
-                <button
-                  type="button"
-                  className={styles.headerIconBtn}
-                  onClick={() => {
-                    setHeaderSearchOpen(false);
-                    setStatsOpen((v) => !v);
-                  }}
-                  aria-expanded={statsOpen ? "true" : "false"}
-                  aria-label="Ouvrir le menu CRM"
-                  title="Menu CRM"
-                >
-                  ☰
-                </button>
-
-                {statsOpen ? (
-                  <div className={`${styles.statsDropdown} ${styles.mobileMenuDropdown}`.trim()} role="menu">
-                    <div className={styles.statsTitle}>Menu CRM</div>
-
-                    <div className={styles.mobileMenuActions}>
-                      <button
-                        className={styles.mobileMenuItem}
-                        type="button"
-                        onClick={() => {
-                          setStatsOpen(false);
-                          startNew();
-                          setAddOpen(true);
-                        }}
-                        disabled={saving}
-                      >
-                        Ajouter un contact
-                      </button>
-                      <button
-                        className={styles.mobileMenuItem}
-                        type="button"
-                        onClick={() => {
-                          setStatsOpen(false);
-                          triggerImport();
-                        }}
-                        disabled={saving || importing}
-                      >
-                        {importing ? "Import…" : "Importer"}
-                      </button>
-                      <button
-                        className={styles.mobileMenuItem}
-                        type="button"
-                        onClick={() => {
-                          setStatsOpen(false);
-                          void exportExcel();
-                        }}
-                        disabled={saving || Boolean(exportingFormat) || total === 0}
-                      >
-                        Export Excel
-                      </button>
-                      <button
-                        className={styles.mobileMenuItem}
-                        type="button"
-                        onClick={() => {
-                          setStatsOpen(false);
-                          void exportCsv();
-                        }}
-                        disabled={saving || Boolean(exportingFormat) || total === 0}
-                      >
-                        Export CSV
-                      </button>
-                      <button
-                        className={styles.mobileMenuItem}
-                        type="button"
-                        onClick={() => {
-                          setStatsOpen(false);
-                          setHelpOpen(true);
-                        }}
-                      >
-                        Aide
-                      </button>
-                    </div>
-
-                    <div className={styles.mobileMenuStats}>
-                      {statsItems.map((item) => (
-                        <div key={item.label} className={styles.statsItem}>
-                          <span>{item.label}</span>
-                          <strong>{item.value}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className={styles.closeWrap}>
-                <button
-                  type="button"
-                  className={styles.backBtn}
-                  onClick={() => router.push("/dashboard")}
-                  aria-label="Fermer"
-                  title="Fermer"
-                >
-                  <span className={styles.closeIcon}>✕</span>
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className={`${styles.primaryBtn} ${styles.headerActionBtn}`}
-                onClick={() => {
-                  startNew();
-                  setAddOpen(true);
-                }}
-                disabled={saving}
-              >
-                + Ajouter
-              </button>
-
-              <button
-                type="button"
-                className={`${styles.ghostBtn} ${styles.headerActionBtn}`}
-                onClick={triggerImport}
-                disabled={saving || importing}
-                title="Importer un fichier CSV, JSON ou Excel (.xlsx, .xls)"
-              >
-                {importing ? "Import…" : "Importer"}
-              </button>
-
-              <div className={styles.exportWrap} ref={exportRef}>
-                <button
-                  className={`${styles.ghostBtn} ${styles.headerActionBtn}`}
-                  type="button"
-                  onClick={() => setExportOpen((prev) => !prev)}
-                  disabled={saving || Boolean(exportingFormat) || total === 0}
-                  aria-expanded={exportOpen ? "true" : "false"}
-                  title={total === 0 ? "Aucun contact à exporter" : "Choisir le format d’export"}
-                >
-                  {exportingFormat ? "Export…" : "Exporter"} <span className={styles.caret}>▾</span>
-                </button>
-
-                {exportOpen ? (
-                  <div className={styles.exportMenu} role="menu">
-                    <button
-                      className={styles.exportItem}
-                      type="button"
-                      onClick={() => {
-                        setExportOpen(false);
-                        void exportExcel();
-                      }}
-                      disabled={Boolean(exportingFormat)}
-                    >
-                      Excel (.xlsx)
-                    </button>
-                    <button
-                      className={styles.exportItem}
-                      type="button"
-                      onClick={() => {
-                        setExportOpen(false);
-                        void exportCsv();
-                      }}
-                      disabled={Boolean(exportingFormat)}
-                    >
-                      CSV (.csv)
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className={styles.statsWrap} ref={statsRef}>
-                <button
-                  type="button"
-                  className={`${styles.ghostBtn} ${styles.headerActionBtn} ${styles.headerStatsBtn}`}
-                  onClick={() => {
-                    setHeaderSearchOpen(false);
-                    setExportOpen(false);
-                    setStatsOpen((v) => !v);
-                  }}
-                  aria-expanded={statsOpen ? "true" : "false"}
-                  title="Statistiques"
-                >
-                  Stats
-                </button>
-
-                {statsOpen ? (
-                  <div className={styles.statsDropdown} role="menu">
-                    <div className={styles.statsTitle}>Statistiques</div>
-                    <div className={styles.statsGrid}>
-                      {statsItems.map((item) => (
-                        <div key={item.label} className={styles.statsItem}>
-                          <span>{item.label}</span>
-                          <strong>{item.value}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className={styles.closeWrap}>
-                <button type="button" className={styles.backBtn} onClick={() => router.push("/dashboard")} aria-label="Fermer" title="Fermer">
-                  {isCompactUi ? <span className={styles.closeIcon}>✕</span> : <span className={styles.closeText}>Fermer</span>}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </header>
+      <CRMHeader
+        isResponsive={isResponsive}
+        isCompactUi={isCompactUi}
+        saving={saving}
+        importing={importing}
+        total={total}
+        exportingFormat={exportingFormat}
+        exportOpen={exportOpen}
+        setExportOpen={setExportOpen}
+        statsOpen={statsOpen}
+        setStatsOpen={setStatsOpen}
+        headerSearchOpen={headerSearchOpen}
+        setHeaderSearchOpen={setHeaderSearchOpen}
+        setHelpOpen={setHelpOpen}
+        query={query}
+        setQuery={setQuery}
+        triggerImport={triggerImport}
+        exportExcel={exportExcel}
+        exportCsv={exportCsv}
+        startNew={startNew}
+        openAddModal={openAddModal}
+        statsItems={statsItems}
+        exportRef={exportRef}
+        statsRef={statsRef}
+        headerSearchRef={headerSearchRef}
+        headerSearchInputRef={headerSearchInputRef}
+        onCloseDashboard={() => router.push("/dashboard")}
+      />
 
       <HelpModal open={helpOpen} title="iNr’CRM" onClose={() => setHelpOpen(false)}>
-        <p style={{ marginTop: 0 }}>
-          iNr’CRM centralise tous vos contacts et prospects.
-        </p>
+        <p style={{ marginTop: 0 }}>iNr’CRM centralise tous vos contacts et prospects.</p>
         <ul style={{ margin: 0, paddingLeft: 18 }}>
           <li>Ajoutez et enregistrez vos contacts (prospects / clients / partenaires…).</li>
           <li>Classez et retrouvez rapidement vos informations (notes, catégorie, important).</li>
@@ -1712,359 +1369,21 @@ const exportExcel = async () => {
         </ul>
       </HelpModal>
 
-
-      {/* Mobile: ajout/modif contact via bouton + (modal) */}
-      {addOpen ? (
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true" onClick={() => setAddOpen(false)}>
-          <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHead}>
-              <div className={styles.modalTitle}>{editingId ? "Modifier un contact" : "Ajouter un contact"}</div>
-              <button type="button" className={styles.modalClose} onClick={() => setAddOpen(false)} aria-label="Fermer">
-                ✕
-              </button>
-            </div>
-
-            {error ? <div className={styles.error}>{error}</div> : null}
-
-            {/*
-              Responsive (mobile): formulaire "détaché" du desktop.
-              On garde les mêmes champs mais une construction/grille dédiée,
-              pour garantir l'ordre demandé sur petits écrans.
-            */}
-            {isResponsive ? (
-              <div className={styles.mobileModalForm}>
-                <label className={`${styles.label} ${styles.mfName} ${styles.fName}`}>
-                  <span>Nom Prénom / Raison sociale</span>
-                  <input
-                    className={styles.input}
-                    value={draft.display_name}
-                    onChange={(e) => setDraft((s) => ({ ...s, display_name: e.target.value }))}
-                    placeholder="Dupont Marie / SAS Exemple"
-                    autoComplete="name"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.mfPhone} ${styles.fPhone}`}>
-                  <span>Téléphone</span>
-                  <input
-                    className={styles.input}
-                    value={draft.phone}
-                    onChange={(e) => setDraft((s) => ({ ...s, phone: e.target.value }))}
-                    placeholder="06 00 00 00 00"
-                    autoComplete="tel"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.mfMail} ${styles.fMail}`}>
-                  <span>Mail</span>
-                  <input
-                    className={styles.input}
-                    value={draft.email}
-                    onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
-                    placeholder="marie@exemple.fr"
-                    autoComplete="email"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.mfCategory} ${styles.fCategory}`}>
-                  <span>Catégorie</span>
-                  <select
-                    className={styles.select}
-                    value={draft.category}
-                    onChange={(e) => setDraft((s) => ({ ...s, category: e.target.value as Category }))}
-                  >
-                    <option value="">—</option>
-                    <option value="particulier">Particulier</option>
-                    <option value="professionnel">Professionnel</option>
-                    <option value="collectivite_publique">Institution</option>
-                  </select>
-                </label>
-
-                <label className={`${styles.label} ${styles.mfType} ${styles.fType}`}>
-                  <span>Type</span>
-                  <select
-                    className={styles.select}
-                    value={draft.contact_type}
-                    onChange={(e) => setDraft((s) => ({ ...s, contact_type: e.target.value as ContactType }))}
-                  >
-                    <option value="">—</option>
-                    <option value="client">Client</option>
-                    <option value="prospect">Prospect</option>
-                    <option value="fournisseur">Fournisseur</option>
-                    <option value="partenaire">Partenaire</option>
-                    <option value="autre">Autre</option>
-                  </select>
-                </label>
-
-                <label className={`${styles.label} ${styles.mfSiren} ${styles.fSiren}`}>
-                  <span>SIREN</span>
-                  <input
-                    className={styles.input}
-                    value={draft.siret}
-                    onChange={(e) => setDraft((s) => ({ ...s, siret: e.target.value }))}
-                    placeholder="123 456 789"
-                    inputMode="numeric"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.mfVat} ${styles.fVat}`}>
-                  <span>TVA intracom</span>
-                  <input
-                    className={styles.input}
-                    value={draft.vat_number}
-                    onChange={(e) => setDraft((s) => ({ ...s, vat_number: e.target.value }))}
-                    placeholder="FR12345678901"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.mfImportant} ${styles.fImportant}`}>
-                  <span>Important</span>
-                  <button
-                    type="button"
-                    className={styles.starToggle}
-                    onClick={() => {
-                      if (editingId) toggleImportant(editingId);
-                      setDraft((s) => ({ ...s, important: !s.important }));
-                    }}
-                    aria-pressed={draft.important ? "true" : "false"}
-                    title={draft.important ? "Contact important" : "Marquer comme important"}
-                  >
-                    {draft.important ? "★" : "☆"}
-                  </button>
-                </label>
-
-                <label className={`${styles.label} ${styles.mfAddress} ${styles.fAddress}`}>
-                  <span>Adresse principale</span>
-                  <input
-                    className={styles.input}
-                    value={draft.address}
-                    onChange={(e) => updatePrimaryAddress(e.target.value)}
-                    placeholder="12 rue ..."
-                    autoComplete="street-address"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.mfCity} ${styles.fCity}`}>
-                  <span>Ville</span>
-                  <input
-                    className={styles.input}
-                    value={draft.city}
-                    onChange={(e) => setDraft((s) => ({ ...s, city: e.target.value }))}
-                    placeholder="Paris"
-                    autoComplete="address-level2"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.mfCP} ${styles.fCP}`}>
-                  <span>CP</span>
-                  <input
-                    className={styles.input}
-                    value={draft.postal_code}
-                    onChange={(e) => setDraft((s) => ({ ...s, postal_code: e.target.value }))}
-                    placeholder="75000"
-                    inputMode="numeric"
-                    autoComplete="postal-code"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.mfDeliverySame}`}>
-                  <span className={styles.sameAddressLabel}>Adresse de livraison identique</span>
-                  <label className={styles.sameAddressCheck}>
-                    <input
-                      type="checkbox"
-                      checked={deliverySameAsPrimary}
-                      onChange={(e) => setDeliverySameAsPrimary(e.target.checked)}
-                    />
-                    <span>Utiliser l'adresse principale</span>
-                  </label>
-                </label>
-
-                <label className={`${styles.label} ${styles.mfNotes} ${styles.fNotes}`}>
-                  <span>Notes</span>
-                  <textarea
-                    className={styles.textarea}
-                    value={draft.notes}
-                    onChange={(e) => setDraft((s) => ({ ...s, notes: e.target.value }))}
-                    placeholder="Notes internes"
-                  />
-                </label>
-              </div>
-            ) : (
-              <div className={`${styles.formGrid} ${styles.modalFormGrid} ${styles.desktopModalGrid}`}>
-                <label className={`${styles.label} ${styles.col6} ${styles.fName}`}>
-                  <span>Nom Prénom / Raison sociale</span>
-                  <input
-                    className={styles.input}
-                    value={draft.display_name}
-                    onChange={(e) => setDraft((s) => ({ ...s, display_name: e.target.value }))}
-                    placeholder="Dupont Marie / SAS Exemple"
-                    autoComplete="name"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.col3} ${styles.fPhone}`}>
-                  <span>Téléphone</span>
-                  <input
-                    className={styles.input}
-                    value={draft.phone}
-                    onChange={(e) => setDraft((s) => ({ ...s, phone: e.target.value }))}
-                    placeholder="06 00 00 00 00"
-                    autoComplete="tel"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.col3} ${styles.fMail}`}>
-                  <span>Mail</span>
-                  <input
-                    className={styles.input}
-                    value={draft.email}
-                    onChange={(e) => setDraft((s) => ({ ...s, email: e.target.value }))}
-                    placeholder="marie@exemple.fr"
-                    autoComplete="email"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.col2} ${styles.fCategory}`}>
-                  <span>Catégorie</span>
-                  <select
-                    className={styles.select}
-                    value={draft.category}
-                    onChange={(e) => setDraft((s) => ({ ...s, category: e.target.value as Category }))}
-                  >
-                    <option value="">—</option>
-                    <option value="particulier">Particulier</option>
-                    <option value="professionnel">Professionnel</option>
-                    <option value="collectivite_publique">Institution</option>
-                  </select>
-                </label>
-
-                <label className={`${styles.label} ${styles.col2} ${styles.fType}`}>
-                  <span>Type</span>
-                  <select
-                    className={styles.select}
-                    value={draft.contact_type}
-                    onChange={(e) => setDraft((s) => ({ ...s, contact_type: e.target.value as ContactType }))}
-                  >
-                    <option value="">—</option>
-                    <option value="client">Client</option>
-                    <option value="prospect">Prospect</option>
-                    <option value="fournisseur">Fournisseur</option>
-                    <option value="partenaire">Partenaire</option>
-                    <option value="autre">Autre</option>
-                  </select>
-                </label>
-
-                <label className={`${styles.label} ${styles.col2} ${styles.fSiren}`}>
-                  <span>SIREN</span>
-                  <input
-                    className={styles.input}
-                    value={draft.siret}
-                    onChange={(e) => setDraft((s) => ({ ...s, siret: e.target.value }))}
-                    placeholder="123 456 789"
-                    inputMode="numeric"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.col2} ${styles.fVat}`}>
-                  <span>TVA</span>
-                  <input
-                    className={styles.input}
-                    value={draft.vat_number}
-                    onChange={(e) => setDraft((s) => ({ ...s, vat_number: e.target.value }))}
-                    placeholder="FR12345678901"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.col2} ${styles.modalImportantField} ${styles.fImportant}`}>
-                  <span>Important</span>
-                  <button
-                    type="button"
-                    className={styles.starToggle}
-                    onClick={() => {
-                      if (editingId) toggleImportant(editingId);
-                      setDraft((s) => ({ ...s, important: !s.important }));
-                    }}
-                    aria-pressed={draft.important ? "true" : "false"}
-                    title={draft.important ? "Contact important" : "Marquer comme important"}
-                  >
-                    {draft.important ? "★" : "☆"}
-                  </button>
-                </label>
-
-                <label className={`${styles.label} ${styles.col5} ${styles.fAddress}`}>
-                  <span>Adresse principale</span>
-                  <input
-                    className={styles.input}
-                    value={draft.address}
-                    onChange={(e) => updatePrimaryAddress(e.target.value)}
-                    placeholder="12 rue ..."
-                    autoComplete="street-address"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.col2} ${styles.fCity}`}>
-                  <span>Ville</span>
-                  <input
-                    className={styles.input}
-                    value={draft.city}
-                    onChange={(e) => setDraft((s) => ({ ...s, city: e.target.value }))}
-                    placeholder="Paris"
-                    autoComplete="address-level2"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.col2} ${styles.fCP}`}>
-                  <span>CP</span>
-                  <input
-                    className={styles.input}
-                    value={draft.postal_code}
-                    onChange={(e) => setDraft((s) => ({ ...s, postal_code: e.target.value }))}
-                    placeholder="75000"
-                    inputMode="numeric"
-                    autoComplete="postal-code"
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.col3} ${styles.sameAddressField}`}>
-                  <span>Adresse de livraison</span>
-                  <label className={styles.sameAddressCheck}>
-                    <input
-                      type="checkbox"
-                      checked={deliverySameAsPrimary}
-                      onChange={(e) => setDeliverySameAsPrimary(e.target.checked)}
-                    />
-                    <span>Identique</span>
-                  </label>
-                </label>
-
-                <label className={`${styles.label} ${styles.col12} ${styles.fNotes}`}>
-                  <span>Notes</span>
-                  <textarea
-                    className={styles.textarea}
-                    value={draft.notes}
-                    onChange={(e) => setDraft((s) => ({ ...s, notes: e.target.value }))}
-                    placeholder="Notes internes"
-                  />
-                </label>
-              </div>
-            )}
-
-            <div className={styles.modalFooter}>
-              <button type="button" className={styles.ghostBtn} onClick={() => setAddOpen(false)}>
-                Annuler
-              </button>
-              <button
-                type="button"
-                className={styles.primaryBtn}
-                onClick={save}
-                disabled={saving}
-              >
-                {editingId ? "Mettre à jour" : "Ajouter"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <CRMContactModal
+        open={addOpen}
+        error={error}
+        isResponsive={isResponsive}
+        editingId={editingId}
+        draft={draft}
+        setDraft={setDraft}
+        saving={saving}
+        deliverySameAsPrimary={deliverySameAsPrimary}
+        setDeliverySameAsPrimary={setDeliverySameAsPrimary}
+        updatePrimaryAddress={updatePrimaryAddress}
+        onToggleImportant={toggleDraftImportant}
+        onClose={() => setAddOpen(false)}
+        onSave={save}
+      />
 
       <section className={`${styles.card} ${styles.tableCard} ${styles.crmBoardCard}`} onClick={(e) => e.stopPropagation()}>
         <input
@@ -2087,658 +1406,86 @@ const exportExcel = async () => {
         {error ? <div className={styles.error}>{error}</div> : null}
         {success ? <div className={styles.success}>{success}</div> : null}
 
-        <div className={styles.secondaryToolbar}>
-          {!isResponsive ? (
-            <div className={styles.selectionMeta}>
-              {selectedContactIds.size > 0 ? `${selectedContactIds.size} contact${selectedContactIds.size > 1 ? "s" : ""} sélectionné${selectedContactIds.size > 1 ? "s" : ""}` : "Aucune sélection"}
-            </div>
-          ) : null}
-
-          <div className={`${styles.bulkActions} ${isResponsive ? styles.mobileBulkActions : ""}`.trim()}>
-            {isResponsive ? (
-              <>
-                <button
-                  aria-label="Tout sélectionner"
-                  className={`${styles.ghostBtn} ${styles.iconOnlyBtn}`.trim()}
-                  type="button"
-                  onClick={selectAllVisible}
-                  disabled={visibleContacts.length === 0 || saving}
-                  title="Tout sélectionner"
-                >
-                  ☑
-                </button>
-
-                <button
-                  aria-label="Désélectionner"
-                  className={`${styles.ghostBtn} ${styles.iconOnlyBtn}`.trim()}
-                  type="button"
-                  onClick={clearSelection}
-                  disabled={selectedContactIds.size === 0 || saving}
-                  title={selectedContactIds.size === 0 ? "Aucun contact sélectionné" : "Désélectionner"}
-                >
-                  ⊟
-                </button>
-              </>
-            ) : (
-              <button
-                aria-label="Désélectionner"
-                className={styles.ghostBtn}
-                type="button"
-                onClick={clearSelection}
-                disabled={selectedContactIds.size === 0 || saving}
-                title={selectedContactIds.size === 0 ? "Aucun contact sélectionné" : "Vider la sélection"}
-              >
-                Désélectionner
-              </button>
-            )}
-
-            <div className={styles.actionsWrap} ref={actionsRef}>
-              <button
-                className={`${styles.actionsBtn} ${isResponsive ? styles.mobileActionsBtn : ""}`.trim()}
-                type="button"
-                onClick={() => {
-                  if (isResponsive) setMobileFiltersOpen(false);
-                  setDesktopFiltersOpen(false);
-                  setActionsOpen((v) => !v);
-                }}
-                disabled={(actionEmails.length === 0 && !primaryContact) || saving}
-                aria-expanded={actionsOpen ? "true" : "false"}
-                title={
-                  primaryContact
-                    ? "Actions sur ce contact"
-                    : selectedContactIds.size > 0
-                    ? "Actions sur la sélection"
-                    : "Sélectionnez un contact"
-                }
-              >
-                Actions <span className={styles.caret}>▾</span>
-              </button>
-
-              {actionsOpen ? (
-                <div className={styles.actionsMenu} role="menu">
-                  <button
-                    className={styles.actionsItem}
-                    type="button"
-                    onClick={() => {
-                      setActionsOpen(false);
-                      sendMailToAction();
-                    }}
-                    disabled={actionEmails.length === 0 || saving}
-                  >
-                    ✉️ Envoyer un mail
-                  </button>
-
-                  <div className={styles.actionsSep} />
-
-                  <button
-                    className={styles.actionsItem}
-                    type="button"
-                    onClick={() => {
-                      if (!primaryContact) return;
-                      setActionsOpen(false);
-                      goNewDevis(primaryContact);
-                    }}
-                    disabled={!primaryContact || saving}
-                  >
-                    📄 Devis
-                  </button>
-
-                  <button
-                    className={styles.actionsItem}
-                    type="button"
-                    onClick={() => {
-                      if (!primaryContact) return;
-                      setActionsOpen(false);
-                      goNewFacture(primaryContact);
-                    }}
-                    disabled={!primaryContact || saving}
-                  >
-                    🧾 Factures
-                  </button>
-
-                  <div className={styles.actionsSep} />
-
-                  <button
-                    className={styles.actionsItem}
-                    type="button"
-                    onClick={() => {
-                      if (!primaryContact) return;
-                      setActionsOpen(false);
-                      goPlanifierIntervention(primaryContact);
-                    }}
-                    disabled={!primaryContact || saving}
-                  >
-                    📅 Planifier une intervention
-                  </button>
-                </div>
-              ) : null}
-            </div>
-
-            {isResponsive ? (
-              <button
-                type="button"
-                className={`${styles.ghostBtn} ${styles.mobileFilterActionBtn}`.trim()}
-                onClick={() => {
-                  setActionsOpen(false);
-                  setMobileFiltersOpen((prev) => !prev);
-                }}
-                aria-expanded={mobileFiltersOpen ? "true" : "false"}
-              >
-                Filtres{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ""}
-              </button>
-            ) : null}
-
-            <button
-              aria-label="Supprimer"
-              className={`${styles.smallBtn} ${styles.dangerBtn} ${isResponsive ? styles.mobileDeleteBtn : ""}`.trim()}
-              type="button"
-              onClick={removeSelected}
-              disabled={selectedContactIds.size === 0 || saving}
-              title={selectedContactIds.size === 0 ? "Sélectionne 1 ou plusieurs contacts" : `Supprimer ${selectedContactIds.size} contact(s)`}
-            >
-              🗑️
-            </button>
-          </div>
-
-          {!isResponsive ? (
-            <div className={styles.filtersWrap} ref={desktopFiltersRef}>
-              <button
-                type="button"
-                className={styles.ghostBtn}
-                onClick={() => {
-                  setActionsOpen(false);
-                  setDesktopFiltersOpen((prev) => !prev);
-                }}
-                aria-expanded={desktopFiltersOpen ? "true" : "false"}
-              >
-                Filtres{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ""}
-              </button>
-
-              {desktopFiltersOpen ? (
-                <div className={styles.desktopFiltersPanel}>
-                  <label className={styles.label}>
-                    <span>Catégorie</span>
-                    <select className={styles.select} value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as Category)}>
-                      <option value="">Toutes</option>
-                      <option value="particulier">Particulier</option>
-                      <option value="professionnel">Professionnel</option>
-                      <option value="collectivite_publique">Institution</option>
-                    </select>
-                  </label>
-
-                  <label className={styles.label}>
-                    <span>Type</span>
-                    <select className={styles.select} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ContactType)}>
-                      <option value="">Tous</option>
-                      <option value="client">Client</option>
-                      <option value="prospect">Prospect</option>
-                      <option value="fournisseur">Fournisseur</option>
-                      <option value="partenaire">Partenaire</option>
-                      <option value="autre">Autre</option>
-                    </select>
-                  </label>
-
-                  <label className={styles.label}>
-                    <span>Département</span>
-                    <input
-                      className={styles.input}
-                      inputMode="numeric"
-                      placeholder="62"
-                      maxLength={3}
-                      value={departmentFilter}
-                      onChange={(e) => setDepartmentFilter(sanitizeDepartmentFilter(e.target.value))}
-                    />
-                  </label>
-
-                  <label className={`${styles.label} ${styles.desktopImportantToggle}`.trim()}>
-                    <span>Important</span>
-                    <button
-                      type="button"
-                      className={`${styles.ghostBtn} ${importantOnly ? styles.mobileImportantActive : ""}`.trim()}
-                      onClick={() => setImportantOnly((prev) => !prev)}
-                    >
-                      {importantOnly ? "Uniquement les importants" : "Tous les contacts"}
-                    </button>
-                  </label>
-
-                  <button
-                    type="button"
-                    className={styles.mobileFiltersReset}
-                    onClick={() => {
-                      setCategoryFilter("");
-                      setTypeFilter("");
-                      setDepartmentFilter("");
-                      setImportantOnly(false);
-                    }}
-                  >
-                    Réinitialiser
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {!isResponsive ? (
-            <div className={styles.tableSearchWrap}>
-              <div className={styles.searchWrap}>
-                <input
-                  className={styles.search}
-                  placeholder="Rechercher..."
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-              </div>
-            </div>
-          ) : null}
-
-          {!isResponsive ? (
-            <label className={styles.pageSizeWrap}>
-              <span>Par page</span>
-              <select
-                className={styles.pageSizeSelect}
-                value={pageSize}
-                onChange={(e) => {
-                  setPage(1);
-                  setPageSize(Number(e.target.value) || DEFAULT_PAGE_SIZE);
-                }}
-              >
-                {PAGE_SIZE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-        </div>
-
-        {isResponsive ? (
-          <div className={styles.mobileControls}>
-            {activeFilterChips.length > 0 ? (
-              <div className={styles.mobileFilterChips}>
-                {activeFilterChips.map((chip) => (
-                  <span key={chip} className={styles.mobileFilterChip}>{chip}</span>
-                ))}
-                <button
-                  type="button"
-                  className={styles.mobileFiltersReset}
-                  onClick={() => {
-                    setCategoryFilter("");
-                    setTypeFilter("");
-                    setDepartmentFilter("");
-                    setImportantOnly(false);
-                  }}
-                >
-                  Réinitialiser
-                </button>
-              </div>
-            ) : null}
-
-            {mobileFiltersOpen ? (
-              <div className={styles.mobileFiltersPanel}>
-                <label className={styles.label}>
-                  <span>Catégorie</span>
-                  <select className={styles.select} value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as Category)}>
-                    <option value="">Toutes</option>
-                    <option value="particulier">Particulier</option>
-                    <option value="professionnel">Professionnel</option>
-                    <option value="collectivite_publique">Institution</option>
-                  </select>
-                </label>
-
-                <label className={styles.label}>
-                  <span>Type</span>
-                  <select className={styles.select} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ContactType)}>
-                    <option value="">Tous</option>
-                    <option value="client">Client</option>
-                    <option value="prospect">Prospect</option>
-                    <option value="fournisseur">Fournisseur</option>
-                    <option value="partenaire">Partenaire</option>
-                    <option value="autre">Autre</option>
-                  </select>
-                </label>
-
-                <label className={styles.label}>
-                  <span>Département</span>
-                  <input
-                    className={styles.input}
-                    inputMode="numeric"
-                    placeholder="62"
-                    maxLength={3}
-                    value={departmentFilter}
-                    onChange={(e) => setDepartmentFilter(sanitizeDepartmentFilter(e.target.value))}
-                  />
-                </label>
-
-                <label className={`${styles.label} ${styles.mobileImportantToggle}`.trim()}>
-                  <span>Important</span>
-                  <button
-                    type="button"
-                    className={`${styles.ghostBtn} ${importantOnly ? styles.mobileImportantActive : ""}`.trim()}
-                    onClick={() => setImportantOnly((prev) => !prev)}
-                  >
-                    {importantOnly ? "Uniquement les importants" : "Tous les contacts"}
-                  </button>
-                </label>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <CRMToolbar
+          isResponsive={isResponsive}
+          saving={saving}
+          importing={importing}
+          selectedCount={selectedContactIds.size}
+          visibleContacts={visibleContacts}
+          actionsOpen={actionsOpen}
+          setActionsOpen={setActionsOpen}
+          mobileFiltersOpen={mobileFiltersOpen}
+          setMobileFiltersOpen={setMobileFiltersOpen}
+          desktopFiltersOpen={desktopFiltersOpen}
+          setDesktopFiltersOpen={setDesktopFiltersOpen}
+          activeFiltersCount={activeFiltersCount}
+          activeFilterChips={activeFilterChips}
+          actionEmails={actionEmails}
+          primaryContact={primaryContact}
+          clearSelection={clearSelection}
+          selectAllVisible={selectAllVisible}
+          removeSelected={removeSelected}
+          sendMailToAction={sendMailToAction}
+          goNewDevis={goNewDevis}
+          goNewFacture={goNewFacture}
+          goPlanifierIntervention={goPlanifierIntervention}
+          actionsRef={actionsRef}
+          desktopFiltersRef={desktopFiltersRef}
+          query={query}
+          setQuery={setQuery}
+          pageSize={pageSize}
+          setPage={setPage}
+          setPageSize={setPageSize}
+          categoryFilter={categoryFilter}
+          setCategoryFilter={setCategoryFilter}
+          typeFilter={typeFilter}
+          setTypeFilter={setTypeFilter}
+          departmentFilter={departmentFilter}
+          setDepartmentFilter={setDepartmentFilter}
+          importantOnly={importantOnly}
+          setImportantOnly={setImportantOnly}
+        />
 
         {loading && !(isResponsive && page > 1) ? <div className={styles.muted}>Chargement...</div> : null}
 
         <div className={styles.tableWrap} ref={tableWrapRef}>
-          {/*
-            Responsive (mobile): tableau "détaché" du desktop.
-            On garde les mêmes infos mais une construction différente (grid) pour coller au design.
-          */}
-          {isResponsive ? (
-            <div className={styles.mobileTable}>
-              {visibleContacts.length === 0 ? (
-                <div className={styles.mobileEmpty}>{emptyMessage}</div>
-              ) : (
-                visibleContacts.map((c) => {
-                  const isExpanded = expandedMobileContactId === c.id;
-                  return (
-                    <div key={c.id} className={styles.mobileContactBlock}>
-                      <div className={`${styles.mobileListRow} ${isExpanded ? styles.mobileListRowOpen : ""}`.trim()}>
-                        <label
-                          className={styles.mobileCheckboxWrap}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            className={styles.checkbox}
-                            checked={selectedContactIds.has(c.id)}
-                            onChange={() => toggleSelect(c.id)}
-                            aria-label={`Sélectionner ${buildDisplayName(c) || "ce contact"}`}
-                          />
-                        </label>
-
-                        <button
-                          type="button"
-                          className={styles.mobileListMain}
-                          onClick={() => setExpandedMobileContactId((prev) => (prev === c.id ? null : c.id))}
-                          aria-expanded={isExpanded ? "true" : "false"}
-                        >
-                          <span className={`${styles.mobileListName} ${c.important ? styles.nameImportant : ""}`.trim()}>
-                            {buildDisplayName(c) || "Contact sans nom"}
-                          </span>
-                        </button>
-
-                        <button
-                          type="button"
-                          className={styles.mobileExpandBtn}
-                          onClick={() => setExpandedMobileContactId((prev) => (prev === c.id ? null : c.id))}
-                          aria-label={isExpanded ? "Réduire le détail" : "Afficher le détail"}
-                          aria-expanded={isExpanded ? "true" : "false"}
-                        >
-                          {isExpanded ? "−" : "+"}
-                        </button>
-                      </div>
-
-                      {isExpanded ? (
-                        <div className={styles.mobileRowDetails}>
-                          <div className={styles.mobileDetailGrid}>
-                            <div>
-                              <span className={styles.mobileDetailLabel}>Mail</span>
-                              <strong>{c.email || "—"}</strong>
-                            </div>
-                            <div>
-                              <span className={styles.mobileDetailLabel}>Téléphone</span>
-                              <strong>{c.phone || "—"}</strong>
-                            </div>
-                            <div>
-                              <span className={styles.mobileDetailLabel}>Catégorie</span>
-                              <strong>{c.category ? CATEGORY_LABEL[c.category as Exclude<Category, "">] : "—"}</strong>
-                            </div>
-                            <div>
-                              <span className={styles.mobileDetailLabel}>Type</span>
-                              <strong>{c.contact_type ? TYPE_LABEL[c.contact_type as Exclude<ContactType, "">] : "—"}</strong>
-                            </div>
-                            <div>
-                              <span className={styles.mobileDetailLabel}>Département</span>
-                              <strong>{getDepartmentCode(c.postal_code) || "—"}</strong>
-                            </div>
-                            <div>
-                              <span className={styles.mobileDetailLabel}>Adresse</span>
-                              <strong>{[c.address, c.postal_code, c.city].filter(Boolean).join(" ") || "—"}</strong>
-                            </div>
-                            {(c.notes || "").trim() ? (
-                              <div className={styles.mobileDetailNotes}>
-                                <span className={styles.mobileDetailLabel}>Notes</span>
-                                <strong>{c.notes}</strong>
-                              </div>
-                            ) : null}
-                          </div>
-
-                          <div className={styles.mobileDetailActions}>
-                            <button
-                              type="button"
-                              className={styles.smallBtn}
-                              disabled={!c.email}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                sendMailToContact(c);
-                              }}
-                            >
-                              Mail
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.smallBtn}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                goPlanifierIntervention(c);
-                              }}
-                            >
-                              Agenda
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.smallBtn}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                goNewDevis(c);
-                              }}
-                            >
-                              Devis
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.smallBtn}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                goNewFacture(c);
-                              }}
-                            >
-                              Facture
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.smallBtn}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                startEdit(c);
-                              }}
-                            >
-                              Modifier
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.smallBtn}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleImportant(c.id);
-                              }}
-                            >
-                              {c.important ? "Retirer ★" : "Mettre ★"}
-                            </button>
-                            <button
-                              type="button"
-                              className={`${styles.smallBtn} ${styles.dangerBtn}`.trim()}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void remove(c.id);
-                              }}
-                            >
-                              Supprimer
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })
-              )}
-
-              <div ref={mobileLoadMoreRef} className={styles.mobileLoadSentinel} aria-hidden="true" />
-
-              {loading && page > 1 ? <div className={styles.mobileLoadMore}>Chargement de plus de contacts...</div> : null}
-              {!mobileHasMore && visibleContacts.length > 0 ? <div className={styles.mobileListEnd}>Tous les contacts sont affichés.</div> : null}
-            </div>
-          ) : (
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th className={styles.thSelect}>
-                    <input
-                      type="checkbox"
-                      className={styles.checkbox}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={toggleSelectAllVisible}
-                      checked={allVisibleSelected}
-                      aria-label="Sélectionner tous les contacts de la page"
-                    />
-                  </th>
-                  <th className={styles.thName}>Nom Prénom / RS</th>
-                  <th className={styles.thMail}>Mail</th>
-                  <th className={styles.thTel}>Téléphone</th>
-                  <th className={styles.thCp}>CP</th>
-                  <th className={styles.thCat}>Catégorie</th>
-                  <th className={styles.thType}>Type</th>
-                  <th className={styles.thStar}>⭐</th>
-                </tr>
-              </thead>
-              <tbody>
-                {showDesktopEmptyMessage ? (
-                  <tr className={styles.placeholderMessageRow} style={{ height: `${desktopRowHeight}px` }}>
-                    <td colSpan={8} className={styles.empty}>
-                      {emptyMessage}
-                    </td>
-                  </tr>
-                ) : null}
-
-                {visibleContacts.map((c) => (
-                  <tr
-                    key={c.id}
-                    className={selectedContactIds.has(c.id) ? styles.rowSelected : undefined}
-                    onClick={() => startEdit(c)}
-                    style={{ cursor: "pointer", height: `${desktopRowHeight}px` }}
-                  >
-                    <td className={styles.tdSelect}>
-                      <input
-                        type="checkbox"
-                        className={styles.checkbox}
-                        checked={selectedContactIds.has(c.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={() => toggleSelect(c.id)}
-                        aria-label={`Sélectionner ${buildDisplayName(c)}`}
-                      />
-                    </td>
-                    <td className={`${styles.tdName} ${c.important ? styles.nameImportant : ""}`.trim()}>
-                      {buildDisplayName(c)}
-                    </td>
-                    <td className={`${styles.mono} ${styles.tdMail}`}>{c.email}</td>
-                    <td className={`${styles.mono} ${styles.tdTel}`}>{c.phone}</td>
-                    <td className={`${styles.mono} ${styles.tdCp}`}>{c.postal_code ?? ""}</td>
-                    <td className={styles.tdCat}>
-                      {c.category ? (
-                        <span className={categoryBadgeClass(c.category)}>
-                          <span className={styles.badgeLabelFull}>
-                            {CATEGORY_LABEL[c.category as Exclude<Category, "">]}
-                          </span>
-                          <span className={styles.badgeLabelShort}>
-                            {CATEGORY_LABEL_SHORT[c.category as Exclude<Category, "">]}
-                          </span>
-                        </span>
-                      ) : (
-                        <span className={styles.dash}>—</span>
-                      )}
-                    </td>
-                    <td>
-                      {c.contact_type ? (
-                        <span className={typeBadgeClass(c.contact_type)}>
-                          <span className={styles.badgeLabelFull}>
-                            {TYPE_LABEL[c.contact_type as Exclude<ContactType, "">]}
-                          </span>
-                          <span className={styles.badgeLabelShort}>
-                            {TYPE_LABEL_SHORT[c.contact_type as Exclude<ContactType, "">]}
-                          </span>
-                        </span>
-                      ) : (
-                        <span className={styles.dash}>—</span>
-                      )}
-                    </td>
-                    <td className={styles.tdStar}>
-                      {c.important ? (
-                        <span className={styles.starStatic} title="Important" aria-label="Important">
-                          ★
-                        </span>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-
-                {desktopPlaceholderRows.map((_, index) => (
-                  <tr key={`placeholder-row-${page}-${index}`} className={styles.placeholderRow} aria-hidden="true" style={{ height: `${desktopRowHeight}px` }}>
-                    <td className={styles.tdSelect}>&nbsp;</td>
-                    <td className={styles.tdName}>&nbsp;</td>
-                    <td className={`${styles.mono} ${styles.tdMail}`}>&nbsp;</td>
-                    <td className={`${styles.mono} ${styles.tdTel}`}>&nbsp;</td>
-                    <td className={`${styles.mono} ${styles.tdCp}`}>&nbsp;</td>
-                    <td className={styles.tdCat}>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td className={styles.tdStar}>&nbsp;</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <CRMContactsView
+            isResponsive={isResponsive}
+            visibleContacts={visibleContacts}
+            emptyMessage={emptyMessage}
+            selectedContactIds={selectedContactIds}
+            expandedMobileContactId={expandedMobileContactId}
+            setExpandedMobileContactId={setExpandedMobileContactId}
+            toggleSelect={toggleSelect}
+            sendMailToContact={sendMailToContact}
+            goPlanifierIntervention={goPlanifierIntervention}
+            goNewDevis={goNewDevis}
+            goNewFacture={goNewFacture}
+            startEdit={startEdit}
+            toggleImportant={toggleImportant}
+            remove={remove}
+            mobileLoadMoreRef={mobileLoadMoreRef}
+            loading={loading}
+            page={page}
+            mobileHasMore={mobileHasMore}
+            allVisibleSelected={allVisibleSelected}
+            toggleSelectAllVisible={toggleSelectAllVisible}
+            showDesktopEmptyMessage={showDesktopEmptyMessage}
+            desktopRowHeight={desktopRowHeight}
+            desktopPlaceholderRows={desktopPlaceholderRows}
+          />
         </div>
 
-        {!isResponsive ? (
-          <div className={styles.paginationBar}>
-            <div className={styles.paginationMeta}>
-              {total > 0
-                ? `Affichage ${Math.min((page - 1) * pageSize + 1, total)}–${Math.min(page * pageSize, total)} sur ${total}`
-                : "0 contact"}
-            </div>
-            <div className={styles.paginationControls}>
-              <button
-                type="button"
-                className={styles.ghostBtn}
-                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                disabled={page <= 1 || loading}
-              >
-                ← Précédent
-              </button>
-              <span className={styles.paginationStatus}>Page {Math.min(page, pageCount)} / {Math.max(pageCount, 1)}</span>
-              <button
-                type="button"
-                className={styles.ghostBtn}
-                onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
-                disabled={page >= pageCount || loading || total === 0}
-              >
-                Suivant →
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className={styles.mobileListSummary}>
-            {total > 0 ? `${visibleContacts.length} / ${total} contact${total > 1 ? "s" : ""}` : "0 contact"}
-          </div>
-        )}
+        <CRMPagination
+          isResponsive={isResponsive}
+          total={total}
+          visibleCount={visibleContacts.length}
+          page={page}
+          pageSize={pageSize}
+          pageCount={pageCount}
+          loading={loading}
+          setPage={setPage}
+        />
       </section>
     </div>
   );

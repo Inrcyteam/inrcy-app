@@ -656,7 +656,7 @@ export async function GET(req: Request) {
         try {
           let sent = false;
 
-          if (recipient.kind === "contact" && selectedMailAccountId) {
+          if (selectedMailAccountId) {
             try {
               await sendMailFromIntegration({
                 userId: String(row.user_id),
@@ -670,7 +670,7 @@ export async function GET(req: Request) {
               });
               sent = true;
             } catch (integrationError) {
-              console.error("[calendar-reminders] inrsend delivery failed, fallback to iNrCy", {
+              console.error("[calendar-reminders] integration delivery failed, fallback to iNrCy", {
                 eventId: row.id,
                 recipient: recipient.email,
                 kind: recipient.kind,
@@ -699,7 +699,7 @@ export async function GET(req: Request) {
             recipient: recipient.email,
             kind: recipient.kind,
             offsetMinutes,
-            via: recipient.kind === "contact" && selectedMailAccountId ? "inrsend-or-fallback" : "inrcy",
+            via: selectedMailAccountId ? "integration-or-fallback" : "inrcy",
             error: mailError,
           });
         }

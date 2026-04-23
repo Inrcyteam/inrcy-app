@@ -4,6 +4,7 @@ import nodemailer from "nodemailer";
 import { Redis } from "@upstash/redis";
 import { requireEnv, optionalEnv } from "@/lib/env";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { shouldBypassUpstashInCurrentEnv } from "@/lib/upstashMode";
 import { stripeGet } from "@/lib/stripeRest";
 
 export type HealthCheckName = "supabase" | "kv" | "stripe" | "smtp";
@@ -80,7 +81,16 @@ async function checkSupabase() {
   });
 }
 
-async function checkKv() {
+async function checkKv(): Promise<HealthCheckResult> {
+  if (shouldBypassUpstashInCurrentEnv()) {
+    return {
+      ok: true,
+      ms: null,
+      skipped: true,
+      error: null,
+    };
+  }
+
   return timeCheck(async () => {
     const redis = getRedis();
     await redis.ping();

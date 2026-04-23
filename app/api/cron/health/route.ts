@@ -5,6 +5,7 @@ import { optionalEnv, requireEnv } from "@/lib/env";
 import { runDeepHealthChecks } from "@/lib/health/checks";
 import { log } from "@/lib/observability/logger";
 import { sendTxMail } from "@/lib/txMailer";
+import { shouldBypassUpstashInCurrentEnv } from "@/lib/upstashMode";
 
 export const runtime = "nodejs";
 
@@ -52,16 +53,18 @@ async function sendFailureAlert(report: Awaited<ReturnType<typeof runDeepHealthC
   const dedupeSeconds = Number(optionalEnv("HEALTHCHECK_ALERT_DEDUPE_SECONDS", "21600"));
   let shouldSend = true;
 
-  try {
-    const redis = getRedis();
-    const key = `healthcheck:alert:${new Date().toISOString().slice(0, 13)}`;
-    const res = await redis.set(key, "1", {
-      nx: true,
-      ex: Number.isFinite(dedupeSeconds) && dedupeSeconds > 0 ? dedupeSeconds : 21600,
-    });
-    shouldSend = res === "OK";
-  } catch {
-    shouldSend = true;
+  if (!shouldBypassUpstashInCurrentEnv()) {
+    try {
+      const redis = getRedis();
+      const key = `healthcheck:alert:${new Date().toISOString().slice(0, 13)}`;
+      const res = await redis.set(key, "1", {
+        nx: true,
+        ex: Number.isFinite(dedupeSeconds) && dedupeSeconds > 0 ? dedupeSeconds : 21600,
+      });
+      shouldSend = res === "OK";
+    } catch {
+      shouldSend = true;
+    }
   }
 
   if (!shouldSend) return false;
