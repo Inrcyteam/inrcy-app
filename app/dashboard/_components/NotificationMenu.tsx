@@ -1,6 +1,6 @@
 "use client";
 
-import styles from "./NotificationMenu.module.css";
+import styles from "../dashboard.module.css";
 import type { NotificationItem } from "../dashboard.types";
 
 export default function NotificationMenu(props: {

@@ -2,11 +2,12 @@ import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import styles from "./agenda.module.css";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
+import SettingsDrawer from "../SettingsDrawer";
 import HelpButton from "../_components/HelpButton";
+import AgendaSettingsContent from "../settings/_components/AgendaSettingsContent";
 import HelpModal from "../_components/HelpModal";
 import {
   accentFor,
-  CATEGORY_LABEL,
   formatDayLabel,
   formatMonthLabel,
   formatTime,
@@ -14,13 +15,11 @@ import {
   getEventAccentClass,
   getEventWhenLabel,
   keyOf,
-  providerLabel,
-  TYPE_LABEL,
   type ContactCategory,
   type ContactType,
   type CrmContact,
   type DayEvent,
-  type MailAccountOption,
+  type GuestContactForm,
   type RdvKind,
   type RdvMode,
 } from "./agenda.shared";
@@ -105,6 +104,9 @@ export function TimeDropdown({ value, options, onChange }: TimeDropdownProps) {
 type AgendaHeaderProps = {
   helpOpen: boolean;
   setHelpOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  settingsOpen: boolean;
+  onOpenSettings: () => void;
+  onCloseSettings: () => void;
   query: string;
   setQuery: React.Dispatch<React.SetStateAction<string>>;
   showMobileSearch: boolean;
@@ -112,7 +114,7 @@ type AgendaHeaderProps = {
   onClose: () => void;
 };
 
-export function AgendaHeader({ helpOpen, setHelpOpen, query, setQuery, showMobileSearch, setShowMobileSearch, onClose }: AgendaHeaderProps) {
+export function AgendaHeader({ helpOpen, setHelpOpen, settingsOpen, onOpenSettings, onCloseSettings, query, setQuery, showMobileSearch, setShowMobileSearch, onClose }: AgendaHeaderProps) {
   return (
     <>
       <div className={styles.header}>
@@ -144,6 +146,12 @@ export function AgendaHeader({ helpOpen, setHelpOpen, query, setQuery, showMobil
             />
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <ResponsiveActionButton
+                desktopLabel="Réglages"
+                mobileIcon="⚙️"
+                onClick={onOpenSettings}
+                title="Réglages iNr’Calendar"
+              />
               <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={onClose} />
             </div>
           </div>
@@ -162,6 +170,12 @@ export function AgendaHeader({ helpOpen, setHelpOpen, query, setQuery, showMobil
             </button>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <ResponsiveActionButton
+                desktopLabel="Réglages"
+                mobileIcon="⚙️"
+                onClick={onOpenSettings}
+                title="Réglages iNr’Calendar"
+              />
               <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={onClose} />
             </div>
           </div>
@@ -178,6 +192,14 @@ export function AgendaHeader({ helpOpen, setHelpOpen, query, setQuery, showMobil
           <li>Gardez une vision claire de votre planning terrain.</li>
         </ul>
       </HelpModal>
+
+      <SettingsDrawer
+        title="Réglages iNr’Calendar"
+        isOpen={settingsOpen}
+        onClose={onCloseSettings}
+      >
+        <AgendaSettingsContent />
+      </SettingsDrawer>
 
       {showMobileSearch && (
         <div className={`${styles.mobileSearchBar} ${styles.mobileOnly}`}>
@@ -329,13 +351,7 @@ type AgendaSidebarProps = {
   selectedEvents: DayEvent[];
   query: string;
   globalMatches: DayEvent[];
-  agendaMailAccountId: string;
-  mailAccounts: MailAccountOption[];
-  agendaMailLoading: boolean;
-  agendaMailSaving: boolean;
-  agendaMailError: string | null;
   onCreateEvent: () => void;
-  onAgendaMailAccountChange: (nextId: string) => void;
   onOpenEvent: (event: DayEvent) => void;
   onDeleteEvent: (id: string) => void;
   onJumpToEvent: (event: DayEvent) => void;
@@ -402,13 +418,7 @@ export function AgendaSidebar({
   selectedEvents,
   query,
   globalMatches,
-  agendaMailAccountId,
-  mailAccounts,
-  agendaMailLoading,
-  agendaMailSaving,
-  agendaMailError,
   onCreateEvent,
-  onAgendaMailAccountChange,
   onOpenEvent,
   onDeleteEvent,
   onJumpToEvent,
@@ -424,32 +434,6 @@ export function AgendaSidebar({
           ＋ Évènement
         </button>
         <div className={styles.sideDivider} />
-        <div style={{ width: "100%", marginTop: 12 }}>
-          <div className={styles.label} style={{ marginBottom: 6 }}>Boîte client iNr’Send</div>
-          <select
-            className={styles.input}
-            value={agendaMailAccountId}
-            onChange={(e) => onAgendaMailAccountChange(e.target.value)}
-            disabled={agendaMailLoading || agendaMailSaving}
-          >
-            <option value="">— Envoi client depuis iNrCy —</option>
-            {mailAccounts.map((acc) => (
-              <option key={acc.id} value={acc.id}>
-                {providerLabel(acc.provider)} — {acc.display_name || acc.email_address}
-              </option>
-            ))}
-          </select>
-          <div className={styles.eventSub} style={{ marginTop: 6 }}>
-            {agendaMailLoading
-              ? "Chargement des boîtes…"
-              : agendaMailSaving
-                ? "Enregistrement…"
-                : agendaMailAccountId
-                  ? "Les rappels clients partiront de cette boîte via iNr’Send avec la signature automatique."
-                  : "Aucune boîte sélectionnée : les rappels clients restent envoyés depuis iNrCy."}
-          </div>
-          {agendaMailError ? <div className={styles.eventSub} style={{ marginTop: 6, color: "#fca5a5" }}>{agendaMailError}</div> : null}
-        </div>
       </div>
 
       <div className={styles.sidebarBody}>
@@ -525,6 +509,7 @@ type AgendaEventModalProps = {
   rdvNewContactType: ContactType;
   rdvNewContactImportant: boolean;
   rdvNewContactNotes: string;
+  rdvGuests: GuestContactForm[];
   crmAddFeedback: string;
   contacts: CrmContact[];
   contactsLoading: boolean;
@@ -534,6 +519,10 @@ type AgendaEventModalProps = {
   onDelete: () => void;
   onSubmit: () => void;
   onAddContactToCrm: () => void;
+  onAddGuest: () => void;
+  onRemoveGuest: (id: string) => void;
+  onUpdateGuestContactId: (id: string, contactId: string) => void;
+  onUpdateGuestField: (id: string, field: "name" | "email", value: string) => void;
   clearCrmAddFeedback: () => void;
   setRdvKind: (value: RdvKind) => void;
   setRdvSummary: (value: string) => void;
@@ -573,7 +562,7 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
         <div className={styles.modalHeader}>
           <div style={{ fontWeight: 950 }}>
             {props.rdvMode === "create" ? "Nouvel évènement" : "Modifier l’évènement"}
-            <p className="text-xs text-white/60 mt-1">Des emails de rappels sont envoyés 24h et 2h avant l'évènement (client également si email renseigné)</p>
+            <p className="text-xs text-white/60 mt-1">Les rappels suivent les réglages iNr’Calendar et partent aussi aux invités renseignés.</p>
           </div>
           <button className={styles.btnGhost} onClick={props.onClose} aria-label="Fermer">
             ✕
@@ -583,196 +572,226 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
         <div className={styles.modalBody}>
           {props.rdvError && <div className={styles.modalError}>{props.rdvError}</div>}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div className={styles.field}>
-              <div className={styles.label}>Catégorie</div>
-              <select className={styles.input} value={props.rdvKind} onChange={(e) => props.setRdvKind(e.target.value as RdvKind)}>
-                <option value="intervention">Intervention</option>
-                <option value="agenda">Rendez-vous</option>
-              </select>
-            </div>
-            <div className={styles.field}>
-              <div className={styles.label}>Référence (optionnel)</div>
-              <input className={styles.input} value={props.intReference} onChange={(e) => props.setIntReference(e.target.value)} placeholder="Ex: CH-2026-021" />
-            </div>
-          </div>
-
-          <div className={styles.field} style={{ marginTop: 10 }}>
-            <div className={styles.label}>Titre</div>
-            <input className={styles.input} value={props.rdvSummary} onChange={(e) => props.setRdvSummary(e.target.value)} placeholder="Ex: Intervention désinsectisation" />
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
-            <div className={styles.field}>
-              <div className={styles.label}>Type d’intervention</div>
-              <input className={styles.input} value={props.intType} onChange={(e) => props.setIntType(e.target.value)} placeholder="Ex: dératisation, diagnostic, entretien..." />
-            </div>
-            <div className={styles.field}>
-              <div className={styles.label}>Statut</div>
-              <select className={styles.input} value={props.intStatus} onChange={(e) => props.setIntStatus(e.target.value)}>
-                <option value="devis">Devis</option>
-                <option value="confirmé">Confirmé</option>
-                <option value="en cours">En cours</option>
-                <option value="terminé">Terminé</option>
-                <option value="annulé">Annulé</option>
-              </select>
-            </div>
-          </div>
-
-          <div className={styles.dateTimeRow} style={{ marginTop: 10 }}>
-            <div className={styles.field}>
-              <div className={styles.label}>Date</div>
-              <input
-                className={styles.input}
-                type="date"
-                lang="fr-FR"
-                value={props.rdvDate}
-                onChange={(e) => props.setRdvDate(e.target.value)}
-                placeholder="JJ/MM/AAAA"
-              />
-            </div>
-            <div className={styles.field}>
-              <div className={styles.label}>Début</div>
-              <TimeDropdown value={props.rdvStart} options={props.startTimeOptions} onChange={props.setRdvStart} />
-            </div>
-            <div className={styles.field}>
-              <div className={styles.label}>Fin</div>
-              <TimeDropdown value={props.rdvEnd} options={props.endTimeOptions} onChange={props.setRdvEnd} />
-            </div>
-          </div>
-
-          <div className={styles.contactRow} style={{ marginTop: 10 }}>
-            <div className={styles.field} style={{ flex: 1, minWidth: 260 }}>
-              <div className={styles.label}>Contact CRM</div>
-              <select className={styles.input} value={props.rdvContactId} onChange={(e) => props.setRdvContactId(e.target.value)}>
-                <option value="">— Aucun —</option>
-                {props.contacts.map((contact) => (
-                  <option key={contact.id} value={contact.id}>
-                    {getContactOptionLabel(contact)}
-                  </option>
-                ))}
-              </select>
-              {props.contactsLoading && (
-                <div className={styles.eventSub} style={{ marginTop: 6 }}>
-                  Chargement contacts…
+          <section className={styles.formSection}>
+            <div className={styles.formSectionHeader}>
+              <div className={styles.formSectionKicker}>
+                <span className={styles.formSectionIcon} aria-hidden>📅</span>
+                <div>
+                  <div className={styles.formSectionTitle}>Rendez-vous</div>
+                  <div className={styles.formSectionHint}>Les infos essentielles du créneau.</div>
                 </div>
-              )}
+              </div>
             </div>
 
-            <button
-              type="button"
-              className={styles.btnPrimary}
-              onClick={props.onAddContactToCrm}
-              style={{ alignSelf: "end", height: 42, borderRadius: 12 }}
-              title="Ajoute le contact au CRM (une seule fois)"
-            >
-              Ajouter au CRM
-            </button>
-          </div>
+            <div className={styles.eventMainGrid}>
+              <div className={styles.field}>
+                <div className={styles.label}>Catégorie</div>
+                <select className={styles.input} value={props.rdvKind} onChange={(e) => props.setRdvKind(e.target.value as RdvKind)}>
+                  <option value="agenda">Rendez-vous</option>
+                  <option value="intervention">Intervention</option>
+                </select>
+              </div>
 
-          {props.crmAddFeedback ? (
-            <div className={styles.eventSub} style={{ marginTop: 6 }}>
-              {props.crmAddFeedback}
+              <div className={styles.field}>
+                <div className={styles.label}>Titre</div>
+                <input className={styles.input} value={props.rdvSummary} onChange={(e) => props.setRdvSummary(e.target.value)} placeholder="Ex: Rendez-vous client" />
+              </div>
             </div>
-          ) : null}
 
-          <div className={styles.coordsBlock}>
-            <div className={styles.coordsTitle}>Coordonnées</div>
+            <div className={styles.eventTimeGrid}>
+              <div className={styles.field}>
+                <div className={styles.label}>Statut</div>
+                <select className={styles.input} value={props.intStatus} onChange={(e) => props.setIntStatus(e.target.value)}>
+                  <option value="devis">Devis</option>
+                  <option value="confirmé">Confirmé</option>
+                  <option value="en cours">En cours</option>
+                  <option value="terminé">Terminé</option>
+                  <option value="annulé">Annulé</option>
+                </select>
+              </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
+              <div className={`${styles.field} ${styles.dateField}`}>
+                <div className={styles.label}>Date</div>
+                <input
+                  className={styles.input}
+                  type="date"
+                  lang="fr-FR"
+                  value={props.rdvDate}
+                  onChange={(e) => props.setRdvDate(e.target.value)}
+                  placeholder="JJ/MM/AAAA"
+                />
+              </div>
+
+              <div className={styles.field}>
+                <div className={styles.label}>Début</div>
+                <TimeDropdown value={props.rdvStart} options={props.startTimeOptions} onChange={props.setRdvStart} />
+              </div>
+
+              <div className={styles.field}>
+                <div className={styles.label}>Fin</div>
+                <TimeDropdown value={props.rdvEnd} options={props.endTimeOptions} onChange={props.setRdvEnd} />
+              </div>
+            </div>
+          </section>
+
+          <section className={styles.formSection}>
+            <div className={styles.formSectionHeader}>
+              <div className={styles.formSectionKicker}>
+                <span className={styles.formSectionIcon} aria-hidden>👤</span>
+                <div>
+                  <div className={styles.formSectionTitle}>Contact principal</div>
+                  <div className={styles.formSectionHint}>Base CRM simple : identité, contact et adresse.</div>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.contactPickerRow}>
+              <div className={styles.field}>
+                <div className={styles.label}>Contact CRM</div>
+                <select className={styles.input} value={props.rdvContactId} onChange={(e) => props.setRdvContactId(e.target.value)}>
+                  <option value="">— Aucun —</option>
+                  {props.contacts.map((contact) => (
+                    <option key={contact.id} value={contact.id}>
+                      {getContactOptionLabel(contact)}
+                    </option>
+                  ))}
+                </select>
+                {props.contactsLoading && (
+                  <div className={styles.eventSub} style={{ marginTop: 6 }}>
+                    Chargement contacts…
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                className={`${styles.btnPrimary} ${styles.sectionAction}`}
+                onClick={props.onAddContactToCrm}
+                title="Ajoute le contact au CRM (une seule fois)"
+              >
+                Ajouter au CRM
+              </button>
+            </div>
+
+            {props.crmAddFeedback ? (
+              <div className={styles.eventSub} style={{ marginTop: 8 }}>
+                {props.crmAddFeedback}
+              </div>
+            ) : null}
+
+            <div className={styles.formGrid2}>
               <input
                 className={styles.input}
                 value={props.rdvNewContactName}
                 onChange={(e) => updateAndClear(props.setRdvNewContactName, e.target.value)}
                 placeholder="Nom Prénom / Raison sociale"
               />
-              <input
-                className={styles.input}
-                value={props.rdvNewContactSiren}
-                onChange={(e) => updateAndClear(props.setRdvNewContactSiren, e.target.value)}
-                placeholder="SIREN (optionnel)"
-              />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
               <input className={styles.input} value={props.rdvNewContactPhone} onChange={(e) => updateAndClear(props.setRdvNewContactPhone, e.target.value)} placeholder="Téléphone" />
               <input className={styles.input} value={props.rdvNewContactEmail} onChange={(e) => updateAndClear(props.setRdvNewContactEmail, e.target.value)} placeholder="Email" />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10, marginTop: 10 }}>
               <input className={styles.input} value={props.rdvNewContactAddress} onChange={(e) => updateAndClear(props.setRdvNewContactAddress, e.target.value)} placeholder="Adresse" />
               <input className={styles.input} value={props.rdvNewContactCity} onChange={(e) => updateAndClear(props.setRdvNewContactCity, e.target.value)} placeholder="Ville" />
               <input className={styles.input} value={props.rdvNewContactPostal} onChange={(e) => updateAndClear(props.setRdvNewContactPostal, e.target.value)} placeholder="Code postal" />
             </div>
+          </section>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10, alignItems: "end" }}>
-              <div className={styles.field} style={{ marginTop: 0 }}>
-                <div className={styles.label}>Catégorie</div>
-                <select
-                  className={styles.input}
-                  value={props.rdvNewContactCategory}
-                  onChange={(e) => updateAndClear(props.setRdvNewContactCategory, e.target.value as ContactCategory)}
-                >
-                  <option value="particulier">{CATEGORY_LABEL.particulier}</option>
-                  <option value="professionnel">{CATEGORY_LABEL.professionnel}</option>
-                  <option value="collectivite_publique">{CATEGORY_LABEL.collectivite_publique}</option>
-                </select>
+          <section className={styles.formSection}>
+            <div className={styles.formSectionHeader}>
+              <div className={styles.formSectionKicker}>
+                <span className={styles.formSectionIcon} aria-hidden>👥</span>
+                <div>
+                  <div className={styles.formSectionTitle}>Invités</div>
+                  <div className={styles.formSectionHint}>Ils recevront aussi les confirmations et rappels mail.</div>
+                </div>
               </div>
 
-              <div className={styles.field} style={{ marginTop: 0 }}>
-                <div className={styles.label}>Type</div>
-                <select
-                  className={styles.input}
-                  value={props.rdvNewContactType}
-                  onChange={(e) => updateAndClear(props.setRdvNewContactType, e.target.value as ContactType)}
-                >
-                  <option value="prospect">{TYPE_LABEL.prospect}</option>
-                  <option value="client">{TYPE_LABEL.client}</option>
-                  <option value="fournisseur">{TYPE_LABEL.fournisseur}</option>
-                  <option value="partenaire">{TYPE_LABEL.partenaire}</option>
-                  <option value="autre">{TYPE_LABEL.autre}</option>
-                </select>
+              <button type="button" className={styles.btnGhost} onClick={props.onAddGuest}>
+                + Ajouter un invité
+              </button>
+            </div>
+
+            {props.rdvGuests.length === 0 ? (
+              <div className={styles.emptyHint}>Aucun invité ajouté.</div>
+            ) : (
+              <div className={styles.guestList}>
+                {props.rdvGuests.map((guest, index) => (
+                  <div key={guest.id} className={styles.guestCard}>
+                    <div className={styles.guestHeader}>
+                      <div className={styles.coordsTitle}>Invité {index + 1}</div>
+                      <button
+                        type="button"
+                        className={styles.btnGhost}
+                        onClick={() => props.onRemoveGuest(guest.id)}
+                        style={{ borderRadius: 10, padding: "8px 10px" }}
+                      >
+                        Retirer
+                      </button>
+                    </div>
+
+                    <div className={styles.field}>
+                      <div className={styles.label}>Contact CRM</div>
+                      <select
+                        className={styles.input}
+                        value={guest.contactId}
+                        onChange={(e) => props.onUpdateGuestContactId(guest.id, e.target.value)}
+                      >
+                        <option value="">— Aucun —</option>
+                        {props.contacts.map((contact) => (
+                          <option key={contact.id} value={contact.id}>
+                            {getContactOptionLabel(contact)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className={styles.formGrid2}>
+                      <input
+                        className={styles.input}
+                        value={guest.name}
+                        onChange={(e) => props.onUpdateGuestField(guest.id, "name", e.target.value)}
+                        placeholder="Nom Prénom / Raison sociale"
+                      />
+                      <input
+                        className={styles.input}
+                        value={guest.email}
+                        onChange={(e) => props.onUpdateGuestField(guest.id, "email", e.target.value)}
+                        placeholder="Email"
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
+            )}
+          </section>
 
-              <label className={styles.importantToggle} style={{ height: 42 }}>
-                <input
-                  type="checkbox"
-                  checked={props.rdvNewContactImportant}
-                  onChange={(e) => {
-                    props.setRdvNewContactImportant(e.target.checked);
-                    props.clearCrmAddFeedback();
-                  }}
-                />
-                <span>Important</span>
-              </label>
+          <section className={styles.formSection}>
+            <div className={styles.formSectionHeader}>
+              <div className={styles.formSectionKicker}>
+                <span className={styles.formSectionIcon} aria-hidden>📍</span>
+                <div>
+                  <div className={styles.formSectionTitle}>Lieu & notes</div>
+                  <div className={styles.formSectionHint}>Le lieu peut rester vide si l’adresse du contact suffit.</div>
+                </div>
+              </div>
             </div>
 
-            <textarea
-              className={styles.textarea}
-              style={{ marginTop: 10, minHeight: 84 }}
-              value={props.rdvNewContactNotes}
-              onChange={(e) => updateAndClear(props.setRdvNewContactNotes, e.target.value)}
-              placeholder="Notes (optionnel)"
-            />
-          </div>
-
-          <div className={styles.field} style={{ marginTop: 10 }}>
-            <div className={styles.label}>Lieu du RDV (optionnel)</div>
-            <input
-              className={styles.input}
-              value={props.rdvLocation}
-              onChange={(e) => props.setRdvLocation(e.target.value)}
-              placeholder="Ex: 12 rue ... / Zone industrielle ... (si vide, on prend l’adresse des coordonnées)"
-            />
-            <div className={styles.eventSub} style={{ marginTop: 6 }}>
-              Si ce champ est vide, l’adresse sera prise depuis les <b>Coordonnées</b>.
+            <div className={styles.field}>
+              <div className={styles.label}>Lieu du RDV (optionnel)</div>
+              <input
+                className={styles.input}
+                value={props.rdvLocation}
+                onChange={(e) => props.setRdvLocation(e.target.value)}
+                placeholder="Ex: zone d’intervention, entrée, bâtiment…"
+              />
+              <div className={styles.eventSub} style={{ marginTop: 6 }}>
+                Si ce champ est vide, l’adresse sera prise depuis le <b>contact principal</b>.
+              </div>
             </div>
-          </div>
 
-          <div className={styles.field} style={{ marginTop: 10 }}>
-            <div className={styles.label}>Notes</div>
-            <textarea className={styles.textarea} value={props.rdvNotes} onChange={(e) => props.setRdvNotes(e.target.value)} placeholder="Détails, consignes, matériel, infos importantes…" />
-          </div>
+            <div className={styles.field} style={{ marginTop: 12 }}>
+              <div className={styles.label}>Notes</div>
+              <textarea className={styles.textarea} value={props.rdvNotes} onChange={(e) => props.setRdvNotes(e.target.value)} placeholder="Détails, consignes, matériel, infos importantes…" />
+            </div>
+          </section>
         </div>
 
         <div className={styles.modalFooter}>

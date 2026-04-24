@@ -6,6 +6,7 @@ import AbonnementContent from "../settings/_components/AbonnementContent";
 import LegalContent from "../settings/_components/LegalContent";
 import RgpdContent from "../settings/_components/RgpdContent";
 import MailsSettingsContent from "../settings/_components/MailsSettingsContent";
+import AgendaSettingsContent from "../settings/_components/AgendaSettingsContent";
 import InertiaContent from "../settings/_components/InertiaContent";
 import BoutiqueContent from "../settings/_components/BoutiqueContent";
 import NotificationsSettingsContent from "../settings/_components/NotificationsSettingsContent";
@@ -24,6 +25,7 @@ type DashboardPanelName =
   | "activite"
   | "abonnement"
   | "mails"
+  | "agenda"
   | "site_inrcy"
   | "site_web"
   | "instagram"
@@ -98,6 +100,7 @@ export default function DashboardSettingsDrawerContent({
       {panel === "legal" && <LegalContent mode="drawer" />}
       {panel === "rgpd" && <RgpdContent mode="drawer" />}
       {panel === "mails" && <MailsSettingsContent />}
+      {panel === "agenda" && <AgendaSettingsContent />}
       {panel === "inertie" && (
         <InertiaContent
           mode="drawer"

@@ -45,6 +45,13 @@ export type MailAccountOption = {
   display_name: string | null;
 };
 
+export type GuestContactForm = {
+  id: string;
+  contactId: string;
+  name: string;
+  email: string;
+};
+
 export type ContactPayload = {
   display_name: string;
   first_name?: string;

@@ -13,6 +13,7 @@ type DashboardPanelName =
   | "activite"
   | "abonnement"
   | "mails"
+  | "agenda"
   | "site_inrcy"
   | "site_web"
   | "instagram"

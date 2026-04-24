@@ -858,3 +858,69 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     min-width:0;
   }
 }
+
+/* --- Refonte formulaire évènement --- */
+.formSection{
+  margin-top:12px;
+  padding:14px;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,0.12);
+  background:linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.025));
+}
+.formSection:first-of-type{margin-top:0}
+.formSectionHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+  flex-wrap:wrap;
+}
+.formSectionKicker{display:flex;align-items:center;gap:10px;min-width:0}
+.formSectionIcon{
+  width:34px;height:34px;border-radius:12px;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:rgba(77,163,255,0.16);
+  border:1px solid rgba(77,163,255,0.24);
+}
+.formSectionTitle{font-size:15px;font-weight:950;color:rgba(255,255,255,0.95);letter-spacing:-.2px}
+.formSectionHint{font-size:12px;color:rgba(255,255,255,0.58);margin-top:2px}
+.formGrid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+.formGrid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.eventMainGrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:10px}
+.eventTimeGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}
+.eventMainGrid > *, .eventTimeGrid > *{min-width:0}
+.gridSpan2{grid-column:span 2}
+.dateField{min-width:0}
+.contactPickerRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end}
+.sectionAction{height:42px;border-radius:12px;white-space:nowrap}
+.emptyHint{
+  border-radius:14px;
+  border:1px dashed rgba(255,255,255,.14);
+  background:rgba(255,255,255,.025);
+  padding:12px;
+  color:rgba(255,255,255,.56);
+  font-size:13px;
+}
+.guestList{display:grid;gap:10px}
+.guestCard{
+  padding:12px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,0.12);
+  background:rgba(6,12,30,0.28);
+}
+.guestHeader{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+
+@media (max-width: 760px){
+  .formGrid2,.formGrid3,.eventMainGrid{grid-template-columns:1fr}
+  .eventTimeGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .gridSpan2{grid-column:auto}
+  .contactPickerRow{grid-template-columns:1fr}
+  .sectionAction{width:100%}
+  .formSectionHeader{align-items:flex-start}
+}
+
+@media (max-width: 360px){
+  .eventTimeGrid{gap:8px}
+  .eventTimeGrid .input{padding-left:9px;padding-right:9px;font-size:14px}
+}

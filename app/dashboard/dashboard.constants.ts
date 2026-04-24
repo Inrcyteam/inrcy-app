@@ -39,7 +39,7 @@ export const fluxModules: Module[] = [
 ];
 
 export const DRAWER_TITLES = {
-  contact: "Nous contacter", compte: "Mon compte", profil: "Mon profil", activite: "Mon activité", abonnement: "Mon abonnement", legal: "Informations légales", rgpd: "Mes données (RGPD)", mails: "Réglages iNr’Send", site_inrcy: "Configuration — Site iNrCy", site_web: "Configuration — Site web", instagram: "Configuration — Instagram", linkedin: "Configuration — LinkedIn", gmb: "Configuration — Google Business", facebook: "Configuration — Facebook", inertie: "Mon inertie", boutique: "Boutique", parrainage: "Parrainer avec iNrCy", notifications: "Notifications",
+  contact: "Nous contacter", compte: "Mon compte", profil: "Mon profil", activite: "Mon activité", abonnement: "Mon abonnement", legal: "Informations légales", rgpd: "Mes données (RGPD)", mails: "Réglages iNr’Send", agenda: "Réglages iNr’Calendar", site_inrcy: "Configuration — Site iNrCy", site_web: "Configuration — Site web", instagram: "Configuration — Instagram", linkedin: "Configuration — LinkedIn", gmb: "Configuration — Google Business", facebook: "Configuration — Facebook", inertie: "Mon inertie", boutique: "Boutique", parrainage: "Parrainer avec iNrCy", notifications: "Notifications",
 } as const satisfies Record<string, string>;
 
 export const DRAWER_PANELS = new Set(Object.keys(DRAWER_TITLES));

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import styles from "./UserMenu.module.css";
+import styles from "../dashboard.module.css";
 
 type OpenPanelName =
   | "contact"

@@ -51,6 +51,7 @@ export default function DashboardClient() {
       | "activite"
       | "abonnement"
       | "mails"
+      | "agenda"
       | "site_inrcy"
       | "site_web"
       | "instagram"

@@ -1,3 +1,5 @@
+"use client";
+
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
 import styles from "../dashboard.module.css";
@@ -12,6 +14,7 @@ type DashboardPanelName =
   | "activite"
   | "abonnement"
   | "mails"
+  | "agenda"
   | "site_inrcy"
   | "site_web"
   | "instagram"

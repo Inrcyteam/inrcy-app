@@ -9,17 +9,26 @@ import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
 
 export const runtime = "nodejs";
 
-const EMAIL_REMINDER_OFFSETS_MINUTES = [1440, 120] as const;
+const DEFAULT_EMAIL_REMINDER_OFFSETS_MINUTES = [1440, 120];
+const ALLOWED_EMAIL_REMINDER_OFFSETS_MINUTES = [2880, 1440, 120];
 
 type RecipientKind = "pro" | "contact";
 
 type RecipientInfo = {
   kind: RecipientKind;
+  sentKey: string;
   email: string;
   label: string;
   firstName?: string | null;
+  lastName?: string | null;
+  displayName?: string | null;
   companyName?: string | null;
   phone?: string | null;
+};
+
+type CalendarReminderSettings = {
+  selectedMailAccountId: string;
+  reminderOffsetsMinutes: number[];
 };
 
 type ReminderRow = {
@@ -151,6 +160,7 @@ function cleanString(value: unknown) {
 }
 
 function offsetLabel(minutes: number) {
+  if (minutes === 2880) return "48h avant";
   if (minutes === 1440) return "24h avant";
   if (minutes === 120) return "2h avant";
   if (minutes % 60 === 0) return `${minutes / 60}h avant`;
@@ -180,6 +190,7 @@ async function getProRecipient(userId: string): Promise<RecipientInfo | null> {
   if (profileEmail) {
     return {
       kind: "pro",
+      sentKey: "pro",
       email: profileEmail,
       label: "pro",
       firstName: typeof row.first_name === "string" ? row.first_name : null,
@@ -194,6 +205,7 @@ async function getProRecipient(userId: string): Promise<RecipientInfo | null> {
 
   return {
     kind: "pro",
+    sentKey: "pro",
     email: authEmail,
     label: "pro",
     firstName: typeof row.first_name === "string" ? row.first_name : null,
@@ -225,12 +237,40 @@ function getContactRecipient(meta: Record<string, unknown>): RecipientInfo | nul
   if (!contact.email) return null;
   return {
     kind: "contact",
+    sentKey: `contact:${contact.email}`,
     email: contact.email,
     label: "client",
     firstName: contact.firstName,
+    lastName: contact.lastName,
+    displayName: contact.displayName,
     companyName: contact.companyName,
     phone: contact.phone,
   };
+}
+
+function getGuestRecipients(meta: Record<string, unknown>): RecipientInfo[] {
+  const rootGuests = Array.isArray(meta.guests) ? meta.guests : [];
+  const nestedGuests = Array.isArray(safeObj(meta.inrcy).guests) ? (safeObj(meta.inrcy).guests as unknown[]) : [];
+  const guests = rootGuests.length ? rootGuests : nestedGuests;
+
+  return guests
+    .map((item, index) => {
+      const guest = safeObj(item);
+      const email = normalizeEmail(guest.email);
+      if (!email) return null;
+      return {
+        kind: "contact" as const,
+        sentKey: `guest:${email}`,
+        email,
+        label: `invité ${index + 1}`,
+        firstName: typeof guest.first_name === "string" ? guest.first_name : null,
+        lastName: typeof guest.last_name === "string" ? guest.last_name : null,
+        displayName: typeof guest.display_name === "string" ? guest.display_name : null,
+        companyName: typeof guest.company_name === "string" ? guest.company_name : null,
+        phone: typeof guest.phone === "string" ? guest.phone : null,
+      };
+    })
+    .filter(Boolean) as RecipientInfo[];
 }
 
 function getReminderMailAccountId(meta: Record<string, unknown>) {
@@ -248,24 +288,55 @@ function getSelectedMailAccountIdFromSettings(settings: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
-function buildRecipients(pro: RecipientInfo | null, contact: RecipientInfo | null) {
+function normalizeReminderOffsets(value: unknown) {
+  if (!Array.isArray(value)) return DEFAULT_EMAIL_REMINDER_OFFSETS_MINUTES;
+  return Array.from(
+    new Set(
+      value
+        .map((item) => Number(item))
+        .filter((item) => ALLOWED_EMAIL_REMINDER_OFFSETS_MINUTES.includes(item))
+    )
+  );
+}
+
+function getCalendarReminderSettingsFromSettings(settings: unknown): CalendarReminderSettings {
+  const root = safeObj(settings);
+  const inrcalendar = safeObj(root.inrcalendar);
+  return {
+    selectedMailAccountId: getSelectedMailAccountIdFromSettings(settings),
+    reminderOffsetsMinutes: normalizeReminderOffsets(inrcalendar.reminder_offsets_minutes),
+  };
+}
+
+function buildRecipients(...groups: Array<RecipientInfo | RecipientInfo[] | null>) {
   const unique = new Map<string, RecipientInfo>();
-  for (const recipient of [pro, contact]) {
-    if (!recipient?.email) continue;
-    if (unique.has(recipient.email)) continue;
-    unique.set(recipient.email, recipient);
+  for (const group of groups) {
+    const recipients = Array.isArray(group) ? group : [group];
+    for (const recipient of recipients) {
+      if (!recipient?.email) continue;
+      if (unique.has(recipient.email)) continue;
+      unique.set(recipient.email, recipient);
+    }
   }
   return Array.from(unique.values());
 }
 
-function getRecipientSentAt(reminders: Record<string, unknown>, kind: RecipientKind, offsetMinutes: number) {
+function getRecipientSentAt(reminders: Record<string, unknown>, recipient: RecipientInfo, offsetMinutes: number) {
   const sentAtByRecipient = safeObj(reminders.emailSentAtByRecipient);
-  const sentAtByOffset = safeObj(sentAtByRecipient[kind]);
-  const current = sentAtByOffset[String(offsetMinutes)];
-  if (typeof current === "string" && current.trim()) return current;
+  const candidateKeys = [recipient.sentKey];
+
+  // Compatibilité avec les anciens rappels stockés sous "pro" / "contact".
+  if (recipient.kind === "pro") candidateKeys.push("pro");
+  if (recipient.kind === "contact" && recipient.sentKey.startsWith("contact:")) candidateKeys.push("contact");
+
+  for (const key of candidateKeys) {
+    const sentAtByOffset = safeObj(sentAtByRecipient[key]);
+    const current = sentAtByOffset[String(offsetMinutes)];
+    if (typeof current === "string" && current.trim()) return current;
+  }
 
   if (
-    kind === "pro" &&
+    recipient.kind === "pro" &&
     offsetMinutes === 1440 &&
     typeof reminders.lastEmailReminderAt === "string" &&
     reminders.lastEmailReminderAt.trim()
@@ -278,18 +349,18 @@ function getRecipientSentAt(reminders: Record<string, unknown>, kind: RecipientK
 
 function markRecipientSent(
   reminders: Record<string, unknown>,
-  kind: RecipientKind,
+  recipient: RecipientInfo,
   offsetMinutes: number,
   sentAtIso: string,
 ) {
   const sentAtByRecipient = safeObj(reminders.emailSentAtByRecipient);
-  const sentAtByOffset = safeObj(sentAtByRecipient[kind]);
+  const sentAtByOffset = safeObj(sentAtByRecipient[recipient.sentKey]);
 
   return {
     ...reminders,
     emailSentAtByRecipient: {
       ...sentAtByRecipient,
-      [kind]: {
+      [recipient.sentKey]: {
         ...sentAtByOffset,
         [String(offsetMinutes)]: sentAtIso,
       },
@@ -370,8 +441,8 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
     fallback: "Client",
   });
   const greetingName = recipient.kind === "pro"
-    ? buildDisplayName({ firstName: recipient.firstName, companyName: recipient.companyName, fallback: "" })
-    : buildDisplayName({ firstName: recipient.firstName, companyName: recipient.companyName, fallback: "" });
+    ? buildDisplayName({ firstName: recipient.firstName, displayName: recipient.displayName, companyName: recipient.companyName, fallback: "" })
+    : buildDisplayName({ firstName: recipient.firstName, lastName: recipient.lastName, displayName: recipient.displayName, companyName: recipient.companyName, fallback: "" });
   const greeting = greetingName && greetingName !== "-" ? `Bonjour ${greetingName},` : "Bonjour,";
   const dateLabel = fmtDateOnly(row.start_at);
   const startTime = fmtTimeOnly(row.start_at);
@@ -593,7 +664,7 @@ export async function GET(req: Request) {
 
   let inAppSent = 0;
   let emailSent = 0;
-  const userMailAccountCache = new Map<string, string>();
+  const userSettingsCache = new Map<string, CalendarReminderSettings>();
 
   for (const row of data ?? []) {
     const meta = safeObj(row.meta);
@@ -632,24 +703,23 @@ export async function GET(req: Request) {
 
     const proRecipient = await getProRecipient(String(row.user_id));
     const contactRecipient = getContactRecipient(meta);
-    const recipients = buildRecipients(proRecipient, contactRecipient);
+    const guestRecipients = getGuestRecipients(meta);
+    const recipients = buildRecipients(proRecipient, contactRecipient, guestRecipients);
 
-    let selectedMailAccountId = getReminderMailAccountId(meta);
-    if (!selectedMailAccountId) {
-      if (userMailAccountCache.has(String(row.user_id))) {
-        selectedMailAccountId = userMailAccountCache.get(String(row.user_id)) || "";
-      } else {
-        const { data: cfg } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", String(row.user_id)).maybeSingle();
-        selectedMailAccountId = getSelectedMailAccountIdFromSettings(cfg?.settings);
-        userMailAccountCache.set(String(row.user_id), selectedMailAccountId);
-      }
+    let userSettings = userSettingsCache.get(String(row.user_id));
+    if (!userSettings) {
+      const { data: cfg } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", String(row.user_id)).maybeSingle();
+      userSettings = getCalendarReminderSettingsFromSettings(cfg?.settings);
+      userSettingsCache.set(String(row.user_id), userSettings);
     }
 
-    for (const offsetMinutes of EMAIL_REMINDER_OFFSETS_MINUTES) {
+    const selectedMailAccountId = userSettings.selectedMailAccountId || getReminderMailAccountId(meta);
+
+    for (const offsetMinutes of userSettings.reminderOffsetsMinutes) {
       if (minutesUntil > offsetMinutes) continue;
 
       for (const recipient of recipients) {
-        const alreadySentAt = getRecipientSentAt(nextReminders, recipient.kind, offsetMinutes);
+        const alreadySentAt = getRecipientSentAt(nextReminders, recipient, offsetMinutes);
         if (alreadySentAt) continue;
 
         const mail = buildReminderMail(row, meta, offsetMinutes, recipient, proRecipient);
@@ -690,7 +760,7 @@ export async function GET(req: Request) {
           if (!sent) continue;
 
           emailSent += 1;
-          nextReminders = markRecipientSent(nextReminders, recipient.kind, offsetMinutes, now.toISOString());
+          nextReminders = markRecipientSent(nextReminders, recipient, offsetMinutes, now.toISOString());
           nextMeta = { ...nextMeta, reminders: nextReminders };
           dirty = true;
         } catch (mailError) {

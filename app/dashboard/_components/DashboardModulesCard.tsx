@@ -7,6 +7,7 @@ type DashboardPanelName =
   | "activite"
   | "abonnement"
   | "mails"
+  | "agenda"
   | "site_inrcy"
   | "site_web"
   | "instagram"
@@ -151,7 +152,18 @@ export default function DashboardModulesCard({ goToModule, openPanel }: Dashboar
   <div className={styles.loopTitle}>AGENDA</div>
 </div>
 
-
+<button
+  className={styles.loopGearBtn}
+  type="button"
+  aria-label="Réglages Agenda"
+  title="Réglages"
+  onClick={() => openPanel("agenda")}
+>
+  <svg className={styles.loopGearSvg} viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+    <path d="M19.4 15a7.9 7.9 0 0 0 .1-1 7.9 7.9 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7.7 7.7 0 0 0-1.7-1l-.4-2.6H10l-.4 2.6a7.7 7.7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.9 7.9 0 0 0-.1 1 7.9 7.9 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.5-2-1.5Z" />
+  </svg>
+</button>
 
       <div className={styles.loopSub}>Transformez les contacts en RDV</div>
       <div className={styles.loopActions}>

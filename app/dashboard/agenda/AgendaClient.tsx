@@ -11,6 +11,7 @@ import {
   buildQuarterHourOptions,
   composeAddressLine,
   endOfMonth,
+  getContactOptionLabel,
   endOfWeekSunday,
   isDateOnly,
   keyOf,
@@ -25,6 +26,7 @@ import {
   type CrmContact,
   type DayEvent,
   type EventItem,
+  type GuestContactForm,
   type MailAccountOption,
   type RdvKind,
   type RdvMode,
@@ -33,6 +35,7 @@ import { AgendaCalendarCard, AgendaEventModal, AgendaHeader, AgendaSidebar } fro
 
 export default function AgendaClient() {
   const [helpOpen, setHelpOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -61,7 +64,7 @@ export default function AgendaClient() {
   const [rdvEnd, setRdvEnd] = useState("10:00");
   const [rdvLocation, setRdvLocation] = useState("");
   const [rdvNotes, setRdvNotes] = useState("");
-  const [rdvKind, setRdvKind] = useState<RdvKind>("intervention");
+  const [rdvKind, setRdvKind] = useState<RdvKind>("agenda");
   const [intType, setIntType] = useState("");
   const [intStatus, setIntStatus] = useState("confirmé");
   const [intReference, setIntReference] = useState("");
@@ -81,6 +84,7 @@ export default function AgendaClient() {
   const [rdvSaving, setRdvSaving] = useState(false);
   const [rdvError, setRdvError] = useState<string | null>(null);
   const [rdvExistingContact, setRdvExistingContact] = useState<any | null>(null);
+  const [rdvGuests, setRdvGuests] = useState<GuestContactForm[]>([]);
 
   const [mailAccounts, setMailAccounts] = useState<MailAccountOption[]>([]);
   const [agendaMailAccountId, setAgendaMailAccountId] = useState("");
@@ -133,6 +137,114 @@ export default function AgendaClient() {
     } finally {
       setAgendaMailLoading(false);
     }
+  }
+
+
+  function createEmptyGuest(): GuestContactForm {
+    return {
+      id: `guest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      contactId: "",
+      name: "",
+      email: "",
+    };
+  }
+
+  function buildGuestDisplayNameFromContact(contact: CrmContact) {
+    return getContactOptionLabel(contact);
+  }
+
+  function normalizeGuestForms(value: unknown): GuestContactForm[] {
+    const list = Array.isArray(value) ? value : [];
+    return list
+      .map((item, index) => {
+        const raw = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+        const email = String(raw.email ?? "").trim();
+        const fullName = [raw.first_name, raw.last_name]
+          .map((part) => String(part ?? "").trim())
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        const name = String(raw.display_name || fullName || raw.company_name || "").trim();
+        const contactId = String(raw.crm_contact_id ?? raw.contactId ?? raw.id ?? "").trim();
+        if (!name && !email && !contactId) return null;
+        return {
+          id: `guest-${index}-${contactId || email || name}`,
+          contactId,
+          name,
+          email,
+        } satisfies GuestContactForm;
+      })
+      .filter(Boolean) as GuestContactForm[];
+  }
+
+  function addGuest() {
+    setRdvGuests((prev) => [...prev, createEmptyGuest()]);
+  }
+
+  function removeGuest(id: string) {
+    setRdvGuests((prev) => prev.filter((guest) => guest.id !== id));
+  }
+
+  function updateGuestField(id: string, field: "name" | "email", value: string) {
+    setRdvGuests((prev) => prev.map((guest) => (guest.id === id ? { ...guest, [field]: value } : guest)));
+  }
+
+  function updateGuestContactId(id: string, contactId: string) {
+    const contact = contacts.find((item) => item.id === contactId);
+    setRdvGuests((prev) =>
+      prev.map((guest) => {
+        if (guest.id !== id) return guest;
+        if (!contactId || !contact) return { ...guest, contactId };
+        return {
+          ...guest,
+          contactId,
+          name: buildGuestDisplayNameFromContact(contact),
+          email: String(contact.email ?? "").trim(),
+        };
+      })
+    );
+  }
+
+  function buildGuestContacts(): ContactPayload[] {
+    return rdvGuests
+      .map((guest) => {
+        const contact = guest.contactId ? contacts.find((item) => item.id === guest.contactId) : null;
+        if (contact) {
+          const displayName = buildGuestDisplayNameFromContact(contact);
+          return {
+            crm_contact_id: contact.id,
+            display_name: displayName || "Invité",
+            first_name: String(contact.first_name ?? "").trim() || undefined,
+            last_name: String(contact.last_name ?? "").trim() || undefined,
+            company_name: String(contact.company_name ?? "").trim() || undefined,
+            email: String(contact.email ?? "").trim(),
+            phone: String(contact.phone ?? "").trim(),
+            address: String(contact.address ?? "").trim(),
+            city: String(contact.city ?? "").trim() || undefined,
+            postal_code: String(contact.postal_code ?? "").trim() || undefined,
+            siren: String(contact.siren ?? "").trim() || undefined,
+            category: contact.category || undefined,
+            contact_type: contact.contact_type || undefined,
+            notes: String(contact.notes ?? "").trim() || undefined,
+            important: Boolean(contact.important),
+          } as ContactPayload & { crm_contact_id?: string };
+        }
+
+        const rawName = guest.name.trim();
+        const parsed = parseCrmDisplayName(rawName);
+        const email = guest.email.trim();
+        if (!rawName && !email) return null;
+        return {
+          display_name: rawName || email || "Invité",
+          first_name: parsed.first_name.trim() || undefined,
+          last_name: parsed.last_name.trim() || undefined,
+          company_name: parsed.company_name.trim() || undefined,
+          email,
+          phone: "",
+          address: "",
+        } as ContactPayload;
+      })
+      .filter((guest): guest is ContactPayload => Boolean(guest && (guest.display_name || guest.email)));
   }
 
   async function saveAgendaMailAccount(nextId: string) {
@@ -232,8 +344,8 @@ export default function AgendaClient() {
   function openCreateRdv(date: Date) {
     setRdvMode("create");
     setRdvEventId("");
-    setRdvKind("intervention");
-    setRdvSummary("Évènement");
+    setRdvKind("agenda");
+    setRdvSummary("Rendez-vous");
     setRdvDate(toDateOnly(date));
     setRdvStart("09:00");
     setRdvEnd("10:00");
@@ -243,6 +355,7 @@ export default function AgendaClient() {
     setIntStatus("confirmé");
     setIntReference("");
     setRdvExistingContact(null);
+    setRdvGuests([]);
     setRdvContactId("");
     setRdvNewContactName("");
     setRdvNewContactEmail("");
@@ -269,6 +382,7 @@ export default function AgendaClient() {
     const meta = rawMeta?.intervention ?? null;
     const address = (meta as any)?.address;
     const existingContact = rawMeta?.contact && typeof rawMeta.contact === "object" ? rawMeta.contact : null;
+    setRdvGuests(normalizeGuestForms((rawMeta as any)?.guests));
 
     setRdvKind(kind);
     setRdvSummary(event.summary || (kind === "intervention" ? "Intervention" : "Rendez-vous"));
@@ -359,10 +473,7 @@ export default function AgendaClient() {
       city: city || undefined,
       postal_code: postal_code || undefined,
       siren: rdvNewContactSiren.trim() || undefined,
-      category: rdvNewContactCategory,
-      contact_type: rdvNewContactType,
       notes: rdvNewContactNotes.trim() || undefined,
-      important: rdvNewContactImportant,
     };
   }
 
@@ -384,8 +495,6 @@ export default function AgendaClient() {
       const address = rdvNewContactAddress.trim();
       const city = rdvNewContactCity.trim();
       const postal_code = rdvNewContactPostal.trim();
-      const siren = rdvNewContactSiren.trim();
-      const notes = rdvNewContactNotes.trim();
       const display_name = (rawDisplayName || "Nouveau contact").trim();
 
       if (!display_name && !email && !phone) {
@@ -424,11 +533,6 @@ export default function AgendaClient() {
           address,
           city: city || undefined,
           postal_code: postal_code || undefined,
-          siren: siren || undefined,
-          category: rdvNewContactCategory,
-          contact_type: rdvNewContactType,
-          notes: notes || undefined,
-          important: rdvNewContactImportant,
         }),
       }).catch(() => null);
 
@@ -485,6 +589,7 @@ export default function AgendaClient() {
       }
 
       const contact = (await ensureContact()) ?? (rdvMode === "edit" ? rdvExistingContact : null);
+      const guests = buildGuestContacts();
       const coordsLocation = composeAddressLine(rdvNewContactAddress.trim(), rdvNewContactPostal.trim(), rdvNewContactCity.trim());
       const structuredLocation = (rdvLocation.trim() || coordsLocation).trim();
 
@@ -498,24 +603,20 @@ export default function AgendaClient() {
         inrcy: {
           kind: rdvKind,
           contact: contact ?? undefined,
+          guests,
           reminders: {
             mailAccountId: agendaMailAccountId || undefined,
           },
-          intervention:
-            rdvKind === "intervention"
-              ? {
-                  type: intType.trim() || undefined,
-                  status: intStatus.trim() || undefined,
-                  address: rdvLocation.trim()
-                    ? { street: rdvLocation.trim() || undefined }
-                    : {
-                        street: rdvNewContactAddress.trim() || undefined,
-                        city: rdvNewContactCity.trim() || undefined,
-                        postal_code: rdvNewContactPostal.trim() || undefined,
-                      },
-                  reference: intReference.trim() || undefined,
-                }
-              : undefined,
+          intervention: {
+            status: intStatus.trim() || undefined,
+            address: rdvLocation.trim()
+              ? { street: rdvLocation.trim() || undefined }
+              : {
+                  street: rdvNewContactAddress.trim() || undefined,
+                  city: rdvNewContactCity.trim() || undefined,
+                  postal_code: rdvNewContactPostal.trim() || undefined,
+                },
+          },
         },
       };
 
@@ -645,6 +746,15 @@ export default function AgendaClient() {
   }, []);
 
   useEffect(() => {
+    const refreshAgendaSettings = () => {
+      void loadAgendaMailSettings();
+    };
+
+    window.addEventListener("inrcalendar:settings-updated", refreshAgendaSettings);
+    return () => window.removeEventListener("inrcalendar:settings-updated", refreshAgendaSettings);
+  }, []);
+
+  useEffect(() => {
     loadEventsForMonth(cursorMonth);
   }, [cursorMonth]);
 
@@ -757,6 +867,9 @@ export default function AgendaClient() {
         <AgendaHeader
           helpOpen={helpOpen}
           setHelpOpen={setHelpOpen}
+          settingsOpen={settingsOpen}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onCloseSettings={() => setSettingsOpen(false)}
           query={query}
           setQuery={setQuery}
           showMobileSearch={showMobileSearch}
@@ -787,13 +900,7 @@ export default function AgendaClient() {
             selectedEvents={selectedEvents}
             query={query}
             globalMatches={globalMatches}
-            agendaMailAccountId={agendaMailAccountId}
-            mailAccounts={mailAccounts}
-            agendaMailLoading={agendaMailLoading}
-            agendaMailSaving={agendaMailSaving}
-            agendaMailError={agendaMailError}
             onCreateEvent={() => openCreateRdv(selectedDate)}
-            onAgendaMailAccountChange={saveAgendaMailAccount}
             onOpenEvent={openEditRdv}
             onDeleteEvent={deleteEventById}
             onJumpToEvent={jumpToEvent}
@@ -828,6 +935,7 @@ export default function AgendaClient() {
         rdvNewContactType={rdvNewContactType}
         rdvNewContactImportant={rdvNewContactImportant}
         rdvNewContactNotes={rdvNewContactNotes}
+        rdvGuests={rdvGuests}
         crmAddFeedback={crmAddFeedback}
         contacts={contacts}
         contactsLoading={contactsLoading}
@@ -837,6 +945,10 @@ export default function AgendaClient() {
         onDelete={deleteRdv}
         onSubmit={submitRdv}
         onAddContactToCrm={addContactToCrmFromCoords}
+        onAddGuest={addGuest}
+        onRemoveGuest={removeGuest}
+        onUpdateGuestContactId={updateGuestContactId}
+        onUpdateGuestField={updateGuestField}
         clearCrmAddFeedback={() => setCrmAddFeedback("")}
         setRdvKind={setRdvKind}
         setRdvSummary={setRdvSummary}
