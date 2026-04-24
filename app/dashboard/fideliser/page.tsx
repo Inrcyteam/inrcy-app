@@ -105,6 +105,13 @@ export default function FideliserPage() {
     const thanksWeek = n(thanks.week);
     const satisfactionWeek = n(satisfaction.week);
 
+    const formatLastSend = (value: any) => {
+      if (!value) return "—";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "—";
+      return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    };
+
     return {
       turbo,
       missions: {
@@ -147,42 +154,45 @@ export default function FideliserPage() {
       ],
       metrics: [
         {
-          title: "Newsletters",
+          title: "Campagnes",
+          variant: "campaign",
           month: n(newsletter.month),
           week: informWeek,
           goal: WEEKLY_GOALS.fideliser.inform,
           status: buildStatus(informWeek, WEEKLY_GOALS.fideliser.inform),
           channels: [
-            { name: "Envoyés", value: n(newsletter.sent) },
-            { name: "Ouverts", value: n(newsletter.opened) },
-            { name: "Cliqués", value: n(newsletter.clicked) },
-            { name: "Désinscriptions", value: n(newsletter.unsub) },
+            { name: "Envoyées cette semaine", value: informWeek },
+            { name: "Envoyées ce mois-ci", value: n(newsletter.month) },
+            { name: "Destinataires touchés", value: n(newsletter.sent) },
+            { name: "Dernier envoi", value: formatLastSend(newsletter.last_sent_at) },
           ],
         },
         {
-          title: "Suivre",
+          title: "Campagnes",
+          variant: "campaign",
           month: n(thanks.month),
           week: thanksWeek,
           goal: WEEKLY_GOALS.fideliser.thanks,
           status: buildStatus(thanksWeek, WEEKLY_GOALS.fideliser.thanks),
           channels: [
-            { name: "Envoyés", value: n(thanks.sent) },
-            { name: "Ouverts", value: n(thanks.opened) },
-            { name: "Cliqués", value: n(thanks.clicked) },
-            { name: "Réponses", value: n(thanks.replies) },
+            { name: "Envoyées cette semaine", value: thanksWeek },
+            { name: "Envoyées ce mois-ci", value: n(thanks.month) },
+            { name: "Destinataires touchés", value: n(thanks.sent) },
+            { name: "Dernier envoi", value: formatLastSend(thanks.last_sent_at) },
           ],
         },
         {
-          title: "Enquêter",
+          title: "Campagnes",
+          variant: "campaign",
           month: n(satisfaction.month),
           week: satisfactionWeek,
           goal: WEEKLY_GOALS.fideliser.satisfaction,
           status: buildStatus(satisfactionWeek, WEEKLY_GOALS.fideliser.satisfaction),
           channels: [
-            { name: "Envoyés", value: n(satisfaction.sent) },
-            { name: "Ouverts", value: n(satisfaction.opened) },
-            { name: "Réponses reçues", value: n(satisfaction.reviews) },
-            { name: "Scores", value: n(satisfaction.scores) },
+            { name: "Envoyées cette semaine", value: satisfactionWeek },
+            { name: "Envoyées ce mois-ci", value: n(satisfaction.month) },
+            { name: "Destinataires touchés", value: n(satisfaction.sent) },
+            { name: "Dernier envoi", value: formatLastSend(satisfaction.last_sent_at) },
           ],
         },
       ],
@@ -268,7 +278,7 @@ export default function FideliserPage() {
               {data.actions.map((a) => <ActionCard key={a.key} styles={styles} accent={a.accent} title={a.title} desc={a.desc} cta={a.cta} status={a.status} reward={a.reward} onClick={() => setActive(a.key)} />)}
             </section>
             <section className={b.grid3} style={{ marginTop: 8 }}>
-              {data.metrics.map((m, idx) => <div key={m.title} className={b.stackCard}><MetricCard styles={styles} title={m.title} month={m.month} week={m.week} goal={m.goal} channels={m.channels} status={m.status} /><TipAccordion styles={styles} title={data.tips[idx].title} lines={data.tips[idx].lines} /></div>)}
+              {data.metrics.map((m, idx) => <div key={`${m.title}-${idx}`} className={b.stackCard}><MetricCard styles={styles} title={m.title} month={m.month} week={m.week} goal={m.goal} channels={m.channels} status={m.status} variant={m.variant} /><TipAccordion styles={styles} title={data.tips[idx].title} lines={data.tips[idx].lines} /></div>)}
             </section>
           </div>
 
@@ -276,7 +286,7 @@ export default function FideliserPage() {
             {data.actions.map((a, idx) => {
               const m = data.metrics[idx];
               const tip = data.tips[idx];
-              return <div key={a.key} className={b.mobileGroup}><ActionCard styles={styles} accent={a.accent} title={a.title} desc={a.desc} cta={a.cta} status={a.status} reward={a.reward} onClick={() => setActive(a.key)} /><details className={b.accordion}><summary className={b.accordionSummary}><span>📊 Progression</span><span className={b.chev}>▾</span></summary><div className={b.accordionBody}><MetricCard styles={styles} title={m.title} month={m.month} week={m.week} goal={m.goal} channels={m.channels} status={m.status} /></div></details><TipAccordion styles={styles} title={tip.title} lines={tip.lines} /></div>;
+              return <div key={a.key} className={b.mobileGroup}><ActionCard styles={styles} accent={a.accent} title={a.title} desc={a.desc} cta={a.cta} status={a.status} reward={a.reward} onClick={() => setActive(a.key)} /><details className={b.accordion}><summary className={b.accordionSummary}><span>📊 Progression</span><span className={b.chev}>▾</span></summary><div className={b.accordionBody}><MetricCard styles={styles} title={m.title} month={m.month} week={m.week} goal={m.goal} channels={m.channels} status={m.status} variant={m.variant} /></div></details><TipAccordion styles={styles} title={tip.title} lines={tip.lines} /></div>;
             })}
           </section>
         </div>
@@ -302,11 +312,12 @@ function ActionCard({ styles, accent, title, desc, cta, status, reward, onClick 
   return <article className={[styles.moduleCard, styles[`accent_${accent}`], b.actionCard].join(" ")}><div className={styles.moduleGlow} /><div className={b.actionTop}><div className={b.actionMiniTitle}>{title}</div><div className={[b.status, toneClass].join(" ")}><span className={[b.dot, b[`dot${status.color.charAt(0).toUpperCase()}${status.color.slice(1)}`]].join(" ")} aria-hidden /><span>{status.label}</span></div></div><div className={b.actionCenter}><div className={[styles.moduleDesc, b.actionDesc].join(" ")}>{desc}</div><div className={b.actionReward}>{reward}</div><div className={b.actionHelper}>{status.helper}</div></div><div className={b.actionBtnWrap}><button type="button" className={[styles.primaryBtn, b.actionBtn].join(" ")} onClick={onClick}>{cta}</button></div></article>;
 }
 
-function MetricCard({ styles, title, month, week, goal, channels, status }: any) {
-  const paddedChannels = [...channels, ...Array.from({ length: Math.max(0, 6 - channels.length) }, (_, idx) => ({ name: `__empty_${idx}`, value: "", empty: true }))];
+function MetricCard({ styles, title, month, week, goal, channels, status, variant }: any) {
+  const isCampaign = variant === "campaign";
+  const paddedChannels = isCampaign ? channels : [...channels, ...Array.from({ length: Math.max(0, 6 - channels.length) }, (_, idx) => ({ name: `__empty_${idx}`, value: "", empty: true }))];
   const progress = clampProgress(week, goal);
   const toneClass = status.color === "green" ? b.toneGreen : status.color === "orange" ? b.toneOrange : b.toneRed;
-  return <div className={[styles.blockCard, b.metricCard].join(" ")}><div className={b.cardTopRow}><div><div className={styles.blockTitle}>{title}</div><div className={b.progressLabel}>Progression hebdo</div></div><div className={b.pill}>Ce mois : {month}</div></div><div className={b.metricLine}><div className={b.metricBubble}>{week}/{goal}</div><div className={[b.progressState, toneClass].join(" ")}>{status.label}</div></div><div className={b.progressBar}><div className={[b.progressFill, toneClass].join(" ")} style={{ width: `${progress * 100}%` }} /></div><div className={b.progressHint}>{status.helper}</div><div className={b.channelGridCompact}>{paddedChannels.map((c: any) => <div key={c.name} className={[b.channelItemCompact, c.empty ? b.channelItemPlaceholder : ""].join(" ")} aria-hidden={c.empty ? true : undefined}><span>{c.name}</span><span className={b.channelCount}>{c.value}</span></div>)}</div></div>;
+  return <div className={[styles.blockCard, b.metricCard].join(" ")}><div className={b.cardTopRow}><div><div className={styles.blockTitle}>{title}</div><div className={b.progressLabel}>Progression hebdo</div></div><div className={b.pill}>Ce mois : {month}</div></div><div className={b.metricLine}><div className={b.metricBubble}>{week}/{goal}</div><div className={[b.progressState, toneClass].join(" ")}>{status.label}</div></div><div className={b.progressBar}><div className={[b.progressFill, toneClass].join(" ")} style={{ width: `${progress * 100}%` }} /></div><div className={b.progressHint}>{status.helper}</div><div className={[b.channelGridCompact, isCampaign ? b.channelGridCampaign : ""].join(" ")}>{paddedChannels.map((c: any) => <div key={c.name} className={[b.channelItemCompact, c.empty ? b.channelItemPlaceholder : ""].join(" ")} aria-hidden={c.empty ? true : undefined}><span>{c.name}</span><span className={b.channelCount}>{c.value}</span></div>)}</div></div>;
 }
 
 function TipAccordion({ styles, title, lines }: any) {

@@ -1592,6 +1592,7 @@ async function deleteDraftPermanently(id: string) {
                 ...(pendingTrack.payload || {}),
                 integration_id: selectedAccount.id,
                 to: recipientsList[0],
+                recipients: 1,
                 subject: normalizeMailSubject(subject.trim() || "(sans objet)"),
               },
             }),

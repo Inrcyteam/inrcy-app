@@ -162,6 +162,13 @@ export default function BoosterPage() {
     const reviewWeek = n(review.week);
     const promoWeek = n(promo.week);
 
+    const formatLastSend = (value: any) => {
+      if (!value) return "—";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "—";
+      return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    };
+
     const buildStatus = (done: number, goal: number) => {
       const copy = getGoalCopy(done, goal);
       return { label: copy.short, color: copy.tone, helper: copy.hint, ctaHint: copy.action };
@@ -242,29 +249,31 @@ export default function BoosterPage() {
           ],
         },
         {
-          title: "Mails Récolter",
+          title: "Campagnes",
+          variant: "campaign",
           month: n(review.month),
           week: reviewWeek,
           goal: WEEKLY_GOALS.booster.reviews,
           status: buildStatus(reviewWeek, WEEKLY_GOALS.booster.reviews),
           channels: [
-            { name: "Envoyés", value: n(review.sent) },
-            { name: "Ouverts", value: n(review.opened) },
-            { name: "Cliqués", value: n(review.clicked) },
-            { name: "Avis récoltés", value: n(review.reviews) },
+            { name: "Envoyées cette semaine", value: reviewWeek },
+            { name: "Envoyées ce mois-ci", value: n(review.month) },
+            { name: "Destinataires touchés", value: n(review.sent) },
+            { name: "Dernier envoi", value: formatLastSend(review.last_sent_at) },
           ],
         },
         {
-          title: "Mails Promo",
+          title: "Campagnes",
+          variant: "campaign",
           month: n(promo.month),
           week: promoWeek,
           goal: WEEKLY_GOALS.booster.promo,
           status: buildStatus(promoWeek, WEEKLY_GOALS.booster.promo),
           channels: [
-            { name: "Envoyés", value: n(promo.sent) },
-            { name: "Ouverts", value: n(promo.opened) },
-            { name: "Cliqués", value: n(promo.clicked) },
-            { name: "Demandes", value: n(promo.leads) },
+            { name: "Envoyées cette semaine", value: promoWeek },
+            { name: "Envoyées ce mois-ci", value: n(promo.month) },
+            { name: "Destinataires touchés", value: n(promo.sent) },
+            { name: "Dernier envoi", value: formatLastSend(promo.last_sent_at) },
           ],
         },
       ],
@@ -373,8 +382,8 @@ export default function BoosterPage() {
 
             <section className={b.grid3} style={{ marginTop: 8 }}>
               {data.metrics.map((m, idx) => (
-                <div key={m.title} className={b.stackCard}>
-                  <MetricCard styles={styles} title={m.title} month={m.month} week={m.week} goal={m.goal} channels={m.channels} status={m.status} />
+                <div key={`${m.title}-${idx}`} className={b.stackCard}>
+                  <MetricCard styles={styles} title={m.title} month={m.month} week={m.week} goal={m.goal} channels={m.channels} status={m.status} variant={m.variant} />
                   <TipAccordion styles={styles} title={data.tips[idx].title} lines={data.tips[idx].lines} />
                 </div>
               ))}
@@ -391,7 +400,7 @@ export default function BoosterPage() {
                   <details className={b.accordion}>
                     <summary className={b.accordionSummary}><span>📊 Progression</span><span className={b.chev}>▾</span></summary>
                     <div className={b.accordionBody}>
-                      <MetricCard styles={styles} title={m.title} month={m.month} week={m.week} goal={m.goal} channels={m.channels} status={m.status} />
+                      <MetricCard styles={styles} title={m.title} month={m.month} week={m.week} goal={m.goal} channels={m.channels} status={m.status} variant={m.variant} />
                     </div>
                   </details>
                   <TipAccordion styles={styles} title={tip.title} lines={tip.lines} />
@@ -513,8 +522,9 @@ function ActionCard({ styles, accent, title, desc, cta, status, reward, onClick 
   );
 }
 
-function MetricCard({ styles, title, month, week, goal, channels, status }: any) {
-  const paddedChannels = [...channels, ...Array.from({ length: Math.max(0, 6 - channels.length) }, (_, idx) => ({ name: `__empty_${idx}`, value: "", empty: true }))];
+function MetricCard({ styles, title, month, week, goal, channels, status, variant }: any) {
+  const isCampaign = variant === "campaign";
+  const paddedChannels = isCampaign ? channels : [...channels, ...Array.from({ length: Math.max(0, 6 - channels.length) }, (_, idx) => ({ name: `__empty_${idx}`, value: "", empty: true }))];
   const progress = clampProgress(week, goal);
   const toneClass = status.color === "green" ? b.toneGreen : status.color === "orange" ? b.toneOrange : b.toneRed;
   return (
@@ -532,7 +542,7 @@ function MetricCard({ styles, title, month, week, goal, channels, status }: any)
       </div>
       <div className={b.progressBar}><div className={[b.progressFill, toneClass].join(" ")} style={{ width: `${progress * 100}%` }} /></div>
       <div className={b.progressHint}>{status.helper}</div>
-      <div className={b.channelGridCompact}>
+      <div className={[b.channelGridCompact, isCampaign ? b.channelGridCampaign : ""].join(" ")}>
         {paddedChannels.map((c: any) => <div key={c.name} className={[b.channelItemCompact, c.empty ? b.channelItemPlaceholder : ""].join(" ")} aria-hidden={c.empty ? true : undefined}><span>{c.name}</span><span className={b.channelCount}>{c.value}</span></div>)}
       </div>
     </div>

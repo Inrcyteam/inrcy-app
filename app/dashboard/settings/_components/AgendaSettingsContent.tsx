@@ -35,6 +35,10 @@ function GlassCard({
         background: "rgba(255,255,255,0.06)",
         boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
         padding: 14,
+        boxSizing: "border-box",
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
       }}
     >
       <div style={{ display: "grid", gap: 4 }}>
@@ -53,7 +57,7 @@ function GlassCard({
           {subtitle}
         </div>
       </div>
-      {children ? <div style={{ display: "grid", gap: 10, marginTop: 12 }}>{children}</div> : null}
+      {children ? <div style={{ display: "grid", gap: 10, marginTop: 12, minWidth: 0 }}>{children}</div> : null}
     </div>
   );
 }
@@ -70,6 +74,10 @@ const fieldStyle: React.CSSProperties = {
   color: "rgba(255,255,255,0.92)",
   padding: "11px 12px",
   outline: "none",
+  width: "100%",
+  maxWidth: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
 };
 
 const checkboxLabelStyle: React.CSSProperties = {
@@ -81,6 +89,10 @@ const checkboxLabelStyle: React.CSSProperties = {
   background: "rgba(255,255,255,0.05)",
   padding: "11px 12px",
   cursor: "pointer",
+  width: "100%",
+  maxWidth: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
 };
 
 function normalizeOffsets(value: unknown) {
@@ -165,7 +177,7 @@ export default function AgendaSettingsContent() {
   }
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ display: "grid", gap: 12, width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}>
       <style jsx>{`
         .agendaSettings_select option {
           color: #111827;
@@ -179,6 +191,10 @@ export default function AgendaSettingsContent() {
           background:
             "linear-gradient(135deg, rgba(56,189,248,0.16), rgba(244,114,182,0.12), rgba(251,146,60,0.10))",
           padding: 14,
+          boxSizing: "border-box",
+          width: "100%",
+          maxWidth: "100%",
+          minWidth: 0,
         }}
       >
         <div style={{ fontSize: 16, fontWeight: 950, color: "rgba(255,255,255,0.94)" }}>
@@ -238,7 +254,7 @@ export default function AgendaSettingsContent() {
               void saveSettings({ sendConfirmationOnSave: checked });
             }}
           />
-          <span style={{ display: "grid", gap: 3 }}>
+          <span style={{ display: "grid", gap: 3, minWidth: 0 }}>
             <strong style={{ color: "rgba(255,255,255,0.92)", fontSize: 13.5 }}>Au moment de l’enregistrement du RDV</strong>
             <span style={{ color: "rgba(255,255,255,0.62)", fontSize: 12.5 }}>Mail de confirmation envoyé dès la création du rendez-vous.</span>
           </span>
@@ -252,7 +268,7 @@ export default function AgendaSettingsContent() {
               disabled={loading || saving}
               onChange={(e) => toggleOffset(option.value, e.target.checked)}
             />
-            <span style={{ display: "grid", gap: 3 }}>
+            <span style={{ display: "grid", gap: 3, minWidth: 0 }}>
               <strong style={{ color: "rgba(255,255,255,0.92)", fontSize: 13.5 }}>{option.label}</strong>
               <span style={{ color: "rgba(255,255,255,0.62)", fontSize: 12.5 }}>{option.helper}</span>
             </span>

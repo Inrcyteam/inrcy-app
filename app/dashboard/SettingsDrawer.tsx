@@ -43,25 +43,28 @@ export default function SettingsDrawer({ title, isOpen, onClose, headerActions, 
         zIndex: 9999,
         display: "flex",
         justifyContent: "flex-end",
+        overflow: "hidden",
       }}
     >
       <aside
-  onClick={(e) => e.stopPropagation()}
-  style={{
-    width: "min(560px, 92vw)",
-    height: "100%",
-    background: "rgba(16,16,16,0.98)",
-    borderLeft: "1px solid rgba(255,255,255,0.08)",
-    padding: 16,
-    overflowY: "auto",
-    overflowX: "hidden", // ✅ AJOUTE ÇA
-  }}
->
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{title}</h2>
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(560px, 92vw)",
+          maxWidth: "100vw",
+          height: "100%",
+          boxSizing: "border-box",
+          background: "rgba(16,16,16,0.98)",
+          borderLeft: "1px solid rgba(255,255,255,0.08)",
+          padding: 16,
+          overflowY: "auto",
+          overflowX: "hidden",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minWidth: 0 }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, minWidth: 0 }}>{title}</h2>
 
-          {/* ✅ Zone actions (ex: ?) + Fermer avec gap */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Zone actions (ex: ?) + Fermer avec gap */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
             {headerActions}
             <button
               type="button"
@@ -80,9 +83,8 @@ export default function SettingsDrawer({ title, isOpen, onClose, headerActions, 
           </div>
         </div>
 
-        <div style={{ marginTop: 12 }}>{children}</div>
+        <div style={{ marginTop: 12, minWidth: 0 }}>{children}</div>
       </aside>
     </div>
   );
 }
-
