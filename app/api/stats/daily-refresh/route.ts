@@ -136,14 +136,19 @@ async function handler(req: Request) {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
 
-    const body = await req.json().catch(() => ({} as { announce?: unknown }));
+    const body = await req.json().catch(() => ({} as { announce?: unknown; force?: unknown }));
     const announce = body?.announce === true;
+    const force = body?.force === true;
 
     const snapshotDate = getDefaultSnapshotDate();
-    const { data: claimed, error: claimError } = await supabase.rpc("claim_daily_stats_refresh", {
-      p_snapshot_date: snapshotDate,
-      p_lease_seconds: DAILY_REFRESH_LEASE_SECONDS,
-    });
+    const claimResult = force
+      ? { data: true, error: null as { message?: string } | null }
+      : await supabase.rpc("claim_daily_stats_refresh", {
+          p_snapshot_date: snapshotDate,
+          p_lease_seconds: DAILY_REFRESH_LEASE_SECONDS,
+        });
+    const claimed = !!claimResult.data;
+    const claimError = claimResult.error;
 
     if (claimError) {
       return jsonUserFacingError(`daily_refresh_claim_failed:${claimError.message}`, { status: 500 });
@@ -206,7 +211,7 @@ async function handler(req: Request) {
         origin,
         days: 30,
         getHeaders: headers,
-        bypassCache: false,
+        bypassCache: force,
         supabase,
         userId: user.id,
         snapshotDate,
@@ -216,7 +221,7 @@ async function handler(req: Request) {
         origin,
         days: 7,
         getHeaders: headers,
-        bypassCache: false,
+        bypassCache: force,
         supabase,
         userId: user.id,
         snapshotDate,
@@ -239,7 +244,7 @@ async function handler(req: Request) {
         weekDays: 7,
         todayDays: 2,
         debug,
-        fresh: false,
+        fresh: force,
         snapshotDate,
         profileOverride: profile,
         monthOverviewsOverride: monthOverviews,
@@ -296,9 +301,11 @@ async function handler(req: Request) {
         },
       });
     } catch (error) {
-      await supabase.rpc("release_daily_stats_refresh_claim", {
-        p_snapshot_date: snapshotDate,
-      }).catch(() => undefined);
+      if (!force) {
+        await supabase.rpc("release_daily_stats_refresh_claim", {
+          p_snapshot_date: snapshotDate,
+        }).catch(() => undefined);
+      }
       throw error;
     }
   } catch (error) {

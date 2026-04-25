@@ -16,7 +16,7 @@ import DashboardSettingsDrawerContent from "./_components/DashboardSettingsDrawe
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
 import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import { expectedUiSnapshotDate, getInitialGeneratorKpis, getInitialOppTotal, getLastChannelSyncAt, getOverviewSnapshotDate, hasFreshLocalGeneratorSnapshot, markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, mergeGeneratorChannelBlockIntoCachedKpis, readCachedChannelBlocks, readCachedChannelSyncAt, readCachedGeneratorChannelSyncAt, readCachedOppTotal, readGeneratorCache, readInrStatsPeriodSyncAt, readUiCacheValue, statsCubeSessionKey, statsSummarySessionKey, type StatsWarmPeriod, writeUiCacheValue } from "./dashboard.client-cache";
+import { expectedUiSnapshotDate, getInitialGeneratorKpis, getInitialOppTotal, getLastChannelSyncAt, getOverviewSnapshotDate, hasFreshLocalGeneratorSnapshot, markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, mergeGeneratorChannelBlockIntoCachedKpis, syncGeneratorOpportunitiesFromStatsSummary, readCachedChannelBlocks, readCachedChannelSyncAt, readCachedGeneratorChannelSyncAt, readCachedOppTotal, readGeneratorCache, readInrStatsPeriodSyncAt, readUiCacheValue, statsCubeSessionKey, statsSummarySessionKey, type StatsWarmPeriod, writeUiCacheValue } from "./dashboard.client-cache";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
 import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
@@ -1188,6 +1188,32 @@ const applyGeneratorCacheToState = useCallback(() => {
     return true;
   }, []);
 
+  useEffect(() => {
+    if (!channelBlocks) return;
+
+    const hasActiveGeneratorSource = DASHBOARD_CHANNEL_KEYS.some((channel) => {
+      const block = channelBlocks[channel];
+      const connection = block?.connection;
+      if (!connection) return false;
+      if (connection.requiresUpdate || connection.connectionStatus === "needs_update") return false;
+      if (channel === "site_inrcy" || channel === "site_web") {
+        return Boolean(connection.statsConnected);
+      }
+      return Boolean(connection.connected);
+    });
+
+    if (hasActiveGeneratorSource) return;
+
+    syncGeneratorOpportunitiesFromStatsSummary({
+      byCube: {},
+      estimatedByCube: {},
+      syncedAt: Date.now(),
+      snapshotDate: expectedUiSnapshotDate(),
+      channelBlocks,
+    });
+    applyGeneratorCacheToState();
+  }, [applyGeneratorCacheToState, channelBlocks]);
+
   const notifyGeneratorRefresh = useCallback((at?: number, channels?: readonly DashboardChannelKey[]) => {
     if (typeof window === "undefined") return;
     const syncAt = Number.isFinite(Number(at)) ? Number(at) : Date.now();
@@ -1345,9 +1371,21 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         } catch {
           // ignore
         }
+
+        if (days === 30) {
+          syncGeneratorOpportunitiesFromStatsSummary({
+            byCube: opportunities?.byCube ?? {},
+            estimatedByCube: json?.estimatedByCube ?? {},
+            profile: json?.profile ?? {},
+            syncedAt: Number.isFinite(Number(syncByPeriod[days])) ? Number(syncByPeriod[days]) : syncAt,
+            snapshotDate,
+            channelBlocks: normalizedBlocks ?? undefined,
+          });
+          applyGeneratorCacheToState();
+        }
       })
     );
-  }, []);
+  }, [applyGeneratorCacheToState]);
 
   const refreshTimersRef = useRef<number[]>([]);
   const lastGeneratorRefreshAtRef = useRef(0);
@@ -1892,7 +1930,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     setKpisLoading(true);
 
     try {
-      const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true });
+      const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true, force: true });
       applyBootstrapRefresh(bootstrap);
       await loadSiteInrcy();
 

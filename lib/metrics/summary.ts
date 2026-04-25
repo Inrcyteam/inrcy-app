@@ -85,10 +85,12 @@ async function buildSummaryConnectionsKey(supabase: SupabaseClient, userId: stri
   try {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('inrcy_site_ownership')
+      .select('inrcy_site_ownership,stats_version')
       .eq('user_id', userId)
       .maybeSingle();
-    keyParts.push(`ownership:${String(asRecord(profile)['inrcy_site_ownership'] ?? 'none')}`);
+    const profileRec = asRecord(profile);
+    keyParts.push(`ownership:${String(profileRec['inrcy_site_ownership'] ?? 'none')}`);
+    keyParts.push(`stats_version:${String(profileRec['stats_version'] ?? 0)}`);
   } catch {}
 
   try {

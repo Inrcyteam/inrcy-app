@@ -232,6 +232,125 @@ export function hasFreshLocalGeneratorSnapshot() {
 }
 
 
+function sumGeneratorOpportunitiesByCube(byCube: Partial<Record<DashboardChannelKey, unknown>>) {
+  return DASHBOARD_CHANNEL_KEYS.reduce((sum, channel) => {
+    const n = Number(byCube[channel]);
+    return sum + (Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0);
+  }, 0);
+}
+
+function isGeneratorBlockActiveFromStatsBlock(block: InrstatsChannelBlock | null | undefined) {
+  const connection = block?.connection;
+  if (!connection) return undefined;
+  if (connection.requiresUpdate || connection.connectionStatus === "needs_update") return false;
+  if (block?.channel === "site_inrcy" || block?.channel === "site_web") {
+    return Boolean(connection.statsConnected);
+  }
+  return Boolean(connection.connected);
+}
+
+export function syncGeneratorOpportunitiesFromStatsSummary(params: {
+  byCube: Partial<Record<DashboardChannelKey, unknown>>;
+  estimatedByCube?: Partial<Record<DashboardChannelKey, unknown>>;
+  profile?: unknown;
+  syncedAt?: number;
+  snapshotDate?: string | null;
+  channelBlocks?: Partial<Record<DashboardChannelKey, InrstatsChannelBlock | null | undefined>>;
+}) {
+  const byCube = params.byCube || {};
+  const effectiveByCube: Partial<Record<DashboardChannelKey, unknown>> = { ...byCube };
+  for (const channel of DASHBOARD_CHANNEL_KEYS) {
+    if (isGeneratorBlockActiveFromStatsBlock(params.channelBlocks?.[channel]) === false) {
+      effectiveByCube[channel] = 0;
+    }
+  }
+  const total = sumGeneratorOpportunitiesByCube(effectiveByCube);
+  const nextSyncedAt = Number.isFinite(Number(params.syncedAt)) ? Number(params.syncedAt) : Date.now();
+
+  try {
+    writeUiCacheValue("inrcy_opp30_total_v1", String(total));
+  } catch {
+    // ignore browser storage failures
+  }
+
+  try {
+    const cached = readGeneratorCache();
+    const currentPayload = cached?.payload && typeof cached.payload === "object" ? cached.payload as Record<string, any> : null;
+
+    // Ne crée pas un faux cache Générateur à partir d'iNrStats si le dashboard n'a jamais chargé ses KPIs.
+    // On évite ainsi d'afficher des leads à 0 par erreur sur un nouvel appareil.
+    if (!currentPayload) return;
+
+    const currentBlocks = readCachedGeneratorChannelBlocks() || createEmptyGeneratorChannelBlocks();
+    const generatorBlocks = { ...currentBlocks } as GeneratorChannelBlocksByChannel;
+    const resolvedSnapshotDate = typeof params.snapshotDate === "string"
+      ? params.snapshotDate
+      : (typeof currentPayload?.meta?.snapshotDate === "string" ? currentPayload.meta.snapshotDate : cached?.snapshotDate ?? null);
+
+    const emptyBlocks = createEmptyGeneratorChannelBlocks();
+    for (const channel of DASHBOARD_CHANNEL_KEYS) {
+      const currentBlock = generatorBlocks[channel] || emptyBlocks[channel];
+      const activeFromStats = isGeneratorBlockActiveFromStatsBlock(params.channelBlocks?.[channel]);
+      const shouldClearChannel = activeFromStats === false;
+      const opportunity = shouldClearChannel
+        ? 0
+        : Math.max(0, Math.round(Number(effectiveByCube[channel] ?? currentBlock?.opportunities?.month ?? 0)));
+      const estimatedRaw = Number(params.estimatedByCube?.[channel]);
+      const estimatedValue = shouldClearChannel
+        ? 0
+        : Number.isFinite(estimatedRaw)
+          ? Math.max(0, Math.round(estimatedRaw))
+          : currentBlock.estimatedValue;
+      generatorBlocks[channel] = {
+        ...currentBlock,
+        leads: shouldClearChannel ? { today: 0, week: 0, month: 0 } : currentBlock.leads,
+        opportunities: { month: opportunity },
+        estimatedValue,
+        live: shouldClearChannel ? false : currentBlock.live,
+        error: shouldClearChannel ? null : currentBlock.error,
+        syncAt: nextSyncedAt,
+        snapshotDate: resolvedSnapshotDate,
+      };
+    }
+
+    const baseDays = Number(currentPayload?.details?.opportunities?.baseDays);
+    const generatorTotals = summarizeGeneratorChannelBlocks({
+      blocks: generatorBlocks,
+      monthDays: Number.isFinite(baseDays) && baseDays > 0 ? baseDays : 30,
+      weekDays: 7,
+      todayDays: 2,
+    });
+
+    const currentMeta = currentPayload?.meta && typeof currentPayload.meta === "object" ? currentPayload.meta as Record<string, any> : {};
+    const nextPayload = {
+      ...currentPayload,
+      leads: generatorTotals.leads,
+      estimatedValue: generatorTotals.estimatedValue,
+      generatorBlocks,
+      details: {
+        ...(currentPayload?.details && typeof currentPayload.details === "object" ? currentPayload.details : {}),
+        opportunities: generatorTotals.opportunities,
+        profile: params.profile ?? currentPayload?.details?.profile ?? null,
+      },
+      meta: {
+        ...currentMeta,
+        snapshotDate: resolvedSnapshotDate,
+      },
+    };
+
+    writeUiCacheValue(
+      "inrcy_generator_kpis_v1",
+      JSON.stringify({
+        syncedAt: nextSyncedAt,
+        snapshotDate: resolvedSnapshotDate,
+        payload: nextPayload,
+      })
+    );
+  } catch {
+    // ignore cache merge failures
+  }
+}
+
 export function mergeGeneratorChannelBlockIntoCachedKpis(params: {
   channel: DashboardChannelKey;
   block: GeneratorChannelBlock;

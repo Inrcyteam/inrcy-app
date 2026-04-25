@@ -11,7 +11,7 @@ import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/user
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { type DashboardChannelKey, isDashboardChannelKey } from "@/lib/dashboardChannels";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
-import { markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, readCachedChannelSyncAt, type StatsWarmPeriod } from "../dashboard.client-cache";
+import { markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, readCachedChannelSyncAt, syncGeneratorOpportunitiesFromStatsSummary, type StatsWarmPeriod } from "../dashboard.client-cache";
 import {
   AVAILABLE_PERIODS,
   buildCubeModel,
@@ -169,7 +169,7 @@ export default function StatsClient() {
     const snap = next.overviews as Record<CubeKey, Overview>;
     periodCacheRef.current.set(targetPeriod, snap);
     try {
-      writeUiCacheValue(cubeSessionKey(targetPeriod), JSON.stringify({ syncedAt, snapshotDate: next.snapshotDate, overviews: snap }));
+      writeUiCacheValue(cubeSessionKey(targetPeriod), JSON.stringify({ syncedAt, snapshotDate: next.snapshotDate, overviews: snap, blocks: next.blocks }));
       writeUiCacheValue(
         summarySessionKey(targetPeriod),
         JSON.stringify({
@@ -180,6 +180,16 @@ export default function StatsClient() {
           estimatedByCube: next.estimatedByCube,
         }),
       );
+      if (targetPeriod === 30) {
+        syncGeneratorOpportunitiesFromStatsSummary({
+          byCube: next.summary.byCube,
+          estimatedByCube: next.estimatedByCube,
+          profile: next.profile,
+          syncedAt,
+          snapshotDate: next.snapshotDate,
+          channelBlocks: next.blocks,
+        });
+      }
     } catch {
       // ignore
     }
@@ -259,6 +269,30 @@ export default function StatsClient() {
           facebook: safeNum(cachedSummary.estimatedByCube?.facebook),
           instagram: safeNum(cachedSummary.estimatedByCube?.instagram),
           linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
+        });
+      }
+
+      if (targetPeriod === 30 && cachedSummary) {
+        syncGeneratorOpportunitiesFromStatsSummary({
+          byCube: {
+            site_inrcy: safeNum(cachedSummary.byCube?.site_inrcy),
+            site_web: safeNum(cachedSummary.byCube?.site_web),
+            gmb: safeNum(cachedSummary.byCube?.gmb),
+            facebook: safeNum(cachedSummary.byCube?.facebook),
+            instagram: safeNum(cachedSummary.byCube?.instagram),
+            linkedin: safeNum(cachedSummary.byCube?.linkedin),
+          },
+          estimatedByCube: {
+            site_inrcy: safeNum(cachedSummary.estimatedByCube?.site_inrcy),
+            site_web: safeNum(cachedSummary.estimatedByCube?.site_web),
+            gmb: safeNum(cachedSummary.estimatedByCube?.gmb),
+            facebook: safeNum(cachedSummary.estimatedByCube?.facebook),
+            instagram: safeNum(cachedSummary.estimatedByCube?.instagram),
+            linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
+          },
+          profile: cachedSummary.profile,
+          syncedAt: periodSyncAt,
+          snapshotDate: typeof periodPayload?.snapshotDate === "string" ? periodPayload.snapshotDate : block.snapshotDate ?? null,
         });
       }
     }
@@ -353,6 +387,7 @@ export default function StatsClient() {
           instagram: safeNum(payload?.estimatedByCube?.instagram),
           linkedin: safeNum(payload?.estimatedByCube?.linkedin),
         },
+        blocks: payload?.blocks,
         snapshotDate: payloadSnapshotDate ?? null,
       };
       applyBulkPayload(targetPeriod, next, syncAt);
@@ -534,6 +569,7 @@ export default function StatsClient() {
         instagram: safeNum(json?.estimatedByCube?.instagram),
         linkedin: safeNum(json?.estimatedByCube?.linkedin),
       } as Record<CubeKey, number>,
+      blocks: json?.blocks as any,
       snapshotDate: snapshotDate ?? null,
     };
   };
