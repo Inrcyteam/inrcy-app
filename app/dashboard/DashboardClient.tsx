@@ -1691,9 +1691,13 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           .filter((days) => !stalePeriods.includes(days))
           .flatMap((days) => staleChannelsByPeriod[days] || []))));
 
-        const generatorChannelsToRefresh = staleGeneratorChannels.length
-          ? staleGeneratorChannels
-          : (generatorSyncedAt > localGeneratorSyncedAt ? DASHBOARD_CHANNEL_KEYS : []);
+        const generatorChannelsToRefresh = Array.from(new Set([
+          ...staleGeneratorChannels,
+          ...staleChannels,
+        ]));
+        if (!generatorChannelsToRefresh.length && generatorSyncedAt > localGeneratorSyncedAt) {
+          generatorChannelsToRefresh.push(...DASHBOARD_CHANNEL_KEYS);
+        }
 
         await Promise.allSettled([
           generatorChannelsToRefresh.length
@@ -1888,7 +1892,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     setKpisLoading(true);
 
     try {
-      const bootstrap = await runDailyStatsRefreshBootstrap();
+      const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true });
       applyBootstrapRefresh(bootstrap);
       await loadSiteInrcy();
 

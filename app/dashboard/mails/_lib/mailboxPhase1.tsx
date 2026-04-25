@@ -186,6 +186,8 @@ export type MailAccount = {
   email_address: string;
   display_name: string | null;
   status: string;
+  connection_status?: "connected" | "needs_update" | "disconnected";
+  requires_update?: boolean;
 };
 
 export const MAIL_ACCOUNTS_UPDATED_EVENT = "inrsend:mail-accounts-updated";

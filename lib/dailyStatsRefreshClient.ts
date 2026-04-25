@@ -34,7 +34,7 @@ export type DailyStatsRefreshBootstrapResponse = {
   inrstats?: Record<string, DailyRefreshBulkPayload>;
 };
 
-export async function runDailyStatsRefreshBootstrap(): Promise<DailyStatsRefreshBootstrapResponse> {
+export async function runDailyStatsRefreshBootstrap(options?: { announce?: boolean }): Promise<DailyStatsRefreshBootstrapResponse> {
   const res = await fetch("/api/stats/daily-refresh", {
     method: "POST",
     cache: "no-store",
@@ -42,7 +42,7 @@ export async function runDailyStatsRefreshBootstrap(): Promise<DailyStatsRefresh
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ action: "run" }),
+    body: JSON.stringify({ action: "run", announce: options?.announce === true }),
   });
 
   const json = (await res.json().catch(() => null)) as DailyStatsRefreshBootstrapResponse | null;

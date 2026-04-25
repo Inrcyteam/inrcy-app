@@ -6,6 +6,7 @@ import { withApi } from "@/lib/observability/withApi";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
+import { getConnectionDisplayStatus } from "@/lib/connectionVersions";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -249,7 +250,7 @@ const handler = async (req: Request) => {
 
   let q = supabase
     .from("integrations")
-    .select("id,access_token_enc,refresh_token_enc,expires_at,status,created_at,account_email,provider")
+    .select("id,access_token_enc,refresh_token_enc,expires_at,status,created_at,account_email,provider,settings")
     .eq("user_id", userId)
     .eq("provider", "gmail")
     .eq("category", "mail");
@@ -262,6 +263,9 @@ const handler = async (req: Request) => {
 
   const account = accounts?.[0];
   if (!account) return NextResponse.json({ error: "Aucun compte Gmail connecté." }, { status: 400 });
+  if (getConnectionDisplayStatus(String(asRecord(account)["status"] || "") === "connected", "mail:gmail", asRecord(account)["settings"]) === "needs_update") {
+    return NextResponse.json({ error: "Cette boîte Gmail doit être actualisée avant de pouvoir envoyer." }, { status: 400 });
+  }
 
   const signatureSettings = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId, account });
   const finalText = applyAutoSignatureToText(text || "", signatureSettings.signatureText);

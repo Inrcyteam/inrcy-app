@@ -129,21 +129,28 @@ export async function GET() {
       const periodStatus = inrstats[period];
       periodStatus.syncedAt = Math.max(periodStatus.syncedAt, ts);
 
+      if (ts > generatorSyncedAt) generatorSyncedAt = ts;
+      generator.syncedAt = Math.max(generator.syncedAt, ts);
+
       const payload = asRecord(rec.payload);
       const rangeChannel = inferChannelFromRangeKey(rangeKey);
       if (rangeChannel) {
+        const channelTs = inferChannelTs(payload, rangeChannel, ts);
         periodStatus.channels[rangeChannel] = Math.max(
           periodStatus.channels[rangeChannel],
-          inferChannelTs(payload, rangeChannel, ts),
+          channelTs,
         );
+        generator.channels[rangeChannel] = Math.max(generator.channels[rangeChannel], channelTs);
         continue;
       }
 
       for (const channel of DASHBOARD_CHANNEL_KEYS) {
+        const channelTs = inferChannelTs(payload, channel, ts);
         periodStatus.channels[channel] = Math.max(
           periodStatus.channels[channel],
-          inferChannelTs(payload, channel, ts),
+          channelTs,
         );
+        generator.channels[channel] = Math.max(generator.channels[channel], channelTs);
       }
     }
 

@@ -587,11 +587,12 @@ export default function MailboxClient() {
 
     setMailAccounts(accounts as any);
 
-    const connected = accounts.filter((a) => a.status === "connected");
-    const defaultId = connected[0]?.id || accounts[0]?.id || "";
+    const connected = accounts.filter((a) => a.status === "connected" && a.connection_status !== "needs_update" && !a.requires_update);
+    const defaultId = connected[0]?.id || "";
+    const usableAccountIds = new Set(connected.map((a) => String(a?.id || "")).filter(Boolean));
     const accountIds = new Set(accounts.map((a) => String(a?.id || "")).filter(Boolean));
 
-    setSelectedAccountId((prev) => (prev && accountIds.has(prev) ? prev : defaultId));
+    setSelectedAccountId((prev) => (prev && usableAccountIds.has(prev) ? prev : defaultId));
     setFilterAccountId((prev) => (prev && accountIds.has(prev) ? prev : ""));
   }
 
@@ -1595,6 +1596,10 @@ async function deleteDraftPermanently(id: string) {
   async function doSend() {
     if (!selectedAccount) {
       setToast("Veuillez connecter une boîte d’envoi dans les réglages.");
+      return;
+    }
+    if (selectedAccount.connection_status === "needs_update" || selectedAccount.requires_update) {
+      setToast("Cette boîte d’envoi doit être actualisée avant de pouvoir envoyer.");
       return;
     }
 

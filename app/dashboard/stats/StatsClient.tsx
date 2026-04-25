@@ -431,7 +431,7 @@ export default function StatsClient() {
     setLastRefreshAt(Date.now());
 
     try {
-      const bootstrap = await runDailyStatsRefreshBootstrap();
+      const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true });
       applyBootstrapPayload(bootstrap);
 
       if (!bootstrap?.ran) {

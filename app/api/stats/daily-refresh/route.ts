@@ -136,6 +136,9 @@ async function handler(req: Request) {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
 
+    const body = await req.json().catch(() => ({} as { announce?: unknown }));
+    const announce = body?.announce === true;
+
     const snapshotDate = getDefaultSnapshotDate();
     const { data: claimed, error: claimError } = await supabase.rpc("claim_daily_stats_refresh", {
       p_snapshot_date: snapshotDate,
@@ -169,12 +172,17 @@ async function handler(req: Request) {
         },
       });
 
+      const syncAt = Date.now();
+      if (announce) {
+        await bumpStatsVersion(supabase, user.id);
+      }
+
       return NextResponse.json({
         ok: true,
         ran: false,
         inProgress,
         snapshotDate,
-        syncAt: Date.now(),
+        syncAt,
       });
     }
 

@@ -8,6 +8,7 @@ import { appendRawMessage, type ImapConfig } from "@/lib/imapClient";
 import { decryptSecret } from "@/lib/imapCrypto";
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml } from "@/lib/inrsendSignature";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
+import { getConnectionDisplayStatus, mailConnectionKind } from "@/lib/connectionVersions";
 
 export type SendMailBinaryAttachment = {
   filename: string;
@@ -368,6 +369,13 @@ export async function sendMailFromIntegration(params: {
   const status = asString(account.status) || "connected";
   if (!provider || !account.id) throw new Error("Boîte d’envoi introuvable.");
   if (status !== "connected") throw new Error("Boîte d’envoi non connectée.");
+  const connectionKind = mailConnectionKind(provider);
+  const connectionStatus = connectionKind
+    ? getConnectionDisplayStatus(status === "connected", connectionKind, account.settings)
+    : "connected";
+  if (connectionStatus === "needs_update") {
+    throw new Error("Cette boîte d’envoi doit être actualisée avant de pouvoir envoyer.");
+  }
 
   const baseText = params.text || "";
   const baseHtml = params.html || textToSimpleHtml(baseText);

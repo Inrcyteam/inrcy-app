@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/requireUser";
 import { normalizeCampaignRecipients } from "@/lib/crmRecipients";
 import { fetchSuppressedEmailsByUser } from "@/lib/mailSuppression";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
+import { getConnectionDisplayStatus, mailConnectionKind } from "@/lib/connectionVersions";
 
 export const runtime = "nodejs";
 
@@ -133,7 +134,7 @@ export async function POST(req: Request) {
 
   const { data: account, error: accountError } = await supabase
     .from("integrations")
-    .select("id,user_id,provider,category,status")
+    .select("id,user_id,provider,category,status,settings")
     .eq("id", accountId)
     .eq("user_id", user.id)
     .eq("category", "mail")
@@ -145,6 +146,14 @@ export async function POST(req: Request) {
   }
   if (!account?.id || !account?.provider) {
     return NextResponse.json({ error: "La boîte d’envoi sélectionnée est introuvable." }, { status: 404 });
+  }
+
+  const mailKind = mailConnectionKind(account.provider);
+  const mailConnectionStatus = mailKind
+    ? getConnectionDisplayStatus(true, mailKind, account.settings)
+    : "connected";
+  if (mailConnectionStatus === "needs_update") {
+    return NextResponse.json({ error: "Cette boîte d’envoi doit être actualisée avant de pouvoir envoyer." }, { status: 400 });
   }
 
   const suppressedByEmail = await fetchSuppressedEmailsByUser(
