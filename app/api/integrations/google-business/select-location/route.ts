@@ -4,6 +4,7 @@ import { asRecord } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
+import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServer();
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
       .update({
         resource_id: locationName,
         resource_label: locationTitle,
-        meta: { account: accountName },
+        meta: withCurrentConnectionVersion("channel:gmb", { account: accountName }),
         status: "connected",
         updated_at: new Date().toISOString(),
       })

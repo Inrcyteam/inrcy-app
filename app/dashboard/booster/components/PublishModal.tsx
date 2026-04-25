@@ -4,7 +4,7 @@ import StatusMessage from "../../_components/StatusMessage";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
-import stylesDash from "../../dashboard.module.css";
+import stylesDash from "../../dashboard/dashboard.module.css";
 import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/dashboard/_components/ChannelImageRetouchTool";
 import {
   BOOSTER_MAX_IMAGE_BYTES,

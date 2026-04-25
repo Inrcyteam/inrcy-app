@@ -12,10 +12,10 @@ export async function GET() {
       channels: {
         inrcy_site: states.site_inrcy.connected && states.site_inrcy.statsConnected,
         site_web: states.site_web.connected && states.site_web.statsConnected,
-        gmb: states.gmb.connected,
-        facebook: states.facebook.connected,
-        instagram: states.instagram.connected,
-        linkedin: states.linkedin.connected,
+        gmb: states.gmb.connected && !states.gmb.requiresUpdate,
+        facebook: states.facebook.connected && !states.facebook.requiresUpdate,
+        instagram: states.instagram.connected && !states.instagram.requiresUpdate,
+        linkedin: states.linkedin.connected && !states.linkedin.requiresUpdate,
       },
     });
   } catch {

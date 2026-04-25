@@ -10,6 +10,7 @@ import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 type TokenResponse = {
   access_token?: string;
   refresh_token?: string;
@@ -193,7 +194,7 @@ export async function GET(req: Request) {
       access_token_enc: tokenData.access_token ?? null,
       refresh_token_enc: refreshTokenToStore,
       expires_at: expiresAt,
-      meta: { picture: userInfo.picture ?? null },
+      meta: withCurrentConnectionVersion("channel:gmb", { picture: userInfo.picture ?? null }),
     };
 
     if (existingId) {
@@ -244,7 +245,7 @@ export async function GET(req: Request) {
           const metaToMerge = asRecord(payload["meta"]);
           await supabaseAdmin
             .from("integrations")
-            .update({ meta: { ...metaToMerge, account: firstAcc }, resource_id: null, resource_label: null })
+            .update({ meta: withCurrentConnectionVersion("channel:gmb", { ...metaToMerge, account: firstAcc }), resource_id: null, resource_label: null })
             .eq("user_id", userId)
             .eq("provider", "google")
             .eq("source", "gmb")

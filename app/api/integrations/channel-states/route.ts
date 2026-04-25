@@ -9,10 +9,10 @@ export async function GET() {
     return NextResponse.json({
       site_inrcy: { connected: false, ga4: false, gsc: false, url: null },
       site_web: { connected: false, ga4: false, gsc: false, url: null },
-      gmb: { accountConnected: false, configured: false, connected: false },
-      facebook: { accountConnected: false, pageConnected: false, connected: false },
-      instagram: { accountConnected: false, connected: false },
-      linkedin: { accountConnected: false, connected: false },
+      gmb: { accountConnected: false, configured: false, connected: false, requiresUpdate: false, connection_status: "disconnected" },
+      facebook: { accountConnected: false, pageConnected: false, connected: false, requiresUpdate: false, connection_status: "disconnected" },
+      instagram: { accountConnected: false, connected: false, requiresUpdate: false, connection_status: "disconnected" },
+      linkedin: { accountConnected: false, connected: false, requiresUpdate: false, connection_status: "disconnected" },
     }, { status: 200 });
   }
 

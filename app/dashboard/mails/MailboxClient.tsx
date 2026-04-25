@@ -260,6 +260,7 @@ export default function MailboxClient() {
   const [composeSourceDocSaveId, setComposeSourceDocSaveId] = useState<string>("");
   const [composeSourceDocType, setComposeSourceDocType] = useState<"devis" | "facture" | "">("");
   const [composeSourceDocNumber, setComposeSourceDocNumber] = useState<string>("");
+  const [composeTemplateKey, setComposeTemplateKey] = useState<string>("");
   const [sendBusy, setSendBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [signaturePreview, setSignaturePreview] = useState("Cordialement,");
@@ -284,6 +285,7 @@ export default function MailboxClient() {
     payload: Record<string, any>;
   };
   const [pendingTrack, setPendingTrack] = useState<PendingTrack | null>(null);
+  type CampaignReuseMode = "reuse" | "resend";
 
   // CRM selection (compose)
   type CrmContact = {
@@ -417,6 +419,8 @@ export default function MailboxClient() {
     setComposeSourceDocSaveId("");
     setComposeSourceDocType("");
     setComposeSourceDocNumber("");
+    setComposeTemplateKey("");
+    setPendingTrack(null);
     setTo("");
     setSubject("");
     const signature = signatureEnabled ? signaturePreview : "";
@@ -425,6 +429,146 @@ export default function MailboxClient() {
     setComposeAttachments([]);
     setComposeRecipientHints([]);
     setCrmPickerOpen(false);
+  }
+
+  function inferTrackFromCampaign(item: OutboxItem): PendingTrack | null {
+    if (!item || item.source !== "mail_campaigns") return null;
+    const raw = ((item as any).raw || {}) as Record<string, any>;
+    const rawKind = String(raw.track_kind || item.module || "").trim().toLowerCase();
+    const rawType = String(raw.track_type || "").trim().toLowerCase();
+    const folderName = String(item.folder || raw.folder || "").trim().toLowerCase();
+
+    if ((rawKind === "booster" || rawKind === "fideliser") && rawType) {
+      return { kind: rawKind as "booster" | "fideliser", type: rawType, payload: {} };
+    }
+
+    if (rawType === "review_mail" || folderName === "recoltes") {
+      return { kind: "booster", type: "review_mail", payload: {} };
+    }
+    if (rawType === "promo_mail" || folderName === "offres") {
+      return { kind: "booster", type: "promo_mail", payload: {} };
+    }
+    if (rawType === "newsletter_mail" || folderName === "informations") {
+      return { kind: "fideliser", type: "newsletter_mail", payload: {} };
+    }
+    if (rawType === "thanks_mail" || folderName === "suivis") {
+      return { kind: "fideliser", type: "thanks_mail", payload: {} };
+    }
+    if (rawType === "satisfaction_mail" || folderName === "enquetes") {
+      return { kind: "fideliser", type: "satisfaction_mail", payload: {} };
+    }
+
+    return null;
+  }
+
+  function normalizeCampaignAttachments(input: unknown): ComposeAttachmentRef[] {
+    const values = Array.isArray(input) ? input : [];
+    return values
+      .map((attachment: any) => {
+        const bucket = String(attachment?.bucket || "").trim();
+        const path = String(attachment?.path || "").trim();
+        const name = String(attachment?.name || attachment?.filename || attachment?.fileName || path.split("/").pop() || "").trim();
+        if (!bucket || !path || !name) return null;
+        return {
+          bucket,
+          path,
+          name,
+          type: attachment?.type || attachment?.mime_type || null,
+          size: attachment?.size == null ? null : Number(attachment.size) || null,
+        } satisfies ComposeAttachmentRef;
+      })
+      .filter(Boolean) as ComposeAttachmentRef[];
+  }
+
+  async function loadAllCampaignRecipientsForCompose(campaignId: string): Promise<ComposeCrmRecipientHint[]> {
+    const pageSize = 1000;
+    let from = 0;
+    const result: ComposeCrmRecipientHint[] = [];
+    const seen = new Set<string>();
+
+    for (let guard = 0; guard < 20; guard += 1) {
+      const toRange = from + pageSize - 1;
+      const { data, error } = await supabase
+        .from("mail_campaign_recipients")
+        .select("email,display_name,contact_id")
+        .eq("campaign_id", campaignId)
+        .order("created_at", { ascending: true })
+        .range(from, toRange);
+
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      for (const row of rows as any[]) {
+        const email = String(row?.email || "").trim();
+        const lower = email.toLowerCase();
+        if (!email || seen.has(lower)) continue;
+        seen.add(lower);
+        result.push({
+          email,
+          contact_id: row?.contact_id || null,
+          display_name: row?.display_name || null,
+        });
+      }
+      if (rows.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return result;
+  }
+
+  async function openCampaignComposeFromHistory(item: OutboxItem, mode: CampaignReuseMode) {
+    if (!item || item.source !== "mail_campaigns") return;
+    if (campaignActionBusyId) return;
+
+    const raw = ((item as any).raw || {}) as Record<string, any>;
+    setCampaignActionBusyId(item.id);
+
+    try {
+      const nextType: SendType = raw.type === "facture" || raw.type === "devis" ? raw.type : "mail";
+      const track = inferTrackFromCampaign(item);
+      const recipients = mode === "resend" ? await loadAllCampaignRecipientsForCompose(item.id) : [];
+
+      if (mode === "resend" && recipients.length === 0) {
+        setToast("Impossible de retrouver les destinataires de cette campagne.");
+        return;
+      }
+
+      setDraftId(null);
+      setComposeType(nextType);
+      setComposeTemplateKey(String(raw.template_key || ""));
+      setComposeSourceDocSaveId(String(raw.source_doc_save_id || ""));
+      setComposeSourceDocType(raw.source_doc_type === "facture" || raw.source_doc_type === "devis" ? raw.source_doc_type : "");
+      setComposeSourceDocNumber(String(raw.source_doc_number || ""));
+      setSubject(normalizeMailSubject(String(raw.subject || item.subject || "").trim() || "(sans objet)"));
+      setText(String(raw.body_text || item.detailText || ""));
+      setFiles([]);
+      setComposeAttachments(normalizeCampaignAttachments(raw.attachments));
+      setTo(mode === "resend" ? recipients.map((recipient) => recipient.email).join(", ") : "");
+      setComposeRecipientHints(mode === "resend" ? recipients : []);
+      setCrmPickerOpen(mode === "reuse");
+
+      if (raw.integration_id) {
+        setSelectedAccountId(String(raw.integration_id));
+      }
+
+      setPendingTrack(track ? {
+        ...track,
+        payload: {
+          ...(track.payload || {}),
+          reused_from_campaign_id: item.id,
+          reuse_mode: mode,
+        },
+      } : null);
+
+      lastAttachKeyRef.current = "";
+      setDetailsOpen(false);
+      setComposeOpen(true);
+      setToast(mode === "resend" ? "Campagne prête à renvoyer : vérifie puis envoie." : "Campagne prête à réutiliser : choisis les nouveaux destinataires.");
+    } catch (error) {
+      console.error(error);
+      setToast("Impossible de préparer cette campagne pour le moment.");
+    } finally {
+      setCampaignActionBusyId(null);
+    }
   }
 
   async function loadAccounts() {
@@ -644,38 +788,26 @@ export default function MailboxClient() {
         return Math.max(0, Number(count || 0));
       };
 
-      const [delivered, blocked, optOut, blacklist, complaint, hardBounce, softBounce] = await Promise.all([
-        countRecipients("delivered"),
-        countRecipients("__blocked__"),
+      const [optOut, blacklist] = await Promise.all([
         countRecipients("opt_out"),
         countRecipients("blacklist"),
-        countRecipients("complaint"),
-        countRecipients("hard_bounce"),
-        countRecipients("soft_bounce"),
       ]);
+      const blocked = optOut + blacklist;
 
       setCampaignHealth({
         ...baseCounts,
-        delivered,
         blocked,
         opt_out: optOut,
         blacklist,
-        complaint,
-        hard_bounce: hardBounce,
-        soft_bounce: softBounce,
         retryable: Math.max(0, baseCounts.failed - blocked),
       });
     } catch (error) {
       console.error(error);
       setCampaignHealth({
         ...baseCounts,
-        delivered: 0,
         blocked: 0,
         opt_out: 0,
         blacklist: 0,
-        complaint: 0,
-        hard_bounce: 0,
-        soft_bounce: 0,
         retryable: Math.max(0, baseCounts.failed),
       });
     } finally {
@@ -1028,6 +1160,7 @@ export default function MailboxClient() {
     const sourceDocSaveIdParam = safeDecode(searchParams?.get("docSaveId") || searchParams?.get("sourceDocSaveId") || "").trim();
     const sourceDocTypeParam = (safeDecode(searchParams?.get("docType") || searchParams?.get("sourceDocType") || "").trim().toLowerCase());
     const sourceDocNumberParam = safeDecode(searchParams?.get("docNumber") || searchParams?.get("sourceDocNumber") || "").trim();
+    const templateKeyParam = safeDecode(searchParams?.get("template_key") || "").trim();
     let nextType: SendType = "mail";
     if (typeParam === "facture") nextType = "facture";
     else if (typeParam === "devis") nextType = "devis";
@@ -1037,6 +1170,7 @@ export default function MailboxClient() {
     setComposeSourceDocSaveId(sourceDocSaveIdParam);
     setComposeSourceDocType(sourceDocTypeParam === "facture" || sourceDocTypeParam === "devis" ? (sourceDocTypeParam as "facture" | "devis") : "");
     setComposeSourceDocNumber(sourceDocNumberParam || (attachName || attachKey.split("/").pop() || "").replace(/\.pdf$/i, ""));
+    if (templateKeyParam) setComposeTemplateKey(templateKeyParam);
 
     if (toParam) setTo(toParam);
     if (subjParam) setSubject(normalizeMailSubject(subjParam));
@@ -1100,6 +1234,7 @@ export default function MailboxClient() {
     const preTextRaw = searchParams?.get("prefill_text") || "";
     const templateKey = searchParams?.get("template_key") || "";
     const open = (searchParams?.get("compose") || "").toLowerCase();
+    if (templateKey) setComposeTemplateKey(templateKey);
 
     // Optional tracking intent (sent from Booster/Fidéliser modules)
     const trackKind = (searchParams?.get("track_kind") || "").toLowerCase();
@@ -1487,7 +1622,7 @@ async function deleteDraftPermanently(id: string) {
     try {
       if (recipientsList.length > 1) {
         const campaignFolder = getBulkCampaignFolder();
-        const templateKey = searchParams?.get("template_key") || "";
+        const templateKey = composeTemplateKey || searchParams?.get("template_key") || "";
         const campaignPayload = {
           accountId: selectedAccount.id,
           type: composeType,
@@ -1531,15 +1666,11 @@ async function deleteDraftPermanently(id: string) {
         const ignoredInvalid = Math.max(0, Number(data?.ignoredInvalid ?? 0));
         const blockedOptOut = Math.max(0, Number(data?.blockedOptOut ?? 0));
         const blockedBlacklist = Math.max(0, Number(data?.blockedBlacklist ?? 0));
-        const blockedHardBounce = Math.max(0, Number(data?.blockedHardBounce ?? 0));
-        const blockedComplaint = Math.max(0, Number(data?.blockedComplaint ?? 0));
         const extras: string[] = [];
         if (blockedDuplicates > 0) extras.push(`${blockedDuplicates} doublon${blockedDuplicates > 1 ? "s" : ""} bloqué${blockedDuplicates > 1 ? "s" : ""}`);
         if (ignoredInvalid > 0) extras.push(`${ignoredInvalid} destinataire${ignoredInvalid > 1 ? "s" : ""} ignoré${ignoredInvalid > 1 ? "s" : ""}`);
         if (blockedOptOut > 0) extras.push(`${blockedOptOut} désinscription${blockedOptOut > 1 ? "s" : ""}`);
         if (blockedBlacklist > 0) extras.push(`${blockedBlacklist} blacklist`);
-        if (blockedHardBounce > 0) extras.push(`${blockedHardBounce} rebond${blockedHardBounce > 1 ? "s" : ""} dur${blockedHardBounce > 1 ? "s" : ""}`);
-        if (blockedComplaint > 0) extras.push(`${blockedComplaint} plainte${blockedComplaint > 1 ? "s" : ""}`);
         const deliveryState = String(data?.campaignStatus || "").toLowerCase();
         const deferredReason = String(data?.deferredReason || "").trim();
         const batchSize = Math.max(1, Number(data?.batchSize || 50));
@@ -1999,6 +2130,7 @@ async function deleteDraftPermanently(id: string) {
           saveChannelPublication={saveChannelPublication}
           deleteChannelPublication={deleteChannelPublication}
           retryCampaignFailedRecipients={retryCampaignFailedRecipients}
+          openCampaignComposeFromHistory={openCampaignComposeFromHistory}
           deleteHistoryEntry={deleteHistoryEntry}
           loadCampaignRecipients={loadCampaignRecipients}
           loadCampaignHealth={loadCampaignHealth}

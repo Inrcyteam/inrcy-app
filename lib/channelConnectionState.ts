@@ -1,4 +1,5 @@
 import { asRecord, asString } from "@/lib/tsSafe";
+import { getConnectionDisplayStatus, type ConnectionDisplayStatus } from "@/lib/connectionVersions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 
@@ -43,6 +44,8 @@ export type ChannelStates = {
     configured: boolean;
     connected: boolean;
     expired: boolean;
+    requiresUpdate: boolean;
+    connection_status: ConnectionDisplayStatus;
     resource_id: string | null;
     resource_label: string | null;
     email: string | null;
@@ -52,6 +55,8 @@ export type ChannelStates = {
     pageConnected: boolean;
     connected: boolean;
     expired: boolean;
+    requiresUpdate: boolean;
+    connection_status: ConnectionDisplayStatus;
     resource_id: string | null;
     resource_label: string | null;
     user_email: string | null;
@@ -61,6 +66,8 @@ export type ChannelStates = {
     accountConnected: boolean;
     connected: boolean;
     expired: boolean;
+    requiresUpdate: boolean;
+    connection_status: ConnectionDisplayStatus;
     resource_id: string | null;
     username: string | null;
     profile_url: string | null;
@@ -69,6 +76,8 @@ export type ChannelStates = {
     accountConnected: boolean;
     connected: boolean;
     expired: boolean;
+    requiresUpdate: boolean;
+    connection_status: ConnectionDisplayStatus;
     resource_id: string | null;
     display_name: string | null;
     profile_url: string | null;
@@ -182,6 +191,8 @@ export async function getChannelConnectionStates(
   const fbResourceLabel = asString(fb.resource_label) || asString(fbSettings.pageName) || null;
   const fbPageUrl = asString(asRecord(fb.meta).page_url) || asString(fbSettings.url) || null;
   const fbPageConnected = Boolean((fbAccountConnected && fbResourceId) || fbSettings.pageConnected);
+  const fbConnectionStatus = getConnectionDisplayStatus(fbPageConnected, "channel:facebook", fbMeta);
+  const fbRequiresUpdate = fbConnectionStatus === "needs_update";
 
   const ig = latestIntegration(rows, "instagram", "instagram", "instagram");
   const igSettings = asRecord(settings.instagram);
@@ -195,6 +206,8 @@ export async function getChannelConnectionStates(
   const igUsername = asString(ig.resource_label) || asString(igSettings.username) || null;
   const igProfileUrl = asString(igSettings.url) || (igUsername ? `https://www.instagram.com/${igUsername}/` : null);
   const igConnected = Boolean(igAccountConnected && igResourceId);
+  const igConnectionStatus = getConnectionDisplayStatus(igConnected, "channel:instagram", igMeta);
+  const igRequiresUpdate = igConnectionStatus === "needs_update";
 
   const li = latestIntegration(rows, "linkedin", "linkedin", "linkedin");
   const liSettings = asRecord(settings.linkedin);
@@ -205,9 +218,12 @@ export async function getChannelConnectionStates(
   const liStatus = asString(li.status);
   const liMeta = asRecord(li.meta);
   const liConnected = Boolean(((liStatus === "connected" || liStatus === "account_connected") && liHasReusableAuth && !liExpired) || liSettings.accountConnected || liSettings.connected);
+  const liConnectionStatus = getConnectionDisplayStatus(liConnected, "channel:linkedin", liMeta);
+  const liRequiresUpdate = liConnectionStatus === "needs_update";
 
   const gmb = latestIntegration(rows, "google", "gmb", "gmb");
   const gmbSettings = asRecord(settings.gmb);
+  const gmbMeta = asRecord(gmb.meta);
   const gmbStatus = asString(gmb.status);
   const gmbHasToken = hasTruthyString(gmb.access_token_enc);
   const gmbHasRefreshToken = hasTruthyString(gmb.refresh_token_enc);
@@ -219,6 +235,8 @@ export async function getChannelConnectionStates(
   const gmbResourceId = asString(gmb.resource_id) || asString(gmbSettings.locationName) || null;
   const gmbResourceLabel = asString(gmb.resource_label) || asString(gmbSettings.locationTitle) || null;
   const gmbConfigured = Boolean((gmbAccountConnected && gmbResourceId) || (gmbSettings.connected && (gmbSettings.locationName || gmbSettings.locationTitle)));
+  const gmbConnectionStatus = getConnectionDisplayStatus(gmbConfigured, "channel:gmb", gmbMeta);
+  const gmbRequiresUpdate = gmbConnectionStatus === "needs_update";
 
   return {
     site_inrcy: {
@@ -242,6 +260,8 @@ export async function getChannelConnectionStates(
       configured: gmbConfigured,
       connected: gmbConfigured,
       expired: gmbExpired,
+      requiresUpdate: gmbRequiresUpdate,
+      connection_status: gmbConnectionStatus,
       resource_id: gmbResourceId,
       resource_label: gmbResourceLabel,
       email: asString(gmb.email_address) || asString(gmbSettings.accountEmail) || null,
@@ -251,6 +271,8 @@ export async function getChannelConnectionStates(
       pageConnected: fbPageConnected,
       connected: fbPageConnected,
       expired: fbExpired,
+      requiresUpdate: fbRequiresUpdate,
+      connection_status: fbConnectionStatus,
       resource_id: fbResourceId,
       resource_label: fbResourceLabel,
       user_email: asString(fb.email_address) || asString(fbSettings.userEmail) || null,
@@ -260,6 +282,8 @@ export async function getChannelConnectionStates(
       accountConnected: igAccountConnected,
       connected: igConnected,
       expired: igExpired,
+      requiresUpdate: igRequiresUpdate,
+      connection_status: igConnectionStatus,
       resource_id: igResourceId,
       username: igUsername,
       profile_url: igProfileUrl,
@@ -268,6 +292,8 @@ export async function getChannelConnectionStates(
       accountConnected: liConnected,
       connected: liConnected,
       expired: liExpired,
+      requiresUpdate: liRequiresUpdate,
+      connection_status: liConnectionStatus,
       resource_id: asString(li.resource_id) || null,
       display_name: asString(li.resource_label) || asString(li.display_name) || asString(liSettings.displayName) || null,
       profile_url: asString(liMeta.profile_url) || asString(liMeta.profile) || asString(liSettings.url) || null,

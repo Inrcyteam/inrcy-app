@@ -58,12 +58,16 @@ type LiveSourcesSnapshot = {
   site_inrcy: { connected: SiteConn };
   site_web: { connected: SiteConn };
   gmb: { connected: boolean; metrics: unknown | null };
-  facebook: { connected: boolean };
-  instagram: { connected: boolean };
-  linkedin: { connected: boolean };
+  facebook: { connected: boolean; metrics: unknown | null };
+  instagram: { connected: boolean; metrics: unknown | null };
+  linkedin: { connected: boolean; metrics: unknown | null };
 };
 
 type OverviewCubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
+
+function isStatsActiveConnection(state: { connected: boolean; requiresUpdate?: boolean }) {
+  return Boolean(state.connected && !state.requiresUpdate);
+}
 
 function mergeCachedSourcesWithLiveState(existingSources: unknown, liveSources: LiveSourcesSnapshot) {
   const existing = asRecord(existingSources);
@@ -72,9 +76,19 @@ function mergeCachedSourcesWithLiveState(existingSources: unknown, liveSources: 
     const liveNode = asRecord(liveNodeUnknown);
     const prevNode = asRecord(existing[key]);
     const nextNode: Record<string, unknown> = { ...prevNode, ...liveNode };
-    if (prevNode["metrics"] !== undefined && (liveNode["metrics"] === undefined || (liveNode["metrics"] === null && prevNode["metrics"] !== null))) {
+    const liveConnected = liveNode["connected"];
+
+    // Si le canal n'est plus actif pour iNrStats (déconnecté ou à actualiser),
+    // on supprime aussi les anciennes métriques du cache pour éviter un calcul live/stale.
+    if (liveConnected === false) {
+      nextNode["metrics"] = null;
+    } else if (
+      prevNode["metrics"] !== undefined &&
+      (liveNode["metrics"] === undefined || (liveNode["metrics"] === null && prevNode["metrics"] !== null))
+    ) {
       nextNode["metrics"] = prevNode["metrics"];
     }
+
     out[key] = nextNode;
   }
   return out;
@@ -431,10 +445,10 @@ async function fetchLiveSourcesStatus() {
   return {
     site_inrcy: { connected: { ga4: states.site_inrcy.ga4, gsc: states.site_inrcy.gsc } },
     site_web: { connected: { ga4: states.site_web.ga4, gsc: states.site_web.gsc } },
-    gmb: { connected: states.gmb.connected, metrics: null },
-    facebook: { connected: states.facebook.connected },
-    instagram: { connected: states.instagram.connected },
-    linkedin: { connected: states.linkedin.connected },
+    gmb: { connected: isStatsActiveConnection(states.gmb), metrics: null },
+    facebook: { connected: isStatsActiveConnection(states.facebook), metrics: null },
+    instagram: { connected: isStatsActiveConnection(states.instagram), metrics: null },
+    linkedin: { connected: isStatsActiveConnection(states.linkedin), metrics: null },
   } satisfies LiveSourcesSnapshot;
 }
 
@@ -804,7 +818,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         // Facebook: connected if a page has been selected (resource_id)
     try {
       const fbRow = latestIntegrationAny("facebook", "facebook", "facebook");
-      sourcesStatus.facebook.connected = channelStates.facebook.connected;
+      sourcesStatus.facebook.connected = isStatsActiveConnection(channelStates.facebook);
 
       // Real Facebook Page metrics (only if included)
       const includeFb = includeAll || includeSet.has("facebook");
@@ -834,7 +848,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     // Instagram: Meta family. Connected only once a profile is selected (resource_id).
     try {
       const igRow = latestIntegrationAny("instagram", "instagram", "instagram");
-      sourcesStatus.instagram.connected = channelStates.instagram.connected;
+      sourcesStatus.instagram.connected = isStatsActiveConnection(channelStates.instagram);
 
       const includeIg = includeAll || includeSet.has("instagram");
       if (!includeIg) {
@@ -876,7 +890,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
 // LinkedIn: connected if an OAuth row exists.
     try {
-      sourcesStatus.linkedin.connected = channelStates.linkedin.connected;
+      sourcesStatus.linkedin.connected = isStatsActiveConnection(channelStates.linkedin);
 
       const includeLi = includeAll || includeSet.has("linkedin");
       if (!includeLi) {
@@ -926,7 +940,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
       } catch {}
 
       const resourceId = String(gmbRow["resource_id"] || legacyResource || "");
-      sourcesStatus.gmb.connected = channelStates.gmb.connected;
+      sourcesStatus.gmb.connected = isStatsActiveConnection(channelStates.gmb);
 
       const includeGmb = includeAll || includeSet.has("gmb");
       if (!includeGmb) {

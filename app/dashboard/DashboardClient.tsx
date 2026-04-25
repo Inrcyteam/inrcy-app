@@ -28,6 +28,7 @@ import { getBubbleStatusFromBlock, getBubbleViewHrefFromBlock, inferChannelsFrom
 import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
 import { createEmptyChannelBlock, createEmptyChannelBlocks, type InrstatsChannelBlock, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
+import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
@@ -469,11 +470,13 @@ const [siteWebGscProperty, setSiteWebGscProperty] = useState<string>("");
 const [instagramUrl, setInstagramUrl] = useState<string>("");
 const [instagramAccountConnected, setInstagramAccountConnected] = useState<boolean>(false);
 const [instagramConnected, setInstagramConnected] = useState<boolean>(false);
+const [instagramConnectionStatus, setInstagramConnectionStatus] = useState<ConnectionDisplayStatus>("disconnected");
 const [instagramUsername, setInstagramUsername] = useState<string>("");
 
 const [linkedinUrl, setLinkedinUrl] = useState<string>("");
 const [linkedinAccountConnected, setLinkedinAccountConnected] = useState<boolean>(false);
 const [linkedinConnected, setLinkedinConnected] = useState<boolean>(false);
+const [linkedinConnectionStatus, setLinkedinConnectionStatus] = useState<ConnectionDisplayStatus>("disconnected");
 const [linkedinDisplayName, setLinkedinDisplayName] = useState<string>("");
 const [profileIncomplete, setProfileIncomplete] = useState(false);
 const [activityIncomplete, setActivityIncomplete] = useState(false);
@@ -481,6 +484,7 @@ const [activityIncomplete, setActivityIncomplete] = useState(false);
 // ✅ Google Business & Facebook (liens + connexion)
 const [gmbUrl, setGmbUrl] = useState<string>("");
 const [gmbConnected, setGmbConnected] = useState<boolean>(false);
+const [gmbConnectionStatus, setGmbConnectionStatus] = useState<ConnectionDisplayStatus>("disconnected");
 // Google Business has 2 levels:
 // 1) accountConnected: OAuth OK (we can list locations)
 // 2) configured/connected: a specific location is selected (we can fetch stats)
@@ -493,6 +497,7 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
 	// 2) pageConnected: a specific Page is selected (we can fetch stats)
 	const [facebookAccountConnected, setFacebookAccountConnected] = useState<boolean>(false);
 	const [facebookPageConnected, setFacebookPageConnected] = useState<boolean>(false);
+	const [facebookConnectionStatus, setFacebookConnectionStatus] = useState<ConnectionDisplayStatus>("disconnected");
 	const [facebookAccountEmail, setFacebookAccountEmail] = useState<string>("");
 
   // ✅ Unités d'Inertie : multiplicateur basé sur les 6 canaux connectés.
@@ -506,12 +511,12 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
           // IMPORTANT: on ne compte les réseaux sociaux que si le compte est réellement connecté (OAuth),
           // pas seulement si un lien est renseigné.
           // Google Business : compte + fiche (location) configurée.
-          gmb: Boolean(gmbAccountConnected && gmbConfigured),
+          gmb: Boolean(gmbAccountConnected && gmbConfigured && gmbConnectionStatus !== "needs_update"),
           // Facebook : compte + page sélectionnée.
-          facebook: Boolean(facebookAccountConnected && facebookPageConnected),
+          facebook: Boolean(facebookAccountConnected && facebookPageConnected && facebookConnectionStatus !== "needs_update"),
           // Instagram : compte + page/profil (resource) sélectionné.
-          instagram: Boolean(instagramAccountConnected && instagramConnected),
-          linkedin: Boolean(linkedinAccountConnected),
+          instagram: Boolean(instagramAccountConnected && instagramConnected && instagramConnectionStatus !== "needs_update"),
+          linkedin: Boolean(linkedinAccountConnected && linkedinConnectionStatus !== "needs_update"),
         },
         { maxMultiplier: 7 }
       ),
@@ -528,9 +533,13 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
       gmbConfigured,
       facebookAccountConnected,
       facebookPageConnected,
+      facebookConnectionStatus,
       instagramAccountConnected,
       instagramConnected,
+      instagramConnectionStatus,
       linkedinAccountConnected,
+      linkedinConnectionStatus,
+      gmbConnectionStatus,
     ]
   );
 
@@ -813,21 +822,25 @@ const loadSiteInrcy = useCallback(async () => {
     instagramUrl: igObj?.url ?? "",
     instagramAccountConnected: !!igObj?.accountConnected,
     instagramConnected: !!igObj?.connected,
+    instagramConnectionStatus: (igObj?.connected ? "connected" : "disconnected") as ConnectionDisplayStatus,
     instagramUsername: String(igObj?.username ?? ""),
     linkedinUrl: liObj?.url ?? "",
     linkedinAccountConnected: !!liObj?.accountConnected,
     linkedinConnected: !!liObj?.connected,
+    linkedinConnectionStatus: (liObj?.connected || liObj?.accountConnected ? "connected" : "disconnected") as ConnectionDisplayStatus,
     linkedinDisplayName: String(liObj?.displayName ?? ""),
     gmbUrl: gmbObj?.url ?? "",
     gmbAccountConnected: !!gmbObj?.connected,
     gmbConfigured: !!gmbObj?.resource_id,
     gmbConnected: !!gmbObj?.connected && !!gmbObj?.resource_id,
+    gmbConnectionStatus: (gmbObj?.connected && (gmbObj?.locationName || gmbObj?.resource_id) ? "connected" : "disconnected") as ConnectionDisplayStatus,
     gmbAccountEmail: gmbObj?.accountEmail ?? "",
     gmbLocationName: String(gmbObj?.locationName ?? gmbObj?.resource_id ?? ""),
     gmbLocationLabel: String(gmbObj?.locationTitle ?? gmbObj?.resource_label ?? ""),
     facebookUrl: fbObj?.url ?? "",
     facebookAccountConnected: !!fbObj?.accountConnected,
     facebookPageConnected: !!fbObj?.pageConnected,
+    facebookConnectionStatus: (fbObj?.pageConnected ? "connected" : "disconnected") as ConnectionDisplayStatus,
     facebookAccountEmail: fbObj?.userEmail ?? "",
     fbSelectedPageId: fbObj?.pageId ?? "",
     fbSelectedPageName: fbObj?.pageName ?? "",
@@ -852,12 +865,14 @@ const loadSiteInrcy = useCallback(async () => {
       nextState.gmbConnected = !!states?.gmb?.connected;
       nextState.gmbAccountConnected = !!states?.gmb?.accountConnected;
       nextState.gmbConfigured = !!states?.gmb?.configured;
+      nextState.gmbConnectionStatus = (states?.gmb?.connection_status || (states?.gmb?.connected ? "connected" : "disconnected")) as ConnectionDisplayStatus;
       if (states?.gmb?.email) nextState.gmbAccountEmail = String(states.gmb.email);
       if (states?.gmb?.resource_id) nextState.gmbLocationName = String(states.gmb.resource_id);
       if (states?.gmb?.resource_label) nextState.gmbLocationLabel = String(states.gmb.resource_label);
 
       nextState.facebookAccountConnected = !!states?.facebook?.accountConnected;
       nextState.facebookPageConnected = !!states?.facebook?.pageConnected;
+      nextState.facebookConnectionStatus = (states?.facebook?.connection_status || (states?.facebook?.connected ? "connected" : "disconnected")) as ConnectionDisplayStatus;
       if (states?.facebook?.user_email) nextState.facebookAccountEmail = String(states.facebook.user_email);
       if (states?.facebook?.resource_id) nextState.fbSelectedPageId = String(states.facebook.resource_id);
       if (states?.facebook?.resource_label) nextState.fbSelectedPageName = String(states.facebook.resource_label);
@@ -865,11 +880,13 @@ const loadSiteInrcy = useCallback(async () => {
 
       nextState.instagramAccountConnected = !!states?.instagram?.accountConnected;
       nextState.instagramConnected = !!states?.instagram?.connected;
+      nextState.instagramConnectionStatus = (states?.instagram?.connection_status || (states?.instagram?.connected ? "connected" : "disconnected")) as ConnectionDisplayStatus;
       if (states?.instagram?.username) nextState.instagramUsername = String(states.instagram.username);
       if (states?.instagram?.profile_url) nextState.instagramUrl = String(states.instagram.profile_url);
 
       nextState.linkedinAccountConnected = !!states?.linkedin?.accountConnected;
       nextState.linkedinConnected = !!states?.linkedin?.connected;
+      nextState.linkedinConnectionStatus = (states?.linkedin?.connection_status || (states?.linkedin?.connected ? "connected" : "disconnected")) as ConnectionDisplayStatus;
       if (states?.linkedin?.display_name) nextState.linkedinDisplayName = String(states.linkedin.display_name);
       if (states?.linkedin?.profile_url) nextState.linkedinUrl = String(states.linkedin.profile_url);
     } else {
@@ -909,21 +926,25 @@ const loadSiteInrcy = useCallback(async () => {
   setInstagramUrl(nextState.instagramUrl);
   setInstagramAccountConnected(nextState.instagramAccountConnected);
   setInstagramConnected(nextState.instagramConnected);
+  setInstagramConnectionStatus(nextState.instagramConnectionStatus);
   setInstagramUsername(nextState.instagramUsername);
   setLinkedinUrl(nextState.linkedinUrl);
   setLinkedinAccountConnected(nextState.linkedinAccountConnected);
   setLinkedinConnected(nextState.linkedinConnected);
+  setLinkedinConnectionStatus(nextState.linkedinConnectionStatus);
   setLinkedinDisplayName(nextState.linkedinDisplayName);
   setGmbUrl(nextState.gmbUrl);
   setGmbAccountConnected(nextState.gmbAccountConnected);
   setGmbConfigured(nextState.gmbConfigured);
   setGmbConnected(nextState.gmbConnected);
+  setGmbConnectionStatus(nextState.gmbConnectionStatus);
   setGmbAccountEmail(nextState.gmbAccountEmail);
   setGmbLocationName(nextState.gmbLocationName);
   setGmbLocationLabel(nextState.gmbLocationLabel);
   setFacebookUrl(nextState.facebookUrl);
   setFacebookAccountConnected(nextState.facebookAccountConnected);
   setFacebookPageConnected(nextState.facebookPageConnected);
+  setFacebookConnectionStatus(nextState.facebookConnectionStatus);
   setFacebookAccountEmail(nextState.facebookAccountEmail);
   setFbSelectedPageId(nextState.fbSelectedPageId);
   setFbSelectedPageName(nextState.fbSelectedPageName);
@@ -968,10 +989,10 @@ const generatorPowerSteps = [
   { key: "site_link", label: "Connecter un site internet", shortLabel: "Site internet", weight: 10, completed: sitePowerLinkConnected },
   { key: "site_ga4", label: "Brancher GA4", shortLabel: "GA4", weight: 5, completed: sitePowerGa4Connected },
   { key: "site_gsc", label: "Brancher GSC", shortLabel: "GSC", weight: 5, completed: sitePowerGscConnected },
-  { key: "gmb", label: "Connecter Google Business", shortLabel: "Google Business", weight: 20, completed: gmbConnected },
-  { key: "facebook", label: "Connecter Facebook", shortLabel: "Facebook", weight: 10, completed: facebookPageConnected },
-  { key: "instagram", label: "Connecter Instagram", shortLabel: "Instagram", weight: 10, completed: instagramConnected },
-  { key: "linkedin", label: "Connecter LinkedIn", shortLabel: "LinkedIn", weight: 10, completed: linkedinConnected },
+  { key: "gmb", label: "Connecter Google Business", shortLabel: "Google Business", weight: 20, completed: gmbConnected && gmbConnectionStatus !== "needs_update" },
+  { key: "facebook", label: "Connecter Facebook", shortLabel: "Facebook", weight: 10, completed: facebookPageConnected && facebookConnectionStatus !== "needs_update" },
+  { key: "instagram", label: "Connecter Instagram", shortLabel: "Instagram", weight: 10, completed: instagramConnected && instagramConnectionStatus !== "needs_update" },
+  { key: "linkedin", label: "Connecter LinkedIn", shortLabel: "LinkedIn", weight: 10, completed: linkedinConnected && linkedinConnectionStatus !== "needs_update" },
 ] as const;
 
 const generatorPower = generatorPowerSteps.reduce((sum, step) => sum + (step.completed ? step.weight : 0), 0);
@@ -1441,6 +1462,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         resource_id?: string | null;
         username?: string | null;
         profile_url?: string | null;
+        requiresUpdate?: boolean;
+        connection_status?: ConnectionDisplayStatus;
       } | null;
       if (!json) return null;
 
@@ -1449,9 +1472,11 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       const nextUsername = typeof json.username === "string" ? json.username : "";
       const nextProfileUrl = typeof json.profile_url === "string" ? json.profile_url : "";
       const nextResourceId = typeof json.resource_id === "string" ? json.resource_id : null;
+      const nextConnectionStatus = (json.connection_status || (nextConnected ? "connected" : "disconnected")) as ConnectionDisplayStatus;
 
       setInstagramAccountConnected(nextAccountConnected);
       setInstagramConnected(nextConnected);
+      setInstagramConnectionStatus(nextConnectionStatus);
       setInstagramUsername(nextUsername);
       setInstagramUrl(nextProfileUrl);
       if (!nextAccountConnected) setIgAccounts([]);
@@ -1462,6 +1487,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         accountConnected: nextAccountConnected,
         configured: nextConnected,
         expired: !!json.expired,
+        requiresUpdate: nextConnectionStatus === "needs_update",
+        connectionStatus: nextConnectionStatus,
         resourceId: nextConnected ? nextResourceId : null,
         resourceLabel: nextConnected ? (nextUsername || null) : null,
         resourceUrl: nextConnected ? (nextProfileUrl || null) : null,
@@ -4064,6 +4091,7 @@ const checkActivity = useCallback(async () => {
   const gmbPanelProps = {
     gmbConnected,
     gmbAccountConnected,
+    gmbConnectionStatus,
     gmbAccountEmail,
     connectGmbAccount,
     disconnectGmbAccount: disconnectGmbAccountFromDrawer,
@@ -4094,6 +4122,7 @@ const checkActivity = useCallback(async () => {
   const linkedinPanelProps = {
     linkedinConnected,
     linkedinAccountConnected,
+    linkedinConnectionStatus,
     linkedinDisplayName,
     connectLinkedinAccount,
     disconnectLinkedinAccount: disconnectLinkedinAccountFromDrawer,
@@ -4244,6 +4273,7 @@ const checkActivity = useCallback(async () => {
           instagramPanelProps={{
             instagramConnected,
             instagramAccountConnected,
+            instagramConnectionStatus,
             instagramUsername,
             connectInstagramAccount,
             connectInstagramBusinessAccount,
@@ -4274,6 +4304,7 @@ const checkActivity = useCallback(async () => {
           facebookPanelProps={{
             facebookPageConnected,
             facebookAccountConnected,
+            facebookConnectionStatus,
             facebookAccountEmail,
             connectFacebookAccount,
             connectFacebookBusinessAccount,

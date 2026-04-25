@@ -8,6 +8,7 @@ export default function LinkedinPanel(props: any) {
   const {
     linkedinConnected,
     linkedinAccountConnected,
+    linkedinConnectionStatus,
     linkedinDisplayName,
     connectLinkedinAccount,
     disconnectLinkedinAccount,
@@ -20,6 +21,16 @@ export default function LinkedinPanel(props: any) {
     linkedinAccountBusy,
     linkedinUrlBusy,
   } = props;
+
+  const linkedinNeedsUpdate = linkedinConnectionStatus === "needs_update" && (linkedinConnected || linkedinAccountConnected);
+  const linkedinStatusLabel = linkedinNeedsUpdate ? "À actualiser" : linkedinConnected ? "Connecté" : linkedinAccountConnected ? "Compte connecté" : "À connecter";
+  const linkedinStatusDot = linkedinNeedsUpdate
+    ? "rgba(245,158,11,0.95)"
+    : linkedinConnected
+      ? "rgba(34,197,94,0.95)"
+      : linkedinAccountConnected
+        ? "rgba(59,130,246,0.95)"
+        : "rgba(148,163,184,0.9)";
 
   return (
       <div style={{ display: "grid", gap: 14 }}>
@@ -44,14 +55,10 @@ export default function LinkedinPanel(props: any) {
                 width: 8,
                 height: 8,
                 borderRadius: 999,
-                background: linkedinConnected
-                  ? "rgba(34,197,94,0.95)"
-                  : linkedinAccountConnected
-                    ? "rgba(59,130,246,0.95)"
-                    : "rgba(148,163,184,0.9)",
+                background: linkedinStatusDot,
               }}
             />
-            Statut : <strong>{linkedinConnected ? "Connecté" : linkedinAccountConnected ? "Compte connecté" : "À connecter"}</strong>
+            Statut : <strong>{linkedinStatusLabel}</strong>
           </span>
         </div>
 
@@ -68,7 +75,7 @@ export default function LinkedinPanel(props: any) {
         >
           <div className={styles.blockHeaderRow}>
             <div className={styles.blockTitle}>Compte connecté</div>
-            <ConnectionPill connected={linkedinAccountConnected} />
+            <ConnectionPill connected={linkedinAccountConnected} status={linkedinNeedsUpdate ? "needs_update" : undefined} />
           </div>
           <div className={styles.blockSub}>Connexion OAuth LinkedIn.</div>
 
@@ -96,9 +103,16 @@ export default function LinkedinPanel(props: any) {
                 Connecter LinkedIn
               </button>
             ) : (
-              <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectLinkedinAccount()} disabled={linkedinAccountBusy}>
-                {linkedinAccountBusy ? "Déconnexion..." : "Déconnecter LinkedIn"}
-              </button>
+              <>
+                {linkedinNeedsUpdate ? (
+                  <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectLinkedinAccount} disabled={linkedinAccountBusy}>
+                    Actualiser
+                  </button>
+                ) : null}
+                <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectLinkedinAccount()} disabled={linkedinAccountBusy}>
+                  {linkedinAccountBusy ? "Déconnexion..." : "Déconnecter LinkedIn"}
+                </button>
+              </>
             )}
           </div>
         </div>

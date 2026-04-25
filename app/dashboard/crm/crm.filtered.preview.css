@@ -1,0 +1,3157 @@
+/* iNrCy CRM — look & feel aligned with iNrbox / Agenda (glass + neon accents)
+   Notes:
+   - Works with existing classnames in CRMClient.tsx
+   - Uses CSS variables when available, and graceful fallbacks
+*/
+
+:root{
+  --inrcy-bg: #0b0d12;
+  --inrcy-card: rgba(18, 22, 32, .70);
+  --inrcy-card-2: rgba(18, 22, 32, .55);
+  --inrcy-border: rgba(255,255,255,.10);
+  --inrcy-border-2: rgba(255,255,255,.14);
+  --inrcy-text: rgba(255,255,255,.92);
+  --inrcy-muted: rgba(255,255,255,.70);
+  --inrcy-muted-2: rgba(255,255,255,.55);
+  --inrcy-shadow: 0 18px 50px rgba(0,0,0,.35);
+  --inrcy-radius: 22px;
+  --inrcy-radius-sm: 14px;
+
+  --inrcy-cyan: rgba(0, 255, 255, .55);
+  --inrcy-violet: rgba(157, 78, 255, .60);
+  --inrcy-pink: rgba(255, 60, 120, .50);
+
+  --inrcy-grad: linear-gradient(135deg, var(--inrcy-cyan), var(--inrcy-violet));
+  --inrcy-grad-soft: linear-gradient(135deg, rgba(0,255,255,.22), rgba(157,78,255,.22));
+}
+
+.shell{
+  /* Desktop goal: keep the CRM "page" fixed to the viewport.
+     Only the contacts table should scroll. */
+  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 24px 18px 18px;
+  max-width: 1180px;
+  margin: 0 auto;
+  position: relative;
+}
+
+/* soft background like other iNrCy modules */
+.shell::before{
+  content:"";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(900px 480px at 10% 10%, rgba(0,255,255,.10), transparent 55%),
+    radial-gradient(900px 520px at 95% 20%, rgba(157,78,255,.12), transparent 55%),
+    radial-gradient(700px 540px at 65% 95%, rgba(255,60,120,.08), transparent 55%),
+    linear-gradient(180deg, rgba(10,12,18,1), rgba(8,10,15,1));
+}
+
+/* subtle dot grid */
+.shell::after{
+  content:"";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    radial-gradient(rgba(255,255,255,.055) 1px, transparent 1px);
+  background-size: 18px 18px;
+  opacity: .55;
+  pointer-events: none;
+}
+
+.header{
+  display:flex;
+  align-items:flex-start;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.backBtn{
+  border: 1px solid var(--inrcy-border);
+  background: rgba(0,0,0,.22);
+  color: var(--inrcy-text);
+  border-radius: 999px;
+  padding: 10px 14px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+  box-shadow: 0 10px 24px rgba(0,0,0,.22);
+}
+
+/* Close button responsive label ("Fermer" → "✕" on mobile) */
+.closeText{ display: inline; }
+.closeIcon{ display: none; font-size: 16px; line-height: 1; }
+
+.backBtn:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,.18);
+  background: rgba(0,0,0,.28);
+}
+
+
+
+
+
+
+
+
+
+.card{
+  background: var(--inrcy-card);
+  border: 1px solid var(--inrcy-border);
+  border-radius: var(--inrcy-radius);
+  padding: 14px 14px 16px;
+  box-shadow: var(--inrcy-shadow);
+  margin-top: 14px;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(14px);
+}
+
+.card::before{
+  content:"";
+  position:absolute;
+  inset: 0;
+  background: radial-gradient(520px 240px at 18% 0%, rgba(0,255,255,.10), transparent 60%),
+              radial-gradient(520px 240px at 90% 0%, rgba(157,78,255,.12), transparent 62%);
+  pointer-events: none;
+}
+
+
+
+
+
+
+
+
+
+.primaryBtn{
+  border: 0;
+  background: var(--inrcy-grad);
+  color: rgba(255,255,255,.96);
+  border-radius: 999px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: .1px;
+  transition: transform .12s ease, filter .12s ease, box-shadow .12s ease;
+  box-shadow: 0 12px 30px rgba(0,255,255,.10), 0 14px 34px rgba(157,78,255,.12);
+}
+
+.primaryBtn:hover{
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+.ghostBtn{
+  border: 1px solid var(--inrcy-border);
+  background: rgba(0,0,0,.22);
+  color: var(--inrcy-text);
+  border-radius: 999px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+  backdrop-filter: blur(10px);
+}
+
+.ghostBtn:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,.18);
+  background: rgba(0,0,0,.28);
+}
+
+.primaryBtn:disabled,
+.ghostBtn:disabled,
+.smallBtn:disabled,
+.backBtn:disabled{
+  opacity: .55;
+  cursor:not-allowed;
+  transform: none;
+  filter: none;
+}
+
+.error{
+  background: rgba(255, 60, 120, .12);
+  border: 1px solid rgba(255,60,120,.30);
+  padding: 10px 12px;
+  border-radius: 16px;
+  color: rgba(255,255,255,.94);
+  font-size: 13px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.error::before{
+  content:"";
+  position:absolute;
+  inset: 0;
+  background: radial-gradient(520px 180px at 20% 0%, rgba(255,60,120,.12), transparent 55%);
+  pointer-events:none;
+}
+
+.formGrid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  position: relative;
+}
+
+
+
+.label{
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--inrcy-muted);
+  font-size: 12px;
+  min-width: 0;
+}
+
+.input,.select,.search{
+  border: 1px solid var(--inrcy-border-2);
+  background: rgba(0,0,0,.22);
+  color: var(--inrcy-text);
+  border-radius: 16px;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color .12s ease, box-shadow .12s ease, background .12s ease;
+  backdrop-filter: blur(10px);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Notes textarea (mobile modal) */
+.textarea{
+  border: 1px solid var(--inrcy-border-2);
+  background: rgba(0,0,0,.22);
+  color: var(--inrcy-text);
+  border-radius: 16px;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color .12s ease, box-shadow .12s ease, background .12s ease;
+  backdrop-filter: blur(10px);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.35;
+}
+
+.textarea::placeholder{ color: rgba(255,255,255,.42); }
+
+.textarea:focus{
+  border-color: rgba(0,255,255,.30);
+  box-shadow: 0 0 0 4px rgba(0,255,255,.08), 0 0 0 1px rgba(157,78,255,.10);
+  background: rgba(0,0,0,.28);
+}
+
+/* =========================
+   Mobile modal form (detached from desktop)
+   Goal: keep a stable, explicit field order on small screens.
+   ========================= */
+
+.mobileModalForm{
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* Row 1: Name + SIREN */
+.mfName{ grid-column: span 8; }
+.mfSiren{ grid-column: span 4; }
+
+/* Row 2: Cat + Type + Important */
+.mfCategory{ grid-column: span 4; }
+.mfType{ grid-column: span 4; }
+.mfImportant{ grid-column: span 4; }
+
+/* Row 3: Phone + Mail */
+.mfPhone{ grid-column: span 5; }
+.mfMail{ grid-column: span 7; }
+
+/* Row 4: Address + City + CP */
+.mfAddress{ grid-column: span 6; }
+.mfCity{ grid-column: span 3; }
+.mfCP{ grid-column: span 3; }
+
+/* Row 5: VAT + billing + delivery */
+.mfVat{ grid-column: span 4; }
+
+
+
+/* Row 6: Notes */
+.mfNotes{ grid-column: 1 / -1; }
+
+@media (max-width: 760px){
+  /* Keep same 12-col logic in the modal; avoid inheriting desktop formGrid overrides */
+  .mobileModalForm{ grid-template-columns: repeat(12, minmax(0, 1fr)); }
+}
+
+.input::placeholder,.search::placeholder{ color: rgba(255,255,255,.42); }
+
+.input:focus,.select:focus,.search:focus{
+  border-color: rgba(0,255,255,.30);
+  box-shadow: 0 0 0 4px rgba(0,255,255,.08), 0 0 0 1px rgba(157,78,255,.10);
+  background: rgba(0,0,0,.28);
+}
+
+/* nicer select arrow */
+.select{
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(255,255,255,.72) 50%),
+    linear-gradient(135deg, rgba(255,255,255,.72) 50%, transparent 50%),
+    linear-gradient(to right, transparent, transparent);
+  background-position:
+    calc(100% - 18px) 52%,
+    calc(100% - 12px) 52%,
+    0 0;
+  background-size:
+    6px 6px,
+    6px 6px,
+    100% 100%;
+  background-repeat: no-repeat;
+  padding-right: 34px;
+}
+
+.searchWrap{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+}
+
+.search{
+  width: 260px;
+  border-radius: 999px;
+}
+
+
+
+.tableWrap{
+  width: 100%;
+  overflow: auto;
+  /* height is managed by the flex layout (.tableCard) on desktop */
+  max-height: none;
+  border-radius: 18px;
+  border: 1px solid var(--inrcy-border-2);
+  background: rgba(0,0,0,.14);
+  position: relative;
+}
+
+.table{
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 720px;
+}
+
+/* --- Desktop layout: keep the whole CRM inside the viewport and scroll only the table --- */
+@media (min-width: 900px){
+  .tableCard{
+    flex: 1;
+    min-height: 0; /* required for nested scroll containers */
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tableWrap{
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: auto;
+  }
+}
+
+.table th, .table td{
+  padding: 11px 12px;
+  border-bottom: 1px solid rgba(255,255,255,.10);
+  border-right: 1px solid rgba(255,255,255,.06);
+  vertical-align: top;
+  font-size: 13px;
+  color: rgba(255,255,255,.86);
+}
+
+.table th:last-child,
+.table td:last-child{
+  border-right: 0;
+}
+
+.table th{
+  position: sticky;
+  top: 0;
+  background: rgba(12, 14, 20, .92);
+  color: rgba(255,255,255,.82);
+  text-align: left;
+  font-size: 12px;
+  letter-spacing: .25px;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255,255,255,.16);
+}
+
+/* zebra + hover like iNrbox lists */
+.table tbody tr:nth-child(odd){
+  background: rgba(255,255,255,.02);
+}
+.table tbody tr:hover{
+  background: linear-gradient(90deg, rgba(0,255,255,.05), rgba(157,78,255,.05));
+}
+
+
+
+.mono{
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  color: rgba(255,255,255,.84);
+}
+
+
+
+.smallBtn{
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  color: rgba(255,255,255,.92);
+  border-radius: 999px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+  backdrop-filter: blur(10px);
+}
+
+.smallBtn:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,.20);
+  background: rgba(0,0,0,.26);
+}
+
+.dangerBtn{
+  border-color: rgba(255,60,120,.32);
+  background: rgba(255,60,120,.10);
+}
+
+.dangerBtn:hover{
+  border-color: rgba(255,60,120,.40);
+  background: rgba(255,60,120,.14);
+}
+
+.empty{
+  text-align:center;
+  padding: 18px 10px;
+  color: var(--inrcy-muted);
+}
+
+.muted{
+  color: var(--inrcy-muted);
+  font-size: 13px;
+  margin: 8px 0 12px;
+}
+
+
+
+/* Responsive */
+@media (max-width: 760px){
+  .formGrid{ grid-template-columns: 1fr; }
+  .search{ width: 100%; }
+  
+  
+  .primaryBtn, .ghostBtn{ width: 100%; justify-content: center; }
+}
+
+@media (max-width: 900px){
+  .closeText{ display:none; }
+  .closeIcon{ display:inline; }
+}
+
+
+/* =========================
+   iNrCy Dream UI Enhancements
+   ========================= */
+
+:root{
+  --inrcy-cyan: rgb(56,189,248);
+  --inrcy-violet: rgb(157,78,255);
+  --inrcy-pink: rgb(255,60,120);
+}
+
+/* Glass cards */
+.card{
+  background: rgba(12,14,20,0.72);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 18px;
+  box-shadow:
+    0 18px 50px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.card::after{
+  content:"";
+  position:absolute;
+  inset:-1px;
+  border-radius:inherit;
+  padding:1px;
+  background:linear-gradient(
+    135deg,
+    rgba(56,189,248,.45),
+    rgba(157,78,255,.45),
+    rgba(255,60,120,.35)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask-composite:exclude;
+  pointer-events:none;
+  opacity:.55;
+}
+
+/* Primary action */
+.primaryBtn{
+  position:relative;
+  background:linear-gradient(
+    135deg,
+    rgba(56,189,248,.95),
+    rgba(157,78,255,.95)
+  );
+  border-radius:999px;
+  font-weight:600;
+  letter-spacing:.3px;
+  box-shadow:
+    0 10px 34px rgba(56,189,248,.35),
+    0 0 0 1px rgba(255,255,255,.12);
+  overflow:hidden;
+}
+
+.primaryBtn::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(
+    120deg,
+    transparent 20%,
+    rgba(255,255,255,.45),
+    transparent 80%
+  );
+  transform:translateX(-100%);
+  animation:inrcyShine 3.6s infinite;
+}
+
+@keyframes inrcyShine{
+  0%{transform:translateX(-100%)}
+  60%{transform:translateX(120%)}
+  100%{transform:translateX(120%)}
+}
+
+/* Inputs focus */
+.input:focus,.select:focus,.search:focus{
+  border-color:var(--inrcy-cyan);
+  box-shadow:
+    0 0 0 4px rgba(56,189,248,.12),
+    0 0 0 1px rgba(157,78,255,.18);
+}
+
+/* Table hover */
+.table tbody tr:hover{
+  background:linear-gradient(
+    90deg,
+    rgba(56,189,248,.06),
+    rgba(157,78,255,.06),
+    rgba(255,60,120,.04)
+  );
+}
+
+/* Error accent */
+.error{
+  border-color:rgba(255,60,120,.55);
+  box-shadow:0 14px 44px rgba(255,60,120,.15);
+}
+
+
+/* ===== Header iNrCy Upgrade ===== */
+
+.header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+}
+
+.titleWrap{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  flex-wrap:wrap;
+}
+
+
+
+
+
+.subInline{
+  color:rgba(255,255,255,.70);
+  font-size:13px;
+  white-space:nowrap;
+}
+
+@media (max-width: 760px){
+  .header{
+    align-items:flex-start;
+  }
+  .titleWrap{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .subInline{
+    /* Mobile: sous le logo, sur une seule ligne */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+}
+
+/* =========================
+   Mobile CRM revamp (landscape + minimal)
+   ========================= */
+
+.headerRight{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.headerIconBtn{
+  display:none; /* shown on mobile */
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
+  color: #fff;
+  font-weight: 900;
+  font-size: 18px;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(0,0,0,.20);
+  backdrop-filter: blur(10px);
+}
+
+.headerIconBtn:hover{ background: rgba(255,255,255,.08); }
+
+
+
+.closeWrap{ display:flex; }
+
+.statsWrap{ position: relative; }
+
+.statsDropdown{
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(320px, calc(100vw - 24px));
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(20, 24, 38, 0.92);
+  color: rgba(255,255,255,.92);
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 18px 50px rgba(0,0,0,.45);
+  z-index: 50;
+}
+
+.statsTitle{
+  font-weight: 800;
+  font-size: 14px;
+  margin-bottom: 10px;
+  opacity: .95;
+}
+
+.statsGrid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.statsItem{
+  border-radius: 14px;
+  padding: 10px 10px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+}
+
+.statsItem span{ font-size: 12px; opacity: .85; }
+.statsItem strong{ font-size: 16px; }
+
+/* Stats text color fix (prevents black-on-black in some contexts) */
+.statsTitle{ color: rgba(255,255,255,.94); }
+.statsItem span{ color: rgba(255,255,255,.80); }
+.statsItem strong{ color: rgba(255,255,255,.96); }
+
+/* --- Mobile: only show table + header buttons --- */
+@media (max-width: 900px){
+  
+  
+  .headerIconBtn{ display:inline-flex; align-items:center; justify-content:center; }
+  /* Mobile header ordering: + (left), Stats (middle), Fermer (right) */
+  
+  .statsWrap{ order: 2; }
+  .closeWrap{ order: 3; }
+  .headerRight{ align-items:flex-start; }
+  .subInline{
+    /* force 1 line fully visible: shrink font a bit on small widths */
+    font-size: clamp(11px, 2.8vw, 13px);
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+    max-width: calc(100vw - 180px);
+  }
+}
+
+/* --- Modal add/edit contact (mobile) --- */
+.modalOverlay{
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+  padding: 12px;
+  background: rgba(0,0,0,.65);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.modalCard{
+  width: min(760px, 100%);
+  max-height: calc(100vh - 24px);
+  overflow:auto;
+  border-radius: 18px;
+  background: rgba(18,24,38,.94);
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 20px 60px rgba(0,0,0,.55);
+  padding: 14px;
+  /* Fix: texte lisible (évite noir sur noir) */
+  color: var(--inrcy-text);
+}
+
+.modalHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.modalTitle{ font-weight: 900; font-size: 16px; color: #fff; }
+
+.modalClose{
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.06);
+  color: #fff;
+  cursor:pointer;
+}
+
+.modalFooter{
+  display:flex;
+  gap: 10px;
+  justify-content:flex-end;
+  margin-top: 12px;
+}
+
+/* --- Landscape gate --- */
+
+
+
+
+
+
+
+
+
+
+
+/* =========================
+   iNrCy CRM — UI Upgrade v2
+   (plus clair, plus lisible, responsive, + toolbar)
+   ========================= */
+
+.shell::before{
+  /* background slightly brighter */
+  background:
+    radial-gradient(900px 520px at 10% 10%, rgba(0,255,255,.14), transparent 55%),
+    radial-gradient(900px 560px at 95% 20%, rgba(157,78,255,.16), transparent 55%),
+    radial-gradient(720px 560px at 65% 95%, rgba(255,60,120,.10), transparent 56%),
+    linear-gradient(180deg, rgba(14,18,28,1), rgba(10,12,18,1));
+}
+
+
+.subInline{ font-size: 14px; }
+.label{ font-size: 13px; }
+.table th, .table td{ font-size: 14px; }
+.muted{ font-size: 14px; }
+
+/* Header layout (right back button + bubble title) */
+.header{
+  align-items:center;
+}
+
+.titleWrap{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  flex-wrap:wrap;
+}
+
+
+
+
+
+/* Make back/close button border more visible */
+.backBtn{
+  border-color: rgba(255,255,255,.22);
+  background: rgba(0,0,0,.18);
+}
+.backBtn:hover{
+  border-color: rgba(255,255,255,.30);
+}
+
+/* Better separation between sections */
+.card{
+  margin-top: 16px;
+}
+.card + .card{
+  margin-top: 18px;
+}
+.card + .card::before{
+  /* add a stronger top glow separator */
+  background:
+    radial-gradient(700px 220px at 50% 0%, rgba(0,255,255,.12), transparent 60%),
+    radial-gradient(700px 220px at 70% 0%, rgba(157,78,255,.12), transparent 62%);
+}
+
+/* White dropdowns (requested) */
+.select{
+  background: #ffffff !important;
+  color: rgba(10,12,18,0.92) !important;
+  border-color: rgba(255,255,255,.22) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
+}
+.select:focus{
+  outline: none;
+  border-color: rgba(56,189,248,.65) !important;
+  box-shadow: 0 0 0 4px rgba(56,189,248,.18);
+}
+
+/* Slightly lighter inputs while keeping dark glass */
+.input, .search{
+  background: rgba(255,255,255,.06);
+}
+.input:focus, .search:focus{
+  background: rgba(255,255,255,.08);
+}
+
+/* Toolbar above table */
+
+
+.bulkActions{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Selection column */
+.thSelect{ width: 44px; }
+.tdSelect{ width: 44px; }
+
+/* Columns (for responsive-only tweaks) */
+.thCp{}
+.tdCp{}
+.thStar{ width: 54px; text-align: center; }
+.tdStar{ text-align: center; }
+.nameImportant{}
+
+.checkbox{
+  width: 16px;
+  height: 16px;
+  accent-color: rgb(56,189,248);
+  cursor: pointer;
+}
+
+.rowSelected{
+  background: linear-gradient(90deg, rgba(0,255,255,.08), rgba(157,78,255,.08), rgba(255,60,120,.05)) !important;
+}
+
+/* Make table easier on small screens */
+.tableWrap{
+  border-color: rgba(255,255,255,.14);
+}
+.table{
+  min-width: 960px;
+}
+
+@media (max-width: 980px){
+  /* Mobile/tablette: on réactive le scroll de la page CRM.
+     Sur desktop, la page est "fixe" (100vh) et seul le tableau scrolle.
+     Sur mobile, on laisse la page scroller pour éviter un module bloqué. */
+  .shell{
+    padding: 18px 14px 46px;
+    height: auto;              /* important: ne bloque pas le scroll */
+    min-height: 100vh;
+    overflow-y: auto;          /* scroll vertical */
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  
+  .subInline{ white-space: normal; }
+
+  /* Le tableau desktop peut dépasser : on garde une largeur minimale */
+  .table{ min-width: 900px; }
+}
+
+@media (max-width: 760px){
+  .header{
+    align-items:flex-start;
+  }
+  .titleWrap{
+    flex-direction: column;
+    align-items:flex-start;
+    gap: 10px;
+  }
+  .backBtn{
+    padding: 10px 12px;
+  }
+  
+  .bulkActions{
+    width: 100%;
+  }
+  .bulkActions .primaryBtn, .bulkActions .ghostBtn{
+    width: 100%;
+    justify-content:center;
+  }
+  .searchWrap{
+    width: 100%;
+  }
+  .search{
+    width: 100%;
+  }
+}
+
+
+/* =========================
+   iNrCy CRM — Ultra polish
+   ========================= */
+
+.shell::before{
+  background:
+    radial-gradient(980px 560px at 10% 10%, rgba(0,255,255,.16), transparent 56%),
+    radial-gradient(980px 600px at 95% 20%, rgba(157,78,255,.18), transparent 56%),
+    radial-gradient(820px 640px at 65% 95%, rgba(255,60,120,.12), transparent 58%),
+    linear-gradient(180deg, rgba(18,24,38,1), rgba(12,14,22,1));
+}
+
+
+
+.label span{ font-size: 13px; }
+
+
+.input,.select,.search{ font-size: 14px; }
+
+/* Back/close button border more visible */
+.backBtn{
+  border: 1px solid rgba(255,255,255,.26);
+  background: rgba(255,255,255,.06);
+}
+.backBtn:hover{
+  border-color: rgba(255,255,255,.36);
+  background: rgba(255,255,255,.08);
+}
+
+/* KPI row */
+
+
+
+
+
+
+
+
+
+
+/* Distinguish top vs bottom blocks */
+
+
+
+
+
+
+
+/* White dropdowns (requested) */
+.select{
+  background: #ffffff !important;
+  color: rgba(10,12,18,0.92) !important;
+  border-color: rgba(255,255,255,.24) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.40);
+}
+.select:focus{
+  border-color: rgba(56,189,248,.70) !important;
+  box-shadow: 0 0 0 4px rgba(56,189,248,.18);
+}
+
+/* Badges */
+.typeBadge, .catBadge{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .2px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.06);
+}
+
+.typeProspect{ border-color: rgba(56,189,248,.28); box-shadow: 0 0 0 3px rgba(56,189,248,.07); }
+.typeClient{ border-color: rgba(34,197,94,.30); box-shadow: 0 0 0 3px rgba(34,197,94,.07); }
+.typeFournisseur{ border-color: rgba(245,158,11,.30); box-shadow: 0 0 0 3px rgba(245,158,11,.07); }
+.typePartenaire{ border-color: rgba(157,78,255,.30); box-shadow: 0 0 0 3px rgba(157,78,255,.07); }
+
+.catPart{ border-color: rgba(255,255,255,.18); }
+.catPro{ border-color: rgba(56,189,248,.22); }
+.catPublic{ border-color: rgba(255,60,120,.22); }
+
+/* Table readability */
+.table th, .table td{ font-size: 14px; }
+.tableWrap{ border-color: rgba(255,255,255,.14); }
+
+/* Toolbar responsiveness */
+
+
+.bulkActions{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Selection visuals */
+.checkbox{
+  width: 16px;
+  height: 16px;
+  accent-color: rgb(56,189,248);
+}
+
+.rowSelected{
+  background: linear-gradient(90deg, rgba(0,255,255,.08), rgba(157,78,255,.08), rgba(255,60,120,.05)) !important;
+}
+
+
+
+@media (max-width: 760px){
+  /* Mobile: keep 2 columns so the 6 KPIs render as 3 rows × 2 cards */
+  
+  
+  /* Mobile: bulk actions must stay on ONE line: Désélectionner + 🗑️ + Actions */
+  .bulkActions{ flex-wrap: nowrap; width: 100%; }
+  .bulkActions .primaryBtn, .bulkActions .ghostBtn{ width: auto; justify-content:center; white-space: nowrap; }
+  .actionsWrap{ flex: 1 1 auto; min-width: 0; }
+  .actionsBtn{ width: 100%; }
+  .searchWrap{ width: 100%; }
+  .search{ width: 100%; }
+}
+
+
+
+/* =========================
+   CRM layout adjustments (Jan 2026)
+   - Form grid 3 lignes (12 colonnes)
+   - KPI label + value sur 1 ligne
+   - Selects un peu moins blancs
+   ========================= */
+
+.formGrid{
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+
+.col3{ grid-column: span 3; }
+
+.col6{ grid-column: span 6; }
+
+
+
+.dash{
+  color: var(--inrcy-muted-2);
+}
+
+/* KPI: 1 ligne */
+
+
+
+/* Typography balance */
+
+.label{ font-size: 13px; }
+.input,.select,.search{ font-size: 14px; }
+
+@media (max-width: 760px){
+  /* Mobile: keep compact multi-line layout (Ville/CP, Catégorie/Type, SIREN/Tel) */
+  .formGrid{ grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .col3, .col4, .col5, .col6{ grid-column: 1 / -1; }
+  .col2{ grid-column: span 3; }
+  
+}
+
+
+/* Actions icons */
+
+
+/* Smaller checkbox */
+.table input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  transform: scale(0.9);
+}
+
+/* Table compaction */
+.table td, .table th {
+  padding: 8px 10px;
+}
+
+
+/* Row 3: catégorie / type + plus button */
+
+
+
+
+/* Plus button aligned with fields */
+
+
+
+.col2{ grid-column: span 2; }
+.col5{ grid-column: span 5; }
+
+/* Plus button in form line 3 */
+
+
+
+
+/* Corner actions (bottom-right of the form card) */
+.card { position: relative; }
+
+
+
+/* Plus button becomes a square FAB */
+
+
+/* Mobile: actions below the grid */
+
+
+
+/* === Table header single-line & width rebalance === */
+
+/* Force headers on one line */
+.table th{
+  white-space: nowrap;
+}
+
+/* Give more space to "Nom Prénom / Raison sociale" */
+.table th:nth-child(2),
+.table td:nth-child(2){
+  min-width: 220px;
+}
+
+/* Compact selection column */
+.table th:nth-child(1),
+.table td:nth-child(1){ width: 44px; }
+
+/* Compact technical columns */
+.table th:nth-child(8),
+.table td:nth-child(8){ width: 70px; } /* CP */
+
+.table th:nth-child(9),
+.table td:nth-child(9),
+.table th:nth-child(10),
+.table td:nth-child(10){
+  width: 140px;
+}
+
+/* Actions aligned right */
+
+
+
+
+
+/* =========================
+   CRM form v3 (2 lignes)
+   - Actions inline (boutons à droite sur ligne 2)
+   - Selects same glass style as inputs (no white)
+   ========================= */
+
+
+
+/* Icon buttons (plus / update / back) */
+
+
+/* Override old "white dropdown" rules */
+.select{
+  background: rgba(255,255,255,.06) !important;
+  color: var(--inrcy-text) !important;
+  border-color: var(--inrcy-border-2) !important;
+  box-shadow: none !important;
+}
+
+.select:focus{
+  border-color: rgba(0,255,255,.30) !important;
+  box-shadow: 0 0 0 4px rgba(0,255,255,.08), 0 0 0 1px rgba(157,78,255,.10) !important;
+  background: rgba(255,255,255,.08) !important;
+}
+
+
+
+/* === Fix dropdown contrast (dark UI) === */
+.select option{
+  background-color: #0b0d12;
+  color: rgba(255,255,255,.92);
+}
+
+.select option:disabled{
+  color: rgba(255,255,255,.45);
+}
+
+
+/* === Table column rebalance (essential view) === */
+.table{
+  table-layout: fixed;
+}
+
+.table th:nth-child(2), .table td:nth-child(2){ width: 22%; } /* Nom / RS */
+.table th:nth-child(3), .table td:nth-child(3){ width: 18%; } /* Mail (resserré) */
+.table th:nth-child(4), .table td:nth-child(4){ width: 12%; } /* Téléphone */
+.table th:nth-child(5), .table td:nth-child(5){ width: 10%; } /* Ville */
+.table th:nth-child(6), .table td:nth-child(6){ width: 7%; }  /* CP */
+.table th:nth-child(7), .table td:nth-child(7){ width: 12%; } /* Catégorie */
+.table th:nth-child(8), .table td:nth-child(8){ width: 11%; } /* Type */
+.table th:nth-child(9), .table td:nth-child(9){ width: 44px; } /* Star */
+
+/* Star button */
+
+
+
+
+/* === Form important ⭐ field === */
+
+.starToggle{
+  height: 44px;
+  width: 44px;
+  padding: 0;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  color: #facc15;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+  backdrop-filter: blur(10px);
+}
+.starToggle:hover{
+  transform: translateY(-1px) scale(1.02);
+  border-color: rgba(255,255,255,.22);
+  background: rgba(0,0,0,.26);
+}
+
+
+/* =========================
+   CRM tweak (Jan 2026) — remove "Ville" column + rebalance widths
+   ========================= */
+.table th:nth-child(1), .table td:nth-child(1){ width: 44px !important; }  /* Select */
+.table th:nth-child(2), .table td:nth-child(2){ width: 26% !important; }  /* Nom / RS */
+.table th:nth-child(3), .table td:nth-child(3){ width: 22% !important; }  /* Mail */
+.table th:nth-child(4), .table td:nth-child(4){ width: 14% !important; }  /* Téléphone */
+.table th:nth-child(5), .table td:nth-child(5){ width: 8% !important; }   /* CP */
+.table th:nth-child(6), .table td:nth-child(6){ width: 14% !important; }  /* Catégorie */
+.table th:nth-child(7), .table td:nth-child(7){ width: 12% !important; }  /* Type */
+.table th:nth-child(8), .table td:nth-child(8){ width: 44px !important; } /* Star */
+
+
+
+/* Star static (only shown for important contacts) */
+.starStatic{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width: 44px;
+  height: 44px;
+  color: #facc15;
+  font-size: 18px;
+  line-height: 1;
+}
+
+
+/* =========================
+   CRM tweak — No horizontal scrollbar + ellipsis in cells (Jan 2026)
+   ========================= */
+.tableWrap{
+  overflow-x: hidden !important; /* no horizontal scrollbar */
+}
+
+.table{
+  min-width: 0 !important;       /* allow table to shrink to container */
+  width: 100% !important;
+  table-layout: fixed !important;
+}
+
+.table th,
+.table td{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;       /* long text truncates instead of overlapping */
+}
+
+/* Column widths (9 cols: Select, Nom, Mail, Tel, CP, Cat, Type, Actions, Star) */
+.table th:nth-child(1), .table td:nth-child(1){ width: 44px !important; text-align: center; }
+.table th:nth-child(2), .table td:nth-child(2){ width: 26% !important; }
+.table th:nth-child(3), .table td:nth-child(3){ width: 22% !important; }
+.table th:nth-child(4), .table td:nth-child(4){ width: 14% !important; }
+.table th:nth-child(5), .table td:nth-child(5){ width: 8% !important; }
+.table th:nth-child(6), .table td:nth-child(6){ width: 12% !important; }
+.table th:nth-child(7), .table td:nth-child(7){ width: 10% !important; }
+.table th:nth-child(8), .table td:nth-child(8){ width: 120px !important; text-align: center; }
+.table th:nth-child(9), .table td:nth-child(9){ width: 44px !important; text-align: center; }
+
+/* Ensure badges don't expand columns */
+.typeBadge, .catBadge{
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Badge labels: desktop shows full label; small screens show short label only */
+.badgeLabelFull{
+  display: inline;
+}
+.badgeLabelShort{
+  display: none;
+}
+
+@media (max-width: 760px){
+  .badgeLabelFull{ display: none; }
+  .badgeLabelShort{ display: inline; }
+}
+
+/* Dernière colonne (⭐) : centrage */
+.table td:last-child,
+.table th:last-child{
+  width: 44px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.table td,
+.table th{
+  vertical-align: middle;
+}
+
+
+/* =========================
+   Mobile CRM table (detached from desktop)
+   Design goal: match the mobile sketch (columns aligned, badges in Cat/Type, Imp star)
+   ========================= */
+
+.mobileTable{
+  width: 100%;
+  /* Force readable text on glass background (some parent rules may set dark text) */
+  color: rgba(255,255,255,.90);
+}
+
+/* 6 columns: Nom | Mail | Tel | Cat | Type | Imp */
+
+
+
+
+
+
+
+
+
+
+.mobileEmpty{
+  padding: 18px;
+  color: rgba(255,255,255,.62);
+}
+
+/* Cells: truncate nicely */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@media (max-width: 760px){
+  /* Mobile: make the table area scrollable so rows never "fall under" the card */
+  .tableWrap{
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    max-height: 62vh;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Desktop table is not rendered on mobile (handled by TSX). */
+}
+
+
+
+
+/* Row actions (Mail / Devis / Facture) */
+
+
+
+
+
+
+
+
+
+
+/* Toolbar action icons (next to trash) */
+
+
+
+/* Actions column removed */
+
+
+
+
+/* 🔒 Force-disable Actions column (safety) */
+
+
+
+
+/* === CRM table rebalance (final) === */
+/* Columns: Select | Nom | Mail | Tel | CP | Catégorie | Type | Star */
+.table th:nth-child(2), .table td:nth-child(2){ width: 20% !important; } /* Nom */
+.table th:nth-child(3), .table td:nth-child(3){ width: 23% !important; } /* Mail (serré) */
+.table th:nth-child(4), .table td:nth-child(4){ width: 14% !important; } /* Téléphone */
+.table th:nth-child(5), .table td:nth-child(5){ width: 8% !important; }  /* CP */
+.table th:nth-child(6), .table td:nth-child(6){ width: 12% !important; } /* Catégorie */
+.table th:nth-child(7), .table td:nth-child(7){ width: 12% !important; } /* Type */
+.table th:nth-child(8), .table td:nth-child(8){ width: 64px !important; } /* Star */
+
+
+/* Import / Export buttons in table toolbar */
+
+
+
+
+
+
+/* Actions dropdown (CRM hub) */
+.actionsWrap{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.actionsBtn{
+  height: 48px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  backdrop-filter: blur(10px);
+  color: rgba(255,255,255,.92);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+}
+
+.actionsBtn:hover{
+  transform: translateY(-1px) scale(1.01);
+  border-color: rgba(255,255,255,.22);
+  background: rgba(0,0,0,.26);
+}
+
+.actionsBtn:disabled{
+  opacity: .35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.caret{
+  opacity: .8;
+  font-weight: 700;
+}
+
+.actionsMenu{
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: 280px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgb(8, 10, 16);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 18px 42px rgba(0,0,0,.58), 0 0 0 1px rgba(255,255,255,.04);
+  overflow: hidden;
+  z-index: 50;
+}
+
+.actionsItem{
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: rgba(255,255,255,.92);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.actionsItem:hover{
+  background: rgba(255,255,255,.08);
+}
+
+.actionsItem:disabled{
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+.actionsSep{
+  height: 1px;
+  background: rgba(255,255,255,.10);
+  margin: 6px 0;
+}
+
+/* =========================
+   iNrCy CRM — FINAL FIX (Feb 2026)
+   NOTE (Feb 2026):
+   - Sur desktop, on peut garder "1 seule page" avec scroll interne dans le tableau.
+   - Sur mobile, on DOIT laisser scroller la page (sinon écran figé).
+   ========================= */
+
+@media (min-width: 980px){
+  /* 0) Desktop: keep the CRM usable at browser zoom and on shorter screens.
+     We no longer hard-lock the module to 100vh, otherwise the bottom gets cut off
+     and the page cannot scroll. The contacts table still keeps its own inner scroll
+     once there is enough room. */
+  .shell{
+    height: auto !important;
+    min-height: 100vh !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    padding-bottom: 18px !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 1) La card du bas doit laisser déborder le menu */
+  
+
+  /* 2) Les barres contenant le dropdown doivent autoriser le débordement */
+  .tableToolbar,
+  .bulkActions{ overflow: visible !important; }
+
+  /* 3) Tableau: hauteur adaptative + scroll interne (pas de scroll page) */
+  .tableWrap{
+    min-height: 390px !important;
+    max-height: min(960px, calc(100vh - 560px)) !important; /* garde un scroll interne sans écraser le tableau */
+    overflow-y: auto !important;
+    overflow-x: hidden !important; /* pas de scroll horizontal */
+  }
+}
+
+/* 4) Dropdown Actions: scroll interne si trop d'items (tous écrans) */
+.actionsMenu{
+  max-height: 40vh !important;   /* s’adapte à l’écran */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: thin;         /* Firefox */
+}
+
+/* Scrollbar discrète (Chrome/Edge/Safari) */
+.actionsMenu::-webkit-scrollbar{
+  width: 6px;
+}
+.actionsMenu::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,0.20);
+  border-radius: 10px;
+}
+.actionsMenu::-webkit-scrollbar-track{
+  background: rgba(255,255,255,0.06);
+}
+
+
+@media (max-width: 760px){
+  /* Responsive-only:
+     - CRM table: hide CP + Important (star) column
+     - Important highlight: thinner marker style on the name cell
+     - Add form row: Téléphone + Mail + Étoile on the same line */
+  .thCp, .tdCp{ display: none; }
+  .thStar, .tdStar{ display: none; }
+
+  .table{ min-width: 0; width: 100%; }
+
+ .table .nameImportant{
+  background: none;          /* ✅ supprime le surlignage */
+  font-weight: 700;
+  border-radius: 8px;
+  position: relative;        /* nécessaire pour le point */
+}
+
+.table .nameImportant::after{
+  content:"★";                 /* ⭐ l’étoile */
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%, -50%);
+  font-size: 32px;             /* ← taille de l’étoile */
+  color: #facc15;
+  opacity: .85;
+  pointer-events: none;
+  line-height: 1;
+  text-shadow: 0 0 10px rgba(250, 204, 21, .35); /* petit glow */
+}
+
+  /* Form: 3 bubbles on same row */
+  
+  
+  
+}
+
+/* Narrow the checkbox (select) column on mobile */
+.thSelect, .tdSelect{
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px;
+  padding-left: 6px;
+  padding-right: 6px;
+  text-align: center;
+}
+
+.thSelect .checkbox, .tdSelect .checkbox{
+  width: 14px;
+  height: 14px;
+}
+
+.pageSizeWrap{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color: var(--inrcy-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pageSizeSelect{
+  border: 1px solid var(--inrcy-border-2);
+  background: rgba(0,0,0,.22);
+  color: var(--inrcy-text);
+  border-radius: 999px;
+  padding: 8px 12px;
+  min-width: 78px;
+}
+
+.paginationBar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.paginationMeta{
+  color: var(--inrcy-muted);
+  font-size: 13px;
+}
+
+.paginationControls{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap: wrap;
+}
+
+.paginationStatus{
+  color: var(--inrcy-text);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+@media (max-width: 760px){
+  .pageSizeWrap{
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .pageSizeSelect{
+    min-width: 96px;
+  }
+
+  .paginationBar{
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .paginationControls{
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* =========================
+   CRM layout refresh — Tableau first
+   ========================= */
+
+.success{
+  background: rgba(34,197,94,.14);
+  border: 1px solid rgba(34,197,94,.30);
+  padding: 10px 12px;
+  border-radius: 16px;
+  color: rgba(255,255,255,.94);
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.crmBoardCard{
+  margin-top: 10px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+.toolbarSearch .searchWrap{
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.toolbarSearch .search{
+  width: min(100%, 340px);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.secondaryToolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.selectionMeta{
+  color: rgba(255,255,255,.70);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.exportWrap{
+  position: relative;
+}
+
+.exportMenu{
+  position:absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 180px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(16,20,30,.96);
+  box-shadow: 0 18px 44px rgba(0,0,0,.35);
+  overflow: hidden;
+  z-index: 60;
+}
+
+.exportItem{
+  width: 100%;
+  border: 0;
+  padding: 12px 14px;
+  text-align: left;
+  background: transparent;
+  color: rgba(255,255,255,.92);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.exportItem:hover{
+  background: rgba(255,255,255,.08);
+}
+
+.exportItem:disabled{
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.crmBoardCard .tableWrap{
+  min-height: 460px;
+}
+
+.crmBoardCard .paginationBar{
+  margin-top: 16px;
+}
+
+
+
+@media (max-width: 980px){
+  
+
+  
+
+  
+
+  .toolbarSearch .searchWrap{
+    justify-content: flex-start;
+  }
+
+  .toolbarSearch .search{
+    width: 100%;
+  }
+
+  
+
+  .secondaryToolbar{
+    align-items: stretch;
+  }
+
+  .selectionMeta{
+    width: 100%;
+  }
+
+  .crmBoardCard .tableWrap{
+    min-height: 380px;
+  }
+}
+
+@media (max-width: 760px){
+  .header{
+    margin-bottom: 12px;
+  }
+
+  .titleWrap img{
+    width: 138px !important;
+    height: auto !important;
+  }
+
+  .subInline{
+    max-width: calc(100vw - 150px);
+  }
+
+  .closeWrap .backBtn{
+    min-width: 42px;
+    padding: 10px 12px;
+  }
+
+  
+
+  
+
+  
+
+  .toolbarActions .ghostBtn{
+    width: 100%;
+    justify-content:center;
+  }
+
+  .exportWrap{
+    width: 100%;
+  }
+
+  .exportWrap > .ghostBtn{
+    width: 100%;
+    justify-content:center;
+  }
+
+  .exportMenu{
+    left: 0;
+    right: 0;
+    min-width: 0;
+  }
+
+  
+
+  
+
+  .secondaryToolbar{
+    gap: 10px;
+  }
+
+  .secondaryToolbar .bulkActions{
+    width: 100%;
+  }
+
+  .secondaryToolbar .bulkActions > *{
+    flex: 1 1 calc(50% - 10px);
+  }
+
+  .secondaryToolbar .actionsWrap{
+    flex-basis: 100%;
+  }
+
+  .secondaryToolbar .actionsBtn{
+    width: 100%;
+    justify-content:center;
+  }
+
+  .pageSizeWrap{
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .crmBoardCard{
+    padding: 12px;
+  }
+
+  .crmBoardCard .tableWrap{
+    min-height: 0;
+  }
+}
+
+/* === Stage 4 bis CRM header-first layout overrides === */
+.header{
+  align-items: center;
+  justify-content: space-between;
+}
+
+.titleWrap{
+  display:flex;
+  align-items:center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.subInline{
+  font-size: 12px;
+  color: rgba(255,255,255,.72);
+}
+
+.headerRight{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap: 10px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.headerActionBtn{
+  white-space: nowrap;
+  padding-inline: 14px;
+}
+
+
+
+.headerSearchInline .searchWrap,
+.headerSearchDropdown .searchWrap{
+  width: 100%;
+}
+
+.headerSearchInline .search,
+.headerSearchDropdown .search{
+  width: 100%;
+}
+
+.headerSearchWrap{
+  position: relative;
+}
+
+.headerSearchDropdown{
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(320px, calc(100vw - 24px));
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(16,20,30,.96);
+  box-shadow: 0 18px 44px rgba(0,0,0,.35);
+  z-index: 60;
+}
+
+.headerStatsBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.92);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+
+.headerStatsBtn:hover{
+  background: rgba(255,255,255,.08);
+}
+
+.modalOverlay{
+  align-items: center;
+  padding: 24px;
+  background: rgba(4, 8, 16, .54);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.modalCard{
+  width: min(920px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  border-radius: 24px;
+  padding: 18px;
+}
+
+.crmBoardCard{
+  display:flex;
+  flex-direction:column;
+  min-height: 0;
+}
+
+
+
+.secondaryToolbar{
+  margin-bottom: 12px;
+}
+
+@media (max-width: 1080px){
+  .headerRight{
+    gap: 8px;
+  }
+
+  .headerActionBtn{
+    padding-inline: 12px;
+  }
+
+  
+}
+
+@media (max-width: 760px){
+  .header{
+    align-items:flex-start;
+    gap: 10px;
+  }
+
+  .titleWrap{
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .titleWrap img{
+    width: 122px !important;
+    height: auto !important;
+  }
+
+  .subInline{
+    display:none;
+  }
+
+  .headerRight{
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .headerIconBtn,
+  .closeWrap .backBtn,
+  .headerRight :global(button[title="Aide iNr’CRM"]){
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    padding: 0;
+    border-radius: 12px;
+  }
+
+  .headerIconBtn{
+    font-size: 16px;
+  }
+
+  .headerSearchDropdown{
+    width: min(280px, calc(100vw - 20px));
+    right: -4px;
+  }
+
+  .modalOverlay{
+    align-items:flex-end;
+    padding: 12px;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+
+  .modalCard{
+    width: min(760px, 100%);
+    max-height: calc(100vh - 24px);
+    border-radius: 18px;
+    padding: 14px;
+  }
+}
+
+
+/* === Stage 4 bis CRM final layout refinements === */
+.crmBoardCard{
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.secondaryToolbar{
+  display:grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(240px, 320px) auto;
+  align-items:center;
+  gap: 12px;
+}
+
+.selectionMeta{
+  min-width: 0;
+}
+
+.bulkActions{
+  min-width: 0;
+}
+
+.tableSearchWrap{
+  min-width: 0;
+}
+
+.tableSearchWrap .searchWrap{
+  width: 100%;
+}
+
+.tableSearchWrap .search{
+  width: 100%;
+}
+
+.headerStatsBtn{
+  border-radius: 999px;
+}
+
+
+
+.crmBoardCard .tableWrap{
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.paginationBar{
+  margin-top: auto;
+}
+
+@media (max-width: 980px){
+  .secondaryToolbar{
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .selectionMeta{
+    grid-column: 1 / -1;
+  }
+
+  .pageSizeWrap{
+    justify-self: end;
+  }
+}
+
+@media (max-width: 760px){
+  .secondaryToolbar{
+    display:flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .selectionMeta{
+    width: 100%;
+  }
+
+  .tableSearchWrap{
+    width: 100%;
+    order: 3;
+  }
+
+  .pageSizeWrap{
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .statsItem{
+    min-width: 0;
+  }
+}
+
+/* === CRM modal / stats / bottom alignment polish (Apr 2026) === */
+.col12{ grid-column: 1 / -1; }
+
+.desktopModalGrid{
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.desktopModalGrid .label{
+  gap: 8px;
+}
+
+.desktopModalGrid .input,
+.desktopModalGrid .select,
+.desktopModalGrid .textarea{
+  background: rgba(255,255,255,.055);
+}
+
+.modalImportantField{
+  align-self: end;
+}
+
+.modalImportantField .starToggle{
+  width: 100%;
+  min-height: 46px;
+  border-radius: 16px;
+}
+
+.modalCard{
+  width: min(980px, calc(100vw - 48px));
+}
+
+.statsDropdown{
+  background: linear-gradient(180deg, rgba(14,18,28,.99), rgba(12,16,24,.99));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.statsDropdown .statsItem{
+  background: rgba(255,255,255,.075);
+}
+
+.crmBoardCard{
+  flex: 1 1 auto;
+  min-height: calc(100dvh - 190px);
+}
+
+.crmBoardCard .tableWrap{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.crmBoardCard .table,
+.crmBoardCard .mobileTable{
+  height: 100%;
+}
+
+.crmBoardCard .empty,
+.mobileEmpty{
+  height: 100%;
+}
+
+.paginationBar{
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+@media (max-width: 980px){
+  .crmBoardCard{
+    min-height: calc(100dvh - 175px);
+  }
+}
+
+@media (max-width: 760px){
+  .crmBoardCard{
+    min-height: calc(100dvh - 150px);
+  }
+
+  .modalCard{
+    width: min(760px, 100%);
+  }
+
+  .desktopModalGrid{
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .desktopModalGrid .col12,
+  .desktopModalGrid .col6,
+  .desktopModalGrid .col5,
+  .desktopModalGrid .col4,
+  .desktopModalGrid .col3{
+    grid-column: 1 / -1;
+  }
+
+  .desktopModalGrid .col2,
+  .desktopModalGrid .col1{
+    grid-column: span 3;
+  }
+}
+
+
+/* === CRM modal realignment + full-height board fix (Apr 2026 bis) === */
+.mfName{ grid-column: span 12; }
+.mfPhone{ grid-column: span 6; }
+.mfMail{ grid-column: span 6; }
+.mfCategory{ grid-column: span 4; }
+.mfType{ grid-column: span 4; }
+.mfSiren{ grid-column: span 4; }
+.mfVat{ grid-column: span 8; }
+.mfImportant{ grid-column: span 4; }
+.mfAddress{ grid-column: span 6; }
+.mfCity{ grid-column: span 3; }
+.mfCP{ grid-column: span 3; }
+.mfDeliverySame{ grid-column: 1 / -1; }
+
+.sameAddressField{ align-self: end; }
+.sameAddressLabel{ display:block; }
+.sameAddressCheck{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.055);
+  color: rgba(255,255,255,.88);
+  font-size: 14px;
+  font-weight: 600;
+}
+.sameAddressCheck input{
+  width: 18px;
+  height: 18px;
+  accent-color: #7ddcff;
+  margin: 0;
+}
+.sameAddressCheck span{ line-height: 1.2; }
+
+.shell{
+  min-height: 100dvh !important;
+  height: 100dvh !important;
+  gap: 12px;
+  padding-bottom: 14px !important;
+}
+.header{ margin-bottom: 0 !important; }
+.shell > .crmBoardCard{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  margin-top: 0 !important;
+}
+.crmBoardCard{
+  display:flex !important;
+  flex-direction:column;
+  overflow:hidden;
+}
+.crmBoardCard .tableWrap{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+.paginationBar{
+  padding-top: 14px;
+  padding-bottom: 2px;
+}
+
+@media (max-width: 760px){
+  .sameAddressField{
+    grid-column: 1 / -1;
+    align-self: stretch;
+  }
+  .sameAddressCheck{
+    min-height: 42px;
+    padding-inline: 12px;
+  }
+}
+
+/* =========================
+   CRM compact rows + full-height board (Apr 2026)
+   ========================= */
+
+:root{
+  --crm-row-height: 28px;
+  --crm-head-height: 34px;
+}
+
+.shell > .crmBoardCard{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+.crmBoardCard{
+  display: flex !important;
+  flex-direction: column;
+  min-height: 0 !important;
+}
+
+.crmBoardCard .tableWrap{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+.paginationBar{
+  margin-top: auto !important;
+}
+
+.table thead th{
+  height: var(--crm-head-height);
+}
+
+.table tbody tr{
+  height: var(--crm-row-height);
+}
+
+.table th,
+.table td{
+  padding: 4px 10px !important;
+  font-size: 13px !important;
+  line-height: 1.15 !important;
+}
+
+.checkbox,
+.table input[type="checkbox"]{
+  width: 13px !important;
+  height: 13px !important;
+  transform: none !important;
+}
+
+.typeBadge,
+.catBadge{
+  padding: 2px 8px !important;
+  font-size: 11px !important;
+  line-height: 1.1 !important;
+}
+
+.starStatic{
+  width: 18px !important;
+  height: 18px !important;
+  font-size: 14px !important;
+}
+
+.placeholderRow td{
+  color: transparent !important;
+  user-select: none;
+}
+
+.placeholderRow:hover{
+  background: rgba(255,255,255,.02) !important;
+}
+
+.placeholderMessageRow td{
+  color: var(--inrcy-muted) !important;
+}
+
+@media (min-width: 980px){
+  .shell{
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  .crmBoardCard{
+    overflow: hidden !important;
+  }
+
+  .crmBoardCard .tableWrap{
+    overflow-y: auto !important;
+  }
+}
+
+/* =========================
+   CRM no-scroll fixed 25 rows — FINAL (Apr 2026)
+   ========================= */
+
+:root{
+  --crm-head-height: 34px;
+}
+
+@media (min-width: 980px){
+  .shell{
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    overflow: hidden !important;
+    padding-bottom: 14px !important;
+  }
+
+  .header{
+    flex: 0 0 auto !important;
+    margin-bottom: 0 !important;
+  }
+
+  .shell > .crmBoardCard,
+  .tableCard.crmBoardCard,
+  .crmBoardCard{
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    margin-top: 0 !important;
+  }
+
+  .secondaryToolbar,
+  .muted,
+  .error,
+  .success,
+  .paginationBar{
+    flex: 0 0 auto !important;
+  }
+
+  .crmBoardCard .tableWrap,
+  .tableWrap{
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+  }
+
+  .crmBoardCard .table{
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    table-layout: fixed !important;
+  }
+
+  .table thead th{
+    height: var(--crm-head-height) !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    vertical-align: middle !important;
+  }
+
+  .table th,
+  .table td{
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    line-height: 1.1 !important;
+    vertical-align: middle !important;
+  }
+
+  .typeBadge,
+  .catBadge{
+    padding: 2px 8px !important;
+    font-size: 11px !important;
+    line-height: 1.1 !important;
+  }
+
+  .checkbox,
+  .table input[type="checkbox"]{
+    width: 13px !important;
+    height: 13px !important;
+    transform: none !important;
+  }
+
+  .starStatic{
+    width: 18px !important;
+    height: 18px !important;
+    font-size: 14px !important;
+  }
+
+  .paginationBar{
+    margin-top: 0 !important;
+    padding-top: 12px !important;
+    padding-bottom: 2px !important;
+  }
+
+  .pageSizeWrap{
+    display: none !important;
+  }
+}
+
+
+/* =========================
+   CRM responsive header search + branding tweak (Apr 2026)
+   ========================= */
+
+.headerSearchActive{
+  border-color: rgba(56,189,248,.52) !important;
+  box-shadow: 0 0 0 3px rgba(56,189,248,.12);
+}
+
+@media (max-width: 760px){
+  .header{
+    align-items: center !important;
+    gap: 10px !important;
+  }
+
+  .titleWrap{
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 10px !important;
+    flex-wrap: nowrap !important;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .titleWrap img{
+    width: 132px !important;
+    height: auto !important;
+    max-width: 40vw;
+    flex: 0 0 auto;
+  }
+
+  .subInline{
+    display: block !important;
+    margin: 0 !important;
+    font-size: 11px !important;
+    line-height: 1.15 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: min(34vw, 150px);
+  }
+
+  .headerRight{
+    flex: 0 0 auto;
+    gap: 6px !important;
+    align-items: center !important;
+  }
+
+  
+  
+  
+  .searchBtn{ order: 4; }
+  .statsWrap{ order: 5; }
+  .closeWrap{ order: 6; }
+
+  .tableSearchWrap{
+    display: none !important;
+  }
+
+  .headerSearchWrap{
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .headerSearchDropdown{
+    top: calc(100% + 10px);
+    right: -42px;
+    width: min(300px, calc(100vw - 20px));
+    padding: 10px;
+  }
+
+  .headerSearchDropdown .search{
+    height: 42px;
+  }
+}
+
+/* =========================
+   CRM mobile refonte portrait (Apr 2026)
+   ========================= */
+
+.mobileControls{
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+
+
+
+
+
+
+.mobileFilterChips{
+  display:flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.mobileFilterChip,
+.mobileFiltersReset{
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 12px;
+  border: 1px solid var(--inrcy-border);
+  background: rgba(255,255,255,.06);
+  color: var(--inrcy-text);
+}
+
+.mobileFiltersReset{
+  cursor: pointer;
+}
+
+.mobileFiltersPanel{
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--inrcy-border);
+  border-radius: 18px;
+  background: rgba(0,0,0,.18);
+}
+
+.mobileImportantToggle button{
+  width: 100%;
+}
+
+.mobileImportantActive{
+  border-color: rgba(250, 204, 21, .48) !important;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, .12);
+}
+
+.mobileMenuDropdown{
+  width: min(320px, calc(100vw - 24px));
+}
+
+.mobileMenuActions{
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.mobileMenuItem{
+  border: 1px solid var(--inrcy-border);
+  background: rgba(255,255,255,.04);
+  color: var(--inrcy-text);
+  border-radius: 14px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobileMenuStats{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobileContactBlock{
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+.mobileContactBlock:last-child{
+  border-bottom: 0;
+}
+
+.mobileListRow{
+  width: 100%;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--inrcy-text);
+  padding: 11px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobileListRowOpen{
+  background: rgba(255,255,255,.03);
+}
+
+.mobileListName{
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+
+
+
+.mobileRowDetails{
+  padding: 0 12px 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.mobileDetailGrid{
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mobileDetailGrid > div,
+.mobileDetailNotes{
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03);
+}
+
+.mobileDetailLabel{
+  font-size: 11px;
+  color: var(--inrcy-muted-2);
+}
+
+.mobileDetailGrid strong,
+.mobileDetailNotes strong{
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--inrcy-text);
+  word-break: break-word;
+}
+
+.mobileDetailNotes{
+  grid-column: 1 / -1;
+}
+
+.mobileDetailActions{
+  display:flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mobileLoadSentinel{
+  width: 100%;
+  height: 1px;
+}
+
+.mobileLoadMore,
+.mobileListEnd,
+.mobileListSummary{
+  text-align: center;
+  color: var(--inrcy-muted);
+  font-size: 12px;
+  padding: 12px 8px 4px;
+}
+
+@media (max-width: 760px){
+  .shell{
+    min-height: 100dvh;
+    height: auto;
+    overflow: visible;
+    padding: 12px 10px 16px;
+  }
+
+  .card{
+    padding: 12px;
+  }
+
+  .headerRight{
+    gap: 8px !important;
+  }
+
+  .statsWrap{
+    position: relative;
+  }
+
+  .mobileMenuDropdown{
+    right: 0;
+    left: auto;
+  }
+
+  .tableCard{
+    min-height: unset;
+  }
+
+  .tableWrap{
+    max-height: min(62dvh, 620px);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .mobileTable{
+    min-width: 0;
+  }
+
+  .mobileEmpty{
+    padding: 24px 12px;
+    text-align: center;
+    color: var(--inrcy-muted);
+  }
+
+  .mobileMenuStats{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* === CRM toolbar + portrait polish (Apr 2026 final) === */
+.titleBlock{
+  display:flex;
+  flex-direction:column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.mobileTagline{
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.25;
+  color: rgba(255,255,255,.72);
+}
+
+.filtersWrap{
+  position: relative;
+}
+
+.desktopFiltersPanel{
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(340px, calc(100vw - 48px));
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(12,16,24,.96);
+  box-shadow: 0 18px 44px rgba(0,0,0,.35);
+  z-index: 65;
+}
+
+.desktopImportantToggle button{
+  width: 100%;
+}
+
+.iconOnlyBtn{
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.mobileBulkActions{
+  width: 100%;
+  display: grid;
+  grid-template-columns: 42px 42px minmax(0, 1fr) auto 42px;
+  gap: 8px;
+  align-items: center;
+}
+
+.mobileActionsBtn,
+.mobileFilterActionBtn,
+.mobileDeleteBtn{
+  min-height: 42px;
+}
+
+.mobileActionsBtn{
+  width: 100%;
+  justify-content: center;
+}
+
+.mobileFilterActionBtn{
+  white-space: nowrap;
+  padding-inline: 12px !important;
+}
+
+.mobileDeleteBtn{
+  width: 42px;
+  min-width: 42px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobileCheckboxWrap{
+  width: 24px;
+  min-width: 24px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.mobileListMain{
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobileExpandBtn{
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px;
+  background: rgba(255,255,255,.05);
+  color: rgba(255,255,255,.92);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.mobileExpandBtn:hover{
+  background: rgba(255,255,255,.08);
+}
+
+@media (min-width: 761px){
+  .secondaryToolbar{
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto minmax(260px, 320px) auto;
+  }
+}
+
+@media (max-width: 760px){
+  .header{
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .titleBlock{
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .titleWrap{
+    align-items: center !important;
+  }
+
+  .titleWrap img{
+    max-width: 42vw;
+  }
+
+  .subInline{
+    display: none !important;
+  }
+
+  .mobileTagline{
+    display: block;
+    max-width: calc(100vw - 24px);
+  }
+
+  .headerRight{
+    flex: 0 0 auto;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+
+  .headerSearchDropdown{
+    right: -40px;
+  }
+
+  .secondaryToolbar{
+    display:flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .mobileControls{
+    margin-top: 2px;
+    margin-bottom: 10px;
+  }
+
+  .mobileFilterChips{
+    gap: 6px;
+  }
+
+  .mobileFilterChip,
+  .mobileFiltersReset{
+    padding: 6px 9px;
+    font-size: 11px;
+  }
+
+  .mobileFiltersPanel{
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .mobileContactBlock{
+    border-bottom: 1px solid rgba(255,255,255,.05);
+  }
+
+  .mobileListRow{
+    gap: 8px;
+    padding: 9px 8px;
+  }
+
+  .mobileListName{
+    font-size: 13px;
+  }
+
+  .mobileRowDetails{
+    padding: 0 8px 10px;
+  }
+
+  .mobileDetailActions{
+    gap: 6px;
+  }
+}
+
+
+/* iNrCRM — menu Actions opaque : ne laisse plus voir le tableau derrière */
+.actionsMenu {
+  background: rgb(8, 10, 16) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: rgba(255,255,255,.18) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.04) !important;
+}
+
+.actionsItem {
+  background: rgb(8, 10, 16);
+}
+
+.actionsItem:hover {
+  background: rgb(20, 24, 36);
+}
+
+.actionsSep {
+  background: rgba(255,255,255,.14);
+}

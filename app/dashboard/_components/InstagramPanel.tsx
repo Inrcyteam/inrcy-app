@@ -9,6 +9,7 @@ export default function InstagramPanel(props: any) {
   const {
     instagramConnected,
     instagramAccountConnected,
+    instagramConnectionStatus,
     instagramUsername,
     connectInstagramAccount,
     connectInstagramBusinessAccount,
@@ -48,6 +49,16 @@ export default function InstagramPanel(props: any) {
   const handleProfileDisconnect = () => {
     void disconnectInstagramProfile();
   };
+
+  const instagramNeedsUpdate = instagramConnectionStatus === "needs_update" && (instagramConnected || instagramAccountConnected);
+  const instagramStatusLabel = instagramNeedsUpdate ? "À actualiser" : instagramConnected ? "Connecté" : instagramAccountConnected ? "Compte connecté" : "À connecter";
+  const instagramStatusDot = instagramNeedsUpdate
+    ? "rgba(245,158,11,0.95)"
+    : instagramConnected
+      ? "rgba(34,197,94,0.95)"
+      : instagramAccountConnected
+        ? "rgba(59,130,246,0.95)"
+        : "rgba(148,163,184,0.9)";
 
   const displayAccountsError = !instagramConnected && !instagramAccountConnected ? null : igAccountsError;
 
@@ -95,14 +106,10 @@ export default function InstagramPanel(props: any) {
               width: 8,
               height: 8,
               borderRadius: 999,
-              background: instagramConnected
-                ? "rgba(34,197,94,0.95)"
-                : instagramAccountConnected
-                  ? "rgba(59,130,246,0.95)"
-                  : "rgba(148,163,184,0.9)",
+              background: instagramStatusDot,
             }}
           />
-          Statut : <strong>{instagramConnected ? "Connecté" : instagramAccountConnected ? "Compte connecté" : "À connecter"}</strong>
+          Statut : <strong>{instagramStatusLabel}</strong>
         </span>
       </div>
 
@@ -118,7 +125,7 @@ export default function InstagramPanel(props: any) {
       >
         <div className={styles.blockHeaderRow}>
           <div className={styles.blockTitle}>Compte connecté</div>
-          <ConnectionPill connected={instagramAccountConnected} />
+          <ConnectionPill connected={instagramAccountConnected} status={instagramNeedsUpdate ? "needs_update" : undefined} />
         </div>
         <div className={styles.blockSub}>
           Instagram peut être connecté en <strong>standard</strong> ou en <strong>business via Facebook Business</strong>. Pour la sélection du profil, un compte <strong>Business / Creator</strong> relié à une Page Facebook reste nécessaire.
@@ -138,9 +145,16 @@ export default function InstagramPanel(props: any) {
 
         <div style={{ ...responsiveActionsRow, justifyItems: "stretch" }}>
           {instagramAccountConnected ? (
-            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectAll} disabled={instagramAccountBusy} style={{ width: "100%" }}>
-              {instagramAccountBusy ? "Déconnexion..." : "Déconnexion"}
-            </button>
+            <>
+              {instagramNeedsUpdate ? (
+                <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={startStandard} disabled={instagramAccountBusy} style={{ width: "100%" }}>
+                  Actualiser
+                </button>
+              ) : null}
+              <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectAll} disabled={instagramAccountBusy} style={{ width: "100%" }}>
+                {instagramAccountBusy ? "Déconnexion..." : "Déconnexion"}
+              </button>
+            </>
           ) : (
             <>
               <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={startStandard} style={{ width: "100%" }}>
@@ -167,7 +181,7 @@ export default function InstagramPanel(props: any) {
         >
           <div className={styles.blockHeaderRow}>
             <div className={styles.blockTitle}>Compte Instagram à connecter</div>
-            <ConnectionPill connected={instagramConnected} />
+            <ConnectionPill connected={instagramConnected} status={instagramNeedsUpdate ? "needs_update" : undefined} />
           </div>
           <div className={styles.blockSub}>On liste les Pages Facebook qui possèdent un Instagram Business/Creator.</div>
 
