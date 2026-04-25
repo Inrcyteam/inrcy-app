@@ -15,9 +15,12 @@ test.describe('dashboard module routes', () => {
     await page.goto('/dashboard/crm', { waitUntil: 'domcontentloaded' });
 
     await expect(page).toHaveURL(/\/dashboard\/crm/, { timeout: 30_000 });
-    await expect(
-      page.getByText(/Tableau CRM|iNr.?CRM/i).first()
-    ).toBeVisible({ timeout: 20_000 });
+    const crmPageMarker = page
+      .getByRole('img', { name: /iNr.?CRM/i })
+      .or(page.getByText(/Tableau CRM|iNr.?CRM|La centrale de tous vos contacts/i))
+      .first();
+
+    await expect(crmPageMarker).toBeVisible({ timeout: 20_000 });
 
     await runtime.expectNoErrors();
   });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import stylesDash from "../../dashboard/dashboard.module.css";
+import stylesDash from "../../dashboard.module.css";
 import { getTemplates, type TemplateDef } from "@/lib/messageTemplates";
 import { useBusinessTemplateContext } from "@/app/dashboard/_hooks/useBusinessTemplateContext";
 

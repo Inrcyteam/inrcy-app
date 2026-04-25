@@ -186,7 +186,7 @@ export function Cube({
     : !!model.connections.main;
 
   return (
-    <section className={`${styles.cube} ${connectionOk ? "" : styles.cubeOff}`} aria-label={model.title}>
+    <section className={`${styles.cube} ${connectionOk ? styles.cubeOn : styles.cubeOff}`} aria-label={model.title}>
       <div className={styles.cubeTop}>
         <div>
           <div className={styles.cubeTitleRow}>
@@ -246,13 +246,13 @@ export function Cube({
         </div>
 
         <button
-          className={styles.actionBtn}
+          className={`${styles.actionBtn} ${connectionOk ? styles.actionBtnOn : styles.actionBtnOff}`}
           onClick={() => (action.href ? onNavigate(action.href) : undefined)}
           disabled={model.loading || !action.href}
           aria-disabled={model.loading || !action.href}
         >
-          <span className={styles.actionBtnDesktop}>GO</span>
-          <span className={styles.actionBtnMobile}>GO</span>
+          <span className={styles.actionBtnDesktop}>{connectionOk ? "GO ⚡" : "GO 🔌"}</span>
+          <span className={styles.actionBtnMobile}>{connectionOk ? "GO ⚡" : "GO 🔌"}</span>
         </button>
       </div>
 
