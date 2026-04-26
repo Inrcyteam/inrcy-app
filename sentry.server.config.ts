@@ -4,10 +4,27 @@
 
 import * as Sentry from "@sentry/nextjs";
 
-Sentry.init({
-  dsn: "https://8d076c4c46da67e5ec8f3804f463fba4@o4510936680562688.ingest.de.sentry.io/4510936683446352",
+const sentryDsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN;
 
-  // Enable sending user PII (Personally Identifiable Information)
-  // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#sendDefaultPii
-  sendDefaultPii: true,
-});
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    sendDefaultPii: false,
+    beforeSend(event) {
+      if (event.user) {
+        delete event.user.email;
+        delete event.user.ip_address;
+        delete event.user.username;
+      }
+
+      if (event.request?.headers) {
+        delete event.request.headers.authorization;
+        delete event.request.headers.Authorization;
+        delete event.request.headers.cookie;
+        delete event.request.headers.Cookie;
+      }
+
+      return event;
+    },
+  });
+}
