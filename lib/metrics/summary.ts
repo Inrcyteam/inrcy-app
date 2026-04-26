@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildSnapshotWindow } from '@/lib/stats/snapshotWindow';
+import { buildStatsConnectionSignature } from '@/lib/stats/connectionSignature';
 import { buildGeneratorChannelBlocks, summarizeGeneratorChannelBlocks, type GeneratorChannelBlocksByChannel } from '@/lib/generator/channelBlocks';
 import {
   EMPTY_CUBE_RECORD,
@@ -39,6 +40,7 @@ export type MetricsSummary = {
     generatedAt: string;
     snapshotDate: string | null;
     live: boolean;
+    connectionSignature?: string;
   };
 };
 
@@ -61,49 +63,7 @@ function safeJsonValue<T>(v: unknown, fallback: T): T {
 }
 
 async function buildSummaryConnectionsKey(supabase: SupabaseClient, userId: string): Promise<string> {
-  const keyParts: string[] = [];
-
-  try {
-    const { data: integrations = [] } = await supabase
-      .from('integrations')
-      .select('provider,source,product,status,resource_id,updated_at,created_at')
-      .eq('user_id', userId);
-    const rows = Array.isArray(integrations) ? integrations : [];
-    for (const row of rows) {
-      const rec = asRecord(row);
-      const provider = String(rec['provider'] ?? '');
-      const source = String(rec['source'] ?? '');
-      const product = String(rec['product'] ?? '');
-      const status = String(rec['status'] ?? '');
-      const resource = String(rec['resource_id'] ?? '');
-      const updated = String(rec['updated_at'] ?? rec['created_at'] ?? '');
-      if (!provider || !source || !product) continue;
-      keyParts.push(`${provider}:${source}:${product}:${status}:${resource}:${updated}`);
-    }
-  } catch {}
-
-  try {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('inrcy_site_ownership,stats_version')
-      .eq('user_id', userId)
-      .maybeSingle();
-    const profileRec = asRecord(profile);
-    keyParts.push(`ownership:${String(profileRec['inrcy_site_ownership'] ?? 'none')}`);
-    keyParts.push(`stats_version:${String(profileRec['stats_version'] ?? 0)}`);
-  } catch {}
-
-  try {
-    const { data: siteCfg } = await supabase
-      .from('inrcy_site_configs')
-      .select('settings')
-      .eq('user_id', userId)
-      .maybeSingle();
-    const settings = asRecord(asRecord(siteCfg)['settings']);
-    keyParts.push(`inrcyTrackingEnabled:${Boolean(settings['inrcy_tracking_enabled'] ?? true) ? '1' : '0'}`);
-  } catch {}
-
-  return keyParts.join('|') || 'none';
+  return buildStatsConnectionSignature(supabase, userId);
 }
 
 async function getProfile(
@@ -190,11 +150,12 @@ export async function buildMetricsSummary(args: {
   }
 
   const dateWindow = buildSnapshotWindow({ days: monthDays, fresh, snapshotDate });
+  const connectionSignature = await buildSummaryConnectionsKey(supabase, userId);
 
   let cacheRangeKey: string | null = null;
 
   if (!fresh) {
-    cacheRangeKey = `month=${monthDays}|week=${weekDays}|today=${todayDays}|snapshot=${dateWindow.snapshotDate || 'live'}|conn=${await buildSummaryConnectionsKey(supabase, userId)}`;
+    cacheRangeKey = `month=${monthDays}|week=${weekDays}|today=${todayDays}|snapshot=${dateWindow.snapshotDate || 'live'}|conn=${connectionSignature}`;
     try {
       const nowIso = new Date().toISOString();
       const { data: cacheHit } = await supabase
@@ -303,13 +264,14 @@ export async function buildMetricsSummary(args: {
       generatedAt,
       snapshotDate: dateWindow.snapshotDate,
       live: dateWindow.live,
+      connectionSignature,
     },
   };
 
   try {
     // Keep the shared generator/iNrStats snapshot warm for a very short period
     // so another device catches up quickly without waiting for hours.
-    const rangeKey = cacheRangeKey ?? `month=${monthDays}|week=${weekDays}|today=${todayDays}|snapshot=${dateWindow.snapshotDate || 'live'}|conn=${await buildSummaryConnectionsKey(supabase, userId)}`;
+    const rangeKey = cacheRangeKey ?? `month=${monthDays}|week=${weekDays}|today=${todayDays}|snapshot=${dateWindow.snapshotDate || 'live'}|conn=${connectionSignature}`;
     const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
     await supabase.from('stats_cache').insert({
       user_id: userId,

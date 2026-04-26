@@ -1670,6 +1670,86 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     await refreshGeneratorChannelsFromApi(DASHBOARD_CHANNEL_KEYS, fallbackSyncAt);
   }, [refreshGeneratorChannelsFromApi]);
 
+  const applyBootstrapRefresh = useCallback((bootstrap: DailyStatsRefreshBootstrapResponse) => {
+    const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
+    const bootstrapSnapshotDate = typeof bootstrap?.snapshotDate === "string"
+      ? bootstrap.snapshotDate
+      : expectedUiSnapshotDate();
+
+    markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
+
+    if (!bootstrap?.ran) {
+      return { syncAt, bootstrapSnapshotDate };
+    }
+
+    const generator = bootstrap.generator;
+
+    if (generator) {
+      setKpis(generator);
+      const oppMonth = Number(generator?.details?.opportunities?.month);
+      if (Number.isFinite(oppMonth)) {
+        setOppTotal(oppMonth);
+        try {
+          writeUiCacheValue("inrcy_opp30_total_v1", String(oppMonth));
+        } catch {
+          // ignore
+        }
+      }
+
+      try {
+        const generatorSnapshotDate = typeof generator?.meta?.snapshotDate === "string"
+          ? generator.meta.snapshotDate
+          : bootstrapSnapshotDate ?? null;
+        writeUiCacheValue(
+          "inrcy_generator_kpis_v1",
+          JSON.stringify({ syncedAt: syncAt, snapshotDate: generatorSnapshotDate, payload: generator })
+        );
+      } catch {
+        // ignore
+      }
+    }
+
+    for (const [periodKey, payload] of Object.entries(bootstrap.inrstats || {})) {
+      const days = Number(periodKey) as StatsWarmPeriod;
+      if (![7, 30].includes(days)) continue;
+      const overviews = payload?.overviews;
+      if (!overviews || typeof overviews !== "object") continue;
+      const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
+        ? payload.meta.snapshotDate
+        : getOverviewSnapshotDate(overviews) || bootstrapSnapshotDate || null;
+      const payloadBlocks = payload?.blocks && typeof payload.blocks === "object"
+        ? payload.blocks as InrstatsChannelBlocksByChannel
+        : null;
+
+      try {
+        writeUiCacheValue(
+          statsCubeSessionKey(days),
+          JSON.stringify({ syncedAt: syncAt, snapshotDate: payloadSnapshotDate, overviews, blocks: payloadBlocks })
+        );
+        writeUiCacheValue(
+          statsSummarySessionKey(days),
+          JSON.stringify({
+            syncedAt: syncAt,
+            snapshotDate: payloadSnapshotDate,
+            total: Number(payload?.opportunities?.total ?? 0),
+            byCube: payload?.opportunities?.byCube ?? {},
+            profile: payload?.profile ?? {},
+            estimatedByCube: payload?.estimatedByCube ?? {},
+          })
+        );
+      } catch {
+        // ignore
+      }
+
+      if (payloadBlocks) {
+        setChannelBlocks(payloadBlocks);
+      }
+    }
+
+    notifyStatsRefresh(syncAt);
+    return { syncAt, bootstrapSnapshotDate };
+  }, [notifyStatsRefresh]);
+
   const syncFromServerCacheIfNeeded = useCallback(async (force = false) => {
     if (typeof window === "undefined") return;
     const now = Date.now();
@@ -1692,6 +1772,13 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         });
         if (!res.ok) return;
         const json = await res.json().catch(() => null);
+        if (json?.connections?.needsRefresh === true) {
+          const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true, force: true });
+          applyBootstrapRefresh(bootstrap);
+          markServerCacheSyncChecked("dashboard", { snapshotDate, checkedAt: Date.now(), syncAt: Number(bootstrap?.syncAt ?? Date.now()) });
+          return;
+        }
+
         const generatorSyncedAt = Number(json?.generator?.syncedAt ?? 0);
         const generatorChannelStatuses = json?.generator?.channels && typeof json.generator.channels === "object"
           ? json.generator.channels as Partial<Record<DashboardChannelKey, number>>
@@ -1758,7 +1845,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     } finally {
       serverCacheCheckPromiseRef.current = null;
     }
-  }, [readCachedGeneratorChannelSyncAt, refreshChannelBlocksFromApi, refreshGeneratorChannelsFromApi, warmInrStatsUi]);
+  }, [applyBootstrapRefresh, readCachedGeneratorChannelSyncAt, refreshChannelBlocksFromApi, refreshGeneratorChannelsFromApi, warmInrStatsUi]);
 
   const triggerGeneratorRefresh = useCallback(async () => {
     const runSync = async () => {
@@ -1845,85 +1932,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     }
   }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, loadSiteInrcy, notifyStatsRefresh, refreshChannelBlocksFromApi, refreshGeneratorChannelsFromApi, triggerChannelRefresh]);
 
-  const applyBootstrapRefresh = useCallback((bootstrap: DailyStatsRefreshBootstrapResponse) => {
-    const syncAt = Number.isFinite(Number(bootstrap?.syncAt)) ? Number(bootstrap.syncAt) : Date.now();
-    const bootstrapSnapshotDate = typeof bootstrap?.snapshotDate === "string"
-      ? bootstrap.snapshotDate
-      : expectedUiSnapshotDate();
 
-    markDailyStatsRefreshBootstrapChecked({ snapshotDate: bootstrapSnapshotDate, checkedAt: Date.now(), syncAt });
-
-    if (!bootstrap?.ran) {
-      return { syncAt, bootstrapSnapshotDate };
-    }
-
-    const generator = bootstrap.generator;
-
-    if (generator) {
-      setKpis(generator);
-      const oppMonth = Number(generator?.details?.opportunities?.month);
-      if (Number.isFinite(oppMonth)) {
-        setOppTotal(oppMonth);
-        try {
-          writeUiCacheValue("inrcy_opp30_total_v1", String(oppMonth));
-        } catch {
-          // ignore
-        }
-      }
-
-      try {
-        const generatorSnapshotDate = typeof generator?.meta?.snapshotDate === "string"
-          ? generator.meta.snapshotDate
-          : bootstrapSnapshotDate ?? null;
-        writeUiCacheValue(
-          "inrcy_generator_kpis_v1",
-          JSON.stringify({ syncedAt: syncAt, snapshotDate: generatorSnapshotDate, payload: generator })
-        );
-      } catch {
-        // ignore
-      }
-    }
-
-    for (const [periodKey, payload] of Object.entries(bootstrap.inrstats || {})) {
-      const days = Number(periodKey) as StatsWarmPeriod;
-      if (![7, 30].includes(days)) continue;
-      const overviews = payload?.overviews;
-      if (!overviews || typeof overviews !== "object") continue;
-      const payloadSnapshotDate = typeof payload?.meta?.snapshotDate === "string"
-        ? payload.meta.snapshotDate
-        : getOverviewSnapshotDate(overviews) || bootstrapSnapshotDate || null;
-      const payloadBlocks = payload?.blocks && typeof payload.blocks === "object"
-        ? payload.blocks as InrstatsChannelBlocksByChannel
-        : null;
-
-      try {
-        writeUiCacheValue(
-          statsCubeSessionKey(days),
-          JSON.stringify({ syncedAt: syncAt, snapshotDate: payloadSnapshotDate, overviews, blocks: payloadBlocks })
-        );
-        writeUiCacheValue(
-          statsSummarySessionKey(days),
-          JSON.stringify({
-            syncedAt: syncAt,
-            snapshotDate: payloadSnapshotDate,
-            total: Number(payload?.opportunities?.total ?? 0),
-            byCube: payload?.opportunities?.byCube ?? {},
-            profile: payload?.profile ?? {},
-            estimatedByCube: payload?.estimatedByCube ?? {},
-          })
-        );
-      } catch {
-        // ignore
-      }
-
-      if (payloadBlocks) {
-        setChannelBlocks(payloadBlocks);
-      }
-    }
-
-    notifyStatsRefresh(syncAt);
-    return { syncAt, bootstrapSnapshotDate };
-  }, [notifyStatsRefresh]);
 
   const handleSharedGeneratorRefresh = useCallback(async () => {
     if (kpisLoading) return;

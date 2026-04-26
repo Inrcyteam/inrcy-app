@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
+import { buildStatsConnectionSignature } from "@/lib/stats/connectionSignature";
 
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const PERIODS = [7, 30] as const;
@@ -92,6 +93,10 @@ export async function GET() {
       .in("source", ["metrics_summary", "overview"])
       .gt("expires_at", nowIso);
 
+    const currentConnectionSignature = await buildStatsConnectionSignature(supabase, user.id);
+    let latestGeneratorConnectionSignature: string | null = null;
+    let latestGeneratorCacheTs = 0;
+
     let generatorSyncedAt = 0;
     const generator: GeneratorStatus = emptyChannelStatus();
     const inrstats: Record<PeriodKey, PeriodStatus> = {
@@ -109,6 +114,11 @@ export async function GET() {
         if (ts > generatorSyncedAt) generatorSyncedAt = ts;
         generator.syncedAt = Math.max(generator.syncedAt, ts);
         const payload = asRecord(rec.payload);
+        if (ts >= latestGeneratorCacheTs) {
+          latestGeneratorCacheTs = ts;
+          const meta = asRecord(payload.meta);
+          latestGeneratorConnectionSignature = typeof meta.connectionSignature === "string" ? meta.connectionSignature : null;
+        }
         const blocks = asRecord(payload.generatorBlocks);
         for (const channel of DASHBOARD_CHANNEL_KEYS) {
           const blockSyncAt = Number(asRecord(blocks[channel]).syncAt);
@@ -154,9 +164,16 @@ export async function GET() {
       }
     }
 
+    const generatorNeedsRefresh = latestGeneratorConnectionSignature !== currentConnectionSignature;
+
     return NextResponse.json({
       generator: { syncedAt: generatorSyncedAt, channels: generator.channels },
       inrstats,
+      connections: {
+        signature: currentConnectionSignature,
+        cachedGeneratorSignature: latestGeneratorConnectionSignature,
+        needsRefresh: generatorNeedsRefresh,
+      },
       checkedAt: new Date().toISOString(),
     });
   } catch (error) {

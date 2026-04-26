@@ -21,6 +21,7 @@ export type DailyRefreshBulkPayload = {
     generatedAt?: string;
     snapshotDate?: string | null;
     live?: boolean;
+    connectionSignature?: string;
   };
 };
 

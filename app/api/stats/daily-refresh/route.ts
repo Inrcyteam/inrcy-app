@@ -4,6 +4,7 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { buildMetricsSummary } from "@/lib/metrics/summary";
+import { buildStatsConnectionSignature } from "@/lib/stats/connectionSignature";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { buildChannelBlocks, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
 import {
@@ -33,6 +34,7 @@ type BulkResponse = {
     generatedAt: string;
     snapshotDate: string | null;
     live: boolean;
+    connectionSignature?: string;
   };
 };
 
@@ -61,8 +63,9 @@ function buildBulkPayloadFromOverviews(args: {
   profile: ProfileMetrics;
   snapshotDate: string;
   channelStates: Awaited<ReturnType<typeof getChannelConnectionStates>>;
+  connectionSignature?: string;
 }): BulkResponse {
-  const { period, overviews, profile, snapshotDate, channelStates } = args;
+  const { period, overviews, profile, snapshotDate, channelStates, connectionSignature } = args;
   const opportunities = toInrstatsSnapshot(computeOpportunitiesFromOverviews(overviews, period));
   const leadConversionRate = Number(profile?.lead_conversion_rate ?? 0);
   const avgBasket = Number(profile?.avg_basket ?? 0);
@@ -95,6 +98,7 @@ function buildBulkPayloadFromOverviews(args: {
       generatedAt: new Date().toISOString(),
       snapshotDate: Object.values(overviews).find((overview) => overview?.meta)?.meta?.snapshotDate ?? snapshotDate ?? null,
       live: Boolean(Object.values(overviews).find((overview) => overview?.meta)?.meta?.live ?? false),
+      connectionSignature,
     },
   };
 }
@@ -227,10 +231,11 @@ async function handler(req: Request) {
         snapshotDate,
       });
 
-      const [profile, monthOverviews, weekOverviews] = await Promise.all([
+      const [profile, monthOverviews, weekOverviews, connectionSignature] = await Promise.all([
         profilePromise,
         monthPromise,
         weekPromise,
+        buildStatsConnectionSignature(supabase, user.id),
       ]);
       const channelStates = await getChannelConnectionStates(supabase, user.id);
 
@@ -257,8 +262,8 @@ async function handler(req: Request) {
       const weekDuration = Math.round(nowMs() - weekStarted);
 
       const inrstatsEntries = [
-        ["7", buildBulkPayloadFromOverviews({ period: 7, overviews: weekOverviews, profile, snapshotDate, channelStates })],
-        ["30", buildBulkPayloadFromOverviews({ period: 30, overviews: monthOverviews, profile, snapshotDate, channelStates })],
+        ["7", buildBulkPayloadFromOverviews({ period: 7, overviews: weekOverviews, profile, snapshotDate, channelStates, connectionSignature })],
+        ["30", buildBulkPayloadFromOverviews({ period: 30, overviews: monthOverviews, profile, snapshotDate, channelStates, connectionSignature })],
       ] as const;
 
       const { error: completeError } = await supabase.rpc("complete_daily_stats_refresh", {

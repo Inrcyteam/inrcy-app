@@ -415,6 +415,13 @@ export default function StatsClient() {
         const res = await fetch("/api/dashboard/cache-status", { cache: "no-store" });
         if (!res.ok) return;
         const json = await res.json().catch(() => null);
+        if (json?.connections?.needsRefresh === true) {
+          const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true, force: true });
+          applyBootstrapPayload(bootstrap);
+          markServerCacheSyncChecked("stats", { snapshotDate, checkedAt: Date.now(), syncAt: Number(bootstrap?.syncAt ?? Date.now()) });
+          return;
+        }
+
         const periodStatuses: Partial<Record<Period, { syncedAt?: number; channels?: Partial<Record<DashboardChannelKey, number>> }>> = {
           7: json?.inrstats?.[7] ?? json?.inrstats?.["7"] ?? null,
           30: json?.inrstats?.[30] ?? json?.inrstats?.["30"] ?? null,
@@ -459,14 +466,14 @@ export default function StatsClient() {
     } finally {
       serverCacheCheckPromiseRef.current = null;
     }
-  }, [applyBulkPayload, refreshChannelFromApi]);
+  }, [applyBootstrapPayload, applyBulkPayload, refreshChannelFromApi]);
 
   const handleSharedStatsRefresh = useCallback(async () => {
     setIsRefreshing(true);
     setLastRefreshAt(Date.now());
 
     try {
-      const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true });
+      const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true, force: true });
       applyBootstrapPayload(bootstrap);
 
       if (!bootstrap?.ran) {
