@@ -746,31 +746,29 @@ useEffect(() => {
   }, [isRefreshing, refreshNonce]);
 
   useEffect(() => {
-    const handleChannelUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ channel?: DashboardChannelKey }>).detail;
-      if (!isDashboardChannelKey(detail?.channel)) {
-        triggerRefresh("channels");
-        return;
-      }
+    const runSilentSync = async (force: boolean) => {
+      const now = Date.now();
+      // Evite les rafales quand plusieurs evenements arrivent au retour sur iNrStats.
+      if (now - lastAutoRefreshAtRef.current < 1500) return;
+      lastAutoRefreshAtRef.current = now;
+
+      // Si le cache local est deja aligne, on ne montre rien et on ne force aucun recalcul.
       if (hydrateFromSessionCache(period)) {
-        const now = Date.now();
-        setLastRefreshAt(now);
         setIsRefreshing(false);
         return;
       }
-      triggerRefresh("channels");
+
+      // Controle serveur silencieux : pas de label "Actualisation..." pour un simple check.
+      await syncFromServerCacheIfNeeded(force);
+    };
+
+    const handleChannelUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ channel?: DashboardChannelKey }>).detail;
+      void runSilentSync(isDashboardChannelKey(detail?.channel));
     };
 
     const handleChannelsUpdated = () => {
-      const now = Date.now();
-      if (now - lastAutoRefreshAtRef.current < 1500) return;
-      lastAutoRefreshAtRef.current = now;
-      if (hydrateFromSessionCache(period)) {
-        setLastRefreshAt(now);
-        setIsRefreshing(false);
-        return;
-      }
-      triggerRefresh("channels");
+      void runSilentSync(true);
     };
 
     window.addEventListener("inrcy:channel-updated", handleChannelUpdated as EventListener);
@@ -779,20 +777,24 @@ useEffect(() => {
       window.removeEventListener("inrcy:channel-updated", handleChannelUpdated as EventListener);
       window.removeEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
     };
-  }, [hydrateFromSessionCache, period, triggerRefresh]);
+  }, [hydrateFromSessionCache, period, syncFromServerCacheIfNeeded]);
 
   useEffect(() => {
     const handleProfileVersionChange = (event: Event) => {
       const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
       if (detail?.field !== "stats_version") return;
-      triggerRefresh("channels");
+
+      // Mise a jour inter-appareil silencieuse : on garde le systeme de synchro
+      // sans afficher un refresh utilisateur a chaque retour sur la page.
+      void syncFromServerCacheIfNeeded(true);
     };
 
     window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     return () => {
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
-  }, [triggerRefresh]);
+  }, [syncFromServerCacheIfNeeded]);
+
 
   useEffect(() => {
     if (!dailyBootReady) return;
