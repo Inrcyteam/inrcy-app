@@ -5,6 +5,7 @@ import { normalizeCampaignRecipients } from "@/lib/crmRecipients";
 import { fetchSuppressedEmailsByUser } from "@/lib/mailSuppression";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { getConnectionDisplayStatus, mailConnectionKind } from "@/lib/connectionVersions";
+import { enforceRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -43,6 +44,11 @@ const ALLOWED_FOLDERS = new Set<CampaignFolder>([
 function normalizeCampaignFolder(input: unknown, fallback: CampaignFolder): CampaignFolder {
   const value = String(input || "").trim().toLowerCase() as CampaignFolder;
   return ALLOWED_FOLDERS.has(value) ? value : fallback;
+}
+
+function getMaxCampaignRecipients() {
+  const raw = Number(process.env.CRM_CAMPAIGN_MAX_RECIPIENTS || "1000");
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1000;
 }
 
 function chunkArray<T>(items: T[], size: number) {
@@ -105,6 +111,15 @@ export async function POST(req: Request) {
   const { supabase, user, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
 
+  const rateLimited = await enforceRateLimit({
+    name: "crm_campaign_create",
+    identifier: user.id,
+    limit: 10,
+    window: "10 m",
+    failClosed: true,
+  });
+  if (rateLimited) return rateLimited;
+
   const body = await req.json().catch(() => ({}));
   const accountId = String(body.accountId || "").trim();
   const type = String(body.type || "mail").trim() || "mail";
@@ -126,6 +141,14 @@ export async function POST(req: Request) {
   }
   if (normalizedRecipients.length === 0) {
     return NextResponse.json({ error: "Aucun destinataire valide." }, { status: 400 });
+  }
+
+  const maxRecipients = getMaxCampaignRecipients();
+  if (normalizedRecipients.length > maxRecipients) {
+    return NextResponse.json(
+      { error: `Campagne trop volumineuse. Maximum autorisé : ${maxRecipients} destinataires.` },
+      { status: 413 },
+    );
   }
 
   const defaultFolder: CampaignFolder = type === "facture" ? "factures" : type === "devis" ? "devis" : "mails";

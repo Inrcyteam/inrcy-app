@@ -8,6 +8,7 @@ import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailA
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { getConnectionDisplayStatus } from "@/lib/connectionVersions";
+import { enforceRateLimit } from "@/lib/rateLimit";
 
 // Microsoft Graph mail send requires Node.js runtime in most deployments.
 export const runtime = "nodejs";
@@ -59,6 +60,15 @@ const handler = async (req: Request) => {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
     const userId = user.id;
+
+    const rateLimited = await enforceRateLimit({
+      name: "microsoft_send",
+      identifier: userId,
+      limit: 30,
+      window: "1 m",
+      failClosed: true,
+    });
+    if (rateLimited) return rateLimited;
     const ct = req.headers.get("content-type") || "";
     let accountId = "";
     let sendItemId = "";

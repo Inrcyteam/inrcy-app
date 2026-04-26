@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { optionalEnv } from "@/lib/env";
+import { optionalEnv, requireEnv } from "@/lib/env";
 import { ensureNotificationPreferences, seedOnboardingNotifications } from "@/lib/notifications";
 import { ensureProfileRow } from "@/lib/ensureProfileRow";
 import { getClientIp, enforceRateLimit } from "@/lib/rateLimit";
@@ -282,16 +282,16 @@ export async function POST(req: Request) {
       identifier: getClientIp(req),
       limit: 8,
       window: "10 m",
-      failClosed: false,
+      failClosed: true,
     });
     if (limited) return limited;
 
     const body = await readRequestBody(req);
     const payload = normalizePayload(body);
 
-    const expectedSecret = optionalEnv("INRCY_TRIAL_SIGNUP_SECRET", "").trim();
+    const expectedSecret = requireEnv("INRCY_TRIAL_SIGNUP_SECRET").trim();
     const gotSecret = resolveSharedSecret(req, body);
-    if (expectedSecret && gotSecret !== expectedSecret) {
+    if (gotSecret !== expectedSecret) {
       return jsonResponse({ error: "Accès non autorisé." }, 401);
     }
 

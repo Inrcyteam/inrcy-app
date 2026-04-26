@@ -1,7 +1,24 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export async function GET() {
+export const runtime = "nodejs";
+
+function isAuthorizedCron(req: Request) {
+  const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";
+  if (!cronSecret) return false;
+
+  const auth = req.headers.get("authorization") || "";
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const headerSecret = (req.headers.get("x-cron-secret") || "").trim();
+  const querySecret = new URL(req.url).searchParams.get("secret") || "";
+
+  return bearer === cronSecret || headerSecret === cronSecret || querySecret === cronSecret;
+}
+
+export async function GET(req: Request) {
+  if (!isAuthorizedCron(req)) {
+    return NextResponse.json({ error: "Non autorisé." }, { status: 401 });
+  }
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,4 +36,8 @@ export async function GET() {
   }
 
   return NextResponse.json({ ok: true });
+}
+
+export async function POST(req: Request) {
+  return GET(req);
 }
