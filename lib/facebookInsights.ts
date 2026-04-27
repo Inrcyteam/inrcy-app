@@ -1,9 +1,17 @@
 const GRAPH = "https://graph.facebook.com/v20.0";
 
+function graphErrorMessage(data: any, status: number) {
+  const e = data?.error;
+  if (!e) return `HTTP ${status}`;
+  return [e.message, e.type, e.code ? `code=${e.code}` : "", e.error_subcode ? `subcode=${e.error_subcode}` : ""]
+    .filter(Boolean)
+    .join(" | ");
+}
+
 async function fetchJson(url: string) {
   const res = await fetch(url, { cache: "no-store" });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(graphErrorMessage(data, res.status));
   return data;
 }
 
@@ -11,145 +19,106 @@ export type FacebookDailyMetrics = {
   range: { since: string; until: string };
   totals: Record<string, number>;
   daily: Array<{ date: string; values: Record<string, number> }>;
+  raw?: {
+    supportedMetrics?: string[];
+    unsupportedMetrics?: string[];
+    metricErrors?: Record<string, string>;
+  };
 };
 
-async function getPageAccessToken(userOrPageToken: string, pageId: string): Promise<string> {
-  // If the provided token is already a page token, this request still works.
-  // Requires pages_read_engagement/pages_show_list on the user token.
-  const url =
-    `${GRAPH}/${encodeURIComponent(pageId)}?` +
-    new URLSearchParams({ fields: "access_token", access_token: userOrPageToken }).toString();
-  const resp = await fetchJson(url);
-  const t = String(resp?.access_token || "");
-  return t || userOrPageToken;
+function normalizeMetricError(error: unknown): string {
+  return String((error as { message?: string })?.message || error || "unknown_error").trim();
 }
 
-// Facebook Page Insights. Requires a Page access token.
-export async function fbFetchDailyInsights(
-  pageAccessToken: string,
-  pageId: string,
-  start: Date,
-  end: Date
-): Promise<FacebookDailyMetrics> {
-  const since = Math.floor(start.getTime() / 1000);
-  const until = Math.floor(end.getTime() / 1000);
+function addNumeric(target: Record<string, number>, key: string, value: unknown) {
+  const n = typeof value === "number" ? value : Number(value);
+  if (Number.isFinite(n)) target[key] = (target[key] || 0) + n;
+}
 
-  // Facebook Insights is strict: if you pass ONE invalid metric name, the whole request fails.
-  // Metric availability varies by Page/category and can change across API versions.
-  // To avoid breaking the entire channel, we try a batched request first, then
-  // (only on "valid insights metric" errors) retry metric-by-metric and keep the ones that work.
-  // NOTE: Many legacy Page insight metrics (ex: page_impressions, page_fans, etc.)
-  // are no longer accepted for some Pages/apps on newer Graph API versions.
-  // We only request metrics that are still commonly supported.
-  // For impressions/likes we enrich via other endpoints below.
-  const coreMetrics = ["page_engaged_users", "page_views_total"];
-  const optionalMetrics = [
-    "page_call_phone_clicks_logged_in_unique",
-    "page_get_directions_clicks_logged_in_unique",
-    "page_website_clicks_logged_in_unique",
-  ];
-  const metrics = [...coreMetrics, ...optionalMetrics];
+function extractDailyRows(metricRow: Record<string, unknown>) {
+  const name = String(metricRow?.name || "").trim();
+  if (!name) return [] as Array<{ date: string; value: number }>;
+  const values = Array.isArray(metricRow?.values) ? metricRow.values : [];
+  return values
+    .map((v) => ({
+      date: String((v as Record<string, unknown>)?.end_time || "").slice(0, 10),
+      value: Number((v as Record<string, unknown>)?.value || 0),
+    }))
+    .filter((v) => v.date && Number.isFinite(v.value));
+}
 
-  const buildUrl = (token: string, metricList: string[]) =>
+async function resolvePageAccessToken(userOrPageToken: string, pageId: string): Promise<string> {
+  // Direct field lookup works if the token can see the selected Page.
+  try {
+    const direct = await fetchJson(
+      `${GRAPH}/${encodeURIComponent(pageId)}?` +
+        new URLSearchParams({ fields: "access_token", access_token: userOrPageToken }).toString()
+    );
+    const token = String(direct?.access_token || "");
+    if (token) return token;
+  } catch {}
+
+  // Fallback for user tokens: find the selected Page in /me/accounts.
+  try {
+    const accounts = await fetchJson(
+      `${GRAPH}/me/accounts?` +
+        new URLSearchParams({ fields: "id,name,access_token", limit: "100", access_token: userOrPageToken }).toString()
+    );
+    const rows = Array.isArray(accounts?.data) ? accounts.data : [];
+    const match = rows.find((row: any) => String(row?.id || "") === String(pageId));
+    const token = String(match?.access_token || "");
+    if (token) return token;
+  } catch {}
+
+  return userOrPageToken;
+}
+
+const FB_PAGE_INSIGHT_METRICS = [
+  // These are commonly available Page insights. Each is queried separately so
+  // one removed/unsupported metric never kills the whole Facebook block.
+  "page_post_engagements",
+  "page_engaged_users",
+  "page_views_total",
+  "page_actions_post_reactions_total",
+  "page_fans",
+  "page_fan_adds",
+  "page_impressions_unique",
+  "page_impressions",
+  "page_call_phone_clicks_logged_in_unique",
+  "page_get_directions_clicks_logged_in_unique",
+  "page_website_clicks_logged_in_unique",
+] as const;
+
+async function fetchPageMetric(token: string, pageId: string, metric: string, since: number, until: number) {
+  const url =
     `${GRAPH}/${encodeURIComponent(pageId)}/insights?` +
     new URLSearchParams({
-      metric: metricList.join(","),
+      metric,
       period: "day",
       since: String(since),
       until: String(until),
       access_token: token,
     }).toString();
+  const resp = await fetchJson(url);
+  return Array.isArray(resp?.data) ? resp.data : [];
+}
 
-  // Some setups store a *user* token. Page insights often require a page token.
-  // We try direct first; on auth errors we retry with a resolved page token.
-  let resp: any;
-  let tokenToUse = pageAccessToken;
-
-  const fetchWithToken = async (token: string, metricList: string[]) => fetchJson(buildUrl(token, metricList));
-
-  // First attempt: batched metrics
-  try {
-    resp = await fetchWithToken(tokenToUse, metrics);
-  } catch (e: any) {
-    const msg = String(e?.message || e);
-    // If auth/permissions, resolve a page token and retry.
-    if (/OAuth|access token|permissions|token/i.test(msg)) {
-      tokenToUse = await getPageAccessToken(pageAccessToken, pageId);
-      resp = await fetchWithToken(tokenToUse, metrics);
-    } else if (/valid insights metric/i.test(msg)) {
-      // One (or more) metrics are not supported for this Page/API version.
-      // Fall back to per-metric requests below.
-      resp = { data: [] };
-    } else {
-      throw e;
-    }
-  }
-
-  // In some cases, Graph can surface "valid insights metric" errors (or return no data)
-  // when one of the requested metrics is not supported for the Page.
-  // Fallback: request metrics one by one and keep the successes.
-  let data: any[] = Array.isArray(resp?.data) ? resp.data : [];
-  const embeddedErrMsg = String(resp?.error?.message || "");
-  if (/valid insights metric/i.test(embeddedErrMsg) || data.length === 0) {
-    const collected: any[] = [];
-    for (const m of metrics) {
-      try {
-        const r = await fetchWithToken(tokenToUse, [m]);
-        const arr = Array.isArray(r?.data) ? r.data : [];
-        collected.push(...arr);
-      } catch (err: any) {
-        const em = String(err?.message || err);
-        // Ignore unsupported metrics.
-        if (/valid insights metric/i.test(em)) continue;
-        throw err;
-      }
-    }
-    data = collected;
-  }
-
-  const byDay = new Map<string, Record<string, number>>();
-  for (const m of data) {
-    const name = String(m?.name || "");
-    const values = Array.isArray(m?.values) ? m.values : [];
-    for (const v of values) {
-      const endTime = String(v?.end_time || "").slice(0, 10);
-      const value = typeof v?.value === "number" ? v.value : 0;
-      if (!endTime) continue;
-      const row = byDay.get(endTime) || {};
-      row[name] = (row[name] || 0) + value;
-      byDay.set(endTime, row);
-    }
-  }
-
-  const daily = Array.from(byDay.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, values]) => ({ date, values }));
-
-  const totals: Record<string, number> = {};
-  for (const d of daily) {
-    for (const [k, val] of Object.entries(d.values)) {
-      totals[k] = (totals[k] || 0) + (Number(val) || 0);
-    }
-  }
-
-  // Enrich with Page fields (likes/followers). These are NOT insights metrics.
-  // Requires a Page access token.
+async function enrichPageFields(token: string, pageId: string, totals: Record<string, number>) {
   try {
     const pageInfo = await fetchJson(
       `${GRAPH}/${encodeURIComponent(pageId)}?` +
         new URLSearchParams({
-          fields: "fan_count,followers_count",
-          access_token: tokenToUse,
+          fields: "fan_count,followers_count,new_like_count,link",
+          access_token: token,
         }).toString()
     );
-    if (typeof pageInfo?.fan_count === "number") totals.fan_count = pageInfo.fan_count;
-    if (typeof pageInfo?.followers_count === "number") totals.followers_count = pageInfo.followers_count;
-  } catch {
-    // ignore
-  }
+    addNumeric(totals, "fan_count", pageInfo?.fan_count);
+    addNumeric(totals, "followers_count", pageInfo?.followers_count);
+    addNumeric(totals, "new_like_count", pageInfo?.new_like_count);
+  } catch {}
+}
 
-  // Fallback impressions: sum post_impressions over published posts in the range.
-  // This is a practical replacement when Page-level impressions metrics are unavailable.
+async function enrichPublishedPosts(token: string, pageId: string, totals: Record<string, number>, since: number, until: number) {
   try {
     const posts = await fetchJson(
       `${GRAPH}/${encodeURIComponent(pageId)}/published_posts?` +
@@ -158,12 +127,10 @@ export async function fbFetchDailyInsights(
           limit: "50",
           since: String(since),
           until: String(until),
-          access_token: tokenToUse,
+          access_token: token,
         }).toString()
     );
     const arr = Array.isArray(posts?.data) ? posts.data : [];
-    let impressionsSum = 0;
-    let engagedSum = 0;
     for (const p of arr) {
       const postId = String(p?.id || "");
       if (!postId) continue;
@@ -171,32 +138,78 @@ export async function fbFetchDailyInsights(
         const ins = await fetchJson(
           `${GRAPH}/${encodeURIComponent(postId)}/insights?` +
             new URLSearchParams({
-              metric: "post_impressions,post_engaged_users",
+              metric: "post_impressions,post_impressions_unique,post_engaged_users,post_clicks",
               period: "lifetime",
-              access_token: tokenToUse,
+              access_token: token,
             }).toString()
         );
         const rows = Array.isArray(ins?.data) ? ins.data : [];
         for (const r of rows) {
           const name = String(r?.name || "");
           const v = Array.isArray(r?.values) ? r.values[0]?.value : undefined;
-          const val = typeof v === "number" ? v : 0;
-          if (name === "post_impressions") impressionsSum += val;
-          if (name === "post_engaged_users") engagedSum += val;
+          addNumeric(totals, `${name}_sum`, v);
+          if (name === "post_impressions") addNumeric(totals, "impressions", v);
+          if (name === "post_impressions_unique") addNumeric(totals, "reach", v);
+          if (name === "post_engaged_users") addNumeric(totals, "engagements", v);
+          if (name === "post_clicks") addNumeric(totals, "clicks", v);
         }
-      } catch {
-        // ignore per-post failures
-      }
+      } catch {}
     }
-    if (impressionsSum > 0) totals.post_impressions_sum = impressionsSum;
-    if (engagedSum > 0 && totals.page_engaged_users === undefined) totals.post_engaged_users_sum = engagedSum;
-  } catch {
-    // ignore
+  } catch {}
+}
+
+export async function fbFetchDailyInsights(
+  userOrPageToken: string,
+  pageId: string,
+  start: Date,
+  end: Date
+): Promise<FacebookDailyMetrics> {
+  const since = Math.floor(start.getTime() / 1000);
+  const until = Math.floor(end.getTime() / 1000);
+
+  const tokenToUse = await resolvePageAccessToken(userOrPageToken, pageId);
+  const byDay = new Map<string, Record<string, number>>();
+  const totals: Record<string, number> = {};
+  const supportedMetrics: string[] = [];
+  const unsupportedMetrics: string[] = [];
+  const metricErrors: Record<string, string> = {};
+
+  for (const metric of FB_PAGE_INSIGHT_METRICS) {
+    try {
+      const rows = await fetchPageMetric(tokenToUse, pageId, metric, since, until);
+      if (rows.length) supportedMetrics.push(metric);
+      for (const metricRow of rows) {
+        const name = String(metricRow?.name || metric);
+        for (const row of extractDailyRows(metricRow as Record<string, unknown>)) {
+          const current = byDay.get(row.date) || {};
+          current[name] = (current[name] || 0) + row.value;
+          byDay.set(row.date, current);
+          totals[name] = (totals[name] || 0) + row.value;
+        }
+      }
+    } catch (error) {
+      const message = normalizeMetricError(error);
+      unsupportedMetrics.push(metric);
+      metricErrors[metric] = message;
+      // Continue. This is the important fix: one bad FB metric must not block all stats.
+    }
   }
+
+  await enrichPageFields(tokenToUse, pageId, totals);
+  await enrichPublishedPosts(tokenToUse, pageId, totals, since, until);
+
+  const daily = Array.from(byDay.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, values]) => ({ date, values }));
 
   return {
     range: { since: start.toISOString(), until: end.toISOString() },
     totals,
     daily,
+    raw: {
+      supportedMetrics,
+      unsupportedMetrics,
+      metricErrors,
+    },
   };
 }

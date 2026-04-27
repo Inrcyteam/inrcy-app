@@ -19,12 +19,25 @@ export type InstagramDailyMetrics = {
   };
 };
 
-const IG_ACCOUNT_METRICS = [
-  // Supported account-level metrics
-  "impressions",
+// Instagram account metrics changed on recent Graph API versions.
+// Some metrics still return daily `values`; many newer metrics MUST be requested
+// one-by-one with `metric_type=total_value`. Mixing both families in one request
+// makes Graph reject the whole call and the dashboard falls back to defaults.
+const IG_ACCOUNT_DAY_METRICS = [
   "reach",
   "follower_count",
   "online_followers",
+  // Legacy metrics, still available for some accounts/API versions.
+  "impressions",
+  "profile_views",
+  "website_clicks",
+  "phone_call_clicks",
+  "email_contacts",
+  "text_message_clicks",
+  "get_directions_clicks",
+] as const;
+
+const IG_ACCOUNT_TOTAL_VALUE_METRICS = [
   "accounts_engaged",
   "total_interactions",
   "likes",
@@ -35,14 +48,11 @@ const IG_ACCOUNT_METRICS = [
   "profile_links_taps",
   "views",
   "content_views",
-  // Legacy / optional metrics. We still probe them so the app captures
-  // everything a given account/API version still returns.
-  "profile_views",
-  "website_clicks",
-  "phone_call_clicks",
-  "email_contacts",
-  "text_message_clicks",
-  "get_directions_clicks",
+] as const;
+
+const IG_ACCOUNT_METRICS = [
+  ...IG_ACCOUNT_DAY_METRICS,
+  ...IG_ACCOUNT_TOTAL_VALUE_METRICS,
 ] as const;
 
 const IG_MEDIA_METRICS = [
@@ -123,17 +133,21 @@ async function igFetchAccountMetricRows(
   igUserId: string,
   metrics: string[],
   since: number,
-  until: number
+  until: number,
+  metricType?: "total_value"
 ): Promise<Array<Record<string, unknown>>> {
+  const params: Record<string, string> = {
+    metric: metrics.join(","),
+    period: "day",
+    since: String(since),
+    until: String(until),
+    access_token: accessToken,
+  };
+  if (metricType) params.metric_type = metricType;
+
   const url =
     `${GRAPH}/${encodeURIComponent(igUserId)}/insights?` +
-    new URLSearchParams({
-      metric: metrics.join(","),
-      period: "day",
-      since: String(since),
-      until: String(until),
-      access_token: accessToken,
-    }).toString();
+    new URLSearchParams(params).toString();
 
   const resp = await fetchJson(url);
   return Array.isArray(resp?.data) ? resp.data : [];
@@ -144,10 +158,24 @@ async function igFetchAccountMetric(
   igUserId: string,
   metric: string,
   since: number,
-  until: number
+  until: number,
+  metricType?: "total_value"
 ): Promise<Array<{ date: string; values: Record<string, number> }>> {
-  const rows = await igFetchAccountMetricRows(accessToken, igUserId, [metric], since, until);
+  const rows = await igFetchAccountMetricRows(accessToken, igUserId, [metric], since, until, metricType);
   return rows.flatMap((row: Record<string, unknown>) => extractRowsForMetric(row));
+}
+
+function mergeMetricRows(
+  byDay: Map<string, Record<string, number>>,
+  rows: Array<{ date: string; values: Record<string, number> }>
+) {
+  for (const row of rows) {
+    const current = byDay.get(row.date) || {};
+    for (const [key, value] of Object.entries(row.values)) {
+      current[key] = (current[key] || 0) + value;
+    }
+    byDay.set(row.date, current);
+  }
 }
 
 export async function igFetchDailyInsights(
@@ -164,46 +192,29 @@ export async function igFetchDailyInsights(
   const unsupportedMetrics: string[] = [];
   const metricErrors: Record<string, string> = {};
 
-  try {
-    const batchRows = await igFetchAccountMetricRows(accessToken, igUserId, [...IG_ACCOUNT_METRICS], since, until);
-    const seenMetrics = new Set<string>();
-    for (const metricRow of batchRows) {
-      const metricName = String(metricRow?.name || "").trim();
-      if (metricName) seenMetrics.add(metricName);
-      for (const row of extractRowsForMetric(metricRow)) {
-        const current = byDay.get(row.date) || {};
-        for (const [key, value] of Object.entries(row.values)) {
-          current[key] = (current[key] || 0) + value;
-        }
-        byDay.set(row.date, current);
-      }
+  // Fetch metrics one-by-one. It is a few more calls, but it prevents one invalid
+  // Instagram metric from killing all Instagram stats.
+  for (const metric of IG_ACCOUNT_DAY_METRICS) {
+    try {
+      const rows = await igFetchAccountMetric(accessToken, igUserId, metric, since, until);
+      supportedMetrics.push(metric);
+      mergeMetricRows(byDay, rows);
+    } catch (error) {
+      const message = normalizeMetricError(error);
+      unsupportedMetrics.push(metric);
+      metricErrors[metric] = message;
     }
-    for (const metric of IG_ACCOUNT_METRICS) {
-      if (seenMetrics.has(metric)) {
-        supportedMetrics.push(metric);
-      }
-    }
-  } catch (batchError) {
-    const batchMessage = normalizeMetricError(batchError);
-    const shouldFallbackPerMetric = /valid insights metric|unsupported|not available|metric/i.test(batchMessage);
-    if (!shouldFallbackPerMetric) throw batchError;
+  }
 
-    for (const metric of IG_ACCOUNT_METRICS) {
-      try {
-        const rows = await igFetchAccountMetric(accessToken, igUserId, metric, since, until);
-        supportedMetrics.push(metric);
-        for (const row of rows) {
-          const current = byDay.get(row.date) || {};
-          for (const [key, value] of Object.entries(row.values)) {
-            current[key] = (current[key] || 0) + value;
-          }
-          byDay.set(row.date, current);
-        }
-      } catch (error) {
-        const message = normalizeMetricError(error);
-        unsupportedMetrics.push(metric);
-        metricErrors[metric] = message;
-      }
+  for (const metric of IG_ACCOUNT_TOTAL_VALUE_METRICS) {
+    try {
+      const rows = await igFetchAccountMetric(accessToken, igUserId, metric, since, until, "total_value");
+      supportedMetrics.push(metric);
+      mergeMetricRows(byDay, rows);
+    } catch (error) {
+      const message = normalizeMetricError(error);
+      unsupportedMetrics.push(metric);
+      metricErrors[metric] = message;
     }
   }
 
