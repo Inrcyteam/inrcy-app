@@ -368,7 +368,8 @@ export async function buildStatsOverview(args: {
       .eq("user_id", userId);
 
     function latestIntegrationAny(provider: string, source: string, product: string) {
-      const rows = (Array.isArray(integrationsAll) ? integrationsAll : []).filter((row) => {
+      const allRows = Array.isArray(integrationsAll) ? integrationsAll : [];
+      const exactRows = allRows.filter((row) => {
         const record = asRecord(row);
         return (
           String(record["provider"] ?? "") === provider &&
@@ -376,13 +377,68 @@ export async function buildStatsOverview(args: {
           String(record["product"] ?? "") === product
         );
       });
+
+      // Sécurité prod : si une ancienne migration a sauvé source/product différemment,
+      // on retombe sur provider seul au lieu de déclarer le canal déconnecté.
+      const rows = exactRows.length
+        ? exactRows
+        : allRows.filter((row) => String(asRecord(row)["provider"] ?? "") === provider);
+
       rows.sort((left, right) => {
         const leftRecord = asRecord(left);
         const rightRecord = asRecord(right);
+        const leftScore =
+          (String(leftRecord["status"] || "") === "connected" ? 100 : 0) +
+          (leftRecord["resource_id"] ? 10 : 0) +
+          (leftRecord["access_token_enc"] ? 1 : 0);
+        const rightScore =
+          (String(rightRecord["status"] || "") === "connected" ? 100 : 0) +
+          (rightRecord["resource_id"] ? 10 : 0) +
+          (rightRecord["access_token_enc"] ? 1 : 0);
+        if (rightScore !== leftScore) return rightScore - leftScore;
         const leftTime = new Date(String(leftRecord["updated_at"] ?? leftRecord["created_at"] ?? 0)).getTime();
         const rightTime = new Date(String(rightRecord["updated_at"] ?? rightRecord["created_at"] ?? 0)).getTime();
         return rightTime - leftTime;
       });
+      return asRecord(rows[0]);
+    }
+
+    function bestIntegrationAny(
+      provider: string,
+      source: string,
+      product: string,
+      hasToken: (row: Record<string, unknown>) => boolean
+    ) {
+      const allRows = Array.isArray(integrationsAll) ? integrationsAll : [];
+      const exactRows = allRows.filter((row) => {
+        const record = asRecord(row);
+        return (
+          String(record["provider"] ?? "") === provider &&
+          String(record["source"] ?? "") === source &&
+          String(record["product"] ?? "") === product
+        );
+      });
+      const fallbackRows = allRows.filter((row) => String(asRecord(row)["provider"] ?? "") === provider);
+      const rows = (exactRows.length ? exactRows : fallbackRows).map((row) => asRecord(row));
+
+      rows.sort((left, right) => {
+        const leftActive = hasActiveStoredIntegration(left, hasToken(left));
+        const rightActive = hasActiveStoredIntegration(right, hasToken(right));
+        if (leftActive !== rightActive) return rightActive ? 1 : -1;
+        const leftScore =
+          (String(left["status"] || "") === "connected" ? 100 : 0) +
+          (left["resource_id"] ? 10 : 0) +
+          (hasToken(left) ? 1 : 0);
+        const rightScore =
+          (String(right["status"] || "") === "connected" ? 100 : 0) +
+          (right["resource_id"] ? 10 : 0) +
+          (hasToken(right) ? 1 : 0);
+        if (rightScore !== leftScore) return rightScore - leftScore;
+        const leftTime = new Date(String(left["updated_at"] ?? left["created_at"] ?? 0)).getTime();
+        const rightTime = new Date(String(right["updated_at"] ?? right["created_at"] ?? 0)).getTime();
+        return rightTime - leftTime;
+      });
+
       return asRecord(rows[0]);
     }
 
@@ -461,15 +517,26 @@ const channelStatesPromise = getChannelConnectionStates(supabase, userId);
 
 async function fetchLiveSourcesStatus() {
   const states = await channelStatesPromise;
-  const fbRow = latestIntegrationAny("facebook", "facebook", "facebook");
-  const igRow = latestIntegrationAny("instagram", "instagram", "instagram");
+  const fbRow = bestIntegrationAny("facebook", "facebook", "facebook", hasFacebookStoredToken);
+  const igRow = bestIntegrationAny("instagram", "instagram", "instagram", (row) => Boolean(row["access_token_enc"]));
 
   // Meta stats must trust the DB integration row first. In production we observed
   // channelStates returning requiresUpdate/false while Supabase had a valid
   // connected row + encrypted token, which made Instagram appear disconnected
   // and forced fallback opportunities.
-  const facebookConnected = hasActiveStoredIntegration(fbRow, hasFacebookStoredToken(fbRow)) || isStatsActiveConnection(states.facebook);
-  const instagramConnected = hasActiveStoredIntegration(igRow, Boolean(igRow["access_token_enc"])) || isStatsActiveConnection(states.instagram);
+  const facebookConnected = hasActiveStoredIntegration(fbRow, hasFacebookStoredToken(fbRow));
+  const instagramConnected = hasActiveStoredIntegration(igRow, Boolean(igRow["access_token_enc"]));
+
+  console.info("[META_CONNECTION_OVERVIEW]", {
+    facebookConnected,
+    instagramConnected,
+    fbHasResource: Boolean(fbRow["resource_id"]),
+    igHasResource: Boolean(igRow["resource_id"]),
+    fbHasToken: hasFacebookStoredToken(fbRow),
+    igHasToken: Boolean(igRow["access_token_enc"]),
+    fbStatus: String(fbRow["status"] || ""),
+    igStatus: String(igRow["status"] || ""),
+  });
 
   return {
     site_inrcy: { connected: { ga4: states.site_inrcy.ga4, gsc: states.site_inrcy.gsc } },
@@ -846,7 +913,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
 
         // Facebook: connected if a page has been selected (resource_id)
     try {
-      const fbRow = latestIntegrationAny("facebook", "facebook", "facebook");
+      const fbRow = bestIntegrationAny("facebook", "facebook", "facebook", hasFacebookStoredToken);
       sourcesStatus.facebook.connected = hasActiveStoredIntegration(fbRow, hasFacebookStoredToken(fbRow));
 
       // Real Facebook Page metrics (only if included)
@@ -877,7 +944,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     
     // Instagram: Meta family. Connected only once a profile is selected (resource_id).
     try {
-      const igRow = latestIntegrationAny("instagram", "instagram", "instagram");
+      const igRow = bestIntegrationAny("instagram", "instagram", "instagram", (row) => Boolean(row["access_token_enc"]));
       sourcesStatus.instagram.connected = hasActiveStoredIntegration(igRow, Boolean(igRow["access_token_enc"]));
 
       const includeIg = includeAll || includeSet.has("instagram");
