@@ -73,7 +73,6 @@ type MailboxDetailsModalProps = {
   saveChannelPublication: () => Promise<void>;
   deleteChannelPublication: () => Promise<void>;
   retryCampaignFailedRecipients: (campaignId: string) => Promise<void>;
-  openCampaignComposeFromHistory: (item: any, mode: "reuse" | "resend") => Promise<void>;
   deleteHistoryEntry: (item: any) => Promise<void>;
   loadCampaignRecipients: (campaignId: string, targetPage?: number, targetFilter?: CampaignRecipientsFilterId) => Promise<void>;
   loadCampaignHealth: (campaignId: string, raw?: any) => Promise<void>;
@@ -121,7 +120,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     saveChannelPublication,
     deleteChannelPublication,
     retryCampaignFailedRecipients,
-    openCampaignComposeFromHistory,
     deleteHistoryEntry,
     loadCampaignRecipients,
     loadCampaignHealth,
@@ -311,25 +309,9 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       loadCampaignHealth(detailsItem.id, (detailsItem as any).raw || {}),
                                     ]);
                                   }}
-                                  disabled={campaignRecipientsLoading || campaignHealthLoading || campaignActionBusyId === detailsItem.id}
+                                  disabled={campaignRecipientsLoading || campaignHealthLoading}
                                 >
                                   {campaignRecipientsLoading || campaignHealthLoading ? "Actualisation…" : "Rafraîchir le suivi"}
-                                </button>
-                                <button
-                                  type="button"
-                                  className={styles.btnGhost}
-                                  onClick={() => void openCampaignComposeFromHistory(detailsItem, "reuse")}
-                                  disabled={campaignActionBusyId === detailsItem.id}
-                                >
-                                  {campaignActionBusyId === detailsItem.id ? "Préparation…" : "Réutiliser"}
-                                </button>
-                                <button
-                                  type="button"
-                                  className={styles.btnGhost}
-                                  onClick={() => void openCampaignComposeFromHistory(detailsItem, "resend")}
-                                  disabled={campaignActionBusyId === detailsItem.id}
-                                >
-                                  {campaignActionBusyId === detailsItem.id ? "Préparation…" : "Renvoyer"}
                                 </button>
                                 {detailsItem.reopenHref ? (
                                   <button
@@ -668,13 +650,15 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                             </div>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
                               {[
-                                { key: "sent", label: "Envoyés au provider", value: campaignHealth?.sent ?? campaignCounts((detailsItem as any).raw || {}).sent },
+                                { key: "sent", label: "Envoyés", value: campaignHealth?.sent ?? campaignCounts((detailsItem as any).raw || {}).sent },
+                                { key: "delivered", label: "Délivrés", value: campaignHealth?.delivered ?? 0 },
                                 { key: "queued", label: "En attente", value: campaignHealth?.queued ?? campaignCounts((detailsItem as any).raw || {}).queued },
                                 { key: "processing", label: "En cours", value: campaignHealth?.processing ?? campaignCounts((detailsItem as any).raw || {}).processing },
                                 { key: "failed", label: "Échecs", value: campaignHealth?.failed ?? campaignCounts((detailsItem as any).raw || {}).failed },
                                 { key: "blocked", label: "Bloqués", value: campaignHealth?.blocked ?? 0 },
                                 { key: "opt_out", label: "Désinscrits", value: campaignHealth?.opt_out ?? 0 },
-                                { key: "blacklist", label: "Blacklist", value: campaignHealth?.blacklist ?? 0 },
+                                { key: "hard_bounce", label: "Rebonds durs", value: campaignHealth?.hard_bounce ?? 0 },
+                                { key: "soft_bounce", label: "Rebonds souples", value: campaignHealth?.soft_bounce ?? 0 },
                               ].map((stat) => {
                                 const isActive = campaignRecipientsFilter === stat.key;
                                 return (
@@ -703,13 +687,13 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
                               {([
                                 { key: "all", label: "Tous", value: campaignHealth?.total ?? Number((detailsItem as any).raw?.total_count || 0) },
-                                { key: "sent", label: "Envoyés", value: campaignHealth?.sent ?? campaignCounts((detailsItem as any).raw || {}).sent },
-                                { key: "queued", label: "En attente", value: campaignHealth?.queued ?? campaignCounts((detailsItem as any).raw || {}).queued },
-                                { key: "processing", label: "En cours", value: campaignHealth?.processing ?? campaignCounts((detailsItem as any).raw || {}).processing },
-                                { key: "failed", label: "Échecs", value: campaignHealth?.failed ?? campaignCounts((detailsItem as any).raw || {}).failed },
+                                { key: "delivered", label: "Délivrés", value: campaignHealth?.delivered ?? 0 },
                                 { key: "blocked", label: "Bloqués", value: campaignHealth?.blocked ?? 0 },
                                 { key: "opt_out", label: "Désinscrits", value: campaignHealth?.opt_out ?? 0 },
                                 { key: "blacklist", label: "Blacklist", value: campaignHealth?.blacklist ?? 0 },
+                                { key: "complaint", label: "Plaintes", value: campaignHealth?.complaint ?? 0 },
+                                { key: "hard_bounce", label: "Rebonds durs", value: campaignHealth?.hard_bounce ?? 0 },
+                                { key: "soft_bounce", label: "Rebonds souples", value: campaignHealth?.soft_bounce ?? 0 },
                               ] as Array<{ key: CampaignRecipientsFilterId | "all"; label: string; value: number }>).map((chip) => {
                                 const active = campaignRecipientsFilter === chip.key;
                                 return (

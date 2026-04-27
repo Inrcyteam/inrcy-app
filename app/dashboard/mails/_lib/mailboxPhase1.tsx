@@ -225,22 +225,30 @@ export type CampaignRecipientLog = {
 export type CampaignRecipientsFilterId =
   | "all"
   | "sent"
+  | "delivered"
   | "queued"
   | "processing"
   | "failed"
   | "blocked"
   | "opt_out"
-  | "blacklist";
+  | "blacklist"
+  | "complaint"
+  | "hard_bounce"
+  | "soft_bounce";
 
 export type CampaignHealthSummary = {
   total: number;
   queued: number;
   processing: number;
   sent: number;
+  delivered: number;
   failed: number;
   blocked: number;
   opt_out: number;
   blacklist: number;
+  complaint: number;
+  hard_bounce: number;
+  soft_bounce: number;
   retryable: number;
 };
 
@@ -1228,6 +1236,8 @@ export function applyCampaignRecipientsFilter(query: any, filter: CampaignRecipi
   switch (filter) {
     case "sent":
       return query.eq("status", "sent");
+    case "delivered":
+      return query.eq("delivery_status", "delivered");
     case "queued":
       return query.eq("status", "queued");
     case "processing":
@@ -1235,11 +1245,17 @@ export function applyCampaignRecipientsFilter(query: any, filter: CampaignRecipi
     case "failed":
       return query.eq("status", "failed");
     case "blocked":
-      return query.eq("status", "failed").in("suppression_reason", ["opt_out", "blacklist"]);
+      return query.eq("status", "failed").not("suppression_reason", "is", null);
     case "opt_out":
       return query.eq("suppression_reason", "opt_out");
     case "blacklist":
       return query.eq("suppression_reason", "blacklist");
+    case "complaint":
+      return query.eq("suppression_reason", "complaint");
+    case "hard_bounce":
+      return query.eq("suppression_reason", "hard_bounce");
+    case "soft_bounce":
+      return query.eq("status", "failed").eq("bounce_type", "soft");
     default:
       return query;
   }
@@ -1249,6 +1265,8 @@ export function formatCampaignFilterLabel(filter: CampaignRecipientsFilterId) {
   switch (filter) {
     case "sent":
       return "Envoyés";
+    case "delivered":
+      return "Délivrés";
     case "queued":
       return "En attente";
     case "processing":
@@ -1261,6 +1279,12 @@ export function formatCampaignFilterLabel(filter: CampaignRecipientsFilterId) {
       return "Désinscrits";
     case "blacklist":
       return "Blacklist";
+    case "complaint":
+      return "Plaintes";
+    case "hard_bounce":
+      return "Rebonds durs";
+    case "soft_bounce":
+      return "Rebonds souples";
     default:
       return "Tous";
   }

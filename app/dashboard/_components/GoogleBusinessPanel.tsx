@@ -9,7 +9,6 @@ export default function GoogleBusinessPanel(props: any) {
   const {
     gmbConnected,
     gmbAccountConnected,
-    gmbConnectionStatus,
     gmbAccountEmail,
     connectGmbAccount,
     disconnectGmbAccount,
@@ -32,16 +31,6 @@ export default function GoogleBusinessPanel(props: any) {
     gmbLocationBusy,
     gmbLocationAction,
   } = props;
-
-  const gmbNeedsUpdate = gmbConnectionStatus === "needs_update" && (gmbConnected || gmbAccountConnected);
-  const gmbStatusLabel = gmbNeedsUpdate ? "À actualiser" : gmbConnected ? "Connecté" : gmbAccountConnected ? "Compte connecté" : "À connecter";
-  const gmbStatusDot = gmbNeedsUpdate
-    ? "rgba(245,158,11,0.95)"
-    : gmbConnected
-      ? "rgba(34,197,94,0.95)"
-      : gmbAccountConnected
-        ? "rgba(59,130,246,0.95)"
-        : "rgba(148,163,184,0.9)";
 
   const hasSelectedLocationInList = Boolean(
     gmbLocationName && gmbLocations.some((l: { name: string; title?: string | null }) => l.name === gmbLocationName)
@@ -83,10 +72,14 @@ export default function GoogleBusinessPanel(props: any) {
               width: 8,
               height: 8,
               borderRadius: 999,
-              background: gmbStatusDot,
+              background: gmbConnected
+                ? "rgba(34,197,94,0.95)"
+                : gmbAccountConnected
+                  ? "rgba(59,130,246,0.95)"
+                  : "rgba(148,163,184,0.9)",
             }}
           />
-          Statut : <strong>{gmbStatusLabel}</strong>
+          Statut : <strong>{gmbConnected ? "Connecté" : gmbAccountConnected ? "Compte connecté" : "À connecter"}</strong>
         </span>
       </div>
 
@@ -102,7 +95,7 @@ export default function GoogleBusinessPanel(props: any) {
       >
         <div className={styles.blockHeaderRow}>
           <div className={styles.blockTitle}>Compte connecté</div>
-          <ConnectionPill connected={gmbAccountConnected} status={gmbNeedsUpdate ? "needs_update" : undefined} />
+          <ConnectionPill connected={gmbAccountConnected} />
         </div>
         <div className={styles.blockSub}>Ce compte Google sert à accéder à vos établissements Google Business.</div>
 
@@ -126,16 +119,9 @@ export default function GoogleBusinessPanel(props: any) {
           />
 
           {gmbAccountConnected ? (
-            <>
-              {gmbNeedsUpdate ? (
-                <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectGmbAccount} disabled={gmbAccountBusy}>
-                  Actualiser
-                </button>
-              ) : null}
-              <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectGmbAccount()} disabled={gmbAccountBusy}>
-                {gmbAccountBusy ? "Déconnexion..." : "Déconnexion"}
-              </button>
-            </>
+            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectGmbAccount()} disabled={gmbAccountBusy}>
+              {gmbAccountBusy ? "Déconnexion..." : "Déconnexion"}
+            </button>
           ) : (
             <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectGmbAccount}>
               Connecter Google
@@ -157,7 +143,7 @@ export default function GoogleBusinessPanel(props: any) {
         >
           <div className={styles.blockHeaderRow}>
             <div className={styles.blockTitle}>Établissement à connecter</div>
-            <ConnectionPill connected={gmbConfigured} status={gmbNeedsUpdate ? "needs_update" : undefined} />
+            <ConnectionPill connected={gmbConfigured} />
           </div>
           <div className={styles.blockSub}>Choisissez la fiche Google Business à relier à iNrCy.</div>
 

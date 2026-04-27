@@ -1,6 +1,5 @@
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from '@/lib/dashboardChannels';
 import type { ChannelStates } from '@/lib/channelConnectionState';
-import type { ConnectionDisplayStatus } from '@/lib/connectionVersions';
 import type { CubeKey, Overview } from '@/lib/metrics/computeMetrics';
 
 export type InrstatsOverviewMetaLike = {
@@ -22,8 +21,6 @@ export type InrstatsChannelConnectionSummary = {
   configured: boolean;
   statsConnected: boolean;
   expired: boolean;
-  requiresUpdate: boolean;
-  connectionStatus: ConnectionDisplayStatus;
   resourceId: string | null;
   resourceLabel: string | null;
   resourceUrl: string | null;
@@ -51,8 +48,6 @@ export function createEmptyChannelConnection(): InrstatsChannelConnectionSummary
     configured: false,
     statsConnected: false,
     expired: false,
-    requiresUpdate: false,
-    connectionStatus: 'disconnected',
     resourceId: null,
     resourceLabel: null,
     resourceUrl: null,
@@ -126,8 +121,6 @@ function mapChannelConnection(channel: DashboardChannelKey, states: ChannelState
         configured: state.connected,
         statsConnected: state.statsConnected,
         expired: false,
-        requiresUpdate: false,
-        connectionStatus: state.connected ? 'connected' : 'disconnected',
         resourceId: state.url,
         resourceLabel: state.url,
         resourceUrl: state.url,
@@ -141,8 +134,6 @@ function mapChannelConnection(channel: DashboardChannelKey, states: ChannelState
         configured: state.connected,
         statsConnected: state.statsConnected,
         expired: false,
-        requiresUpdate: false,
-        connectionStatus: state.connected ? 'connected' : 'disconnected',
         resourceId: state.url,
         resourceLabel: state.url,
         resourceUrl: state.url,
@@ -154,10 +145,8 @@ function mapChannelConnection(channel: DashboardChannelKey, states: ChannelState
         connected: state.connected,
         accountConnected: state.accountConnected,
         configured: state.configured,
-        statsConnected: state.connected && !state.requiresUpdate,
+        statsConnected: state.connected,
         expired: state.expired,
-        requiresUpdate: state.requiresUpdate,
-        connectionStatus: state.connection_status,
         resourceId: state.resource_id,
         resourceLabel: state.resource_label,
         resourceUrl: null,
@@ -169,10 +158,8 @@ function mapChannelConnection(channel: DashboardChannelKey, states: ChannelState
         connected: state.connected,
         accountConnected: state.accountConnected,
         configured: state.pageConnected,
-        statsConnected: state.connected && !state.requiresUpdate,
+        statsConnected: state.connected,
         expired: state.expired,
-        requiresUpdate: state.requiresUpdate,
-        connectionStatus: state.connection_status,
         resourceId: state.resource_id,
         resourceLabel: state.resource_label,
         resourceUrl: state.page_url,
@@ -184,10 +171,8 @@ function mapChannelConnection(channel: DashboardChannelKey, states: ChannelState
         connected: state.connected,
         accountConnected: state.accountConnected,
         configured: state.connected,
-        statsConnected: state.connected && !state.requiresUpdate,
+        statsConnected: state.connected,
         expired: state.expired,
-        requiresUpdate: state.requiresUpdate,
-        connectionStatus: state.connection_status,
         resourceId: state.resource_id,
         resourceLabel: state.username,
         resourceUrl: state.profile_url,
@@ -199,10 +184,8 @@ function mapChannelConnection(channel: DashboardChannelKey, states: ChannelState
         connected: state.connected,
         accountConnected: state.accountConnected,
         configured: state.connected,
-        statsConnected: state.connected && !state.requiresUpdate,
+        statsConnected: state.connected,
         expired: state.expired,
-        requiresUpdate: state.requiresUpdate,
-        connectionStatus: state.connection_status,
         resourceId: state.resource_id,
         resourceLabel: state.display_name,
         resourceUrl: state.profile_url,
@@ -223,19 +206,17 @@ export function buildChannelBlocks(params: {
 
   for (const channel of DASHBOARD_CHANNEL_KEYS) {
     const overview = overviews[channel] ?? null;
-    const connection = mapChannelConnection(channel, channelStates);
-    const statsActive = connection.statsConnected;
     blocks[channel] = {
       channel,
       periodDays,
-      connection,
-      overview: statsActive ? overview : null,
-      opportunities: statsActive ? Math.max(0, Math.round(opportunitiesByCube[channel] || 0)) : 0,
-      estimatedValue: statsActive ? Math.max(0, Math.round(estimatedByCube[channel] || 0)) : 0,
-      syncAt: statsActive ? toSyncAt(overview) : null,
-      snapshotDate: statsActive ? overview?.meta?.snapshotDate ?? null : null,
-      live: statsActive ? Boolean(overview?.meta?.live) : false,
-      error: statsActive ? getOverviewError(channel, overview) : null,
+      connection: mapChannelConnection(channel, channelStates),
+      overview,
+      opportunities: Math.max(0, Math.round(opportunitiesByCube[channel] || 0)),
+      estimatedValue: Math.max(0, Math.round(estimatedByCube[channel] || 0)),
+      syncAt: toSyncAt(overview),
+      snapshotDate: overview?.meta?.snapshotDate ?? null,
+      live: Boolean(overview?.meta?.live),
+      error: getOverviewError(channel, overview),
     };
   }
 

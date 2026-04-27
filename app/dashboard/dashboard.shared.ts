@@ -16,7 +16,6 @@ export function hasMeaningfulChannelBlock(block: InrstatsChannelBlock | null | u
       block.connection.configured ||
       block.connection.statsConnected ||
       block.connection.expired ||
-      block.connection.requiresUpdate ||
       block.syncAt ||
       block.snapshotDate ||
       block.opportunities > 0 ||
@@ -37,10 +36,6 @@ export function getBubbleStatusFromBlock(
   if (channel === "site_inrcy") {
     if (!block.connection.connected) return null;
     return { status: "connected", text: "Connecté" };
-  }
-
-  if (block.connection.requiresUpdate || block.connection.connectionStatus === "needs_update") {
-    return { status: "available", text: "À actualiser" };
   }
 
   if (block.connection.expired) {

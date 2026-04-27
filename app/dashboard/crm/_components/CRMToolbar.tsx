@@ -198,7 +198,7 @@ export default function CRMToolbar({
                   }}
                   disabled={!primaryContact || saving}
                 >
-                  📅 Planifier un Rendez-vous
+                  📅 Planifier une intervention
                 </button>
               </div>
             ) : null}
