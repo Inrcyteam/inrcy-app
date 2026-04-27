@@ -12,12 +12,6 @@ import DashboardTopbar from "./_components/DashboardTopbar";
 import DashboardChannelsSection from "./_components/DashboardChannelsSection";
 import type { DashboardFluxBubbleData } from "./_components/DashboardFluxBubble";
 import DashboardSettingsDrawerContent from "./_components/DashboardSettingsDrawerContent";
-import { useDrawerMutationGuard } from "./_hooks/useDrawerMutationGuard";
-import { useDashboardNotifications } from "./_hooks/useDashboardNotifications";
-import { useReferralForm } from "./_hooks/useReferralForm";
-import { useDashboardPanelRouting } from "./_hooks/useDashboardPanelRouting";
-import { useDashboardCompletionChecks } from "./_hooks/useDashboardCompletionChecks";
-import { useDashboardMenus } from "./_hooks/useDashboardMenus";
 
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
@@ -25,12 +19,13 @@ import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUs
 import { expectedUiSnapshotDate, getInitialGeneratorKpis, getInitialOppTotal, getLastChannelSyncAt, getOverviewSnapshotDate, hasFreshLocalGeneratorSnapshot, markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, mergeGeneratorChannelBlockIntoCachedKpis, syncGeneratorOpportunitiesFromStatsSummary, readCachedChannelBlocks, readCachedChannelSyncAt, readCachedGeneratorChannelSyncAt, readCachedOppTotal, readGeneratorCache, readInrStatsPeriodSyncAt, readUiCacheValue, statsCubeSessionKey, statsSummarySessionKey, type StatsWarmPeriod, writeUiCacheValue } from "./dashboard.client-cache";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
 import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
+import { decodeBusinessSector } from "@/lib/activitySectors";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants";
 import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
 import { getBubbleStatusFromBlock, getBubbleViewHrefFromBlock, inferChannelsFromRealtimePayload, inferChannelsFromSearchParams, normalizeExternalHref } from "./dashboard.shared";
-import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, ModuleStatus, Ownership } from "./dashboard.types";
+import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
 import { createEmptyChannelBlock, createEmptyChannelBlocks, type InrstatsChannelBlock, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
 import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
@@ -45,10 +40,108 @@ export default function DashboardClient() {
   const [helpSiteWebOpen, setHelpSiteWebOpen] = useState(false);
   const [helpInertieOpen, setHelpInertieOpen] = useState(false);
   const router = useRouter();
+
   const searchParams = useSearchParams();
-  const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
+  const panel = searchParams.get("panel"); // "contact" | "profil" | "activite" | "abonnement" | "mails" | ... | null
+
+  const openPanel = (
+    name:
+      | "contact"
+      | "profil"
+      | "compte"
+      | "activite"
+      | "abonnement"
+      | "mails"
+      | "agenda"
+      | "site_inrcy"
+      | "site_web"
+      | "instagram"
+      | "linkedin"
+      | "gmb"
+      | "facebook"
+      | "legal"
+      | "rgpd"
+      | "inertie"
+      | "boutique"
+      | "notifications"
+      | "parrainage"
+  ) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("panel", name);
+    // ✅ Marqueur: panneau ouvert volontairement par l'utilisateur.
+    // Sert à éviter l'ouverture automatique en boucle lors d'un refresh/connexion.
+    try {
+      sessionStorage.setItem("inrcy_panel_explicit_open", "1");
+      sessionStorage.setItem("inrcy_last_panel", name);
+    } catch {}
+    // ✅ En mobile, on garde la position de scroll (pas de jump en haut)
+    try {
+      sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
+    } catch {}
+    router.push(`/dashboard?${params.toString()}`, { scroll: false });
+  };
+
+  const closePanel = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("panel");
+    ["linked", "ok", "error", "message", "warning", "toast", "activated", "skipped"].forEach((key) => {
+      params.delete(key);
+    });
+    const qs = params.toString();
+    // ✅ Quand on ferme, on remet le marqueur à zéro.
+    // (Sinon un refresh pourrait relancer un panneau si une logique externe remet ?panel=...)
+    try {
+      sessionStorage.removeItem("inrcy_panel_explicit_open");
+      sessionStorage.removeItem("inrcy_last_panel");
+    } catch {}
+    // ✅ En mobile, on garde la position de scroll (pas de jump en haut)
+    try {
+      sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
+    } catch {}
+    router.replace(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false });
+  };
+
+  // ✅ Sécurité UX: si l'URL arrive avec ?panel=profil (ou compte) sans action explicite
+  // (cas observé: refresh/connexion + ancienne URL), on ferme automatiquement.
+  // ⚠️ On ne touche PAS aux panels utilisés comme retours OAuth/Stripe (abonnement, mails, etc.).
+  useEffect(() => {
+    if (panel !== "profil" && panel !== "compte") return;
+    try {
+      const explicit = sessionStorage.getItem("inrcy_panel_explicit_open");
+      if (explicit) return;
+    } catch {
+      // si sessionStorage indisponible, on ne force rien
+      return;
+    }
+    closePanel();
+  }, [panel]);
 
   // Orientation: gérée globalement via <OrientationGuard />
+
+  // Preserve dashboard scroll position when leaving the dashboard (vers un module)
+  const goToModule = useCallback(
+    (path: string) => {
+      try {
+        sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
+      } catch {}
+      // IMPORTANT: en allant dans un module, on VEUT arriver en haut de page.
+      // On ne désactive donc PAS le scroll automatique de Next ici.
+      router.push(path);
+    },
+    [router]
+  );
+
+  useEffect(() => {
+    try {
+      const y = sessionStorage.getItem("inrcy_dashboard_scrollY");
+      if (!y) return;
+      const top = Math.max(0, parseInt(y, 10) || 0);
+      // Let the page paint, then restore
+      requestAnimationFrame(() => window.scrollTo(0, top));
+      setTimeout(() => window.scrollTo(0, top), 60);
+      sessionStorage.removeItem("inrcy_dashboard_scrollY");
+    } catch {}
+  }, [panel]);
 
   // ✅ Déconnexion Supabase + retour /login
   const handleLogout = async () => {
@@ -62,16 +155,18 @@ export default function DashboardClient() {
     window.location.replace("/login");
   };
 
-  const {
-    notifications,
-    notificationsLoading,
-    notificationsError,
-    unreadNotificationsCount,
-    refreshNotifications,
-    markNotificationRead,
-    markAllNotificationsRead,
-    deleteNotification,
-  } = useDashboardNotifications();
+  // ✅ Menu utilisateur (desktop)
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
+  const desktopNotificationMenuRef = useRef<HTMLDivElement | null>(null);
+  const mobileNotificationMenuRef = useRef<HTMLDivElement | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  const unreadNotificationsCount = useMemo(() => notifications.filter((item) => item.unread).length, [notifications]);
+  const notificationsRequestSeqRef = useRef(0);
   const kpisRequestSeqRef = useRef(0);
   const siteConfigRequestSeqRef = useRef(0);
   const activeUserIdRef = useRef<string | null>(null);
@@ -89,7 +184,39 @@ export default function DashboardClient() {
   useEffect(() => {
     channelBlocksRef.current = channelBlocks;
   }, [channelBlocks]);
-  const { runDrawerMutation, isDrawerMutationPending } = useDrawerMutationGuard();
+  const [drawerMutationState, setDrawerMutationState] = useState<Record<string, boolean>>({});
+  const drawerMutationStateRef = useRef<Record<string, boolean>>({});
+
+  const setDrawerMutationBusy = useCallback((key: string, busy: boolean) => {
+    if (busy) {
+      drawerMutationStateRef.current = { ...drawerMutationStateRef.current, [key]: true };
+      setDrawerMutationState((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+      return;
+    }
+
+    if (!drawerMutationStateRef.current[key]) return;
+    const nextRef = { ...drawerMutationStateRef.current };
+    delete nextRef[key];
+    drawerMutationStateRef.current = nextRef;
+    setDrawerMutationState((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }, []);
+
+  const runDrawerMutation = useCallback(async <T,>(key: string, job: () => Promise<T> | T) => {
+    if (drawerMutationStateRef.current[key]) return null;
+    setDrawerMutationBusy(key, true);
+    try {
+      return await job();
+    } finally {
+      setDrawerMutationBusy(key, false);
+    }
+  }, [setDrawerMutationBusy]);
+
+  const isDrawerMutationPending = useCallback((key: string) => Boolean(drawerMutationState[key]), [drawerMutationState]);
 
   useBrowserLayoutEffect(() => {
     try {
@@ -116,6 +243,67 @@ export default function DashboardClient() {
       setChannelBlocks(cachedBlocks);
     }
   }, []);
+
+  const refreshNotifications = useCallback(async () => {
+    const requestSeq = ++notificationsRequestSeqRef.current;
+    try {
+      setNotificationsLoading(true);
+      const res = await fetch("/api/notifications/feed?limit=12", { credentials: "include" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res));
+      if (requestSeq !== notificationsRequestSeqRef.current) return;
+      setNotifications(Array.isArray(json?.items) ? json.items : []);
+      setNotificationsError(null);
+    } catch (e: any) {
+      if (requestSeq !== notificationsRequestSeqRef.current) return;
+      setNotificationsError(getSimpleFrenchErrorMessage(e, "Impossible de charger les notifications pour le moment."));
+    } finally {
+      if (requestSeq === notificationsRequestSeqRef.current) {
+        setNotificationsLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      void refreshNotifications();
+    };
+
+    const initialTimer = window.setTimeout(run, 900);
+    const timer = window.setInterval(run, 120000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
+  }, [refreshNotifications]);
+
+  const markNotificationRead = useCallback(async (id: string) => {
+    setNotifications((current) => current.map((item) => (item.id === id ? { ...item, unread: false } : item)));
+    try {
+      await fetch(`/api/notifications/${id}/read`, { method: "POST", credentials: "include" });
+    } catch {}
+  }, []);
+
+  const markAllNotificationsRead = useCallback(async () => {
+    setNotifications((current) => current.map((item) => ({ ...item, unread: false })));
+    try {
+      await fetch("/api/notifications/mark-all-read", { method: "POST", credentials: "include" });
+    } catch {}
+  }, []);
+
+  const deleteNotification = useCallback(async (id: string) => {
+    const previous = notifications;
+    setNotifications((current) => current.filter((item) => item.id !== id));
+    try {
+      const res = await fetch(`/api/notifications/${id}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible de supprimer cette notification."));
+    } catch {
+      setNotifications(previous);
+    }
+  }, [notifications]);
 
   const extractDomain = useCallback((input: string) => {
     const url = (input || "").trim();
@@ -162,34 +350,14 @@ export default function DashboardClient() {
   }, []);
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const {
-    userMenuOpen,
-    setUserMenuOpen,
-    userMenuRef,
-    notificationMenuOpen,
-    setNotificationMenuOpen,
-    desktopNotificationMenuRef,
-    mobileNotificationMenuRef,
-    userFirstLetter,
-    menuOpen,
-    setMenuOpen,
-    menuRef,
-  } = useDashboardMenus(userEmail);
 
-const {
-  referralName,
-  referralPhone,
-  referralEmail,
-  referralFrom,
-  referralSubmitting,
-  referralNotice,
-  referralError,
-  setReferralName,
-  setReferralPhone,
-  setReferralEmail,
-  setReferralFrom,
-  submitReferral,
-} = useReferralForm();
+const [referralName, setReferralName] = useState("");
+const [referralPhone, setReferralPhone] = useState("");
+const [referralEmail, setReferralEmail] = useState("");
+const [referralFrom, setReferralFrom] = useState("");
+const [referralSubmitting, setReferralSubmitting] = useState(false);
+const [referralNotice, setReferralNotice] = useState<string | null>(null);
+const [referralError, setReferralError] = useState<string | null>(null);
 // ✅ Site iNrCy (ownership + url + config)
 const [siteInrcyOwnership, setSiteInrcyOwnership] = useState<Ownership>("none");
 const [siteInrcyUrl, setSiteInrcyUrl] = useState<string>("");
@@ -310,7 +478,8 @@ const [linkedinAccountConnected, setLinkedinAccountConnected] = useState<boolean
 const [linkedinConnected, setLinkedinConnected] = useState<boolean>(false);
 const [linkedinConnectionStatus, setLinkedinConnectionStatus] = useState<ConnectionDisplayStatus>("disconnected");
 const [linkedinDisplayName, setLinkedinDisplayName] = useState<string>("");
-const { profileIncomplete, activityIncomplete, checkProfile, checkActivity } = useDashboardCompletionChecks();
+const [profileIncomplete, setProfileIncomplete] = useState(false);
+const [activityIncomplete, setActivityIncomplete] = useState(false);
 
 // ✅ Google Business & Facebook (liens + connexion)
 const [gmbUrl, setGmbUrl] = useState<string>("");
@@ -453,6 +622,44 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
     };
   }, []);
 
+
+const submitReferral = useCallback(async () => {
+  const name = referralName.trim();
+  const phone = referralPhone.trim();
+  const email = referralEmail.trim();
+  const from = referralFrom.trim();
+
+  if (!name || !phone || !email || !from) {
+    setReferralError("Merci de remplir tous les champs.");
+    return;
+  }
+
+  setReferralSubmitting(true);
+  setReferralError(null);
+  setReferralNotice(null);
+
+  try {
+    const res = await fetch("/api/referrals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ name, phone, email, from }),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.ok) {
+      throw new Error(await getSimpleFrenchApiError(res));
+    }
+    setReferralNotice("Merci, votre recommandation a bien été envoyée à l’équipe iNrCy.");
+    setReferralName("");
+    setReferralPhone("");
+    setReferralEmail("");
+    setReferralFrom("");
+  } catch (e: any) {
+    setReferralError(getSimpleFrenchErrorMessage(e, "Impossible d’envoyer la recommandation pour le moment."));
+  } finally {
+    setReferralSubmitting(false);
+  }
+}, [referralEmail, referralFrom, referralName, referralPhone]);
 
   // =============================
   // UI (Unités iNrCy) — récompenses auto
@@ -3376,9 +3583,195 @@ const disconnectSiteWebGsc = useCallback(() => {
   void disconnectGoogleStats("site_web", "gsc");
 }, [disconnectGoogleStats]);
 
+  // ✅ AJOUT : profil incomplet -> mini pastille + tooltip
+  const REQUIRED_PROFILE_FIELDS = [
+    "first_name",
+    "last_name",
+    "phone",
+    "contact_email",
+    "company_legal_name",
+    "hq_address",
+    "hq_zip",
+    "hq_city",
+    "hq_country",
+    "siren",
+    "rcs_city",
+  ] as const;
+
+  const checkProfile = useCallback(async () => {
+    const supabase = createClient();
+
+    const { data: authData } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (!user) return;
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select(
+        "first_name,last_name,phone,contact_email,company_legal_name,hq_address,hq_zip,hq_city,hq_country,siren,rcs_city"
+      )
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!profile) {
+      setProfileIncomplete(true);
+      return;
+    }
+
+    const incomplete = REQUIRED_PROFILE_FIELDS.some((field) => {
+      const v = (profile as any)[field];
+      return !v || String(v).trim() === "";
+    });
+
+    setProfileIncomplete(incomplete);
+  }, []);
+
+
+const REQUIRED_ACTIVITY_FIELDS = [
+  "services",
+  "intervention_zones",
+  "opening_days",
+  "opening_hours",
+  "strengths",
+] as const;
+
+const checkActivity = useCallback(async () => {
+  const supabase = createClient();
+
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (!user) return;
+
+  const { data: business } = await supabase
+    .from("business_profiles")
+    .select("*")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!business) {
+    setActivityIncomplete(true);
+    return;
+  }
+
+  const decodedSector = decodeBusinessSector((business as any)?.sector ?? "");
+  const hasSectorCategory = !!decodedSector.sectorCategory;
+  const hasProfession = decodedSector.profession.trim().length > 0;
+
+  const incomplete = !hasSectorCategory || !hasProfession || REQUIRED_ACTIVITY_FIELDS.some((field) => {
+    const v = (business as any)[field];
+    if (Array.isArray(v)) return v.filter(Boolean).length === 0;
+    return !v || String(v).trim() === "";
+  });
+
+  setActivityIncomplete(incomplete);
+}, []);
+
+  useEffect(() => {
+    checkProfile();
+    checkActivity();
+  }, [checkProfile, checkActivity]);
+
+
+
 // ✅ Onboarding non-bloquant : on affiche des alertes (badges / dots) mais
 // on n'ouvre jamais un panneau automatiquement.
 // (Sinon impossible de fermer un modal si le profil est incomplet.)
+
+  useEffect(() => {
+    const isTouch =
+      typeof window !== "undefined" &&
+      ("ontouchstart" in window || navigator.maxTouchPoints > 0);
+
+    document.documentElement.classList.toggle("isTouch", isTouch);
+  }, []);
+
+  // Ferme le menu utilisateur (clic dehors / Escape)
+  useEffect(() => {
+    if (!userMenuOpen) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setUserMenuOpen(false);
+    };
+
+    const closeIfOutside = (target: EventTarget | null) => {
+      if (!userMenuRef.current) return;
+      if (!target) return;
+      if (!userMenuRef.current.contains(target as Node)) setUserMenuOpen(false);
+    };
+
+    const onPointerDownMouse = (e: MouseEvent) => closeIfOutside(e.target);
+    const onPointerDownTouch = (e: TouchEvent) => closeIfOutside(e.target);
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("mousedown", onPointerDownMouse);
+    window.addEventListener("touchstart", onPointerDownTouch, { passive: true });
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", onPointerDownMouse);
+      window.removeEventListener("touchstart", onPointerDownTouch);
+    };
+  }, [userMenuOpen]);
+
+  useEffect(() => {
+    if (!notificationMenuOpen) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setNotificationMenuOpen(false);
+    };
+
+    const closeIfOutside = (target: EventTarget | null) => {
+      if (!target) return;
+      const node = target as Node;
+      const inDesktop = !!desktopNotificationMenuRef.current?.contains(node);
+      const inMobile = !!mobileNotificationMenuRef.current?.contains(node);
+      if (!inDesktop && !inMobile) setNotificationMenuOpen(false);
+    };
+
+    const onPointerDownMouse = (e: MouseEvent) => closeIfOutside(e.target);
+    const onPointerDownTouch = (e: TouchEvent) => closeIfOutside(e.target);
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("mousedown", onPointerDownMouse);
+    window.addEventListener("touchstart", onPointerDownTouch, { passive: true });
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", onPointerDownMouse);
+      window.removeEventListener("touchstart", onPointerDownTouch);
+    };
+  }, [notificationMenuOpen]);
+
+  const userFirstLetter = (userEmail?.trim()?.[0] ?? "U").toUpperCase();
+
+  // ✅ Menu hamburger (mobile)
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    const closeIfOutside = (target: EventTarget | null) => {
+      if (!menuRef.current) return;
+      if (!target) return;
+      if (!menuRef.current.contains(target as Node)) setMenuOpen(false);
+    };
+
+    const onPointerDownMouse = (e: MouseEvent) => closeIfOutside(e.target);
+    const onPointerDownTouch = (e: TouchEvent) => closeIfOutside(e.target);
+
+    if (menuOpen) {
+      window.addEventListener("keydown", onKeyDown);
+      window.addEventListener("mousedown", onPointerDownMouse);
+      window.addEventListener("touchstart", onPointerDownTouch, { passive: true });
+    }
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", onPointerDownMouse);
+      window.removeEventListener("touchstart", onPointerDownTouch);
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     const snapshotDate = expectedUiSnapshotDate();
