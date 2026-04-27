@@ -3,35 +3,47 @@
 import styles from "./dashboard.module.css";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
-import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import SettingsDrawer from "./SettingsDrawer";
 import HelpButton from "./_components/HelpButton";
 import DashboardHelpModals from "./_components/DashboardHelpModals";
 import DashboardHero from "./_components/DashboardHero";
 import DashboardTopbar from "./_components/DashboardTopbar";
 import DashboardChannelsSection from "./_components/DashboardChannelsSection";
-import type { DashboardFluxBubbleData } from "./_components/DashboardFluxBubble";
 import DashboardSettingsDrawerContent from "./_components/DashboardSettingsDrawerContent";
+import { useDrawerMutationGuard } from "./_hooks/useDrawerMutationGuard";
+import { useDashboardNotifications } from "./_hooks/useDashboardNotifications";
+import { useReferralForm } from "./_hooks/useReferralForm";
+import { useDashboardPanelRouting } from "./_hooks/useDashboardPanelRouting";
+import { useDashboardCompletionChecks } from "./_hooks/useDashboardCompletionChecks";
+import { useDashboardMenus } from "./_hooks/useDashboardMenus";
+import { useFacebookChannel } from "./_hooks/channels/useFacebookChannel";
+import { useInstagramChannel } from "./_hooks/channels/useInstagramChannel";
+import { useLinkedinChannel } from "./_hooks/channels/useLinkedinChannel";
+import { useGoogleBusinessChannel } from "./_hooks/channels/useGoogleBusinessChannel";
+import { useSiteInrcyChannel } from "./_hooks/channels/useSiteInrcyChannel";
+import { useSiteWebChannel } from "./_hooks/channels/useSiteWebChannel";
 
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
 import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import { expectedUiSnapshotDate, getInitialGeneratorKpis, getInitialOppTotal, getLastChannelSyncAt, getOverviewSnapshotDate, hasFreshLocalGeneratorSnapshot, markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, mergeGeneratorChannelBlockIntoCachedKpis, syncGeneratorOpportunitiesFromStatsSummary, readCachedChannelBlocks, readCachedChannelSyncAt, readCachedGeneratorChannelSyncAt, readCachedOppTotal, readGeneratorCache, readInrStatsPeriodSyncAt, readUiCacheValue, statsCubeSessionKey, statsSummarySessionKey, type StatsWarmPeriod, writeUiCacheValue } from "./dashboard.client-cache";
+import { expectedUiSnapshotDate, getLastChannelSyncAt, getOverviewSnapshotDate, hasFreshLocalGeneratorSnapshot, markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, mergeGeneratorChannelBlockIntoCachedKpis, syncGeneratorOpportunitiesFromStatsSummary, readCachedChannelBlocks, readCachedChannelSyncAt, readCachedGeneratorChannelSyncAt, readCachedOppTotal, readGeneratorCache, readInrStatsPeriodSyncAt, statsCubeSessionKey, statsSummarySessionKey, type StatsWarmPeriod, writeUiCacheValue } from "./dashboard.client-cache";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
-import { hasActiveInrcySite, isManagedInrcySite } from "@/lib/inrcySite";
-import { decodeBusinessSector } from "@/lib/activitySectors";
+import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
-import { fluxModules, GOOGLE_SOURCES, MODULE_ICONS } from "./dashboard.constants";
-import { getDrawerTitle, isDrawerPanel, statusLabel } from "./dashboard.utils";
-import { getBubbleStatusFromBlock, getBubbleViewHrefFromBlock, inferChannelsFromRealtimePayload, inferChannelsFromSearchParams, normalizeExternalHref } from "./dashboard.shared";
-import type { ActusFont, ActusTheme, GoogleProduct, GoogleSource, ModuleStatus, NotificationItem, Ownership } from "./dashboard.types";
+import { getDrawerTitle, isDrawerPanel } from "./dashboard.utils";
+import { inferChannelsFromRealtimePayload, inferChannelsFromSearchParams } from "./dashboard.shared";
+import type { GoogleProduct, GoogleSource, ModuleStatus, Ownership } from "./dashboard.types";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
+import { buildFluxBubbleItems } from "./dashboard.flux-bubbles";
+import { buildDashboardPanelProps } from "./dashboard.panel-props";
 import { createEmptyChannelBlock, createEmptyChannelBlocks, type InrstatsChannelBlock, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
 import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+const FORCED_SERVER_CACHE_CHECK_DEDUP_MS = 30_000;
+const AUTO_DAILY_REFRESH_DEDUP_MS = 5 * 60_000;
 
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
@@ -40,108 +52,10 @@ export default function DashboardClient() {
   const [helpSiteWebOpen, setHelpSiteWebOpen] = useState(false);
   const [helpInertieOpen, setHelpInertieOpen] = useState(false);
   const router = useRouter();
-
   const searchParams = useSearchParams();
-  const panel = searchParams.get("panel"); // "contact" | "profil" | "activite" | "abonnement" | "mails" | ... | null
-
-  const openPanel = (
-    name:
-      | "contact"
-      | "profil"
-      | "compte"
-      | "activite"
-      | "abonnement"
-      | "mails"
-      | "agenda"
-      | "site_inrcy"
-      | "site_web"
-      | "instagram"
-      | "linkedin"
-      | "gmb"
-      | "facebook"
-      | "legal"
-      | "rgpd"
-      | "inertie"
-      | "boutique"
-      | "notifications"
-      | "parrainage"
-  ) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("panel", name);
-    // ✅ Marqueur: panneau ouvert volontairement par l'utilisateur.
-    // Sert à éviter l'ouverture automatique en boucle lors d'un refresh/connexion.
-    try {
-      sessionStorage.setItem("inrcy_panel_explicit_open", "1");
-      sessionStorage.setItem("inrcy_last_panel", name);
-    } catch {}
-    // ✅ En mobile, on garde la position de scroll (pas de jump en haut)
-    try {
-      sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
-    } catch {}
-    router.push(`/dashboard?${params.toString()}`, { scroll: false });
-  };
-
-  const closePanel = () => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("panel");
-    ["linked", "ok", "error", "message", "warning", "toast", "activated", "skipped"].forEach((key) => {
-      params.delete(key);
-    });
-    const qs = params.toString();
-    // ✅ Quand on ferme, on remet le marqueur à zéro.
-    // (Sinon un refresh pourrait relancer un panneau si une logique externe remet ?panel=...)
-    try {
-      sessionStorage.removeItem("inrcy_panel_explicit_open");
-      sessionStorage.removeItem("inrcy_last_panel");
-    } catch {}
-    // ✅ En mobile, on garde la position de scroll (pas de jump en haut)
-    try {
-      sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
-    } catch {}
-    router.replace(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false });
-  };
-
-  // ✅ Sécurité UX: si l'URL arrive avec ?panel=profil (ou compte) sans action explicite
-  // (cas observé: refresh/connexion + ancienne URL), on ferme automatiquement.
-  // ⚠️ On ne touche PAS aux panels utilisés comme retours OAuth/Stripe (abonnement, mails, etc.).
-  useEffect(() => {
-    if (panel !== "profil" && panel !== "compte") return;
-    try {
-      const explicit = sessionStorage.getItem("inrcy_panel_explicit_open");
-      if (explicit) return;
-    } catch {
-      // si sessionStorage indisponible, on ne force rien
-      return;
-    }
-    closePanel();
-  }, [panel]);
+  const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
 
   // Orientation: gérée globalement via <OrientationGuard />
-
-  // Preserve dashboard scroll position when leaving the dashboard (vers un module)
-  const goToModule = useCallback(
-    (path: string) => {
-      try {
-        sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
-      } catch {}
-      // IMPORTANT: en allant dans un module, on VEUT arriver en haut de page.
-      // On ne désactive donc PAS le scroll automatique de Next ici.
-      router.push(path);
-    },
-    [router]
-  );
-
-  useEffect(() => {
-    try {
-      const y = sessionStorage.getItem("inrcy_dashboard_scrollY");
-      if (!y) return;
-      const top = Math.max(0, parseInt(y, 10) || 0);
-      // Let the page paint, then restore
-      requestAnimationFrame(() => window.scrollTo(0, top));
-      setTimeout(() => window.scrollTo(0, top), 60);
-      sessionStorage.removeItem("inrcy_dashboard_scrollY");
-    } catch {}
-  }, [panel]);
 
   // ✅ Déconnexion Supabase + retour /login
   const handleLogout = async () => {
@@ -155,21 +69,25 @@ export default function DashboardClient() {
     window.location.replace("/login");
   };
 
-  // ✅ Menu utilisateur (desktop)
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const userMenuRef = useRef<HTMLDivElement | null>(null);
-
-  const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
-  const desktopNotificationMenuRef = useRef<HTMLDivElement | null>(null);
-  const mobileNotificationMenuRef = useRef<HTMLDivElement | null>(null);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [notificationsLoading, setNotificationsLoading] = useState(false);
-  const [notificationsError, setNotificationsError] = useState<string | null>(null);
-  const unreadNotificationsCount = useMemo(() => notifications.filter((item) => item.unread).length, [notifications]);
-  const notificationsRequestSeqRef = useRef(0);
+  const {
+    notifications,
+    notificationsLoading,
+    notificationsError,
+    unreadNotificationsCount,
+    refreshNotifications,
+    markNotificationRead,
+    markAllNotificationsRead,
+    deleteNotification,
+  } = useDashboardNotifications();
   const kpisRequestSeqRef = useRef(0);
   const siteConfigRequestSeqRef = useRef(0);
   const activeUserIdRef = useRef<string | null>(null);
+  const latestApplyBootstrapRefreshRef = useRef<((bootstrap: DailyStatsRefreshBootstrapResponse) => { syncAt: number; bootstrapSnapshotDate: string | null }) | null>(null);
+  const latestSyncFromServerCacheIfNeededRef = useRef<((force?: boolean) => Promise<void>) | null>(null);
+  const latestFallbackToServerSyncThenGlobalRef = useRef<(() => Promise<void>) | null>(null);
+  const latestTriggerChannelsRefreshRef = useRef<((channelsInput: DashboardChannelKey[]) => Promise<void>) | null>(null);
+  const initialGeneratorRefreshDoneRef = useRef(false);
+  const lastAutoDailyRefreshAtRef = useRef(0);
 
   const [kpisLoading, setKpisLoading] = useState(false);
   const [dailyBootReady, setDailyBootReady] = useState(false);
@@ -184,39 +102,7 @@ export default function DashboardClient() {
   useEffect(() => {
     channelBlocksRef.current = channelBlocks;
   }, [channelBlocks]);
-  const [drawerMutationState, setDrawerMutationState] = useState<Record<string, boolean>>({});
-  const drawerMutationStateRef = useRef<Record<string, boolean>>({});
-
-  const setDrawerMutationBusy = useCallback((key: string, busy: boolean) => {
-    if (busy) {
-      drawerMutationStateRef.current = { ...drawerMutationStateRef.current, [key]: true };
-      setDrawerMutationState((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
-      return;
-    }
-
-    if (!drawerMutationStateRef.current[key]) return;
-    const nextRef = { ...drawerMutationStateRef.current };
-    delete nextRef[key];
-    drawerMutationStateRef.current = nextRef;
-    setDrawerMutationState((prev) => {
-      if (!prev[key]) return prev;
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-  }, []);
-
-  const runDrawerMutation = useCallback(async <T,>(key: string, job: () => Promise<T> | T) => {
-    if (drawerMutationStateRef.current[key]) return null;
-    setDrawerMutationBusy(key, true);
-    try {
-      return await job();
-    } finally {
-      setDrawerMutationBusy(key, false);
-    }
-  }, [setDrawerMutationBusy]);
-
-  const isDrawerMutationPending = useCallback((key: string) => Boolean(drawerMutationState[key]), [drawerMutationState]);
+  const { runDrawerMutation, isDrawerMutationPending } = useDrawerMutationGuard();
 
   useBrowserLayoutEffect(() => {
     try {
@@ -243,67 +129,6 @@ export default function DashboardClient() {
       setChannelBlocks(cachedBlocks);
     }
   }, []);
-
-  const refreshNotifications = useCallback(async () => {
-    const requestSeq = ++notificationsRequestSeqRef.current;
-    try {
-      setNotificationsLoading(true);
-      const res = await fetch("/api/notifications/feed?limit=12", { credentials: "include" });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res));
-      if (requestSeq !== notificationsRequestSeqRef.current) return;
-      setNotifications(Array.isArray(json?.items) ? json.items : []);
-      setNotificationsError(null);
-    } catch (e: any) {
-      if (requestSeq !== notificationsRequestSeqRef.current) return;
-      setNotificationsError(getSimpleFrenchErrorMessage(e, "Impossible de charger les notifications pour le moment."));
-    } finally {
-      if (requestSeq === notificationsRequestSeqRef.current) {
-        setNotificationsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const run = () => {
-      if (cancelled) return;
-      void refreshNotifications();
-    };
-
-    const initialTimer = window.setTimeout(run, 900);
-    const timer = window.setInterval(run, 120000);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(initialTimer);
-      window.clearInterval(timer);
-    };
-  }, [refreshNotifications]);
-
-  const markNotificationRead = useCallback(async (id: string) => {
-    setNotifications((current) => current.map((item) => (item.id === id ? { ...item, unread: false } : item)));
-    try {
-      await fetch(`/api/notifications/${id}/read`, { method: "POST", credentials: "include" });
-    } catch {}
-  }, []);
-
-  const markAllNotificationsRead = useCallback(async () => {
-    setNotifications((current) => current.map((item) => ({ ...item, unread: false })));
-    try {
-      await fetch("/api/notifications/mark-all-read", { method: "POST", credentials: "include" });
-    } catch {}
-  }, []);
-
-  const deleteNotification = useCallback(async (id: string) => {
-    const previous = notifications;
-    setNotifications((current) => current.filter((item) => item.id !== id));
-    try {
-      const res = await fetch(`/api/notifications/${id}`, { method: "DELETE", credentials: "include" });
-      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible de supprimer cette notification."));
-    } catch {
-      setNotifications(previous);
-    }
-  }, [notifications]);
 
   const extractDomain = useCallback((input: string) => {
     const url = (input || "").trim();
@@ -350,155 +175,334 @@ export default function DashboardClient() {
   }, []);
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const {
+    userMenuOpen,
+    setUserMenuOpen,
+    userMenuRef,
+    notificationMenuOpen,
+    setNotificationMenuOpen,
+    desktopNotificationMenuRef,
+    mobileNotificationMenuRef,
+    userFirstLetter,
+    menuOpen,
+    setMenuOpen,
+    menuRef,
+  } = useDashboardMenus(userEmail);
 
-const [referralName, setReferralName] = useState("");
-const [referralPhone, setReferralPhone] = useState("");
-const [referralEmail, setReferralEmail] = useState("");
-const [referralFrom, setReferralFrom] = useState("");
-const [referralSubmitting, setReferralSubmitting] = useState(false);
-const [referralNotice, setReferralNotice] = useState<string | null>(null);
-const [referralError, setReferralError] = useState<string | null>(null);
-// ✅ Site iNrCy (ownership + url + config)
-const [siteInrcyOwnership, setSiteInrcyOwnership] = useState<Ownership>("none");
-const [siteInrcyUrl, setSiteInrcyUrl] = useState<string>("");
-const [siteInrcySavedUrl, setSiteInrcySavedUrl] = useState<string>("");
-const [siteInrcyContactEmail, setSiteInrcyContactEmail] = useState<string>("");
-const [siteInrcySettingsText, setSiteInrcySettingsText] = useState<string>("{}");
-const [siteInrcySettingsError, setSiteInrcySettingsError] = useState<string | null>(null);
-const [siteInrcyTrackingBusy, setSiteInrcyTrackingBusy] = useState(false);
-  const [siteInrcyGa4Notice, setSiteInrcyGa4Notice] = useState<string | null>(null);
-  const [siteInrcyGscNotice, setSiteInrcyGscNotice] = useState<string | null>(null);
-  const [siteInrcyUrlNotice, setSiteInrcyUrlNotice] = useState<string | null>(null);
-  const [siteWebGa4Notice, setSiteWebGa4Notice] = useState<string | null>(null);
-  const [siteWebGscNotice, setSiteWebGscNotice] = useState<string | null>(null);
-  const [siteWebUrlNotice, setSiteWebUrlNotice] = useState<string | null>(null);
-  const [instagramUrlNotice, setInstagramUrlNotice] = useState<string | null>(null);
-  const [instagramUrlError, setInstagramUrlError] = useState<string | null>(null);
-  const [linkedinUrlNotice, setLinkedinUrlNotice] = useState<string | null>(null);
-  const [linkedinUrlError, setLinkedinUrlError] = useState<string | null>(null);
-  const [gmbUrlNotice, setGmbUrlNotice] = useState<string | null>(null);
-  const [gmbUrlError, setGmbUrlError] = useState<string | null>(null);
-  const [facebookUrlNotice, setFacebookUrlNotice] = useState<string | null>(null);
-  const [facebookUrlError, setFacebookUrlError] = useState<string | null>(null);
+const {
+  referralName,
+  referralPhone,
+  referralEmail,
+  referralFrom,
+  referralSubmitting,
+  referralNotice,
+  referralError,
+  setReferralName,
+  setReferralPhone,
+  setReferralEmail,
+  setReferralFrom,
+  submitReferral,
+} = useReferralForm();
+const patchChannelConnectionLocallyRef = useRef<(
+  channel: DashboardChannelKey,
+  patch: Partial<InrstatsChannelBlock["connection"]>,
+  options?: { clearData?: boolean; clearError?: boolean },
+) => void>(() => {});
+const triggerChannelRefreshRef = useRef<(channel: DashboardChannelKey) => Promise<void>>(async () => {});
 
-  const clearPanelNotices = useCallback((kind: "facebook" | "instagram" | "linkedin" | "gmb") => {
-    if (kind === "facebook") { setFacebookUrlNotice(null); setFacebookUrlError(null); return; }
-    if (kind === "instagram") { setInstagramUrlNotice(null); setInstagramUrlError(null); return; }
-    if (kind === "linkedin") { setLinkedinUrlNotice(null); setLinkedinUrlError(null); return; }
-    setGmbUrlNotice(null); setGmbUrlError(null);
-  }, []);
+const patchChannelConnectionLocallyProxy = useCallback((
+  channel: DashboardChannelKey,
+  patch: Partial<InrstatsChannelBlock["connection"]>,
+  options?: { clearData?: boolean; clearError?: boolean },
+) => patchChannelConnectionLocallyRef.current(channel, patch, options), []);
 
-  const setPanelSuccess = useCallback((kind: "facebook" | "instagram" | "linkedin" | "gmb", message: string, timeout = 2200) => {
-    clearPanelNotices(kind);
-    const clean = message.trim();
-    if (kind === "facebook") setFacebookUrlNotice(clean);
-    else if (kind === "instagram") setInstagramUrlNotice(clean);
-    else if (kind === "linkedin") setLinkedinUrlNotice(clean);
-    else setGmbUrlNotice(clean);
-    window.setTimeout(() => clearPanelNotices(kind), timeout);
-  }, [clearPanelNotices]);
+const triggerChannelRefreshProxy = useCallback(
+  (channel: DashboardChannelKey) => triggerChannelRefreshRef.current(channel),
+  []
+);
 
-  const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" | "gmb", input: unknown, fallback: string, timeout = 3200) => {
-    clearPanelNotices(kind);
-    const clean = getSimpleFrenchErrorMessage(input, fallback);
-    if (kind === "facebook") setFacebookUrlError(clean);
-    else if (kind === "instagram") setInstagramUrlError(clean);
-    else if (kind === "linkedin") setLinkedinUrlError(clean);
-    else setGmbUrlError(clean);
-    window.setTimeout(() => clearPanelNotices(kind), timeout);
-  }, [clearPanelNotices]);
+const updateRootSettingsKey = useCallback(
+  async (key: "gmb" | "facebook" | "instagram" | "linkedin", nextObj: any) => {
+    const supabase = createClient();
+    const { data: authData } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (!user) return;
 
-  // ✅ Tokens widget actus (signés + liés au domaine, anti-copie)
-  const [widgetTokenInrcySite, setWidgetTokenInrcySite] = useState<string>("");
-  const [widgetTokenSiteWeb, setWidgetTokenSiteWeb] = useState<string>("");
-  const [siteInrcyActusLayout, setSiteInrcyActusLayout] = useState<"list" | "carousel">("list");
-  const [siteInrcyActusLimit, setSiteInrcyActusLimit] = useState<number>(5);
-  const [siteWebActusLayout, setSiteWebActusLayout] = useState<"list" | "carousel">("list");
-  const [siteWebActusLimit, setSiteWebActusLimit] = useState<number>(5);
-  const [siteInrcyActusFont, setSiteInrcyActusFont] = useState<ActusFont>("site");
-  const [siteWebActusFont, setSiteWebActusFont] = useState<ActusFont>("site");
-  const [siteInrcyActusTheme, setSiteInrcyActusTheme] = useState<ActusTheme>("nature");
-  const [siteWebActusTheme, setSiteWebActusTheme] = useState<ActusTheme>("nature");
-  const [showSiteInrcyWidgetCode, setShowSiteInrcyWidgetCode] = useState(false);
-  const [showSiteWebWidgetCode, setShowSiteWebWidgetCode] = useState(false);
+    const { data: row, error: readErr } = await supabase
+      .from("pro_tools_configs")
+      .select("settings")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-  // ✅ Connexions Google (viennent de integrations, pas des IDs)
-  const [siteInrcyGa4Connected, setSiteInrcyGa4Connected] = useState(false);
-  const [siteInrcyGscConnected, setSiteInrcyGscConnected] = useState(false);
-  const [siteWebGa4Connected, setSiteWebGa4Connected] = useState(false);
-  const [siteWebGscConnected, setSiteWebGscConnected] = useState(false);
+    if (readErr) return;
 
-const [ga4MeasurementId, setGa4MeasurementId] = useState<string>("");
-const [ga4PropertyId, setGa4PropertyId] = useState<string>("");
+    const current = (row as any)?.settings ?? {};
+    const merged = { ...(current ?? {}), [key]: nextObj ?? {} };
 
-// ✅ Google Search Console
-const [gscProperty, setGscProperty] = useState<string>("");
+    await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
+  },
+  []
+);
 
-// ✅ Site web (indépendant)
-const [siteWebUrl, setSiteWebUrl] = useState<string>("");
-const [siteWebSavedUrl, setSiteWebSavedUrl] = useState<string>("");
-const [siteWebSettingsText, setSiteWebSettingsText] = useState<string>("{}");
-const [siteWebSettingsError, setSiteWebSettingsError] = useState<string | null>(null);
-const [siteWebGa4MeasurementId, setSiteWebGa4MeasurementId] = useState<string>("");
-const [siteWebGa4PropertyId, setSiteWebGa4PropertyId] = useState<string>("");
-const [siteWebGscProperty, setSiteWebGscProperty] = useState<string>("");
+const {
+  siteInrcyOwnership,
+  setSiteInrcyOwnership,
+  siteInrcyUrl,
+  setSiteInrcyUrl,
+  siteInrcySavedUrl,
+  setSiteInrcySavedUrl,
+  siteInrcyContactEmail,
+  setSiteInrcyContactEmail,
+  siteInrcySettingsText,
+  setSiteInrcySettingsText,
+  siteInrcySettingsError,
+  setSiteInrcySettingsError,
+  siteInrcyTrackingBusy,
+  siteInrcyGa4Notice,
+  setSiteInrcyGa4Notice,
+  siteInrcyGscNotice,
+  setSiteInrcyGscNotice,
+  siteInrcyUrlNotice,
+  widgetTokenInrcySite,
+  siteInrcyActusLayout,
+  setSiteInrcyActusLayout,
+  siteInrcyActusLimit,
+  setSiteInrcyActusLimit,
+  siteInrcyActusFont,
+  setSiteInrcyActusFont,
+  siteInrcyActusTheme,
+  setSiteInrcyActusTheme,
+  showSiteInrcyWidgetCode,
+  setShowSiteInrcyWidgetCode,
+  siteInrcyGa4Connected,
+  setSiteInrcyGa4Connected,
+  siteInrcyGscConnected,
+  setSiteInrcyGscConnected,
+  ga4MeasurementId,
+  setGa4MeasurementId,
+  ga4PropertyId,
+  setGa4PropertyId,
+  gscProperty,
+  setGscProperty,
+  connectSiteInrcyGa4,
+  connectSiteInrcyGsc,
+  activateSiteInrcyTracking,
+  deactivateSiteInrcyTracking,
+  disconnectSiteInrcyGa4,
+  disconnectSiteInrcyGsc,
+  saveSiteInrcyUrl,
+  deleteSiteInrcyUrl,
+  resetSiteInrcyAll,
+} = useSiteInrcyChannel({
+  normalizeSiteUrl,
+  extractDomain,
+  fetchWidgetToken,
+  patchChannelConnectionLocally: patchChannelConnectionLocallyProxy,
+  triggerChannelRefresh: triggerChannelRefreshProxy,
+});
 
-  // ✅ Génère automatiquement des tokens signés (liés au domaine) pour le widget actus
-  useEffect(() => {
-    const d = extractDomain(siteInrcyUrl);
-    if (!d) {
-      setWidgetTokenInrcySite("");
-      return;
-    }
-    fetchWidgetToken(d, "inrcy_site")
-      .then((t) => setWidgetTokenInrcySite(t))
-      .catch(() => setWidgetTokenInrcySite(""));
-  }, [siteInrcyUrl, extractDomain, fetchWidgetToken]);
+const {
+  siteWebUrl,
+  setSiteWebUrl,
+  siteWebSavedUrl,
+  setSiteWebSavedUrl,
+  siteWebSettingsText,
+  setSiteWebSettingsText,
+  siteWebSettingsError,
+  setSiteWebSettingsError,
+  siteWebGa4MeasurementId,
+  setSiteWebGa4MeasurementId,
+  siteWebGa4PropertyId,
+  setSiteWebGa4PropertyId,
+  siteWebGscProperty,
+  setSiteWebGscProperty,
+  siteWebGa4Notice,
+  setSiteWebGa4Notice,
+  siteWebGscNotice,
+  setSiteWebGscNotice,
+  siteWebUrlNotice,
+  widgetTokenSiteWeb,
+  siteWebActusLayout,
+  setSiteWebActusLayout,
+  siteWebActusLimit,
+  setSiteWebActusLimit,
+  siteWebActusFont,
+  setSiteWebActusFont,
+  siteWebActusTheme,
+  setSiteWebActusTheme,
+  showSiteWebWidgetCode,
+  setShowSiteWebWidgetCode,
+  siteWebGa4Connected,
+  setSiteWebGa4Connected,
+  siteWebGscConnected,
+  setSiteWebGscConnected,
+  saveSiteWebUrl,
+  deleteSiteWebUrl,
+  resetSiteWebAll,
+  attachWebsiteGoogleAnalytics,
+  attachWebsiteGoogleSearchConsole,
+  connectSiteWebGa4,
+  connectSiteWebGsc,
+  disconnectSiteWebGa4,
+  disconnectSiteWebGsc,
+} = useSiteWebChannel({
+  normalizeSiteUrl,
+  extractDomain,
+  fetchWidgetToken,
+  patchChannelConnectionLocally: patchChannelConnectionLocallyProxy,
+  triggerChannelRefresh: triggerChannelRefreshProxy,
+});
 
-  useEffect(() => {
-    const d = extractDomain(siteWebUrl);
-    if (!d) {
-      setWidgetTokenSiteWeb("");
-      return;
-    }
-    fetchWidgetToken(d, "site_web")
-      .then((t) => setWidgetTokenSiteWeb(t))
-      .catch(() => setWidgetTokenSiteWeb(""));
-  }, [siteWebUrl, extractDomain, fetchWidgetToken]);
+const {
+  facebookUrl,
+  setFacebookUrl,
+  facebookAccountConnected,
+  setFacebookAccountConnected,
+  facebookPageConnected,
+  setFacebookPageConnected,
+  facebookConnectionStatus,
+  setFacebookConnectionStatus,
+  facebookAccountEmail,
+  setFacebookAccountEmail,
+  facebookUrlNotice,
+  facebookUrlError,
+  fbPages,
+  fbPagesLoading,
+  fbSelectedPageId,
+  setFbSelectedPageId,
+  fbSelectedPageName,
+  setFbSelectedPageName,
+  fbPagesError,
+  connectFacebookAccount,
+  connectFacebookBusinessAccount,
+  disconnectFacebookAccount,
+  disconnectFacebookPage,
+  loadFacebookPages,
+  saveFacebookPage,
+  setPanelSuccess: setFacebookPanelSuccess,
+  setPanelError: setFacebookPanelError,
+} = useFacebookChannel({
+  panel,
+  searchParams,
+  patchChannelConnectionLocally: patchChannelConnectionLocallyProxy,
+  triggerChannelRefresh: triggerChannelRefreshProxy,
+  updateRootSettingsKey,
+});
 
-// ✅ Instagram & LinkedIn (connexion)
-const [instagramUrl, setInstagramUrl] = useState<string>("");
-const [instagramAccountConnected, setInstagramAccountConnected] = useState<boolean>(false);
-const [instagramConnected, setInstagramConnected] = useState<boolean>(false);
-const [instagramConnectionStatus, setInstagramConnectionStatus] = useState<ConnectionDisplayStatus>("disconnected");
-const [instagramUsername, setInstagramUsername] = useState<string>("");
+const {
+  instagramUrl,
+  setInstagramUrl,
+  instagramAccountConnected,
+  setInstagramAccountConnected,
+  instagramConnected,
+  setInstagramConnected,
+  instagramConnectionStatus,
+  setInstagramConnectionStatus,
+  instagramUsername,
+  setInstagramUsername,
+  instagramUrlNotice,
+  instagramUrlError,
+  igAccounts,
+  igAccountsLoading,
+  igSelectedPageId,
+  setIgSelectedPageId,
+  igAccountsError,
+  connectInstagramAccount,
+  connectInstagramBusinessAccount,
+  disconnectInstagramAccount,
+  disconnectInstagramProfile,
+  loadInstagramAccounts,
+  saveInstagramProfile,
+  syncInstagramStateFromServer,
+  setPanelSuccess: setInstagramPanelSuccess,
+  setPanelError: setInstagramPanelError,
+} = useInstagramChannel({
+  panel,
+  searchParams,
+  patchChannelConnectionLocally: patchChannelConnectionLocallyProxy,
+  triggerChannelRefresh: triggerChannelRefreshProxy,
+  updateRootSettingsKey,
+});
 
-const [linkedinUrl, setLinkedinUrl] = useState<string>("");
-const [linkedinAccountConnected, setLinkedinAccountConnected] = useState<boolean>(false);
-const [linkedinConnected, setLinkedinConnected] = useState<boolean>(false);
-const [linkedinConnectionStatus, setLinkedinConnectionStatus] = useState<ConnectionDisplayStatus>("disconnected");
-const [linkedinDisplayName, setLinkedinDisplayName] = useState<string>("");
-const [profileIncomplete, setProfileIncomplete] = useState(false);
-const [activityIncomplete, setActivityIncomplete] = useState(false);
+const {
+  linkedinUrl,
+  setLinkedinUrl,
+  linkedinAccountConnected,
+  setLinkedinAccountConnected,
+  linkedinConnected,
+  setLinkedinConnected,
+  linkedinConnectionStatus,
+  setLinkedinConnectionStatus,
+  linkedinDisplayName,
+  setLinkedinDisplayName,
+  linkedinUrlNotice,
+  setLinkedinUrlNotice,
+  linkedinUrlError,
+  connectLinkedinAccount,
+  disconnectLinkedinAccount,
+  saveLinkedinProfileUrl,
+  setPanelSuccess: setLinkedinPanelSuccess,
+  setPanelError: setLinkedinPanelError,
+} = useLinkedinChannel({
+  patchChannelConnectionLocally: patchChannelConnectionLocallyProxy,
+  triggerChannelRefresh: triggerChannelRefreshProxy,
+  updateRootSettingsKey,
+});
 
-// ✅ Google Business & Facebook (liens + connexion)
-const [gmbUrl, setGmbUrl] = useState<string>("");
-const [gmbConnected, setGmbConnected] = useState<boolean>(false);
-const [gmbConnectionStatus, setGmbConnectionStatus] = useState<ConnectionDisplayStatus>("disconnected");
-// Google Business has 2 levels:
-// 1) accountConnected: OAuth OK (we can list locations)
-// 2) configured/connected: a specific location is selected (we can fetch stats)
-const [gmbAccountConnected, setGmbAccountConnected] = useState<boolean>(false);
-const [gmbConfigured, setGmbConfigured] = useState<boolean>(false);
-const [gmbAccountEmail, setGmbAccountEmail] = useState<string>("");
-const [facebookUrl, setFacebookUrl] = useState<string>("");
-	// Facebook has 2 levels:
-	// 1) accountConnected: OAuth OK (we can list pages)
-	// 2) pageConnected: a specific Page is selected (we can fetch stats)
-	const [facebookAccountConnected, setFacebookAccountConnected] = useState<boolean>(false);
-	const [facebookPageConnected, setFacebookPageConnected] = useState<boolean>(false);
-	const [facebookConnectionStatus, setFacebookConnectionStatus] = useState<ConnectionDisplayStatus>("disconnected");
-	const [facebookAccountEmail, setFacebookAccountEmail] = useState<string>("");
+const {
+  gmbUrl,
+  setGmbUrl,
+  gmbConnected,
+  setGmbConnected,
+  gmbConnectionStatus,
+  setGmbConnectionStatus,
+  gmbAccountConnected,
+  setGmbAccountConnected,
+  gmbConfigured,
+  setGmbConfigured,
+  gmbAccountEmail,
+  setGmbAccountEmail,
+  gmbUrlNotice,
+  gmbUrlError,
+  gmbAccounts,
+  gmbLocations,
+  gmbAccountName,
+  gmbLocationName,
+  setGmbLocationName,
+  gmbLocationLabel,
+  setGmbLocationLabel,
+  gmbLoadingList,
+  gmbListError,
+  connectGmbAccount,
+  disconnectGmbAccount,
+  disconnectGmbBusiness,
+  loadGmbAccountsAndLocations,
+  saveGmbLocation,
+  setPanelSuccess: setGmbPanelSuccess,
+  setPanelError: setGmbPanelError,
+} = useGoogleBusinessChannel({
+  panel,
+  searchParams,
+  patchChannelConnectionLocally: patchChannelConnectionLocallyProxy,
+  triggerChannelRefresh: triggerChannelRefreshProxy,
+  updateRootSettingsKey,
+});
+
+const { profileIncomplete, activityIncomplete, checkProfile, checkActivity } = useDashboardCompletionChecks();
+
+const setPanelSuccess = useCallback((kind: "facebook" | "instagram" | "linkedin" | "gmb", message: string, timeout = 2200) => {
+  if (kind === "facebook") { setFacebookPanelSuccess(message, timeout); return; }
+  if (kind === "instagram") { setInstagramPanelSuccess(message, timeout); return; }
+  if (kind === "linkedin") { setLinkedinPanelSuccess(message, timeout); return; }
+  setGmbPanelSuccess(message, timeout);
+}, [setFacebookPanelSuccess, setInstagramPanelSuccess, setLinkedinPanelSuccess, setGmbPanelSuccess]);
+
+const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" | "gmb", input: unknown, fallback: string, timeout = 3200) => {
+  if (kind === "facebook") { setFacebookPanelError(input, fallback, timeout); return; }
+  if (kind === "instagram") { setInstagramPanelError(input, fallback, timeout); return; }
+  if (kind === "linkedin") { setLinkedinPanelError(input, fallback, timeout); return; }
+  setGmbPanelError(input, fallback, timeout);
+}, [setFacebookPanelError, setInstagramPanelError, setLinkedinPanelError, setGmbPanelError]);
 
   // ✅ Unités d'Inertie : multiplicateur basé sur les 6 canaux connectés.
   // Calculé ici (dans le composant) pour être réutilisé dans le KPI + le drawer.
@@ -623,44 +627,6 @@ const [facebookUrl, setFacebookUrl] = useState<string>("");
   }, []);
 
 
-const submitReferral = useCallback(async () => {
-  const name = referralName.trim();
-  const phone = referralPhone.trim();
-  const email = referralEmail.trim();
-  const from = referralFrom.trim();
-
-  if (!name || !phone || !email || !from) {
-    setReferralError("Merci de remplir tous les champs.");
-    return;
-  }
-
-  setReferralSubmitting(true);
-  setReferralError(null);
-  setReferralNotice(null);
-
-  try {
-    const res = await fetch("/api/referrals", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ name, phone, email, from }),
-    });
-    const json = await res.json().catch(() => null);
-    if (!res.ok || !json?.ok) {
-      throw new Error(await getSimpleFrenchApiError(res));
-    }
-    setReferralNotice("Merci, votre recommandation a bien été envoyée à l’équipe iNrCy.");
-    setReferralName("");
-    setReferralPhone("");
-    setReferralEmail("");
-    setReferralFrom("");
-  } catch (e: any) {
-    setReferralError(getSimpleFrenchErrorMessage(e, "Impossible d’envoyer la recommandation pour le moment."));
-  } finally {
-    setReferralSubmitting(false);
-  }
-}, [referralEmail, referralFrom, referralName, referralPhone]);
-
   // =============================
   // UI (Unités iNrCy) — récompenses auto
   // - 50 UI à la 1ère ouverture du compte
@@ -728,13 +694,6 @@ const submitReferral = useCallback(async () => {
     const json = (await res.json().catch(() => null)) as any;
     return !!json?.connected;
   }, []);
-
-const removeGoogleProductFromSettings = useCallback((settingsObj: any, product: GoogleProduct) => {
-  const next = settingsObj && typeof settingsObj === "object" ? { ...settingsObj } : {};
-  if (product === "ga4") delete next.ga4;
-  if (product === "gsc") delete next.gsc;
-  return next;
-}, []);
 
 // ✅ Charge infos Site iNrCy + outils du pro depuis Supabase
 // - ownership + url iNrCy : profiles
@@ -998,177 +957,6 @@ const generatorPowerSteps = [
 const generatorPower = generatorPowerSteps.reduce((sum, step) => sum + (step.completed ? step.weight : 0), 0);
 const nextGeneratorPowerStep = generatorPowerSteps.find((step) => !step.completed) ?? null;
 const remainingGeneratorPowerSteps = generatorPowerSteps.filter((step) => !step.completed).length;
-
-const updateSiteInrcySettings = useCallback(async (nextSettings: any) => {
-  if (siteInrcyOwnership === "none") return;
-
-  const supabase = createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData?.user;
-  if (!user) return;
-
-  const { error } = await supabase
-    .from("inrcy_site_configs")
-    .upsert({ user_id: user.id, settings: nextSettings ?? {} }, { onConflict: "user_id" });
-
-  if (error) {
-    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
-    return;
-  }
-
-  setSiteInrcySettingsError(null);
-  try {
-    setSiteInrcySettingsText(JSON.stringify(nextSettings ?? {}, null, 2));
-  } catch {
-    setSiteInrcySettingsText("{}");
-  }
-}, [siteInrcyOwnership]);
-
-const saveSiteInrcySettings = useCallback(async () => {
-  if (siteInrcyOwnership === "none") return;
-
-  let parsed: any;
-  try {
-    parsed = siteInrcySettingsText?.trim() ? JSON.parse(siteInrcySettingsText) : {};
-  } catch (e) {
-    setSiteInrcySettingsError("JSON invalide. Vérifie la syntaxe (guillemets, virgules, accolades…)." );
-    return;
-  }
-
-  const supabase = createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData?.user;
-  if (!user) return;
-
-  const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, settings: parsed }, { onConflict: "user_id" });
-
-  if (error) {
-    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
-    return;
-  }
-
-  setSiteInrcySettingsError(null);
-}, [siteInrcyOwnership, siteInrcySettingsText]);
-
-
-const attachGoogleAnalytics = useCallback(async () => {
-  const measurement = ga4MeasurementId.trim();
-  const propertyIdRaw = ga4PropertyId.trim();
-  if (!measurement) {
-    setSiteInrcySettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX).");
-    return;
-  }
-
-  if (!propertyIdRaw || !/^\d+$/.test(propertyIdRaw)) {
-    setSiteInrcySettingsError("Renseigne un Property ID GA4 (numérique, ex: 123456789).");
-    return;
-  }
-
-  let parsed: any;
-  try {
-    parsed = siteInrcySettingsText?.trim() ? JSON.parse(siteInrcySettingsText) : {};
-  } catch {
-    setSiteInrcySettingsError("JSON invalide. Corrige la configuration avant de rattacher Google Analytics.");
-    return;
-  }
-
-  parsed.ga4 = { ...(parsed.ga4 ?? {}), measurement_id: measurement, property_id: propertyIdRaw };
-
-  const supabase = createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData?.user;
-  if (!user) return;
-
-  const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, settings: parsed }, { onConflict: "user_id" });
-
-  if (error) {
-    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
-    return;
-  }
-
-  setSiteInrcySettingsText(JSON.stringify(parsed, null, 2));
-  setSiteInrcyGa4Notice("✅ Enregistrement GA4 validé");
-  window.setTimeout(() => setSiteInrcyGa4Notice(null), 2500);
-
-  setSiteInrcySettingsError(null);
-}, [ga4MeasurementId, ga4PropertyId, siteInrcySettingsText]);
-
-
-const attachGoogleSearchConsole = useCallback(async () => {
-  const property = gscProperty.trim();
-  if (!property) {
-    setSiteInrcySettingsError("Renseigne une propriété Search Console (ex: sc-domain:monsite.fr ou https://monsite.fr/).");
-    return;
-  }
-
-  let parsed: any;
-  try {
-    parsed = siteInrcySettingsText?.trim() ? JSON.parse(siteInrcySettingsText) : {};
-  } catch {
-    setSiteInrcySettingsError("JSON invalide. Corrige la configuration avant de rattacher Search Console.");
-    return;
-  }
-
-  parsed.gsc = { ...(parsed.gsc ?? {}), property };
-
-  const supabase = createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData?.user;
-  if (!user) return;
-
-  const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, settings: parsed }, { onConflict: "user_id" });
-
-  if (error) {
-    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
-    return;
-  }
-
-  setSiteInrcySettingsText(JSON.stringify(parsed, null, 2));
-  setSiteInrcyGscNotice("✅ Enregistrement Search Console validé");
-  window.setTimeout(() => setSiteInrcyGscNotice(null), 2500);
-
-  setSiteInrcySettingsError(null);
-}, [gscProperty, siteInrcySettingsText]);
-
-
-
-
-const connectSiteInrcyGa4 = useCallback(() => {
-  if (siteInrcyOwnership === "none") {
-    setSiteInrcySettingsError("Connexion Google Analytics indisponible : aucun site iNrCy.");
-    return;
-  }
-  const siteUrl = (siteInrcyUrl || "").trim();
-  if (!siteUrl) {
-    setSiteInrcySettingsError("Renseigne le lien du site iNrCy avant de connecter Google Analytics.");
-    return;
-  }
-  const qp = new URLSearchParams({
-    source: "site_inrcy",
-    product: "ga4",
-    siteUrl,
-  });
-  // L'OAuth stats est séparé de l'OAuth Gmail (mails).
-  window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
-}, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl]);
-
-const connectSiteInrcyGsc = useCallback(() => {
-  if (siteInrcyOwnership === "none") {
-    setSiteInrcySettingsError("Connexion Search Console indisponible : aucun site iNrCy.");
-    return;
-  }
-  const siteUrl = (siteInrcyUrl || "").trim();
-  if (!siteUrl) {
-    setSiteInrcySettingsError("Renseigne le lien du site iNrCy avant de connecter Search Console.");
-    return;
-  }
-  const qp = new URLSearchParams({
-    source: "site_inrcy",
-    product: "gsc",
-    siteUrl,
-  });
-  window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
-}, [normalizeSiteUrl, siteInrcyOwnership, siteInrcyUrl]);
 
 const applyGeneratorCacheToState = useCallback(() => {
     const mergedPayload = readGeneratorCache()?.payload;
@@ -1485,58 +1273,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     syncAt: Date.now(),
     snapshotDate: expectedUiSnapshotDate(),
   })), [updateChannelBlockLocally]);
-
-  const syncInstagramStateFromServer = useCallback(async (options?: { preserveSelection?: boolean }) => {
-    try {
-      const res = await fetch("/api/integrations/instagram/status", {
-        cache: "no-store",
-        credentials: "include",
-      });
-      if (!res.ok) return null;
-      const json = await res.json().catch(() => null) as {
-        accountConnected?: boolean;
-        connected?: boolean;
-        expired?: boolean;
-        resource_id?: string | null;
-        username?: string | null;
-        profile_url?: string | null;
-        requiresUpdate?: boolean;
-        connection_status?: ConnectionDisplayStatus;
-      } | null;
-      if (!json) return null;
-
-      const nextAccountConnected = !!json.accountConnected;
-      const nextConnected = !!json.connected;
-      const nextUsername = typeof json.username === "string" ? json.username : "";
-      const nextProfileUrl = typeof json.profile_url === "string" ? json.profile_url : "";
-      const nextResourceId = typeof json.resource_id === "string" ? json.resource_id : null;
-      const nextConnectionStatus = (json.connection_status || (nextConnected ? "connected" : "disconnected")) as ConnectionDisplayStatus;
-
-      setInstagramAccountConnected(nextAccountConnected);
-      setInstagramConnected(nextConnected);
-      setInstagramConnectionStatus(nextConnectionStatus);
-      setInstagramUsername(nextUsername);
-      setInstagramUrl(nextProfileUrl);
-      if (!nextAccountConnected) setIgAccounts([]);
-      if (!nextConnected && !options?.preserveSelection) setIgSelectedPageId("");
-
-      patchChannelConnectionLocally("instagram", {
-        connected: nextConnected,
-        accountConnected: nextAccountConnected,
-        configured: nextConnected,
-        expired: !!json.expired,
-        requiresUpdate: nextConnectionStatus === "needs_update",
-        connectionStatus: nextConnectionStatus,
-        resourceId: nextConnected ? nextResourceId : null,
-        resourceLabel: nextConnected ? (nextUsername || null) : null,
-        resourceUrl: nextConnected ? (nextProfileUrl || null) : null,
-      }, { clearData: !nextConnected });
-
-      return json;
-    } catch {
-      return null;
-    }
-  }, [patchChannelConnectionLocally]);
+  patchChannelConnectionLocallyRef.current = patchChannelConnectionLocally;
 
   const refreshChannelBlocksFromApi = useCallback(async (channel: DashboardChannelKey, fallbackSyncAt?: number) => {
     const res = await fetch("/api/stats/channel-refresh", {
@@ -1749,12 +1486,15 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     notifyStatsRefresh(syncAt);
     return { syncAt, bootstrapSnapshotDate };
   }, [notifyStatsRefresh]);
+  latestApplyBootstrapRefreshRef.current = applyBootstrapRefresh;
 
   const syncFromServerCacheIfNeeded = useCallback(async (force = false) => {
     if (typeof window === "undefined") return;
     const now = Date.now();
     const snapshotDate = expectedUiSnapshotDate();
-    if (!force) {
+    if (force) {
+      if (now - lastServerCacheCheckAtRef.current < FORCED_SERVER_CACHE_CHECK_DEDUP_MS) return;
+    } else {
       if (now - lastServerCacheCheckAtRef.current < 60_000) return;
       if (wasServerCacheSyncCheckedRecently("dashboard", { snapshotDate })) return;
     }
@@ -1773,7 +1513,13 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         if (!res.ok) return;
         const json = await res.json().catch(() => null);
         if (json?.connections?.needsRefresh === true) {
-          const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true, force: true });
+          if (now - lastAutoDailyRefreshAtRef.current < AUTO_DAILY_REFRESH_DEDUP_MS) {
+            markServerCacheSyncChecked("dashboard", { snapshotDate, checkedAt: Date.now() });
+            return;
+          }
+
+          lastAutoDailyRefreshAtRef.current = now;
+          const bootstrap = await runDailyStatsRefreshBootstrap({ announce: false, force });
           applyBootstrapRefresh(bootstrap);
           markServerCacheSyncChecked("dashboard", { snapshotDate, checkedAt: Date.now(), syncAt: Number(bootstrap?.syncAt ?? Date.now()) });
           return;
@@ -1846,6 +1592,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       serverCacheCheckPromiseRef.current = null;
     }
   }, [applyBootstrapRefresh, readCachedGeneratorChannelSyncAt, refreshChannelBlocksFromApi, refreshGeneratorChannelsFromApi, warmInrStatsUi]);
+  latestSyncFromServerCacheIfNeededRef.current = syncFromServerCacheIfNeeded;
 
   const triggerGeneratorRefresh = useCallback(async () => {
     const runSync = async () => {
@@ -1870,6 +1617,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       await triggerGeneratorRefresh();
     }
   }, [syncFromServerCacheIfNeeded, triggerGeneratorRefresh]);
+  latestFallbackToServerSyncThenGlobalRef.current = fallbackToServerSyncThenGlobal;
 
   const triggerChannelRefresh = useCallback(async (channel: DashboardChannelKey) => {
     const syncAt = Date.now();
@@ -1896,7 +1644,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       console.error(error);
       await fallbackToServerSyncThenGlobal();
     }
-  }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, loadSiteInrcy, notifyStatsRefresh, refreshChannelBlocksFromApi, refreshGeneratorChannelFromApi]);
+  }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, loadSiteInrcy, notifyStatsRefresh, refreshChannelBlocksFromApi, refreshGeneratorChannelFromApi, syncInstagramStateFromServer]);
+  triggerChannelRefreshRef.current = triggerChannelRefresh;
 
   const triggerChannelsRefresh = useCallback(async (channelsInput: DashboardChannelKey[]) => {
     const channels = Array.from(new Set(channelsInput.filter((channel): channel is DashboardChannelKey => typeof channel === "string" && channel.length > 0)));
@@ -1930,7 +1679,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       console.error(error);
       await fallbackToServerSyncThenGlobal();
     }
-  }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, loadSiteInrcy, notifyStatsRefresh, refreshChannelBlocksFromApi, refreshGeneratorChannelsFromApi, triggerChannelRefresh]);
+  }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, loadSiteInrcy, notifyStatsRefresh, refreshChannelBlocksFromApi, refreshGeneratorChannelsFromApi, triggerChannelRefresh, syncInstagramStateFromServer]);
+  latestTriggerChannelsRefreshRef.current = triggerChannelsRefresh;
 
 
 
@@ -2000,7 +1750,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       }
 
       if (detail.field === "stats_version") {
-        void syncFromServerCacheIfNeeded(true);
+        void latestSyncFromServerCacheIfNeededRef.current?.(true);
       }
     };
 
@@ -2008,7 +1758,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     return () => {
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
-  }, [refreshNotifications, refreshUiBalance, syncFromServerCacheIfNeeded]);
+  }, [refreshNotifications, refreshUiBalance]);
 
   // ✅ Auto-refresh Générateur + statuts modules dès qu'un module se connecte / se déconnecte
   // On écoute les changements Postgres sur les tables qui impactent:
@@ -2030,11 +1780,11 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         if (disposed) return;
         if (Date.now() - lastGeneratorRefreshAtRef.current < 2500) return;
         if (impactedChannels.length) {
-          void triggerChannelsRefresh(impactedChannels);
+          void latestTriggerChannelsRefreshRef.current?.(impactedChannels);
           return;
         }
 
-        void fallbackToServerSyncThenGlobal();
+        void latestFallbackToServerSyncThenGlobalRef.current?.();
       }, 500);
     };
 
@@ -2070,7 +1820,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         supabase.removeChannel(ch);
       } catch {}
     };
-  }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, triggerChannelsRefresh]);
+  }, [clearScheduledGeneratorRefreshes]);
 
   useEffect(() => {
     const linked = searchParams.get("linked");
@@ -2190,1588 +1940,9 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     setPanelError(target, message || error, fallbackByTarget[target]);
   }, [panel, searchParams, setPanelError]);
 
-const activateSiteInrcyTracking = useCallback(async () => {
-  if (!isManagedInrcySite(siteInrcyOwnership)) {
-    setSiteInrcySettingsError("Activation indisponible : cette action est réservée au mode rented.");
-    return;
-  }
-  const siteUrl = (siteInrcyUrl || "").trim();
-  if (!siteUrl) {
-    setSiteInrcySettingsError("Renseigne le lien du site iNrCy avant d'activer le suivi.");
-    return;
-  }
-
-  setSiteInrcySettingsError(null);
-  setSiteInrcyTrackingBusy(true);
-
-  const res = await fetch("/api/integrations/google-stats/activate", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ source: "site_inrcy", siteUrl }),
-  }).catch(() => null);
-
-  if (!res) {
-    setSiteInrcyTrackingBusy(false);
-    setSiteInrcySettingsError("Connexion au serveur impossible pour le moment. Merci de réessayer.");
-    return;
-  }
-
-  const data = await res.json().catch(() => ({} as any));
-
-  // En mode rented, l'activation doit être 100% silencieuse côté client.
-  // Si le token admin iNrCy n'est pas configuré, on affiche une erreur explicite.
-  if (!res.ok) {
-    setSiteInrcyTrackingBusy(false);
-    setSiteInrcySettingsError(getSimpleFrenchErrorMessage((data as any)?.error || String(res.status)));
-    return;
-  }
-
-  setSiteInrcyTrackingBusy(false);
-
-  // Rafraîchit les statuts
-  setSiteInrcyGa4Connected(true);
-  setSiteInrcyGscConnected(true);
-  setSiteInrcyGa4Notice("✅ Suivi activé (GA4)");
-  setSiteInrcyGscNotice("✅ Suivi activé (Search Console)");
-  window.setTimeout(() => {
-    setSiteInrcyGa4Notice(null);
-    setSiteInrcyGscNotice(null);
-  }, 2500);
-
-  // Aligne immédiatement le bloc canal, puis confirme via le refresh ciblé.
-  patchChannelConnectionLocally("site_inrcy", {
-    connected: true,
-    accountConnected: true,
-    configured: true,
-    statsConnected: true,
-    resourceId: siteUrl,
-    resourceLabel: siteUrl,
-    resourceUrl: siteUrl,
-  });
-  triggerChannelRefresh("site_inrcy");
-}, [patchChannelConnectionLocally, siteInrcyOwnership, siteInrcyUrl, triggerChannelRefresh]);
-
-// ✅ Mode rented : désactive le suivi (GA4+GSC) et nettoie les settings.
-const deactivateSiteInrcyTracking = useCallback(async () => {
-  if (!isManagedInrcySite(siteInrcyOwnership)) {
-    setSiteInrcySettingsError("Désactivation indisponible : cette action est réservée au mode rented.");
-    return;
-  }
-
-  setSiteInrcySettingsError(null);
-  setSiteInrcyTrackingBusy(true);
-
-  const res = await fetch("/api/integrations/google-stats/deactivate", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ source: "site_inrcy" }),
-  }).catch(() => null);
-
-  if (!res) {
-    setSiteInrcyTrackingBusy(false);
-    setSiteInrcySettingsError("Connexion au serveur impossible pour le moment. Merci de réessayer.");
-    return;
-  }
-
-  const data = await res.json().catch(() => ({} as any));
-  if (!res.ok) {
-    setSiteInrcyTrackingBusy(false);
-    setSiteInrcySettingsError(getSimpleFrenchErrorMessage((data as any)?.error || String(res.status)));
-    return;
-  }
-
-  setSiteInrcyGa4Connected(false);
-  setSiteInrcyGscConnected(false);
-  setSiteInrcyGa4Notice("Suivi désactivé (GA4). ");
-  setSiteInrcyGscNotice("Suivi désactivé (Search Console). ");
-  window.setTimeout(() => {
-    setSiteInrcyGa4Notice(null);
-    setSiteInrcyGscNotice(null);
-  }, 2500);
-
-  setSiteInrcyTrackingBusy(false);
-
-  // Coupe immédiatement le bloc stats du canal, puis confirme via le refresh ciblé.
-  patchChannelConnectionLocally("site_inrcy", {
-    connected: Boolean(siteInrcySavedUrl.trim()),
-    accountConnected: Boolean(siteInrcySavedUrl.trim()),
-    configured: Boolean(siteInrcySavedUrl.trim()),
-    statsConnected: false,
-    resourceId: siteInrcySavedUrl || null,
-    resourceLabel: siteInrcySavedUrl || null,
-    resourceUrl: siteInrcySavedUrl || null,
-  }, { clearData: true });
-  triggerChannelRefresh("site_inrcy");
-}, [patchChannelConnectionLocally, siteInrcyOwnership, siteInrcySavedUrl, triggerChannelRefresh]);
-
-
-const disconnectGoogleStats = useCallback(
-  async (source: "site_inrcy" | "site_web", product: "ga4" | "gsc") => {
-    const res = await fetch("/api/integrations/google-stats/disconnect", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source, product }),
-    }).catch(() => null);
-
-    if (!res || !res.ok) {
-      const msg = !res
-        ? "Connexion au serveur impossible pour le moment. Merci de réessayer."
-        : getSimpleFrenchErrorMessage(String(res.status));
-      if (source === "site_inrcy") setSiteInrcySettingsError(getSimpleFrenchErrorMessage(msg));
-      else setSiteWebSettingsError(getSimpleFrenchErrorMessage(msg));
-      return;
-    }
-
-    if (source === "site_inrcy") {
-      let nextSettings: any = {};
-      try {
-        const parsed = siteInrcySettingsText?.trim() ? JSON.parse(siteInrcySettingsText) : {};
-        nextSettings = removeGoogleProductFromSettings(parsed, product);
-      } catch {
-        nextSettings = removeGoogleProductFromSettings({}, product);
-      }
-      await updateSiteInrcySettings(nextSettings);
-      setSiteInrcySettingsError(null);
-      if (product === "ga4") {
-        setGa4MeasurementId("");
-        setGa4PropertyId("");
-        setSiteInrcyGa4Connected(false);
-        setSiteInrcyGa4Notice("Google Analytics déconnecté.");
-      } else {
-        setGscProperty("");
-        setSiteInrcyGscConnected(false);
-        setSiteInrcyGscNotice("Search Console déconnecté.");
-      }
-
-      patchChannelConnectionLocally("site_inrcy", {
-        connected: Boolean(siteInrcySavedUrl.trim()),
-        accountConnected: Boolean(siteInrcySavedUrl.trim()),
-        configured: Boolean(siteInrcySavedUrl.trim()),
-        statsConnected: product === "ga4" ? Boolean(siteInrcyGscConnected) : Boolean(siteInrcyGa4Connected),
-        resourceId: siteInrcySavedUrl || null,
-        resourceLabel: siteInrcySavedUrl || null,
-        resourceUrl: siteInrcySavedUrl || null,
-      });
-    } else {
-      let nextSettings: any = {};
-      try {
-        const parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
-        nextSettings = removeGoogleProductFromSettings(parsed, product);
-      } catch {
-        nextSettings = removeGoogleProductFromSettings({}, product);
-      }
-      await updateSiteWebSettings(nextSettings);
-      setSiteWebSettingsError(null);
-      if (product === "ga4") {
-        setSiteWebGa4MeasurementId("");
-        setSiteWebGa4PropertyId("");
-        setSiteWebGa4Connected(false);
-        setSiteWebGa4Notice("Google Analytics déconnecté.");
-      } else {
-        setSiteWebGscProperty("");
-        setSiteWebGscConnected(false);
-        setSiteWebGscNotice("Search Console déconnecté.");
-      }
-
-      patchChannelConnectionLocally("site_web", {
-        connected: Boolean(siteWebSavedUrl.trim()),
-        accountConnected: Boolean(siteWebSavedUrl.trim()),
-        configured: Boolean(siteWebSavedUrl.trim()),
-        statsConnected: product === "ga4" ? Boolean(siteWebGscConnected) : Boolean(siteWebGa4Connected),
-        resourceId: siteWebSavedUrl || null,
-        resourceLabel: siteWebSavedUrl || null,
-        resourceUrl: siteWebSavedUrl || null,
-      });
-    }
-
-    void triggerChannelRefresh(source);
-  },
-  [
-    patchChannelConnectionLocally,
-    removeGoogleProductFromSettings,
-    siteInrcyGa4Connected,
-    siteInrcyGscConnected,
-    siteInrcySavedUrl,
-    siteInrcySettingsText,
-    siteWebGa4Connected,
-    siteWebGscConnected,
-    siteWebSavedUrl,
-    siteWebSettingsText,
-    triggerChannelRefresh,
-  ]
-);
-
-const disconnectSiteInrcyGa4 = useCallback(() => {
-  // En mode "rented" : la config iNrCy est grisée (OK), mais on garde le message explicite ici.
-  if (siteInrcyOwnership === "none") {
-    setSiteInrcySettingsError("Déconnexion Google Analytics indisponible : aucun site iNrCy.");
-    return;
-  }
-  void disconnectGoogleStats("site_inrcy", "ga4");
-}, [disconnectGoogleStats, siteInrcyOwnership]);
-
-const disconnectSiteInrcyGsc = useCallback(() => {
-  if (siteInrcyOwnership === "none") {
-    setSiteInrcySettingsError("Déconnexion Search Console indisponible : aucun site iNrCy.");
-    return;
-  }
-  void disconnectGoogleStats("site_inrcy", "gsc");
-}, [disconnectGoogleStats, siteInrcyOwnership]);
-
-
-// ✅ Réinitialisation globale (lien + GA4 + GSC)
-const resetGoogleStats = useCallback(async (source: GoogleSource) => {
-  await Promise.all([
-    fetch("/api/integrations/google-stats/disconnect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, product: "ga4" }),
-    }).catch(() => null),
-    fetch("/api/integrations/google-stats/disconnect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, product: "gsc" }),
-    }).catch(() => null),
-  ]);
-}, []);
-
-
-// =========================
-// ✅ Site web (indépendant)
-// - données stockées dans pro_tools_configs.settings.site_web
-// =========================
-const updateSiteWebSettings = useCallback(
-  async (nextSiteWeb: any) => {
-    const supabase = createClient();
-    const { data: authData } = await supabase.auth.getUser();
-    const user = authData?.user;
-    if (!user) return;
-
-    // Récupère les settings actuels pour ne pas écraser les autres clés
-    const { data: row, error: readErr } = await supabase
-      .from("pro_tools_configs")
-      .select("settings")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (readErr) {
-      setSiteWebSettingsError(getSimpleFrenchErrorMessage(readErr));
-      return;
-    }
-
-    const current = (row as any)?.settings ?? {};
-    const merged = { ...(current ?? {}), site_web: nextSiteWeb ?? {} };
-
-    const { error } = await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
-    if (error) {
-      setSiteWebSettingsError(getSimpleFrenchErrorMessage(error));
-      return;
-    }
-
-    setSiteWebSettingsError(null);
-    try {
-      setSiteWebSettingsText(JSON.stringify(nextSiteWeb ?? {}, null, 2));
-    } catch {
-      setSiteWebSettingsText("{}");
-    }
-  },
-  []
-);
-
-const disconnectAllGoogleStatsForSource = useCallback(
-  async (source: GoogleSource) => {
-    await resetGoogleStats(source);
-
-    if (source === "site_inrcy") {
-      let nextSettings: any = {};
-      try {
-        const parsed = siteInrcySettingsText?.trim() ? JSON.parse(siteInrcySettingsText) : {};
-        nextSettings = removeGoogleProductFromSettings(removeGoogleProductFromSettings(parsed, "ga4"), "gsc");
-      } catch {
-        nextSettings = {};
-      }
-      await updateSiteInrcySettings(nextSettings);
-      setGa4MeasurementId("");
-      setGa4PropertyId("");
-      setGscProperty("");
-      setSiteInrcyGa4Connected(false);
-      setSiteInrcyGscConnected(false);
-      setSiteInrcyGa4Notice("Google Analytics déconnecté automatiquement.");
-      setSiteInrcyGscNotice("Search Console déconnecté automatiquement.");
-      setSiteInrcySettingsError(null);
-      window.setTimeout(() => {
-        setSiteInrcyGa4Notice(null);
-        setSiteInrcyGscNotice(null);
-      }, 2500);
-      return;
-    }
-
-    let nextSettings: any = {};
-    try {
-      const parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
-      nextSettings = removeGoogleProductFromSettings(removeGoogleProductFromSettings(parsed, "ga4"), "gsc");
-    } catch {
-      nextSettings = {};
-    }
-    await updateSiteWebSettings(nextSettings);
-    setSiteWebGa4MeasurementId("");
-    setSiteWebGa4PropertyId("");
-    setSiteWebGscProperty("");
-    setSiteWebGa4Connected(false);
-    setSiteWebGscConnected(false);
-    setSiteWebGa4Notice("Google Analytics déconnecté automatiquement.");
-    setSiteWebGscNotice("Search Console déconnecté automatiquement.");
-    setSiteWebSettingsError(null);
-    window.setTimeout(() => {
-      setSiteWebGa4Notice(null);
-      setSiteWebGscNotice(null);
-    }, 2500);
-  },
-  [
-    removeGoogleProductFromSettings,
-    resetGoogleStats,
-    siteInrcySettingsText,
-    siteWebSettingsText,
-    updateSiteInrcySettings,
-    updateSiteWebSettings,
-  ]
-);
-
-const syncSitePresenceState = useCallback(async () => {
-  try {
-    await fetch('/api/integrations/site-presence/sync', { method: 'POST' });
-  } catch {}
-}, []);
-
-// ✅ Enregistrer le lien du site iNrCy (inrcy_site_configs.site_url)
-const saveSiteInrcyUrl = useCallback(async () => {
-  if (siteInrcyOwnership === "none") return;
-  if (siteInrcySavedUrl.trim()) return;
-
-  const rawUrl = siteInrcyUrl.trim();
-  const nextNormalized = rawUrl ? normalizeSiteUrl(rawUrl) : null;
-
-  if (rawUrl && !nextNormalized) {
-    setSiteInrcySettingsError("Renseigne un vrai lien de site (ex: https://monsite.fr) avant d'enregistrer.");
-    return;
-  }
-
-  const valueToSave = nextNormalized?.normalizedUrl ?? "";
-
-  const supabase = createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData?.user;
-  if (!user) return;
-
-  const { error } = await supabase
-    .from("inrcy_site_configs")
-    .upsert({ user_id: user.id, site_url: valueToSave }, { onConflict: "user_id" });
-  if (error) {
-    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
-    return;
-  }
-
-  setSiteInrcySettingsError(null);
-  setSiteInrcyUrl(valueToSave);
-  setSiteInrcySavedUrl(valueToSave);
-  setSiteInrcyUrlNotice(valueToSave ? "✅ Lien du site enregistré" : null);
-  patchChannelConnectionLocally("site_inrcy", {
-    connected: Boolean(valueToSave),
-    accountConnected: Boolean(valueToSave),
-    configured: Boolean(valueToSave),
-    statsConnected: Boolean(siteInrcyGa4Connected || siteInrcyGscConnected),
-    resourceId: valueToSave || null,
-    resourceLabel: valueToSave || null,
-    resourceUrl: valueToSave || null,
-  }, { clearData: !valueToSave });
-  triggerChannelRefresh("site_inrcy");
-  await syncSitePresenceState();
-  if (valueToSave) {
-    window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
-  }
-}, [normalizeSiteUrl, patchChannelConnectionLocally, siteInrcyGa4Connected, siteInrcyGscConnected, siteInrcyOwnership, siteInrcySavedUrl, siteInrcyUrl, triggerChannelRefresh, syncSitePresenceState]);
-
-
-const deleteSiteInrcyUrl = useCallback(async () => {
-  if (siteInrcyOwnership === "none") return;
-  if (!siteInrcySavedUrl.trim()) return;
-
-  const ok = window.confirm(
-    "Supprimer ce lien va déconnecter automatiquement Google Analytics et Google Search Console pour la bulle Site iNrCy. Continuer ?"
-  );
-  if (!ok) return;
-
-  await disconnectAllGoogleStatsForSource("site_inrcy");
-
-  const supabase = createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData?.user;
-  if (!user) return;
-
-  const { error } = await supabase
-    .from("inrcy_site_configs")
-    .upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" });
-  if (error) {
-    setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
-    return;
-  }
-
-  setSiteInrcySettingsError(null);
-  setSiteInrcyUrl("");
-  setSiteInrcySavedUrl("");
-  setShowSiteInrcyWidgetCode(false);
-  setSiteInrcyUrlNotice("✅ Lien du site supprimé. GA4 et Search Console ont été déconnectés.");
-  patchChannelConnectionLocally("site_inrcy", {
-    connected: false,
-    accountConnected: false,
-    configured: false,
-    statsConnected: false,
-    resourceId: null,
-    resourceLabel: null,
-    resourceUrl: null,
-  }, { clearData: true });
-  triggerChannelRefresh("site_inrcy");
-  await syncSitePresenceState();
-  window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
-}, [disconnectAllGoogleStatsForSource, patchChannelConnectionLocally, siteInrcyOwnership, siteInrcySavedUrl, triggerChannelRefresh, syncSitePresenceState]);
-
-// ✅ Enregistrer uniquement le lien du site web (settings.site_web.url)
-const saveSiteWebUrl = useCallback(async () => {
-  if (siteWebSavedUrl.trim()) return;
-
-  let parsed: any;
-  try {
-    parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
-  } catch {
-    setSiteWebSettingsError("JSON invalide. Vérifie la syntaxe (guillemets, virgules, accolades…).");
-    return;
-  }
-
-  const rawUrl = siteWebUrl.trim();
-  const nextNormalized = rawUrl ? normalizeSiteUrl(rawUrl) : null;
-
-  if (rawUrl && !nextNormalized) {
-    setSiteWebSettingsError("Renseigne un vrai lien de site (ex: https://monsite.fr) avant d'enregistrer.");
-    return;
-  }
-
-  const valueToSave = nextNormalized?.normalizedUrl ?? "";
-  parsed.url = valueToSave;
-  if (nextNormalized?.hostname) parsed.domain = nextNormalized.hostname;
-  else delete parsed.domain;
-
-  await updateSiteWebSettings(parsed);
-  setSiteWebUrl(valueToSave);
-  setSiteWebSavedUrl(valueToSave);
-  patchChannelConnectionLocally("site_web", {
-    connected: Boolean(valueToSave),
-    accountConnected: Boolean(valueToSave),
-    configured: Boolean(valueToSave),
-    statsConnected: Boolean(siteWebGa4Connected || siteWebGscConnected),
-    resourceId: valueToSave || null,
-    resourceLabel: valueToSave || null,
-    resourceUrl: valueToSave || null,
-  }, { clearData: !valueToSave });
-  triggerChannelRefresh("site_web");
-  await syncSitePresenceState();
-  setSiteWebUrlNotice(valueToSave ? "✅ Lien du site enregistré" : null);
-  if (valueToSave) {
-    window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
-  }
-}, [normalizeSiteUrl, patchChannelConnectionLocally, siteWebGa4Connected, siteWebGscConnected, siteWebSavedUrl, siteWebSettingsText, siteWebUrl, triggerChannelRefresh, updateSiteWebSettings, syncSitePresenceState]);
-
-const deleteSiteWebUrl = useCallback(async () => {
-  if (!siteWebSavedUrl.trim()) return;
-
-  const ok = window.confirm(
-    "Supprimer ce lien va déconnecter automatiquement Google Analytics et Google Search Console pour la bulle Site web. Continuer ?"
-  );
-  if (!ok) return;
-
-  await disconnectAllGoogleStatsForSource("site_web");
-
-  let parsed: any;
-  try {
-    parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
-  } catch {
-    parsed = {};
-  }
-  parsed = parsed && typeof parsed === "object" ? { ...parsed } : {};
-  delete parsed.url;
-  delete parsed.domain;
-  delete parsed.ga4;
-  delete parsed.gsc;
-
-  await updateSiteWebSettings(parsed);
-  setSiteWebUrl("");
-  setSiteWebSavedUrl("");
-  setShowSiteWebWidgetCode(false);
-  patchChannelConnectionLocally("site_web", {
-    connected: false,
-    accountConnected: false,
-    configured: false,
-    statsConnected: false,
-    resourceId: null,
-    resourceLabel: null,
-    resourceUrl: null,
-  }, { clearData: true });
-  triggerChannelRefresh("site_web");
-  await syncSitePresenceState();
-  setSiteWebUrlNotice("✅ Lien du site supprimé. GA4 et Search Console ont été déconnectés.");
-  window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
-}, [disconnectAllGoogleStatsForSource, patchChannelConnectionLocally, siteWebSavedUrl, siteWebSettingsText, triggerChannelRefresh, updateSiteWebSettings, syncSitePresenceState]);
-
-const resetSiteInrcyAll = useCallback(async () => {
-  if (!confirm("Réinitialiser la configuration (lien + GA4 + Search Console) ?")) return;
-  if (siteInrcyOwnership === "none") return;
-
-  await resetGoogleStats("site_inrcy");
-  await updateSiteInrcySettings({});
-
-  // Clear url in DB
-  const supabase = createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData?.user;
-  if (user) {
-    await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" });
-  }
-
-  setSiteInrcyUrl("");
-  setSiteInrcySavedUrl("");
-  setSiteInrcySettingsText("{}");
-  setGa4MeasurementId("");
-  setGa4PropertyId("");
-  setGscProperty("");
-  setSiteInrcyGa4Connected(false);
-  setSiteInrcyGscConnected(false);
-  patchChannelConnectionLocally("site_inrcy", {
-    connected: false,
-    accountConnected: false,
-    configured: false,
-    statsConnected: false,
-    resourceId: null,
-    resourceLabel: null,
-    resourceUrl: null,
-  }, { clearData: true });
-  triggerChannelRefresh("site_inrcy");
-}, [patchChannelConnectionLocally, resetGoogleStats, siteInrcyOwnership, triggerChannelRefresh, updateSiteInrcySettings]);
-
-const resetSiteWebAll = useCallback(async () => {
-  if (!confirm("Réinitialiser la configuration (lien + GA4 + Search Console) ?")) return;
-
-  await resetGoogleStats("site_web");
-
-  // Clear settings.site_web
-  await updateSiteWebSettings({});
-
-  setSiteWebUrl("");
-  setSiteWebSavedUrl("");
-  setSiteWebSettingsText("{}");
-  setSiteWebGa4MeasurementId("");
-  setSiteWebGa4PropertyId("");
-  setSiteWebGscProperty("");
-  setSiteWebGa4Connected(false);
-  setSiteWebGscConnected(false);
-  patchChannelConnectionLocally("site_web", {
-    connected: false,
-    accountConnected: false,
-    configured: false,
-    statsConnected: false,
-    resourceId: null,
-    resourceLabel: null,
-    resourceUrl: null,
-  }, { clearData: true });
-  triggerChannelRefresh("site_web");
-}, [patchChannelConnectionLocally, resetGoogleStats, updateSiteWebSettings, triggerChannelRefresh]);
-
-// ✅ Houzz / Pages Jaunes (liens uniquement, stockés dans inrcy_site_configs.settings)
-const updateRootSettingsKey = useCallback(
-  async (key: "gmb" | "facebook" | "instagram" | "linkedin", nextObj: any) => {
-    const supabase = createClient();
-    const { data: authData } = await supabase.auth.getUser();
-    const user = authData?.user;
-    if (!user) return;
-
-    const { data: row, error: readErr } = await supabase
-      .from("pro_tools_configs")
-      .select("settings")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (readErr) return;
-
-    const current = (row as any)?.settings ?? {};
-    const merged = { ...(current ?? {}), [key]: nextObj ?? {} };
-
-    await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
-  },
-  []
-);
-
-
-// Google Business page URL is automatic (derived from the selected establishment).
-// No manual edit + no save button.
-
-const connectGmbAccount = useCallback(async () => {
-  // Start OAuth
-  const returnTo = encodeURIComponent("/dashboard?panel=gmb");
-  window.location.href = `/api/integrations/google-business/start?returnTo=${returnTo}`;
-}, []);
-
-const disconnectGmbAccount = useCallback(async () => {
-  // Disconnect Google account (removes OAuth tokens)
-  await fetch("/api/integrations/google-business/disconnect-account", { method: "POST" });
-  setGmbConnected(false);
-  setGmbAccountConnected(false);
-  setGmbConfigured(false);
-  setGmbAccountEmail("");
-  setGmbUrl("");
-  setGmbAccounts([]);
-  setGmbLocations([]);
-  setGmbAccountName("");
-  setGmbLocationName("");
-  setGmbLocationLabel("");
-  await updateRootSettingsKey("gmb", { url: "", connected: false, configured: false, accountEmail: "", accountName: "", locationName: "", locationTitle: "", resource_id: "" });
-  patchChannelConnectionLocally("gmb", {
-    connected: false,
-    accountConnected: false,
-    configured: false,
-    expired: false,
-    resourceId: null,
-    resourceLabel: null,
-    resourceUrl: null,
-  }, { clearData: true });
-  await triggerChannelRefresh("gmb");
-  setPanelSuccess("gmb", "Compte Google déconnecté.");
-}, [patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh, updateRootSettingsKey]);
-
-const disconnectGmbBusiness = useCallback(async () => {
-  // Disconnect Google Business ONLY (keeps Google account connected)
-  const res = await fetch("/api/integrations/google-business/disconnect-location", { method: "POST" });
-  const js = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    setPanelError("gmb", js?.error, "Impossible de déconnecter l'établissement Google Business.");
-    return;
-  }
-  setGmbConnected(false);
-  setGmbConfigured(false);
-  setGmbUrl("");
-  setGmbLocationName("");
-  setGmbLocationLabel("");
-  await updateRootSettingsKey("gmb", { url: "", resource_id: "", locationName: "", locationTitle: "", configured: false, connected: true });
-  patchChannelConnectionLocally("gmb", {
-    connected: false,
-    accountConnected: true,
-    configured: false,
-    resourceId: null,
-    resourceLabel: null,
-    resourceUrl: null,
-  }, { clearData: true });
-  await triggerChannelRefresh("gmb");
-  setPanelSuccess("gmb", "Établissement Google Business déconnecté.");
-}, [patchChannelConnectionLocally, setPanelError, setPanelSuccess, triggerChannelRefresh, updateRootSettingsKey]);
-
-
-  // Facebook pages (selection)
-  const [fbPages, setFbPages] = useState<Array<{ id: string; name?: string; access_token?: string }>>([]);
-  const [fbPagesLoading, setFbPagesLoading] = useState(false);
-  const [fbSelectedPageId, setFbSelectedPageId] = useState<string>("");
-  const [fbSelectedPageName, setFbSelectedPageName] = useState<string>("");
-  const [fbPagesError, setFbPagesError] = useState<string | null>(null);
-  const fbPagesAutoLoadRef = useRef(false);
-const gmbLocationsAutoLoadRef = useRef(false);
-
-// Instagram accounts (selection via Facebook pages that have an IG Business account)
-const [igAccounts, setIgAccounts] = useState<Array<{ page_id: string; page_name?: string; ig_id: string; username?: string; page_access_token?: string }>>([]);
-const [igAccountsLoading, setIgAccountsLoading] = useState(false);
-const [igSelectedPageId, setIgSelectedPageId] = useState<string>("");
-const [igAccountsError, setIgAccountsError] = useState<string | null>(null);
-const igAccountsAutoLoadRef = useRef(false);
-
-
-
-  // Google Business locations (selection)
-  const [gmbAccounts, setGmbAccounts] = useState<Array<{ name: string; accountName?: string; type?: string }>>([]);
-  const [gmbLocations, setGmbLocations] = useState<Array<{ name: string; title?: string }>>([]);
-  const [gmbAccountName, setGmbAccountName] = useState<string>("");
-  const [gmbLocationName, setGmbLocationName] = useState<string>("");
-  const [gmbLocationLabel, setGmbLocationLabel] = useState<string>("");
-  const [gmbLoadingList, setGmbLoadingList] = useState(false);
-  const [gmbListError, setGmbListError] = useState<string | null>(null);
-const connectFacebookAccount = useCallback(async () => {
-  const returnTo = encodeURIComponent("/dashboard?panel=facebook");
-  window.location.href = `/api/integrations/facebook/start?returnTo=${returnTo}&mode=standard`;
-}, []);
-
-const connectFacebookBusinessAccount = useCallback(async () => {
-  const returnTo = encodeURIComponent("/dashboard?panel=facebook");
-  window.location.href = `/api/integrations/facebook/start?returnTo=${returnTo}&mode=business`;
-}, []);
-
-const disconnectFacebookAccount = useCallback(async () => {
-	  await fetch("/api/integrations/facebook/disconnect-account", { method: "POST" });
-	  setFacebookAccountConnected(false);
-	  setFacebookPageConnected(false);
-	  patchChannelConnectionLocally("facebook", {
-	    connected: false,
-	    accountConnected: false,
-	    configured: false,
-	    expired: false,
-	    resourceId: null,
-	    resourceLabel: null,
-	    resourceUrl: null,
-	  }, { clearData: true });
-	  setFacebookAccountEmail("");
-	  // Keep a lightweight mirror in pro_tools_configs for instant UI updates.
-	  await updateRootSettingsKey("facebook", {
-	    accountConnected: false,
-	    pageConnected: false,
-	    userEmail: "",
-	    url: "",
-	    pageId: "",
-	    pageName: "",
-	  });
-	  await triggerChannelRefresh("facebook");
-	  setFacebookUrl("");
-	  setFbPages([]);
-	  setFbSelectedPageId("");
-	  setFbSelectedPageName("");
-	  setPanelSuccess("facebook", "Compte Facebook déconnecté.");
-}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
-
-const disconnectFacebookPage = useCallback(async () => {
-	  await fetch("/api/integrations/facebook/disconnect-page", { method: "POST" });
-	  setFacebookPageConnected(false);
-	  patchChannelConnectionLocally("facebook", {
-	    connected: false,
-	    accountConnected: true,
-	    configured: false,
-	    expired: false,
-	    resourceId: null,
-	    resourceLabel: null,
-	    resourceUrl: null,
-	  }, { clearData: true });
-	  await updateRootSettingsKey("facebook", {
-	    accountConnected: true,
-	    pageConnected: false,
-	    url: "",
-	    pageId: "",
-	    pageName: "",
-	  });
-	  await triggerChannelRefresh("facebook");
-	  setFacebookUrl("");
-	  setFbSelectedPageId("");
-	  setFbSelectedPageName("");
-	  setPanelSuccess("facebook", "Page Facebook déconnectée.");
-}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
-const loadFacebookPages = useCallback(async () => {
-	  if (!facebookAccountConnected) return;
-  setFbPagesLoading(true);
-  setFbPagesError(null);
-  try {
-    const r = await fetch("/api/integrations/facebook/pages", { cache: "no-store" });
-    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger vos pages Facebook."));
-    const j = await r.json().catch(() => ({}));
-    const pages = Array.isArray(j.pages) ? j.pages : [];
-    setFbPages(pages);
-
-    const matchedSelected = pages.find((p: { id: string; name?: string | null }) => p.id === fbSelectedPageId);
-    if (matchedSelected?.name) setFbSelectedPageName(String(matchedSelected.name));
-
-    // Preselect first if none
-    if (!fbSelectedPageId && pages?.[0]?.id) {
-      setFbSelectedPageId(pages[0].id);
-      if (pages[0]?.name) setFbSelectedPageName(String(pages[0].name));
-    }
-
-    // If there is exactly one page, auto-select & save it server-side (no extra "Enregistrer").
-    if (pages.length === 1) {
-      const only = pages[0];
-      if (only?.id) {
-        const autoRes = await fetch("/api/integrations/facebook/select-page", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pageId: only.id,
-            pageName: only.name || null,
-          }),
-        });
-        const autoJson = await autoRes.json().catch(() => ({}));
-        if (!autoRes.ok) throw new Error(autoJson?.error || "Impossible d’enregistrer la page Facebook.");
-        const nextFacebookUrl = String(autoJson?.pageUrl || `https://www.facebook.com/${only.id}`);
-        setFbSelectedPageId(only.id);
-        setFbSelectedPageName(String(only.name || ""));
-        setFacebookPageConnected(true);
-        setFacebookUrl(nextFacebookUrl);
-        patchChannelConnectionLocally("facebook", {
-          connected: true,
-          accountConnected: true,
-          configured: true,
-          resourceId: only.id,
-          resourceLabel: only.name || null,
-          resourceUrl: nextFacebookUrl,
-        });
-        await updateRootSettingsKey("facebook", {
-          accountConnected: true,
-          pageConnected: true,
-          userEmail: facebookAccountEmail,
-          url: nextFacebookUrl,
-          pageId: only.id,
-          pageName: String(only.name || ""),
-        });
-        await triggerChannelRefresh("facebook");
-        setPanelSuccess("facebook", "Page Facebook enregistrée.");
-      }
-    }
-  } catch (e: any) {
-    setFbPagesError(getSimpleFrenchErrorMessage(e, "Impossible de charger vos pages Facebook."));
-  } finally {
-    setFbPagesLoading(false);
-  }
-	}, [facebookAccountConnected, fbSelectedPageId, facebookAccountEmail, patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh, updateRootSettingsKey]);
-
-useEffect(() => {
-  const linked = searchParams.get("linked");
-  const ok = searchParams.get("ok");
-  const shouldAutoLoad = panel === "facebook" && linked === "facebook" && ok === "1";
-
-  if (!shouldAutoLoad) {
-    fbPagesAutoLoadRef.current = false;
-    return;
-  }
-
-  if (!facebookAccountConnected || facebookPageConnected || fbPagesLoading || fbPagesAutoLoadRef.current) return;
-
-  fbPagesAutoLoadRef.current = true;
-  void loadFacebookPages();
-}, [
-  panel,
-  searchParams,
-  facebookAccountConnected,
-  facebookPageConnected,
-  fbPagesLoading,
-  loadFacebookPages,
-]);
-
-const saveFacebookPage = useCallback(async () => {
-  const picked = fbPages.find((p) => p.id === fbSelectedPageId);
-  if (!picked?.id) return;
-
-  const r = await fetch("/api/integrations/facebook/select-page", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      pageId: picked.id,
-      pageName: picked.name || null,
-    }),
-  });
-
-  const j = await r.json().catch(() => ({}));
-  if (r.ok) {
-    const nextFacebookUrl = String(j?.pageUrl || `https://www.facebook.com/${picked.id}`);
-    setFacebookUrl(nextFacebookUrl);
-	    setFacebookPageConnected(true);
-	    setFbSelectedPageName(picked.name || "");
-    patchChannelConnectionLocally("facebook", {
-      connected: true,
-      accountConnected: true,
-      configured: true,
-      resourceId: picked.id,
-      resourceLabel: picked.name || null,
-      resourceUrl: nextFacebookUrl,
-    });
-    await updateRootSettingsKey("facebook", {
-      accountConnected: true,
-      pageConnected: true,
-      userEmail: facebookAccountEmail,
-      url: nextFacebookUrl,
-      pageId: picked.id,
-      pageName: String(picked.name || ""),
-    });
-    await triggerChannelRefresh("facebook");
-    setPanelSuccess("facebook", "Page Facebook enregistrée.");
-  } else {
-    setPanelError("facebook", j?.error, "Impossible d'enregistrer la page Facebook.");
-  }
-
-}, [fbPages, fbSelectedPageId, facebookAccountEmail, patchChannelConnectionLocally, triggerChannelRefresh, updateRootSettingsKey, setPanelSuccess, setPanelError]);
-
-// ===== Instagram (Meta) =====
-const connectInstagramAccount = useCallback(async () => {
-  const returnTo = encodeURIComponent("/dashboard?panel=instagram");
-  window.location.href = `/api/integrations/instagram/start?returnTo=${returnTo}&mode=standard`;
-}, []);
-
-const connectInstagramBusinessAccount = useCallback(async () => {
-  const returnTo = encodeURIComponent("/dashboard?panel=instagram");
-  window.location.href = `/api/integrations/instagram/start?returnTo=${returnTo}&mode=business`;
-}, []);
-
-const disconnectInstagramAccount = useCallback(async () => {
-  await fetch("/api/integrations/instagram/disconnect-account", { method: "POST" });
-  setInstagramAccountConnected(false);
-  setInstagramConnected(false);
-  setInstagramUsername("");
-  setInstagramUrl("");
-  setIgAccounts([]);
-  setIgSelectedPageId("");
-  patchChannelConnectionLocally("instagram", {
-    connected: false,
-    accountConnected: false,
-    configured: false,
-    expired: false,
-    resourceId: null,
-    resourceLabel: null,
-    resourceUrl: null,
-  }, { clearData: true });
-  await updateRootSettingsKey("instagram", {
-    accountConnected: false,
-    connected: false,
-    username: "",
-    url: "",
-    pageId: "",
-    igId: "",
-  });
-  await triggerChannelRefresh("instagram");
-  await syncInstagramStateFromServer();
-  setPanelSuccess("instagram", "Compte Instagram déconnecté.");
-}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess, syncInstagramStateFromServer]);
-
-const disconnectInstagramProfile = useCallback(async () => {
-  await fetch("/api/integrations/instagram/disconnect-profile", { method: "POST" });
-  setInstagramConnected(false);
-  setInstagramUsername("");
-  setInstagramUrl("");
-  setIgSelectedPageId("");
-  patchChannelConnectionLocally("instagram", {
-    connected: false,
-    accountConnected: true,
-    configured: false,
-    resourceId: null,
-    resourceLabel: null,
-    resourceUrl: null,
-  }, { clearData: true });
-  await updateRootSettingsKey("instagram", {
-    accountConnected: true,
-    connected: false,
-    username: "",
-    url: "",
-    pageId: "",
-    igId: "",
-  });
-  await triggerChannelRefresh("instagram");
-  await syncInstagramStateFromServer();
-  setPanelSuccess("instagram", "Profil Instagram déconnecté.");
-}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess, syncInstagramStateFromServer]);
-
-const loadInstagramAccounts = useCallback(async () => {
-  if (!instagramAccountConnected) return;
-  setIgAccountsLoading(true);
-  setIgAccountsError(null);
-  try {
-    const r = await fetch("/api/integrations/instagram/accounts", { cache: "no-store" });
-    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger vos comptes Instagram."));
-    const j = await r.json().catch(() => ({}));
-    setIgAccounts(j.accounts || []);
-    if (!igSelectedPageId && (j.accounts?.[0]?.page_id)) setIgSelectedPageId(j.accounts[0].page_id);
-
-    // Auto-connect if exactly 1 eligible account
-    if ((j.accounts || []).length === 1) {
-      const only = j.accounts[0];
-      const autoRes = await fetch("/api/integrations/instagram/select-profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageId: only.page_id }),
-      });
-      const autoJson = await autoRes.json().catch(() => ({}));
-      if (!autoRes.ok) throw new Error(autoJson?.error || "Impossible d’enregistrer Instagram.");
-      setInstagramConnected(true);
-      const nextUsername = autoJson?.username ? String(autoJson.username) : String(only.username || "");
-      if (nextUsername) setInstagramUsername(nextUsername);
-      const nextInstagramUrl = autoJson?.profileUrl ? String(autoJson.profileUrl) : (only.username ? `https://www.instagram.com/${only.username}/` : "");
-      setInstagramUrl(nextInstagramUrl);
-      patchChannelConnectionLocally("instagram", {
-        connected: true,
-        accountConnected: true,
-        configured: true,
-        resourceId: only.ig_id || only.page_id,
-        resourceLabel: nextUsername || null,
-        resourceUrl: nextInstagramUrl || null,
-      });
-      await updateRootSettingsKey("instagram", {
-        accountConnected: true,
-        connected: true,
-        username: nextUsername,
-        url: nextInstagramUrl,
-        pageId: String(only.page_id || ""),
-        igId: String(only.ig_id || only.page_id || ""),
-      });
-      await triggerChannelRefresh("instagram");
-      await syncInstagramStateFromServer({ preserveSelection: true });
-      setPanelSuccess("instagram", "Compte Instagram enregistré.");
-    }
-  } catch (e: any) {
-    setIgAccountsError(getSimpleFrenchErrorMessage(e, "Impossible de charger vos comptes Instagram."));
-  } finally {
-    setIgAccountsLoading(false);
-  }
-}, [instagramAccountConnected, igSelectedPageId, patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh, updateRootSettingsKey, syncInstagramStateFromServer]);
-
-useEffect(() => {
-  const linked = searchParams.get("linked");
-  const ok = searchParams.get("ok");
-  const shouldAutoLoad = panel === "instagram" && linked === "instagram" && ok === "1";
-
-  if (!shouldAutoLoad) {
-    igAccountsAutoLoadRef.current = false;
-    return;
-  }
-
-  if (!instagramAccountConnected || instagramConnected || igAccountsLoading || igAccountsAutoLoadRef.current) return;
-
-  igAccountsAutoLoadRef.current = true;
-  void loadInstagramAccounts();
-}, [
-  panel,
-  searchParams,
-  instagramAccountConnected,
-  instagramConnected,
-  igAccountsLoading,
-  loadInstagramAccounts,
-]);
-
-const saveInstagramProfile = useCallback(async () => {
-  const picked = igAccounts.find((a) => a.page_id === igSelectedPageId);
-  if (!picked?.page_id) return;
-
-  const r = await fetch("/api/integrations/instagram/select-profile", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pageId: picked.page_id }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (r.ok) {
-    setInstagramConnected(true);
-    const nextUsername = j?.username ? String(j.username) : String(picked.username || "");
-    const nextProfileUrl = j?.profileUrl ? String(j.profileUrl) : (picked.username ? `https://www.instagram.com/${picked.username}/` : "");
-    if (nextUsername) setInstagramUsername(nextUsername);
-    if (nextProfileUrl) setInstagramUrl(nextProfileUrl);
-    patchChannelConnectionLocally("instagram", {
-      connected: true,
-      accountConnected: true,
-      configured: true,
-      resourceId: picked.ig_id || picked.page_id,
-      resourceLabel: nextUsername || null,
-      resourceUrl: nextProfileUrl || null,
-    });
-    await updateRootSettingsKey("instagram", {
-      accountConnected: true,
-      connected: true,
-      username: nextUsername,
-      url: nextProfileUrl,
-      pageId: String(picked.page_id || ""),
-      igId: String(picked.ig_id || picked.page_id || ""),
-    });
-    await triggerChannelRefresh("instagram");
-    await syncInstagramStateFromServer({ preserveSelection: true });
-    setPanelSuccess("instagram", "Compte Instagram enregistré.");
-  } else {
-    setPanelError("instagram", j?.error, "Impossible d'enregistrer Instagram.");
-  }
-}, [igAccounts, igSelectedPageId, patchChannelConnectionLocally, triggerChannelRefresh, updateRootSettingsKey, setPanelSuccess, setPanelError, syncInstagramStateFromServer]);
-
-// ===== LinkedIn =====
-const connectLinkedinAccount = useCallback(async () => {
-  const returnTo = encodeURIComponent("/dashboard?panel=linkedin");
-  window.location.href = `/api/integrations/linkedin/start?returnTo=${returnTo}`;
-}, []);
-
-const disconnectLinkedinAccount = useCallback(async () => {
-  await fetch("/api/integrations/linkedin/disconnect-account", { method: "POST" });
-  setLinkedinAccountConnected(false);
-  setLinkedinConnected(false);
-  setLinkedinDisplayName("");
-  setLinkedinUrl("");
-  patchChannelConnectionLocally("linkedin", {
-    connected: false,
-    accountConnected: false,
-    configured: false,
-    expired: false,
-    resourceId: null,
-    resourceLabel: null,
-    resourceUrl: null,
-  }, { clearData: true });
-  await updateRootSettingsKey("linkedin", {
-    accountConnected: false,
-    connected: false,
-    displayName: "",
-    url: "",
-  });
-  triggerChannelRefresh("linkedin");
-  setPanelSuccess("linkedin", "Compte LinkedIn déconnecté.");
-}, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
-
-
-const saveLinkedinProfileUrl = useCallback(async () => {
-  const raw = (linkedinUrl ?? "").trim();
-
-  // Autorise la valeur vide (pour effacer le lien)
-  if (raw.length > 0) {
-    const ok =
-      raw.startsWith("https://www.linkedin.com/in/") ||
-      raw.startsWith("https://linkedin.com/in/") ||
-      raw.startsWith("https://www.linkedin.com/pub/") ||
-      raw.startsWith("https://linkedin.com/pub/");
-    if (!ok) {
-      setPanelError("linkedin", "Lien LinkedIn invalide.", "Lien LinkedIn invalide. Exemple : https://www.linkedin.com/in/ton-profil", 3600);
-      return;
-    }
-  }
-
-  await updateRootSettingsKey("linkedin", {
-    accountConnected: linkedinAccountConnected,
-    connected: linkedinConnected,
-    displayName: linkedinDisplayName,
-    url: raw,
-  });
-
-  patchChannelConnectionLocally("linkedin", {
-    connected: linkedinConnected,
-    accountConnected: linkedinAccountConnected,
-    configured: linkedinConnected,
-    resourceLabel: linkedinDisplayName || null,
-    resourceUrl: raw || null,
-  }, { clearData: false });
-  triggerChannelRefresh("linkedin");
-  setPanelSuccess("linkedin", "Lien LinkedIn enregistré.", 1800);
-}, [linkedinUrl, linkedinAccountConnected, linkedinConnected, linkedinDisplayName, patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh]);
-
-
-const loadGmbAccountsAndLocations = useCallback(async () => {
-  // Only possible once the Google account is OAuth-connected
-  if (!gmbAccountConnected) return;
-  setGmbLoadingList(true);
-  setGmbListError(null);
-  try {
-    const r = await fetch(`/api/integrations/google-business/locations`, { cache: "no-store" });
-    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Impossible de charger les établissements Google Business."));
-    const j = await r.json().catch(() => ({}));
-    const accounts = Array.isArray(j.accounts) ? j.accounts : [];
-    const locations = Array.isArray(j.locations) ? j.locations : [];
-    setGmbAccounts(accounts);
-    setGmbAccountName(j.accountName || "");
-    setGmbLocations(locations);
-    if (j.locationsError) setGmbListError(j.locationsError);
-
-    const currentLocationName = (gmbLocationName || "").trim();
-    const hasCurrentSelection = Boolean(currentLocationName && locations.some((l: { name: string; title?: string | null }) => l.name === currentLocationName));
-    const nextLocationName = hasCurrentSelection ? currentLocationName : String(locations?.[0]?.name || "");
-    if (nextLocationName) {
-      setGmbLocationName(nextLocationName);
-      const matched = locations.find((l: { name: string; title?: string | null }) => l.name === nextLocationName);
-      if (matched?.title) setGmbLocationLabel(String(matched.title));
-    }
-
-    if (locations.length === 1 && j.accountName) {
-      const only = locations[0];
-      const autoRes = await fetch("/api/integrations/google-business/select-location", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountName: j.accountName,
-          locationName: only.name,
-          locationTitle: only.title || null,
-        }),
-      });
-      const autoJson = await autoRes.json().catch(() => ({}));
-      if (!autoRes.ok) throw new Error(autoJson?.error || "Impossible d’enregistrer l’établissement Google Business.");
-      setGmbLocationName(String(only.name || ""));
-      setGmbLocationLabel(String(only.title || ""));
-      setGmbConfigured(true);
-      setGmbConnected(true);
-      if (autoJson?.url) setGmbUrl(String(autoJson.url));
-      patchChannelConnectionLocally("gmb", {
-        connected: true,
-        accountConnected: true,
-        configured: true,
-        resourceId: only.name || null,
-        resourceLabel: only.title || null,
-        resourceUrl: autoJson?.url ? String(autoJson.url) : null,
-      });
-      await triggerChannelRefresh("gmb");
-      setPanelSuccess("gmb", "Établissement Google Business enregistré.");
-    }
-  } catch (e: any) {
-    setGmbListError(getSimpleFrenchErrorMessage(e, "Impossible de charger les établissements Google Business."));
-  } finally {
-    setGmbLoadingList(false);
-  }
-}, [gmbAccountConnected, gmbLocationName, patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh]);
-
-
-useEffect(() => {
-  const linked = searchParams.get("linked");
-  const ok = searchParams.get("ok");
-  const shouldAutoLoad = panel === "gmb" && linked === "gmb" && ok === "1";
-
-  if (!shouldAutoLoad) {
-    gmbLocationsAutoLoadRef.current = false;
-    return;
-  }
-
-  if (!gmbAccountConnected || gmbConfigured || gmbLoadingList || gmbLocationsAutoLoadRef.current) return;
-
-  gmbLocationsAutoLoadRef.current = true;
-  void loadGmbAccountsAndLocations();
-}, [
-  panel,
-  searchParams,
-  gmbAccountConnected,
-  gmbConfigured,
-  gmbLoadingList,
-  loadGmbAccountsAndLocations,
-]);
-
-const saveGmbLocation = useCallback(async () => {
-  if (!gmbAccountName || !gmbLocationName) return;
-  try {
-    const picked = gmbLocations.find((l) => l.name === gmbLocationName);
-    const res = await fetch("/api/integrations/google-business/select-location", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        accountName: gmbAccountName,
-        locationName: gmbLocationName,
-        locationTitle: picked?.title || null,
-      }),
-    });
-    const js = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(js?.error || "Impossible d’enregistrer l’établissement");
-
-    setGmbConfigured(true);
-    setGmbConnected(true);
-    setGmbLocationLabel(String(picked?.title || ""));
-    if (js?.url) setGmbUrl(String(js.url));
-    patchChannelConnectionLocally("gmb", {
-      connected: true,
-      accountConnected: true,
-      configured: true,
-      resourceId: gmbLocationName || null,
-      resourceLabel: picked?.title || null,
-      resourceUrl: js?.url ? String(js.url) : null,
-    });
-    triggerChannelRefresh("gmb");
-    setPanelSuccess("gmb", "Établissement Google Business enregistré.", 1800);
-  } catch (error) {
-    setPanelError("gmb", error, "Impossible d'enregistrer l'établissement Google Business.");
-  }
-}, [gmbAccountName, gmbLocationName, gmbLocations, patchChannelConnectionLocally, triggerChannelRefresh, setPanelError, setPanelSuccess]);
-
-
-const saveSiteWebSettings = useCallback(async () => {
-  let parsed: any;
-  try {
-    parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
-  } catch {
-    setSiteWebSettingsError("JSON invalide. Vérifie la syntaxe (guillemets, virgules, accolades…).");
-    return;
-  }
-
-  // Sync url input -> JSON (source de vérité: settings.site_web.url)
-  parsed.url = siteWebUrl.trim();
-
-  await updateSiteWebSettings(parsed);
-  triggerChannelRefresh("site_web");
-  setSiteWebGa4Notice("✅ Enregistrement GA4 validé");
-  window.setTimeout(() => setSiteWebGa4Notice(null), 2500);
-
-}, [siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerChannelRefresh]);
-
-const attachWebsiteGoogleAnalytics = useCallback(async () => {
-  const measurement = siteWebGa4MeasurementId.trim();
-  const propertyIdRaw = siteWebGa4PropertyId.trim();
-  if (!measurement) {
-    setSiteWebSettingsError("Renseigne un ID de mesure GA4 (ex: G-XXXXXXXXXX).");
-    return;
-  }
-
-  if (!propertyIdRaw || !/^\d+$/.test(propertyIdRaw)) {
-    setSiteWebSettingsError("Renseigne un Property ID GA4 (numérique, ex: 123456789).");
-    return;
-  }
-
-  let parsed: any;
-  try {
-    parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
-  } catch {
-    setSiteWebSettingsError("JSON invalide. Corrige la configuration avant de rattacher Google Analytics.");
-    return;
-  }
-
-  parsed.url = siteWebUrl.trim();
-  parsed.ga4 = { ...(parsed.ga4 ?? {}), measurement_id: measurement, property_id: propertyIdRaw };
-
-  await updateSiteWebSettings(parsed);
-  await triggerChannelRefresh("site_web");
-  setSiteWebGa4Notice("✅ Enregistrement GA4 validé");
-  window.setTimeout(() => setSiteWebGa4Notice(null), 2500);
-
-}, [siteWebGa4MeasurementId, siteWebGa4PropertyId, siteWebSettingsText, siteWebUrl, triggerChannelRefresh, updateSiteWebSettings]);
-
-const attachWebsiteGoogleSearchConsole = useCallback(async () => {
-  const property = siteWebGscProperty.trim();
-  if (!property) {
-    setSiteWebSettingsError("Renseigne une propriété Search Console (ex: sc-domain:monsite.fr ou https://monsite.fr/).");
-    return;
-  }
-
-  let parsed: any;
-  try {
-    parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
-  } catch {
-    setSiteWebSettingsError("JSON invalide. Corrige la configuration avant de rattacher Search Console.");
-    return;
-  }
-
-  parsed.url = siteWebUrl.trim();
-  parsed.gsc = { ...(parsed.gsc ?? {}), property };
-
-  await updateSiteWebSettings(parsed);
-  triggerChannelRefresh("site_web");
-}, [siteWebGscProperty, siteWebSettingsText, siteWebUrl, updateSiteWebSettings, triggerChannelRefresh]);
-
-
-
-
-const connectSiteWebGa4 = useCallback(() => {
-  const siteUrl = siteWebUrl.trim();
-  if (!siteUrl) {
-    setSiteWebSettingsError("Renseigne le lien du site avant de connecter Google Analytics.");
-    return;
-  }
-  // Connexion GA4 seule : la résolution se fait uniquement pour GA4.
-  const qp = new URLSearchParams({
-    source: "site_web",
-    product: "ga4",
-    siteUrl,
-  });
-  window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
-}, [siteWebUrl]);
-
-const connectSiteWebGsc = useCallback(() => {
-  const siteUrl = siteWebUrl.trim();
-  if (!siteUrl) {
-    setSiteWebSettingsError("Renseigne le lien du site avant de connecter Search Console.");
-    return;
-  }
-  // Connexion GSC seule : la résolution se fait uniquement pour GSC.
-  const qp = new URLSearchParams({
-    source: "site_web",
-    product: "gsc",
-    siteUrl,
-  });
-  window.location.href = `/api/integrations/google-stats/start?${qp.toString()}`;
-}, [siteWebUrl]);
-
-
-const disconnectSiteWebGa4 = useCallback(() => {
-  // Doit fonctionner quel que soit l'état du site iNrCy (rented/sold/none)
-  void disconnectGoogleStats("site_web", "ga4");
-}, [disconnectGoogleStats]);
-
-const disconnectSiteWebGsc = useCallback(() => {
-  void disconnectGoogleStats("site_web", "gsc");
-}, [disconnectGoogleStats]);
-
-  // ✅ AJOUT : profil incomplet -> mini pastille + tooltip
-  const REQUIRED_PROFILE_FIELDS = [
-    "first_name",
-    "last_name",
-    "phone",
-    "contact_email",
-    "company_legal_name",
-    "hq_address",
-    "hq_zip",
-    "hq_city",
-    "hq_country",
-    "siren",
-    "rcs_city",
-  ] as const;
-
-  const checkProfile = useCallback(async () => {
-    const supabase = createClient();
-
-    const { data: authData } = await supabase.auth.getUser();
-    const user = authData?.user;
-    if (!user) return;
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select(
-        "first_name,last_name,phone,contact_email,company_legal_name,hq_address,hq_zip,hq_city,hq_country,siren,rcs_city"
-      )
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (!profile) {
-      setProfileIncomplete(true);
-      return;
-    }
-
-    const incomplete = REQUIRED_PROFILE_FIELDS.some((field) => {
-      const v = (profile as any)[field];
-      return !v || String(v).trim() === "";
-    });
-
-    setProfileIncomplete(incomplete);
-  }, []);
-
-
-const REQUIRED_ACTIVITY_FIELDS = [
-  "services",
-  "intervention_zones",
-  "opening_days",
-  "opening_hours",
-  "strengths",
-] as const;
-
-const checkActivity = useCallback(async () => {
-  const supabase = createClient();
-
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData?.user;
-  if (!user) return;
-
-  const { data: business } = await supabase
-    .from("business_profiles")
-    .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (!business) {
-    setActivityIncomplete(true);
-    return;
-  }
-
-  const decodedSector = decodeBusinessSector((business as any)?.sector ?? "");
-  const hasSectorCategory = !!decodedSector.sectorCategory;
-  const hasProfession = decodedSector.profession.trim().length > 0;
-
-  const incomplete = !hasSectorCategory || !hasProfession || REQUIRED_ACTIVITY_FIELDS.some((field) => {
-    const v = (business as any)[field];
-    if (Array.isArray(v)) return v.filter(Boolean).length === 0;
-    return !v || String(v).trim() === "";
-  });
-
-  setActivityIncomplete(incomplete);
-}, []);
-
-  useEffect(() => {
-    checkProfile();
-    checkActivity();
-  }, [checkProfile, checkActivity]);
-
-
-
 // ✅ Onboarding non-bloquant : on affiche des alertes (badges / dots) mais
 // on n'ouvre jamais un panneau automatiquement.
 // (Sinon impossible de fermer un modal si le profil est incomplet.)
-
-  useEffect(() => {
-    const isTouch =
-      typeof window !== "undefined" &&
-      ("ontouchstart" in window || navigator.maxTouchPoints > 0);
-
-    document.documentElement.classList.toggle("isTouch", isTouch);
-  }, []);
-
-  // Ferme le menu utilisateur (clic dehors / Escape)
-  useEffect(() => {
-    if (!userMenuOpen) return;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setUserMenuOpen(false);
-    };
-
-    const closeIfOutside = (target: EventTarget | null) => {
-      if (!userMenuRef.current) return;
-      if (!target) return;
-      if (!userMenuRef.current.contains(target as Node)) setUserMenuOpen(false);
-    };
-
-    const onPointerDownMouse = (e: MouseEvent) => closeIfOutside(e.target);
-    const onPointerDownTouch = (e: TouchEvent) => closeIfOutside(e.target);
-
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("mousedown", onPointerDownMouse);
-    window.addEventListener("touchstart", onPointerDownTouch, { passive: true });
-
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("mousedown", onPointerDownMouse);
-      window.removeEventListener("touchstart", onPointerDownTouch);
-    };
-  }, [userMenuOpen]);
-
-  useEffect(() => {
-    if (!notificationMenuOpen) return;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setNotificationMenuOpen(false);
-    };
-
-    const closeIfOutside = (target: EventTarget | null) => {
-      if (!target) return;
-      const node = target as Node;
-      const inDesktop = !!desktopNotificationMenuRef.current?.contains(node);
-      const inMobile = !!mobileNotificationMenuRef.current?.contains(node);
-      if (!inDesktop && !inMobile) setNotificationMenuOpen(false);
-    };
-
-    const onPointerDownMouse = (e: MouseEvent) => closeIfOutside(e.target);
-    const onPointerDownTouch = (e: TouchEvent) => closeIfOutside(e.target);
-
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("mousedown", onPointerDownMouse);
-    window.addEventListener("touchstart", onPointerDownTouch, { passive: true });
-
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("mousedown", onPointerDownMouse);
-      window.removeEventListener("touchstart", onPointerDownTouch);
-    };
-  }, [notificationMenuOpen]);
-
-  const userFirstLetter = (userEmail?.trim()?.[0] ?? "U").toUpperCase();
-
-  // ✅ Menu hamburger (mobile)
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuOpen(false);
-    };
-    const closeIfOutside = (target: EventTarget | null) => {
-      if (!menuRef.current) return;
-      if (!target) return;
-      if (!menuRef.current.contains(target as Node)) setMenuOpen(false);
-    };
-
-    const onPointerDownMouse = (e: MouseEvent) => closeIfOutside(e.target);
-    const onPointerDownTouch = (e: TouchEvent) => closeIfOutside(e.target);
-
-    if (menuOpen) {
-      window.addEventListener("keydown", onKeyDown);
-      window.addEventListener("mousedown", onPointerDownMouse);
-      window.addEventListener("touchstart", onPointerDownTouch, { passive: true });
-    }
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("mousedown", onPointerDownMouse);
-      window.removeEventListener("touchstart", onPointerDownTouch);
-    };
-  }, [menuOpen]);
 
   useEffect(() => {
     const snapshotDate = expectedUiSnapshotDate();
@@ -3805,10 +1976,10 @@ const checkActivity = useCallback(async () => {
         const bootstrap = await runDailyStatsRefreshBootstrap();
         if (cancelled) return;
 
-        applyBootstrapRefresh(bootstrap);
+        latestApplyBootstrapRefreshRef.current?.(bootstrap);
 
         if (!bootstrap.ran && !hasFreshGenerator) {
-          await syncFromServerCacheIfNeeded(true);
+          await latestSyncFromServerCacheIfNeededRef.current?.(true);
         }
       } catch (error) {
         console.error(error);
@@ -3820,7 +1991,7 @@ const checkActivity = useCallback(async () => {
     return () => {
       cancelled = true;
     };
-  }, [applyBootstrapRefresh, syncFromServerCacheIfNeeded]);
+  }, []);
 
   useEffect(() => {
     if (!dailyBootReady) return;
@@ -3840,7 +2011,8 @@ const checkActivity = useCallback(async () => {
   }, [dailyBootReady]);
 
   useEffect(() => {
-    if (!dailyBootReady) return;
+    if (!dailyBootReady || initialGeneratorRefreshDoneRef.current) return;
+    initialGeneratorRefreshDoneRef.current = true;
     const cached = readGeneratorCache();
     const lastChannelSyncAt = getLastChannelSyncAt();
     if (cached?.payload?.leads && cached.syncedAt >= lastChannelSyncAt && cached.snapshotDate === expectedUiSnapshotDate()) {
@@ -3860,14 +2032,14 @@ const checkActivity = useCallback(async () => {
 
   useEffect(() => {
     if (!dailyBootReady) return;
-    void syncFromServerCacheIfNeeded(false);
+    void latestSyncFromServerCacheIfNeededRef.current?.(false);
 
     const handleFocus = () => {
-      void syncFromServerCacheIfNeeded(false);
+      void latestSyncFromServerCacheIfNeededRef.current?.(false);
     };
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
-        void syncFromServerCacheIfNeeded(false);
+        void latestSyncFromServerCacheIfNeededRef.current?.(false);
       }
     };
 
@@ -3877,7 +2049,7 @@ const checkActivity = useCallback(async () => {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [dailyBootReady, syncFromServerCacheIfNeeded]);
+  }, [dailyBootReady]);
 
   const leadsToday = typeof kpis?.leads?.today === "number" ? kpis.leads.today : null;
   const leadsWeek = typeof kpis?.leads?.week === "number" ? kpis.leads.week : null;
@@ -3908,156 +2080,10 @@ const checkActivity = useCallback(async () => {
     };
   }, [hasSiteInrcyUrl, hasSiteWebUrl, siteInrcyOwnership, siteInrcyProgressCount, siteWebProgressCount]);
 
-  const fluxBubbleItems = useMemo<DashboardFluxBubbleData[]>(() => fluxModules.map((m) => {
-    const channelKey = m.key as DashboardChannelKey;
-    const channelBlock = channelBlocks?.[channelKey] ?? null;
-    const blockDrivenStatus = getBubbleStatusFromBlock(channelKey, channelBlock as InrstatsChannelBlock);
-    const blockDrivenViewHref = getBubbleViewHrefFromBlock(channelKey, channelBlock);
-
-    const viewActionRaw = m.actions.find((a) => a.variant === "view");
-    const viewAction =
-      (m.key === "site_inrcy" && viewActionRaw)
-        ? {
-            ...viewActionRaw,
-            href: normalizeExternalHref(blockDrivenViewHref || siteInrcySavedUrl) || "#",
-          }
-        : (m.key === "site_web" && viewActionRaw)
-          ? {
-              ...viewActionRaw,
-              href: normalizeExternalHref(blockDrivenViewHref || siteWebSavedUrl) || "#",
-            }
-          : (m.key === "instagram" && viewActionRaw)
-            ? {
-                ...viewActionRaw,
-                href: normalizeExternalHref(blockDrivenViewHref || instagramUrl) || "#",
-              }
-            : (m.key === "linkedin" && viewActionRaw)
-              ? {
-                  ...viewActionRaw,
-                  href: normalizeExternalHref(blockDrivenViewHref || linkedinUrl) || "#",
-                }
-              : viewActionRaw;
-
-    const { status: bubbleStatus, text: bubbleStatusText } = (m.key === "site_inrcy")
-      ? getSiteBubbleProgress("site_inrcy")
-      : (m.key === "site_web")
-        ? getSiteBubbleProgress("site_web")
-        : blockDrivenStatus ?? (() => {
-
-      if (m.key === "instagram") {
-        if (instagramConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
-        return { status: "available" as ModuleStatus, text: "A connecter" };
-      }
-
-      if (m.key === "linkedin") {
-        if (linkedinConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
-        return { status: "available" as ModuleStatus, text: "A connecter" };
-      }
-
-      if (m.key === "gmb") {
-        if (gmbConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
-        return { status: "available" as ModuleStatus, text: "A connecter" };
-      }
-
-      if (m.key === "facebook") {
-        if (facebookPageConnected) return { status: "connected" as ModuleStatus, text: "Connecté" };
-        return { status: "available" as ModuleStatus, text: "A connecter" };
-      }
-
-      return { status: m.status, text: statusLabel(m.status) };
-    })();
-
-    const specialViewHref = m.key === "site_inrcy"
-      ? (blockDrivenViewHref || normalizeExternalHref(siteInrcySavedUrl) || "#")
-      : m.key === "site_web"
-        ? (blockDrivenViewHref || normalizeExternalHref(siteWebSavedUrl) || "#")
-        : m.key === "instagram"
-          ? (blockDrivenViewHref || normalizeExternalHref(instagramUrl) || "#")
-          : m.key === "linkedin"
-            ? (blockDrivenViewHref || normalizeExternalHref(linkedinUrl) || "#")
-            : m.key === "gmb"
-              ? (blockDrivenViewHref || normalizeExternalHref(gmbUrl) || "#")
-              : m.key === "facebook"
-                ? (blockDrivenViewHref || normalizeExternalHref(facebookUrl) || "#")
-                : undefined;
-
-    const specialViewLabel = m.key === "site_inrcy"
-      ? "Voir le site"
-      : m.key === "site_web"
-        ? "Voir le site"
-        : m.key === "gmb"
-          ? "Voir la page"
-          : ["instagram", "linkedin", "facebook"].includes(m.key)
-            ? "Voir le compte"
-            : undefined;
-
-    const canViewSpecial = m.key === "site_inrcy"
-      ? Boolean(blockDrivenViewHref || canViewSite)
-      : m.key === "site_web"
-        ? Boolean(blockDrivenViewHref || savedSiteWebUrlMeta)
-        : m.key === "instagram"
-          ? Boolean(blockDrivenViewHref || instagramUrl)
-          : m.key === "linkedin"
-            ? Boolean(blockDrivenViewHref || linkedinUrl)
-            : m.key === "gmb"
-              ? Boolean(blockDrivenViewHref || gmbUrl)
-              : m.key === "facebook"
-                ? Boolean(blockDrivenViewHref || facebookUrl)
-                : undefined;
-
-    const onConfigure = () => {
-      if (m.key === "site_inrcy") {
-        if (!canConfigureSite) return;
-        openPanel("site_inrcy");
-        return;
-      }
-      if (m.key === "site_web") {
-        openPanel("site_web");
-        return;
-      }
-      if (m.key === "instagram") {
-        openPanel("instagram");
-        return;
-      }
-      if (m.key === "linkedin") {
-        openPanel("linkedin");
-        return;
-      }
-      if (m.key === "gmb") {
-        openPanel("gmb");
-        return;
-      }
-      if (m.key === "facebook") {
-        openPanel("facebook");
-        return;
-      }
-    };
-
-    return {
-      key: m.key,
-      name: m.name,
-      description: m.description,
-      accent: m.accent,
-      logoSrc: MODULE_ICONS[m.key]?.src,
-      logoAlt: MODULE_ICONS[m.key]?.alt,
-      bubbleStatus,
-      bubbleStatusText,
-      helpKind: m.key === "site_inrcy" ? "site_inrcy" : m.key === "site_web" ? "site_web" : undefined,
-      onHelpSiteInrcy: () => setHelpSiteInrcyOpen(true),
-      onHelpSiteWeb: () => setHelpSiteWebOpen(true),
-      specialViewHref,
-      specialViewLabel,
-      canViewSpecial,
-      viewAction: specialViewHref ? undefined : viewAction,
-      onConfigure,
-      configureDisabled: m.key === "site_inrcy" ? !canConfigureSite : false,
-      configureTitle: m.key === "site_inrcy" && !canConfigureSite
-        ? "Disponible uniquement si vous avez un site iNrCy"
-        : undefined,
-    };
-  }), [
+  const fluxBubbleItems = useMemo(() => buildFluxBubbleItems({
     canConfigureSite,
     canViewSite,
+    channelBlocks,
     facebookPageConnected,
     facebookUrl,
     getSiteBubbleProgress,
@@ -4068,9 +2094,28 @@ const checkActivity = useCallback(async () => {
     linkedinConnected,
     linkedinUrl,
     openPanel,
+    savedSiteWebUrlMeta,
+    setHelpSiteInrcyOpen,
+    setHelpSiteWebOpen,
     siteInrcySavedUrl,
     siteWebSavedUrl,
+  }), [
+    canConfigureSite,
+    canViewSite,
     channelBlocks,
+    facebookPageConnected,
+    facebookUrl,
+    getSiteBubbleProgress,
+    gmbConnected,
+    gmbUrl,
+    instagramConnected,
+    instagramUrl,
+    linkedinConnected,
+    linkedinUrl,
+    openPanel,
+    savedSiteWebUrlMeta,
+    siteInrcySavedUrl,
+    siteWebSavedUrl,
   ]);
 
   const saveSiteInrcyUrlFromDrawer = useCallback(() => runDrawerMutation("site_inrcy:url:save", saveSiteInrcyUrl), [runDrawerMutation, saveSiteInrcyUrl]);
@@ -4099,136 +2144,50 @@ const checkActivity = useCallback(async () => {
   const disconnectLinkedinAccountFromDrawer = useCallback(() => runDrawerMutation("linkedin:account:disconnect", disconnectLinkedinAccount), [runDrawerMutation, disconnectLinkedinAccount]);
 
 
-  const siteWebPanelProps = {
-    siteWebAllGreen,
-    hasSiteWebUrl,
-    siteWebUrl,
-    setSiteWebUrl,
-    saveSiteWebUrl: saveSiteWebUrlFromDrawer,
-    deleteSiteWebUrl: deleteSiteWebUrlFromDrawer,
-    siteWebUrlBusy: isDrawerMutationPending("site_web:url:save") || isDrawerMutationPending("site_web:url:delete"),
-    draftSiteWebUrlMeta,
-    siteWebUrlNotice,
-    siteWebGa4Connected,
-    siteWebGa4MeasurementId,
-    siteWebGa4PropertyId,
-    disconnectSiteWebGa4: disconnectSiteWebGa4FromDrawer,
-    siteWebGa4Busy: isDrawerMutationPending("site_web:ga4:disconnect"),
-    connectSiteWebGa4,
-    canConnectSiteWebGoogle,
-    siteWebGa4Notice,
-    siteWebGscConnected,
-    siteWebGscProperty,
-    disconnectSiteWebGsc: disconnectSiteWebGscFromDrawer,
-    siteWebGscBusy: isDrawerMutationPending("site_web:gsc:disconnect"),
-    connectSiteWebGsc,
-    siteWebGscNotice,
-    siteWebActusLayout,
-    setSiteWebActusLayout,
-    siteWebActusLimit,
-    setSiteWebActusLimit,
-    siteWebActusFont,
-    setSiteWebActusFont,
-    siteWebActusTheme,
-    setSiteWebActusTheme,
-    siteWebSavedUrl,
-    widgetTokenSiteWeb,
-    showSiteWebWidgetCode,
-    setShowSiteWebWidgetCode,
-    siteWebSettingsError,
-    resetSiteWebAll,
-  };
-
-  const gmbPanelProps = {
-    gmbConnected,
-    gmbAccountConnected,
-    gmbConnectionStatus,
-    gmbAccountEmail,
-    connectGmbAccount,
-    disconnectGmbAccount: disconnectGmbAccountFromDrawer,
-    gmbAccountBusy: isDrawerMutationPending("gmb:account:disconnect"),
-    gmbConfigured,
-    gmbAccountName,
-    gmbAccounts,
-    gmbLoadingList,
-    loadGmbAccountsAndLocations,
-    gmbLocationName,
-    gmbLocationLabel,
-    setGmbLocationName,
-    gmbLocations,
-    saveGmbLocation: saveGmbLocationFromDrawer,
-    gmbLocationBusy: isDrawerMutationPending("gmb:location:save") || isDrawerMutationPending("gmb:location:disconnect"),
-    gmbLocationAction: isDrawerMutationPending("gmb:location:disconnect")
-      ? "disconnect"
-      : isDrawerMutationPending("gmb:location:save")
-        ? "connect"
-        : null,
-    gmbListError,
-    gmbUrl,
-    gmbUrlNotice,
-    gmbUrlError,
-    disconnectGmbBusiness: disconnectGmbBusinessFromDrawer,
-  };
-
-  const linkedinPanelProps = {
-    linkedinConnected,
-    linkedinAccountConnected,
-    linkedinConnectionStatus,
-    linkedinDisplayName,
-    connectLinkedinAccount,
-    disconnectLinkedinAccount: disconnectLinkedinAccountFromDrawer,
-    linkedinAccountBusy: isDrawerMutationPending("linkedin:account:disconnect"),
-    linkedinUrl,
-    setLinkedinUrl,
-    saveLinkedinProfileUrl: saveLinkedinProfileUrlFromDrawer,
-    linkedinUrlBusy: isDrawerMutationPending("linkedin:url:save"),
-    linkedinUrlNotice,
-    linkedinUrlError,
-    setLinkedinUrlNotice,
-  };
-
-  const siteInrcyPanelProps = {
-    siteInrcyOwnership,
-    siteInrcyAllGreen,
-    siteInrcyContactEmail,
-    hasSiteInrcyUrl,
-    siteInrcyUrl,
-    setSiteInrcyUrl,
-    saveSiteInrcyUrl: saveSiteInrcyUrlFromDrawer,
-    deleteSiteInrcyUrl: deleteSiteInrcyUrlFromDrawer,
-    siteInrcyUrlBusy: isDrawerMutationPending("site_inrcy:url:save") || isDrawerMutationPending("site_inrcy:url:delete"),
-    draftSiteInrcyUrlMeta,
-    siteInrcyUrlNotice,
-    siteInrcyGa4Connected,
-    ga4MeasurementId,
-    ga4PropertyId,
-    disconnectSiteInrcyGa4: disconnectSiteInrcyGa4FromDrawer,
-    siteInrcyGa4Busy: isDrawerMutationPending("site_inrcy:ga4:disconnect"),
-    connectSiteInrcyGa4,
-    canConnectSiteInrcyGoogle,
-    canConfigureSite,
-    siteInrcyGa4Notice,
-    siteInrcyGscConnected,
+  const locals = {
+    canConfigureSite, canConnectSiteInrcyGoogle, canConnectSiteWebGoogle,
+    connectFacebookAccount, connectFacebookBusinessAccount, connectGmbAccount, connectInstagramAccount, connectInstagramBusinessAccount, connectLinkedinAccount,
+    connectSiteInrcyGa4, connectSiteInrcyGsc, connectSiteWebGa4, connectSiteWebGsc,
+    deleteSiteInrcyUrlFromDrawer, deleteSiteWebUrlFromDrawer,
+    disconnectFacebookAccountFromDrawer, disconnectFacebookPageFromDrawer, disconnectGmbAccountFromDrawer, disconnectGmbBusinessFromDrawer,
+    disconnectInstagramAccountFromDrawer, disconnectInstagramProfileFromDrawer, disconnectLinkedinAccountFromDrawer,
+    disconnectSiteInrcyGa4FromDrawer, disconnectSiteInrcyGscFromDrawer, disconnectSiteWebGa4FromDrawer, disconnectSiteWebGscFromDrawer,
+    draftSiteInrcyUrlMeta, draftSiteWebUrlMeta,
+    facebookAccountConnected, facebookAccountEmail, facebookConnectionStatus, facebookPageConnected, facebookUrl, facebookUrlError, facebookUrlNotice,
+    fbPages, fbPagesError, fbPagesLoading, fbSelectedPageId, fbSelectedPageName,
+    ga4MeasurementId, ga4PropertyId,
+    gmbAccountConnected, gmbAccountEmail, gmbAccountName, gmbAccounts, gmbConfigured, gmbConnected, gmbConnectionStatus, gmbListError, gmbLoadingList,
+    gmbLocationLabel, gmbLocationName, gmbLocations, gmbUrl, gmbUrlError, gmbUrlNotice,
     gscProperty,
-    disconnectSiteInrcyGsc: disconnectSiteInrcyGscFromDrawer,
-    siteInrcyGscBusy: isDrawerMutationPending("site_inrcy:gsc:disconnect"),
-    connectSiteInrcyGsc,
-    siteInrcyGscNotice,
-    siteInrcyActusLayout,
-    setSiteInrcyActusLayout,
-    siteInrcyActusLimit,
-    setSiteInrcyActusLimit,
-    siteInrcyActusFont,
-    setSiteInrcyActusFont,
-    siteInrcyActusTheme,
-    setSiteInrcyActusTheme,
-    siteInrcySavedUrl,
-    widgetTokenInrcySite,
-    showSiteInrcyWidgetCode,
-    setShowSiteInrcyWidgetCode,
-    siteInrcySettingsError,
-    resetSiteInrcyAll,
+    igAccounts, igAccountsError, igAccountsLoading, igSelectedPageId,
+    instagramAccountConnected, instagramConnected, instagramConnectionStatus, instagramUrl, instagramUrlError, instagramUrlNotice, instagramUsername,
+    isDrawerMutationPending,
+    linkedinAccountConnected, linkedinConnected, linkedinConnectionStatus, linkedinDisplayName, linkedinUrl, linkedinUrlError, linkedinUrlNotice,
+    loadFacebookPages, loadGmbAccountsAndLocations, loadInstagramAccounts,
+    resetSiteInrcyAll, resetSiteWebAll,
+    saveFacebookPageFromDrawer, saveGmbLocationFromDrawer, saveInstagramProfileFromDrawer, saveLinkedinProfileUrlFromDrawer, saveSiteInrcyUrlFromDrawer, saveSiteWebUrlFromDrawer,
+    setFbSelectedPageId, setIgSelectedPageId, setGmbLocationName, setLinkedinUrl, setLinkedinUrlNotice,
+    setShowSiteInrcyWidgetCode, setShowSiteWebWidgetCode,
+    setSiteInrcyActusFont, setSiteInrcyActusLayout, setSiteInrcyActusLimit, setSiteInrcyActusTheme, setSiteInrcyUrl,
+    setSiteWebActusFont, setSiteWebActusLayout, setSiteWebActusLimit, setSiteWebActusTheme, setSiteWebUrl,
+    showSiteInrcyWidgetCode, showSiteWebWidgetCode,
+    siteInrcyActusFont, siteInrcyActusLayout, siteInrcyActusLimit, siteInrcyActusTheme, siteInrcyAllGreen, siteInrcyContactEmail,
+    siteInrcyGa4Connected, siteInrcyGa4Notice, siteInrcyGscConnected, siteInrcyGscNotice, siteInrcyOwnership, siteInrcySavedUrl, siteInrcySettingsError,
+    siteInrcyUrl, siteInrcyUrlNotice,
+    siteWebActusFont, siteWebActusLayout, siteWebActusLimit, siteWebActusTheme, siteWebAllGreen,
+    siteWebGa4Connected, siteWebGa4MeasurementId, siteWebGa4Notice, siteWebGa4PropertyId, siteWebGscConnected, siteWebGscNotice, siteWebGscProperty,
+    siteWebSavedUrl, siteWebSettingsError, siteWebUrl, siteWebUrlNotice,
+    widgetTokenInrcySite, widgetTokenSiteWeb, hasSiteInrcyUrl, hasSiteWebUrl,
   };
+
+  const {
+    siteWebPanelProps,
+    gmbPanelProps,
+    linkedinPanelProps,
+    siteInrcyPanelProps,
+    instagramPanelProps,
+    facebookPanelProps,
+  } = buildDashboardPanelProps(locals);
 
   return (
     <main className={styles.page}>
@@ -4321,67 +2280,10 @@ const checkActivity = useCallback(async () => {
           submitReferral={submitReferral}
           siteInrcyPanelProps={siteInrcyPanelProps}
           siteWebPanelProps={siteWebPanelProps}
-          instagramPanelProps={{
-            instagramConnected,
-            instagramAccountConnected,
-            instagramConnectionStatus,
-            instagramUsername,
-            connectInstagramAccount,
-            connectInstagramBusinessAccount,
-            disconnectInstagramAccount: disconnectInstagramAccountFromDrawer,
-            instagramAccountBusy: isDrawerMutationPending("instagram:account:disconnect"),
-            igAccountsLoading,
-            loadInstagramAccounts,
-            igSelectedPageId,
-            setIgSelectedPageId,
-            igAccounts,
-            saveInstagramProfile: saveInstagramProfileFromDrawer,
-            instagramProfileBusy:
-              isDrawerMutationPending("instagram:profile:save") ||
-              isDrawerMutationPending("instagram:profile:disconnect"),
-            instagramProfileAction: isDrawerMutationPending("instagram:profile:disconnect")
-              ? "disconnect"
-              : isDrawerMutationPending("instagram:profile:save")
-                ? "connect"
-                : null,
-            igAccountsError,
-            instagramUrl,
-            instagramUrlNotice,
-            instagramUrlError,
-            disconnectInstagramProfile: disconnectInstagramProfileFromDrawer,
-          }}
+          instagramPanelProps={instagramPanelProps}
           linkedinPanelProps={linkedinPanelProps}
           gmbPanelProps={gmbPanelProps}
-          facebookPanelProps={{
-            facebookPageConnected,
-            facebookAccountConnected,
-            facebookConnectionStatus,
-            facebookAccountEmail,
-            connectFacebookAccount,
-            connectFacebookBusinessAccount,
-            disconnectFacebookAccount: disconnectFacebookAccountFromDrawer,
-            facebookAccountBusy: isDrawerMutationPending("facebook:account:disconnect"),
-            fbPagesLoading,
-            loadFacebookPages,
-            fbSelectedPageId,
-            fbSelectedPageName,
-            setFbSelectedPageId,
-            fbPages,
-            saveFacebookPage: saveFacebookPageFromDrawer,
-            facebookPageBusy:
-              isDrawerMutationPending("facebook:page:save") ||
-              isDrawerMutationPending("facebook:page:disconnect"),
-            facebookPageAction: isDrawerMutationPending("facebook:page:disconnect")
-              ? "disconnect"
-              : isDrawerMutationPending("facebook:page:save")
-                ? "connect"
-                : null,
-            fbPagesError,
-            facebookUrl,
-            facebookUrlNotice,
-            facebookUrlError,
-            disconnectFacebookPage: disconnectFacebookPageFromDrawer,
-          }}
+          facebookPanelProps={facebookPanelProps}
         />
       </SettingsDrawer>
 
