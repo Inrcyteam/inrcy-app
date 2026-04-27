@@ -11,7 +11,6 @@ import { asRecord, asString, asHttpStatus, safeErrorMessage } from "@/lib/tsSafe
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
-import { enforceRateLimit } from "@/lib/rateLimit";
 
 
 // IMAP + SMTP require Node.js runtime (Edge runtime can't open raw TCP sockets)
@@ -22,15 +21,6 @@ const handler = async (req: Request) => {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
     const userId = user.id;
-
-    const rateLimited = await enforceRateLimit({
-      name: "imap_send",
-      identifier: userId,
-      limit: 30,
-      window: "1 m",
-      failClosed: true,
-    });
-    if (rateLimited) return rateLimited;
     const ct = req.headers.get("content-type") || "";
     let accountId = "";
     let sendItemId = "";

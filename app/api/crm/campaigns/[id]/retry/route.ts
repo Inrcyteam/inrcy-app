@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { evaluateCampaignDispatchState, getMailCampaignDeliveryConfig, processPendingMailCampaigns } from "@/lib/crmCampaigns";
 import { requireUser } from "@/lib/requireUser";
 import { fetchSuppressedEmailsByUser } from "@/lib/mailSuppression";
-import { enforceRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -14,15 +13,6 @@ async function getRouteId(ctx: any) {
 export async function POST(req: Request, ctx: any) {
   const { supabase, user, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
-
-  const rateLimited = await enforceRateLimit({
-    name: "crm_campaign_retry",
-    identifier: user.id,
-    limit: 10,
-    window: "10 m",
-    failClosed: true,
-  });
-  if (rateLimited) return rateLimited;
 
   const campaignId = await getRouteId(ctx);
   if (!campaignId) {

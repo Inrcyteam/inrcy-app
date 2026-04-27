@@ -2,13 +2,6 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { enforceRateLimit } from "@/lib/rateLimit";
-
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-
-function isAllowedImageMime(type: string) {
-  return /^image\/(png|jpe?g|webp|gif|avif|heic|heif)$/i.test(type || "");
-}
 
 function sanitizeFileName(name: string) {
   return String(name || "image")
@@ -35,29 +28,12 @@ export async function POST(req: Request) {
     const { user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
 
-    const rateLimited = await enforceRateLimit({
-      name: "booster_upload_prepared",
-      identifier: user.id,
-      limit: 20,
-      window: "1 m",
-      failClosed: true,
-    });
-    if (rateLimited) return rateLimited;
-
     const formData = await req.formData().catch(() => null);
     if (!formData) return NextResponse.json({ error: "Données invalides." }, { status: 400 });
 
     const file = formData.get("file");
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "Fichier manquant." }, { status: 400 });
-    }
-
-    if (!isAllowedImageMime(file.type)) {
-      return NextResponse.json({ error: "Format d’image non autorisé." }, { status: 400 });
-    }
-
-    if (file.size > MAX_IMAGE_BYTES) {
-      return NextResponse.json({ error: "Image trop lourde. Taille maximale : 10 Mo." }, { status: 413 });
     }
 
     const requestedPath = String(formData.get("path") || "");

@@ -42,27 +42,6 @@ function isAlreadyRegisteredError(message: string) {
   );
 }
 
-function genericInviteMessage(email: string) {
-  return `Si un accès iNrCy existe pour ${email}, un nouveau lien vient d’être envoyé.`;
-}
-
-async function canResendInviteForEmail(email: string) {
-  const [profileByAdmin, profileByContact, subscriptionByContact] = await Promise.all([
-    supabaseAdmin.from("profiles").select("user_id").eq("admin_email", email).limit(1),
-    supabaseAdmin.from("profiles").select("user_id").eq("contact_email", email).limit(1),
-    supabaseAdmin.from("subscriptions").select("user_id").eq("contact_email", email).limit(1),
-  ]);
-
-  const errors = [profileByAdmin.error, profileByContact.error, subscriptionByContact.error].filter(Boolean);
-  if (errors.length > 0) {
-    throw new Error(errors[0]?.message || "Vérification impossible.");
-  }
-
-  return [profileByAdmin.data, profileByContact.data, subscriptionByContact.data].some(
-    (rows) => Array.isArray(rows) && rows.length > 0,
-  );
-}
-
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => null)) as Body | null;
@@ -82,7 +61,7 @@ export async function POST(req: Request) {
       identifier: `${getClientIp(req)}:${email}`,
       limit: 3,
       window: "15 m",
-      failClosed: true,
+      failClosed: false,
     });
     if (limited) return limited;
 
@@ -101,11 +80,6 @@ export async function POST(req: Request) {
       }
 
       return NextResponse.json({ ok: true, message: successMessage(mode, email) });
-    }
-
-    const canResendInvite = await canResendInviteForEmail(email);
-    if (!canResendInvite) {
-      return NextResponse.json({ ok: true, message: genericInviteMessage(email) });
     }
 
     const inviteResult = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
