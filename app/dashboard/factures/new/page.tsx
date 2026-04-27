@@ -421,7 +421,6 @@ export default function NewFacturePage() {
     discountDetails: string;
   };
 
-  const SAVES_LIMIT = 20;
   const SAVES_TYPE = "facture" as const;
 
   const [draftsOpen, setDraftsOpen] = useState(false);
@@ -445,21 +444,6 @@ export default function NewFacturePage() {
     };
   }, [draftsOpen]);
 
-  const cleanupOldSaves = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
-    await supabase
-      .from("doc_saves")
-      .delete()
-      .eq("user_id", user.id)
-      .eq("type", SAVES_TYPE)
-      .lt("updated_at", cutoff);
-  };
-
   const refreshSaves = async () => {
     setDraftsLoading(true);
     try {
@@ -467,9 +451,6 @@ export default function NewFacturePage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
-
-      // Fallback cleanup (the real cleanup is done server-side via cron)
-      await cleanupOldSaves();
 
       const { data, error } = await supabase
         .from("doc_saves")
@@ -794,24 +775,6 @@ export default function NewFacturePage() {
     const savedId = (savedRows?.[0] as { id?: string } | undefined)?.id || currentSaveId;
     if (savedId) setCurrentSaveId(savedId);
 
-    // Enforce limit (keep most recent)
-    const { data: ids } = await supabase
-      .from("doc_saves")
-      .select("id,updated_at")
-      .eq("user_id", user.id)
-      .eq("type", SAVES_TYPE)
-      .order("updated_at", { ascending: false });
-
-    const extra = (ids ?? []).slice(SAVES_LIMIT);
-    if (extra.length) {
-      await supabase
-        .from("doc_saves")
-        .delete()
-        .in(
-          "id",
-          extra.map((x: any) => x.id)
-        );
-    }
 
     await refreshSaves();
     if (!options?.silent) {
@@ -1182,7 +1145,7 @@ export default function NewFacturePage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, position: "sticky", top: 0, zIndex: 2, padding: "14px 14px 10px", background: "#111", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                <div style={{ fontWeight: 750, fontSize: 16 }}>Sauvegardes (max 20)</div>
+                <div style={{ fontWeight: 750, fontSize: 16 }}>Sauvegardes</div>
                 <button type="button" className={styles.closeBtn} onClick={() => setDraftsOpen(false)}>
                   Fermer
                 </button>
@@ -1191,7 +1154,16 @@ export default function NewFacturePage() {
               {drafts.length === 0 ? (
                 <div style={{ padding: 14, opacity: 0.85 }}>Aucune facture sauvegardée.</div>
               ) : (
-                <div style={{ padding: 14, display: "grid", gap: 10 }}>
+                <div
+                  style={{
+                    padding: 14,
+                    display: "grid",
+                    gap: 10,
+                    maxHeight: drafts.length > 10 ? "62vh" : undefined,
+                    overflowY: drafts.length > 10 ? "auto" : undefined,
+                    paddingRight: drafts.length > 10 ? 8 : 14,
+                  }}
+                >
                   {drafts.map((d) => {
                     const label = d.snapshot.number || "(Sans numéro)";
                     const who = d.snapshot.clientName?.trim() ? ` — ${d.snapshot.clientName.trim()}` : "";
