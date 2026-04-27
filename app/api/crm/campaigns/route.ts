@@ -116,7 +116,7 @@ export async function POST(req: Request) {
     identifier: user.id,
     limit: 10,
     window: "10 m",
-    failClosed: true,
+    failClosed: false,
   });
   if (rateLimited) return rateLimited;
 
