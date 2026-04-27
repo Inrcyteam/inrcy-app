@@ -42,9 +42,46 @@ type CrmContact = {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  billing_address?: string | null;
+  delivery_address?: string | null;
   city?: string | null;
   postal_code?: string | null;
+  siret?: string | null;
+  vat_number?: string | null;
 };
+
+
+function normalizeAddressPart(value?: string | null) {
+  return String(value ?? "").trim().replace(/\s+/g, " ");
+}
+
+function addressContainsPart(address: string, part: string) {
+  if (!address || !part) return false;
+  const normalize = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+  return normalize(address).includes(normalize(part));
+}
+
+function buildFullCrmAddress(address?: string | null, postalCode?: string | null, city?: string | null) {
+  const parts: string[] = [];
+  const base = normalizeAddressPart(address);
+  if (base) parts.push(base);
+
+  [postalCode, city]
+    .map(normalizeAddressPart)
+    .filter(Boolean)
+    .forEach((part) => {
+      const current = parts.join(" ");
+      if (!addressContainsPart(current, part)) parts.push(part);
+    });
+
+  return parts.join(" ").trim();
+}
 
 
 const VAT_OPTIONS = [0, 5.5, 10, 20] as const;
@@ -202,7 +239,7 @@ export default function NewFacturePage() {
       setCrmError(null);
 
       try {
-        const res = await fetch("/api/crm/contacts", { method: "GET" });
+        const res = await fetch("/api/crm/contacts?all=1", { method: "GET" });
         const json = await res.json().catch(() => ({}));
 
         if (!res.ok) {
@@ -230,8 +267,7 @@ export default function NewFacturePage() {
       [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
       (c.last_name || "").trim();
 
-    const addrParts = [c.address, c.postal_code, c.city].filter(Boolean).map((s) => String(s).trim());
-    const fullAddress = addrParts.join(" ").trim();
+    const fullAddress = buildFullCrmAddress(c.billing_address || c.address, c.postal_code, c.city);
 
     setClientName(displayName);
     setClientEmail((c.email || "").trim());

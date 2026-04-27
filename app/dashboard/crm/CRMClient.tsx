@@ -269,6 +269,39 @@ function normalizeImportedRow(
 
 
 
+function normalizeAddressPart(value?: string | null) {
+  return String(value ?? "").trim().replace(/\s+/g, " ");
+}
+
+function addressContainsPart(address: string, part: string) {
+  if (!address || !part) return false;
+  const normalize = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+  return normalize(address).includes(normalize(part));
+}
+
+function buildFullCrmAddress(address?: string | null, postalCode?: string | null, city?: string | null) {
+  const parts: string[] = [];
+  const base = normalizeAddressPart(address);
+  if (base) parts.push(base);
+
+  [postalCode, city]
+    .map(normalizeAddressPart)
+    .filter(Boolean)
+    .forEach((part) => {
+      const current = parts.join(" ");
+      if (!addressContainsPart(current, part)) parts.push(part);
+    });
+
+  return parts.join(" ").trim();
+}
+
+
 export default function CRMClient() {
   const [helpOpen, setHelpOpen] = useState(false);
   const router = useRouter();
@@ -1072,10 +1105,9 @@ const exportExcel = async () => {
   const buildDocPrefillParams = (c: CrmContact) => {
     const clientName = buildDisplayName(c);
     const clientEmail = (c.email || "").trim();
-    const addrParts = [c.address, c.postal_code ?? "", c.city ?? ""]
-      .map((s) => (s || "").trim())
-      .filter(Boolean);
-    const clientAddress = addrParts.join(" ").trim();
+    const clientAddress = buildFullCrmAddress(c.address, c.postal_code, c.city);
+    const billingAddress = buildFullCrmAddress(c.billing_address || c.address, c.postal_code, c.city);
+    const deliveryAddress = buildFullCrmAddress(c.delivery_address || c.address, c.postal_code, c.city);
     const params = new URLSearchParams();
     if (clientName) params.set("clientName", clientName);
     if (clientEmail) params.set("clientEmail", clientEmail);
