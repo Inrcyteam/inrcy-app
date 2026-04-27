@@ -42,6 +42,8 @@ import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+const FORCED_SERVER_CACHE_CHECK_DEDUP_MS = 30_000;
+const AUTO_DAILY_REFRESH_DEDUP_MS = 5 * 60_000;
 
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
@@ -80,6 +82,12 @@ export default function DashboardClient() {
   const kpisRequestSeqRef = useRef(0);
   const siteConfigRequestSeqRef = useRef(0);
   const activeUserIdRef = useRef<string | null>(null);
+  const latestApplyBootstrapRefreshRef = useRef<((bootstrap: DailyStatsRefreshBootstrapResponse) => { syncAt: number; bootstrapSnapshotDate: string | null }) | null>(null);
+  const latestSyncFromServerCacheIfNeededRef = useRef<((force?: boolean) => Promise<void>) | null>(null);
+  const latestFallbackToServerSyncThenGlobalRef = useRef<(() => Promise<void>) | null>(null);
+  const latestTriggerChannelsRefreshRef = useRef<((channelsInput: DashboardChannelKey[]) => Promise<void>) | null>(null);
+  const initialGeneratorRefreshDoneRef = useRef(false);
+  const lastAutoDailyRefreshAtRef = useRef(0);
 
   const [kpisLoading, setKpisLoading] = useState(false);
   const [dailyBootReady, setDailyBootReady] = useState(false);
@@ -1478,12 +1486,15 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     notifyStatsRefresh(syncAt);
     return { syncAt, bootstrapSnapshotDate };
   }, [notifyStatsRefresh]);
+  latestApplyBootstrapRefreshRef.current = applyBootstrapRefresh;
 
   const syncFromServerCacheIfNeeded = useCallback(async (force = false) => {
     if (typeof window === "undefined") return;
     const now = Date.now();
     const snapshotDate = expectedUiSnapshotDate();
-    if (!force) {
+    if (force) {
+      if (now - lastServerCacheCheckAtRef.current < FORCED_SERVER_CACHE_CHECK_DEDUP_MS) return;
+    } else {
       if (now - lastServerCacheCheckAtRef.current < 60_000) return;
       if (wasServerCacheSyncCheckedRecently("dashboard", { snapshotDate })) return;
     }
@@ -1502,7 +1513,13 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         if (!res.ok) return;
         const json = await res.json().catch(() => null);
         if (json?.connections?.needsRefresh === true) {
-          const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true, force: true });
+          if (now - lastAutoDailyRefreshAtRef.current < AUTO_DAILY_REFRESH_DEDUP_MS) {
+            markServerCacheSyncChecked("dashboard", { snapshotDate, checkedAt: Date.now() });
+            return;
+          }
+
+          lastAutoDailyRefreshAtRef.current = now;
+          const bootstrap = await runDailyStatsRefreshBootstrap({ announce: false, force });
           applyBootstrapRefresh(bootstrap);
           markServerCacheSyncChecked("dashboard", { snapshotDate, checkedAt: Date.now(), syncAt: Number(bootstrap?.syncAt ?? Date.now()) });
           return;
@@ -1575,6 +1592,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       serverCacheCheckPromiseRef.current = null;
     }
   }, [applyBootstrapRefresh, readCachedGeneratorChannelSyncAt, refreshChannelBlocksFromApi, refreshGeneratorChannelsFromApi, warmInrStatsUi]);
+  latestSyncFromServerCacheIfNeededRef.current = syncFromServerCacheIfNeeded;
 
   const triggerGeneratorRefresh = useCallback(async () => {
     const runSync = async () => {
@@ -1599,6 +1617,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       await triggerGeneratorRefresh();
     }
   }, [syncFromServerCacheIfNeeded, triggerGeneratorRefresh]);
+  latestFallbackToServerSyncThenGlobalRef.current = fallbackToServerSyncThenGlobal;
 
   const triggerChannelRefresh = useCallback(async (channel: DashboardChannelKey) => {
     const syncAt = Date.now();
@@ -1661,6 +1680,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       await fallbackToServerSyncThenGlobal();
     }
   }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, loadSiteInrcy, notifyStatsRefresh, refreshChannelBlocksFromApi, refreshGeneratorChannelsFromApi, triggerChannelRefresh, syncInstagramStateFromServer]);
+  latestTriggerChannelsRefreshRef.current = triggerChannelsRefresh;
 
 
 
@@ -1730,7 +1750,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       }
 
       if (detail.field === "stats_version") {
-        void syncFromServerCacheIfNeeded(true);
+        void latestSyncFromServerCacheIfNeededRef.current?.(true);
       }
     };
 
@@ -1738,7 +1758,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     return () => {
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
-  }, [refreshNotifications, refreshUiBalance, syncFromServerCacheIfNeeded]);
+  }, [refreshNotifications, refreshUiBalance]);
 
   // ✅ Auto-refresh Générateur + statuts modules dès qu'un module se connecte / se déconnecte
   // On écoute les changements Postgres sur les tables qui impactent:
@@ -1760,11 +1780,11 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         if (disposed) return;
         if (Date.now() - lastGeneratorRefreshAtRef.current < 2500) return;
         if (impactedChannels.length) {
-          void triggerChannelsRefresh(impactedChannels);
+          void latestTriggerChannelsRefreshRef.current?.(impactedChannels);
           return;
         }
 
-        void fallbackToServerSyncThenGlobal();
+        void latestFallbackToServerSyncThenGlobalRef.current?.();
       }, 500);
     };
 
@@ -1800,7 +1820,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         supabase.removeChannel(ch);
       } catch {}
     };
-  }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, triggerChannelsRefresh]);
+  }, [clearScheduledGeneratorRefreshes]);
 
   useEffect(() => {
     const linked = searchParams.get("linked");
@@ -1956,10 +1976,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         const bootstrap = await runDailyStatsRefreshBootstrap();
         if (cancelled) return;
 
-        applyBootstrapRefresh(bootstrap);
+        latestApplyBootstrapRefreshRef.current?.(bootstrap);
 
         if (!bootstrap.ran && !hasFreshGenerator) {
-          await syncFromServerCacheIfNeeded(true);
+          await latestSyncFromServerCacheIfNeededRef.current?.(true);
         }
       } catch (error) {
         console.error(error);
@@ -1971,7 +1991,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     return () => {
       cancelled = true;
     };
-  }, [applyBootstrapRefresh, syncFromServerCacheIfNeeded]);
+  }, []);
 
   useEffect(() => {
     if (!dailyBootReady) return;
@@ -1991,7 +2011,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   }, [dailyBootReady]);
 
   useEffect(() => {
-    if (!dailyBootReady) return;
+    if (!dailyBootReady || initialGeneratorRefreshDoneRef.current) return;
+    initialGeneratorRefreshDoneRef.current = true;
     const cached = readGeneratorCache();
     const lastChannelSyncAt = getLastChannelSyncAt();
     if (cached?.payload?.leads && cached.syncedAt >= lastChannelSyncAt && cached.snapshotDate === expectedUiSnapshotDate()) {
@@ -2011,14 +2032,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
   useEffect(() => {
     if (!dailyBootReady) return;
-    void syncFromServerCacheIfNeeded(false);
+    void latestSyncFromServerCacheIfNeededRef.current?.(false);
 
     const handleFocus = () => {
-      void syncFromServerCacheIfNeeded(false);
+      void latestSyncFromServerCacheIfNeededRef.current?.(false);
     };
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
-        void syncFromServerCacheIfNeeded(false);
+        void latestSyncFromServerCacheIfNeededRef.current?.(false);
       }
     };
 
@@ -2028,7 +2049,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [dailyBootReady, syncFromServerCacheIfNeeded]);
+  }, [dailyBootReady]);
 
   const leadsToday = typeof kpis?.leads?.today === "number" ? kpis.leads.today : null;
   const leadsWeek = typeof kpis?.leads?.week === "number" ? kpis.leads.week : null;
