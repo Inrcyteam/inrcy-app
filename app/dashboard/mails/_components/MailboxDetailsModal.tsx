@@ -183,8 +183,13 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   const sourceDocAttachments = detailsItem.source === "send_items"
                     ? extractAttachmentsFromPayload(detailsSourceDocPayload)
                     : [];
+                  const campaignAttachments = detailsItem.source === "mail_campaigns"
+                    ? [...(detailsItem.attachments || []), ...extractAttachmentsFromPayload((detailsItem as any).raw)]
+                    : [];
                   const attachmentCandidates = detailsItem.source === "send_items"
                     ? [...(detailsItem.attachments || []), ...sourceDocAttachments]
+                    : detailsItem.source === "mail_campaigns"
+                    ? campaignAttachments
                     : detailsItem.source === "app_events"
                     ? [...(activeParts.attachments || [])]
                     : [];

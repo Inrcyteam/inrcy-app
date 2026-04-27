@@ -425,6 +425,7 @@ function mapCampaignItems(rows: any[]): OutboxItem[] {
       detailHtml: x.body_html,
       detailText: x.body_text,
       subject: x.subject,
+      attachments: extractAttachmentsFromPayload(x),
       raw: x,
       reopenHref: x.source_doc_save_id && x.source_doc_type
         ? `/dashboard/${x.source_doc_type === "facture" ? "factures" : "devis"}/new?saveId=${encodeURIComponent(x.source_doc_save_id)}`
@@ -571,7 +572,7 @@ async function computeFolderCounts(
     : fetchAllRows<any>(async (from, to) => {
         let builder: any = supabase
           .from("mail_campaigns")
-          .select("id, integration_id, provider, type, folder, track_kind, track_type, template_key, subject, body_text, body_html, status, total_count, queued_count, processing_count, sent_count, failed_count, source_doc_save_id, source_doc_type, source_doc_number, last_error, started_at, finished_at, created_at, updated_at")
+          .select("id, integration_id, provider, type, folder, track_kind, track_type, template_key, subject, body_text, body_html, attachments, status, total_count, queued_count, processing_count, sent_count, failed_count, source_doc_save_id, source_doc_type, source_doc_number, last_error, started_at, finished_at, created_at, updated_at")
           .eq("user_id", userId)
           .order("created_at", { ascending: false });
 
@@ -700,7 +701,7 @@ export async function GET(req: Request) {
         tasks.push((async () => {
           let builder: any = supabase
             .from("mail_campaigns")
-            .select("id, integration_id, provider, type, folder, track_kind, track_type, template_key, subject, body_text, body_html, status, total_count, queued_count, processing_count, sent_count, failed_count, source_doc_save_id, source_doc_type, source_doc_number, last_error, started_at, finished_at, created_at, updated_at")
+            .select("id, integration_id, provider, type, folder, track_kind, track_type, template_key, subject, body_text, body_html, attachments, status, total_count, queued_count, processing_count, sent_count, failed_count, source_doc_save_id, source_doc_type, source_doc_number, last_error, started_at, finished_at, created_at, updated_at")
             .eq("user_id", userData.user.id)
             .order("created_at", { ascending: false });
 

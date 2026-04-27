@@ -77,7 +77,7 @@ export default function LinkedinPanel(props: any) {
             <div className={styles.blockTitle}>Compte connecté</div>
             <ConnectionPill connected={linkedinAccountConnected} status={linkedinNeedsUpdate ? "needs_update" : undefined} />
           </div>
-          <div className={styles.blockSub}>Connexion OAuth LinkedIn.</div>
+          <div className={styles.blockSub}>Connecter votre compte LinkedIn</div>
 
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <input

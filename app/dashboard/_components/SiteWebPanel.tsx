@@ -172,7 +172,7 @@ export default function SiteWebPanel(props: any) {
           <div className={styles.blockTitle}>Google Analytics (GA4)</div>
           <ConnectionPill connected={siteWebGa4Connected} />
         </div>
-        <div className={styles.blockSub}>Connexion automatique : les identifiants GA4 se remplissent après OAuth</div>
+        <div className={styles.blockSub}>Remplissage automatique des identifiants GA4 après connexion</div>
 
         <label style={{ display: "grid", gap: 8 }}>
           <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>ID de mesure (ex: G-XXXXXXXXXX)</span>
@@ -257,7 +257,7 @@ export default function SiteWebPanel(props: any) {
           <div className={styles.blockTitle}>Google Search Console</div>
           <ConnectionPill connected={siteWebGscConnected} />
         </div>
-        <div className={styles.blockSub}>Connexion automatique : la propriété GSC se remplit après OAuth</div>
+        <div className={styles.blockSub}>Remplissage automatique des identifiants GSC après connexion</div>
 
         <label style={{ display: "grid", gap: 8 }}>
           <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
