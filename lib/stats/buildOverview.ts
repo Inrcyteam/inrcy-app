@@ -358,7 +358,7 @@ export async function buildStatsOverview(args: {
     // We fetch the minimal integration snapshot once and reuse it for connection flags + metrics.
     const { data: integrationsAll = [] } = await supabase
       .from("integrations")
-      .select("provider,source,product,status,resource_id,access_token_enc,expires_at,meta,updated_at,created_at")
+      .select("provider,source,product,status,resource_id,resource_label,access_token_enc,expires_at,meta,updated_at,created_at")
       .eq("user_id", userId);
 
     // Legacy table (older installs) used by some utilities (keep best-effort).
@@ -384,6 +384,25 @@ export async function buildStatsOverview(args: {
         return rightTime - leftTime;
       });
       return asRecord(rows[0]);
+    }
+
+    function hasFacebookStoredToken(row: Record<string, unknown>) {
+      const meta = asRecord(row["meta"]);
+      return Boolean(
+        row["access_token_enc"] ||
+          meta["user_access_token_enc"] ||
+          meta["standard_user_access_token_enc"] ||
+          meta["business_user_access_token_enc"]
+      );
+    }
+
+    function hasActiveStoredIntegration(row: Record<string, unknown>, hasToken: boolean) {
+      return Boolean(
+        String(row["status"] || "") === "connected" &&
+          row["resource_id"] &&
+          hasToken &&
+          !isExpired(row["expires_at"])
+      );
     }
 
     async function safeGetGoogleTokenFor(source: StatsSourceKey, product: "ga4" | "gsc") {
@@ -442,12 +461,22 @@ const channelStatesPromise = getChannelConnectionStates(supabase, userId);
 
 async function fetchLiveSourcesStatus() {
   const states = await channelStatesPromise;
+  const fbRow = latestIntegrationAny("facebook", "facebook", "facebook");
+  const igRow = latestIntegrationAny("instagram", "instagram", "instagram");
+
+  // Meta stats must trust the DB integration row first. In production we observed
+  // channelStates returning requiresUpdate/false while Supabase had a valid
+  // connected row + encrypted token, which made Instagram appear disconnected
+  // and forced fallback opportunities.
+  const facebookConnected = hasActiveStoredIntegration(fbRow, hasFacebookStoredToken(fbRow)) || isStatsActiveConnection(states.facebook);
+  const instagramConnected = hasActiveStoredIntegration(igRow, Boolean(igRow["access_token_enc"])) || isStatsActiveConnection(states.instagram);
+
   return {
     site_inrcy: { connected: { ga4: states.site_inrcy.ga4, gsc: states.site_inrcy.gsc } },
     site_web: { connected: { ga4: states.site_web.ga4, gsc: states.site_web.gsc } },
     gmb: { connected: isStatsActiveConnection(states.gmb), metrics: null },
-    facebook: { connected: isStatsActiveConnection(states.facebook), metrics: null },
-    instagram: { connected: isStatsActiveConnection(states.instagram), metrics: null },
+    facebook: { connected: facebookConnected, metrics: null },
+    instagram: { connected: instagramConnected, metrics: null },
     linkedin: { connected: isStatsActiveConnection(states.linkedin), metrics: null },
   } satisfies LiveSourcesSnapshot;
 }
@@ -818,7 +847,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
         // Facebook: connected if a page has been selected (resource_id)
     try {
       const fbRow = latestIntegrationAny("facebook", "facebook", "facebook");
-      sourcesStatus.facebook.connected = isStatsActiveConnection(channelStates.facebook);
+      sourcesStatus.facebook.connected = hasActiveStoredIntegration(fbRow, hasFacebookStoredToken(fbRow));
 
       // Real Facebook Page metrics (only if included)
       const includeFb = includeAll || includeSet.has("facebook");
@@ -838,7 +867,8 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
             end
           );
         } catch (e) {
-         sourcesStatus.facebook.metrics = { error: getSimpleFrenchErrorMessage(e, "Impossible de récupérer les statistiques Facebook pour le moment.") };
+          console.error("[FB_STATS_REAL_ERROR]", e);
+          sourcesStatus.facebook.metrics = { error: e instanceof Error ? e.message : String(e) };
         }
       } else {
         sourcesStatus.facebook.metrics = null;
@@ -848,7 +878,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
     // Instagram: Meta family. Connected only once a profile is selected (resource_id).
     try {
       const igRow = latestIntegrationAny("instagram", "instagram", "instagram");
-      sourcesStatus.instagram.connected = isStatsActiveConnection(channelStates.instagram);
+      sourcesStatus.instagram.connected = hasActiveStoredIntegration(igRow, Boolean(igRow["access_token_enc"]));
 
       const includeIg = includeAll || includeSet.has("instagram");
       if (!includeIg) {
@@ -881,7 +911,8 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
             },
           };
         } catch (e) {
-          sourcesStatus.instagram.metrics = { error: getSimpleFrenchErrorMessage(e, "Impossible de récupérer les statistiques Instagram pour le moment.") };
+          console.error("[IG_STATS_REAL_ERROR]", e);
+          sourcesStatus.instagram.metrics = { error: e instanceof Error ? e.message : String(e) };
         }
       } else {
         sourcesStatus.instagram.metrics = null;
@@ -1037,12 +1068,12 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
             url: null,
           },
           facebook: {
-            label: channelStates.facebook.resource_label || null,
-            url: channelStates.facebook.page_url || null,
+            label: channelStates.facebook.resource_label || String(asRecord(latestIntegrationAny("facebook", "facebook", "facebook"))["resource_label"] || "") || null,
+            url: channelStates.facebook.page_url || String(asRecord(asRecord(latestIntegrationAny("facebook", "facebook", "facebook"))["meta"])["page_url"] || "") || null,
           },
           instagram: {
-            label: channelStates.instagram.username ? `@${channelStates.instagram.username}` : null,
-            url: channelStates.instagram.profile_url || null,
+            label: channelStates.instagram.username ? `@${channelStates.instagram.username}` : String(asRecord(latestIntegrationAny("instagram", "instagram", "instagram"))["resource_label"] || "") || null,
+            url: channelStates.instagram.profile_url || String(asRecord(asRecord(latestIntegrationAny("instagram", "instagram", "instagram"))["meta"])["profile_url"] || "") || null,
           },
           linkedin: {
             label: channelStates.linkedin.display_name || null,
