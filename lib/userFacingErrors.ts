@@ -20,6 +20,16 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette ac
     return "Le serveur mail présente un certificat SSL non reconnu. Vérifiez les réglages du serveur ou réessayez avec la tolérance SSL activée.";
   }
 
+  if (matches(message, [
+    "client authentication failed",
+    "invalid_client",
+    "invalid client",
+    "invalid_client_secret",
+    "invalid_client_id"
+  ])) {
+    return "Configuration LinkedIn incorrecte : vérifiez Client ID, Client Secret et URL de redirection.";
+  }
+
   if (matches(message, ["authentication failed", "invalid login", "invalid credentials for smtp", "username and password not accepted", "535 5.7.1", "login failed"])) {
     return "Identifiant ou mot de passe incorrect pour ce serveur mail.";
   }
