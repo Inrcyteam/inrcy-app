@@ -40,7 +40,9 @@ export async function POST(req: Request) {
       identifier: user.id,
       limit: 20,
       window: "1 m",
-      failClosed: true,
+      // Ne bloque pas l upload si Upstash / KV est momentanement indisponible.
+      // Sinon l ajout d une photo empeche la publication avec une erreur 503.
+      failClosed: false,
     });
     if (rateLimited) return rateLimited;
 
