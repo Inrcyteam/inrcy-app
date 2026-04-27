@@ -11,7 +11,7 @@ import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/user
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { type DashboardChannelKey, isDashboardChannelKey } from "@/lib/dashboardChannels";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
-import { markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, readCachedChannelSyncAt, type StatsWarmPeriod } from "../dashboard.client-cache";
+import { markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, readCachedChannelSyncAt, syncGeneratorOpportunitiesFromStatsSummary, type StatsWarmPeriod } from "../dashboard.client-cache";
 import {
   AVAILABLE_PERIODS,
   buildCubeModel,
@@ -169,7 +169,7 @@ export default function StatsClient() {
     const snap = next.overviews as Record<CubeKey, Overview>;
     periodCacheRef.current.set(targetPeriod, snap);
     try {
-      writeUiCacheValue(cubeSessionKey(targetPeriod), JSON.stringify({ syncedAt, snapshotDate: next.snapshotDate, overviews: snap }));
+      writeUiCacheValue(cubeSessionKey(targetPeriod), JSON.stringify({ syncedAt, snapshotDate: next.snapshotDate, overviews: snap, blocks: next.blocks }));
       writeUiCacheValue(
         summarySessionKey(targetPeriod),
         JSON.stringify({
@@ -180,6 +180,16 @@ export default function StatsClient() {
           estimatedByCube: next.estimatedByCube,
         }),
       );
+      if (targetPeriod === 30) {
+        syncGeneratorOpportunitiesFromStatsSummary({
+          byCube: next.summary.byCube,
+          estimatedByCube: next.estimatedByCube,
+          profile: next.profile,
+          syncedAt,
+          snapshotDate: next.snapshotDate,
+          channelBlocks: next.blocks,
+        });
+      }
     } catch {
       // ignore
     }
@@ -259,6 +269,30 @@ export default function StatsClient() {
           facebook: safeNum(cachedSummary.estimatedByCube?.facebook),
           instagram: safeNum(cachedSummary.estimatedByCube?.instagram),
           linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
+        });
+      }
+
+      if (targetPeriod === 30 && cachedSummary) {
+        syncGeneratorOpportunitiesFromStatsSummary({
+          byCube: {
+            site_inrcy: safeNum(cachedSummary.byCube?.site_inrcy),
+            site_web: safeNum(cachedSummary.byCube?.site_web),
+            gmb: safeNum(cachedSummary.byCube?.gmb),
+            facebook: safeNum(cachedSummary.byCube?.facebook),
+            instagram: safeNum(cachedSummary.byCube?.instagram),
+            linkedin: safeNum(cachedSummary.byCube?.linkedin),
+          },
+          estimatedByCube: {
+            site_inrcy: safeNum(cachedSummary.estimatedByCube?.site_inrcy),
+            site_web: safeNum(cachedSummary.estimatedByCube?.site_web),
+            gmb: safeNum(cachedSummary.estimatedByCube?.gmb),
+            facebook: safeNum(cachedSummary.estimatedByCube?.facebook),
+            instagram: safeNum(cachedSummary.estimatedByCube?.instagram),
+            linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
+          },
+          profile: cachedSummary.profile,
+          syncedAt: periodSyncAt,
+          snapshotDate: typeof periodPayload?.snapshotDate === "string" ? periodPayload.snapshotDate : block.snapshotDate ?? null,
         });
       }
     }
@@ -353,6 +387,7 @@ export default function StatsClient() {
           instagram: safeNum(payload?.estimatedByCube?.instagram),
           linkedin: safeNum(payload?.estimatedByCube?.linkedin),
         },
+        blocks: payload?.blocks,
         snapshotDate: payloadSnapshotDate ?? null,
       };
       applyBulkPayload(targetPeriod, next, syncAt);
@@ -380,6 +415,13 @@ export default function StatsClient() {
         const res = await fetch("/api/dashboard/cache-status", { cache: "no-store" });
         if (!res.ok) return;
         const json = await res.json().catch(() => null);
+        if (json?.connections?.needsRefresh === true) {
+          const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true, force: true });
+          applyBootstrapPayload(bootstrap);
+          markServerCacheSyncChecked("stats", { snapshotDate, checkedAt: Date.now(), syncAt: Number(bootstrap?.syncAt ?? Date.now()) });
+          return;
+        }
+
         const periodStatuses: Partial<Record<Period, { syncedAt?: number; channels?: Partial<Record<DashboardChannelKey, number>> }>> = {
           7: json?.inrstats?.[7] ?? json?.inrstats?.["7"] ?? null,
           30: json?.inrstats?.[30] ?? json?.inrstats?.["30"] ?? null,
@@ -424,14 +466,14 @@ export default function StatsClient() {
     } finally {
       serverCacheCheckPromiseRef.current = null;
     }
-  }, [applyBulkPayload, refreshChannelFromApi]);
+  }, [applyBootstrapPayload, applyBulkPayload, refreshChannelFromApi]);
 
   const handleSharedStatsRefresh = useCallback(async () => {
     setIsRefreshing(true);
     setLastRefreshAt(Date.now());
 
     try {
-      const bootstrap = await runDailyStatsRefreshBootstrap();
+      const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true, force: true });
       applyBootstrapPayload(bootstrap);
 
       if (!bootstrap?.ran) {
@@ -534,6 +576,7 @@ export default function StatsClient() {
         instagram: safeNum(json?.estimatedByCube?.instagram),
         linkedin: safeNum(json?.estimatedByCube?.linkedin),
       } as Record<CubeKey, number>,
+      blocks: json?.blocks as any,
       snapshotDate: snapshotDate ?? null,
     };
   };
@@ -703,31 +746,29 @@ useEffect(() => {
   }, [isRefreshing, refreshNonce]);
 
   useEffect(() => {
-    const handleChannelUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ channel?: DashboardChannelKey }>).detail;
-      if (!isDashboardChannelKey(detail?.channel)) {
-        triggerRefresh("channels");
-        return;
-      }
+    const runSilentSync = async (force: boolean) => {
+      const now = Date.now();
+      // Evite les rafales quand plusieurs evenements arrivent au retour sur iNrStats.
+      if (now - lastAutoRefreshAtRef.current < 1500) return;
+      lastAutoRefreshAtRef.current = now;
+
+      // Si le cache local est deja aligne, on ne montre rien et on ne force aucun recalcul.
       if (hydrateFromSessionCache(period)) {
-        const now = Date.now();
-        setLastRefreshAt(now);
         setIsRefreshing(false);
         return;
       }
-      triggerRefresh("channels");
+
+      // Controle serveur silencieux : pas de label "Actualisation..." pour un simple check.
+      await syncFromServerCacheIfNeeded(force);
+    };
+
+    const handleChannelUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ channel?: DashboardChannelKey }>).detail;
+      void runSilentSync(isDashboardChannelKey(detail?.channel));
     };
 
     const handleChannelsUpdated = () => {
-      const now = Date.now();
-      if (now - lastAutoRefreshAtRef.current < 1500) return;
-      lastAutoRefreshAtRef.current = now;
-      if (hydrateFromSessionCache(period)) {
-        setLastRefreshAt(now);
-        setIsRefreshing(false);
-        return;
-      }
-      triggerRefresh("channels");
+      void runSilentSync(true);
     };
 
     window.addEventListener("inrcy:channel-updated", handleChannelUpdated as EventListener);
@@ -736,20 +777,24 @@ useEffect(() => {
       window.removeEventListener("inrcy:channel-updated", handleChannelUpdated as EventListener);
       window.removeEventListener("inrcy:channels-updated", handleChannelsUpdated as EventListener);
     };
-  }, [hydrateFromSessionCache, period, triggerRefresh]);
+  }, [hydrateFromSessionCache, period, syncFromServerCacheIfNeeded]);
 
   useEffect(() => {
     const handleProfileVersionChange = (event: Event) => {
       const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
       if (detail?.field !== "stats_version") return;
-      triggerRefresh("channels");
+
+      // Mise a jour inter-appareil silencieuse : on garde le systeme de synchro
+      // sans afficher un refresh utilisateur a chaque retour sur la page.
+      void syncFromServerCacheIfNeeded(true);
     };
 
     window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     return () => {
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
-  }, [triggerRefresh]);
+  }, [syncFromServerCacheIfNeeded]);
+
 
   useEffect(() => {
     if (!dailyBootReady) return;

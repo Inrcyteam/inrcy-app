@@ -9,6 +9,7 @@ export default function FacebookPanel(props: any) {
   const {
     facebookPageConnected,
     facebookAccountConnected,
+    facebookConnectionStatus,
     facebookAccountEmail,
     connectFacebookAccount,
     connectFacebookBusinessAccount,
@@ -34,6 +35,15 @@ export default function FacebookPanel(props: any) {
     fbSelectedPageId && fbPages.some((p: { id: string; name?: string | null }) => p.id === fbSelectedPageId)
   );
   const selectedPageLabel = (fbSelectedPageName || facebookUrl || fbSelectedPageId || "").trim();
+  const facebookNeedsUpdate = facebookConnectionStatus === "needs_update" && (facebookPageConnected || facebookAccountConnected);
+  const facebookStatusLabel = facebookNeedsUpdate ? "À actualiser" : facebookPageConnected ? "Connecté" : facebookAccountConnected ? "Compte connecté" : "À connecter";
+  const facebookStatusDot = facebookNeedsUpdate
+    ? "rgba(245,158,11,0.95)"
+    : facebookPageConnected
+      ? "rgba(34,197,94,0.95)"
+      : facebookAccountConnected
+        ? "rgba(59,130,246,0.95)"
+        : "rgba(148,163,184,0.9)";
 
   const startStandard = () => {
     connectFacebookAccount();
@@ -78,14 +88,10 @@ export default function FacebookPanel(props: any) {
               width: 8,
               height: 8,
               borderRadius: 999,
-              background: facebookPageConnected
-                ? "rgba(34,197,94,0.95)"
-                : facebookAccountConnected
-                  ? "rgba(59,130,246,0.95)"
-                  : "rgba(148,163,184,0.9)",
+              background: facebookStatusDot,
             }}
           />
-          Statut : <strong>{facebookPageConnected ? "Connecté" : facebookAccountConnected ? "Compte connecté" : "À connecter"}</strong>
+          Statut : <strong>{facebookStatusLabel}</strong>
         </span>
       </div>
 
@@ -101,7 +107,7 @@ export default function FacebookPanel(props: any) {
       >
         <div className={styles.blockHeaderRow}>
           <div className={styles.blockTitle}>Compte connecté</div>
-          <ConnectionPill connected={facebookAccountConnected} />
+          <ConnectionPill connected={facebookAccountConnected} status={facebookNeedsUpdate ? "needs_update" : undefined} />
         </div>
         <div className={styles.blockSub}>Ce compte Facebook peut cumuler un accès standard et un accès via portefeuille business.</div>
 
@@ -127,9 +133,16 @@ export default function FacebookPanel(props: any) {
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {facebookAccountConnected ? (
-            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectAll} disabled={facebookAccountBusy}>
-              {facebookAccountBusy ? "Déconnexion..." : "Déconnexion"}
-            </button>
+            <>
+              {facebookNeedsUpdate ? (
+                <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={startStandard} disabled={facebookAccountBusy}>
+                  Actualiser
+                </button>
+              ) : null}
+              <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={disconnectAll} disabled={facebookAccountBusy}>
+                {facebookAccountBusy ? "Déconnexion..." : "Déconnexion"}
+              </button>
+            </>
           ) : (
             <>
               <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={startStandard}>
@@ -156,7 +169,7 @@ export default function FacebookPanel(props: any) {
         >
           <div className={styles.blockHeaderRow}>
             <div className={styles.blockTitle}>Page à connecter</div>
-            <ConnectionPill connected={facebookPageConnected} />
+            <ConnectionPill connected={facebookPageConnected} status={facebookNeedsUpdate ? "needs_update" : undefined} />
           </div>
           <div className={styles.blockSub}>Choisissez la page Facebook à analyser (et éventuellement publier).</div>
 

@@ -6,7 +6,7 @@ export async function GET() {
   const supabase = await createSupabaseServer();
   const { data: authData } = await supabase.auth.getUser();
   if (!authData?.user) {
-    return NextResponse.json({ connected: false, accountConnected: false, configured: false }, { status: 200 });
+    return NextResponse.json({ connected: false, accountConnected: false, configured: false, requiresUpdate: false, connection_status: "disconnected" }, { status: 200 });
   }
 
   const states = await getChannelConnectionStates(supabase, authData.user.id);

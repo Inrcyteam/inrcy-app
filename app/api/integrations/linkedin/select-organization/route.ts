@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { asRecord } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 export async function POST(req: Request) {
   const supabase = await createSupabaseServer();
   const {
@@ -19,9 +20,27 @@ export async function POST(req: Request) {
 
   const orgUrn = `urn:li:organization:${orgId}`;
 
+  const { data: currentIntegration } = await supabaseAdmin
+    .from("integrations")
+    .select("meta")
+    .eq("user_id", user.id)
+    .eq("provider", "linkedin")
+    .eq("source", "linkedin")
+    .eq("product", "linkedin")
+    .maybeSingle();
+
+  const currentMeta = asRecord(asRecord(currentIntegration)["meta"]);
+
   await supabase
     .from("integrations")
-    .update({ meta: { org_urn: orgUrn, org_id: orgId, org_name: orgName } })
+    .update({
+      meta: withCurrentConnectionVersion("channel:linkedin", {
+        ...currentMeta,
+        org_urn: orgUrn,
+        org_id: orgId,
+        org_name: orgName,
+      }),
+    })
     .eq("user_id", user.id)
     .eq("provider", "linkedin")
     .eq("source", "linkedin")

@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { extractFacebookUserTokens, findAccessibleFacebookPage, listAccessibleFacebookPagesFromTokens } from "@/lib/metaBusinessAssets";
 
+import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
 async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
@@ -58,6 +59,7 @@ export async function POST(req: Request) {
       page_source: page.source,
       page_business_id: page.business_id || null,
       page_business_name: page.business_name || null,
+      ...withCurrentConnectionVersion("channel:facebook", {}),
     };
 
     const { error: upErr } = await supabaseAdmin

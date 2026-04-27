@@ -1,5 +1,6 @@
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { decryptSecret } from "@/lib/imapCrypto";
+import { getConnectionDisplayStatus } from "@/lib/connectionVersions";
 
 export async function loadImapAccount(accountId: string) {
   const supabase = await createSupabaseServer();
@@ -10,7 +11,7 @@ export async function loadImapAccount(accountId: string) {
 
   const { data, error } = await supabase
     .from("integrations")
-    .select("id, user_id, provider, account_email, settings, refresh_token_enc")
+    .select("id, user_id, provider, account_email, settings, refresh_token_enc, status")
     .eq("id", accountId)
     .eq("user_id", userData.user.id)
     .eq("provider", "imap")
@@ -22,6 +23,12 @@ export async function loadImapAccount(accountId: string) {
   }
 
   const settings: any = (data as any).settings ?? {};
+  if (String((data as any).status || "") !== "connected") {
+    return { error: "Cette boîte IMAP n’est pas connectée.", status: 400 as const };
+  }
+  if (getConnectionDisplayStatus(true, "mail:imap", settings) === "needs_update") {
+    return { error: "Cette boîte IMAP doit être actualisée avant de pouvoir envoyer.", status: 400 as const };
+  }
   const passwordEnc = String((data as any).refresh_token_enc || "");
   const password = decryptSecret(passwordEnc);
   const login = String((data as any).account_email || "");

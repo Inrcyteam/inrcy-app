@@ -8,6 +8,7 @@ import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 type TokenResponse = {
   access_token?: string;
   refresh_token?: string;
@@ -176,10 +177,10 @@ if (!tokenRes.ok || !tokenData.access_token) {
       access_token_enc: tokenData.access_token ? encryptToken(tokenData.access_token) : null,
       refresh_token_enc: refreshTokenEncToStore,
       expires_at: expiresAt,
-      settings: {
+      settings: withCurrentConnectionVersion("mail:gmail", {
         display_name: userInfo.name ?? null,
         scopes_raw: tokenData.scope ?? null,
-      },
+      }),
       updated_at: new Date().toISOString(),
     };
 

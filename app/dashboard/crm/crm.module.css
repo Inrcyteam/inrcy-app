@@ -1518,9 +1518,10 @@
   width: 280px;
   border-radius: 16px;
   border: 1px solid rgba(255,255,255,.14);
-  background: rgba(0,0,0,.55);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 10px 28px rgba(0,0,0,.35);
+  background: rgb(8, 10, 16);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 18px 42px rgba(0,0,0,.58), 0 0 0 1px rgba(255,255,255,.04);
   overflow: hidden;
   z-index: 50;
 }
@@ -3106,4 +3107,26 @@
   .mobileDetailActions{
     gap: 6px;
   }
+}
+
+
+/* iNrCRM — menu Actions opaque : ne laisse plus voir le tableau derrière */
+.actionsMenu {
+  background: rgb(8, 10, 16) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: rgba(255,255,255,.18) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.04) !important;
+}
+
+.actionsItem {
+  background: rgb(8, 10, 16);
+}
+
+.actionsItem:hover {
+  background: rgb(20, 24, 36);
+}
+
+.actionsSep {
+  background: rgba(255,255,255,.14);
 }

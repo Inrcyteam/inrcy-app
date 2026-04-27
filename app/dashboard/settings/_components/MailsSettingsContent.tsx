@@ -8,7 +8,10 @@ type MailAccount = {
   provider: "gmail" | "microsoft" | "imap";
   email_address: string;
   display_name: string | null;
-  status: "connected" | "expired" | "error";
+  status: "connected" | "expired" | "error" | string;
+  connection_status?: "connected" | "needs_update" | "disconnected";
+  requires_update?: boolean;
+  connection_version?: number;
   created_at: string;
 };
 
@@ -113,6 +116,19 @@ function Btn({
 
 function ProviderLabel(p: MailAccount["provider"]) {
   return p === "gmail" ? "Gmail" : p === "imap" ? "IMAP" : "Microsoft";
+}
+
+function MailConnectionStatusLabel(acc: MailAccount) {
+  const status = acc.connection_status || (acc.status === "connected" ? "connected" : "disconnected");
+  if (status === "needs_update") return "À actualiser";
+  if (status === "connected") return "Connectée";
+  return "Déconnectée";
+}
+
+function mailAccountRefreshUrl(acc: MailAccount) {
+  if (acc.provider === "gmail") return "/api/integrations/google/start";
+  if (acc.provider === "microsoft") return "/api/integrations/microsoft/start";
+  return null;
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -528,7 +544,17 @@ Email : {{email}}`));
                 </>
               ) : (
                 <>
-                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)", marginTop: 4 }}>Statut : {acc.status === "connected" ? "Connectée" : acc.status === "expired" ? "À reconnecter" : acc.status}</div>
+                  <div style={{ fontSize: 12, color: acc.connection_status === "needs_update" ? "#fbbf24" : "rgba(255,255,255,0.72)", marginTop: 4 }}>Statut : {MailConnectionStatusLabel(acc)}</div>
+                  {acc.connection_status === "needs_update" && mailAccountRefreshUrl(acc) ? (
+                    <Btn
+                      label="Actualiser"
+                      disabled={loading}
+                      onClick={() => {
+                        const url = mailAccountRefreshUrl(acc);
+                        if (url) window.location.href = url;
+                      }}
+                    />
+                  ) : null}
                   <Btn
   label={busyDisconnect === acc.id ? "Déconnexion…" : "Déconnecter"}
   disabled={loading || busyDisconnect === acc.id}

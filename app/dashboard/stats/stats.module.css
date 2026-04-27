@@ -1050,3 +1050,213 @@
     line-height: 1.45;
   }
 }
+
+
+/* iNrStats — états visuels canal alimenté / canal à brancher */
+.cubeOn {
+  border-color: rgba(56, 189, 248, 0.24);
+  background:
+    radial-gradient(circle at 14% 0%, rgba(56, 189, 248, 0.13), transparent 34%),
+    radial-gradient(circle at 88% 12%, rgba(34, 197, 94, 0.10), transparent 32%),
+    rgba(18, 24, 36, 0.84);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.44),
+    0 0 0 1px rgba(56, 189, 248, 0.06),
+    0 0 34px rgba(56, 189, 248, 0.10);
+}
+
+.cubeOn:hover,
+.cubeOn:focus-within {
+  border-color: rgba(56, 189, 248, 0.34);
+  background:
+    radial-gradient(circle at 14% 0%, rgba(56, 189, 248, 0.18), transparent 34%),
+    radial-gradient(circle at 88% 12%, rgba(34, 197, 94, 0.13), transparent 32%),
+    rgba(21, 29, 43, 0.90);
+  box-shadow:
+    0 30px 84px rgba(0, 0, 0, 0.50),
+    0 0 0 1px rgba(56, 189, 248, 0.10),
+    0 0 44px rgba(56, 189, 248, 0.16);
+}
+
+.cubeOff {
+  opacity: 1;
+  filter: saturate(0.72);
+  border-color: rgba(148, 163, 184, 0.12);
+  background:
+    radial-gradient(circle at 82% 18%, rgba(148, 163, 184, 0.05), transparent 36%),
+    rgba(7, 10, 17, 0.88);
+  box-shadow:
+    0 18px 54px rgba(0, 0, 0, 0.50),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.cubeOff:hover,
+.cubeOff:focus-within {
+  border-color: rgba(251, 146, 60, 0.24);
+  background:
+    radial-gradient(circle at 82% 18%, rgba(251, 146, 60, 0.06), transparent 36%),
+    rgba(9, 12, 20, 0.92);
+  box-shadow:
+    0 22px 64px rgba(0, 0, 0, 0.56),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.20);
+}
+
+.cubeOff .cubeTitle,
+.cubeOff .cubeIdentity,
+.cubeOff .cubeSub,
+.cubeOff .actionTitle,
+.cubeOff .actionDetail {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.cubeOn .pillOn {
+  border-color: rgba(34, 197, 94, 0.48);
+  background: rgba(34, 197, 94, 0.18);
+  color: rgba(220, 252, 231, 0.98);
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.14);
+}
+
+.cubeOff .pillOff {
+  border-color: rgba(251, 146, 60, 0.42);
+  background: rgba(251, 146, 60, 0.12);
+  color: rgba(255, 237, 213, 0.94);
+}
+
+.cubeOn .actionCompact {
+  border-color: rgba(56, 189, 248, 0.20);
+  background:
+    radial-gradient(circle at 10% 10%, rgba(56, 189, 248, 0.18), transparent 55%),
+    radial-gradient(circle at 80% 90%, rgba(157, 78, 255, 0.16), transparent 55%),
+    rgba(255, 255, 255, 0.06);
+}
+
+.cubeOff .actionCompact {
+  border-color: rgba(251, 146, 60, 0.18);
+  background:
+    radial-gradient(circle at 12% 12%, rgba(251, 146, 60, 0.07), transparent 54%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.actionBtnOn {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.actionBtnOn::before {
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.42),
+    rgba(157, 78, 255, 0.34),
+    rgba(34, 197, 94, 0.18)
+  );
+}
+
+.actionBtnOff {
+  border-color: rgba(251, 146, 60, 0.34);
+  color: rgba(255, 237, 213, 0.98);
+}
+
+.actionBtnOff::before {
+  background: linear-gradient(
+    135deg,
+    rgba(55, 65, 81, 0.72),
+    rgba(124, 45, 18, 0.34),
+    rgba(251, 146, 60, 0.20)
+  );
+}
+
+.actionBtnOff:hover {
+  border-color: rgba(251, 146, 60, 0.52);
+}
+
+/* Patch iNrStats — bulles GO homogènes desktop + mobile
+   Objectif : le texte d'action utilise seulement la colonne gauche,
+   la bulle GO garde une largeur fixe et ne se fait jamais écraser. */
+.actionCompact {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.actionLeft {
+  min-width: 0;
+  width: 100%;
+}
+
+.actionTopRow,
+.actionTopText {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.actionTitle {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.actionDetail {
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
+
+.actionBtn {
+  flex: 0 0 64px;
+  width: 64px;
+  min-width: 64px;
+  height: 44px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  align-self: center;
+  gap: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.actionBtnDesktop,
+.actionBtnMobile {
+  white-space: nowrap;
+  line-height: 1;
+}
+
+@media (max-width: 900px) {
+  .actionCompact {
+    grid-template-columns: minmax(0, 1fr) 58px;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .actionTopRow {
+    gap: 8px;
+  }
+
+  .actionBtn {
+    flex-basis: 58px;
+    width: 58px;
+    min-width: 58px;
+    height: 42px;
+    padding: 0 6px;
+    font-size: 12px;
+  }
+
+  .actionDetail {
+    font-size: 11.5px;
+    line-height: 1.35;
+  }
+}
+
+@media (max-width: 420px) {
+  .actionCompact {
+    grid-template-columns: minmax(0, 1fr) 56px;
+  }
+
+  .actionBtn {
+    flex-basis: 56px;
+    width: 56px;
+    min-width: 56px;
+    height: 40px;
+    padding: 0 5px;
+    font-size: 11.5px;
+  }
+}
+

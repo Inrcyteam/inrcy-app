@@ -47,6 +47,7 @@ export type StatsBulkResponse = {
     avg_basket?: number;
   };
   estimatedByCube?: Partial<Record<CubeKey, number>>;
+  blocks?: Partial<Record<CubeKey, InrstatsChannelBlock>>;
   meta?: { snapshotDate?: string | null; live?: boolean };
 };
 
@@ -70,6 +71,7 @@ export type BulkFetchResult = {
     avg_basket: number;
   };
   estimatedByCube: Record<CubeKey, number>;
+  blocks?: Partial<Record<CubeKey, InrstatsChannelBlock>>;
   snapshotDate: string | null;
 };
 

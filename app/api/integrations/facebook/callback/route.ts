@@ -9,6 +9,7 @@ import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 type TokenResponse = {
   access_token?: string;
   token_type?: string;
@@ -244,6 +245,7 @@ export async function GET(req: Request) {
       business_user_access_token_enc: loginMode === "business" ? encryptedUserToken : prevMeta["business_user_access_token_enc"] || null,
       page_url: prevMeta["page_url"] || null,
       last_login_mode: loginMode,
+      ...withCurrentConnectionVersion("channel:facebook", {}),
     };
 
     const payload: Record<string, unknown> = {

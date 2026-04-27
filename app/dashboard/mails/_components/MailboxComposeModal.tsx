@@ -146,11 +146,14 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                         boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
                       }}
                     >
-                      {mailAccounts.map((a) => (
-                        <option key={a.id} value={a.id} style={{ background: "#ffffff", color: "#0b1020" }}>
-                          {(a.display_name ? `${a.display_name} — ` : "") + a.email_address + ` (${a.provider})`}
-                        </option>
-                      ))}
+                      {mailAccounts.map((a) => {
+                        const needsUpdate = a.connection_status === "needs_update" || a.requires_update;
+                        return (
+                          <option key={a.id} value={a.id} disabled={needsUpdate} style={{ background: "#ffffff", color: "#0b1020" }}>
+                            {(a.display_name ? `${a.display_name} — ` : "") + a.email_address + ` (${a.provider}${needsUpdate ? " — à actualiser" : ""})`}
+                          </option>
+                        );
+                      })}
                     </select>
                     {selectedAccount ? (
                       <span className={`${styles.badge} ${pill(selectedAccount.provider).cls}`}>{pill(selectedAccount.provider).label}</span>

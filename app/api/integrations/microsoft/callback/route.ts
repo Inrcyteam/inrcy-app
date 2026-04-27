@@ -8,6 +8,7 @@ import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 type TokenResponse = {
   token_type?: string;
   scope?: string;
@@ -177,10 +178,10 @@ export async function GET(req: Request) {
       access_token_enc: tokenData.access_token ? encryptToken(tokenData.access_token) : null,
       refresh_token_enc: refreshTokenEncToStore,
       expires_at: computeExpiresAt(tokenData.expires_in ?? null),
-      settings: {
+      settings: withCurrentConnectionVersion("mail:microsoft", {
         display_name: me.displayName ?? null,
         scopes_raw: tokenData.scope ?? null,
-      },
+      }),
       updated_at: new Date().toISOString(),
     };
 

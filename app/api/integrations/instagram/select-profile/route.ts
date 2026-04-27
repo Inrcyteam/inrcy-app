@@ -6,6 +6,7 @@ import { asRecord, asString } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractFacebookUserTokens, findAccessibleFacebookPage, listAccessibleFacebookPagesFromTokens } from "@/lib/metaBusinessAssets";
 
+import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
 async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
@@ -69,6 +70,7 @@ export async function POST(req: Request) {
         user_access_token_enc: metaRec["user_access_token_enc"] || rowRec["access_token_enc"],
         standard_user_access_token_enc: metaRec["standard_user_access_token_enc"] || null,
         business_user_access_token_enc: metaRec["business_user_access_token_enc"] || null,
+        ...withCurrentConnectionVersion("channel:instagram", {}),
       },
       updated_at: new Date().toISOString(),
     })

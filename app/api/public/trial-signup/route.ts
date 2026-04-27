@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { optionalEnv } from "@/lib/env";
+import { optionalEnv, requireEnv } from "@/lib/env";
 import { ensureNotificationPreferences, seedOnboardingNotifications } from "@/lib/notifications";
 import { ensureProfileRow } from "@/lib/ensureProfileRow";
 import { getClientIp, enforceRateLimit } from "@/lib/rateLimit";
@@ -277,34 +277,37 @@ function resolveSharedSecret(req: Request, body: LooseRecord) {
 
 export async function POST(req: Request) {
   try {
+    const body = await readRequestBody(req);
+    const payload = normalizePayload(body);
+
+    const expectedSecret = requireEnv("INRCY_TRIAL_SIGNUP_SECRET").trim();
+    const gotSecret = resolveSharedSecret(req, body);
+    if (gotSecret !== expectedSecret) {
+      return jsonResponse({ error: "Accès non autorisé.", message: "Accès non autorisé." }, 401);
+    }
+
     const limited = await enforceRateLimit({
       name: "public_trial_signup",
-      identifier: getClientIp(req),
+      identifier: `${getClientIp(req)}:${payload.email || "unknown"}`,
       limit: 8,
       window: "10 m",
       failClosed: false,
     });
     if (limited) return limited;
 
-    const body = await readRequestBody(req);
-    const payload = normalizePayload(body);
-
-    const expectedSecret = optionalEnv("INRCY_TRIAL_SIGNUP_SECRET", "").trim();
-    const gotSecret = resolveSharedSecret(req, body);
-    if (expectedSecret && gotSecret !== expectedSecret) {
-      return jsonResponse({ error: "Accès non autorisé." }, 401);
-    }
-
     if (payload.website) {
       return jsonResponse({ ok: true });
     }
 
     if (!payload.email) {
-      return jsonResponse({ error: "Email manquant." }, 400);
+      return jsonResponse({ error: "Email manquant.", message: "Email manquant." }, 400);
     }
 
     if (!payload.consent) {
-      return jsonResponse({ error: "Le consentement est obligatoire." }, 400);
+      return jsonResponse({
+        error: "Le consentement est obligatoire.",
+        message: "Le consentement est obligatoire.",
+      }, 400);
     }
 
 

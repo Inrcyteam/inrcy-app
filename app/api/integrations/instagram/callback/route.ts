@@ -9,6 +9,7 @@ import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 type TokenResponse = {
   access_token?: string;
   expires_in?: number;
@@ -180,6 +181,7 @@ const payload: Record<string, unknown> = {
       ? encryptedToken
       : asString(previousMeta["business_user_access_token_enc"]) || null,
     last_login_mode: loginMode,
+    ...withCurrentConnectionVersion("channel:instagram", {}),
   },
 };
 

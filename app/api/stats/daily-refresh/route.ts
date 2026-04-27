@@ -4,6 +4,7 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { buildMetricsSummary } from "@/lib/metrics/summary";
+import { buildStatsConnectionSignature } from "@/lib/stats/connectionSignature";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { buildChannelBlocks, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
 import {
@@ -33,6 +34,7 @@ type BulkResponse = {
     generatedAt: string;
     snapshotDate: string | null;
     live: boolean;
+    connectionSignature?: string;
   };
 };
 
@@ -61,8 +63,9 @@ function buildBulkPayloadFromOverviews(args: {
   profile: ProfileMetrics;
   snapshotDate: string;
   channelStates: Awaited<ReturnType<typeof getChannelConnectionStates>>;
+  connectionSignature?: string;
 }): BulkResponse {
-  const { period, overviews, profile, snapshotDate, channelStates } = args;
+  const { period, overviews, profile, snapshotDate, channelStates, connectionSignature } = args;
   const opportunities = toInrstatsSnapshot(computeOpportunitiesFromOverviews(overviews, period));
   const leadConversionRate = Number(profile?.lead_conversion_rate ?? 0);
   const avgBasket = Number(profile?.avg_basket ?? 0);
@@ -95,6 +98,7 @@ function buildBulkPayloadFromOverviews(args: {
       generatedAt: new Date().toISOString(),
       snapshotDate: Object.values(overviews).find((overview) => overview?.meta)?.meta?.snapshotDate ?? snapshotDate ?? null,
       live: Boolean(Object.values(overviews).find((overview) => overview?.meta)?.meta?.live ?? false),
+      connectionSignature,
     },
   };
 }
@@ -136,11 +140,19 @@ async function handler(req: Request) {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
 
+    const body = await req.json().catch(() => ({} as { announce?: unknown; force?: unknown }));
+    const announce = body?.announce === true;
+    const force = body?.force === true;
+
     const snapshotDate = getDefaultSnapshotDate();
-    const { data: claimed, error: claimError } = await supabase.rpc("claim_daily_stats_refresh", {
-      p_snapshot_date: snapshotDate,
-      p_lease_seconds: DAILY_REFRESH_LEASE_SECONDS,
-    });
+    const claimResult = force
+      ? { data: true, error: null as { message?: string } | null }
+      : await supabase.rpc("claim_daily_stats_refresh", {
+          p_snapshot_date: snapshotDate,
+          p_lease_seconds: DAILY_REFRESH_LEASE_SECONDS,
+        });
+    const claimed = !!claimResult.data;
+    const claimError = claimResult.error;
 
     if (claimError) {
       return jsonUserFacingError(`daily_refresh_claim_failed:${claimError.message}`, { status: 500 });
@@ -169,12 +181,17 @@ async function handler(req: Request) {
         },
       });
 
+      const syncAt = Date.now();
+      if (announce) {
+        await bumpStatsVersion(supabase, user.id);
+      }
+
       return NextResponse.json({
         ok: true,
         ran: false,
         inProgress,
         snapshotDate,
-        syncAt: Date.now(),
+        syncAt,
       });
     }
 
@@ -198,7 +215,7 @@ async function handler(req: Request) {
         origin,
         days: 30,
         getHeaders: headers,
-        bypassCache: false,
+        bypassCache: force,
         supabase,
         userId: user.id,
         snapshotDate,
@@ -208,16 +225,17 @@ async function handler(req: Request) {
         origin,
         days: 7,
         getHeaders: headers,
-        bypassCache: false,
+        bypassCache: force,
         supabase,
         userId: user.id,
         snapshotDate,
       });
 
-      const [profile, monthOverviews, weekOverviews] = await Promise.all([
+      const [profile, monthOverviews, weekOverviews, connectionSignature] = await Promise.all([
         profilePromise,
         monthPromise,
         weekPromise,
+        buildStatsConnectionSignature(supabase, user.id),
       ]);
       const channelStates = await getChannelConnectionStates(supabase, user.id);
 
@@ -231,7 +249,7 @@ async function handler(req: Request) {
         weekDays: 7,
         todayDays: 2,
         debug,
-        fresh: false,
+        fresh: force,
         snapshotDate,
         profileOverride: profile,
         monthOverviewsOverride: monthOverviews,
@@ -244,8 +262,8 @@ async function handler(req: Request) {
       const weekDuration = Math.round(nowMs() - weekStarted);
 
       const inrstatsEntries = [
-        ["7", buildBulkPayloadFromOverviews({ period: 7, overviews: weekOverviews, profile, snapshotDate, channelStates })],
-        ["30", buildBulkPayloadFromOverviews({ period: 30, overviews: monthOverviews, profile, snapshotDate, channelStates })],
+        ["7", buildBulkPayloadFromOverviews({ period: 7, overviews: weekOverviews, profile, snapshotDate, channelStates, connectionSignature })],
+        ["30", buildBulkPayloadFromOverviews({ period: 30, overviews: monthOverviews, profile, snapshotDate, channelStates, connectionSignature })],
       ] as const;
 
       const { error: completeError } = await supabase.rpc("complete_daily_stats_refresh", {
@@ -288,9 +306,11 @@ async function handler(req: Request) {
         },
       });
     } catch (error) {
-      await supabase.rpc("release_daily_stats_refresh_claim", {
-        p_snapshot_date: snapshotDate,
-      }).catch(() => undefined);
+      if (!force) {
+        await supabase.rpc("release_daily_stats_refresh_claim", {
+          p_snapshot_date: snapshotDate,
+        }).catch(() => undefined);
+      }
       throw error;
     }
   } catch (error) {

@@ -7,6 +7,8 @@ import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
+import { getConnectionDisplayStatus } from "@/lib/connectionVersions";
+import { enforceRateLimit } from "@/lib/rateLimit";
 
 // Microsoft Graph mail send requires Node.js runtime in most deployments.
 export const runtime = "nodejs";
@@ -58,6 +60,15 @@ const handler = async (req: Request) => {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
     const userId = user.id;
+
+    const rateLimited = await enforceRateLimit({
+      name: "microsoft_send",
+      identifier: userId,
+      limit: 30,
+      window: "1 m",
+      failClosed: true,
+    });
+    if (rateLimited) return rateLimited;
     const ct = req.headers.get("content-type") || "";
     let accountId = "";
     let sendItemId = "";
@@ -114,6 +125,10 @@ const handler = async (req: Request) => {
 
     if (accErr || !account) {
       return NextResponse.json({ error: "La boîte Outlook sélectionnée est introuvable." }, { status: 404 });
+    }
+
+    if (getConnectionDisplayStatus(String(asRecord(account)["status"] || "") === "connected", "mail:microsoft", asRecord(account)["settings"]) === "needs_update") {
+      return NextResponse.json({ error: "Cette boîte Outlook doit être actualisée avant de pouvoir envoyer." }, { status: 400 });
     }
 
     const signatureSettings = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId, account });

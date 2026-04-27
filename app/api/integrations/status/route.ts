@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { asRecord } from "@/lib/tsSafe";
 
+import { getConnectionDisplayStatus, mailConnectionKind, readConnectionVersion } from "@/lib/connectionVersions";
 export async function GET() {
   const supabase = await createSupabaseServer();
 
@@ -24,12 +25,22 @@ export async function GET() {
     (rows ?? []).map((r: Record<string, unknown>) => {
       const rr = asRecord(r);
       const settings = asRecord(rr["settings"]);
+      const kind = mailConnectionKind(rr["provider"]);
+      const isConnected = String(rr["status"] || "").toLowerCase() === "connected";
+      const connectionStatus = kind
+        ? getConnectionDisplayStatus(isConnected, kind, settings)
+        : isConnected
+          ? "connected"
+          : "disconnected";
       return {
         id: rr["id"],
         provider: rr["provider"],
         email_address: rr["account_email"],
         display_name: settings["display_name"] ?? null,
         status: rr["status"],
+        connection_status: connectionStatus,
+        requires_update: connectionStatus === "needs_update",
+        connection_version: readConnectionVersion(settings),
         created_at: rr["created_at"],
       };
     }) ?? [];

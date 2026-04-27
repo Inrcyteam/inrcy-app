@@ -9,6 +9,7 @@ import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
 async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
@@ -185,6 +186,7 @@ const payload: Record<string, unknown> = {
     profile_url: profileUrl,
     org_urn: null,
     refresh_token_expires_in: Number.isFinite(refreshTokenExpiresIn) ? refreshTokenExpiresIn : existingMeta["refresh_token_expires_in"] ?? null,
+    ...withCurrentConnectionVersion("channel:linkedin", {}),
   },
 };
 

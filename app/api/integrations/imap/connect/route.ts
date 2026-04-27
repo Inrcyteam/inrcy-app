@@ -8,6 +8,7 @@ import { withApi } from "@/lib/observability/withApi";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { withImap } from "@/lib/imapClient";
 
+import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 function isPrivateIp(ip: string): boolean {
   if (/^10\./.test(ip)) return true;
   if (/^127\./.test(ip)) return true;
@@ -140,11 +141,11 @@ const handler = async (req: Request) => {
         access_token_enc: null,
         refresh_token_enc: password_enc,
         expires_at: null,
-        settings: {
+        settings: withCurrentConnectionVersion("mail:imap", {
           display_name: "IMAP",
           imap: { host: imap_host, port: imap_port, secure: imap_secure },
           smtp: { host: smtp_host, port: smtp_port, secure: smtp_secure, starttls: smtp_starttls },
-        },
+        }),
       })
       .select("id")
       .single();
