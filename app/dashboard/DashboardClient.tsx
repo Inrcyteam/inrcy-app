@@ -43,7 +43,6 @@ import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 const FORCED_SERVER_CACHE_CHECK_DEDUP_MS = 30_000;
-const AUTO_DAILY_REFRESH_DEDUP_MS = 5 * 60_000;
 
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
@@ -87,8 +86,7 @@ export default function DashboardClient() {
   const latestFallbackToServerSyncThenGlobalRef = useRef<(() => Promise<void>) | null>(null);
   const latestTriggerChannelsRefreshRef = useRef<((channelsInput: DashboardChannelKey[]) => Promise<void>) | null>(null);
   const initialGeneratorRefreshDoneRef = useRef(false);
-  const lastAutoDailyRefreshAtRef = useRef(0);
-
+  
   const [kpisLoading, setKpisLoading] = useState(false);
   const [dailyBootReady, setDailyBootReady] = useState(false);
   const [kpis, setKpis] = useState<null | {
@@ -1513,17 +1511,15 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         if (!res.ok) return;
         const json = await res.json().catch(() => null);
         if (json?.connections?.needsRefresh === true) {
-          if (now - lastAutoDailyRefreshAtRef.current < AUTO_DAILY_REFRESH_DEDUP_MS) {
-            markServerCacheSyncChecked("dashboard", { snapshotDate, checkedAt: Date.now() });
-            return;
-          }
-
-          lastAutoDailyRefreshAtRef.current = now;
-          const bootstrap = await runDailyStatsRefreshBootstrap({ announce: false, force });
-          applyBootstrapRefresh(bootstrap);
-          markServerCacheSyncChecked("dashboard", { snapshotDate, checkedAt: Date.now(), syncAt: Number(bootstrap?.syncAt ?? Date.now()) });
-          return;
-        }
+  const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true, force: true });
+  applyBootstrapRefresh(bootstrap);
+  markServerCacheSyncChecked("dashboard", {
+    snapshotDate,
+    checkedAt: Date.now(),
+    syncAt: Number(bootstrap?.syncAt ?? Date.now()),
+  });
+  return;
+}
 
         const generatorSyncedAt = Number(json?.generator?.syncedAt ?? 0);
         const generatorChannelStatuses = json?.generator?.channels && typeof json.generator.channels === "object"
