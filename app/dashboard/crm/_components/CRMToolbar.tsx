@@ -365,6 +365,10 @@ export default function CRMToolbar({
                   {importantOnly ? "Uniquement les importants" : "Tous les contacts"}
                 </button>
               </label>
+
+              <button type="button" className={styles.mobileFiltersReset} onClick={resetFilters}>
+                Réinitialiser
+              </button>
             </div>
           ) : null}
         </div>
