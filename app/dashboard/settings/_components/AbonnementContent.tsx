@@ -288,6 +288,7 @@ useEffect(() => {
     const renewal = sub.next_renewal_date ? parseYMD(sub.next_renewal_date) : addMonthsSafe(lastAnniv, 1);
     const endEst = addMonthsSafe(lastAnniv, 2);
     const trialEnd = sub.trial_end_at ? new Date(sub.trial_end_at) : addDays(start, 30);
+    const trialEndsWithinStripeMinimum = trialEnd.getTime() <= now.getTime() + 2 * 24 * 60 * 60 * 1000;
 
     const cancelEnd = sub.end_date ? parseYMD(sub.end_date) : null;
     const cancellationScheduled = !!sub.cancel_requested_at && !!cancelEnd && cancelEnd.getTime() > now.getTime();
@@ -321,6 +322,7 @@ useEffect(() => {
       hasStripeSub: hasScheduledSubscription,
       scheduledPlanLabel: planShortLabel(scheduledPlan),
       planNormalized,
+      trialEndsWithinStripeMinimum,
     };
   }, [sub, checkoutState]);
 
@@ -550,8 +552,10 @@ useEffect(() => {
 
               <div style={miniBox}>
                 <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Fin prévisionnelle</div>
-                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.endEstLabel}</div>
-                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75, lineHeight: 1.3 }}>Préavis inclus (1 mois)</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.cancellationScheduled && computed.cancelEndLabel ? computed.cancelEndLabel : computed.endEstLabel}</div>
+                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75, lineHeight: 1.3 }}>
+                  {computed.cancellationScheduled ? "Résiliation programmée" : "Préavis inclus (1 mois)"}
+                </div>
               </div>
             </>
           )}
@@ -563,7 +567,9 @@ useEffect(() => {
 
         {checkoutState === "success" ? (
           <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
-            ✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours.
+            {computed?.trialEndsWithinStripeMinimum
+              ? "✅ Inscription confirmée. Votre abonnement démarre maintenant."
+              : "✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours."}
           </p>
         ) : checkoutState === "cancel" ? (
           <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
@@ -581,7 +587,9 @@ useEffect(() => {
               <>
                 {checkoutState !== "success" ? (
                   <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
-                    ✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours.
+                    {computed?.trialEndsWithinStripeMinimum
+                      ? "✅ Inscription confirmée. Votre abonnement démarre maintenant."
+                      : "✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours."}
                   </p>
                 ) : null}
 
@@ -632,11 +640,13 @@ useEffect(() => {
             ) : (
               <>
                 <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
-                  Pour continuer après l’essai, abonnez-vous. L’abonnement démarrera à la fin de l’essai.
+                  {computed?.trialEndsWithinStripeMinimum
+                    ? "Votre essai se termine bientôt. Vous pouvez vous abonner maintenant pour éviter toute coupure."
+                    : "Pour continuer après l’essai, abonnez-vous. L’abonnement démarrera à la fin de l’essai."}
                 </p>
                 <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                   <button type="button" onClick={doCheckout} style={primaryBtn} disabled={billingBusy}>
-                    S’abonner
+                    {computed?.trialEndsWithinStripeMinimum ? "S’abonner maintenant" : "S’abonner"}
                   </button>
                   <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
                     Voir nos packs
@@ -656,26 +666,70 @@ useEffect(() => {
           </>
         ) : sub.status === "active" ? (
           <>
-            <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
-              Les changements de pack se font uniquement sur demande auprès d’iNrCy.
-            </p>
-            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-              <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
-                Voir les packs
-              </a>
-              {onOpenContact ? (
-                <button type="button" onClick={onOpenContact} style={ghostBtn}>
-                  Contacter iNrCy
-                </button>
-              ) : (
-                <a href="https://inrcy.com/contact/" target="_blank" rel="noreferrer" style={ghostBtn}>
-                  Contacter iNrCy
-                </a>
-              )}
-              <button type="button" onClick={doCancel} style={dangerBtn} disabled={billingBusy}>
-                Résilier (préavis 1 mois)
-              </button>
-            </div>
+            {computed?.cancellationScheduled && computed?.cancelEndLabel ? (
+              <>
+                <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
+                  Votre résiliation est programmée. Votre accès restera actif jusqu’au <strong>{computed.cancelEndLabel}</strong>.
+                </p>
+                <div
+                  style={{
+                    marginTop: 10,
+                    border: "1px solid rgba(251, 191, 36, 0.25)",
+                    background: "rgba(251, 191, 36, 0.10)",
+                    borderRadius: 12,
+                    padding: "10px 12px",
+                  }}
+                >
+                  <div style={{ fontWeight: 800, marginBottom: 4 }}>Résiliation programmée</div>
+                  <div style={{ opacity: 0.95, lineHeight: 1.45 }}>
+                    La résiliation prendra effet le <strong>{computed.cancelEndLabel}</strong>.
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>
+                    Vous pouvez l’annuler tant que la date n’est pas atteinte.
+                  </div>
+                </div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  <button type="button" onClick={doUncancel} style={primaryBtn} disabled={billingBusy}>
+                    {billingBusy ? "Traitement…" : "Annuler ma résiliation"}
+                  </button>
+                  <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
+                    Voir les packs
+                  </a>
+                  {onOpenContact ? (
+                    <button type="button" onClick={onOpenContact} style={ghostBtn}>
+                      Contacter iNrCy
+                    </button>
+                  ) : (
+                    <a href="https://inrcy.com/contact/" target="_blank" rel="noreferrer" style={ghostBtn}>
+                      Contacter iNrCy
+                    </a>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
+                  Les changements de pack se font uniquement sur demande auprès d’iNrCy.
+                </p>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
+                    Voir les packs
+                  </a>
+                  {onOpenContact ? (
+                    <button type="button" onClick={onOpenContact} style={ghostBtn}>
+                      Contacter iNrCy
+                    </button>
+                  ) : (
+                    <a href="https://inrcy.com/contact/" target="_blank" rel="noreferrer" style={ghostBtn}>
+                      Contacter iNrCy
+                    </a>
+                  )}
+                  <button type="button" onClick={doCancel} style={dangerBtn} disabled={billingBusy}>
+                    {billingBusy ? "Traitement…" : "Résilier (préavis 1 mois)"}
+                  </button>
+                </div>
+              </>
+            )}
           </>
         ) : (
           <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>

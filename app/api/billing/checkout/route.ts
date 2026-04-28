@@ -108,6 +108,7 @@ export async function POST(req: Request) {
 
     const trialEndUnix = Math.floor(new Date(trialEndAt).getTime() / 1000);
     const nowUnix = Math.floor(Date.now() / 1000);
+    const stripeMinTrialEndUnix = nowUnix + 2 * 24 * 60 * 60;
 
     if (!Number.isFinite(trialEndUnix) || trialEndUnix <= nowUnix + 60) {
       return NextResponse.json(
@@ -115,6 +116,11 @@ export async function POST(req: Request) {
         { status: 403 }
       );
     }
+
+    // Stripe Checkout refuse un trial_end situé à moins de 48h.
+    // Si le client s'abonne en fin d'essai, on crée donc l'abonnement immédiatement
+    // plutôt que de bloquer le paiement avec une erreur Stripe.
+    const shouldKeepTrialEnd = trialEndUnix >= stripeMinTrialEndUnix;
 
     const existingSubId = row?.stripe_subscription_id ?? undefined;
     const existingStatus = String(row?.status || "").toLowerCase();
@@ -171,12 +177,16 @@ export async function POST(req: Request) {
     sessionParams.set("success_url", `${appUrl}/dashboard?panel=abonnement&checkout=success`);
     sessionParams.set("cancel_url", `${appUrl}/dashboard?panel=abonnement&checkout=cancel`);
     sessionParams.set("metadata[user_id]", userId);
+    sessionParams.set("metadata[trial_behavior]", shouldKeepTrialEnd ? "keep_trial_end" : "start_now");
     sessionParams.set("subscription_data[metadata][user_id]", userId);
-    sessionParams.set("subscription_data[trial_end]", String(trialEndUnix));
+    sessionParams.set("subscription_data[metadata][trial_behavior]", shouldKeepTrialEnd ? "keep_trial_end" : "start_now");
+    if (shouldKeepTrialEnd) {
+      sessionParams.set("subscription_data[trial_end]", String(trialEndUnix));
+    }
     sessionParams.set("payment_method_collection", "always");
 
     const session = await stripePost("/checkout/sessions", sessionParams, {
-      idempotencyKey: `checkout-session-${userId}-${priceId}`,
+      idempotencyKey: `checkout-session-${userId}-${priceId}-${shouldKeepTrialEnd ? trialEndUnix : "start-now"}`,
     });
 
     await supabaseAdmin
