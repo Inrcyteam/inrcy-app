@@ -510,8 +510,9 @@ const body = await req.json().catch(() => null);
     const channelImageSets: Partial<Record<ChannelKey, ImageSet>> = {};
     for (const channel of selected) {
       const rawChannelImages = Array.isArray(imagesByChannel?.[channel]) ? (imagesByChannel[channel] as ImagePayload[]) : [];
-      if (!rawChannelImages.length) continue;
-      const { imageSet, uploadErrors: channelErrors } = await uploadImageSet(userId, rawChannelImages);
+      const channelImagesToUpload = channel === "gmb" ? rawChannelImages.slice(0, 1) : rawChannelImages;
+      if (!channelImagesToUpload.length) continue;
+      const { imageSet, uploadErrors: channelErrors } = await uploadImageSet(userId, channelImagesToUpload);
       channelImageSets[channel] = imageSet;
       uploadErrors.push(...channelErrors.map((entry) => ({ ...entry, stage: `${channel}:${entry.stage}` })));
     }
@@ -848,7 +849,7 @@ const body = await req.json().catch(() => null);
           }
 
           const gmbChannelImageSet = getChannelImageSet(ch);
-          const gmbChannelImages = (gmbChannelImageSet.gmbPublishableUrls.length ? gmbChannelImageSet.gmbPublishableUrls : gmbImageUrls.length ? gmbImageUrls : gmbChannelImageSet.publishableUrls).filter(Boolean).slice(0, 5);
+          const gmbChannelImages = (gmbChannelImageSet.gmbPublishableUrls.length ? gmbChannelImageSet.gmbPublishableUrls : gmbImageUrls.length ? gmbImageUrls : gmbChannelImageSet.publishableUrls).filter(Boolean).slice(0, 1);
           const gmbSummary = buildBoosterGmbSummary(channelPost);
           const gmbCallToAction = getBoosterGmbCallToAction(channelPost, { websiteUrl: siteWebUrl || inrcySiteUrl, phone: businessPhone });
           let gmbResp: any;

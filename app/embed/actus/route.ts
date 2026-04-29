@@ -49,7 +49,7 @@ function buildFrameAncestors(): string {
 
 function clampLimit(value: string | null) {
   const parsed = parseInt(value || "5", 10) || 5;
-  return Math.min(7, Math.max(3, parsed));
+  return Math.min(10, Math.max(3, parsed));
 }
 
 function clampFont(value: string | null): FontMode {

@@ -349,7 +349,7 @@ export default function SiteWebPanel(props: any) {
             <span className={styles.blockSub}><strong>Nombre d'actus</strong></span>
             <select
               value={String(siteWebActusLimit)}
-              onChange={(e) => setSiteWebActusLimit(Math.min(7, Math.max(3, Number(e.target.value) || 5)))}
+              onChange={(e) => setSiteWebActusLimit(Math.min(10, Math.max(3, Number(e.target.value) || 5)))}
               style={{
                 borderRadius: 12,
                 border: "1px solid rgba(255,255,255,0.14)",
@@ -360,7 +360,7 @@ export default function SiteWebPanel(props: any) {
                 outline: "none",
               }}
             >
-              {[3, 4, 5, 6, 7].map((n) => (
+              {[3, 5, 10].map((n) => (
                 <option key={n} value={n}>{n} dernières actus</option>
               ))}
             </select>

@@ -9,6 +9,7 @@ type CardItem = {
   key: string;
   previewUrl: string;
   included: boolean;
+  disabled?: boolean;
   title: string;
   subtitle: string;
   fitLabel: string;
@@ -159,7 +160,9 @@ export function ChannelImageRetouchCardsPanel({
 
         {items.length ? (
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "stretch" }}>
-            {items.map((item) => (
+            {items.map((item) => {
+              const isDisabled = !!item.disabled && !item.included;
+              return (
               <div
                 key={item.key}
                 style={{
@@ -172,6 +175,7 @@ export function ChannelImageRetouchCardsPanel({
                   background: item.included ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.025)",
                   display: "grid",
                   gap: 10,
+                  opacity: isDisabled ? 0.48 : 1,
                 }}
               >
                 <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio, ...previewBackgroundStyle(item.backgroundMode), border: "1px solid rgba(255,255,255,0.08)" }}>
@@ -181,8 +185,8 @@ export function ChannelImageRetouchCardsPanel({
                   </div>
                 </div>
 
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                  <input type="checkbox" checked={item.included} onChange={item.onToggle} style={{ width: 16, height: 16, accentColor: "#4cc3ff" }} />
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, cursor: isDisabled ? "not-allowed" : "pointer" }}>
+                  <input type="checkbox" checked={item.included} disabled={isDisabled} onChange={isDisabled ? undefined : item.onToggle} style={{ width: 16, height: 16, accentColor: "#4cc3ff" }} />
                   <span>{item.title}</span>
                 </label>
 
@@ -199,7 +203,8 @@ export function ChannelImageRetouchCardsPanel({
                   ) : null}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div style={{ fontSize: 13, opacity: 0.75 }}>{emptyMessage || "Aucune image"}</div>

@@ -381,7 +381,7 @@ export default function SiteInrcyPanel(props: any) {
             <span className={styles.blockSub}><strong>Nombre d'actus</strong></span>
             <select
               value={String(siteInrcyActusLimit)}
-              onChange={(e) => setSiteInrcyActusLimit(Math.min(7, Math.max(3, Number(e.target.value) || 5)))}
+              onChange={(e) => setSiteInrcyActusLimit(Math.min(10, Math.max(3, Number(e.target.value) || 5)))}
               style={{
                 borderRadius: 12,
                 border: "1px solid rgba(255,255,255,0.14)",
@@ -392,7 +392,7 @@ export default function SiteInrcyPanel(props: any) {
                 outline: "none",
               }}
             >
-              {[3, 4, 5, 6, 7].map((n) => (
+              {[3, 5, 10].map((n) => (
                 <option key={n} value={n}>{n} dernières actus</option>
               ))}
             </select>

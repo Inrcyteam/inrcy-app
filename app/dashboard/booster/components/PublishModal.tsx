@@ -854,7 +854,13 @@ export default function PublishModal({
     setChannelImageEditors((prev) => {
       const current = prev[channel] || { imageKeys: imageKeys.slice(), transforms: {} };
       const exists = current.imageKeys.includes(imageKey);
-      const nextKeys = exists ? current.imageKeys.filter((key) => key !== imageKey) : [...current.imageKeys, imageKey];
+      const nextKeys = channel === "gmb"
+        ? exists
+          ? []
+          : [imageKey]
+        : exists
+          ? current.imageKeys.filter((key) => key !== imageKey)
+          : [...current.imageKeys, imageKey];
       return {
         ...prev,
         [channel]: {
@@ -867,6 +873,11 @@ export default function PublishModal({
       };
     });
     setActiveImageKeyByChannel((prev) => {
+      if (channel === "gmb") {
+        const currentKeys = channelImageEditors[channel]?.imageKeys || [];
+        const exists = currentKeys.includes(imageKey);
+        return { ...prev, [channel]: exists ? "" : imageKey };
+      }
       if (prev[channel] !== imageKey) return prev;
       const currentKeys = channelImageEditors[channel]?.imageKeys || [];
       const nextKeys = currentKeys.filter((key) => key !== imageKey);
@@ -885,9 +896,11 @@ export default function PublishModal({
       for (const channel of selectedChannels) {
         const current = next[channel] || { imageKeys: imageKeys.slice(), transforms: {} };
         next[channel] = {
-          imageKeys: current.imageKeys.includes(activeEditorImageKey)
-            ? current.imageKeys
-            : [...current.imageKeys, activeEditorImageKey],
+          imageKeys: channel === "gmb"
+            ? [activeEditorImageKey]
+            : current.imageKeys.includes(activeEditorImageKey)
+              ? current.imageKeys
+              : [...current.imageKeys, activeEditorImageKey],
           transforms: {
             ...current.transforms,
             [activeEditorImageKey]: { ...activeEditorTransform },
@@ -918,14 +931,16 @@ export default function PublishModal({
     const channelSettings = {} as ChannelImageSettingsPayload;
     const totalRenders = selectedChannels.reduce((sum, channel) => {
       const editor = channelImageEditors[channel] || { imageKeys: [], transforms: {} };
-      return sum + editor.imageKeys.length;
+      const keys = channel === "gmb" ? editor.imageKeys.slice(0, 1) : editor.imageKeys;
+      return sum + keys.length;
     }, 0);
     let doneRenders = 0;
 
     for (const channel of selectedChannels) {
       const editor = channelImageEditors[channel] || { imageKeys: [], transforms: {} };
       const renderList: ImagePayload[] = [];
-      for (const imageKey of editor.imageKeys) {
+      const imageKeysToRender = channel === "gmb" ? editor.imageKeys.slice(0, 1) : editor.imageKeys;
+      for (const imageKey of imageKeysToRender) {
         const file = imageFileByKey[imageKey];
         if (!file) continue;
         const transform = editor.transforms[imageKey] || getDefaultTransform(channel);
@@ -935,7 +950,7 @@ export default function PublishModal({
       }
       channelImages[channel] = renderList;
       channelSettings[channel] = {
-        imageKeys: [...editor.imageKeys],
+        imageKeys: [...imageKeysToRender],
         transforms: Object.fromEntries(Object.entries(editor.transforms || {}).map(([key, value]) => [key, { ...value }])),
       };
     }
@@ -1459,7 +1474,8 @@ export default function PublishModal({
             {activeImageChannel === "gmb" ? (
               <div style={{ marginBottom: 12, borderRadius: 14, padding: "12px 14px", border: "1px solid rgba(251,191,36,0.26)", background: "rgba(251,191,36,0.10)", display: "grid", gap: 10 }}>
                 <div style={{ fontSize: 13, lineHeight: 1.5, color: "#fde68a" }}>
-                  <strong>Attention :</strong> Google Business refuse souvent les images à caractère publicitaire. Par sécurité, aucune image n&apos;est envoyée par défaut sur ce canal. Cochez seulement les images que vous avez vérifiées.
+                  <strong>Attention :</strong> Google Business refuse souvent les images à caractère publicitaire. Par sécurité, aucune image n&apos;est envoyée par défaut sur ce canal. Cochez seulement les images que vous avez vérifiées.<br />
+                  Pour Google Business, sélectionnez une seule photo par publication. Privilégiez l’image la plus claire et la plus professionnelle.
                 </div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button type="button" className={styles.secondaryBtn} onClick={() => gmbFileInputRef.current?.click()}>
@@ -1476,15 +1492,22 @@ export default function PublishModal({
             formatLabel={`Format final : ${CHANNEL_PRESETS[activeImageChannel].width}×${CHANNEL_PRESETS[activeImageChannel].height}`}
             aspectRatio={previewAspectRatio}
             items={imageKeys.map((key, index) => {
-              const included = (channelImageEditors[activeImageChannel]?.imageKeys || []).includes(key);
+              const selectedKeysForActiveChannel = channelImageEditors[activeImageChannel]?.imageKeys || [];
+              const included = selectedKeysForActiveChannel.includes(key);
+              const disabledByGoogleBusinessLimit = activeImageChannel === "gmb" && selectedKeysForActiveChannel.length >= 1 && !included;
               const transform = channelImageEditors[activeImageChannel]?.transforms?.[key] || getOptimizedTransform(activeImageChannel, imageMetaByKey[key]);
               const bgMode = getBackgroundMode(transform);
               return {
                 key,
                 previewUrl: previewByKey[key],
                 included,
+                disabled: disabledByGoogleBusinessLimit,
                 title: `Image ${index + 1}`,
-                subtitle: included ? "Publiée sur ce canal" : "Non envoyée sur ce canal",
+                subtitle: disabledByGoogleBusinessLimit
+                  ? "Une seule photo par publication Google Business"
+                  : included
+                    ? "Publiée sur ce canal"
+                    : "Non envoyée sur ce canal",
                 fitLabel: transform.fit === "cover" ? "Remplir" : "Adapter",
                 backgroundMode: bgMode,
                 onToggle: () => toggleChannelImage(activeImageChannel, key),
