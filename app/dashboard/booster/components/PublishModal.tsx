@@ -383,6 +383,28 @@ export default function PublishModal({
     [channels, connected]
   );
 
+  const siteImageChannel = useMemo<ChannelKey>(
+    () => selectedChannels.includes("inrcy_site") ? "inrcy_site" : "site_web",
+    [selectedChannels]
+  );
+  const imageRetouchChannels = useMemo<ChannelKey[]>(() => {
+    const retouchChannels: ChannelKey[] = [];
+    if (selectedChannels.includes("inrcy_site") || selectedChannels.includes("site_web")) retouchChannels.push(siteImageChannel);
+    if (selectedChannels.includes("gmb")) retouchChannels.push("gmb");
+    if (selectedChannels.includes("facebook")) retouchChannels.push("facebook");
+    if (selectedChannels.includes("instagram")) retouchChannels.push("instagram");
+    if (selectedChannels.includes("linkedin")) retouchChannels.push("linkedin");
+    return retouchChannels;
+  }, [selectedChannels, siteImageChannel]);
+  const getImageRetouchLabel = (channel: ChannelKey) =>
+    channel === "inrcy_site" || channel === "site_web" ? DISPLAY_LABELS.site : CHANNEL_LABELS[channel];
+  const getMirroredImageChannels = (channel: ChannelKey): ChannelKey[] => {
+    if (channel === "inrcy_site" || channel === "site_web") {
+      return selectedChannels.filter((selectedChannel) => selectedChannel === "inrcy_site" || selectedChannel === "site_web");
+    }
+    return [channel];
+  };
+
   const selectedForGeneration = useMemo(() => {
     const out = new Set<ChannelKey>();
     if ((channels.inrcy_site && connected.inrcy_site) || (channels.site_web && connected.site_web)) out.add("site_web");
@@ -402,14 +424,14 @@ export default function PublishModal({
   }, [imageKeys.join("|"), selectedChannels.join("|"), Object.keys(imageMetaByKey).sort().map((key) => `${key}:${imageMetaByKey[key]?.width || 0}x${imageMetaByKey[key]?.height || 0}`).join("|")]);
 
   useEffect(() => {
-    if (!selectedChannels.length) {
+    if (!imageRetouchChannels.length) {
       setActiveImageChannel("inrcy_site");
       return;
     }
-    if (!selectedChannels.includes(activeImageChannel)) {
-      setActiveImageChannel(selectedChannels[0]);
+    if (!imageRetouchChannels.includes(activeImageChannel)) {
+      setActiveImageChannel(imageRetouchChannels[0]);
     }
-  }, [selectedChannels, activeImageChannel]);
+  }, [imageRetouchChannels, activeImageChannel]);
 
   useEffect(() => {
     setActiveImageKeyByChannel((prev) => {
@@ -758,20 +780,21 @@ export default function PublishModal({
 
   const updateChannelTransform = (channel: ChannelKey, imageKey: string, patch: Partial<ImageTransform>) => {
     setChannelImageEditors((prev) => {
-      const current = prev[channel] || { imageKeys: imageKeys.slice(), transforms: {} };
-      return {
-        ...prev,
-        [channel]: {
+      const next = { ...prev };
+      for (const targetChannel of getMirroredImageChannels(channel)) {
+        const current = next[targetChannel] || { imageKeys: imageKeys.slice(), transforms: {} };
+        next[targetChannel] = {
           imageKeys: current.imageKeys,
           transforms: {
             ...current.transforms,
             [imageKey]: {
-              ...(current.transforms[imageKey] || getOptimizedTransform(channel, imageMetaByKey[imageKey])),
+              ...(current.transforms[imageKey] || getOptimizedTransform(targetChannel, imageMetaByKey[imageKey])),
               ...patch,
             },
           },
-        },
-      };
+        };
+      }
+      return next;
     });
   };
 
@@ -857,6 +880,7 @@ export default function PublishModal({
   };
 
   const toggleChannelImage = (channel: ChannelKey, imageKey: string) => {
+    const mirrorChannels = getMirroredImageChannels(channel);
     setChannelImageEditors((prev) => {
       const current = prev[channel] || { imageKeys: imageKeys.slice(), transforms: {} };
       const exists = current.imageKeys.includes(imageKey);
@@ -867,27 +891,31 @@ export default function PublishModal({
         : exists
           ? current.imageKeys.filter((key) => key !== imageKey)
           : [...current.imageKeys, imageKey];
-      return {
-        ...prev,
-        [channel]: {
+      const next = { ...prev };
+      for (const targetChannel of mirrorChannels) {
+        const currentTarget = next[targetChannel] || { imageKeys: imageKeys.slice(), transforms: {} };
+        next[targetChannel] = {
           imageKeys: nextKeys,
           transforms: {
-            ...current.transforms,
-            [imageKey]: current.transforms[imageKey] || getOptimizedTransform(channel, imageMetaByKey[imageKey]),
+            ...currentTarget.transforms,
+            [imageKey]: currentTarget.transforms[imageKey] || getOptimizedTransform(targetChannel, imageMetaByKey[imageKey]),
           },
-        },
-      };
+        };
+      }
+      return next;
     });
     setActiveImageKeyByChannel((prev) => {
+      const currentKeys = channelImageEditors[channel]?.imageKeys || [];
+      const exists = currentKeys.includes(imageKey);
       if (channel === "gmb") {
-        const currentKeys = channelImageEditors[channel]?.imageKeys || [];
-        const exists = currentKeys.includes(imageKey);
         return { ...prev, [channel]: exists ? "" : imageKey };
       }
       if (prev[channel] !== imageKey) return prev;
-      const currentKeys = channelImageEditors[channel]?.imageKeys || [];
       const nextKeys = currentKeys.filter((key) => key !== imageKey);
-      return { ...prev, [channel]: nextKeys[0] || "" };
+      return {
+        ...prev,
+        ...Object.fromEntries(mirrorChannels.map((targetChannel) => [targetChannel, nextKeys[0] || ""])),
+      };
     });
   };
 
@@ -935,15 +963,20 @@ export default function PublishModal({
   }> => {
     const channelImages = {} as ChannelImagePayload;
     const channelSettings = {} as ChannelImageSettingsPayload;
+    const getEditorForPublish = (channel: ChannelKey) => {
+      const sourceChannel = channel === "inrcy_site" || channel === "site_web" ? siteImageChannel : channel;
+      return channelImageEditors[sourceChannel] || channelImageEditors[channel] || { imageKeys: [], transforms: {} };
+    };
+
     const totalRenders = selectedChannels.reduce((sum, channel) => {
-      const editor = channelImageEditors[channel] || { imageKeys: [], transforms: {} };
+      const editor = getEditorForPublish(channel);
       const keys = channel === "gmb" ? editor.imageKeys.slice(0, 1) : editor.imageKeys;
       return sum + keys.length;
     }, 0);
     let doneRenders = 0;
 
     for (const channel of selectedChannels) {
-      const editor = channelImageEditors[channel] || { imageKeys: [], transforms: {} };
+      const editor = getEditorForPublish(channel);
       const renderList: ImagePayload[] = [];
       const imageKeysToRender = channel === "gmb" ? editor.imageKeys.slice(0, 1) : editor.imageKeys;
       for (const imageKey of imageKeysToRender) {
@@ -1535,10 +1568,10 @@ export default function PublishModal({
               </div>
             ) : null}
             <ChannelImageRetouchCardsPanel
-            tabs={selectedChannels.map((channel) => ({ key: channel, label: CHANNEL_LABELS[channel] }))}
+            tabs={imageRetouchChannels.map((channel) => ({ key: channel, label: getImageRetouchLabel(channel) }))}
             activeChannel={activeImageChannel}
             onActiveChannelChange={(key) => setActiveImageChannel(key as ChannelKey)}
-            channelTitle={CHANNEL_LABELS[activeImageChannel]}
+            channelTitle={getImageRetouchLabel(activeImageChannel)}
             formatLabel={`Format final : ${CHANNEL_PRESETS[activeImageChannel].width}×${CHANNEL_PRESETS[activeImageChannel].height}`}
             aspectRatio={previewAspectRatio}
             items={imageKeys.map((key, index) => {
@@ -1575,7 +1608,7 @@ export default function PublishModal({
       <ChannelImageRetouchModal
         open={!!(isImageEditorOpen && activeEditorImageKey)}
         title={`Retoucher Image ${(imageKeys.indexOf(activeEditorImageKey || "") || 0) + 1}`}
-        subtitle={`${CHANNEL_LABELS[activeImageChannel]} • ${CHANNEL_PRESETS[activeImageChannel].width}×${CHANNEL_PRESETS[activeImageChannel].height}`}
+        subtitle={`${getImageRetouchLabel(activeImageChannel)} • ${CHANNEL_PRESETS[activeImageChannel].width}×${CHANNEL_PRESETS[activeImageChannel].height}`}
         aspectRatio={previewAspectRatio}
         backgroundMode={activeBackgroundMode}
         backgroundColor={activeBackgroundColor}
