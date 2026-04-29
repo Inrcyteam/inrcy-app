@@ -69,18 +69,6 @@ function monthlyPriceFromPlan(plan: string | null): number | null {
   return null;
 }
 
-function ymdFromDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function addMonthsSafeYmd(date: Date, months: number) {
-  const d = date.getDate();
-  const res = new Date(date);
-  res.setMonth(res.getMonth() + months);
-  if (res.getDate() !== d) res.setDate(0);
-  return ymdFromDate(res);
-}
-
 async function getSubscriptionRow(userId?: string | null, customerId?: string | null) {
   if (userId) {
     const { data } = await supabaseAdmin
@@ -145,35 +133,12 @@ export async function POST(req: Request) {
       const userId = typeof metadata?.user_id === "string" ? metadata.user_id : null;
       const customerId = typeof session?.customer === "string" ? session.customer : null;
       const subId = typeof session?.subscription === "string" ? session.subscription : null;
-      const mode = typeof session?.mode === "string" ? session.mode : null;
-      const paymentStatus = typeof session?.payment_status === "string" ? session.payment_status : null;
       const billingCycle = typeof metadata?.billing_cycle === "string" ? metadata.billing_cycle : null;
-      const selectedPlan = typeof metadata?.plan === "string" ? metadata.plan : "Starter";
-      const accessMonths = Number(typeof metadata?.access_months === "string" ? metadata.access_months : 0) || 12;
-      const yearlyPriceId = optionalEnv("STRIPE_PRICE_YEARLY");
-      const amountTotal = typeof session?.amount_total === "number" ? session.amount_total : null;
 
-      if (mode === "payment" && billingCycle === "yearly" && paymentStatus === "paid") {
-        const now = new Date();
-        await updateSubscriptionRow(userId, customerId, {
-          status: "active",
-          plan: selectedPlan,
-          scheduled_plan: null,
-          monthly_price_eur: amountTotal != null ? amountTotal / 100 : 690,
-          start_date: ymdFromDate(now),
-          next_renewal_date: null,
-          cancel_requested_at: null,
-          end_date: addMonthsSafeYmd(now, accessMonths),
-          stripe_customer_id: customerId || null,
-          stripe_subscription_id: null,
-          stripe_price_id: yearlyPriceId || null,
-        });
-      } else {
-        await updateSubscriptionRow(userId, customerId, {
-          stripe_customer_id: customerId || null,
-          stripe_subscription_id: subId || null,
-        });
-      }
+      await updateSubscriptionRow(userId, customerId, {
+        stripe_customer_id: customerId || null,
+        stripe_subscription_id: subId || null,
+      });
 
       if (userId) {
         const row = await getSubscriptionRow(userId, customerId);

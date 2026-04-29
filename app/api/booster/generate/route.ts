@@ -12,6 +12,7 @@ import {
   type BoosterTheme,
 } from "@/lib/boosterPrompt";
 import { sanitizeGmbGeneratedPost } from "@/lib/googleBusinessCompliance";
+import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
 
 type Payload = {
   idea?: string;
@@ -63,12 +64,14 @@ function normalizePost(channel: BoosterChannels, raw: Partial<ChannelPost> | und
     };
   }
 
+  const siteChannel = siteChannels.has(channel);
+  const title = String(raw?.title || "").trim();
+  const content = String(raw?.content || "").trim();
+
   return {
-    title: String(raw?.title || "").trim().slice(0, 90),
-    content: String(raw?.content || "")
-      .trim()
-      .slice(0, siteChannels.has(channel) ? 6000 : 2000),
-    cta: String(raw?.cta || "").trim().slice(0, 180),
+    title: (siteChannel ? title : stripSiteTextFormatting(title)).slice(0, 90),
+    content: (siteChannel ? content : stripSiteTextFormatting(content)).slice(0, siteChannel ? 6000 : 2000),
+    cta: stripSiteTextFormatting(raw?.cta || "").slice(0, 180),
     hashtags: cleanHashtags(raw?.hashtags),
   };
 }

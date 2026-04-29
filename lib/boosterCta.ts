@@ -1,3 +1,5 @@
+import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
+
 export type BoosterChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 export type BoosterCtaMode = "none" | "website" | "call" | "message" | "custom";
 
@@ -120,8 +122,9 @@ export function buildCtaTextForChannel(channel: BoosterChannelKey, post: Partial
 }
 
 function buildPrimaryBoosterText(channel: BoosterChannelKey, post: Partial<BoosterPostLike> | null | undefined) {
-  const title = collapseWhitespace(String(post?.title || ""));
-  const content = collapseWhitespace(String(post?.content || ""));
+  const isSiteChannel = channel === "inrcy_site" || channel === "site_web";
+  const title = collapseWhitespace(isSiteChannel ? String(post?.title || "") : stripSiteTextFormatting(post?.title || ""));
+  const content = collapseWhitespace(isSiteChannel ? String(post?.content || "") : stripSiteTextFormatting(post?.content || ""));
 
   if ((channel === "facebook" || channel === "linkedin") && title && content) {
     return collapseWhitespace(`${title} — ${content}`);
@@ -156,8 +159,8 @@ export function buildBoosterInstagramCaption(post: Partial<BoosterPostLike> | nu
 
 export function buildBoosterGmbSummary(post: Partial<BoosterPostLike> | null | undefined) {
   const parts = [
-    collapseWhitespace(String(post?.title || "")),
-    collapseWhitespace(String(post?.content || "")),
+    collapseWhitespace(stripSiteTextFormatting(post?.title || "")),
+    collapseWhitespace(stripSiteTextFormatting(post?.content || "")),
     getCtaMode(post) === "custom" ? getCtaLabel(post, "custom") : "",
   ].filter(Boolean);
   return collapseWhitespace(parts.join("\n\n")).slice(0, 1498);

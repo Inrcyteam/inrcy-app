@@ -1,3 +1,5 @@
+import { renderBoosterSiteContentHtml } from "@/lib/boosterFormatting";
+
 export type LayoutMode = "list" | "carousel";
 export type FontMode = "site" | "inter" | "poppins" | "montserrat" | "lora";
 export type ThemeMode = "white" | "dark" | "gray" | "nature" | "sand";
@@ -65,19 +67,6 @@ function formatDate(iso: unknown) {
   }
 }
 
-function renderRichText(input: unknown) {
-  const raw = String(input ?? "").trim();
-  if (!raw) return "";
-  const escaped = escapeHtml(raw).replace(/\r\n/g, "\n");
-  return escaped
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map((p) => `<p>${p.replace(/\n/g, "<br />")}</p>`)
-    .join("");
-}
-
-
 function shouldCollapseContent(input: unknown) {
   const raw = String(input ?? "").trim();
   if (!raw) return false;
@@ -87,7 +76,7 @@ function shouldCollapseContent(input: unknown) {
 
 function renderArticleBody(article: Record<string, unknown>, idPrefix: string) {
   const raw = String(article.content ?? "").trim();
-  const content = renderRichText(raw);
+  const content = renderBoosterSiteContentHtml(raw);
   if (!content) return "";
   const collapsible = shouldCollapseContent(raw);
   const contentId = `${idPrefix}-content`;

@@ -4,6 +4,7 @@ import StatusMessage from "../../_components/StatusMessage";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import stylesDash from "../../dashboard/dashboard.module.css";
 import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/dashboard/_components/ChannelImageRetouchTool";
 import {
@@ -111,6 +112,7 @@ export default function PublishModal({
   const [activeImageKeyByChannel, setActiveImageKeyByChannel] = useState<Partial<Record<ChannelKey, string>>>({});
   const previewStageRef = useRef<HTMLDivElement | null>(null);
   const publishAreaRef = useRef<HTMLDivElement | null>(null);
+  const contentTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const publishPulseTimerRef = useRef<number | null>(null);
   const dragStateRef = useRef<{ pointerId: number; startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
   const [previewStageSize, setPreviewStageSize] = useState({ width: 0, height: 0 });
@@ -464,6 +466,10 @@ export default function PublishModal({
       title: source.title,
       content: source.content,
     };
+    const plainPatch: Pick<ChannelPost, "title" | "content"> = {
+      title: stripSiteTextFormatting(source.title),
+      content: stripSiteTextFormatting(source.content),
+    };
 
     setPostsByChannel((prev) => {
       const next: Partial<Record<ChannelKey, ChannelPost>> = { ...prev };
@@ -480,7 +486,7 @@ export default function PublishModal({
 
         next[key] = {
           ...normalizePost(prev[key]),
-          ...patch,
+          ...plainPatch,
         };
       }
       return next;
@@ -625,6 +631,17 @@ export default function PublishModal({
     const sitePost = normalizePost(prepared.site_web || prepared.inrcy_site);
     prepared.inrcy_site = sitePost;
     prepared.site_web = sitePost;
+
+    for (const key of ["gmb", "facebook", "instagram", "linkedin"] as const) {
+      if (!prepared[key]) continue;
+      prepared[key] = normalizePost({
+        ...prepared[key],
+        title: stripSiteTextFormatting(prepared[key]?.title || ""),
+        content: stripSiteTextFormatting(prepared[key]?.content || ""),
+        cta: stripSiteTextFormatting(prepared[key]?.cta || ""),
+      });
+    }
+
     return prepared;
   };
 
@@ -642,6 +659,32 @@ export default function PublishModal({
     const current = getDisplayPost(displayKey);
     const patch = buildAutoPrefillPatch(displayKey, mode, current, ctaDefaults);
     updatePost(displayKey === "site" ? "site_web" : displayKey, patch);
+  };
+
+  const applySiteContentFormat = (kind: "bold" | "italic" | "underline") => {
+    if (activeCard !== "site") return;
+    const textarea = contentTextAreaRef.current;
+    const current = getDisplayPost("site").content || "";
+    const start = textarea?.selectionStart ?? current.length;
+    const end = textarea?.selectionEnd ?? start;
+    const selected = current.slice(start, end);
+    const fallback = kind === "bold" ? "mot clé" : "texte";
+    const value = selected || fallback;
+    const markers = kind === "bold"
+      ? ["**", "**"]
+      : kind === "italic"
+        ? ["*", "*"]
+        : ["<u>", "</u>"];
+    const nextContent = `${current.slice(0, start)}${markers[0]}${value}${markers[1]}${current.slice(end)}`;
+    const selectStart = start + markers[0].length;
+    const selectEnd = selectStart + value.length;
+    updatePost("site_web", { content: nextContent });
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        contentTextAreaRef.current?.focus();
+        contentTextAreaRef.current?.setSelectionRange(selectStart, selectEnd);
+      });
+    }
   };
 
   const updateChannelTransform = (channel: ChannelKey, imageKey: string, patch: Partial<ImageTransform>) => {
@@ -1126,8 +1169,52 @@ export default function PublishModal({
                   {renderLimitCounter("Titre", getDisplayPost(activeCard).title.length, CHANNEL_TEXT_GUIDELINES[activeCard].title)}
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Contenu</div>
-                  <textarea value={getDisplayPost(activeCard).content} onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { content: e.target.value })} style={{ ...textAreaStyle, minHeight: activeCard === "site" ? 280 : 160 }} placeholder="Contenu" />
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 12, opacity: 0.85 }}>Contenu</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      {activeCard !== "site" ? (
+                        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.48)", marginRight: 2 }}>Formatage réservé au site internet</span>
+                      ) : null}
+                      {([
+                        ["bold", "B", "Gras"],
+                        ["italic", "I", "Italique"],
+                        ["underline", "U", "Souligné"],
+                      ] as const).map(([kind, label, title]) => (
+                        <button
+                          key={kind}
+                          type="button"
+                          title={activeCard === "site" ? title : "Disponible uniquement pour Site internet"}
+                          aria-label={title}
+                          disabled={activeCard !== "site"}
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            applySiteContentFormat(kind);
+                          }}
+                          style={{
+                            minWidth: 32,
+                            height: 30,
+                            borderRadius: 9,
+                            border: activeCard === "site" ? "1px solid rgba(76,195,255,0.35)" : "1px solid rgba(255,255,255,0.10)",
+                            background: activeCard === "site" ? "rgba(76,195,255,0.12)" : "rgba(255,255,255,0.04)",
+                            color: activeCard === "site" ? "#eaf7ff" : "rgba(255,255,255,0.32)",
+                            fontWeight: 900,
+                            fontStyle: kind === "italic" ? "italic" : "normal",
+                            textDecoration: kind === "underline" ? "underline" : "none",
+                            cursor: activeCard === "site" ? "pointer" : "not-allowed",
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <textarea
+                    ref={contentTextAreaRef}
+                    value={getDisplayPost(activeCard).content}
+                    onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { content: e.target.value })}
+                    style={{ ...textAreaStyle, minHeight: activeCard === "site" ? 280 : 160 }}
+                    placeholder="Contenu"
+                  />
                   {renderLimitCounter("Contenu", getDisplayPost(activeCard).content.length, CHANNEL_TEXT_GUIDELINES[activeCard].content)}
                 </div>
                 <div>

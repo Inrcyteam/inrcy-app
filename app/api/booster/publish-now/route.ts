@@ -15,6 +15,7 @@ import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
+import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
@@ -479,9 +480,13 @@ const body = await req.json().catch(() => null);
 
     const getChannelPost = (channel: ChannelKey): PostPayload => {
       const raw = ((channel === "inrcy_site" ? postByChannel?.inrcy_site || postByChannel?.site_web : channel === "site_web" ? postByChannel?.site_web || postByChannel?.inrcy_site : postByChannel?.[channel]) || {}) as PostPayload;
-      const title = String(raw.title || fallbackTitle || "").trim();
-      const content = String(raw.content || fallbackContent || "").trim();
-      const cta = String(raw.cta || fallbackCta || "").trim();
+      const isSiteChannel = channel === "inrcy_site" || channel === "site_web";
+      const rawTitle = String(raw.title || fallbackTitle || "").trim();
+      const rawContent = String(raw.content || fallbackContent || "").trim();
+      const rawCta = String(raw.cta || fallbackCta || "").trim();
+      const title = isSiteChannel ? rawTitle : stripSiteTextFormatting(rawTitle);
+      const content = isSiteChannel ? rawContent : stripSiteTextFormatting(rawContent);
+      const cta = stripSiteTextFormatting(rawCta);
       const ctaMode = String(raw.ctaMode || "").trim();
       const ctaUrl = String(raw.ctaUrl || "").trim();
       const ctaPhone = String(raw.ctaPhone || "").trim();

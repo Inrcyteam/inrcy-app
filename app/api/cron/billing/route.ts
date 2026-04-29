@@ -49,7 +49,7 @@ type AnnualSubscriptionRow = {
   next_renewal_date: string | null;
   cancel_requested_at: string | null;
   end_date: string | null;
-  last_trial_reminder_day: number | null;
+  last_annual_reminder_marker: number | null;
 };
 
 type CancelledRow = {
@@ -289,7 +289,7 @@ export async function GET(req: Request) {
     const { data: annualSubscriptions, error: annualReminderErr } = await supabaseAdmin
       .from("subscriptions")
       .select(
-        "user_id, contact_email, plan, status, monthly_price_eur, stripe_subscription_id, stripe_price_id, next_renewal_date, cancel_requested_at, end_date, last_trial_reminder_day"
+        "user_id, contact_email, plan, status, monthly_price_eur, stripe_subscription_id, stripe_price_id, next_renewal_date, cancel_requested_at, end_date, last_annual_reminder_marker"
       )
       .neq("plan", "Trial")
       .eq("status", "active")
@@ -317,7 +317,7 @@ export async function GET(req: Request) {
       if (!annualReminderOffsets.includes(daysUntilRenewal as (typeof annualReminderOffsets)[number])) continue;
 
       const reminderMarker = annualReminderMarker(renewalDate, daysUntilRenewal);
-      const already = Number(s.last_trial_reminder_day || 0);
+      const already = Number(s.last_annual_reminder_marker || 0);
       if (already >= reminderMarker) continue;
 
       const profile = annualProfiles.get(s.user_id);
@@ -348,7 +348,7 @@ export async function GET(req: Request) {
         .from("subscriptions")
         .update({
           contact_email: to,
-          last_trial_reminder_day: reminderMarker,
+          last_annual_reminder_marker: reminderMarker,
           last_reminder_at: new Date().toISOString(),
         })
         .eq("user_id", s.user_id);
