@@ -1140,8 +1140,8 @@ export default function PublishModal({
       </HelpModal>
 
       {currentEmptyContentWarningChannel ? (
-        <div style={{ position: "fixed", inset: 0, zIndex: 10010, background: "rgba(4, 8, 18, 0.52)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 16 }}>
-          <div className={styles.blockCard} style={{ width: "min(520px, 100%)", display: "grid", gap: 14, boxShadow: "0 30px 80px rgba(0,0,0,0.40)" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 10010, background: "rgba(4, 8, 18, 0.72)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 16 }}>
+          <div className={styles.blockCard} style={{ width: "min(520px, 100%)", display: "grid", gap: 14, background: "#111827", backgroundImage: "none", border: "1px solid rgba(148, 163, 184, 0.28)", boxShadow: "0 30px 90px rgba(0,0,0,0.62)", backdropFilter: "none" }}>
             <div style={{ fontSize: 22 }}>⚠️</div>
             <div style={{ display: "grid", gap: 8 }}>
               <div className={styles.blockTitle} style={{ marginBottom: 0 }}>Avertissement</div>
@@ -1157,8 +1157,8 @@ export default function PublishModal({
         </div>
       ) : null}
       {gmbNoImageWarningOpen ? (
-        <div style={{ position: "fixed", inset: 0, zIndex: 10010, background: "rgba(4, 8, 18, 0.52)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 16 }}>
-          <div className={styles.blockCard} style={{ width: "min(520px, 100%)", display: "grid", gap: 14, boxShadow: "0 30px 80px rgba(0,0,0,0.40)" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 10010, background: "rgba(4, 8, 18, 0.72)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 16 }}>
+          <div className={styles.blockCard} style={{ width: "min(520px, 100%)", display: "grid", gap: 14, background: "#111827", backgroundImage: "none", border: "1px solid rgba(148, 163, 184, 0.28)", boxShadow: "0 30px 90px rgba(0,0,0,0.62)", backdropFilter: "none" }}>
             <div style={{ fontSize: 22 }}>📷</div>
             <div style={{ display: "grid", gap: 8 }}>
               <div className={styles.blockTitle} style={{ marginBottom: 0 }}>Aucune photo Google Business</div>
