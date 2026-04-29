@@ -4,7 +4,7 @@ import StatusMessage from "../../_components/StatusMessage";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
-import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
+import { editableHtmlToSiteText, siteTextToEditableHtml, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import stylesDash from "../../dashboard/dashboard.module.css";
 import { ChannelImageRetouchCardsPanel, ChannelImageRetouchModal } from "@/app/dashboard/_components/ChannelImageRetouchTool";
 import {
@@ -69,6 +69,83 @@ import {
   textAreaStyle,
 } from "./publishModal.styles";
 
+function RichSiteContentEditor({
+  value,
+  onChange,
+  minHeight,
+  editorRef,
+  style,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  minHeight: number;
+  editorRef: { current: HTMLDivElement | null };
+  style: Record<string, any>;
+}) {
+  const localRef = useRef<HTMLDivElement | null>(null);
+  const lastSyncedValueRef = useRef<string>("");
+
+  useEffect(() => {
+    const node = localRef.current;
+    if (!node) return;
+    editorRef.current = node;
+    return () => {
+      if (editorRef.current === node) editorRef.current = null;
+    };
+  }, [editorRef]);
+
+  useEffect(() => {
+    const node = localRef.current;
+    if (!node) return;
+
+    const currentValue = editableHtmlToSiteText(node.innerHTML);
+    if (document.activeElement === node && currentValue === value) {
+      lastSyncedValueRef.current = value;
+      return;
+    }
+
+    if (lastSyncedValueRef.current === value && currentValue === value) return;
+
+    const nextHtml = siteTextToEditableHtml(value);
+    if (node.innerHTML !== nextHtml) node.innerHTML = nextHtml;
+    lastSyncedValueRef.current = value;
+  }, [value]);
+
+  const sync = () => {
+    const node = localRef.current;
+    if (!node) return;
+    const nextValue = editableHtmlToSiteText(node.innerHTML);
+    lastSyncedValueRef.current = nextValue;
+    onChange(nextValue);
+  };
+
+  return (
+    <div
+      ref={localRef}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline="true"
+      onInput={sync}
+      onBlur={sync}
+      onPaste={(event) => {
+        event.preventDefault();
+        const text = event.clipboardData.getData("text/plain");
+        document.execCommand("insertText", false, text);
+        sync();
+      }}
+      style={{
+        ...style,
+        minHeight,
+        height: "auto",
+        whiteSpace: "pre-wrap",
+        overflowWrap: "anywhere",
+        outline: "none",
+      }}
+    />
+  );
+}
+
 export default function PublishModal({
   styles,
   onClose,
@@ -113,6 +190,7 @@ export default function PublishModal({
   const previewStageRef = useRef<HTMLDivElement | null>(null);
   const publishAreaRef = useRef<HTMLDivElement | null>(null);
   const contentTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const siteContentEditorRef = useRef<HTMLDivElement | null>(null);
   const publishPulseTimerRef = useRef<number | null>(null);
   const dragStateRef = useRef<{ pointerId: number; startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
   const [previewStageSize, setPreviewStageSize] = useState({ width: 0, height: 0 });
@@ -662,29 +740,14 @@ export default function PublishModal({
   };
 
   const applySiteContentFormat = (kind: "bold" | "italic" | "underline") => {
-    if (activeCard !== "site") return;
-    const textarea = contentTextAreaRef.current;
-    const current = getDisplayPost("site").content || "";
-    const start = textarea?.selectionStart ?? current.length;
-    const end = textarea?.selectionEnd ?? start;
-    const selected = current.slice(start, end);
-    const fallback = kind === "bold" ? "mot clé" : "texte";
-    const value = selected || fallback;
-    const markers = kind === "bold"
-      ? ["**", "**"]
-      : kind === "italic"
-        ? ["*", "*"]
-        : ["<u>", "</u>"];
-    const nextContent = `${current.slice(0, start)}${markers[0]}${value}${markers[1]}${current.slice(end)}`;
-    const selectStart = start + markers[0].length;
-    const selectEnd = selectStart + value.length;
-    updatePost("site_web", { content: nextContent });
-    if (typeof window !== "undefined") {
-      window.requestAnimationFrame(() => {
-        contentTextAreaRef.current?.focus();
-        contentTextAreaRef.current?.setSelectionRange(selectStart, selectEnd);
-      });
-    }
+    if (activeCard !== "site" || typeof document === "undefined") return;
+    const editor = siteContentEditorRef.current;
+    if (!editor) return;
+
+    editor.focus();
+    const command = kind === "bold" ? "bold" : kind === "italic" ? "italic" : "underline";
+    document.execCommand(command, false);
+    updatePost("site_web", { content: editableHtmlToSiteText(editor.innerHTML) });
   };
 
   const updateChannelTransform = (channel: ChannelKey, imageKey: string, patch: Partial<ImageTransform>) => {
@@ -1208,14 +1271,24 @@ export default function PublishModal({
                       ))}
                     </div>
                   </div>
-                  <textarea
-                    ref={contentTextAreaRef}
-                    value={getDisplayPost(activeCard).content}
-                    onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { content: e.target.value })}
-                    style={{ ...textAreaStyle, minHeight: activeCard === "site" ? 280 : 160 }}
-                    placeholder="Contenu"
-                  />
-                  {renderLimitCounter("Contenu", getDisplayPost(activeCard).content.length, CHANNEL_TEXT_GUIDELINES[activeCard].content)}
+                  {activeCard === "site" ? (
+                    <RichSiteContentEditor
+                      value={getDisplayPost("site").content}
+                      onChange={(content) => updatePost("site_web", { content })}
+                      minHeight={280}
+                      editorRef={siteContentEditorRef}
+                      style={textAreaStyle}
+                    />
+                  ) : (
+                    <textarea
+                      ref={contentTextAreaRef}
+                      value={getDisplayPost(activeCard).content}
+                      onChange={(e) => updatePost(activeCard, { content: e.target.value })}
+                      style={{ ...textAreaStyle, minHeight: 160 }}
+                      placeholder="Contenu"
+                    />
+                  )}
+                  {renderLimitCounter("Contenu", activeCard === "site" ? stripSiteTextFormatting(getDisplayPost(activeCard).content).length : getDisplayPost(activeCard).content.length, CHANNEL_TEXT_GUIDELINES[activeCard].content)}
                 </div>
                 <div>
                   <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>CTA</div>
