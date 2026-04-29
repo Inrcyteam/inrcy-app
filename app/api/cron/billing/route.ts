@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { optionalEnv } from "@/lib/env";
 import { sendTxMail } from "@/lib/txMailer";
-import { buildTrialReminderEmail } from "@/lib/txTemplates";
+import { buildAnnualRenewalReminderEmail, buildTrialReminderEmail } from "@/lib/txTemplates";
 import { getAppUrl, stripeGet } from "@/lib/stripeRest";
 import { deleteUserAccountEverywhere } from "@/lib/deleteUserAccount";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
@@ -35,6 +35,20 @@ type ProfileEmailRow = {
   user_id: string;
   admin_email?: string | null;
   contact_email?: string | null;
+};
+
+type AnnualSubscriptionRow = {
+  user_id: string;
+  contact_email: string | null;
+  plan: string | null;
+  status: string | null;
+  monthly_price_eur: number | null;
+  stripe_subscription_id: string | null;
+  stripe_price_id: string | null;
+  next_renewal_date: string | null;
+  cancel_requested_at: string | null;
+  end_date: string | null;
+  last_trial_reminder_day: number | null;
 };
 
 type CancelledRow = {
@@ -71,6 +85,27 @@ async function stripeCustomerHasAnySubscription(stripeCustomerId: string) {
   } catch {
     return true;
   }
+}
+
+function annualReminderMarker(renewalDate: Date, daysUntilRenewal: number) {
+  return Number(`${ymd(renewalDate).replace(/-/g, "")}${String(100 - daysUntilRenewal).padStart(2, "0")}`);
+}
+
+async function loadProfileEmails(userIds: string[]) {
+  const emails = new Map<string, ProfileEmailRow>();
+  const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+  if (uniqueUserIds.length === 0) return emails;
+
+  const { data } = await supabaseAdmin
+    .from("profiles")
+    .select("user_id, admin_email, contact_email")
+    .in("user_id", uniqueUserIds);
+
+  for (const profile of (data || []) as ProfileEmailRow[]) {
+    emails.set(profile.user_id, profile);
+  }
+
+  return emails;
 }
 
 export async function GET(req: Request) {
@@ -245,6 +280,82 @@ export async function GET(req: Request) {
     deletedTrialAccounts++;
   }
 
+  const annualReminderOffsets = [30, 7, 1] as const;
+  const yearlyPriceId = optionalEnv("STRIPE_PRICE_YEARLY", "");
+  let sentAnnualRenewalReminders = 0;
+
+  if (yearlyPriceId) {
+    const { data: annualSubscriptions, error: annualReminderErr } = await supabaseAdmin
+      .from("subscriptions")
+      .select(
+        "user_id, contact_email, plan, status, monthly_price_eur, stripe_subscription_id, stripe_price_id, next_renewal_date, cancel_requested_at, end_date, last_trial_reminder_day"
+      )
+      .neq("plan", "Trial")
+      .eq("status", "active")
+      .eq("stripe_price_id", yearlyPriceId)
+      .not("stripe_subscription_id", "is", null)
+      .not("next_renewal_date", "is", null);
+
+    if (annualReminderErr) {
+      return NextResponse.json({ error: "Impossible de vérifier les renouvellements annuels pour le moment." }, { status: 500 });
+    }
+
+    const annualRowsForReminder = ((annualSubscriptions || []) as AnnualSubscriptionRow[]).filter(
+      (row) => !row.cancel_requested_at && !row.end_date
+    );
+    const annualProfiles = await loadProfileEmails(annualRowsForReminder.map((row) => row.user_id));
+
+    for (const s of annualRowsForReminder) {
+      if (!s.next_renewal_date) continue;
+      const renewalDate = new Date(`${s.next_renewal_date}T00:00:00.000Z`);
+      if (!Number.isFinite(renewalDate.getTime())) continue;
+
+      const nowDay = new Date(`${ymd(now)}T00:00:00.000Z`);
+      const renewalDay = new Date(`${ymd(renewalDate)}T00:00:00.000Z`);
+      const daysUntilRenewal = Math.round((renewalDay.getTime() - nowDay.getTime()) / (24 * 3600 * 1000));
+      if (!annualReminderOffsets.includes(daysUntilRenewal as (typeof annualReminderOffsets)[number])) continue;
+
+      const reminderMarker = annualReminderMarker(renewalDate, daysUntilRenewal);
+      const already = Number(s.last_trial_reminder_day || 0);
+      if (already >= reminderMarker) continue;
+
+      const profile = annualProfiles.get(s.user_id);
+      const to =
+        profile?.admin_email?.trim() ||
+        profile?.contact_email?.trim() ||
+        s.contact_email?.trim() ||
+        null;
+      if (!to) continue;
+
+      const subject =
+        daysUntilRenewal === 1
+          ? "iNrCy — Votre abonnement annuel se renouvelle demain"
+          : "iNrCy — Votre abonnement annuel se renouvelle bientôt";
+      const ctaUrl = `${getAppUrl(req)}/dashboard?panel=abonnement`;
+      const amountLabel = `${Number(s.monthly_price_eur || 690).toLocaleString("fr-FR", {
+        maximumFractionDigits: 2,
+      })} € TTC`;
+      const { html, text } = buildAnnualRenewalReminderEmail({
+        renewalDateFr: frDate(renewalDate),
+        ctaUrl,
+        daysBeforeRenewal: daysUntilRenewal,
+        amountLabel,
+      });
+
+      await sendTxMail({ to, subject, text, html });
+      await supabaseAdmin
+        .from("subscriptions")
+        .update({
+          contact_email: to,
+          last_trial_reminder_day: reminderMarker,
+          last_reminder_at: new Date().toISOString(),
+        })
+        .eq("user_id", s.user_id);
+
+      sentAnnualRenewalReminders++;
+    }
+  }
+
   const { data: cancelledRows, error: cErr } = await supabaseAdmin
     .from("subscriptions")
     .select(
@@ -321,6 +432,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     sent,
+    sent_annual_renewal_reminders: sentAnnualRenewalReminders,
     repaired_trial_dates: repairedTrialDates,
     deleted_trial_accounts: deletedTrialAccounts,
     deleted_cancelled_accounts: deletedCancelledAccounts,
