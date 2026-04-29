@@ -177,6 +177,8 @@ export default function PublishModal({
   const [instagramHashtagsInput, setInstagramHashtagsInput] = useState("");
   const [emptyContentWarningChannels, setEmptyContentWarningChannels] = useState<ChannelKey[]>([]);
   const [emptyContentWarningIndex, setEmptyContentWarningIndex] = useState(0);
+  const [gmbNoImageWarningOpen, setGmbNoImageWarningOpen] = useState(false);
+  const [pendingPublishPosts, setPendingPublishPosts] = useState<Partial<Record<ChannelKey, ChannelPost>> | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const gmbFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -733,6 +735,10 @@ export default function PublishModal({
     setEmptyContentWarningIndex(0);
   };
 
+  const closeGmbNoImageWarning = () => {
+    setGmbNoImageWarningOpen(false);
+  };
+
   const applyCtaModePrefill = (displayKey: DisplayKey, mode: BoosterCtaMode) => {
     const current = getDisplayPost(displayKey);
     const patch = buildAutoPrefillPatch(displayKey, mode, current, ctaDefaults);
@@ -960,7 +966,7 @@ export default function PublishModal({
     return { channelImages, channelSettings };
   };
 
-  const runPublish = async (options?: { skipEmptyContentWarnings?: boolean; preparedPostsByChannel?: Partial<Record<ChannelKey, ChannelPost>> }) => {
+  const runPublish = async (options?: { skipEmptyContentWarnings?: boolean; skipGmbNoImageWarning?: boolean; preparedPostsByChannel?: Partial<Record<ChannelKey, ChannelPost>> }) => {
     if (saving) return;
     const preparedPostsByChannel = options?.preparedPostsByChannel || buildPreparedPostsByChannel();
     const sitePost = getPreparedDisplayPost("site", preparedPostsByChannel);
@@ -979,12 +985,24 @@ export default function PublishModal({
     const missingContentChannels = selectedChannels.filter((ch) => !String((ch === "inrcy_site" || ch === "site_web" ? sitePost : preparedPostsByChannel[ch])?.content || "").trim());
     if (missingContentChannels.length && !options?.skipEmptyContentWarnings) {
       setPostsByChannel(preparedPostsByChannel);
+      setPendingPublishPosts(preparedPostsByChannel);
       setEmptyContentWarningChannels(missingContentChannels);
       setEmptyContentWarningIndex(0);
       return;
     }
 
+    const gmbImages = channelImageEditors.gmb?.imageKeys || [];
+    if (selectedChannels.includes("gmb") && !gmbImages.length && !options?.skipGmbNoImageWarning) {
+      closeEmptyContentWarnings();
+      setPostsByChannel(preparedPostsByChannel);
+      setPendingPublishPosts(preparedPostsByChannel);
+      setGmbNoImageWarningOpen(true);
+      return;
+    }
+
     closeEmptyContentWarnings();
+    setGmbNoImageWarningOpen(false);
+    setPendingPublishPosts(null);
     setPostsByChannel(preparedPostsByChannel);
 
     if (selectedChannels.includes("instagram")) {
@@ -1087,9 +1105,25 @@ export default function PublishModal({
       return;
     }
 
-    const preparedPostsByChannel = buildPreparedPostsByChannel();
+    const preparedPostsByChannel = pendingPublishPosts || buildPreparedPostsByChannel();
     closeEmptyContentWarnings();
     await runPublish({ skipEmptyContentWarnings: true, preparedPostsByChannel });
+  };
+
+  const onContinueWithoutGmbImage = async () => {
+    const preparedPostsByChannel = pendingPublishPosts || buildPreparedPostsByChannel();
+    closeGmbNoImageWarning();
+    await runPublish({
+      skipEmptyContentWarnings: true,
+      skipGmbNoImageWarning: true,
+      preparedPostsByChannel,
+    });
+  };
+
+  const onChooseGmbImage = () => {
+    closeGmbNoImageWarning();
+    setActiveImageChannel("gmb");
+    setPendingPublishPosts(null);
   };
 
   return (
@@ -1118,6 +1152,23 @@ export default function PublishModal({
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
               <button type="button" className={styles.secondaryBtn} onClick={closeEmptyContentWarnings}>Annuler</button>
               <button type="button" className={styles.primaryBtn} onClick={onValidateEmptyContentWarning}>Valider</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {gmbNoImageWarningOpen ? (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10010, background: "rgba(4, 8, 18, 0.52)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 16 }}>
+          <div className={styles.blockCard} style={{ width: "min(520px, 100%)", display: "grid", gap: 14, boxShadow: "0 30px 80px rgba(0,0,0,0.40)" }}>
+            <div style={{ fontSize: 22 }}>📷</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div className={styles.blockTitle} style={{ marginBottom: 0 }}>Aucune photo Google Business</div>
+              <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(255,255,255,0.82)" }}>
+                Aucune photo n’est sélectionnée pour <strong>Google Business</strong>. Le post sera publié en texte seul. Souhaitez-vous continuer ?
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+              <button type="button" className={styles.secondaryBtn} onClick={onChooseGmbImage}>Retour / choisir une photo</button>
+              <button type="button" className={styles.primaryBtn} onClick={onContinueWithoutGmbImage}>Continuer sans photo</button>
             </div>
           </div>
         </div>
@@ -1474,8 +1525,7 @@ export default function PublishModal({
             {activeImageChannel === "gmb" ? (
               <div style={{ marginBottom: 12, borderRadius: 14, padding: "12px 14px", border: "1px solid rgba(251,191,36,0.26)", background: "rgba(251,191,36,0.10)", display: "grid", gap: 10 }}>
                 <div style={{ fontSize: 13, lineHeight: 1.5, color: "#fde68a" }}>
-                  <strong>Attention :</strong> Google Business refuse souvent les images à caractère publicitaire. Par sécurité, aucune image n&apos;est envoyée par défaut sur ce canal. Cochez seulement les images que vous avez vérifiées.<br />
-                  Pour Google Business, sélectionnez une seule photo par publication. Privilégiez l’image la plus claire et la plus professionnelle.
+                  <strong>Google Business : 1 seule photo par publication.</strong> Google peut refuser les visuels trop publicitaires. Privilégiez une image claire, professionnelle et vérifiée.
                 </div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button type="button" className={styles.secondaryBtn} onClick={() => gmbFileInputRef.current?.click()}>
