@@ -1334,30 +1334,37 @@ export default function NewDevisPage() {
                 <tr key={l.id}>
                   <td>
                     <input
+                      className={styles.printHidden}
                       value={l.label}
                       onChange={(e) => updateLine(l.id, { label: e.target.value })}
                       placeholder="Ex: Entretien boîte de vitesse"
                       style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}
                     />
+                    <span className={styles.printOnly}>{l.label || "—"}</span>
                   </td>
                   <td>
                     <input
+                      className={styles.printHidden}
                       type="number"
                       value={l.qty}
                       onChange={(e) => updateLine(l.id, { qty: Number(e.target.value) })}
                       style={{ width: 64, border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}
                     />
+                    <span className={styles.printOnly}>{l.qty}</span>
                   </td>
                   <td>
                     <input
+                      className={styles.printHidden}
                       type="number"
                       value={l.unitPrice}
                       onChange={(e) => updateLine(l.id, { unitPrice: Number(e.target.value) })}
                       style={{ width: 110, border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}
                     />
+                    <span className={styles.printOnly}>{formatEuro(l.unitPrice)}</span>
                   </td>
                   <td>
                     <select
+                      className={styles.printHidden}
                       value={vatDispense ? 0 : l.vatRate}
                       disabled={vatDispense}
                       onChange={(e) => updateLine(l.id, { vatRate: Number(e.target.value) })}
@@ -1369,6 +1376,7 @@ export default function NewDevisPage() {
                         </option>
                       ))}
                     </select>
+                    <span className={styles.printOnly}>{vatDispense ? 0 : l.vatRate}%</span>
                   </td>
                   <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{formatEuro(calcLineHT(l))}</td>
                 </tr>

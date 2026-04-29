@@ -1769,7 +1769,7 @@ export default function NewFacturePage() {
               <th style={{ width: 120 }}>PU HT</th>
               <th style={{ width: 90 }}>TVA</th>
               <th style={{ width: 120, textAlign: "right" }}>Total HT</th>
-              <th style={{ width: 0 }}></th>
+              <th className={styles.printHiddenCell} style={{ width: 0 }}></th>
             </tr>
           </thead>
           <tbody>
@@ -1777,6 +1777,7 @@ export default function NewFacturePage() {
               <tr key={l.id}>
                 <td>
                   <input
+                    className={styles.printHidden}
                     value={l.label}
                     onChange={(e) =>
                       updateLine(l.id, { label: e.target.value })
@@ -1790,9 +1791,11 @@ export default function NewFacturePage() {
                       padding: "8px 10px",
                     }}
                   />
+                  <span className={styles.printOnly}>{l.label || "—"}</span>
                 </td>
                 <td>
                   <input
+                    className={styles.printHidden}
                     type="number"
                     value={l.qty}
                     onChange={(e) =>
@@ -1806,9 +1809,11 @@ export default function NewFacturePage() {
                       padding: "8px 10px",
                     }}
                   />
+                  <span className={styles.printOnly}>{l.qty}</span>
                 </td>
                 <td>
                   <input
+                    className={styles.printHidden}
                     type="number"
                     value={l.unitPrice}
                     onChange={(e) =>
@@ -1824,9 +1829,11 @@ export default function NewFacturePage() {
                       padding: "8px 10px",
                     }}
                   />
+                  <span className={styles.printOnly}>{formatEuro(l.unitPrice)}</span>
                 </td>
                 <td>
                   <select
+                    className={styles.printHidden}
                     value={vatDispense ? 0 : l.vatRate}
                     disabled={vatDispense || coreEditingLocked}
                     onChange={(e) =>
@@ -1845,6 +1852,7 @@ export default function NewFacturePage() {
                       </option>
                     ))}
                   </select>
+                  <span className={styles.printOnly}>{vatDispense ? 0 : l.vatRate}%</span>
                 </td>
                 <td
                   style={{
@@ -1854,7 +1862,7 @@ export default function NewFacturePage() {
                 >
                   {formatEuro(calcLineHT(l))}
                 </td>
-                <td style={{ textAlign: "right" }}>
+                <td className={styles.printHiddenCell} style={{ textAlign: "right" }}>
                   {idx > 0 ? (
                     <button
                       type="button"

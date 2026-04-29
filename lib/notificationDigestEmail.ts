@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { NotificationCategory, NotificationRow } from '@/lib/notifications';
+import { INRCY_EMAIL_LOGO_CID } from '@/lib/txEmailAssets';
 
 export type NotificationDigestItem = Pick<NotificationRow, 'category' | 'title' | 'body' | 'cta_label' | 'cta_url' | 'created_at'>;
 
@@ -21,12 +22,12 @@ function categoryLabel(category: NotificationCategory) {
 
 function categoryColors(category: NotificationCategory) {
   if (category === 'performance') {
-    return { pillBg: 'rgba(14,165,233,0.14)', pillText: '#0ea5e9', border: 'rgba(14,165,233,0.18)' };
+    return { pillBg: '#e0f2fe', pillText: '#0284c7', border: '#bae6fd' };
   }
   if (category === 'action') {
-    return { pillBg: 'rgba(244,114,182,0.14)', pillText: '#ec4899', border: 'rgba(244,114,182,0.18)' };
+    return { pillBg: '#fce7f3', pillText: '#db2777', border: '#fbcfe8' };
   }
-  return { pillBg: 'rgba(249,115,22,0.14)', pillText: '#f97316', border: 'rgba(249,115,22,0.18)' };
+  return { pillBg: '#ffedd5', pillText: '#ea580c', border: '#fed7aa' };
 }
 
 function greeting(firstName?: string | null, companyName?: string | null) {
@@ -37,26 +38,48 @@ function greeting(firstName?: string | null, companyName?: string | null) {
   return 'Bonjour,';
 }
 
-function buildCard(item: NotificationDigestItem) {
+function toAbsoluteUrl(url: string, baseUrl: string) {
+  const value = (url || '').trim();
+  const fallback = baseUrl || 'https://app.inrcy.com/dashboard';
+  if (!value) return fallback;
+  try {
+    return new URL(value, fallback).toString();
+  } catch {
+    return fallback;
+  }
+}
+
+function buildEmailButton(href: string, label: string) {
+  return `
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:separate;border-spacing:0;">
+      <tr>
+        <td bgcolor="#0f172a" style="border-radius:12px;background-color:#0f172a;">
+          <a href="${escapeHtml(href)}" style="display:inline-block;padding:13px 20px;border-radius:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:1.2;color:#ffffff;text-decoration:none;">${label}</a>
+        </td>
+      </tr>
+    </table>`;
+}
+
+function buildCard(item: NotificationDigestItem, dashboardUrl: string) {
   const colors = categoryColors(item.category);
   const title = escapeHtml(item.title);
   const body = escapeHtml(item.body);
-  const ctaUrl = (item.cta_url || 'https://app.inrcy.com/dashboard').trim();
+  const ctaUrl = toAbsoluteUrl(item.cta_url || dashboardUrl, dashboardUrl);
   const ctaLabel = escapeHtml((item.cta_label || 'Ouvrir mon espace iNrCy').trim());
 
   return `
     <tr>
       <td style="padding:0 0 14px 0;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;background-color:#ffffff;border:1px solid ${colors.border};border-radius:18px;overflow:hidden;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#ffffff" style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;background-color:#ffffff;border:1px solid ${colors.border};border-radius:18px;overflow:hidden;">
           <tr>
             <td style="padding:18px 18px 16px 18px;">
-              <div style="display:inline-block;padding:7px 12px;border-radius:999px;background:${colors.pillBg};color:${colors.pillText};font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;letter-spacing:.02em;">${categoryLabel(item.category)}</div>
+              <div style="display:inline-block;padding:7px 12px;border-radius:999px;background:${colors.pillBg};background-color:${colors.pillBg};color:${colors.pillText};font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;letter-spacing:.02em;">${categoryLabel(item.category)}</div>
               <div style="height:12px;line-height:12px;font-size:0;">&nbsp;</div>
               <div style="font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:1.3;color:#081226;font-weight:800;">${title}</div>
               <div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>
               <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.7;color:#475569;">${body}</div>
               <div style="height:16px;line-height:16px;font-size:0;">&nbsp;</div>
-              <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;padding:12px 18px;border-radius:12px;background:linear-gradient(135deg,#0ea5e9,#8b5cf6 55%,#ec4899);color:#fff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;">${ctaLabel}</a>
+              ${buildEmailButton(ctaUrl, ctaLabel)}
             </td>
           </tr>
         </table>
@@ -71,7 +94,7 @@ export function buildNotificationDigestEmail(args: {
   dashboardUrl?: string;
 }) {
   const dashboardUrl = args.dashboardUrl || 'https://app.inrcy.com/dashboard';
-  const cards = args.items.map(buildCard).join('');
+  const cards = args.items.map((item) => buildCard(item, dashboardUrl)).join('');
   const count = args.items.length;
   const subtitle =
     count > 1
@@ -81,22 +104,22 @@ export function buildNotificationDigestEmail(args: {
   const html = `<!doctype html>
 <html lang="fr">
   <body style="margin:0;padding:0;background:#f5f7fb;background-color:#f5f7fb;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f5f7fb;background-color:#f5f7fb;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#f5f7fb" style="width:100%;background:#f5f7fb;background-color:#f5f7fb;">
       <tr>
         <td align="center" style="padding:28px 16px 40px 16px;">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:680px;border-collapse:separate;border-spacing:0;">
             <tr>
               <td style="padding:0 0 16px 0;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0b1734" style="width:100%;border-collapse:separate;border-spacing:0;border-radius:26px;overflow:hidden;background-color:#0b1734;background-image:radial-gradient(circle at top left, rgba(14,165,233,.22), transparent 30%), radial-gradient(circle at top right, rgba(236,72,153,.18), transparent 28%), linear-gradient(135deg,#06122b 0%, #0a1c44 48%, #0d1240 100%);box-shadow:0 28px 70px rgba(2,8,23,.18);">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0b1734" style="width:100%;border-collapse:separate;border-spacing:0;border-radius:26px;overflow:hidden;background:#0b1734;background-color:#0b1734;box-shadow:0 28px 70px rgba(2,8,23,.18);">
                   <tr>
                     <td style="padding:28px 28px 30px 28px;">
-                      <img src="https://app.inrcy.com/logo-inrcy.png" alt="iNrCy" width="118" style="display:block;width:118px;height:auto;border:0;outline:none;color:#ffffff;" />
+                      <img src="cid:${escapeHtml(INRCY_EMAIL_LOGO_CID)}" alt="iNrCy" width="108" height="41" style="display:block;width:108px;max-width:100%;height:auto;border:0;outline:none;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.2;" />
                       <div style="height:18px;line-height:18px;font-size:0;">&nbsp;</div>
-                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:rgba(255,255,255,.78);">${escapeHtml(greeting(args.firstName, args.companyName))}</div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#dbeafe;">${escapeHtml(greeting(args.firstName, args.companyName))}</div>
                       <div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>
                       <div style="font-family:Arial,Helvetica,sans-serif;font-size:32px;line-height:1.2;color:#ffffff;font-weight:900;max-width:520px;">Votre cloche iNrCy s’est réveillée.</div>
                       <div style="height:12px;line-height:12px;font-size:0;">&nbsp;</div>
-                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.75;color:rgba(255,255,255,.82);max-width:560px;">${escapeHtml(subtitle)} Nous les regroupons dans un seul email tous les 2 jours pour garder votre outil vivant sans vous submerger.</div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.75;color:#e2e8f0;max-width:560px;">${escapeHtml(subtitle)} Nous les regroupons dans un seul email tous les 2 jours pour garder votre outil vivant sans vous submerger.</div>
                     </td>
                   </tr>
                 </table>
@@ -109,14 +132,14 @@ export function buildNotificationDigestEmail(args: {
             </tr>
             <tr>
               <td style="padding:12px 0 0 0;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;background-color:#ffffff;border:1px solid rgba(15,23,42,.08);border-radius:22px;overflow:hidden;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#ffffff" style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:22px;overflow:hidden;">
                   <tr>
                     <td style="padding:22px 24px 24px 24px;">
                       <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:1.35;color:#0f172a;font-weight:800;">Passez à l’action depuis votre cockpit</div>
                       <div style="height:8px;line-height:8px;font-size:0;">&nbsp;</div>
                       <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.75;color:#475569;">Retrouvez vos relances dans la cloche de l’application, ajustez vos préférences dans <b>Mon compte → Notifications</b> et activez le levier qui compte maintenant.</div>
                       <div style="height:16px;line-height:16px;font-size:0;">&nbsp;</div>
-                      <a href="${escapeHtml(dashboardUrl)}?panel=notifications" style="display:inline-block;padding:13px 20px;border-radius:12px;background:#0f172a;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;">Ouvrir mes notifications</a>
+                      ${buildEmailButton(`${dashboardUrl}?panel=notifications`, 'Ouvrir mes notifications')}
                     </td>
                   </tr>
                 </table>
@@ -144,7 +167,7 @@ export function buildNotificationDigestEmail(args: {
     ...args.items.flatMap((item) => [
       `[${categoryLabel(item.category)}] ${item.title}`,
       item.body,
-      item.cta_url || dashboardUrl,
+      toAbsoluteUrl(item.cta_url || dashboardUrl, dashboardUrl),
       '',
     ]),
     `Ouvrir mes notifications : ${dashboardUrl}?panel=notifications`,

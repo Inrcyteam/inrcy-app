@@ -7,6 +7,7 @@ import { getAppUrl, stripeGet } from "@/lib/stripeRest";
 import { deleteUserAccountEverywhere } from "@/lib/deleteUserAccount";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
 import { computeTrialDatesFromStartDate, TRIAL_REMINDER_OFFSETS } from "@/lib/trialSubscription";
+import { getInrcyBrandInlineAttachments } from "@/lib/txEmailAssets";
 
 export const runtime = "nodejs";
 
@@ -208,7 +209,7 @@ export async function GET(req: Request) {
       daysBeforeEnd: daysUntilEnd,
     });
 
-    await sendTxMail({ to, subject, text, html });
+    await sendTxMail({ to, subject, text, html, attachments: await getInrcyBrandInlineAttachments() });
     await supabaseAdmin
       .from("subscriptions")
       .update({
@@ -342,7 +343,7 @@ export async function GET(req: Request) {
         amountLabel,
       });
 
-      await sendTxMail({ to, subject, text, html });
+      await sendTxMail({ to, subject, text, html, attachments: await getInrcyBrandInlineAttachments() });
       await supabaseAdmin
         .from("subscriptions")
         .update({

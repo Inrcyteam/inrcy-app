@@ -1132,3 +1132,54 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* === Correctif impression Factures / Devis ===
+   Les champs restent éditables à l'écran, mais sont remplacés par du texte au print/PDF
+   pour éviter les lignes tronquées par Chrome. */
+.printHidden,
+.printHiddenCell {
+  /* volontairement vide : comportement normal à l'écran */
+}
+
+@media print {
+  .printHidden,
+  .printHiddenCell {
+    display: none !important;
+  }
+
+  .preview {
+    width: 100% !important;
+    max-width: none !important;
+    overflow: visible !important;
+  }
+
+  .table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    overflow: visible !important;
+  }
+
+  .table thead,
+  .table tbody,
+  .table tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .table th,
+  .table td {
+    padding: 8px 6px !important;
+    line-height: 1.35 !important;
+    vertical-align: top !important;
+    overflow: visible !important;
+  }
+
+  .printOnly {
+    display: block !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+    color: #111 !important;
+  }
+}

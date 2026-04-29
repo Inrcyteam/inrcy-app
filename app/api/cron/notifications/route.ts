@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { buildNotificationDigestEmail, type NotificationDigestItem } from "@/lib/notificationDigestEmail";
 import { optionalEnv } from "@/lib/env";
+import { getInrcyLogoInlineAttachments } from "@/lib/txEmailAssets";
 import { defaultNotificationPreferences } from "@/lib/notifications";
 
 export const runtime = "nodejs";
@@ -383,7 +384,7 @@ async function maybeSendDigestEmail(userId: string, items: NotificationDigestIte
     dashboardUrl,
   });
 
-  await sendTxMail({ to: recipient.email, subject, html, text });
+  await sendTxMail({ to: recipient.email, subject, html, text, attachments: await getInrcyLogoInlineAttachments() });
   return { sent: true, reason: "sent" as const };
 }
 

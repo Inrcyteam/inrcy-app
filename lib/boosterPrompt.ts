@@ -59,7 +59,7 @@ Important :
 - Les trois styles (sobre, équilibré, dynamique) doivent produire des textes VISIBLEMENT différents. Pas de simples nuances.
 
 Règles par canal :
-- Site iNrCy / Site web : texte plus long, plus naturel, plus SEO local, environ 180 à 320 mots.
+- Site iNrCy / Site web : texte SEO local de 180 à 320 mots, sans rallonger inutilement. Intégrer naturellement le métier principal, la ville, 2 à 4 prestations, 1 à 3 zones d'intervention et des variantes de mots-clés proches. Remplacer les phrases vagues par des phrases utiles au référencement. Ne jamais faire de liste brute de mots-clés.
 - Google Business : texte local, utile, simple, environ 80 à 140 mots, strictement conforme aux règles Google Business Profile.
 - Facebook : texte engageant, clair, avec un peu plus de matière, environ 80 à 160 mots.
 - Instagram : texte visuel, direct et vivant, mais avec assez de matière pour donner du relief, environ 70 à 140 mots, hashtags utiles.
@@ -178,12 +178,13 @@ Infos activité :
 Consignes supplémentaires :
 - Adapter clairement le contenu à chaque canal demandé.
 - Le style demandé doit changer visiblement le ton, les accroches, le rythme des phrases et la présence d'emojis. Ne fais pas seulement une variation légère.
-- Site iNrCy / Site web : version plus longue, plus SEO et plus locale. Quand c'est pertinent, intégrer naturellement le téléphone ou l'email de contact. Cette version est obligatoire si le canal site est demandé : ne jamais laisser title/content/cta vides.
+- Site iNrCy / Site web : version SEO locale, naturelle et concrète. Garder une longueur proche de la version actuelle : ne pas allonger le contenu, densifier plutôt les phrases existantes. Intégrer plus souvent, mais sans bourrage, le métier exact, la ville, les prestations cochées, les zones d'intervention et leurs variantes sémantiques. Quand c'est pertinent, intégrer naturellement le téléphone ou l'email de contact. Cette version est obligatoire si le canal site est demandé : ne jamais laisser title/content/cta vides.
 - Instagram : plus direct, plus visuel, mais pas expédié en quelques lignes. Donner assez de matière pour que le message existe vraiment.
 - LinkedIn : ton plus professionnel, plus structuré et plus développé que Facebook.
 - Google Business : ton local, utile, concret et strictement informatif. Ne jamais rappeler le téléphone, l'email, un lien, un hashtag ou une promesse commerciale agressive.
 - Facebook : ton engageant et accessible. Le téléphone ou l'email peuvent être utilisés ponctuellement si cela aide à contacter l'entreprise.
 - Utiliser en priorité le métier exact et les prestations cochées quand elles existent.
+- Pour Site iNrCy / Site web uniquement : renforcer le référencement naturel en répétant naturellement le couple métier + ville et les prestations principales, sans dépasser la longueur demandée et sans enchaîner des mots-clés artificiels.
 
 Exigences précises par style :
 - Si le style demandé est "Sobre" : produire un texte clairement posé, rassurant, crédible et discret. Accroche simple. Peu d'effets. Phrases plutôt complètes. Zéro emphase inutile. Emojis absents ou quasi absents selon le canal.
