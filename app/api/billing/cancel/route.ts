@@ -25,7 +25,7 @@ export async function POST() {
       return NextResponse.json({ error: "Aucun abonnement actif n’a été trouvé pour ce compte." }, { status: 400 });
     }
 
-    // 1 month notice == cancel at period end (Stripe period is monthly)
+    // Résiliation programmée à la fin de la période Stripe en cours (mensuelle ou annuelle)
     const updated = await stripePost(
       `/subscriptions/${stripeSubId}`,
       new URLSearchParams({

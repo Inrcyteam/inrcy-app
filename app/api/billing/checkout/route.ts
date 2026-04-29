@@ -182,7 +182,7 @@ export async function POST(req: Request) {
     if (!customerId) throw new Error("Le paiement n’a pas pu être préparé pour ce compte.");
 
     const sessionParams = new URLSearchParams();
-    sessionParams.set("mode", billingCycle === "yearly" ? "payment" : "subscription");
+    sessionParams.set("mode", "subscription");
     sessionParams.set("customer", customerId);
     sessionParams.set("line_items[0][price]", priceId);
     sessionParams.set("line_items[0][quantity]", "1");
@@ -194,23 +194,17 @@ export async function POST(req: Request) {
     sessionParams.set("metadata[access_months]", billingCycle === "yearly" ? "12" : "");
     sessionParams.set("metadata[trial_behavior]", shouldKeepTrialEnd ? "keep_trial_end" : "start_now");
 
-    if (billingCycle === "monthly") {
-      sessionParams.set("subscription_data[metadata][user_id]", userId);
-      sessionParams.set("subscription_data[metadata][plan]", wantedPlan);
-      sessionParams.set("subscription_data[metadata][billing_cycle]", "monthly");
-      sessionParams.set("subscription_data[metadata][trial_behavior]", shouldKeepTrialEnd ? "keep_trial_end" : "start_now");
-      if (shouldKeepTrialEnd) {
-        sessionParams.set("subscription_data[trial_end]", String(trialEndUnix));
-      }
-      sessionParams.set("payment_method_collection", "always");
-    } else {
-      sessionParams.set("payment_intent_data[metadata][user_id]", userId);
-      sessionParams.set("payment_intent_data[metadata][plan]", wantedPlan);
-      sessionParams.set("payment_intent_data[metadata][billing_cycle]", "yearly");
+    sessionParams.set("subscription_data[metadata][user_id]", userId);
+    sessionParams.set("subscription_data[metadata][plan]", wantedPlan);
+    sessionParams.set("subscription_data[metadata][billing_cycle]", billingCycle);
+    sessionParams.set("subscription_data[metadata][trial_behavior]", shouldKeepTrialEnd ? "keep_trial_end" : "start_now");
+    if (shouldKeepTrialEnd) {
+      sessionParams.set("subscription_data[trial_end]", String(trialEndUnix));
     }
+    sessionParams.set("payment_method_collection", "always");
 
     const session = await stripePost("/checkout/sessions", sessionParams, {
-      idempotencyKey: `checkout-session-${userId}-${priceId}-${billingCycle}-${billingCycle === "monthly" ? (shouldKeepTrialEnd ? trialEndUnix : "start-now") : "one-time-yearly"}`,
+      idempotencyKey: `checkout-session-${userId}-${priceId}-${billingCycle}-${shouldKeepTrialEnd ? trialEndUnix : "start-now"}`,
     });
 
     await supabaseAdmin

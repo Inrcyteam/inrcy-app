@@ -53,7 +53,9 @@ function planFromPriceId(priceId: string | null) {
   const starter = optionalEnv("STRIPE_PRICE_STARTER_ID");
   const accel = optionalEnv("STRIPE_PRICE_ACCEL_ID");
   const speed = optionalEnv("STRIPE_PRICE_SPEED_ID") || optionalEnv("STRIPE_PRICE_FULL_ID");
+  const yearly = optionalEnv("STRIPE_PRICE_YEARLY");
   if (starter && priceId === starter) return "Starter";
+  if (yearly && priceId === yearly) return "Starter";
   if (accel && priceId === accel) return "Accel";
   if (speed && priceId === speed) return "Speed";
   return null;
@@ -189,8 +191,8 @@ export async function POST(req: Request) {
           trialStartAt: row?.trial_start_at ?? null,
           trialEndAt: row?.trial_end_at ?? null,
           note:
-            mode === "payment" && billingCycle === "yearly"
-              ? "Paiement annuel confirmé dans Stripe Checkout. L'accès est activé pour 12 mois."
+            billingCycle === "yearly"
+              ? "Abonnement annuel confirmé dans Stripe Checkout. Le renouvellement se fera automatiquement chaque année."
               : "Paiement confirmé dans Stripe Checkout. L'abonnement démarrera à la fin de l'essai si celui-ci est encore en cours.",
         }).catch(() => null);
       }
@@ -216,7 +218,10 @@ export async function POST(req: Request) {
       const trialEndAt = sub?.trial_end ? new Date(Number(sub.trial_end) * 1000).toISOString() : null;
       const trialStartAt = sub?.trial_start ? new Date(Number(sub.trial_start) * 1000).toISOString() : null;
       const inrcyPlan = planFromPriceId(priceId);
-      const monthlyPrice = monthlyPriceFromPlan(inrcyPlan);
+      const yearlyPriceId = optionalEnv("STRIPE_PRICE_YEARLY");
+      const billingCycleFromMetadata = typeof metadata?.billing_cycle === "string" ? metadata.billing_cycle : null;
+      const isYearlySubscription = billingCycleFromMetadata === "yearly" || (!!yearlyPriceId && priceId === yearlyPriceId);
+      const monthlyPrice = isYearlySubscription ? 690 : monthlyPriceFromPlan(inrcyPlan);
       const shouldKeepTrialPlan = stripeStatus === "trialing";
       const cancellationTimestamp = cancelAtPeriodEnd
         ? new Date().toISOString()

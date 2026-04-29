@@ -299,8 +299,6 @@ useEffect(() => {
     const hasStripeSub = !!sub.stripe_subscription_id;
     const annualPayment =
       statusNorm === "active" &&
-      !hasStripeSub &&
-      !!sub.end_date &&
       Number(sub.monthly_price_eur || 0) >= 600;
 
     // ✅ UX: au retour Stripe (?checkout=success), on considère l'abonnement comme "programmé" immédiatement,
@@ -532,7 +530,7 @@ useEffect(() => {
           <div style={{ textAlign: "right", flexShrink: 0 }}>
             <div style={{ opacity: 0.85, fontSize: 12, fontWeight: 900, letterSpacing: 0.4 }}>PRIX</div>
             <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4, lineHeight: 1 }}>{computed.priceLabel}</div>
-            <div style={{ opacity: 0.75, fontSize: 12, marginTop: 6 }}>{computed.annualPayment ? "TTC payé une fois" : "TTC par mois"}</div>
+            <div style={{ opacity: 0.75, fontSize: 12, marginTop: 6 }}>{computed.annualPayment ? "TTC / an" : "TTC par mois"}</div>
           </div>
         </div>
       </div>
@@ -564,15 +562,15 @@ useEffect(() => {
               </div>
 
               <div style={miniBox}>
-                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>{computed.annualPayment ? "Accès payé jusqu’au" : "Renouvellement"}</div>
-                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.annualPayment && computed.cancelEndLabel ? computed.cancelEndLabel : computed.renewalLabel}</div>
+                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>{computed.annualPayment ? "Renouvellement annuel" : "Renouvellement"}</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.renewalLabel}</div>
               </div>
 
               <div style={miniBox}>
-                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>{computed.annualPayment ? "Type de paiement" : "Fin prévisionnelle"}</div>
-                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.annualPayment ? "Paiement unique" : computed.cancellationScheduled && computed.cancelEndLabel ? computed.cancelEndLabel : computed.endEstLabel}</div>
+                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>{computed.annualPayment ? "Formule" : "Fin prévisionnelle"}</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.annualPayment && !computed.cancellationScheduled ? "Annuelle" : computed.cancellationScheduled && computed.cancelEndLabel ? computed.cancelEndLabel : computed.endEstLabel}</div>
                 <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75, lineHeight: 1.3 }}>
-                  {computed.annualPayment ? "Sans prélèvement mensuel" : computed.cancellationScheduled ? "Résiliation programmée" : "Préavis inclus (1 mois)"}
+                  {computed.cancellationScheduled ? "Résiliation programmée" : computed.annualPayment ? "Résiliable avant échéance" : "Préavis inclus (1 mois)"}
                 </div>
               </div>
             </>
@@ -586,7 +584,7 @@ useEffect(() => {
         {checkoutState === "success" ? (
           <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
             {checkoutBilling === "yearly"
-              ? "✅ Paiement annuel confirmé. Votre accès est activé pour 12 mois."
+              ? "✅ Abonnement annuel confirmé. Votre renouvellement est prévu chaque année."
               : computed?.trialEndsWithinStripeMinimum
                 ? "✅ Inscription confirmée. Votre abonnement démarre maintenant."
                 : "✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours."}
@@ -608,7 +606,7 @@ useEffect(() => {
                 {checkoutState !== "success" ? (
                   <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
                     {checkoutBilling === "yearly"
-                      ? "✅ Paiement annuel confirmé. Votre accès est activé pour 12 mois."
+                      ? "✅ Abonnement annuel confirmé. Votre renouvellement est prévu chaque année."
                       : computed?.trialEndsWithinStripeMinimum
                         ? "✅ Inscription confirmée. Votre abonnement démarre maintenant."
                         : "✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours."}
@@ -677,7 +675,7 @@ useEffect(() => {
                       <div style={offerCard}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                           <strong>Mensuel</strong>
-                          <strong>69 € / mois</strong>
+                          <strong>69 € TTC / mois</strong>
                         </div>
                         <div style={{ fontSize: 13, opacity: 0.82, lineHeight: 1.35 }}>Sans engagement · Préavis 1 mois</div>
                         <button type="button" onClick={() => doCheckout("monthly")} style={primaryBtn} disabled={billingBusy}>
@@ -687,15 +685,15 @@ useEffect(() => {
                       <div style={{ ...offerCard, border: "1px solid rgba(255, 77, 166, 0.28)", background: "linear-gradient(135deg, rgba(255, 77, 166, 0.14), rgba(0, 200, 255, 0.08))" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                           <strong>Annuel</strong>
-                          <strong>690 €</strong>
+                          <strong>690 € TTC</strong>
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <span style={{ ...badge, fontSize: 11 }}>2 mois offerts</span>
-                          <span style={{ ...badge, fontSize: 11 }}>Paiement unique</span>
+                          <span style={{ ...badge, fontSize: 11 }}>Renouvellement annuel</span>
                         </div>
-                        <div style={{ fontSize: 13, opacity: 0.82, lineHeight: 1.35 }}>Accès 12 mois. Économisez 2 mois avec l’offre annuelle.</div>
+                        <div style={{ fontSize: 13, opacity: 0.82, lineHeight: 1.35 }}>Renouvellement annuel · 2 mois offerts. Résiliable avant la prochaine échéance.</div>
                         <button type="button" onClick={() => doCheckout("yearly")} style={primaryBtn} disabled={billingBusy}>
-                          {billingBusy ? "Traitement…" : "Payer l’année"}
+                          {billingBusy ? "Traitement…" : "Profiter de l’offre annuelle"}
                         </button>
                       </div>
                       <button type="button" onClick={() => setShowBillingChoices(false)} style={ghostBtn} disabled={billingBusy}>
@@ -721,10 +719,10 @@ useEffect(() => {
           </>
         ) : sub.status === "active" ? (
           <>
-            {computed?.annualPayment ? (
+            {false && computed?.annualPayment ? (
               <>
                 <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
-                  Votre accès annuel est actif{computed.cancelEndLabel ? <> jusqu’au <strong>{computed.cancelEndLabel}</strong></> : null}.
+                  Votre abonnement annuel est actif.
                 </p>
                 <div
                   style={{
@@ -735,12 +733,12 @@ useEffect(() => {
                     padding: "10px 12px",
                   }}
                 >
-                  <div style={{ fontWeight: 800, marginBottom: 4 }}>Paiement annuel</div>
+                  <div style={{ fontWeight: 800, marginBottom: 4 }}>Abonnement annuel</div>
                   <div style={{ opacity: 0.95, lineHeight: 1.45 }}>
-                    Aucun prélèvement mensuel n’est programmé pour cette formule.
+                    Le renouvellement automatique annuel est programmé à la prochaine échéance.
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>
-                    Le renouvellement se fera manuellement à la fin de la période.
+                    Vous pouvez résilier avant la prochaine échéance.
                   </div>
                 </div>
                 <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
@@ -817,7 +815,7 @@ useEffect(() => {
                     </a>
                   )}
                   <button type="button" onClick={doCancel} style={dangerBtn} disabled={billingBusy}>
-                    {billingBusy ? "Traitement…" : "Résilier (préavis 1 mois)"}
+                    {billingBusy ? "Traitement…" : computed.annualPayment ? "Résilier à l’échéance annuelle" : "Résilier (préavis 1 mois)"}
                   </button>
                 </div>
               </>
