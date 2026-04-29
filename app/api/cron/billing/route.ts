@@ -255,6 +255,29 @@ export async function GET(req: Request) {
 
   if (cErr) return NextResponse.json({ error: "Impossible de vérifier les résiliations arrivées à échéance pour le moment." }, { status: 500 });
 
+  let expiredAnnualAccesses = 0;
+
+  const { data: annualRows, error: annualErr } = await supabaseAdmin
+    .from("subscriptions")
+    .select("user_id, end_date")
+    .neq("plan", "Trial")
+    .eq("status", "active")
+    .is("stripe_subscription_id", null)
+    .not("end_date", "is", null);
+
+  if (annualErr) return NextResponse.json({ error: "Impossible de vérifier les accès annuels arrivés à échéance pour le moment." }, { status: 500 });
+
+  for (const s of (annualRows || []) as { user_id: string; end_date: string | null }[]) {
+    if (!s.end_date) continue;
+    const expireAt = new Date(`${s.end_date}T23:59:59.999Z`);
+    if (now < expireAt) continue;
+    await supabaseAdmin
+      .from("subscriptions")
+      .update({ status: "canceled", updated_at: new Date().toISOString() })
+      .eq("user_id", s.user_id);
+    expiredAnnualAccesses++;
+  }
+
   let deletedCancelledAccounts = 0;
 
   for (const s of (cancelledRows || []) as CancelledRow[]) {
@@ -301,5 +324,6 @@ export async function GET(req: Request) {
     repaired_trial_dates: repairedTrialDates,
     deleted_trial_accounts: deletedTrialAccounts,
     deleted_cancelled_accounts: deletedCancelledAccounts,
+    expired_annual_accesses: expiredAnnualAccesses,
   });
 }

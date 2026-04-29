@@ -24,6 +24,8 @@ type ProfileRow = {
   contact_email?: string | null;
 };
 
+type BillingCycle = "monthly" | "yearly";
+
 function hasStripeConfig() {
   return Boolean(
     process.env.STRIPE_SECRET_KEY &&
@@ -47,15 +49,25 @@ export async function POST(req: Request) {
     const userId = user.id;
     const body: unknown = await req.json().catch(() => ({}));
     const wantedPlan = String((body as { plan?: unknown } | null | undefined)?.plan || "Starter");
+    const billingCycleRaw = String(
+      (body as { billingCycle?: unknown; billing?: unknown } | null | undefined)?.billingCycle ||
+        (body as { billing?: unknown } | null | undefined)?.billing ||
+        "monthly"
+    );
+    const billingCycle: BillingCycle = billingCycleRaw === "yearly" ? "yearly" : "monthly";
     const trialDays = getTrialDays();
 
-    const priceIdByPlan: Record<string, string | undefined> = {
+    const monthlyPriceIdByPlan: Record<string, string | undefined> = {
       Starter: requireEnv("STRIPE_PRICE_STARTER_ID"),
       Accel: requireEnv("STRIPE_PRICE_ACCEL_ID"),
       Speed: requireEnv("STRIPE_PRICE_SPEED_ID") || requireEnv("STRIPE_PRICE_FULL_ID"),
     };
 
-    const priceId = priceIdByPlan[wantedPlan];
+    const yearlyPriceIdByPlan: Record<string, string | undefined> = {
+      Starter: process.env.STRIPE_PRICE_YEARLY,
+    };
+
+    const priceId = billingCycle === "yearly" ? yearlyPriceIdByPlan[wantedPlan] : monthlyPriceIdByPlan[wantedPlan];
     if (!priceId) {
       return NextResponse.json({ error: "L’offre sélectionnée est invalide." }, { status: 400 });
     }
@@ -170,23 +182,35 @@ export async function POST(req: Request) {
     if (!customerId) throw new Error("Le paiement n’a pas pu être préparé pour ce compte.");
 
     const sessionParams = new URLSearchParams();
-    sessionParams.set("mode", "subscription");
+    sessionParams.set("mode", billingCycle === "yearly" ? "payment" : "subscription");
     sessionParams.set("customer", customerId);
     sessionParams.set("line_items[0][price]", priceId);
     sessionParams.set("line_items[0][quantity]", "1");
-    sessionParams.set("success_url", `${appUrl}/dashboard?panel=abonnement&checkout=success`);
+    sessionParams.set("success_url", `${appUrl}/dashboard?panel=abonnement&checkout=success&billing=${billingCycle}`);
     sessionParams.set("cancel_url", `${appUrl}/dashboard?panel=abonnement&checkout=cancel`);
     sessionParams.set("metadata[user_id]", userId);
+    sessionParams.set("metadata[plan]", wantedPlan);
+    sessionParams.set("metadata[billing_cycle]", billingCycle);
+    sessionParams.set("metadata[access_months]", billingCycle === "yearly" ? "12" : "");
     sessionParams.set("metadata[trial_behavior]", shouldKeepTrialEnd ? "keep_trial_end" : "start_now");
-    sessionParams.set("subscription_data[metadata][user_id]", userId);
-    sessionParams.set("subscription_data[metadata][trial_behavior]", shouldKeepTrialEnd ? "keep_trial_end" : "start_now");
-    if (shouldKeepTrialEnd) {
-      sessionParams.set("subscription_data[trial_end]", String(trialEndUnix));
+
+    if (billingCycle === "monthly") {
+      sessionParams.set("subscription_data[metadata][user_id]", userId);
+      sessionParams.set("subscription_data[metadata][plan]", wantedPlan);
+      sessionParams.set("subscription_data[metadata][billing_cycle]", "monthly");
+      sessionParams.set("subscription_data[metadata][trial_behavior]", shouldKeepTrialEnd ? "keep_trial_end" : "start_now");
+      if (shouldKeepTrialEnd) {
+        sessionParams.set("subscription_data[trial_end]", String(trialEndUnix));
+      }
+      sessionParams.set("payment_method_collection", "always");
+    } else {
+      sessionParams.set("payment_intent_data[metadata][user_id]", userId);
+      sessionParams.set("payment_intent_data[metadata][plan]", wantedPlan);
+      sessionParams.set("payment_intent_data[metadata][billing_cycle]", "yearly");
     }
-    sessionParams.set("payment_method_collection", "always");
 
     const session = await stripePost("/checkout/sessions", sessionParams, {
-      idempotencyKey: `checkout-session-${userId}-${priceId}-${shouldKeepTrialEnd ? trialEndUnix : "start-now"}`,
+      idempotencyKey: `checkout-session-${userId}-${priceId}-${billingCycle}-${billingCycle === "monthly" ? (shouldKeepTrialEnd ? trialEndUnix : "start-now") : "one-time-yearly"}`,
     });
 
     await supabaseAdmin

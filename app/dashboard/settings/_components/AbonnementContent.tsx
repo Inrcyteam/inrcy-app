@@ -159,11 +159,13 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
   const router = useRouter();
   const pathname = usePathname();
   const checkoutState = searchParams.get("checkout"); // success | cancel | null
+  const checkoutBilling = searchParams.get("billing"); // monthly | yearly | null
   const [loading, setLoading] = useState(true);
   const [sub, setSub] = useState<SubData | null>(null);
   const [err, setErr] = useState("");
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingMsg, setBillingMsg] = useState<string>("");
+  const [showBillingChoices, setShowBillingChoices] = useState(false);
 
 // ✅ Refresh abonnement après actions Stripe (merge pour éviter d'écraser des champs)
 const fetchSubscription = async () => {
@@ -263,6 +265,7 @@ useEffect(() => {
       const current = new URLSearchParams(searchParams.toString());
       if (!current.has("checkout")) return;
       current.delete("checkout");
+      current.delete("billing");
 
       const qs = current.toString();
       const nextUrl = qs ? `${pathname}?${qs}` : pathname;
@@ -294,6 +297,11 @@ useEffect(() => {
     const cancellationScheduled = !!sub.cancel_requested_at && !!cancelEnd && cancelEnd.getTime() > now.getTime();
 
     const hasStripeSub = !!sub.stripe_subscription_id;
+    const annualPayment =
+      statusNorm === "active" &&
+      !hasStripeSub &&
+      !!sub.end_date &&
+      Number(sub.monthly_price_eur || 0) >= 600;
 
     // ✅ UX: au retour Stripe (?checkout=success), on considère l'abonnement comme "programmé" immédiatement,
     // même si le webhook n'a pas encore eu le temps d'écrire stripe_subscription_id en DB.
@@ -304,8 +312,9 @@ useEffect(() => {
     const scheduledStart = trialEnd;
 
     const scheduledPlan = normalizePlan(sub.scheduled_plan || "Starter") as SubData["plan"];
-    const monthlyPriceTtc =
-      planNormalized === "Trial"
+    const monthlyPriceTtc = annualPayment
+      ? Number(sub.monthly_price_eur) || 690
+      : planNormalized === "Trial"
         ? 0
         : monthlyPriceTtcFromPlan(planNormalized) || Number(sub.monthly_price_eur) || 0;
 
@@ -318,6 +327,7 @@ useEffect(() => {
       cancelEndLabel: cancelEnd ? frDate(cancelEnd) : null,
       cancellationScheduled,
       priceLabel: `${monthlyPriceTtc} €`,
+      annualPayment,
       statusText: isTrialPlan ? "ESSAI" : statusLabel(statusNorm),
       hasStripeSub: hasScheduledSubscription,
       scheduledPlanLabel: planShortLabel(scheduledPlan),
@@ -404,15 +414,23 @@ useEffect(() => {
     background: "rgba(255, 80, 80, 0.10)",
   };
 
-  const doCheckout = async () => {
+  const offerCard: React.CSSProperties = {
+    padding: 12,
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.055)",
+    display: "grid",
+    gap: 8,
+  };
+
+  const doCheckout = async (billingCycle: "monthly" | "yearly" = "monthly") => {
     try {
       setBillingMsg("");
       setBillingBusy(true);
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        // Default plan is Starter. If you later add a pack picker UI, send { plan: "Accel" } etc.
-        body: JSON.stringify({ plan: "Starter" }),
+        body: JSON.stringify({ plan: "Starter", billingCycle }),
       });
       if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Le paiement n’a pas pu être lancé pour le moment."));
       const json = await res.json().catch(() => ({}));
@@ -506,7 +524,7 @@ useEffect(() => {
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
               <span style={badge}>SANS ENGAGEMENT</span>
-              <span style={badge}>MENSUEL</span>
+              <span style={badge}>{computed.annualPayment ? "ANNUEL" : "MENSUEL"}</span>
               <span style={badge}>{computed.statusText}</span>
             </div>
           </div>
@@ -514,7 +532,7 @@ useEffect(() => {
           <div style={{ textAlign: "right", flexShrink: 0 }}>
             <div style={{ opacity: 0.85, fontSize: 12, fontWeight: 900, letterSpacing: 0.4 }}>PRIX</div>
             <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4, lineHeight: 1 }}>{computed.priceLabel}</div>
-            <div style={{ opacity: 0.75, fontSize: 12, marginTop: 6 }}>TTC par mois</div>
+            <div style={{ opacity: 0.75, fontSize: 12, marginTop: 6 }}>{computed.annualPayment ? "TTC payé une fois" : "TTC par mois"}</div>
           </div>
         </div>
       </div>
@@ -546,15 +564,15 @@ useEffect(() => {
               </div>
 
               <div style={miniBox}>
-                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Renouvellement</div>
-                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.renewalLabel}</div>
+                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>{computed.annualPayment ? "Accès payé jusqu’au" : "Renouvellement"}</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.annualPayment && computed.cancelEndLabel ? computed.cancelEndLabel : computed.renewalLabel}</div>
               </div>
 
               <div style={miniBox}>
-                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>Fin prévisionnelle</div>
-                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.cancellationScheduled && computed.cancelEndLabel ? computed.cancelEndLabel : computed.endEstLabel}</div>
+                <div style={{ opacity: 0.8, fontSize: 12, fontWeight: 900 }}>{computed.annualPayment ? "Type de paiement" : "Fin prévisionnelle"}</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{computed.annualPayment ? "Paiement unique" : computed.cancellationScheduled && computed.cancelEndLabel ? computed.cancelEndLabel : computed.endEstLabel}</div>
                 <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75, lineHeight: 1.3 }}>
-                  {computed.cancellationScheduled ? "Résiliation programmée" : "Préavis inclus (1 mois)"}
+                  {computed.annualPayment ? "Sans prélèvement mensuel" : computed.cancellationScheduled ? "Résiliation programmée" : "Préavis inclus (1 mois)"}
                 </div>
               </div>
             </>
@@ -567,9 +585,11 @@ useEffect(() => {
 
         {checkoutState === "success" ? (
           <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
-            {computed?.trialEndsWithinStripeMinimum
-              ? "✅ Inscription confirmée. Votre abonnement démarre maintenant."
-              : "✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours."}
+            {checkoutBilling === "yearly"
+              ? "✅ Paiement annuel confirmé. Votre accès est activé pour 12 mois."
+              : computed?.trialEndsWithinStripeMinimum
+                ? "✅ Inscription confirmée. Votre abonnement démarre maintenant."
+                : "✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours."}
           </p>
         ) : checkoutState === "cancel" ? (
           <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
@@ -587,9 +607,11 @@ useEffect(() => {
               <>
                 {checkoutState !== "success" ? (
                   <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
-                    {computed?.trialEndsWithinStripeMinimum
-                      ? "✅ Inscription confirmée. Votre abonnement démarre maintenant."
-                      : "✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours."}
+                    {checkoutBilling === "yearly"
+                      ? "✅ Paiement annuel confirmé. Votre accès est activé pour 12 mois."
+                      : computed?.trialEndsWithinStripeMinimum
+                        ? "✅ Inscription confirmée. Votre abonnement démarre maintenant."
+                        : "✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours."}
                   </p>
                 ) : null}
 
@@ -645,9 +667,42 @@ useEffect(() => {
                     : "Pour continuer après l’essai, abonnez-vous. L’abonnement démarrera à la fin de l’essai."}
                 </p>
                 <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                  <button type="button" onClick={doCheckout} style={primaryBtn} disabled={billingBusy}>
-                    {computed?.trialEndsWithinStripeMinimum ? "S’abonner maintenant" : "S’abonner"}
-                  </button>
+                  {!showBillingChoices ? (
+                    <button type="button" onClick={() => setShowBillingChoices(true)} style={primaryBtn} disabled={billingBusy}>
+                      {computed?.trialEndsWithinStripeMinimum ? "S’abonner maintenant" : "S’abonner"}
+                    </button>
+                  ) : (
+                    <div style={{ display: "grid", gap: 10 }}>
+                      <div style={{ fontWeight: 900 }}>Choisissez votre formule</div>
+                      <div style={offerCard}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                          <strong>Mensuel</strong>
+                          <strong>69 € / mois</strong>
+                        </div>
+                        <div style={{ fontSize: 13, opacity: 0.82, lineHeight: 1.35 }}>Sans engagement · Préavis 1 mois</div>
+                        <button type="button" onClick={() => doCheckout("monthly")} style={primaryBtn} disabled={billingBusy}>
+                          {billingBusy ? "Traitement…" : "Continuer en mensuel"}
+                        </button>
+                      </div>
+                      <div style={{ ...offerCard, border: "1px solid rgba(255, 77, 166, 0.28)", background: "linear-gradient(135deg, rgba(255, 77, 166, 0.14), rgba(0, 200, 255, 0.08))" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                          <strong>Annuel</strong>
+                          <strong>690 €</strong>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ ...badge, fontSize: 11 }}>2 mois offerts</span>
+                          <span style={{ ...badge, fontSize: 11 }}>Paiement unique</span>
+                        </div>
+                        <div style={{ fontSize: 13, opacity: 0.82, lineHeight: 1.35 }}>Accès 12 mois. Économisez 2 mois avec l’offre annuelle.</div>
+                        <button type="button" onClick={() => doCheckout("yearly")} style={primaryBtn} disabled={billingBusy}>
+                          {billingBusy ? "Traitement…" : "Payer l’année"}
+                        </button>
+                      </div>
+                      <button type="button" onClick={() => setShowBillingChoices(false)} style={ghostBtn} disabled={billingBusy}>
+                        Retour
+                      </button>
+                    </div>
+                  )}
                   <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
                     Voir nos packs
                   </a>
@@ -666,7 +721,44 @@ useEffect(() => {
           </>
         ) : sub.status === "active" ? (
           <>
-            {computed?.cancellationScheduled && computed?.cancelEndLabel ? (
+            {computed?.annualPayment ? (
+              <>
+                <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
+                  Votre accès annuel est actif{computed.cancelEndLabel ? <> jusqu’au <strong>{computed.cancelEndLabel}</strong></> : null}.
+                </p>
+                <div
+                  style={{
+                    marginTop: 10,
+                    border: "1px solid rgba(0, 200, 255, 0.22)",
+                    background: "rgba(0, 200, 255, 0.08)",
+                    borderRadius: 12,
+                    padding: "10px 12px",
+                  }}
+                >
+                  <div style={{ fontWeight: 800, marginBottom: 4 }}>Paiement annuel</div>
+                  <div style={{ opacity: 0.95, lineHeight: 1.45 }}>
+                    Aucun prélèvement mensuel n’est programmé pour cette formule.
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>
+                    Le renouvellement se fera manuellement à la fin de la période.
+                  </div>
+                </div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  <a href="https://inrcy.com/nos-packs/" target="_blank" rel="noreferrer" style={ghostBtn}>
+                    Voir les packs
+                  </a>
+                  {onOpenContact ? (
+                    <button type="button" onClick={onOpenContact} style={ghostBtn}>
+                      Contacter iNrCy
+                    </button>
+                  ) : (
+                    <a href="https://inrcy.com/contact/" target="_blank" rel="noreferrer" style={ghostBtn}>
+                      Contacter iNrCy
+                    </a>
+                  )}
+                </div>
+              </>
+            ) : computed?.cancellationScheduled && computed?.cancelEndLabel ? (
               <>
                 <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
                   Votre résiliation est programmée. Votre accès restera actif jusqu’au <strong>{computed.cancelEndLabel}</strong>.
