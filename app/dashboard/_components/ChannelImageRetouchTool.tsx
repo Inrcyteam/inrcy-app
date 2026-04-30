@@ -55,6 +55,7 @@ type ModalProps = {
   previewSrc: string;
   previewImageStyle?: React.CSSProperties;
   previewLayout?: { drawW: number; drawH: number; dx: number; dy: number };
+  previewStageSize?: { width: number; height: number };
   isDragging?: boolean;
   onClose: () => void;
   onWheel?: React.WheelEventHandler<HTMLDivElement>;
@@ -81,6 +82,8 @@ type ModalProps = {
   sidebarItems?: SidebarItem[];
   designState?: MiniDesignState;
   onDesignChange?: (patch: Partial<MiniDesignState>) => void;
+  previewChannel?: string;
+  previewText?: string;
 };
 
 const CARD_WIDTH = 220;
@@ -125,6 +128,109 @@ function getTextBoxPosition(designState?: MiniDesignState) {
   const y = Math.max(8, Math.min(92, designState?.y ?? fallbackY));
   return { x, y };
 }
+
+function EditedImagePreview({
+  aspectRatio,
+  backgroundMode,
+  backgroundColor,
+  previewSrc,
+  previewLayout,
+  previewStageSize,
+  previewImageStyle,
+  designState,
+  radius = 18,
+}: {
+  aspectRatio: string;
+  backgroundMode: BackgroundMode;
+  backgroundColor?: string;
+  previewSrc: string;
+  previewLayout?: { drawW: number; drawH: number; dx: number; dy: number };
+  previewStageSize?: { width: number; height: number };
+  previewImageStyle?: React.CSSProperties;
+  designState?: MiniDesignState;
+  radius?: number;
+}) {
+  const textBoxPos = getTextBoxPosition(designState);
+  const fontSize = Math.max(12, Math.min(26, (designState?.size ?? 30) * 0.72));
+  const width = Math.max(120, Math.min(360, (designState?.width ?? 320) * 0.74));
+  const height = Math.max(52, Math.min(180, (designState?.height ?? Math.max(84, Math.round((designState?.size ?? 30) * 2.6))) * 0.74));
+  return (
+    <div style={{ position: "relative", width: "100%", aspectRatio, borderRadius: radius, overflow: "hidden", ...previewBackgroundStyle(backgroundMode, backgroundColor) }}>
+      {previewLayout ? (
+        <img src={previewSrc} alt="preview" draggable={false} style={previewStageSize?.width && previewStageSize?.height ? { position: "absolute", left: `${(previewLayout.dx / previewStageSize.width) * 100}%`, top: `${(previewLayout.dy / previewStageSize.height) * 100}%`, width: `${(previewLayout.drawW / previewStageSize.width) * 100}%`, height: `${(previewLayout.drawH / previewStageSize.height) * 100}%`, maxWidth: "none", pointerEvents: "none", userSelect: "none" } : { position: "absolute", left: `${previewLayout.dx}px`, top: `${previewLayout.dy}px`, width: `${previewLayout.drawW}px`, height: `${previewLayout.drawH}px`, maxWidth: "none", pointerEvents: "none", userSelect: "none" }} />
+      ) : (
+        <img src={previewSrc} alt="preview" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", ...(previewImageStyle || {}) }} />
+      )}
+      {designState?.enabled && designState.text.trim() ? (
+        <div style={{ position: "absolute", left: `${textBoxPos.x}%`, top: `${textBoxPos.y}%`, transform: "translate(-50%, -50%)", width, height, padding: "8px 12px", borderRadius: 14, background: `${designState.background}cc`, color: designState.color, fontWeight: 900, fontSize, lineHeight: 1.16, textAlign: "center", display: "grid", placeItems: "center", overflow: "hidden", boxShadow: "0 10px 24px rgba(0,0,0,0.22)" }}>
+          <div style={{ maxWidth: "100%", maxHeight: "100%", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>{designState.text}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SocialChannelPreview({
+  channel,
+  text,
+  aspectRatio,
+  backgroundMode,
+  backgroundColor,
+  previewSrc,
+  previewLayout,
+  previewStageSize,
+  previewImageStyle,
+  designState,
+}: {
+  channel?: string;
+  text?: string;
+  aspectRatio: string;
+  backgroundMode: BackgroundMode;
+  backgroundColor?: string;
+  previewSrc: string;
+  previewLayout?: { drawW: number; drawH: number; dx: number; dy: number };
+  previewStageSize?: { width: number; height: number };
+  previewImageStyle?: React.CSSProperties;
+  designState?: MiniDesignState;
+}) {
+  const isInstagram = channel === "instagram";
+  const label = isInstagram ? "Instagram" : "Facebook";
+  const safeText = String(text || "Votre texte de publication apparaîtra ici.").trim() || "Votre texte de publication apparaîtra ici.";
+
+  if (isInstagram) {
+    return (
+      <div style={{ width: "min(430px, 100%)", margin: "0 auto", borderRadius: 26, background: "#ffffff", color: "#111827", overflow: "hidden", boxShadow: "0 22px 70px rgba(0,0,0,0.34)", border: "1px solid rgba(255,255,255,0.18)" }}>
+        <div style={{ height: 58, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", borderBottom: "1px solid #eef0f4" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ width: 34, height: 34, borderRadius: 999, background: "linear-gradient(135deg,#ff3d8b,#ffb84d)", padding: 2 }}><div style={{ width: "100%", height: "100%", borderRadius: 999, background: "#fff", display: "grid", placeItems: "center", fontWeight: 900 }}>i</div></div><strong>inrcy</strong></div>
+          <div style={{ fontWeight: 900 }}>•••</div>
+        </div>
+        <EditedImagePreview aspectRatio={aspectRatio} backgroundMode={backgroundMode} backgroundColor={backgroundColor} previewSrc={previewSrc} previewLayout={previewLayout} previewStageSize={previewStageSize} previewImageStyle={previewImageStyle} designState={designState} radius={0} />
+        <div style={{ padding: "13px 16px 16px", display: "grid", gap: 10 }}>
+          <div style={{ display: "flex", gap: 14, fontSize: 22 }}><span>♡</span><span>💬</span><span>↗</span></div>
+          <div style={{ fontSize: 13, lineHeight: 1.45 }}><strong>inrcy</strong> {safeText}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ width: "min(560px, 100%)", margin: "0 auto", borderRadius: 22, background: "#ffffff", color: "#111827", overflow: "hidden", boxShadow: "0 22px 70px rgba(0,0,0,0.34)", border: "1px solid rgba(255,255,255,0.18)" }}>
+      <div style={{ padding: 16, display: "grid", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 999, background: "#1877f2", color: "#fff", display: "grid", placeItems: "center", fontWeight: 900 }}>i</div>
+          <div><div style={{ fontWeight: 900 }}>iNrCy</div><div style={{ fontSize: 12, color: "#6b7280" }}>Sponsorisé · 🌐</div></div>
+        </div>
+        <div style={{ fontSize: 14, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{safeText}</div>
+      </div>
+      <EditedImagePreview aspectRatio={aspectRatio} backgroundMode={backgroundMode} backgroundColor={backgroundColor} previewSrc={previewSrc} previewLayout={previewLayout} previewStageSize={previewStageSize} previewImageStyle={previewImageStyle} designState={designState} radius={0} />
+      <div style={{ padding: "10px 16px 14px", borderTop: "1px solid #eef0f4", display: "grid", gap: 10 }}>
+        <div style={{ fontSize: 12, color: "#6b7280" }}>Aperçu {label} — image seule</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, fontSize: 13, color: "#4b5563", textAlign: "center", fontWeight: 700 }}><span>👍 J’aime</span><span>💬 Commenter</span><span>↗ Partager</span></div>
+      </div>
+    </div>
+  );
+}
+
 
 export function ChannelImageRetouchCardsPanel({
   tabs,
@@ -226,6 +332,7 @@ export function ChannelImageRetouchModal({
   previewSrc,
   previewImageStyle,
   previewLayout,
+  previewStageSize,
   isDragging,
   onClose,
   onWheel,
@@ -252,14 +359,21 @@ export function ChannelImageRetouchModal({
   sidebarItems,
   designState,
   onDesignChange,
+  previewChannel,
+  previewText,
 }: ModalProps) {
   const textDragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const textResizeRef = useRef<{ pointerId: number; startX: number; startY: number; originWidth: number; originHeight: number } | null>(null);
   const [viewportWidth, setViewportWidth] = useState<number>(typeof window === "undefined" ? 1440 : window.innerWidth);
   const [isTextResizing, setIsTextResizing] = useState(false);
+  const [activeToolTab, setActiveToolTab] = useState<"retouche" | "apercu">("retouche");
   const textBoxPos = useMemo(() => getTextBoxPosition(designState), [designState]);
   const textBoxWidth = Math.max(140, Math.min(520, designState?.width ?? 320));
   const textBoxHeight = Math.max(64, Math.min(280, designState?.height ?? Math.max(84, Math.round((designState?.size ?? 30) * 2.6))));
+
+  useEffect(() => {
+    if (open) setActiveToolTab("retouche");
+  }, [open, previewSrc]);
 
   useEffect(() => {
     if (!open) return;
@@ -304,7 +418,7 @@ export function ChannelImageRetouchModal({
 
   return (
     <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? "max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left))" : 16, overflow: "hidden" }}>
-      <div onClick={(event) => event.stopPropagation()} style={{ width: modalWidth, maxWidth: "100%", height: modalHeight, maxHeight: "100%", minWidth: 0, minHeight: 0, alignSelf: isMobile ? "stretch" : undefined, justifySelf: isMobile ? "stretch" : undefined, borderRadius: isMobile ? 20 : 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: modalPadding, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: isMobile ? 10 : 16, overflow: "hidden", boxSizing: "border-box" }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: modalWidth, maxWidth: "100%", height: modalHeight, maxHeight: "100%", minWidth: 0, minHeight: 0, alignSelf: isMobile ? "stretch" : undefined, justifySelf: isMobile ? "stretch" : undefined, borderRadius: isMobile ? 20 : 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: modalPadding, display: "grid", gridTemplateRows: "auto auto minmax(0, 1fr)", gap: isMobile ? 10 : 16, overflow: "hidden", boxSizing: "border-box" }}>
         <div style={{ display: "flex", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 12, minHeight: 52, flexWrap: "wrap", minWidth: 0 }}>
           <div style={{ minWidth: 0, flex: "1 1 280px" }}>
             <div style={{ fontWeight: 900, fontSize: isMobile ? 16 : 18, whiteSpace: isMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.15, overflowWrap: "anywhere" }}>{title}</div>
@@ -317,6 +431,18 @@ export function ChannelImageRetouchModal({
           </div>
         </div>
 
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: -6 }}>
+          <button type="button" className={activeToolTab === "retouche" ? (primaryButtonClassName || buttonClassName) : buttonClassName} onClick={() => setActiveToolTab("retouche")}>Retouche</button>
+          {(previewChannel === "facebook" || previewChannel === "instagram") ? (
+            <button type="button" className={activeToolTab === "apercu" ? (primaryButtonClassName || buttonClassName) : buttonClassName} onClick={() => setActiveToolTab("apercu")}>Aperçu {previewChannel === "instagram" ? "Instagram" : "Facebook"}</button>
+          ) : null}
+        </div>
+
+        {activeToolTab === "apercu" && (previewChannel === "facebook" || previewChannel === "instagram") ? (
+          <div style={{ minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: isMobile ? 6 : 18, display: "grid", placeItems: "start center" }}>
+            <SocialChannelPreview channel={previewChannel} text={previewText} aspectRatio={aspectRatio} backgroundMode={backgroundMode} backgroundColor={backgroundColor} previewSrc={previewSrc} previewLayout={previewLayout} previewStageSize={previewStageSize} previewImageStyle={previewImageStyle} designState={designState} />
+          </div>
+        ) : (
         <div style={{ minHeight: 0, minWidth: 0, display: isMobile ? "flex" : "grid",
     flexDirection: isMobile ? "column" : undefined, gridTemplateColumns: contentGridTemplateColumns, gridTemplateRows: contentGridTemplateRows, gap: isMobile ? 24 : 18, alignItems: "stretch", overflowY: "auto", overflowX: "hidden", paddingRight: isMobile ? 2 : 0, paddingBottom: isMobile ? "max(96px, env(safe-area-inset-bottom))" : 0, WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", boxSizing: "border-box" }}>
           <div style={{ minWidth: 0, minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, gridTemplateRows: isMobile ? undefined : "minmax(0, 1fr) auto", gap: isMobile ? 10 : undefined, order: isMobile ? 2 : 1, flex: isMobile ? "0 0 auto" : undefined }}>
@@ -502,6 +628,7 @@ export function ChannelImageRetouchModal({
             ) : null}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

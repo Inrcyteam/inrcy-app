@@ -1616,6 +1616,9 @@ export default function PublishModal({
         zoomLabel={`zoom ${activeEditorTransform.zoom.toFixed(2)}×`}
         previewSrc={activeEditorImageKey ? previewByKey[activeEditorImageKey] : ""}
         previewLayout={previewLayout}
+        previewStageSize={previewStageSize}
+        previewChannel={activeImageChannel}
+        previewText={activeImageChannel === "instagram" ? buildInstagramPreviewCaption(normalizePost({ ...postsByChannel.instagram, hashtags: getLiveInstagramHashtags() })) : normalizePost(postsByChannel[activeImageChannel]).content}
         isDragging={isDraggingImage}
         onClose={closeImageEditor}
         onWheel={handlePreviewWheel}
