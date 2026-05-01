@@ -8,8 +8,6 @@ export type ThemeKey = "" | "promotion" | "information" | "conseil" | "avis_clie
 export type StyleKey = "sobre" | "equilibre" | "dynamique";
 export type FitMode = "contain" | "cover";
 export type BackgroundMode = "blur" | "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
-export type DesignPosition = "top" | "center" | "bottom";
-export type ImageDesign = { enabled: boolean; text: string; color: string; background: string; position: DesignPosition; size: number; x?: number; y?: number; };
 
 export type ChannelPost = {
   title: string;
@@ -45,7 +43,6 @@ export type ImageTransform = {
   blurBackground: boolean;
   backgroundMode?: BackgroundMode;
   backgroundColor?: string;
-  design?: ImageDesign;
 };
 
 export type ImageMeta = {
@@ -78,8 +75,6 @@ export type PreviewLayout = {
   maxY: number;
 };
 
-export const DEFAULT_DESIGN: ImageDesign = { enabled: false, text: "", color: "#ffffff", background: "#111827", position: "bottom", size: 30, x: 50, y: 88 };
-
 export const DEFAULT_TRANSFORM: ImageTransform = {
   fit: "contain",
   zoom: 1,
@@ -88,7 +83,6 @@ export const DEFAULT_TRANSFORM: ImageTransform = {
   blurBackground: false,
   backgroundMode: "color",
   backgroundColor: "#e8f6ff",
-  design: DEFAULT_DESIGN,
 };
 
 export const DISPLAY_LABELS: Record<DisplayKey, string> = {
@@ -394,53 +388,6 @@ export function getBackgroundFill(mode: BackgroundMode, backgroundColor?: string
   }
 }
 
-export function getDesign(transform: ImageTransform): ImageDesign {
-  const design = { ...DEFAULT_DESIGN, ...(transform.design || {}) };
-  if (typeof design.x !== "number") design.x = 50;
-  if (typeof design.y !== "number") design.y = design.position === "top" ? 12 : design.position === "center" ? 50 : 88;
-  return design;
-}
-
-export function drawDesignOverlay(ctx: CanvasRenderingContext2D, cw: number, ch: number, transform: ImageTransform) {
-  const design = getDesign(transform);
-  const text = String(design.text || "").trim();
-  if (!design.enabled || !text) return;
-  const size = clamp(design.size || 30, 18, 72);
-  ctx.save();
-  ctx.font = `900 ${size}px Inter, Arial, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const maxTextWidth = cw * 0.78;
-  const metrics = ctx.measureText(text);
-  const textWidth = Math.min(metrics.width, maxTextWidth);
-  const padX = 22;
-  const padY = 14;
-  const boxW = textWidth + padX * 2;
-  const boxH = size + padY * 2;
-  const x = clamp((typeof design.x === "number" ? design.x : 50) / 100 * cw, boxW / 2 + 16, cw - boxW / 2 - 16);
-  const fallbackY = design.position === "top" ? 12 : design.position === "center" ? 50 : 88;
-  const y = clamp((typeof design.y === "number" ? design.y : fallbackY) / 100 * ch, boxH / 2 + 16, ch - boxH / 2 - 16);
-  const rx = x - boxW / 2;
-  const ry = y - boxH / 2;
-  const radius = 18;
-  ctx.fillStyle = `${design.background || "#111827"}cc`;
-  ctx.beginPath();
-  ctx.moveTo(rx + radius, ry);
-  ctx.lineTo(rx + boxW - radius, ry);
-  ctx.quadraticCurveTo(rx + boxW, ry, rx + boxW, ry + radius);
-  ctx.lineTo(rx + boxW, ry + boxH - radius);
-  ctx.quadraticCurveTo(rx + boxW, ry + boxH, rx + boxW - radius, ry + boxH);
-  ctx.lineTo(rx + radius, ry + boxH);
-  ctx.quadraticCurveTo(rx, ry + boxH, rx, ry + boxH - radius);
-  ctx.lineTo(rx, ry + radius);
-  ctx.quadraticCurveTo(rx, ry, rx + radius, ry);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = design.color || "#ffffff";
-  ctx.fillText(text, x, y, maxTextWidth);
-  ctx.restore();
-}
-
 export function computePreviewLayout(params: {
   containerWidth: number;
   containerHeight: number;
@@ -600,7 +547,6 @@ export async function renderChannelImage(params: {
     }
 
     ctx.drawImage(img, dx, dy, drawW, drawH);
-    drawDesignOverlay(ctx, cw, ch, transform);
 
     const exportAsPng = backgroundMode === "transparent";
     const outputType = exportAsPng ? "image/png" : "image/jpeg";
@@ -624,7 +570,6 @@ export function getDefaultTransform(channel: ChannelKey): ImageTransform {
     offsetY: 0,
     blurBackground: false,
     backgroundMode: preset.defaultFit === "contain" ? "brand" : "black",
-    design: { ...DEFAULT_DESIGN },
   };
 }
 
@@ -688,18 +633,22 @@ export function syncChannelImageEditors(params: {
   for (const channel of selectedChannels) {
     const prevState = previous[channel];
     const nextImageKeys = (prevState?.imageKeys || []).filter((key) => imageKeys.includes(key));
-    const mergedKeys = nextImageKeys.length
-      ? nextImageKeys
+    const autoSelectedNewKeys = channel === "gmb"
+      ? []
+      : imageKeys.filter((key) => !nextImageKeys.includes(key));
+    const mergedKeys = (nextImageKeys.length
+      ? [...nextImageKeys, ...autoSelectedNewKeys]
       : channel === "gmb"
         ? []
-        : [...imageKeys];
+        : [...imageKeys])
+      .filter((key, index, arr) => arr.indexOf(key) === index);
     const transforms: Record<string, ImageTransform> = {};
     for (const key of imageKeys) {
       transforms[key] = prevState?.transforms?.[key]
         ? { ...prevState.transforms[key] }
         : getOptimizedTransform(channel, imageMetaByKey[key]);
     }
-    next[channel] = { imageKeys: mergedKeys.filter((key, index, arr) => arr.indexOf(key) === index), transforms };
+    next[channel] = { imageKeys: mergedKeys, transforms };
   }
 
   return next;

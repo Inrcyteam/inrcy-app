@@ -328,8 +328,6 @@ export type EditablePublicationAttachment = {
 
 export type PublicationImageFitMode = "contain" | "cover";
 export type PublicationImageBackgroundMode = "blur" | "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
-export type PublicationDesignPosition = "top" | "center" | "bottom";
-export type PublicationImageDesign = { enabled: boolean; text: string; color: string; background: string; position: PublicationDesignPosition; size: number; x?: number; y?: number; };
 
 export type PublicationImageTransform = {
   fit: PublicationImageFitMode;
@@ -339,7 +337,6 @@ export type PublicationImageTransform = {
   blurBackground: boolean;
   backgroundMode?: PublicationImageBackgroundMode;
   backgroundColor?: string;
-  design?: PublicationImageDesign;
 };
 
 export type PublicationImageAsset = {
@@ -371,8 +368,6 @@ export type PublicationPreviewLayout = {
   dy: number;
 };
 
-export const DEFAULT_PUBLICATION_DESIGN: PublicationImageDesign = { enabled: false, text: "", color: "#ffffff", background: "#111827", position: "bottom", size: 30, x: 50, y: 88 };
-
 export const PUBLICATION_CHANNEL_PRESETS: Record<string, PublicationImageRenderPreset> = {
   inrcy_site: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
   site_web: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
@@ -400,7 +395,6 @@ export function buildPublicationDefaultTransform(channel: string): PublicationIm
     blurBackground: preset.defaultBlurBackground,
     backgroundMode: preset.defaultBlurBackground ? "blur" : "black",
     backgroundColor: "#e8f6ff",
-    design: { ...DEFAULT_PUBLICATION_DESIGN },
   };
 }
 
@@ -429,53 +423,6 @@ export function getPublicationBackgroundFill(mode: PublicationImageBackgroundMod
   }
 }
 
-export function getPublicationDesign(transform: PublicationImageTransform): PublicationImageDesign {
-  const design = { ...DEFAULT_PUBLICATION_DESIGN, ...(transform.design || {}) };
-  if (typeof design.x !== "number") design.x = 50;
-  if (typeof design.y !== "number") design.y = design.position === "top" ? 12 : design.position === "center" ? 50 : 88;
-  return design;
-}
-
-export function drawPublicationDesignOverlay(ctx: CanvasRenderingContext2D, cw: number, ch: number, transform: PublicationImageTransform) {
-  const design = getPublicationDesign(transform);
-  const text = String(design.text || "").trim();
-  if (!design.enabled || !text) return;
-  const size = publicationClamp(design.size || 30, 18, 72);
-  ctx.save();
-  ctx.font = `900 ${size}px Inter, Arial, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const maxTextWidth = cw * 0.78;
-  const metrics = ctx.measureText(text);
-  const textWidth = Math.min(metrics.width, maxTextWidth);
-  const padX = 22;
-  const padY = 14;
-  const boxW = textWidth + padX * 2;
-  const boxH = size + padY * 2;
-  const x = publicationClamp((typeof design.x === "number" ? design.x : 50) / 100 * cw, boxW / 2 + 16, cw - boxW / 2 - 16);
-  const fallbackY = design.position === "top" ? 12 : design.position === "center" ? 50 : 88;
-  const y = publicationClamp((typeof design.y === "number" ? design.y : fallbackY) / 100 * ch, boxH / 2 + 16, ch - boxH / 2 - 16);
-  const rx = x - boxW / 2;
-  const ry = y - boxH / 2;
-  const radius = 18;
-  ctx.fillStyle = `${design.background || "#111827"}cc`;
-  ctx.beginPath();
-  ctx.moveTo(rx + radius, ry);
-  ctx.lineTo(rx + boxW - radius, ry);
-  ctx.quadraticCurveTo(rx + boxW, ry, rx + boxW, ry + radius);
-  ctx.lineTo(rx + boxW, ry + boxH - radius);
-  ctx.quadraticCurveTo(rx + boxW, ry + boxH, rx + boxW - radius, ry + boxH);
-  ctx.lineTo(rx + radius, ry + boxH);
-  ctx.quadraticCurveTo(rx, ry + boxH, rx, ry + boxH - radius);
-  ctx.lineTo(rx, ry + radius);
-  ctx.quadraticCurveTo(rx, ry, rx + radius, ry);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = design.color || "#ffffff";
-  ctx.fillText(text, x, y, maxTextWidth);
-  ctx.restore();
-}
-
 export function isPublicationTransformModified(transform: PublicationImageTransform, channel: string): boolean {
   const defaults = buildPublicationDefaultTransform(channel);
   return (
@@ -483,8 +430,7 @@ export function isPublicationTransformModified(transform: PublicationImageTransf
     Math.abs((transform.zoom || 1) - 1) > 0.001 ||
     Math.abs(transform.offsetX || 0) > 0.001 ||
     Math.abs(transform.offsetY || 0) > 0.001 ||
-    getPublicationBackgroundMode(transform) !== getPublicationBackgroundMode(defaults) ||
-    JSON.stringify(getPublicationDesign(transform)) !== JSON.stringify(getPublicationDesign(defaults))
+    getPublicationBackgroundMode(transform) !== getPublicationBackgroundMode(defaults)
   );
 }
 
@@ -598,7 +544,6 @@ export async function renderPublicationImageAsset(params: {
     }
 
     ctx.drawImage(img, dx, dy, drawW, drawH);
-    drawPublicationDesignOverlay(ctx, cw, ch, transform);
     const outputType = backgroundMode === "transparent" ? "image/png" : (type || "image/jpeg");
     return { name: name.replace(/\.[^.]+$/, "") + (backgroundMode === "transparent" ? ".png" : name.match(/\.[^.]+$/)?.[0] || ".jpg"), type: outputType, dataUrl: canvas.toDataURL(outputType, 0.92) };
   } finally {

@@ -535,13 +535,32 @@ export default function PublishModal({
     const rawLabel = String(detail?.label || "").trim();
     const simplifiedLabel = simplifyChannelDetail(rawLabel);
     if (!simplifiedLabel) return null;
-    const desktopLabel = truncateText(simplifiedLabel, 34);
-    const mobileLabel = truncateText(simplifiedLabel, 24);
+    const desktopLabel = truncateText(simplifiedLabel, 38);
+    const mobileLabel = truncateText(simplifiedLabel, 56);
+    const helperLabel = (() => {
+      switch (key) {
+        case "inrcy_site":
+          return "Lien du site iNrCy";
+        case "site_web":
+          return "Lien du site web";
+        case "gmb":
+          return "Fiche connectée";
+        case "facebook":
+          return "Page connectée";
+        case "instagram":
+          return "Compte connecté";
+        case "linkedin":
+          return "Page / profil connecté";
+        default:
+          return "Canal connecté";
+      }
+    })();
     return {
       href: detail?.href || null,
       desktopLabel,
       mobileLabel,
       fullLabel: simplifiedLabel,
+      helperLabel,
     };
   };
 
@@ -1637,17 +1656,14 @@ export default function PublishModal({
                     style={{ width: 18, height: 18, accentColor: "#4cc3ff", cursor: isConnected ? "pointer" : "not-allowed", flexShrink: 0 }}
                   />
                   <span style={{ width: 10, height: 10, borderRadius: 999, background: isConnected ? "#43d17d" : "#ff6b7d", boxShadow: isConnected ? "0 0 12px rgba(67,209,125,0.35)" : "0 0 12px rgba(255,107,125,0.25)", flexShrink: 0 }} />
-                  <span style={{ minWidth: 0, flex: 1, display: "flex", alignItems: "center", gap: 8, textAlign: "left", overflow: "hidden" }}>
-                    <span style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: 800, flexShrink: 0 }}>
+                  <span style={{ minWidth: 0, display: "grid", gap: isMobile ? 0 : 2, textAlign: "left" }}>
+                    <span style={{ minWidth: 0, whiteSpace: "normal", overflow: "hidden", textOverflow: "ellipsis", fontWeight: 800 }}>
                       {CHANNEL_LABELS[key]}
                     </span>
                     {!isMobile && info ? (
-                      <>
-                        <span style={{ width: 4, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-                        <span style={{ minWidth: 0, fontSize: 12, lineHeight: 1.35, color: "rgba(255,255,255,0.68)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {info.desktopLabel}
-                        </span>
-                      </>
+                      <span style={{ fontSize: 11, lineHeight: 1.35, color: "rgba(255,255,255,0.62)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {info.desktopLabel}
+                      </span>
                     ) : null}
                   </span>
                 </span>
@@ -1688,16 +1704,30 @@ export default function PublishModal({
                           top: "calc(100% + 8px)",
                           right: 10,
                           zIndex: 20,
-                          maxWidth: isMobile ? "min(200px, calc(100vw - 72px))" : 240,
-                          borderRadius: 999,
-                          padding: isMobile ? "8px 12px" : "10px 14px",
+                          width: isMobile ? "min(280px, calc(100vw - 56px))" : 280,
+                          borderRadius: 14,
+                          padding: 12,
                           background: "rgba(9,16,31,0.96)",
                           border: "1px solid rgba(148,163,184,0.22)",
                           boxShadow: "0 18px 40px rgba(0,0,0,0.34)",
+                          display: "grid",
+                          gap: 8,
                           textAlign: "left",
                         }}
                       >
-                        <div style={{ fontSize: 12, lineHeight: 1.35, color: "rgba(255,255,255,0.92)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{info.mobileLabel}</div>
+                        <div style={{ fontSize: 11, letterSpacing: 0.2, textTransform: "uppercase", color: "rgba(255,255,255,0.56)" }}>{info.helperLabel}</div>
+                        <div style={{ fontSize: 13, lineHeight: 1.45, color: "rgba(255,255,255,0.92)", overflowWrap: "anywhere" }}>{info.mobileLabel}</div>
+                        {info.href ? (
+                          <a
+                            href={info.href}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            style={{ fontSize: 12, color: "#7dd3fc", textDecoration: "none", fontWeight: 700 }}
+                          >
+                            Ouvrir le lien ↗
+                          </a>
+                        ) : null}
                       </div>
                     ) : null}
                   </>
@@ -1839,95 +1869,80 @@ export default function PublishModal({
                   {renderLimitCounter("Contenu", activeCard === "site" ? stripSiteTextFormatting(getDisplayPost(activeCard).content).length : getDisplayPost(activeCard).content.length, CHANNEL_TEXT_GUIDELINES[activeCard].content)}
                 </div>
                 <div>
-                  {(() => {
-                    const currentPost = getDisplayPost(activeCard);
-                    const ctaMode = currentPost.ctaMode || "none";
-                    const updateTarget = activeCard === "site" ? "site_web" : activeCard;
-                    const ctaGridColumns = isMobile
-                      ? "1fr"
-                      : ctaMode === "website"
-                        ? "minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1fr)"
-                        : ctaMode === "call" || ctaMode === "custom"
-                          ? "minmax(0, 0.9fr) minmax(0, 1.1fr)"
-                          : "minmax(0, 0.9fr)";
-
-                    return (
-                      <>
-                        <div style={{ display: "grid", gridTemplateColumns: ctaGridColumns, gap: 10, alignItems: "start" }}>
-                          <div>
-                            <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>CTA</div>
-                            <select
-                              value={ctaMode}
-                              onChange={(e) => applyCtaModePrefill(activeCard, e.target.value as BoosterCtaMode)}
-                              style={darkSelectStyle}
-                            >
-                              {CTA_MODE_OPTIONS[activeCard].map((option) => (
-                                <option key={option.value} value={option.value} style={darkOptionStyle}>{option.label}</option>
-                              ))}
-                            </select>
-                          </div>
-                          {ctaMode === "website" ? (
-                            <>
-                              <div>
-                                <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Lien du CTA</div>
-                                <input
-                                  value={currentPost.ctaUrl || ""}
-                                  onChange={(e) => updatePost(updateTarget, { ctaUrl: e.target.value })}
-                                  style={lightFieldStyle}
-                                  placeholder={ctaDefaults?.preferredWebsiteUrl ? `URL du site préremplie (${getWebsiteSourceLabel(ctaDefaults)})` : "URL du site (optionnel)"}
-                                />
-                              </div>
-                              <div>
-                                <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Libellé du lien</div>
-                                <input
-                                  value={currentPost.cta}
-                                  onChange={(e) => updatePost(updateTarget, { cta: e.target.value })}
-                                  style={lightFieldStyle}
-                                  placeholder={`Libellé du lien (ex : ${getChannelDefaultCtaLabel(activeCard, "website") || "Demander un devis"})`}
-                                />
-                              </div>
-                            </>
-                          ) : null}
-                          {ctaMode === "call" ? (
-                            <div>
-                              <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Téléphone</div>
-                              <input
-                                value={currentPost.ctaPhone || ""}
-                                onChange={(e) => updatePost(updateTarget, { ctaPhone: e.target.value })}
-                                style={lightFieldStyle}
-                                placeholder={ctaDefaults?.phone ? "Téléphone prérempli depuis Mon profil" : "Téléphone (optionnel)"}
-                              />
-                            </div>
-                          ) : null}
-                          {ctaMode === "custom" ? (
-                            <div>
-                              <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Libellé du CTA</div>
-                              <input
-                                value={currentPost.cta}
-                                onChange={(e) => updatePost(updateTarget, { cta: e.target.value })}
-                                style={lightFieldStyle}
-                                placeholder={activeCard === "gmb" ? "Ex : En savoir plus" : "Ex : Contactez-nous"}
-                              />
-                            </div>
-                          ) : null}
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : ((getDisplayPost(activeCard).ctaMode || "none") === "none" ? "minmax(0, 1fr)" : "minmax(0, 0.95fr) minmax(0, 1.05fr)"), gap: 10, alignItems: "start" }}>
+                    <div>
+                      <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>CTA</div>
+                      <select
+                        value={getDisplayPost(activeCard).ctaMode || "none"}
+                        onChange={(e) => applyCtaModePrefill(activeCard, e.target.value as BoosterCtaMode)}
+                        style={darkSelectStyle}
+                      >
+                        {CTA_MODE_OPTIONS[activeCard].map((option) => (
+                          <option key={option.value} value={option.value} style={darkOptionStyle}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {(getDisplayPost(activeCard).ctaMode || "none") === "website" ? (
+                      <div>
+                        <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Lien du CTA</div>
+                        <input
+                          value={getDisplayPost(activeCard).ctaUrl || ""}
+                          onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { ctaUrl: e.target.value })}
+                          style={lightFieldStyle}
+                          placeholder={ctaDefaults?.preferredWebsiteUrl ? `URL du site préremplie (${getWebsiteSourceLabel(ctaDefaults)})` : "URL du site (optionnel)"}
+                        />
+                      </div>
+                    ) : null}
+                    {(getDisplayPost(activeCard).ctaMode || "none") === "call" ? (
+                      <div>
+                        <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Téléphone</div>
+                        <input
+                          value={getDisplayPost(activeCard).ctaPhone || ""}
+                          onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { ctaPhone: e.target.value })}
+                          style={lightFieldStyle}
+                          placeholder={ctaDefaults?.phone ? "Téléphone prérempli depuis Mon profil" : "Téléphone (optionnel)"}
+                        />
+                      </div>
+                    ) : null}
+                    {(getDisplayPost(activeCard).ctaMode || "none") === "custom" ? (
+                      <div>
+                        <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Libellé du CTA</div>
+                        <input
+                          value={getDisplayPost(activeCard).cta}
+                          onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { cta: e.target.value })}
+                          style={lightFieldStyle}
+                          placeholder={activeCard === "gmb" ? "Ex : En savoir plus" : "Ex : Contactez-nous"}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                  <div style={{ fontSize: 11, marginTop: 6, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
+                    {getCtaModeHelp(activeCard, getDisplayPost(activeCard).ctaMode || "none")}
+                  </div>
+                  {(getDisplayPost(activeCard).ctaMode || "none") === "website" ? (
+                    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>Libellé du lien</div>
+                        <input
+                          value={getDisplayPost(activeCard).cta}
+                          onChange={(e) => updatePost(activeCard === "site" ? "site_web" : activeCard, { cta: e.target.value })}
+                          style={lightFieldStyle}
+                          placeholder={`Libellé du lien (ex : ${getChannelDefaultCtaLabel(activeCard, "website") || "Demander un devis"})`}
+                        />
+                      </div>
+                      {ctaDefaults?.preferredWebsiteUrl ? (
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
+                          Valeur par défaut disponible depuis {getWebsiteSourceLabel(ctaDefaults).toLowerCase()} : {ctaDefaults.preferredWebsiteUrl}
                         </div>
-                        <div style={{ fontSize: 11, marginTop: 6, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
-                          {getCtaModeHelp(activeCard, ctaMode)}
-                        </div>
-                        {ctaMode === "website" && ctaDefaults?.preferredWebsiteUrl ? (
-                          <div style={{ fontSize: 11, marginTop: 8, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
-                            Valeur par défaut disponible depuis {getWebsiteSourceLabel(ctaDefaults).toLowerCase()} : {ctaDefaults.preferredWebsiteUrl}
-                          </div>
-                        ) : null}
-                        {ctaMode === "call" && ctaDefaults?.phone ? (
-                          <div style={{ fontSize: 11, marginTop: 8, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
-                            Valeur par défaut disponible depuis Mon profil : {ctaDefaults.phone}
-                          </div>
-                        ) : null}
-                        {(ctaMode === "website" || ctaMode === "custom") ? renderLimitCounter("CTA", currentPost.cta.length, CHANNEL_TEXT_GUIDELINES[activeCard].cta) : null}
-                      </>
-                    );
-                  })()}
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {(getDisplayPost(activeCard).ctaMode || "none") === "call" && ctaDefaults?.phone ? (
+                    <div style={{ fontSize: 11, marginTop: 8, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
+                      Valeur par défaut disponible depuis Mon profil : {ctaDefaults.phone}
+                    </div>
+                  ) : null}
+                  {((getDisplayPost(activeCard).ctaMode || "none") === "website" || (getDisplayPost(activeCard).ctaMode || "none") === "custom") ? renderLimitCounter("CTA", getDisplayPost(activeCard).cta.length, CHANNEL_TEXT_GUIDELINES[activeCard].cta) : null}
                 </div>
                 {activeCard === "instagram" ? (
                   <div>

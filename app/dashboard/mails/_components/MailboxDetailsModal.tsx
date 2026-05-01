@@ -1,7 +1,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import styles from "../mails.module.css";
-import { ChannelImageRetouchCardsPanel } from "@/app/dashboard/_components/ChannelImageRetouchTool";
+import { ChannelImageAdapterCardsPanel } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import {
   MAILBOX_RECIPIENTS_PAGE_SIZE,
   type CampaignRecipientsFilterId,
@@ -67,8 +67,11 @@ type MailboxDetailsModalProps = {
   activePublicationEditPreset: any;
   activePublicationEditAssets: any[];
   togglePublicationImage: (channel: string, imageKey: string) => void;
-  openPublicationRetouch: (channel: string, imageKey: string) => void;
+  openPublicationImageAdapter: (channel: string, imageKey: string) => void;
   removePublicationImage: (channel: string, imageKey: string) => void;
+  removePublicationImageEverywhere?: (channel: string, imageKey: string) => void;
+  resetPublicationImage?: (channel: string, imageKey: string) => void;
+  movePublicationImage?: (channel: string, imageKey: string, direction: -1 | 1) => void;
   addPublicationFiles: (fileList: FileList | null) => void;
   saveChannelPublication: () => Promise<void>;
   deleteChannelPublication: () => Promise<void>;
@@ -115,8 +118,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     activePublicationEditPreset,
     activePublicationEditAssets,
     togglePublicationImage,
-    openPublicationRetouch,
+    openPublicationImageAdapter,
     removePublicationImage,
+    removePublicationImageEverywhere,
+    resetPublicationImage,
+    movePublicationImage,
     addPublicationFiles,
     saveChannelPublication,
     deleteChannelPublication,
@@ -563,7 +569,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                           </div>
                                         ) : null}
                                         <div style={{ display: "grid", gap: 12 }}>
-                                          <div className={styles.publicationLabel}>Pièces jointes</div>
+                                          <div className={styles.publicationLabel}>Images de la publication</div>
                                           <input
                                             id={publicationEditFileInputId}
                                             type="file"
@@ -587,27 +593,74 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
                                           <div style={{ display: "grid", gap: 8 }}>
                                             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
-                                              Cochez les images à publier puis ouvrez la retouche uniquement quand vous voulez recadrer une image.
+                                              iNrCy prépare automatiquement le rendu du canal. Utilisez Adapter seulement si le cadrage doit être corrigé. Site iNrCy et Site web restent indépendants.
                                             </div>
-                                            <ChannelImageRetouchCardsPanel
+                                            <ChannelImageAdapterCardsPanel
                                               tabs={[{ key: activePublicationEditChannelKey, label: activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey) }]}
                                               activeChannel={activePublicationEditChannelKey}
                                               onActiveChannelChange={() => {}}
                                               channelTitle={activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey)}
-                                              formatLabel={`Format final : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`}
+                                              formatLabel={activePublicationEditChannelKey === "inrcy_site" || activePublicationEditChannelKey === "site_web" ? "Rendu site / iframe" : `Rendu final : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`}
                                               aspectRatio={`${activePublicationEditPreset.width} / ${activePublicationEditPreset.height}`}
-                                              items={activePublicationEditAssets.map((asset, index) => ({
-                                                key: asset.key,
-                                                previewUrl: asset.previewUrl,
-                                                included: asset.selected,
-                                                title: `Image ${index + 1}`,
-                                                subtitle: asset.selected ? "Publiée sur ce canal" : "Non publiée sur ce canal",
-                                                fitLabel: asset.transform.fit === "cover" ? "Remplir" : "Adapter",
-                                                backgroundMode: getPublicationBackgroundMode(asset.transform),
-                                                onToggle: () => togglePublicationImage(activePublicationEditChannelKey, asset.key),
-                                                onRetouch: () => openPublicationRetouch(activePublicationEditChannelKey, asset.key),
-                                                onRemove: () => removePublicationImage(activePublicationEditChannelKey, asset.key),
-                                              }))}
+                                              publicationPreview={(() => {
+                                                const selectedAssets = activePublicationEditAssets.filter((asset) => asset.selected);
+                                                const firstAsset = selectedAssets[0] || null;
+                                                const hashtags = publicationEditForm.hashtags
+                                                  .split(/[;,\n\s]+/)
+                                                  .map((tag) => tag.trim().replace(/^#+/, ""))
+                                                  .filter(Boolean);
+                                                return {
+                                                  channelKey: activePublicationEditChannelKey,
+                                                  channelLabel: activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey),
+                                                  title: publicationEditForm.title,
+                                                  content: publicationEditForm.content,
+                                                  cta: publicationEditForm.cta,
+                                                  hashtags,
+                                                  imageCount: selectedAssets.length,
+                                                  formatLabel: activePublicationEditChannelKey === "inrcy_site" || activePublicationEditChannelKey === "site_web" ? "Rendu site / iframe" : `Image finale : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`,
+                                                  image: firstAsset
+                                                    ? {
+                                                        previewUrl: firstAsset.previewUrl,
+                                                        transform: firstAsset.transform,
+                                                        preset: activePublicationEditPreset,
+                                                      }
+                                                    : null,
+                                                  images: selectedAssets.map((asset) => ({
+                                                    previewUrl: asset.previewUrl,
+                                                    transform: asset.transform,
+                                                    preset: activePublicationEditPreset,
+                                                  })),
+                                                };
+                                              })()}
+                                              items={activePublicationEditAssets.map((asset, index) => {
+                                                const selectedAssets = activePublicationEditAssets.filter((candidate) => candidate.selected);
+                                                const selectedIndex = selectedAssets.findIndex((candidate) => candidate.key === asset.key);
+                                                const disabledByGoogleBusinessLimit = activePublicationEditChannelKey === "gmb" && selectedAssets.length >= 1 && !asset.selected;
+                                                return {
+                                                  key: asset.key,
+                                                  previewUrl: asset.previewUrl,
+                                                  included: asset.selected,
+                                                  disabled: disabledByGoogleBusinessLimit,
+                                                  title: `Image ${index + 1}`,
+                                                  subtitle: disabledByGoogleBusinessLimit
+                                                    ? "Une seule photo par publication Google Business"
+                                                    : asset.selected
+                                                      ? "Publiée sur ce canal"
+                                                      : "Non publiée sur ce canal",
+                                                  fitLabel: asset.transform.fit === "cover" ? "Remplir" : "Adapter",
+                                                  backgroundMode: getPublicationBackgroundMode(asset.transform),
+                                                  backgroundColor: asset.transform.backgroundColor,
+                                                  transform: asset.transform,
+                                                  preset: activePublicationEditPreset,
+                                                  onToggle: () => togglePublicationImage(activePublicationEditChannelKey, asset.key),
+                                                  onAdapt: () => openPublicationImageAdapter(activePublicationEditChannelKey, asset.key),
+                                                  onReset: resetPublicationImage ? () => resetPublicationImage(activePublicationEditChannelKey, asset.key) : undefined,
+                                                  onRemove: asset.selected ? () => togglePublicationImage(activePublicationEditChannelKey, asset.key) : undefined,
+                                                  onRemoveEverywhere: removePublicationImageEverywhere ? () => removePublicationImageEverywhere(activePublicationEditChannelKey, asset.key) : () => removePublicationImage(activePublicationEditChannelKey, asset.key),
+                                                  onMovePrevious: movePublicationImage && asset.selected && selectedIndex > 0 ? () => movePublicationImage(activePublicationEditChannelKey, asset.key, -1) : undefined,
+                                                  onMoveNext: movePublicationImage && asset.selected && selectedIndex >= 0 && selectedIndex < selectedAssets.length - 1 ? () => movePublicationImage(activePublicationEditChannelKey, asset.key, 1) : undefined,
+                                                };
+                                              })}
                                               buttonClassName={styles.btnGhost}
                                               pillButtonStyle={pillBtn}
                                               pillButtonActiveStyle={pillBtnActive}
@@ -803,7 +856,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                         {hasAttachments ? (
                           <section className={styles.detailSectionCard}>
                             <div className={styles.detailSectionHeader}>
-                              <div className={styles.messageHeaderTitle}>Pièces jointes</div>
+                              <div className={styles.messageHeaderTitle}>Images de la publication</div>
                             </div>
 
                             <div className={styles.attachmentsPanel}>

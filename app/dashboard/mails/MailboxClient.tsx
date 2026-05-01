@@ -13,7 +13,7 @@ import MailboxToolbar from "./_components/MailboxToolbar";
 import MailboxList from "./_components/MailboxList";
 import MailboxSearchPanel from "./_components/MailboxSearchPanel";
 import MailboxDetailsModal from "./_components/MailboxDetailsModal";
-import MailboxPublicationRetouchModal from "./_components/MailboxPublicationRetouchModal";
+import MailboxPublicationImageAdapterModal from "./_components/MailboxPublicationImageAdapterModal";
 import MailboxComposeModal from "./_components/MailboxComposeModal";
 import {
   ALL_FOLDERS,
@@ -54,7 +54,6 @@ import {
   getPublicationBackgroundMode,
   buildPublicationDefaultTransform,
   getPublicationChannelStatuses,
-  getPublicationDesign,
   hasAttachmentFields,
   firstNonEmpty,
   historyEmptyState,
@@ -101,7 +100,6 @@ import {
   type PublicationChannelImagesState,
   type PublicationImageAsset,
   type PublicationImageBackgroundMode,
-  type PublicationImageDesign,
   type PublicationImageFitMode,
   type PublicationImageTransform,
   type PublicationEditForm,
@@ -163,33 +161,33 @@ export default function MailboxClient() {
   const [campaignActionBusyId, setCampaignActionBusyId] = useState<string | null>(null);
   const [publicationEditForm, setPublicationEditForm] = useState<PublicationEditForm>({ title: "", content: "", cta: "", hashtags: "" });
   const [publicationEditImagesByChannel, setPublicationEditImagesByChannel] = useState<Record<string, PublicationChannelImagesState>>({});
-  const [publicationRetouchChannelKey, setPublicationRetouchChannelKey] = useState<string | null>(null);
-  const [publicationRetouchImageKey, setPublicationRetouchImageKey] = useState<string | null>(null);
-  const publicationRetouchDragRef = useRef<{ channel: string; imageKey: string; startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
-  const publicationRetouchStageRef = useRef<HTMLDivElement | null>(null);
-  const [publicationRetouchStageSize, setPublicationRetouchStageSize] = useState({ width: 0, height: 0 });
-  const [publicationRetouchImageMeta, setPublicationRetouchImageMeta] = useState<Record<string, { width: number; height: number }>>({});
-  const [isPublicationRetouchDragging, setIsPublicationRetouchDragging] = useState(false);
+  const [publicationImageAdapterChannelKey, setPublicationImageAdapterChannelKey] = useState<string | null>(null);
+  const [publicationImageAdapterImageKey, setPublicationImageAdapterImageKey] = useState<string | null>(null);
+  const publicationImageAdapterDragRef = useRef<{ channel: string; imageKey: string; startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
+  const publicationImageAdapterStageRef = useRef<HTMLDivElement | null>(null);
+  const [publicationImageAdapterStageSize, setPublicationImageAdapterStageSize] = useState({ width: 0, height: 0 });
+  const [publicationImageAdapterImageMeta, setPublicationImageAdapterImageMeta] = useState<Record<string, { width: number; height: number }>>({});
+  const [isPublicationImageAdapterDragging, setIsPublicationImageAdapterDragging] = useState(false);
 
-  const publicationRetouchChannelState = publicationRetouchChannelKey
-    ? publicationEditImagesByChannel[publicationRetouchChannelKey] || { assets: [] }
+  const publicationImageAdapterChannelState = publicationImageAdapterChannelKey
+    ? publicationEditImagesByChannel[publicationImageAdapterChannelKey] || { assets: [] }
     : null;
-  const publicationRetouchAsset =
-    publicationRetouchChannelState?.assets.find((asset) => asset.key === publicationRetouchImageKey) || null;
+  const publicationImageAdapterAsset =
+    publicationImageAdapterChannelState?.assets.find((asset) => asset.key === publicationImageAdapterImageKey) || null;
 
   useEffect(() => {
     historyPageRef.current = historyPage;
   }, [historyPage]);
 
   useEffect(() => {
-    if (!detailsOpen || !detailsEditMode || !publicationRetouchAsset) return;
-    const key = publicationRetouchAsset.key;
-    if (publicationRetouchImageMeta[key]) return;
+    if (!detailsOpen || !detailsEditMode || !publicationImageAdapterAsset) return;
+    const key = publicationImageAdapterAsset.key;
+    if (publicationImageAdapterImageMeta[key]) return;
     let cancelled = false;
     const image = new window.Image();
     image.onload = () => {
       if (cancelled) return;
-      setPublicationRetouchImageMeta((prev) => ({
+      setPublicationImageAdapterImageMeta((prev) => ({
         ...prev,
         [key]: {
           width: image.naturalWidth || image.width || 0,
@@ -197,18 +195,18 @@ export default function MailboxClient() {
         },
       }));
     };
-    image.src = publicationRetouchAsset.previewUrl;
+    image.src = publicationImageAdapterAsset.previewUrl;
     return () => {
       cancelled = true;
     };
-  }, [detailsOpen, detailsEditMode, publicationRetouchAsset?.key, publicationRetouchAsset?.previewUrl, publicationRetouchImageMeta]);
+  }, [detailsOpen, detailsEditMode, publicationImageAdapterAsset?.key, publicationImageAdapterAsset?.previewUrl, publicationImageAdapterImageMeta]);
 
   useEffect(() => {
-    if (!detailsOpen || !detailsEditMode || !publicationRetouchAsset || !publicationRetouchStageRef.current) return;
-    const node = publicationRetouchStageRef.current;
+    if (!detailsOpen || !detailsEditMode || !publicationImageAdapterAsset || !publicationImageAdapterStageRef.current) return;
+    const node = publicationImageAdapterStageRef.current;
     const updateSize = () => {
       const rect = node.getBoundingClientRect();
-      setPublicationRetouchStageSize({ width: rect.width, height: rect.height });
+      setPublicationImageAdapterStageSize({ width: rect.width, height: rect.height });
     };
     updateSize();
     const observer = new ResizeObserver(updateSize);
@@ -218,7 +216,7 @@ export default function MailboxClient() {
       observer.disconnect();
       window.removeEventListener("resize", updateSize);
     };
-  }, [detailsOpen, detailsEditMode, publicationRetouchAsset?.key]);
+  }, [detailsOpen, detailsEditMode, publicationImageAdapterAsset?.key]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -950,14 +948,14 @@ export default function MailboxClient() {
           previewUrl: String(att.url || ""),
           sourceUrl: String(att.url || "") || null,
           file: null,
-          selected: true,
+          selected: channel === "gmb" ? index === 0 : true,
           transform: { ...defaultTransform },
         }));
       nextState[channel] = { assets };
     }
     setPublicationEditImagesByChannel(nextState);
-    setPublicationRetouchChannelKey(null);
-    setPublicationRetouchImageKey(null);
+    setPublicationImageAdapterChannelKey(null);
+    setPublicationImageAdapterImageKey(null);
   }, [detailsOpen, detailsItem?.id, detailsChannelEntries]);
 
   const selectedAccount = useMemo(() => {
@@ -1780,23 +1778,76 @@ async function deleteDraftPermanently(id: string) {
   }
 
   function togglePublicationImage(channel: string, imageKey: string) {
-    updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === imageKey ? { ...asset, selected: !asset.selected } : asset));
+    const normalizedChannel = normalizeChannelKey(channel);
+    updatePublicationChannelAssets(normalizedChannel, (assets) => {
+      if (normalizedChannel === "gmb") {
+        const target = assets.find((asset) => asset.key === imageKey);
+        if (!target) return assets;
+        if (target.selected) {
+          return assets.map((asset) => asset.key === imageKey ? { ...asset, selected: false } : asset);
+        }
+        return assets.map((asset) => ({ ...asset, selected: asset.key === imageKey }));
+      }
+      return assets.map((asset) => asset.key === imageKey ? { ...asset, selected: !asset.selected } : asset);
+    });
   }
 
   function removePublicationImage(channel: string, imageKey: string) {
     updatePublicationChannelAssets(channel, (assets) => assets.filter((asset) => asset.key !== imageKey));
   }
 
-  function openPublicationRetouch(channel: string, imageKey: string) {
-    setPublicationRetouchChannelKey(normalizeChannelKey(channel));
-    setPublicationRetouchImageKey(imageKey);
+  function removePublicationImageEverywhere(channel: string, imageKey: string) {
+    const normalizedChannel = normalizeChannelKey(channel);
+    const sourceAsset = publicationEditImagesByChannel[normalizedChannel]?.assets.find((asset) => asset.key === imageKey);
+    const sourceUrl = String(sourceAsset?.sourceUrl || sourceAsset?.previewUrl || "");
+    const sourceName = String(sourceAsset?.name || "");
+    setPublicationEditImagesByChannel((prev) => {
+      const next: Record<string, PublicationChannelImagesState> = {};
+      for (const [channelKey, state] of Object.entries(prev)) {
+        next[channelKey] = {
+          assets: (state.assets || []).filter((asset) => {
+            if (asset.key === imageKey) return false;
+            const assetUrl = String(asset.sourceUrl || asset.previewUrl || "");
+            if (sourceUrl && assetUrl === sourceUrl) return false;
+            if (!sourceUrl && sourceName && asset.name === sourceName) return false;
+            return true;
+          }),
+        };
+      }
+      return next;
+    });
+  }
+
+  function resetPublicationImage(channel: string, imageKey: string) {
+    updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === imageKey ? { ...asset, transform: buildPublicationDefaultTransform(normalizeChannelKey(channel)) } : asset));
+  }
+
+  function movePublicationImage(channel: string, imageKey: string, direction: -1 | 1) {
+    updatePublicationChannelAssets(channel, (assets) => {
+      const selectedAssets = assets.filter((asset) => asset.selected);
+      const selectedIndex = selectedAssets.findIndex((asset) => asset.key === imageKey);
+      const targetSelected = selectedAssets[selectedIndex + direction];
+      if (!targetSelected) return assets;
+      const sourceIndex = assets.findIndex((asset) => asset.key === imageKey);
+      const targetIndex = assets.findIndex((asset) => asset.key === targetSelected.key);
+      if (sourceIndex < 0 || targetIndex < 0) return assets;
+      const next = assets.slice();
+      const [moved] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  }
+
+  function openPublicationImageAdapter(channel: string, imageKey: string) {
+    setPublicationImageAdapterChannelKey(normalizeChannelKey(channel));
+    setPublicationImageAdapterImageKey(imageKey);
     setDetailsActionError(null);
   }
 
-  function closePublicationRetouch() {
-    setPublicationRetouchChannelKey(null);
-    setPublicationRetouchImageKey(null);
-    publicationRetouchDragRef.current = null;
+  function closePublicationImageAdapter() {
+    setPublicationImageAdapterChannelKey(null);
+    setPublicationImageAdapterImageKey(null);
+    publicationImageAdapterDragRef.current = null;
   }
 
   function addPublicationFiles(fileList: FileList | null) {
@@ -1835,7 +1886,7 @@ async function deleteDraftPermanently(id: string) {
           previewUrl: URL.createObjectURL(file),
           sourceUrl: null,
           file,
-          selected: true,
+          selected: channel === "gmb" ? !merged.some((asset) => asset.selected) : true,
           transform: buildPublicationDefaultTransform(channel),
         });
       }
@@ -2129,8 +2180,11 @@ async function deleteDraftPermanently(id: string) {
           activePublicationEditPreset={activePublicationEditPreset}
           activePublicationEditAssets={activePublicationEditAssets}
           togglePublicationImage={togglePublicationImage}
-          openPublicationRetouch={openPublicationRetouch}
+          openPublicationImageAdapter={openPublicationImageAdapter}
           removePublicationImage={removePublicationImage}
+          removePublicationImageEverywhere={removePublicationImageEverywhere}
+          resetPublicationImage={resetPublicationImage}
+          movePublicationImage={movePublicationImage}
           addPublicationFiles={addPublicationFiles}
           saveChannelPublication={saveChannelPublication}
           deleteChannelPublication={deleteChannelPublication}
@@ -2141,21 +2195,21 @@ async function deleteDraftPermanently(id: string) {
           loadCampaignHealth={loadCampaignHealth}
         />
 
-        <MailboxPublicationRetouchModal
+        <MailboxPublicationImageAdapterModal
           open={detailsOpen}
           detailsEditMode={detailsEditMode}
-          publicationRetouchAsset={publicationRetouchAsset}
-          publicationRetouchChannelKey={publicationRetouchChannelKey}
-          publicationRetouchStageRef={publicationRetouchStageRef}
-          publicationRetouchStageSize={publicationRetouchStageSize}
-          publicationRetouchImageMeta={publicationRetouchImageMeta}
-          isPublicationRetouchDragging={isPublicationRetouchDragging}
+          publicationImageAdapterAsset={publicationImageAdapterAsset}
+          publicationImageAdapterChannelKey={publicationImageAdapterChannelKey}
+          publicationImageAdapterStageRef={publicationImageAdapterStageRef}
+          publicationImageAdapterStageSize={publicationImageAdapterStageSize}
+          publicationImageAdapterImageMeta={publicationImageAdapterImageMeta}
+          isPublicationImageAdapterDragging={isPublicationImageAdapterDragging}
           publicationEditImagesByChannel={publicationEditImagesByChannel}
-          setPublicationRetouchImageKey={setPublicationRetouchImageKey}
-          publicationRetouchDragRef={publicationRetouchDragRef}
-          setIsPublicationRetouchDragging={setIsPublicationRetouchDragging}
+          setPublicationImageAdapterImageKey={setPublicationImageAdapterImageKey}
+          publicationImageAdapterDragRef={publicationImageAdapterDragRef}
+          setIsPublicationImageAdapterDragging={setIsPublicationImageAdapterDragging}
           updatePublicationChannelAssets={updatePublicationChannelAssets}
-          closePublicationRetouch={closePublicationRetouch}
+          closePublicationImageAdapter={closePublicationImageAdapter}
         />
 
         <MailboxComposeModal
