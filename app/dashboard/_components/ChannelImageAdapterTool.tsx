@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 type BackgroundMode = "blur" | "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
 
@@ -250,44 +250,41 @@ function FinalImageFrame({
   const fit = transform.fit || "cover";
   const zoom = clampNumber(transform.zoom || 1, 0.4, 3);
 
-  const layout = useMemo(() => {
-    const iw = meta?.width || 0;
-    const ih = meta?.height || 0;
-    const cw = preset.width || 1;
-    const ch = preset.height || 1;
-    if (!iw || !ih) return null;
-    const baseScale = fit === "cover" ? Math.max(cw / iw, ch / ih) : Math.min(cw / iw, ch / ih);
-    const scale = baseScale * zoom;
-    const drawW = iw * scale;
-    const drawH = ih * scale;
-    const maxX = Math.abs(drawW - cw) / 2;
-    const maxY = Math.abs(drawH - ch) / 2;
-    const dx = (cw - drawW) / 2 - maxX * clampNumber(transform.offsetX || 0, -100, 100) / 100;
-    const dy = (ch - drawH) / 2 - maxY * clampNumber(transform.offsetY || 0, -100, 100) / 100;
-    return {
-      left: `${(dx / cw) * 100}%`,
-      top: `${(dy / ch) * 100}%`,
-      width: `${(drawW / cw) * 100}%`,
-      height: `${(drawH / ch) * 100}%`,
-    };
-  }, [fit, meta?.height, meta?.width, preset.height, preset.width, transform.offsetX, transform.offsetY, zoom]);
+  const imageWidth = meta?.width || 0;
+  const imageHeight = meta?.height || 0;
+  const canvasWidth = preset.width || 1;
+  const canvasHeight = preset.height || 1;
 
-  const coverLayout = useMemo(() => {
-    const iw = meta?.width || 0;
-    const ih = meta?.height || 0;
-    const cw = preset.width || 1;
-    const ch = preset.height || 1;
-    if (!iw || !ih) return null;
-    const scale = Math.max(cw / iw, ch / ih);
-    const drawW = iw * scale;
-    const drawH = ih * scale;
+  const layout = (() => {
+    if (!imageWidth || !imageHeight) return null;
+    const baseScale = fit === "cover" ? Math.max(canvasWidth / imageWidth, canvasHeight / imageHeight) : Math.min(canvasWidth / imageWidth, canvasHeight / imageHeight);
+    const scale = baseScale * zoom;
+    const drawW = imageWidth * scale;
+    const drawH = imageHeight * scale;
+    const maxX = Math.abs(drawW - canvasWidth) / 2;
+    const maxY = Math.abs(drawH - canvasHeight) / 2;
+    const dx = (canvasWidth - drawW) / 2 - maxX * clampNumber(transform.offsetX || 0, -100, 100) / 100;
+    const dy = (canvasHeight - drawH) / 2 - maxY * clampNumber(transform.offsetY || 0, -100, 100) / 100;
     return {
-      left: `${(((cw - drawW) / 2) / cw) * 100}%`,
-      top: `${(((ch - drawH) / 2) / ch) * 100}%`,
-      width: `${(drawW / cw) * 100}%`,
-      height: `${(drawH / ch) * 100}%`,
+      left: `${(dx / canvasWidth) * 100}%`,
+      top: `${(dy / canvasHeight) * 100}%`,
+      width: `${(drawW / canvasWidth) * 100}%`,
+      height: `${(drawH / canvasHeight) * 100}%`,
     };
-  }, [meta?.height, meta?.width, preset.height, preset.width]);
+  })();
+
+  const coverLayout = (() => {
+    if (!imageWidth || !imageHeight) return null;
+    const scale = Math.max(canvasWidth / imageWidth, canvasHeight / imageHeight);
+    const drawW = imageWidth * scale;
+    const drawH = imageHeight * scale;
+    return {
+      left: `${(((canvasWidth - drawW) / 2) / canvasWidth) * 100}%`,
+      top: `${(((canvasHeight - drawH) / 2) / canvasHeight) * 100}%`,
+      width: `${(drawW / canvasWidth) * 100}%`,
+      height: `${(drawH / canvasHeight) * 100}%`,
+    };
+  })();
 
   return (
     <div style={{ position: "relative", borderRadius: "inherit", overflow: "hidden", aspectRatio, ...previewBackgroundStyle(mode, backgroundColor), border: "1px solid rgba(255,255,255,0.08)" }}>

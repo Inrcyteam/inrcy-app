@@ -177,7 +177,7 @@ useEffect(() => {
 
     purgeAllBrowserAccountCaches();
     setActiveBrowserUserId(null);
-    await (supabase.auth.signOut as any)({ scope: "local" }).catch(() => null);
+    await (supabase.auth.signOut as (options?: { scope?: "global" | "local" | "others" }) => Promise<unknown>)({ scope: "local" }).catch(() => null);
 
     const { error } = await supabase.auth.setSession({ access_token, refresh_token });
     if (error) {

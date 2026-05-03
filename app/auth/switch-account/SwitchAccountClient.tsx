@@ -29,7 +29,7 @@ export default function SwitchAccountClient({ currentEmail, expectedEmail, conti
       const supabase = createClient();
       purgeAllBrowserAccountCaches();
       setActiveBrowserUserId(null);
-      await (supabase.auth.signOut as any)({ scope: "local" });
+      await (supabase.auth.signOut as (options?: { scope?: "global" | "local" | "others" }) => Promise<unknown>)({ scope: "local" });
       window.location.replace(nextPath);
     } catch (e) {
       console.error(e);

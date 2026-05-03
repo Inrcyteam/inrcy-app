@@ -114,7 +114,7 @@ function renderMediaBlock(article: Record<string, unknown>, idPrefix: string) {
         <div class="mediaFallback" aria-hidden="true">Image indisponible</div>
       </div>`;
   }
-  const slides = images.map((img, imageIndex) => `
+  const slides = images.map((img) => `
     <div class="mediaSlide" data-media-slide>
       <img class="media" src="${safeAttr(stableImageSrc(img))}" data-original-src="${safeAttr(img)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
     </div>

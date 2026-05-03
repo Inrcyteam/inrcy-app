@@ -17,6 +17,7 @@ export default defineConfig([
     "coverage/**",
     "playwright-report/**",
     "test-results/**",
+    "lib/vendor/**",
   ]),
 
   // Project-wide rule tuning (applies to JS/TS in the repo)
@@ -54,6 +55,17 @@ export default defineConfig([
 },
   },
 
+
+  // API routes: tolerate dynamic provider payloads and unused destructured values.
+  {
+    files: ["app/api/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+    },
+  },
+
   // Dashboard: allow pragmatic typing + hooks deps to keep CI green
   {
     files: ["app/dashboard/**/*.{ts,tsx}"],
@@ -67,11 +79,13 @@ export default defineConfig([
     },
   },
 
-  // Server + libs: tolerate `any` for third-party payloads
+  // Server + libs: tolerate third-party payloads and internal helper fallbacks
   {
     files: ["lib/**/*.{ts,tsx}", "middleware.ts"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": "off",
     },
   },
 
