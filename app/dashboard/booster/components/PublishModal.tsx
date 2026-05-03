@@ -1685,10 +1685,11 @@ export default function PublishModal({
                         onClick={(event) => event.stopPropagation()}
                         style={{
                           position: "absolute",
-                          top: "calc(100% + 8px)",
-                          right: 10,
+                          top: "50%",
+                          right: 50,
+                          transform: "translateY(-50%)",
                           zIndex: 20,
-                          maxWidth: isMobile ? "min(200px, calc(100vw - 72px))" : 240,
+                          maxWidth: isMobile ? "min(200px, calc(100% - 70px))" : 240,
                           borderRadius: 999,
                           padding: isMobile ? "8px 12px" : "10px 14px",
                           background: "rgba(9,16,31,0.96)",

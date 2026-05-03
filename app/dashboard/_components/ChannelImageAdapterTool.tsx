@@ -165,6 +165,20 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function useViewportWidth(defaultWidth = 1440) {
+  const [viewportWidth, setViewportWidth] = useState<number>(typeof window === "undefined" ? defaultWidth : window.innerWidth);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => setViewportWidth(window.innerWidth);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return viewportWidth;
+}
+
 function cleanText(value?: string | null) {
   return String(value || "")
     .replace(/<br\s*\/?>/gi, "\n")
@@ -392,34 +406,130 @@ function PreviewBlockShell({
   children: React.ReactNode;
   note?: string;
 }) {
+  const viewportWidth = useViewportWidth();
+  const isMobile = viewportWidth <= 640;
+
   return (
-    <div style={{ display: "grid", gap: 12, padding: 14, borderRadius: 20, border: "1px solid rgba(76,195,255,0.16)", background: "linear-gradient(180deg, rgba(76,195,255,0.075), rgba(255,255,255,0.025))", minWidth: 0 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+    <section
+      style={{
+        display: "grid",
+        gap: isMobile ? 10 : 12,
+        padding: isMobile ? 12 : 16,
+        borderRadius: isMobile ? 18 : 22,
+        border: "1px solid rgba(76,195,255,0.18)",
+        background: "linear-gradient(180deg, rgba(76,195,255,0.090), rgba(255,255,255,0.030))",
+        boxShadow: "0 18px 55px rgba(2,6,23,0.18)",
+        minWidth: 0,
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 12, opacity: 0.68 }}>{eyebrow}</div>
-          <div style={{ fontWeight: 900 }}>{title}</div>
+          <div style={{ fontWeight: 950, fontSize: isMobile ? 15 : 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
         </div>
-        <div style={{ fontSize: 11, opacity: 0.7 }}>{formatLabel || "Rendu final"}</div>
+        <div style={{ fontSize: 11, opacity: 0.72, padding: "5px 8px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.045)" }}>{formatLabel || "Rendu final"}</div>
       </div>
       {children}
-      {note ? <div style={{ fontSize: 11, opacity: 0.62 }}>{note}</div> : null}
-    </div>
+      {note && !isMobile ? <div style={{ fontSize: 11, opacity: 0.62 }}>{note}</div> : null}
+    </section>
   );
 }
 
 function DeviceGrid({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(235px, 1fr))", gap: 14, alignItems: "start", minWidth: 0 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14, alignItems: "start", minWidth: 0 }}>
       {children}
     </div>
   );
 }
 
-function DeviceCard({ label, children }: { label: "Desktop" | "Mobile"; children: React.ReactNode }) {
+function DeviceCard({ label, children, compact = false }: { label: "Desktop" | "Mobile"; children: React.ReactNode; compact?: boolean }) {
   return (
-    <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+    <div style={{ display: "grid", gap: compact ? 7 : 8, minWidth: 0 }}>
       <div style={{ fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.68 }}>{label}</div>
       {children}
+    </div>
+  );
+}
+
+function DevicePreviewSwitcher({ desktop, mobile }: { desktop: React.ReactNode; mobile: React.ReactNode }) {
+  const viewportWidth = useViewportWidth();
+  const isMobileViewport = viewportWidth <= 640;
+  const [active, setActive] = useState<"mobile" | "desktop">("mobile");
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+
+  if (!isMobileViewport) {
+    return (
+      <DeviceGrid>
+        <DeviceCard label="Desktop">{desktop}</DeviceCard>
+        <DeviceCard label="Mobile">{mobile}</DeviceCard>
+      </DeviceGrid>
+    );
+  }
+
+  const showDesktop = active === "desktop";
+  const activeLabel = showDesktop ? "Desktop" : "Mobile";
+  const goPrevious = () => setActive((value) => (value === "mobile" ? "desktop" : "mobile"));
+  const goNext = goPrevious;
+
+  return (
+    <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 4, borderRadius: 999, background: "rgba(255,255,255,0.055)", border: "1px solid rgba(255,255,255,0.08)" }}>
+        {(["mobile", "desktop"] as const).map((mode) => {
+          const selected = active === mode;
+          return (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setActive(mode)}
+              style={{
+                minHeight: 34,
+                border: selected ? "1px solid rgba(76,195,255,0.42)" : "1px solid transparent",
+                borderRadius: 999,
+                background: selected ? "rgba(76,195,255,0.18)" : "transparent",
+                color: "#fff",
+                fontWeight: 900,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              {mode === "mobile" ? "Mobile" : "Desktop"}
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        onTouchStart={(event) => setTouchStartX(event.touches[0]?.clientX ?? null)}
+        onTouchEnd={(event) => {
+          if (touchStartX === null) return;
+          const endX = event.changedTouches[0]?.clientX ?? touchStartX;
+          const delta = endX - touchStartX;
+          if (Math.abs(delta) > 42) setActive(delta < 0 ? "desktop" : "mobile");
+          setTouchStartX(null);
+        }}
+        style={{
+          position: "relative",
+          minWidth: 0,
+          borderRadius: 18,
+          padding: 10,
+          background: "rgba(2,6,23,0.24)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          overflow: "hidden",
+          touchAction: "pan-y",
+        }}
+      >
+        <DeviceCard label={activeLabel} compact>{showDesktop ? desktop : mobile}</DeviceCard>
+
+        <button type="button" onClick={goPrevious} aria-label="Aperçu précédent" style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", width: 32, height: 32, borderRadius: 999, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(2,6,23,0.54)", color: "#fff", cursor: "pointer" }}>‹</button>
+        <button type="button" onClick={goNext} aria-label="Aperçu suivant" style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", width: 32, height: 32, borderRadius: 999, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(2,6,23,0.54)", color: "#fff", cursor: "pointer" }}>›</button>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "center", gap: 7 }}>
+        <button type="button" onClick={() => setActive("mobile")} aria-label="Voir l'aperçu mobile" style={{ width: active === "mobile" ? 18 : 7, height: 7, borderRadius: 999, border: 0, padding: 0, background: active === "mobile" ? "#ffffff" : "rgba(255,255,255,0.42)", cursor: "pointer", transition: "width 160ms ease" }} />
+        <button type="button" onClick={() => setActive("desktop")} aria-label="Voir l'aperçu desktop" style={{ width: active === "desktop" ? 18 : 7, height: 7, borderRadius: 999, border: 0, padding: 0, background: active === "desktop" ? "#ffffff" : "rgba(255,255,255,0.42)", cursor: "pointer", transition: "width 160ms ease" }} />
+      </div>
     </div>
   );
 }
@@ -721,10 +831,10 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
     return (
       <>
         <PreviewBlockShell eyebrow={isInrcySite ? "Site iNrCy — rendu générateur" : "Site web — rendu iframe intégré"} title={preview.channelLabel} formatLabel={preview.formatLabel || "Rendu iframe"} note="Aperçu séparé desktop/mobile. Dès qu’il y a 2 images ou plus, le site passe en carousel. Cliquez sur une image pour l’ouvrir en grand.">
-          <DeviceGrid>
-            <DeviceCard label="Desktop"><SitePreviewCard mode="desktop" title={title} content={content} cta={cta} images={images} isInrcySite={isInrcySite} onOpen={openLightbox} /></DeviceCard>
-            <DeviceCard label="Mobile"><SitePreviewCard mode="mobile" title={title} content={content} cta={cta} images={images} isInrcySite={isInrcySite} onOpen={openLightbox} /></DeviceCard>
-          </DeviceGrid>
+          <DevicePreviewSwitcher
+            desktop={<SitePreviewCard mode="desktop" title={title} content={content} cta={cta} images={images} isInrcySite={isInrcySite} onOpen={openLightbox} />}
+            mobile={<SitePreviewCard mode="mobile" title={title} content={content} cta={cta} images={images} isInrcySite={isInrcySite} onOpen={openLightbox} />}
+          />
         </PreviewBlockShell>
         <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="16 / 10" fallbackMode="color" onClose={closeLightbox} />
       </>
@@ -735,10 +845,10 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
     return (
       <>
         <PreviewBlockShell eyebrow="Aperçu Instagram" title={preview.channelLabel} formatLabel={preview.formatLabel || "Rendu final"} note="Instagram : desktop avec média à gauche et légende à droite. Mobile : image puis contenu en dessous. Carousel simulé si plusieurs photos.">
-          <DeviceGrid>
-            <DeviceCard label="Desktop"><InstagramPreviewCard mode="desktop" titleValue={titleValue} title={title} content={content} cta={cta} hashtags={hashtags} images={images} onOpen={openLightbox} /></DeviceCard>
-            <DeviceCard label="Mobile"><InstagramPreviewCard mode="mobile" titleValue={titleValue} title={title} content={content} cta={cta} hashtags={hashtags} images={images} onOpen={openLightbox} /></DeviceCard>
-          </DeviceGrid>
+          <DevicePreviewSwitcher
+            desktop={<InstagramPreviewCard mode="desktop" titleValue={titleValue} title={title} content={content} cta={cta} hashtags={hashtags} images={images} onOpen={openLightbox} />}
+            mobile={<InstagramPreviewCard mode="mobile" titleValue={titleValue} title={title} content={content} cta={cta} hashtags={hashtags} images={images} onOpen={openLightbox} />}
+          />
         </PreviewBlockShell>
         <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="4 / 5" fallbackMode="black" onClose={closeLightbox} />
       </>
@@ -749,10 +859,10 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
     return (
       <>
         <PreviewBlockShell eyebrow="Aperçu Google Business" title={preview.channelLabel} formatLabel={preview.formatLabel || "Rendu final"} note="Google Business : photo en haut, contenu en dessous, en desktop comme en mobile.">
-          <DeviceGrid>
-            <DeviceCard label="Desktop"><GoogleBusinessPreviewCard mode="desktop" title={title} content={content} cta={cta} image={firstImage} onOpen={() => openLightbox(0)} /></DeviceCard>
-            <DeviceCard label="Mobile"><GoogleBusinessPreviewCard mode="mobile" title={title} content={content} cta={cta} image={firstImage} onOpen={() => openLightbox(0)} /></DeviceCard>
-          </DeviceGrid>
+          <DevicePreviewSwitcher
+            desktop={<GoogleBusinessPreviewCard mode="desktop" title={title} content={content} cta={cta} image={firstImage} onOpen={() => openLightbox(0)} />}
+            mobile={<GoogleBusinessPreviewCard mode="mobile" title={title} content={content} cta={cta} image={firstImage} onOpen={() => openLightbox(0)} />}
+          />
         </PreviewBlockShell>
         <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="4 / 3" fallbackMode="color" onClose={closeLightbox} />
       </>
@@ -763,10 +873,10 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   return (
     <>
       <PreviewBlockShell eyebrow={`Aperçu ${networkLabel}`} title={preview.channelLabel} formatLabel={preview.formatLabel || "Rendu final"} note={`${networkLabel} : texte au-dessus, photos empilées en dessous. Clic sur les photos = carousel.`}>
-        <DeviceGrid>
-          <DeviceCard label="Desktop"><FeedPreviewCard mode="desktop" channel={isLinkedin ? "linkedin" : "facebook"} title={title} content={content} cta={cta} images={images} onOpen={openLightbox} /></DeviceCard>
-          <DeviceCard label="Mobile"><FeedPreviewCard mode="mobile" channel={isLinkedin ? "linkedin" : "facebook"} title={title} content={content} cta={cta} images={images} onOpen={openLightbox} /></DeviceCard>
-        </DeviceGrid>
+        <DevicePreviewSwitcher
+          desktop={<FeedPreviewCard mode="desktop" channel={isLinkedin ? "linkedin" : "facebook"} title={title} content={content} cta={cta} images={images} onOpen={openLightbox} />}
+          mobile={<FeedPreviewCard mode="mobile" channel={isLinkedin ? "linkedin" : "facebook"} title={title} content={content} cta={cta} images={images} onOpen={openLightbox} />}
+        />
       </PreviewBlockShell>
       <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="1 / 1" fallbackMode="color" onClose={closeLightbox} />
     </>
@@ -788,19 +898,7 @@ export function ChannelImageAdapterCardsPanel({
   emptyMessage,
   publicationPreview,
 }: CardsPanelProps) {
-  const [viewportWidth, setViewportWidth] = useState<number>(typeof window === "undefined" ? 1440 : window.innerWidth);
-  const [previewOpen, setPreviewOpen] = useState(false);
-
-  useEffect(() => {
-    const onResize = () => setViewportWidth(window.innerWidth);
-    onResize();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  useEffect(() => {
-    setPreviewOpen(false);
-  }, [activeChannel]);
+  const viewportWidth = useViewportWidth();
 
   const isNarrow = viewportWidth <= 560;
   const cardColumnCount = isNarrow
@@ -856,8 +954,8 @@ export function ChannelImageAdapterCardsPanel({
       <div style={{ border: "1px solid rgba(255,255,255,0.10)", borderRadius: 18, padding: isNarrow ? 10 : 14, background: "rgba(255,255,255,0.03)", display: "grid", gap: 12, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={{ display: "grid", gap: 2 }}>
-            <div style={{ fontWeight: 900 }}>{channelTitle}</div>
-            <div style={{ fontSize: 12, opacity: 0.66 }}>Sélectionnez les images à publier, changez l’ordre, puis adaptez seulement si le cadrage n’est pas bon.</div>
+            <div style={{ fontWeight: 900 }}>Images de la publication</div>
+            <div style={{ fontSize: 12, opacity: 0.66 }}>Canal : {channelTitle} · sélectionnez les images, changez l’ordre, puis adaptez seulement si le cadrage n’est pas bon.</div>
           </div>
           <div style={{ fontSize: 12, opacity: 0.78 }}>{formatLabel}</div>
         </div>
@@ -927,25 +1025,13 @@ export function ChannelImageAdapterCardsPanel({
         ) : (
           <div style={{ fontSize: 13, opacity: 0.75 }}>{emptyMessage || "Aucune image"}</div>
         )}
-
-        {publicationPreview ? (
-          <div style={{ display: "grid", gap: 8, minWidth: 0, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 12 }}>
-            <button
-              type="button"
-              className={buttonClassName}
-              onClick={() => setPreviewOpen((value) => !value)}
-              style={{ width: "100%", minHeight: 44, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "0 14px" }}
-            >
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0, fontWeight: 900 }}>
-                <span aria-hidden="true">👁</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Aperçu {channelTitle}</span>
-              </span>
-              <span style={{ opacity: 0.78, flex: "0 0 auto" }}>{previewOpen ? "Masquer ↑" : "Afficher ↓"}</span>
-            </button>
-            {previewOpen ? <ChannelPublicationPreview preview={publicationPreview} /> : null}
-          </div>
-        ) : null}
       </div>
+
+      {publicationPreview ? (
+        <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+          <ChannelPublicationPreview preview={publicationPreview} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1016,7 +1102,7 @@ export function ChannelImageAdapterModal({
     ? "calc(100vw - max(8px, env(safe-area-inset-left)) - max(8px, env(safe-area-inset-right)))"
     : "min(1580px, calc(100vw - 28px))";
   const modalHeight = isMobile
-    ? "calc(100dvh - max(8px, env(safe-area-inset-top)) - max(8px, env(safe-area-inset-bottom)))"
+    ? "calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 28px)"
     : "min(940px, calc(100dvh - 28px))";
   const modalPadding = isMobile ? 10 : 18;
   const previewMinHeight = isMobile ? 120 : isCompact ? 320 : 0;
@@ -1024,19 +1110,19 @@ export function ChannelImageAdapterModal({
   const contentGridTemplateColumns = isMobile ? undefined : isCompact ? "minmax(0, 1fr)" : "minmax(0, 1fr) 300px 320px";
   const contentGridTemplateRows = isMobile ? undefined : isCompact ? "auto auto auto" : undefined;
   return (
-    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? "max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left))" : 16, overflow: "hidden" }}>
+    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? "calc(env(safe-area-inset-top) + 14px) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left))" : 16, overflow: "hidden" }}>
       <div onClick={(event) => event.stopPropagation()} style={{ width: modalWidth, maxWidth: "100%", height: modalHeight, maxHeight: "100%", minWidth: 0, minHeight: 0, alignSelf: isMobile ? "stretch" : undefined, justifySelf: isMobile ? "stretch" : undefined, borderRadius: isMobile ? 20 : 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: modalPadding, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: isMobile ? 10 : 16, overflow: "hidden", boxSizing: "border-box" }}>
-        <div style={{ display: "flex", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 12, minHeight: 52, flexWrap: "wrap", minWidth: 0 }}>
+        <div style={{ display: isMobile ? "grid" : "flex", alignItems: isMobile ? "start" : "center", justifyContent: "space-between", gap: isMobile ? 8 : 12, minHeight: isMobile ? "auto" : 52, flexWrap: "wrap", minWidth: 0 }}>
           <div style={{ minWidth: 0, flex: "1 1 280px" }}>
-            <div style={{ fontWeight: 900, fontSize: isMobile ? 16 : 18, whiteSpace: isMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.15, overflowWrap: "anywhere" }}>{title}</div>
+            <div style={{ fontWeight: 900, fontSize: isMobile ? 16 : 18, whiteSpace: isMobile ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, overflowWrap: "anywhere" }}>{title}</div>
             <div style={{ fontSize: 12, opacity: 0.74, marginTop: 4, overflowWrap: "anywhere" }}>{subtitle}</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 1, flexWrap: "wrap", justifyContent: "flex-end", width: isMobile ? "100%" : undefined, minWidth: 0 }}>
-            {onApplyToChannelImages ? <button type="button" className={buttonClassName} onClick={onApplyToChannelImages} style={{ minWidth: 0, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center" }}>Appliquer aux images</button> : null}
-            {onApplyToSelectedChannels ? <button type="button" className={buttonClassName} onClick={onApplyToSelectedChannels} style={{ minWidth: 0, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center" }}>Appliquer aux canaux</button> : null}
-            {onResetChannel ? <button type="button" className={buttonClassName} onClick={onResetChannel} style={{ minWidth: 0, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center" }}>Réinit. canal</button> : null}
-            <button type="button" className={primaryButtonClassName || buttonClassName} onClick={onSave} style={{ minWidth: 0, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center" }}>Enregistrer</button>
-            <button type="button" className={buttonClassName} onClick={onClose} style={{ minWidth: 0, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center" }}>Fermer</button>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 8, flexShrink: 1, flexWrap: isMobile ? "nowrap" : "wrap", justifyContent: "flex-end", width: isMobile ? "100%" : undefined, minWidth: 0 }}>
+            {onApplyToChannelImages ? <button type="button" className={buttonClassName} onClick={onApplyToChannelImages} style={{ minWidth: 0, flex: isMobile ? "1 1 auto" : undefined, justifyContent: "center", fontSize: isMobile ? 11 : undefined, padding: isMobile ? "0 8px" : undefined }}>Appliquer aux images</button> : null}
+            {onApplyToSelectedChannels ? <button type="button" className={buttonClassName} onClick={onApplyToSelectedChannels} style={{ minWidth: 0, flex: isMobile ? "1 1 auto" : undefined, justifyContent: "center", fontSize: isMobile ? 11 : undefined, padding: isMobile ? "0 8px" : undefined }}>Appliquer aux canaux</button> : null}
+            {onResetChannel ? <button type="button" className={buttonClassName} onClick={onResetChannel} style={{ minWidth: 0, flex: isMobile ? "1 1 auto" : undefined, justifyContent: "center", fontSize: isMobile ? 11 : undefined, padding: isMobile ? "0 8px" : undefined }}>Réinit. canal</button> : null}
+            <button type="button" className={primaryButtonClassName || buttonClassName} onClick={onSave} aria-label="Enregistrer" title="Enregistrer" style={{ minWidth: 0, flex: isMobile ? "0 0 42px" : undefined, width: isMobile ? 42 : undefined, padding: isMobile ? 0 : undefined, justifyContent: "center", fontSize: isMobile ? 18 : undefined }}>{isMobile ? "💾" : "Enregistrer"}</button>
+            <button type="button" className={buttonClassName} onClick={onClose} aria-label="Fermer" title="Fermer" style={{ minWidth: 0, flex: isMobile ? "0 0 42px" : undefined, width: isMobile ? 42 : undefined, padding: isMobile ? 0 : undefined, justifyContent: "center", fontSize: isMobile ? 20 : undefined }}>{isMobile ? "×" : "Fermer"}</button>
           </div>
         </div>
 
@@ -1112,18 +1198,18 @@ export function ChannelImageAdapterModal({
                 <div
                   style={{
                     minHeight: 0,
-                    display: isMobile ? "flex" : "grid",
-                    gridTemplateColumns: !isMobile && isCompact ? "repeat(auto-fit, minmax(180px, 1fr))" : undefined,
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : isCompact ? "repeat(auto-fit, minmax(180px, 1fr))" : undefined,
                     alignContent: "start",
                     gap: 8,
-                    overflowX: isMobile ? "auto" : "hidden",
-                    overflowY: isMobile ? "hidden" : "auto",
+                    overflowX: "hidden",
+                    overflowY: isMobile ? "visible" : "auto",
                     paddingRight: 2,
                     paddingBottom: isMobile ? 2 : 0,
                   }}
                 >
                   {sidebarItems.map((item) => (
-                    <button key={item.key} type="button" onClick={item.onClick} style={{ display: "grid", gridTemplateColumns: "60px minmax(0, 1fr)", gap: 10, alignItems: "center", textAlign: "left", borderRadius: 16, padding: 8, border: item.active ? "1px solid rgba(76,195,255,0.45)" : "1px solid rgba(255,255,255,0.08)", background: item.active ? "rgba(76,195,255,0.08)" : "rgba(255,255,255,0.03)", color: "inherit", cursor: "pointer", minWidth: isMobile ? 220 : undefined, flex: isMobile ? "0 0 220px" : undefined }}>
+                    <button key={item.key} type="button" onClick={item.onClick} style={{ width: "100%", display: "grid", gridTemplateColumns: "60px minmax(0, 1fr)", gap: 10, alignItems: "center", textAlign: "left", borderRadius: 16, padding: 8, border: item.active ? "1px solid rgba(76,195,255,0.45)" : "1px solid rgba(255,255,255,0.08)", background: item.active ? "rgba(76,195,255,0.08)" : "rgba(255,255,255,0.03)", color: "inherit", cursor: "pointer", minWidth: 0, flex: undefined }}>
                       <img src={item.previewUrl} alt={item.title} style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 12, display: "block" }} />
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 12, fontWeight: 800 }}>{item.title}</div>
