@@ -3026,3 +3026,213 @@
   pointer-events: auto;
   cursor: help;
 }
+
+/* =====================================================
+   iNrSend – listes lisibles type boîte mail
+   ===================================================== */
+.listHeaderGrid {
+  padding: 0 12px;
+  gap: 12px;
+}
+
+.listHeaderCellRight {
+  text-align: center;
+  padding-right: 0;
+}
+
+.listHeaderCellAction {
+  text-align: center;
+}
+
+.item {
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.105);
+  background: rgba(255,255,255,0.018);
+}
+
+.item:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.itemActive {
+  background: rgba(56,189,248,0.10);
+  box-shadow: inset 3px 0 0 rgba(56,189,248,0.72);
+}
+
+.itemTop {
+  min-height: 58px;
+  padding: 10px 0;
+  gap: 12px;
+  align-items: center;
+}
+
+.rowSelect {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.rowSelect input {
+  width: 16px;
+  height: 16px;
+}
+
+.fromRow {
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.from {
+  font-size: 14.5px;
+  line-height: 1.25;
+  color: rgba(255,255,255,0.97);
+}
+
+.itemMid {
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 800;
+  color: rgba(220,230,255,0.78);
+}
+
+.itemMidContent {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.itemDateCell {
+  min-width: 0;
+  justify-self: stretch;
+  text-align: center;
+}
+
+.date {
+  color: rgba(220,230,255,0.66);
+  font-size: 12.5px;
+}
+
+.rowActions {
+  justify-content: center;
+}
+
+.iconBtnSmall {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 12px;
+}
+
+.mobileMetaDate {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .list {
+    gap: 0;
+    padding-right: 0;
+  }
+
+  .item,
+  .list .item {
+    padding: 0 12px !important;
+  }
+
+  .itemTop,
+  .itemTop[style] {
+    grid-template-columns: minmax(0, 1fr) 40px !important;
+    grid-template-areas:
+      "title action"
+      "meta action";
+    gap: 3px 10px;
+    min-height: 64px;
+    padding: 10px 0;
+    align-items: center;
+  }
+
+  .fromRow {
+    grid-area: title;
+    min-width: 0;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .from {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    font-size: 14px;
+    line-height: 1.22;
+  }
+
+  .itemMid {
+    grid-area: meta;
+    display: block;
+    text-align: left;
+    justify-self: stretch;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    color: rgba(220,230,255,0.70);
+  }
+
+  .itemDateCell {
+    display: none;
+  }
+
+  .mobileMetaDate {
+    display: inline;
+    color: rgba(220,230,255,0.60);
+    font-weight: 700;
+  }
+
+  .rowActions {
+    grid-area: action;
+    align-self: center;
+    justify-self: end;
+  }
+
+  .iconBtnSmall {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+  }
+
+  .rowSelect input {
+    width: 15px;
+    height: 15px;
+  }
+
+  .channelStatusInlineWrap {
+    justify-content: flex-start;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+}
+
+/* iNrSend – colonne nommée Détails, action de ligne en icône compacte */
+.detailsBtn {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: -0.1px;
+}
+
+.detailsBtnText {
+  display: none;
+}
+
+.detailsBtnIcon {
+  display: inline;
+}

@@ -9,8 +9,8 @@ import {
   historySelectionKey,
   isVisibleInFolder,
   listGridTemplateColumns,
-  pill,
   renderPublicationChannelsWithFailures,
+  extractChannelPublications,
   canDeleteHistoryItem,
   folderLabel,
   type Folder,
@@ -43,6 +43,76 @@ type Props = {
   selectedBulkCount: number;
   historyQuery: string;
 };
+
+
+function formatListDate(value: string | null | undefined) {
+  const d = value ? new Date(value) : new Date();
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function simpleStatusLabel(item: OutboxItem) {
+  const rawStatus = String((item.raw as any)?.status || item.status || "").toLowerCase();
+  if (rawStatus === "draft") return "Brouillon";
+  if (rawStatus === "queued") return "En attente";
+  if (rawStatus === "processing") return "En cours";
+  if (rawStatus === "paused") return "En pause";
+  if (rawStatus === "partial") return "Partiel";
+  if (rawStatus === "failed" || rawStatus === "error") return "Erreur";
+  if (rawStatus === "completed" || rawStatus === "sent") return "Envoyé";
+  return rawStatus || "Historique";
+}
+
+function rowHeaderLabels(folder: Folder) {
+  if (folder === "publications") return { title: "Publication", meta: "Canaux" };
+  if (folder === "factures") return { title: "Facture", meta: "Statut / destinataire" };
+  if (folder === "devis") return { title: "Devis", meta: "Statut / destinataire" };
+  if (folder === "mails") return { title: "Objet", meta: "Boîte / destinataire" };
+  return { title: folderLabel(folder), meta: "Boîte / cible" };
+}
+
+function getRowTitle(item: OutboxItem, folder: Folder) {
+  if (folder === "publications") {
+    const payload = item.source === "app_events" ? (item.raw as any)?.payload : item.raw;
+    const channelTitle = extractChannelPublications(payload)?.find((entry) => String(entry.parts?.title || "").trim())?.parts?.title || "";
+    return item.subTitle || channelTitle || item.subject || item.title || "Publication";
+  }
+  if (folder === "factures") {
+    const docNumber = String((item.raw as any)?.source_doc_number || "").trim();
+    if (docNumber && !String(item.title || "").includes(docNumber)) return `Facture ${docNumber} — ${item.title || "sans objet"}`;
+  }
+  if (folder === "devis") {
+    const docNumber = String((item.raw as any)?.source_doc_number || "").trim();
+    if (docNumber && !String(item.title || "").includes(docNumber)) return `Devis ${docNumber} — ${item.title || "sans objet"}`;
+  }
+  return item.title || item.subject || "(sans objet)";
+}
+
+function getRowMetaText(opts: { item: OutboxItem; folder: Folder; accountLabel: string; midLabel: string }) {
+  const { item, folder, accountLabel, midLabel } = opts;
+  if (folder === "publications") return midLabel || "Canal non renseigné";
+
+  if (folder === "factures" || folder === "devis") {
+    return [simpleStatusLabel(item), item.target].filter(Boolean).join(" · ") || simpleStatusLabel(item);
+  }
+
+  if (item.source === "mail_campaigns") {
+    const mailbox = accountLabel || String(item.provider || "Mail").trim();
+    return [mailbox, item.target || item.preview].filter(Boolean).join(" · ");
+  }
+
+  if (folder === "mails") {
+    return [accountLabel || item.provider || "Mail", item.target].filter(Boolean).join(" · ");
+  }
+
+  return [accountLabel || item.provider || "Mail", item.target || midLabel].filter(Boolean).join(" · ");
+}
 
 export default function MailboxList(props: Props) {
   const {
@@ -78,19 +148,22 @@ export default function MailboxList(props: Props) {
         ) : (
           <div className={styles.list}>
             <div className={styles.listHeader}>
-              <div className={styles.listHeaderGrid} style={{ gridTemplateColumns: listGridTemplateColumns(folder) }}>
-                <div className={styles.listHeaderCell}>Objet</div>
-                <div className={`${styles.listHeaderCell} ${styles.listHeaderCellCenter} ${folder === "publications" ? styles.listHeaderCellPublications : ""}`}>
-                  {folder === "publications" ? "Canaux" : "Boîte d’envoi"}
-                </div>
-                <div className={`${styles.listHeaderCell} ${styles.listHeaderCellRight}`}>Date · Heure</div>
-              </div>
+              {(() => {
+                const labels = rowHeaderLabels(folder);
+                return (
+                  <div className={styles.listHeaderGrid} style={{ gridTemplateColumns: listGridTemplateColumns(folder) }}>
+                    <div className={styles.listHeaderCell}>{labels.title}</div>
+                    <div className={`${styles.listHeaderCell} ${styles.listHeaderCellCenter}`}>{labels.meta}</div>
+                    <div className={`${styles.listHeaderCell} ${styles.listHeaderCellRight}`}>Date</div>
+                    <div className={`${styles.listHeaderCell} ${styles.listHeaderCellAction}`}>Détails</div>
+                  </div>
+                );
+              })()}
             </div>
             {visibleItems.length === 0 ? (
               <div style={{ padding: 14, color: "rgba(255,255,255,0.65)" }}>{historyEmptyState(folder, boxView, historyQuery)}</div>
             ) : visibleItems.map((it) => {
               const active = it.id === selectedId;
-              const p = pill(it.provider);
               const historyKey = historySelectionKey(it);
               const bulkDeletable = canBulkDeleteHistoryItem(it);
               const checked = bulkDeletable && selectedHistoryKeySet.has(historyKey);
@@ -110,6 +183,10 @@ export default function MailboxList(props: Props) {
               const midLabelNode = folder === "publications" && it.source === "app_events"
                 ? (renderPublicationChannelsWithFailures((it as any)?.raw?.payload || null, it.channels && it.channels.length ? it.channels : [it.target]) || (midLabel || ""))
                 : (midLabel || "");
+              const rowTitle = getRowTitle(it, folder);
+              const rowMetaText = getRowMetaText({ item: it, folder, accountLabel, midLabel });
+              const rowMetaNode = folder === "publications" ? midLabelNode : rowMetaText;
+              const rowDate = formatListDate(it.created_at);
 
               return (
                 <div
@@ -129,42 +206,43 @@ export default function MailboxList(props: Props) {
                   <div className={styles.itemTop} style={{ gridTemplateColumns: listGridTemplateColumns(folder) }}>
                     <div className={styles.fromRow}>
                       {bulkDeletable ? (
-                        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, marginRight: 10 }} onClick={(e) => e.stopPropagation()}>
+                        <label className={styles.rowSelect} onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={checked}
                             disabled={deletingHistorySelection || deletingDraftId === it.id || deletingHistoryItemId === it.id}
-                            aria-label={`Sélectionner ${it.title || "cet élément"}`}
+                            aria-label={`Sélectionner ${rowTitle || "cet élément"}`}
                             onChange={() => toggleHistorySelection(it)}
                             onClick={(e) => e.stopPropagation()}
                           />
                         </label>
                       ) : null}
-                      <div className={styles.from} title={it.title || "(sans objet)"}>{it.title || "(sans objet)"}</div>
-                      <span className={`${styles.badge} ${p.cls}`}>{p.label}</span>
+                      <div className={styles.from} title={rowTitle}>{rowTitle}</div>
                     </div>
 
-                    <div className={styles.itemMid} title={midLabel || it.target}>
-                      {midLabelNode}
+                    <div className={styles.itemMid} title={rowMetaText || midLabel || it.target}>
+                      <span className={styles.itemMidContent}>{rowMetaNode}</span>
+                      <span className={styles.mobileMetaDate}> · {rowDate}</span>
                     </div>
 
-                    <div className={styles.itemRight}>
-                      <div className={styles.date}>{new Date(it.created_at).toLocaleString()}</div>
+                    <div className={styles.itemDateCell}>
+                      <div className={styles.date}>{rowDate}</div>
+                    </div>
 
-                      <div className={styles.rowActions}>
-                        <button
-                          type="button"
-                          className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost}`}
-                          title="Ouvrir"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openDetails(it);
-                          }}
-                        >
-                          ↗
-                        </button>
-                      </div>
+                    <div className={styles.rowActions}>
+                      <button
+                        type="button"
+                        className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost} ${styles.detailsBtn}`}
+                        title="Détails"
+                        aria-label={`Afficher les détails de ${rowTitle || "cet élément"}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          openDetails(it);
+                        }}
+                      >
+                        <span className={styles.detailsBtnIcon} aria-hidden="true">↗</span>
+                      </button>
                     </div>
                   </div>
                 </div>

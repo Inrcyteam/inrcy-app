@@ -1289,12 +1289,12 @@ export function historySelectionKey(item: Pick<OutboxItem, "id" | "source">) {
 }
 
 export function listGridTemplateColumns(folder: Folder) {
-  if (folder === "factures" || folder === "devis") {
-    return "minmax(0, 520px) minmax(180px, 240px) auto";
-  }
   if (folder === "publications") {
-    return "minmax(0, 360px) minmax(240px, 1fr) auto";
+    return "minmax(0, 1.35fr) minmax(190px, 0.95fr) minmax(150px, 180px) 86px";
   }
-  return "minmax(0, 380px) minmax(180px, 280px) auto";
+  if (folder === "factures" || folder === "devis") {
+    return "minmax(0, 1.35fr) minmax(190px, 0.95fr) minmax(150px, 180px) 86px";
+  }
+  return "minmax(0, 1.35fr) minmax(190px, 0.95fr) minmax(150px, 180px) 86px";
 }
 
