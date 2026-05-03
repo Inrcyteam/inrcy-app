@@ -1,7 +1,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import styles from "../mails.module.css";
-import { ChannelImageAdapterCardsPanel } from "@/app/dashboard/_components/ChannelImageAdapterTool";
+import { ChannelImageAdapterCardsPanel, ChannelPublicationPreview } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import {
   MAILBOX_RECIPIENTS_PAGE_SIZE,
   type CampaignRecipientsFilterId,
@@ -133,6 +133,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     loadCampaignHealth,
   } = props;
   const router = useRouter();
+  const [publicationPreviewOpen, setPublicationPreviewOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (open) setPublicationPreviewOpen(false);
+  }, [open, detailsItem?.id, detailsEditMode]);
 
   if (!open) return null;
 
@@ -218,6 +223,37 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                       : [];
                     const fallbackAttachments = extractAttachmentsFromPayload(payload);
                     return !(activeHasStructured || fallbackTitle || fallbackContent || fallbackCta || fallbackHashtags.length || fallbackAttachments.length);
+                  })();
+                  const publicationEditPreview = (() => {
+                    if (detailsItem.source !== "app_events" || !activePublicationEntry || !detailsEditMode) return null;
+                    const selectedAssets = activePublicationEditAssets.filter((asset) => asset.selected);
+                    const firstAsset = selectedAssets[0] || null;
+                    const hashtags = publicationEditForm.hashtags
+                      .split(/[;,\n\s]+/)
+                      .map((tag) => tag.trim().replace(/^#+/, ""))
+                      .filter(Boolean);
+                    return {
+                      channelKey: activePublicationEditChannelKey,
+                      channelLabel: activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey),
+                      title: publicationEditForm.title,
+                      content: publicationEditForm.content,
+                      cta: publicationEditForm.cta,
+                      hashtags,
+                      imageCount: selectedAssets.length,
+                      formatLabel: activePublicationEditChannelKey === "inrcy_site" || activePublicationEditChannelKey === "site_web" ? "Rendu site / iframe" : `Image finale : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`,
+                      image: firstAsset
+                        ? {
+                            previewUrl: firstAsset.previewUrl,
+                            transform: firstAsset.transform,
+                            preset: activePublicationEditPreset,
+                          }
+                        : null,
+                      images: selectedAssets.map((asset) => ({
+                        previewUrl: asset.previewUrl,
+                        transform: asset.transform,
+                        preset: activePublicationEditPreset,
+                      })),
+                    };
                   })();
 
                   return (
@@ -483,7 +519,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
                         <section className={styles.detailSectionCard}>
                           <div className={styles.detailSectionHeader}>
-                            <div className={styles.messageHeaderTitle}>Message</div>
+                            <div className={styles.messageHeaderTitle}>{detailsItem.source === "app_events" && detailsEditMode ? "Contenu" : "Message"}</div>
                           </div>
 
                           {detailsItem.source !== "app_events" ? (
@@ -568,107 +604,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                             />
                                           </div>
                                         ) : null}
-                                        <div style={{ display: "grid", gap: 12 }}>
-                                          <div className={styles.publicationLabel}>Images de la publication</div>
-                                          <input
-                                            id={publicationEditFileInputId}
-                                            type="file"
-                                            accept="image/*"
-                                            multiple
-                                            className={styles.hiddenFileInput}
-                                            onChange={(e) => {
-                                              const input = e.currentTarget;
-                                              const files = input?.files ?? null;
-                                              addPublicationFiles(files);
-                                              if (input) input.value = "";
-                                            }}
-                                          />
-                                          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                                            <label htmlFor={publicationEditFileInputId} className={styles.btnAttach}>📎 Ajouter des images</label>
-                                            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                                              {activePublicationEditAssets.length} image(s) pour {activePublicationEntry?.label || "ce canal"}
-                                            </span>
-                                          </div>
-
-
-                                          <div style={{ display: "grid", gap: 8 }}>
-                                            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
-                                              iNrCy prépare automatiquement le rendu du canal. Utilisez Adapter seulement si le cadrage doit être corrigé. Site iNrCy et Site web restent indépendants.
-                                            </div>
-                                            <ChannelImageAdapterCardsPanel
-                                              tabs={[{ key: activePublicationEditChannelKey, label: activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey) }]}
-                                              activeChannel={activePublicationEditChannelKey}
-                                              onActiveChannelChange={() => {}}
-                                              channelTitle={activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey)}
-                                              formatLabel={activePublicationEditChannelKey === "inrcy_site" || activePublicationEditChannelKey === "site_web" ? "Rendu site / iframe" : `Rendu final : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`}
-                                              aspectRatio={`${activePublicationEditPreset.width} / ${activePublicationEditPreset.height}`}
-                                              publicationPreview={(() => {
-                                                const selectedAssets = activePublicationEditAssets.filter((asset) => asset.selected);
-                                                const firstAsset = selectedAssets[0] || null;
-                                                const hashtags = publicationEditForm.hashtags
-                                                  .split(/[;,\n\s]+/)
-                                                  .map((tag) => tag.trim().replace(/^#+/, ""))
-                                                  .filter(Boolean);
-                                                return {
-                                                  channelKey: activePublicationEditChannelKey,
-                                                  channelLabel: activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey),
-                                                  title: publicationEditForm.title,
-                                                  content: publicationEditForm.content,
-                                                  cta: publicationEditForm.cta,
-                                                  hashtags,
-                                                  imageCount: selectedAssets.length,
-                                                  formatLabel: activePublicationEditChannelKey === "inrcy_site" || activePublicationEditChannelKey === "site_web" ? "Rendu site / iframe" : `Image finale : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`,
-                                                  image: firstAsset
-                                                    ? {
-                                                        previewUrl: firstAsset.previewUrl,
-                                                        transform: firstAsset.transform,
-                                                        preset: activePublicationEditPreset,
-                                                      }
-                                                    : null,
-                                                  images: selectedAssets.map((asset) => ({
-                                                    previewUrl: asset.previewUrl,
-                                                    transform: asset.transform,
-                                                    preset: activePublicationEditPreset,
-                                                  })),
-                                                };
-                                              })()}
-                                              items={activePublicationEditAssets.map((asset, index) => {
-                                                const selectedAssets = activePublicationEditAssets.filter((candidate) => candidate.selected);
-                                                const selectedIndex = selectedAssets.findIndex((candidate) => candidate.key === asset.key);
-                                                const disabledByGoogleBusinessLimit = activePublicationEditChannelKey === "gmb" && selectedAssets.length >= 1 && !asset.selected;
-                                                return {
-                                                  key: asset.key,
-                                                  previewUrl: asset.previewUrl,
-                                                  included: asset.selected,
-                                                  disabled: disabledByGoogleBusinessLimit,
-                                                  title: `Image ${index + 1}`,
-                                                  subtitle: disabledByGoogleBusinessLimit
-                                                    ? "Une seule photo par publication Google Business"
-                                                    : asset.selected
-                                                      ? "Publiée sur ce canal"
-                                                      : "Non publiée sur ce canal",
-                                                  fitLabel: asset.transform.fit === "cover" ? "Remplir" : "Adapter",
-                                                  backgroundMode: getPublicationBackgroundMode(asset.transform),
-                                                  backgroundColor: asset.transform.backgroundColor,
-                                                  transform: asset.transform,
-                                                  preset: activePublicationEditPreset,
-                                                  onToggle: () => togglePublicationImage(activePublicationEditChannelKey, asset.key),
-                                                  onAdapt: () => openPublicationImageAdapter(activePublicationEditChannelKey, asset.key),
-                                                  onReset: resetPublicationImage ? () => resetPublicationImage(activePublicationEditChannelKey, asset.key) : undefined,
-                                                  onRemove: asset.selected ? () => togglePublicationImage(activePublicationEditChannelKey, asset.key) : undefined,
-                                                  onRemoveEverywhere: removePublicationImageEverywhere ? () => removePublicationImageEverywhere(activePublicationEditChannelKey, asset.key) : () => removePublicationImage(activePublicationEditChannelKey, asset.key),
-                                                  onMovePrevious: movePublicationImage && asset.selected && selectedIndex > 0 ? () => movePublicationImage(activePublicationEditChannelKey, asset.key, -1) : undefined,
-                                                  onMoveNext: movePublicationImage && asset.selected && selectedIndex >= 0 && selectedIndex < selectedAssets.length - 1 ? () => movePublicationImage(activePublicationEditChannelKey, asset.key, 1) : undefined,
-                                                };
-                                              })}
-                                              buttonClassName={styles.btnGhost}
-                                              pillButtonStyle={pillBtn}
-                                              pillButtonActiveStyle={pillBtnActive}
-                                              showTabs={false}
-                                              emptyMessage="Aucune image pour ce canal."
-                                            />
-                                          </div>
-                                        </div>
                                       </>
                                     ) : (
                                       <>
@@ -718,6 +653,110 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                             <div className={styles.emptyDetailText}>Aucun message disponible.</div>
                           )}
                         </section>
+
+                        {detailsItem.source === "app_events" && detailsEditMode && activePublicationEntry && !activePublicationDeleted ? (
+                          <>
+                            <section className={styles.detailSectionCard}>
+                              <div className={styles.detailSectionHeader}>
+                                <div className={styles.messageHeaderTitle}>Images de la publication</div>
+                              </div>
+                              <div style={{ display: "grid", gap: 12 }}>
+                                <input
+                                  id={publicationEditFileInputId}
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  className={styles.hiddenFileInput}
+                                  onChange={(e) => {
+                                    const input = e.currentTarget;
+                                    const files = input?.files ?? null;
+                                    addPublicationFiles(files);
+                                    if (input) input.value = "";
+                                  }}
+                                />
+                                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                  <label htmlFor={publicationEditFileInputId} className={styles.btnAttach}>📎 Ajouter des images</label>
+                                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                                    {activePublicationEditAssets.length} image(s) pour {activePublicationEntry?.label || "ce canal"}
+                                  </span>
+                                </div>
+
+                                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+                                  iNrCy prépare automatiquement le rendu du canal. Utilisez Adapter seulement si le cadrage doit être corrigé. Site iNrCy et Site web restent indépendants.
+                                </div>
+
+                                <ChannelImageAdapterCardsPanel
+                                  tabs={[{ key: activePublicationEditChannelKey, label: activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey) }]}
+                                  activeChannel={activePublicationEditChannelKey}
+                                  onActiveChannelChange={() => {}}
+                                  channelTitle={activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey)}
+                                  formatLabel={activePublicationEditChannelKey === "inrcy_site" || activePublicationEditChannelKey === "site_web" ? "Rendu site / iframe" : `Rendu final : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`}
+                                  aspectRatio={`${activePublicationEditPreset.width} / ${activePublicationEditPreset.height}`}
+                                  items={activePublicationEditAssets.map((asset, index) => {
+                                    const selectedAssets = activePublicationEditAssets.filter((candidate) => candidate.selected);
+                                    const selectedIndex = selectedAssets.findIndex((candidate) => candidate.key === asset.key);
+                                    const disabledByGoogleBusinessLimit = activePublicationEditChannelKey === "gmb" && selectedAssets.length >= 1 && !asset.selected;
+                                    return {
+                                      key: asset.key,
+                                      previewUrl: asset.previewUrl,
+                                      included: asset.selected,
+                                      disabled: disabledByGoogleBusinessLimit,
+                                      title: `Image ${index + 1}`,
+                                      subtitle: disabledByGoogleBusinessLimit
+                                        ? "Une seule photo par publication Google Business"
+                                        : asset.selected
+                                          ? "Publiée sur ce canal"
+                                          : "Non publiée sur ce canal",
+                                      fitLabel: asset.transform.fit === "cover" ? "Remplir" : "Adapter",
+                                      backgroundMode: getPublicationBackgroundMode(asset.transform),
+                                      backgroundColor: asset.transform.backgroundColor,
+                                      transform: asset.transform,
+                                      preset: activePublicationEditPreset,
+                                      onToggle: () => togglePublicationImage(activePublicationEditChannelKey, asset.key),
+                                      onAdapt: () => openPublicationImageAdapter(activePublicationEditChannelKey, asset.key),
+                                      onReset: resetPublicationImage ? () => resetPublicationImage(activePublicationEditChannelKey, asset.key) : undefined,
+                                      onRemove: asset.selected ? () => togglePublicationImage(activePublicationEditChannelKey, asset.key) : undefined,
+                                      onRemoveEverywhere: removePublicationImageEverywhere ? () => removePublicationImageEverywhere(activePublicationEditChannelKey, asset.key) : () => removePublicationImage(activePublicationEditChannelKey, asset.key),
+                                      onMovePrevious: movePublicationImage && asset.selected && selectedIndex > 0 ? () => movePublicationImage(activePublicationEditChannelKey, asset.key, -1) : undefined,
+                                      onMoveNext: movePublicationImage && asset.selected && selectedIndex >= 0 && selectedIndex < selectedAssets.length - 1 ? () => movePublicationImage(activePublicationEditChannelKey, asset.key, 1) : undefined,
+                                    };
+                                  })}
+                                  buttonClassName={styles.btnGhost}
+                                  pillButtonStyle={pillBtn}
+                                  pillButtonActiveStyle={pillBtnActive}
+                                  showTabs={false}
+                                  emptyMessage="Aucune image pour ce canal."
+                                />
+                              </div>
+                            </section>
+
+                            <section className={styles.detailSectionCard}>
+                              <div className={styles.detailSectionHeader}>
+                                <div>
+                                  <div className={styles.messageHeaderTitle}>Aperçu</div>
+                                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)", marginTop: 4 }}>
+                                    Aperçu du canal sélectionné : {activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey)}.
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className={styles.btnGhost}
+                                  onClick={() => setPublicationPreviewOpen((value) => !value)}
+                                >
+                                  {publicationPreviewOpen ? "Masquer l’aperçu" : "Afficher l’aperçu"}
+                                </button>
+                              </div>
+
+                              {publicationPreviewOpen && publicationEditPreview ? (
+                                <ChannelPublicationPreview preview={publicationEditPreview} />
+                              ) : (
+                                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.62)" }}>
+                                  L’aperçu est masqué par défaut.
+                                </div>
+                              )}
+                            </section>
+                          </>
+                        ) : null}
 
                         {detailsItem.source === "mail_campaigns" ? (
                           <section className={styles.detailSectionCard}>
@@ -853,7 +892,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                           </section>
                         ) : null}
 
-                        {hasAttachments ? (
+                        {hasAttachments && !(detailsItem.source === "app_events" && detailsEditMode) ? (
                           <section className={styles.detailSectionCard}>
                             <div className={styles.detailSectionHeader}>
                               <div className={styles.messageHeaderTitle}>Images de la publication</div>
