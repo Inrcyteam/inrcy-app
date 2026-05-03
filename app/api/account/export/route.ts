@@ -188,6 +188,7 @@ export const GET = withApi(async () => {
     { table: "agenda_events", opts: { limit: 1000, orderBy: "start_at" } },
     { table: "crm_contacts", opts: { limit: 5000, orderBy: "created_at", desc: true } },
     { table: "send_items", opts: { limit: 5000, orderBy: "created_at", desc: true } },
+    { table: "inrsend_history_files", opts: { limit: 5000, orderBy: "created_at", desc: true } },
     { table: "subscriptions" },
     { table: "loyalty_ledger", opts: { limit: 5000, orderBy: "created_at", desc: true } },
     { table: "loyalty_balance" },

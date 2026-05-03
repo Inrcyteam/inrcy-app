@@ -6,6 +6,8 @@ import { fetchSuppressedEmailsByUser } from "@/lib/mailSuppression";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { getConnectionDisplayStatus, mailConnectionKind } from "@/lib/connectionVersions";
 import { enforceRateLimit } from "@/lib/rateLimit";
+import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
+import { parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 
 export const runtime = "nodejs";
 
@@ -257,6 +259,21 @@ export async function POST(req: Request) {
   if (campaignError || !campaign?.id) {
     return NextResponse.json({ error: campaignError?.message || "Création de campagne impossible." }, { status: 500 });
   }
+
+  await saveInrSendHistoryFiles(supabase, {
+    userId: user.id,
+    historySource: "mail_campaigns",
+    historyId: campaign.id,
+    category: folder,
+    fileRole: inferInrSendFileRole({ sourceDocType }),
+    files: parseMailAttachmentRefs(attachments),
+    metadata: {
+      provider: account.provider || null,
+      source_doc_save_id: sourceDocSaveId || null,
+      source_doc_type: sourceDocType || null,
+      source_doc_number: sourceDocNumber || null,
+    },
+  });
 
   const rows: CampaignRecipientRow[] = recipients.map((recipient) => ({
     campaign_id: campaign.id,

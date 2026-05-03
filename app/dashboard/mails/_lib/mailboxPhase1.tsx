@@ -293,7 +293,7 @@ export type OutboxItem = {
   to?: string | null;
   from?: string | null;
   channels?: string[];
-  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null }[];
+  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null; role?: string | null }[];
   raw?: any;
   reopenHref?: string | null;
 };
@@ -303,7 +303,7 @@ export type PublicationParts = {
   content?: string | null;
   cta?: string | null;
   hashtags?: string[];
-  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null }[];
+  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null; role?: string | null }[];
 };
 
 export type ChannelPublication = {
@@ -670,7 +670,7 @@ export function extractMessageFromPayload(payload: any): { html?: string | null;
   return { html, text };
 }
 
-export function extractAttachmentsFromPayload(payload: any): { name: string; type?: string | null; size?: number | null; url?: string | null }[] {
+export function extractAttachmentsFromPayload(payload: any): { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null; role?: string | null }[] {
   if (!payload || typeof payload !== "object") return [];
   const candidates =
     payload.attachments ||

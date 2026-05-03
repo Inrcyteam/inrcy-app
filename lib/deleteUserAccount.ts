@@ -38,6 +38,7 @@ export async function deleteUserAccountEverywhere(userId: string): Promise<Delet
     "site_articles",
     "doc_saves",
     "boutique_orders",
+    "inrsend_history_files",
     "send_items",
     "crm_contacts",
     "agenda_events",

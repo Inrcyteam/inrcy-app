@@ -6,6 +6,7 @@ import { withApi } from "@/lib/observability/withApi";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
+import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import { getConnectionDisplayStatus } from "@/lib/connectionVersions";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -380,11 +381,28 @@ const handler = async (req: Request) => {
     error: null,
   };
 
+  let historyId = sendItemId || "";
   if (sendItemId) {
     await supabase.from("send_items").update(historyPayload).eq("id", sendItemId);
   } else {
-    await supabase.from("send_items").insert(historyPayload);
+    const { data: insertedHistory } = await supabase.from("send_items").insert(historyPayload).select("id").single();
+    historyId = String(insertedHistory?.id || "");
   }
+
+  await saveInrSendHistoryFiles(supabase, {
+    userId,
+    historySource: "send_items",
+    historyId,
+    category: sendType === "facture" ? "factures" : sendType === "devis" ? "devis" : "mails",
+    fileRole: inferInrSendFileRole({ sourceDocType }),
+    files: attachmentRefs,
+    metadata: {
+      provider: "gmail",
+      source_doc_save_id: sourceDocSaveId || null,
+      source_doc_type: sourceDocType || null,
+      source_doc_number: sourceDocNumber || null,
+    },
+  });
 
 
   return NextResponse.json({

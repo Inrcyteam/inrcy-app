@@ -326,9 +326,11 @@ export default function MailboxClient() {
     if (!nextFiles.length) return [] as ComposeAttachmentRef[];
     setAttachBusy(true);
     try {
+      const { data: auth } = await supabase.auth.getUser();
+      const userId = auth?.user?.id || null;
       const uploaded: ComposeAttachmentRef[] = [];
       for (const file of nextFiles) {
-        const path = makeAttachmentPath(file.name || "piece-jointe");
+        const path = makeAttachmentPath(file.name || "piece-jointe", userId);
         const { error } = await supabase.storage.from(ATTACH_BUCKET).upload(path, file, {
           cacheControl: "3600",
           upsert: false,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { getInrSendRetentionCutoffIso, getOldestAutoRetentionCutoffIso, isInrSendItemRetained } from "@/lib/inrsendRetention";
+import { fetchInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 
 type Folder =
   | "mails"
@@ -37,7 +38,7 @@ type OutboxItem = {
   to?: string | null;
   from?: string | null;
   channels?: string[];
-  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null }[];
+  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null; role?: string | null }[];
   raw?: any;
   reopenHref?: string | null;
 };
@@ -131,6 +132,25 @@ function firstNonEmpty(...vals: any[]) {
     if (s) return s;
   }
   return "";
+}
+
+function downloadUrlForHistoryFile(fileId: string) {
+  return `/api/inrsend/history/files/${encodeURIComponent(fileId)}/download`;
+}
+
+function mergeAttachments(
+  current: NonNullable<OutboxItem["attachments"]>,
+  extra: NonNullable<OutboxItem["attachments"]>,
+) {
+  const seen = new Set<string>();
+  const merged: NonNullable<OutboxItem["attachments"]> = [];
+  for (const attachment of [...extra, ...current]) {
+    const key = `${attachment.downloadUrl || attachment.url || ""}|${attachment.name || ""}|${attachment.size || ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(attachment);
+  }
+  return merged;
 }
 
 function isFolderValue(value: string): value is Folder {
@@ -762,6 +782,38 @@ export async function GET(req: Request) {
     const allSourcesExhausted = sourceState.send_items.exhausted && sourceState.mail_campaigns.exhausted && sourceState.app_events.exhausted;
     const total = allSourcesExhausted ? filtered.length : null;
     const hasMore = total != null ? end < total : filtered.length > end || !allSourcesExhausted;
+    const historyFiles = await fetchInrSendHistoryFiles(
+      supabase,
+      userData.user.id,
+      items
+        .filter((item) => item.source === "send_items" || item.source === "mail_campaigns" || item.source === "app_events")
+        .map((item) => ({ source: item.source, id: item.id })),
+    );
+
+    if (historyFiles.length) {
+      const byHistoryKey = new Map<string, NonNullable<OutboxItem["attachments"]>>();
+      for (const file of historyFiles) {
+        const key = `${file.history_source}:${file.history_id}`;
+        const url = downloadUrlForHistoryFile(file.id);
+        const next = byHistoryKey.get(key) || [];
+        next.push({
+          name: file.file_name,
+          type: file.mime_type,
+          size: file.size_bytes,
+          url,
+          downloadUrl: url,
+          role: file.file_role,
+        });
+        byHistoryKey.set(key, next);
+      }
+
+      for (const item of items) {
+        const extra = byHistoryKey.get(`${item.source}:${item.id}`);
+        if (!extra?.length) continue;
+        item.attachments = mergeAttachments(item.attachments || [], extra);
+      }
+    }
+
     const folderCounts = await computeFolderCounts(supabase, userData.user.id, boxView, filterAccountId, query);
 
     return NextResponse.json({

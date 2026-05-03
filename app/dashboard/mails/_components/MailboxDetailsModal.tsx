@@ -895,7 +895,9 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                         {hasAttachments && !(detailsItem.source === "app_events" && detailsEditMode) ? (
                           <section className={styles.detailSectionCard}>
                             <div className={styles.detailSectionHeader}>
-                              <div className={styles.messageHeaderTitle}>Images de la publication</div>
+                              <div className={styles.messageHeaderTitle}>
+                                {detailsItem.source === "app_events" ? "Images de la publication" : "Documents envoyés"}
+                              </div>
                             </div>
 
                             <div className={styles.attachmentsPanel}>
@@ -911,6 +913,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     >
                                       <img src={a.url || ""} alt={a.name || `Pièce jointe ${idx + 1}`} className={styles.attachmentPreviewImage} />
                                       <div className={styles.attachmentPreviewCaption}>{a.name}</div>
+                                      {a.url ? <span className={styles.attachmentDownloadHint}>Télécharger</span> : null}
                                     </a>
                                   ))}
                                 </div>
@@ -927,6 +930,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                         preload="metadata"
                                       />
                                       <div className={styles.attachmentPreviewCaption}>{a.name}</div>
+                                      {a.url ? (
+                                        <a className={styles.attachmentDownloadHint} href={a.url} target="_blank" rel="noreferrer">
+                                          Télécharger
+                                        </a>
+                                      ) : null}
                                     </div>
                                   ))}
                                 </div>
@@ -940,8 +948,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       {a.type ? <span className={styles.attachmentMeta}>{a.type}</span> : null}
                                       {typeof a.size === "number" ? <span className={styles.attachmentMeta}>{Math.round(a.size / 1024)} Ko</span> : null}
                                       {a.url ? (
-                                        <a className={styles.attachmentLink} href={a.url} target="_blank" rel="noreferrer">
-                                          Ouvrir
+                                        <a className={styles.attachmentLink} href={a.downloadUrl || a.url} target="_blank" rel="noreferrer">
+                                          Télécharger
                                         </a>
                                       ) : null}
                                     </div>

@@ -42,10 +42,13 @@ export function normalizeComposeRecipientHints(input: unknown): ComposeCrmRecipi
   return out;
 }
 
-export function makeAttachmentPath(fileName: string) {
+export function makeAttachmentPath(fileName: string, userId?: string | null) {
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]+/g, "-");
   const rand = Math.random().toString(36).slice(2, 10);
-  return `mail-attachments/${Date.now()}-${rand}-${safeName}`;
+  const userPrefix = String(userId || "").trim();
+  return userPrefix
+    ? `${userPrefix}/mail-attachments/${Date.now()}-${rand}-${safeName}`
+    : `mail-attachments/${Date.now()}-${rand}-${safeName}`;
 }
 
 export function providerSendEndpoint(provider: string) {
