@@ -830,7 +830,7 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
     const isInrcySite = key === "inrcy_site";
     return (
       <>
-        <PreviewBlockShell eyebrow={isInrcySite ? "Site iNrCy — rendu générateur" : "Site web — rendu iframe intégré"} title={preview.channelLabel} formatLabel={preview.formatLabel || "Rendu iframe"} note="Aperçu séparé desktop/mobile. Dès qu’il y a 2 images ou plus, le site passe en carousel. Cliquez sur une image pour l’ouvrir en grand.">
+        <PreviewBlockShell eyebrow={isInrcySite ? "Site iNrCy — rendu iframe intégré" : "Site web — rendu iframe intégré"} title={preview.channelLabel} formatLabel={preview.formatLabel || "Rendu iframe"} note="Aperçu séparé desktop/mobile. Dès qu’il y a 2 images ou plus, le site passe en carousel. Cliquez sur une image pour l’ouvrir en grand.">
           <DevicePreviewSwitcher
             desktop={<SitePreviewCard mode="desktop" title={title} content={content} cta={cta} images={images} isInrcySite={isInrcySite} onOpen={openLightbox} />}
             mobile={<SitePreviewCard mode="mobile" title={title} content={content} cta={cta} images={images} isInrcySite={isInrcySite} onOpen={openLightbox} />}
@@ -1118,9 +1118,9 @@ export function ChannelImageAdapterModal({
             <div style={{ fontSize: 12, opacity: 0.74, marginTop: 4, overflowWrap: "anywhere" }}>{subtitle}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 8, flexShrink: 1, flexWrap: isMobile ? "nowrap" : "wrap", justifyContent: "flex-end", width: isMobile ? "100%" : undefined, minWidth: 0 }}>
-            {onApplyToChannelImages ? <button type="button" className={buttonClassName} onClick={onApplyToChannelImages} style={{ minWidth: 0, flex: isMobile ? "1 1 auto" : undefined, justifyContent: "center", fontSize: isMobile ? 11 : undefined, padding: isMobile ? "0 8px" : undefined }}>Appliquer aux images</button> : null}
+            {onApplyToChannelImages ? <button type="button" className={buttonClassName} onClick={onApplyToChannelImages} style={{ minWidth: isMobile ? 128 : 168, flex: isMobile ? "1 1 128px" : undefined, justifyContent: "center", fontSize: isMobile ? 11 : undefined, padding: isMobile ? "0 12px" : "0 16px" }}>Appliquer aux images</button> : null}
             {onApplyToSelectedChannels ? <button type="button" className={buttonClassName} onClick={onApplyToSelectedChannels} style={{ minWidth: 0, flex: isMobile ? "1 1 auto" : undefined, justifyContent: "center", fontSize: isMobile ? 11 : undefined, padding: isMobile ? "0 8px" : undefined }}>Appliquer aux canaux</button> : null}
-            {onResetChannel ? <button type="button" className={buttonClassName} onClick={onResetChannel} style={{ minWidth: 0, flex: isMobile ? "1 1 auto" : undefined, justifyContent: "center", fontSize: isMobile ? 11 : undefined, padding: isMobile ? "0 8px" : undefined }}>Réinit. canal</button> : null}
+            {onResetChannel ? <button type="button" className={buttonClassName} onClick={onResetChannel} style={{ minWidth: isMobile ? 112 : 132, flex: isMobile ? "1 1 112px" : undefined, justifyContent: "center", fontSize: isMobile ? 11 : undefined, padding: isMobile ? "0 12px" : "0 16px" }}>Réinit. canal</button> : null}
             <button type="button" className={primaryButtonClassName || buttonClassName} onClick={onSave} aria-label="Enregistrer" title="Enregistrer" style={{ minWidth: 0, flex: isMobile ? "0 0 42px" : undefined, width: isMobile ? 42 : undefined, padding: isMobile ? 0 : undefined, justifyContent: "center", fontSize: isMobile ? 18 : undefined }}>{isMobile ? "💾" : "Enregistrer"}</button>
             <button type="button" className={buttonClassName} onClick={onClose} aria-label="Fermer" title="Fermer" style={{ minWidth: 0, flex: isMobile ? "0 0 42px" : undefined, width: isMobile ? 42 : undefined, padding: isMobile ? 0 : undefined, justifyContent: "center", fontSize: isMobile ? 20 : undefined }}>{isMobile ? "×" : "Fermer"}</button>
           </div>

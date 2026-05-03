@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { editableHtmlToSiteText, siteTextToEditableHtml, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import stylesDash from "../../dashboard/dashboard.module.css";
-import { ChannelImageAdapterCardsPanel, ChannelImageAdapterModal } from "@/app/dashboard/_components/ChannelImageAdapterTool";
+import { ChannelImageAdapterCardsPanel, ChannelImageAdapterModal, ChannelPublicationPreview } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import {
   BOOSTER_MAX_IMAGE_BYTES,
   BOOSTER_MAX_IMAGE_MB_LABEL,
@@ -227,6 +227,7 @@ export default function PublishModal({
   const [channelImageEditors, setChannelImageEditors] = useState<Partial<Record<ChannelKey, ChannelImageEditorState>>>({});
   const [activeImageChannel, setActiveImageChannel] = useState<ChannelKey>("inrcy_site");
   const [activeImageKeyByChannel, setActiveImageKeyByChannel] = useState<Partial<Record<ChannelKey, string>>>({});
+  const [showPublicationPreview, setShowPublicationPreview] = useState(false);
   const previewStageRef = useRef<HTMLDivElement | null>(null);
   const publishAreaRef = useRef<HTMLDivElement | null>(null);
   const contentTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -912,6 +913,10 @@ export default function PublishModal({
       })),
     };
   };
+
+  const activePublicationPreview = selectedChannels.length && images.length
+    ? getPublicationPreviewForChannel(activeImageChannel)
+    : null;
 
   const closeEmptyContentWarnings = () => {
     setEmptyContentWarningChannels([]);
@@ -2035,7 +2040,6 @@ export default function PublishModal({
               channelTitle={getImageAdapterLabel(activeImageChannel)}
               formatLabel={activeImageChannel === "inrcy_site" || activeImageChannel === "site_web" ? "Rendu site / iframe" : `Format final : ${CHANNEL_PRESETS[activeImageChannel].width}×${CHANNEL_PRESETS[activeImageChannel].height}`}
               aspectRatio={previewAspectRatio}
-              publicationPreview={getPublicationPreviewForChannel(activeImageChannel)}
               items={imageKeys.map((key, index) => {
                 const selectedKeysForActiveChannel = channelImageEditors[activeImageChannel]?.imageKeys || [];
                 const included = selectedKeysForActiveChannel.includes(key);
@@ -2076,6 +2080,33 @@ export default function PublishModal({
           </>
         )}
       </div>
+
+      {activePublicationPreview ? (
+        <div className={styles.blockCard} style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box", display: "grid", gap: showPublicationPreview ? 12 : 0 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div className={styles.blockTitle} style={{ marginBottom: 4 }}>Aperçu</div>
+              <div className={styles.subtitle} style={{ fontSize: 12, marginBottom: 0 }}>
+                Canal sélectionné : {getImageAdapterLabel(activeImageChannel)}
+              </div>
+            </div>
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              onClick={() => setShowPublicationPreview((visible) => !visible)}
+              aria-expanded={showPublicationPreview}
+            >
+              {showPublicationPreview ? "Masquer" : "Afficher"}
+            </button>
+          </div>
+          {showPublicationPreview ? (
+            <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+              <ChannelPublicationPreview preview={activePublicationPreview} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
 
       <ChannelImageAdapterModal
         open={!!(isImageEditorOpen && activeEditorImageKey)}
