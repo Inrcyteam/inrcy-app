@@ -3250,3 +3250,93 @@
 .attachmentDownloadHint:hover {
   border-bottom-color: rgba(56,189,248,0.75);
 }
+
+/* iNrSend details modal: prevent horizontal overflow on mobile/long campaign content. */
+.detailsModalCard,
+.modalBody,
+.detailsStack,
+.detailSectionCard,
+.detailSectionHeader,
+.messageBody,
+.messageHtml,
+.messageText,
+.attachmentsList,
+.attachmentItem,
+.channelPublicationCard,
+.publicationParts {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.detailsModalCard,
+.modalBody,
+.detailsStack,
+.detailSectionCard,
+.messageBody {
+  overflow-x: hidden;
+}
+
+.detailSectionHeader > *,
+.metaGrid,
+.metaRow,
+.metaKey,
+.metaVal,
+.detailsTitle,
+.detailsSub,
+.messageHeaderTitle,
+.messageHtml,
+.messageText,
+.attachmentName,
+.attachmentMeta,
+.publicationValue,
+.publicationPre,
+.publicationCtaBox,
+.publicationTagRow {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.messageHtml *,
+.messageHtml a,
+.messageText,
+.publicationPre {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.messageHtml img,
+.messageHtml table,
+.messageHtml iframe,
+.messageHtml video {
+  max-width: 100%;
+}
+
+.messageHtml table {
+  table-layout: fixed;
+}
+
+@media (max-width: 640px) {
+  .modalBody {
+    overflow-x: hidden;
+  }
+
+  .detailSectionHeader {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .detailsTitle {
+    font-size: clamp(20px, 8vw, 32px);
+    line-height: 1.15;
+  }
+
+  .btnGhost {
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+    justify-content: center;
+  }
+}
