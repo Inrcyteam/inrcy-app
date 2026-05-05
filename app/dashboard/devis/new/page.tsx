@@ -239,6 +239,7 @@ export default function NewDevisPage() {
   const [crmError, setCrmError] = useState<string | null>(null);
   const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
   const [formMessage, setFormMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [crmActionMessage, setCrmActionMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<QuoteFieldErrors>({});
   const [addingToCrm, setAddingToCrm] = useState(false);
   const [currentSaveId, setCurrentSaveId] = useState<string>("");
@@ -949,8 +950,11 @@ export default function NewDevisPage() {
     const email = (clientEmail || "").trim();
     const primaryAddress = (clientAddress || billingAddress || "").trim();
 
+    setFormMessage(null);
+    setCrmActionMessage(null);
+
     if (!displayName && !email && !primaryAddress) {
-      setFormMessage({ type: "error", text: "Renseignez au moins un nom, un email ou une adresse client avant d’ajouter au CRM." });
+      setCrmActionMessage({ type: "error", text: "Renseignez au moins un nom, un email ou une adresse client." });
       return;
     }
 
@@ -978,9 +982,9 @@ export default function NewDevisPage() {
         throw new Error(getSimpleFrenchErrorMessage(json?.error, "Impossible d’ajouter ce client au CRM."));
       }
 
-      setFormMessage({ type: "success", text: "Client ajouté au CRM." });
+      setCrmActionMessage({ type: "success", text: "Client ajouté au CRM." });
     } catch (error) {
-      setFormMessage({ type: "error", text: getSimpleFrenchErrorMessage(error, "Impossible d’ajouter ce client au CRM.") });
+      setCrmActionMessage({ type: "error", text: getSimpleFrenchErrorMessage(error, "Impossible d’ajouter ce client au CRM.") });
     } finally {
       setAddingToCrm(false);
     }
@@ -1271,14 +1275,21 @@ export default function NewDevisPage() {
               {fieldErrors.clientType ? <div className={styles.fieldError}>{fieldErrors.clientType}</div> : null}
             </div>
 
-            <button
-              type="button"
-              className={styles.crmAddButton}
-              onClick={() => void addCurrentClientToCrm()}
-              disabled={addingToCrm}
-            >
-              {addingToCrm ? "Ajout CRM…" : "+ Ajouter au CRM"}
-            </button>
+            <div className={styles.crmAddColumn}>
+              <button
+                type="button"
+                className={styles.crmAddButton}
+                onClick={() => void addCurrentClientToCrm()}
+                disabled={addingToCrm}
+              >
+                {addingToCrm ? "Ajout CRM…" : "+ Ajouter au CRM"}
+              </button>
+              {crmActionMessage ? (
+                <div className={`${styles.crmActionMessage} ${crmActionMessage.type === "success" ? styles.crmActionMessageSuccess : styles.crmActionMessageError}`}>
+                  {crmActionMessage.text}
+                </div>
+              ) : null}
+            </div>
 
             {crmError ? (
               <div style={{ gridColumn: "1 / -1", marginTop: -4, fontSize: 12, opacity: 0.8 }}>⚠️ {crmError}</div>

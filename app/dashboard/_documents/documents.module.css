@@ -1203,6 +1203,23 @@
   margin-bottom:12px;
 }
 
+
+.crmAddColumn{
+  display:grid;
+  gap:6px;
+  align-self:end;
+}
+
+.crmActionMessage{
+  font-size:12px;
+  font-weight:850;
+  line-height:1.25;
+  padding-left:2px;
+}
+
+.crmActionMessageSuccess{ color:#86efac; }
+.crmActionMessageError{ color:#fca5a5; }
+
 .crmActionMain{
   position:relative;
   min-width:0;
