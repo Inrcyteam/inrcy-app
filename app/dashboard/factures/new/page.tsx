@@ -74,6 +74,8 @@ type InvoiceFieldErrors = {
   clientType?: string;
   clientName?: string;
   billingAddress?: string;
+  billingPostalCode?: string;
+  billingCity?: string;
   clientEmail?: string;
   clientSiren?: string;
   number?: string;
@@ -118,6 +120,17 @@ function buildFullCrmAddress(address?: string | null, postalCode?: string | null
     });
 
   return parts.join(" ").trim();
+}
+
+function splitFrenchAddress(value?: string | null) {
+  const clean = normalizeAddressPart(value);
+  const match = clean.match(/^(.*?)\s+(\d{5})\s+(.+)$/);
+  if (!match) return { address: clean, postal_code: "", city: "" };
+  return {
+    address: normalizeAddressPart(match[1]),
+    postal_code: normalizeAddressPart(match[2]),
+    city: normalizeAddressPart(match[3]),
+  };
 }
 
 function normalizeLabel(value: string) {
@@ -188,7 +201,11 @@ export default function NewFacturePage() {
   const [clientVatNumber, setClientVatNumber] = useState("");
   const [clientType, setClientType] = useState<ClientType>("");
   const [billingAddress, setBillingAddress] = useState("");
+  const [billingPostalCode, setBillingPostalCode] = useState("");
+  const [billingCity, setBillingCity] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryPostalCode, setDeliveryPostalCode] = useState("");
+  const [deliveryCity, setDeliveryCity] = useState("");
   const [sameAddresses, setSameAddresses] = useState(true);
   const [operationCategory, setOperationCategory] = useState<(typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]>("");
   const [serviceDate, setServiceDate] = useState("");
@@ -202,16 +219,30 @@ export default function NewFacturePage() {
   const [fixedRecoveryFee40, setFixedRecoveryFee40] = useState(true);
   const [documentKind, setDocumentKind] = useState<(typeof DOCUMENT_KIND_OPTIONS)[number]["key"]>("invoice");
 
+  const billingFullAddress = buildFullCrmAddress(billingAddress, billingPostalCode, billingCity);
+  const deliveryFullAddress = buildFullCrmAddress(deliveryAddress, deliveryPostalCode, deliveryCity);
+
   const setPrimaryClientAddress = (value: string) => {
-    setClientAddress(value);
-    setBillingAddress(value);
-    if (sameAddresses) setDeliveryAddress(value);
+    const parsed = splitFrenchAddress(value);
+    setBillingAddress(parsed.address);
+    setBillingPostalCode(parsed.postal_code);
+    setBillingCity(parsed.city);
+    setClientAddress(buildFullCrmAddress(parsed.address, parsed.postal_code, parsed.city));
+    if (sameAddresses) {
+      setDeliveryAddress(parsed.address);
+      setDeliveryPostalCode(parsed.postal_code);
+      setDeliveryCity(parsed.city);
+    }
   };
 
   useEffect(() => {
+    const full = buildFullCrmAddress(billingAddress, billingPostalCode, billingCity);
+    setClientAddress(full);
     if (!sameAddresses) return;
-    setDeliveryAddress(billingAddress || clientAddress);
-  }, [sameAddresses, billingAddress, clientAddress]);
+    setDeliveryAddress(billingAddress);
+    setDeliveryPostalCode(billingPostalCode);
+    setDeliveryCity(billingCity);
+  }, [sameAddresses, billingAddress, billingPostalCode, billingCity]);
 
   // --- Remise commerciale (appliquée sur le total TTC)
   const [discountKind, setDiscountKind] = useState<DiscountKind | "">("");
@@ -286,6 +317,8 @@ export default function NewFacturePage() {
     const siren = searchParams.get("clientSiren") || "";
     const vatNumber = searchParams.get("clientVatNumber") || "";
     const billing = searchParams.get("billingAddress") || "";
+    const billingPostal = searchParams.get("billingPostalCode") || searchParams.get("postal_code") || "";
+    const billingCityParam = searchParams.get("billingCity") || searchParams.get("city") || "";
     const delivery = searchParams.get("deliveryAddress") || "";
     if (name) setClientName((prev) => prev || name);
     if (email) setClientEmail((prev) => prev || email);
@@ -293,11 +326,27 @@ export default function NewFacturePage() {
     if (vatNumber) setClientVatNumber((prev) => prev || vatNumber);
     if (address) {
       setClientAddress((prev) => prev || address);
-      setBillingAddress((prev) => prev || billing || address);
-      setDeliveryAddress((prev) => prev || delivery || billing || address);
+      const parsed = splitFrenchAddress(billing || address);
+      setBillingAddress((prev) => prev || parsed.address);
+      setBillingPostalCode((prev) => prev || billingPostal || parsed.postal_code);
+      setBillingCity((prev) => prev || billingCityParam || parsed.city);
+      const parsedDelivery = splitFrenchAddress(delivery || billing || address);
+      setDeliveryAddress((prev) => prev || parsedDelivery.address);
+      setDeliveryPostalCode((prev) => prev || billingPostal || parsedDelivery.postal_code);
+      setDeliveryCity((prev) => prev || billingCityParam || parsedDelivery.city);
     } else {
-      if (billing) setBillingAddress((prev) => prev || billing);
-      if (delivery) setDeliveryAddress((prev) => prev || delivery);
+      if (billing) {
+        const parsed = splitFrenchAddress(billing);
+        setBillingAddress((prev) => prev || parsed.address);
+        setBillingPostalCode((prev) => prev || billingPostal || parsed.postal_code);
+        setBillingCity((prev) => prev || billingCityParam || parsed.city);
+      }
+      if (delivery) {
+        const parsedDelivery = splitFrenchAddress(delivery);
+        setDeliveryAddress((prev) => prev || parsedDelivery.address);
+        setDeliveryPostalCode((prev) => prev || billingPostal || parsedDelivery.postal_code);
+        setDeliveryCity((prev) => prev || billingCityParam || parsedDelivery.city);
+      }
     }
   }, []);
 
@@ -338,18 +387,32 @@ export default function NewFacturePage() {
       [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
       (c.last_name || "").trim();
 
-    const fullAddress = buildFullCrmAddress(c.billing_address || c.address, c.postal_code, c.city);
-    const fullDeliveryAddress = buildFullCrmAddress(c.delivery_address || c.address, c.postal_code, c.city);
+    const billingParsed = splitFrenchAddress(c.billing_address || c.address || "");
+    const deliveryParsed = splitFrenchAddress(c.delivery_address || c.address || "");
+    const nextBillingPostal = normalizeAddressPart(c.postal_code) || billingParsed.postal_code;
+    const nextBillingCity = normalizeAddressPart(c.city) || billingParsed.city;
+    const fullAddress = buildFullCrmAddress(billingParsed.address, nextBillingPostal, nextBillingCity);
+    const fullDeliveryAddress = buildFullCrmAddress(deliveryParsed.address, nextBillingPostal, nextBillingCity);
 
     setClientName(displayName);
     setClientEmail((c.email || "").trim());
     setClientSiren((c.siret || "").trim());
     setClientVatNumber((c.vat_number || "").trim());
     setClientType(normalizeClientType(c.category) || ((c.siret || c.company_name) ? "professionnel" : "particulier"));
-    setPrimaryClientAddress(fullAddress);
+    setBillingAddress(billingParsed.address);
+    setBillingPostalCode(nextBillingPostal);
+    setBillingCity(nextBillingCity);
+    setClientAddress(fullAddress);
     if (fullDeliveryAddress && fullDeliveryAddress !== fullAddress) {
       setSameAddresses(false);
-      setDeliveryAddress(fullDeliveryAddress);
+      setDeliveryAddress(deliveryParsed.address);
+      setDeliveryPostalCode(nextBillingPostal);
+      setDeliveryCity(nextBillingCity);
+    } else {
+      setSameAddresses(true);
+      setDeliveryAddress(billingParsed.address);
+      setDeliveryPostalCode(nextBillingPostal);
+      setDeliveryCity(nextBillingCity);
     }
   };
 
@@ -369,7 +432,7 @@ export default function NewFacturePage() {
   const selectCrmContact = (c: CrmContact) => {
     setSelectedCrmContactId(String(c.id));
     applyCrmContact(c);
-    setFieldErrors((prev) => ({ ...prev, clientType: undefined, clientName: undefined, billingAddress: undefined, clientEmail: undefined, clientSiren: undefined }));
+    setFieldErrors((prev) => ({ ...prev, clientType: undefined, clientName: undefined, billingAddress: undefined, billingPostalCode: undefined, billingCity: undefined, clientEmail: undefined, clientSiren: undefined }));
     setCrmQuery("");
     setCrmOpen(false);
   };
@@ -495,7 +558,11 @@ export default function NewFacturePage() {
       clientName: string;
       clientAddress: string;
       billingAddress?: string;
+      billingPostalCode?: string;
+      billingCity?: string;
       deliveryAddress?: string;
+      deliveryPostalCode?: string;
+      deliveryCity?: string;
       sameAddresses?: boolean;
       clientEmail: string;
       clientSiren?: string;
@@ -537,7 +604,11 @@ export default function NewFacturePage() {
     clientName: string;
     clientAddress: string;
     billingAddress?: string;
+    billingPostalCode?: string;
+    billingCity?: string;
     deliveryAddress?: string;
+    deliveryPostalCode?: string;
+    deliveryCity?: string;
     sameAddresses?: boolean;
     clientEmail: string;
     clientSiren?: string;
@@ -562,10 +633,13 @@ export default function NewFacturePage() {
   };
 
   const SAVES_TYPE = "facture" as const;
+  const TEMPLATE_TYPE = "facture_template" as const;
 
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [drafts, setDrafts] = useState<FactureDraft[]>([]);
+  const [templates, setTemplates] = useState<FactureDraft[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
   const [isFinalized, setIsFinalized] = useState(false);
   const [finalizedAt, setFinalizedAt] = useState<string>("");
   const [finalizing, setFinalizing] = useState(false);
@@ -609,10 +683,28 @@ export default function NewFacturePage() {
       }));
 
       setDrafts(mapped);
+
+      setTemplatesLoading(true);
+      const { data: templateRows, error: templateError } = await supabase
+        .from("doc_saves")
+        .select("id,updated_at,name,payload")
+        .eq("user_id", user.id)
+        .eq("type", TEMPLATE_TYPE)
+        .order("updated_at", { ascending: false });
+
+      if (templateError) throw templateError;
+
+      setTemplates((templateRows ?? []).map((row: any) => ({
+        id: row.id,
+        updatedAtISO: row.updated_at,
+        name: row.name,
+        snapshot: row.payload,
+      })));
     } catch (e) {
       console.error(e);
     } finally {
       setDraftsLoading(false);
+      setTemplatesLoading(false);
     }
   };
 
@@ -621,21 +713,30 @@ export default function NewFacturePage() {
   }, []);
 
   const applyDraftSnapshot = (s: FactureDraft["snapshot"]) => {
-    const nextBillingAddress = s.billingAddress || s.clientAddress || "";
+    const legacyBilling = splitFrenchAddress(s.billingAddress || s.clientAddress || "");
+    const nextBillingAddress = legacyBilling.address;
+    const nextBillingPostalCode = (s as any).billingPostalCode || legacyBilling.postal_code;
+    const nextBillingCity = (s as any).billingCity || legacyBilling.city;
+    const nextBillingFullAddress = buildFullCrmAddress(nextBillingAddress, nextBillingPostalCode, nextBillingCity);
+    const legacyDelivery = splitFrenchAddress(s.deliveryAddress || nextBillingFullAddress);
     const nextSameAddresses = typeof s.sameAddresses === "boolean"
       ? s.sameAddresses
-      : !s.deliveryAddress || s.deliveryAddress === nextBillingAddress;
-    const nextDeliveryAddress = nextSameAddresses
-      ? nextBillingAddress
-      : (s.deliveryAddress || "");
+      : !s.deliveryAddress || buildFullCrmAddress(legacyDelivery.address, (s as any).deliveryPostalCode || legacyDelivery.postal_code, (s as any).deliveryCity || legacyDelivery.city) === nextBillingFullAddress;
+    const nextDeliveryAddress = nextSameAddresses ? nextBillingAddress : legacyDelivery.address;
+    const nextDeliveryPostalCode = nextSameAddresses ? nextBillingPostalCode : ((s as any).deliveryPostalCode || legacyDelivery.postal_code);
+    const nextDeliveryCity = nextSameAddresses ? nextBillingCity : ((s as any).deliveryCity || legacyDelivery.city);
 
     setNumber(s.number);
     setInvoiceDate(s.invoiceDate);
     setDueDate(s.dueDate);
     setClientName(s.clientName);
-    setClientAddress(nextBillingAddress);
+    setClientAddress(nextBillingFullAddress);
     setBillingAddress(nextBillingAddress);
+    setBillingPostalCode(nextBillingPostalCode);
+    setBillingCity(nextBillingCity);
     setDeliveryAddress(nextDeliveryAddress);
+    setDeliveryPostalCode(nextDeliveryPostalCode);
+    setDeliveryCity(nextDeliveryCity);
     setSameAddresses(nextSameAddresses);
     setClientEmail(s.clientEmail);
     setClientSiren(s.clientSiren || "");
@@ -759,18 +860,27 @@ export default function NewFacturePage() {
         setNumber(generateNumber("FAC"));
         setInvoiceDate(invoiceDateISO);
         setDueDate(dueDateISO);
-        const nextBillingAddress = devis.billingAddress || devis.clientAddress || "";
+        const legacyBilling = splitFrenchAddress(devis.billingAddress || devis.clientAddress || "");
+        const nextBillingAddress = legacyBilling.address;
+        const nextBillingPostalCode = (devis as any).billingPostalCode || legacyBilling.postal_code;
+        const nextBillingCity = (devis as any).billingCity || legacyBilling.city;
+        const nextBillingFullAddress = buildFullCrmAddress(nextBillingAddress, nextBillingPostalCode, nextBillingCity);
+        const legacyDelivery = splitFrenchAddress(devis.deliveryAddress || nextBillingFullAddress);
         const nextSameAddresses = typeof devis.sameAddresses === "boolean"
           ? devis.sameAddresses
-          : !devis.deliveryAddress || devis.deliveryAddress === nextBillingAddress;
-        const nextDeliveryAddress = nextSameAddresses
-          ? nextBillingAddress
-          : (devis.deliveryAddress || "");
+          : !devis.deliveryAddress || buildFullCrmAddress(legacyDelivery.address, (devis as any).deliveryPostalCode || legacyDelivery.postal_code, (devis as any).deliveryCity || legacyDelivery.city) === nextBillingFullAddress;
+        const nextDeliveryAddress = nextSameAddresses ? nextBillingAddress : legacyDelivery.address;
+        const nextDeliveryPostalCode = nextSameAddresses ? nextBillingPostalCode : ((devis as any).deliveryPostalCode || legacyDelivery.postal_code);
+        const nextDeliveryCity = nextSameAddresses ? nextBillingCity : ((devis as any).deliveryCity || legacyDelivery.city);
 
         setClientName(devis.clientName || "");
-        setClientAddress(nextBillingAddress);
+        setClientAddress(nextBillingFullAddress);
         setBillingAddress(nextBillingAddress);
+        setBillingPostalCode(nextBillingPostalCode);
+        setBillingCity(nextBillingCity);
         setDeliveryAddress(nextDeliveryAddress);
+        setDeliveryPostalCode(nextDeliveryPostalCode);
+        setDeliveryCity(nextDeliveryCity);
         setSameAddresses(nextSameAddresses);
         setClientEmail(devis.clientEmail || "");
         setClientSiren(devis.clientSiren || "");
@@ -844,12 +954,14 @@ export default function NewFacturePage() {
   const validateInvoiceAction = (options?: { requireEmail?: boolean }) => {
     const nextErrors: InvoiceFieldErrors = {};
     const requireEmail = !!options?.requireEmail;
-    const normalizedBillingAddress = (billingAddress || clientAddress || "").trim();
+    const normalizedBillingAddress = buildFullCrmAddress(billingAddress, billingPostalCode, billingCity).trim();
     const hasValidLine = lines.some((line) => (line.label || "").trim() && Number(line.qty) > 0 && Number(line.unitPrice) >= 0);
 
     if (!clientType) nextErrors.clientType = "Type de client obligatoire.";
     if (!(clientName || "").trim()) nextErrors.clientName = "Nom client obligatoire.";
-    if (!normalizedBillingAddress) nextErrors.billingAddress = "Adresse de facturation obligatoire.";
+    if (!billingAddress.trim()) nextErrors.billingAddress = "Adresse obligatoire.";
+    if (!billingPostalCode.trim()) nextErrors.billingPostalCode = "Code postal obligatoire.";
+    if (!billingCity.trim()) nextErrors.billingCity = "Ville obligatoire.";
     if (clientType && clientType !== "particulier" && !(clientSiren || "").trim()) nextErrors.clientSiren = "SIREN client obligatoire pour ce type de client.";
     if (!(number || "").trim()) nextErrors.number = "Numéro de facture obligatoire.";
     if (!(invoiceDate || "").trim()) nextErrors.invoiceDate = "Date de facture obligatoire.";
@@ -888,8 +1000,8 @@ export default function NewFacturePage() {
       return null;
     }
 
-    const normalizedBillingAddress = billingAddress || clientAddress;
-    const normalizedDeliveryAddress = sameAddresses ? normalizedBillingAddress : deliveryAddress;
+    const normalizedBillingAddress = buildFullCrmAddress(billingAddress, billingPostalCode, billingCity);
+    const normalizedDeliveryAddress = sameAddresses ? normalizedBillingAddress : buildFullCrmAddress(deliveryAddress, deliveryPostalCode, deliveryCity);
 
     const snapshot: FactureDraft["snapshot"] = {
       number: finalNumber,
@@ -897,8 +1009,12 @@ export default function NewFacturePage() {
       dueDate,
       clientName,
       clientAddress: normalizedBillingAddress,
-      billingAddress: normalizedBillingAddress,
-      deliveryAddress: normalizedDeliveryAddress,
+      billingAddress: billingAddress.trim(),
+      billingPostalCode: billingPostalCode.trim(),
+      billingCity: billingCity.trim(),
+      deliveryAddress: sameAddresses ? billingAddress.trim() : deliveryAddress.trim(),
+      deliveryPostalCode: sameAddresses ? billingPostalCode.trim() : deliveryPostalCode.trim(),
+      deliveryCity: sameAddresses ? billingCity.trim() : deliveryCity.trim(),
       sameAddresses,
       clientEmail,
       clientSiren,
@@ -985,7 +1101,7 @@ export default function NewFacturePage() {
   const addCurrentClientToCrm = async () => {
     const displayName = (clientName || "").trim();
     const email = (clientEmail || "").trim();
-    const primaryAddress = (clientAddress || billingAddress || "").trim();
+    const primaryAddress = buildFullCrmAddress(billingAddress, billingPostalCode, billingCity).trim();
 
     setFormMessage(null);
     setCrmActionMessage(null);
@@ -1005,7 +1121,9 @@ export default function NewFacturePage() {
           siret: (clientSiren || "").trim(),
           vat_number: (clientVatNumber || "").trim(),
           email,
-          address: primaryAddress,
+          address: (billingAddress || "").trim(),
+          postal_code: (billingPostalCode || "").trim(),
+          city: (billingCity || "").trim(),
           billing_address: (billingAddress || "").trim(),
           delivery_address: sameAddresses ? "" : (deliveryAddress || "").trim(),
           contact_type: "client",
@@ -1096,6 +1214,123 @@ export default function NewFacturePage() {
     await refreshSaves();
   };
 
+  const saveTemplate = async () => {
+    const name = window.prompt("Nom du modèle", lines[0]?.label?.trim() || "Modèle facture");
+    if (!name?.trim()) return;
+
+    const snapshot: FactureDraft["snapshot"] = {
+      number: "",
+      invoiceDate: "",
+      dueDate: "",
+      clientName: "",
+      clientAddress: "",
+      billingAddress: "",
+      billingPostalCode: "",
+      billingCity: "",
+      deliveryAddress: "",
+      deliveryPostalCode: "",
+      deliveryCity: "",
+      sameAddresses: true,
+      clientEmail: "",
+      clientSiren: "",
+      clientVatNumber: "",
+      clientType: "",
+      vatDispense,
+      operationCategory,
+      serviceDate,
+      servicePeriodStart,
+      servicePeriodEnd,
+      purchaseOrderReference,
+      depositKind,
+      depositValue,
+      vatOnDebits,
+      lateFeeRate,
+      fixedRecoveryFee40,
+      documentKind,
+      status: "brouillon" as any,
+      paymentMethod,
+      paymentDetails,
+      notes,
+      invoiceMention,
+      lines: lines.map((line, index) => ({ ...line, id: `l_${index + 1}` })),
+      discountKind,
+      discountValue: Number(discountValue) || 0,
+      discountDetails,
+      isFinalized: false,
+      finalizedAt: null as any,
+      lockedAt: null as any,
+    };
+
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) return;
+
+    const { error } = await supabase.from("doc_saves").insert({
+      user_id: user.id,
+      type: TEMPLATE_TYPE,
+      name: name.trim(),
+      payload: snapshot,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      console.error(error);
+      setFormMessage({ type: "error", text: "Impossible d’enregistrer ce modèle." });
+      return;
+    }
+
+    await refreshSaves();
+    setFormMessage({ type: "success", text: "Modèle de facture enregistré." });
+  };
+
+  const openTemplate = (d: FactureDraft) => {
+    applyDraftSnapshot(d.snapshot);
+    const today = new Date().toISOString().slice(0, 10);
+    setCurrentSaveId("");
+    setIsFinalized(false);
+    setFinalizedAt("");
+    setSelectedCrmContactId("");
+    setCrmOpen(false);
+    setFieldErrors({});
+    setClientName("");
+    setClientEmail("");
+    setClientSiren("");
+    setClientVatNumber("");
+    setClientType("");
+    setClientAddress("");
+    setBillingAddress("");
+    setBillingPostalCode("");
+    setBillingCity("");
+    setDeliveryAddress("");
+    setDeliveryPostalCode("");
+    setDeliveryCity("");
+    setSameAddresses(true);
+    setNumber(generateNumber("FAC"));
+    setInvoiceDate(today);
+    setDueDate(dateWithAddedDays(today, documentsSettings.invoice.dueDays));
+    setStatus(documentsSettings.invoice.status as DocRecord["status"] | "en_attente_paiement" | "");
+    setDraftsOpen(false);
+    setFormMessage({ type: "success", text: `Modèle “${d.name || d.snapshot.lines?.[0]?.label || "facture"}” appliqué. Ajoutez maintenant le client.` });
+  };
+
+  const deleteTemplate = async (id: string) => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from("doc_saves")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("type", TEMPLATE_TYPE)
+      .eq("id", id);
+
+    await refreshSaves();
+  };
+
   const print = () => window.print();
 
   const waitForDomUpdate = () =>
@@ -1182,11 +1417,13 @@ export default function NewFacturePage() {
       return;
     }
 
-    const finalized = await finalizeInvoice(docSaveId, "envoye");
-    if (!finalized) return;
-
-    const officialNumber = finalized.number || number || generateNumber("FAC");
-    if (!number || number !== officialNumber) setNumber(officialNumber);
+    let officialNumber = number || generateNumber("FAC");
+    if (!isFinalized) {
+      const finalized = await finalizeInvoice(docSaveId, "envoye");
+      if (!finalized) return;
+      officialNumber = finalized.number || officialNumber;
+      if (!number || number !== officialNumber) setNumber(officialNumber);
+    }
     await waitForDomUpdate();
 
     const pdfBlob = await buildPdfBlob();
@@ -1267,7 +1504,7 @@ export default function NewFacturePage() {
                 setDraftsOpen(true);
               }}
             >
-              Sauvegardes
+              Documents
             </button>
             <button
               type="button"
@@ -1399,9 +1636,16 @@ export default function NewFacturePage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, position: "sticky", top: 0, zIndex: 2, padding: "14px 14px 10px", background: "#111", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                <div style={{ fontWeight: 750, fontSize: 16 }}>Sauvegardes</div>
+                <div style={{ fontWeight: 750, fontSize: 16 }}>Documents</div>
                 <button type="button" className={styles.closeBtn} onClick={() => setDraftsOpen(false)}>
                   Fermer
+                </button>
+              </div>
+
+              <div style={{ padding: "12px 14px 0", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ fontWeight: 850 }}>Sauvegardes</div>
+                <button type="button" onClick={() => void saveTemplate()}>
+                  + Enregistrer comme modèle
                 </button>
               </div>
 
@@ -1451,6 +1695,29 @@ export default function NewFacturePage() {
                           <button type="button" className={styles.ghostBtn} onClick={() => deleteDraft(d.id)}>
                             Supprimer
                           </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div style={{ padding: "12px 14px 0", fontWeight: 850 }}>Modèles</div>
+              {templates.length === 0 ? (
+                <div style={{ padding: 14, opacity: 0.85 }}>Aucun modèle enregistré.</div>
+              ) : (
+                <div style={{ padding: 14, display: "grid", gap: 10 }}>
+                  {templates.map((d) => {
+                    const label = d.name || d.snapshot.lines?.[0]?.label || "Modèle facture";
+                    return (
+                      <div key={d.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: 10, border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, background: "rgba(255,255,255,0.04)" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+                          <div style={{ fontSize: 12, opacity: 0.8 }}>Modèle · {new Date(d.updatedAtISO).toLocaleString("fr-FR")}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          <button type="button" onClick={() => openTemplate(d)}>Utiliser</button>
+                          <button type="button" className={styles.ghostBtn} onClick={() => deleteTemplate(d.id)}>Supprimer</button>
                         </div>
                       </div>
                     );
@@ -1604,15 +1871,37 @@ export default function NewFacturePage() {
           </div>
         </div>
 
-        <div className={styles.field}>
-          <label>Adresse de facturation<span className={styles.requiredMark}>*</span></label>
-          <input
-            value={billingAddress}
-            onChange={(e) => { setPrimaryClientAddress(e.target.value); clearFieldError("billingAddress"); }}
-            placeholder="Adresse, ville"
-            disabled={coreEditingLocked}
-          />
-          {fieldErrors.billingAddress ? <div className={styles.fieldError}>{fieldErrors.billingAddress}</div> : null}
+        <div className={styles.compactThreeCol}>
+          <div className={styles.field}>
+            <label>Adresse<span className={styles.requiredMark}>*</span></label>
+            <input
+              value={billingAddress}
+              onChange={(e) => { setBillingAddress(e.target.value); clearFieldError("billingAddress"); }}
+              placeholder="Adresse"
+              disabled={coreEditingLocked}
+            />
+            {fieldErrors.billingAddress ? <div className={styles.fieldError}>{fieldErrors.billingAddress}</div> : null}
+          </div>
+          <div className={styles.field}>
+            <label>Code postal<span className={styles.requiredMark}>*</span></label>
+            <input
+              value={billingPostalCode}
+              onChange={(e) => { setBillingPostalCode(e.target.value); clearFieldError("billingPostalCode"); }}
+              placeholder="Ex : 62440"
+              disabled={coreEditingLocked}
+            />
+            {fieldErrors.billingPostalCode ? <div className={styles.fieldError}>{fieldErrors.billingPostalCode}</div> : null}
+          </div>
+          <div className={styles.field}>
+            <label>Ville<span className={styles.requiredMark}>*</span></label>
+            <input
+              value={billingCity}
+              onChange={(e) => { setBillingCity(e.target.value); clearFieldError("billingCity"); }}
+              placeholder="Ex : Harnes"
+              disabled={coreEditingLocked}
+            />
+            {fieldErrors.billingCity ? <div className={styles.fieldError}>{fieldErrors.billingCity}</div> : null}
+          </div>
         </div>
 
         <div className={styles.field}>
@@ -1639,14 +1928,34 @@ export default function NewFacturePage() {
               background: "rgba(255,255,255,0.04)",
             }}
           >
-            <div className={styles.field} style={{ marginBottom: 0 }}>
-              <label>Adresse de livraison</label>
-              <input
-                value={deliveryAddress}
-                onChange={(e) => setDeliveryAddress(e.target.value)}
-                placeholder="Adresse de livraison, ville"
-                disabled={coreEditingLocked}
-              />
+            <div className={styles.compactThreeCol}>
+              <div className={styles.field} style={{ marginBottom: 0 }}>
+                <label>Adresse de livraison</label>
+                <input
+                  value={deliveryAddress}
+                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                  placeholder="Adresse"
+                  disabled={coreEditingLocked}
+                />
+              </div>
+              <div className={styles.field} style={{ marginBottom: 0 }}>
+                <label>Code postal livraison</label>
+                <input
+                  value={deliveryPostalCode}
+                  onChange={(e) => setDeliveryPostalCode(e.target.value)}
+                  placeholder="Ex : 62440"
+                  disabled={coreEditingLocked}
+                />
+              </div>
+              <div className={styles.field} style={{ marginBottom: 0 }}>
+                <label>Ville livraison</label>
+                <input
+                  value={deliveryCity}
+                  onChange={(e) => setDeliveryCity(e.target.value)}
+                  placeholder="Ex : Harnes"
+                  disabled={coreEditingLocked}
+                />
+              </div>
             </div>
           </div>
         ) : null}
@@ -1855,18 +2164,19 @@ export default function NewFacturePage() {
               }
             }}
           >
-            {finalizing ? "Émission…" : <>Émettre / figer<span className={styles.helpBubble} title="Fige la facture avec un numéro officiel. Les informations principales sont verrouillées pour sécuriser le document avant envoi au client.">?</span></>}
+            {finalizing ? "Émission…" : <>Figer<span className={styles.helpBubble} title="Fige la facture avec un numéro officiel. Les informations principales sont verrouillées pour sécuriser le document avant envoi au client.">?</span></>}
           </button>
           <button
             type="button"
             disabled={finalizing || addingToCrm}
             onClick={async () => {
               if (!validateInvoiceAction({ requireEmail: true })) return;
+              if (!isFinalized && !window.confirm("Cette action va figer la facture, enregistrer son numéro officiel et préparer l’envoi par mail. Voulez-vous continuer ?")) return;
               const to = (clientEmail || "").trim();
               await uploadPdfAndOpenCompose(to);
             }}
           >
-            {finalizing ? "Préparation…" : <>Envoyer par mail<span className={styles.helpBubble} title="Prépare le PDF et ouvre l’envoi par email au client. Ce bouton sert à transmettre le document, pas à le figer.">?</span></>}
+            {finalizing ? "Préparation…" : <>Envoyer par mail<span className={styles.helpBubble} title="Fige la facture, enregistre son numéro officiel dans la base, prépare le PDF puis ouvre l’envoi par email au client.">?</span></>}
           </button>
           <button type="button" onClick={print} disabled={finalizing || addingToCrm}>
             Imprimer / PDF
@@ -1970,10 +2280,10 @@ export default function NewFacturePage() {
             <div style={{ fontWeight: 600 }}>{clientName || "—"}</div>
             {clientSiren ? <div>SIREN : {clientSiren}</div> : null}
             {clientVatNumber ? <div>TVA : {clientVatNumber}</div> : null}
-            <div>{billingAddress || clientAddress || ""}</div>
+            <div>{billingFullAddress}</div>
             {!sameAddresses && deliveryAddress ? (
               <div style={{ marginTop: 6 }}>
-                <strong>Adresse de livraison :</strong> {deliveryAddress}
+                <strong>Adresse de livraison :</strong> {deliveryFullAddress}
               </div>
             ) : null}
             <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>
