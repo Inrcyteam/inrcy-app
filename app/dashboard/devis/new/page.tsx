@@ -1317,6 +1317,8 @@ export default function NewDevisPage() {
             </button>
           </div>
 
+          <div className={styles.orientationTip}>Astuce : passez en paysage pour plus de confort sur ce module.</div>
+
           <SettingsDrawer
             title="Réglages par défaut"
             isOpen={settingsOpen}

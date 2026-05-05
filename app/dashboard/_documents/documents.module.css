@@ -166,6 +166,24 @@
   white-space: nowrap;
 }
 
+.orientationTip {
+  display: none;
+}
+
+@media (max-width: 900px) and (orientation: portrait) {
+  .orientationTip {
+    display: block;
+    margin: -2px 0 12px;
+    padding: 9px 11px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 12.5px;
+    line-height: 1.35;
+  }
+}
+
 .switchBtnFactures,
 .switchBtnDevis {
   position: relative;
