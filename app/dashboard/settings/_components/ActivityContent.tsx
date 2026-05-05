@@ -1,6 +1,7 @@
 "use client";
 
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { ACTIVITY_SECTOR_OPTIONS, decodeBusinessSector, encodeBusinessSector } from "@/lib/activitySectors";
@@ -331,10 +332,13 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
     }
   };
 
-  const handleReset = () => {
-    const ok = window.confirm(`Réinitialiser l’activité ?
-
-Cela efface les informations d’activité en cours dans le formulaire.`);
+  const handleReset = async () => {
+    const ok = await confirmInrcy({
+      title: "Réinitialiser l’activité ?",
+      message: "Cela efface les informations d’activité en cours dans le formulaire.",
+      confirmLabel: "Réinitialiser",
+      variant: "danger",
+    });
     if (!ok) return;
     setForm(initial);
     setSaved(false);

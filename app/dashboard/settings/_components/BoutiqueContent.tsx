@@ -1,6 +1,7 @@
 "use client";
 
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
@@ -128,9 +129,14 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
     setNotice("");
 
     const priceLabel = method === "EUR" ? `${p.priceEur} €` : `${p.comboEur} € + ${p.priceUi} UI`;
-    const ok = window.confirm(
-      `Confirmer la commande ?\n\nProduit : ${p.title}\nMode : ${method === "EUR" ? "€" : "UI"}\nPrix : ${priceLabel}`
-    );
+    const ok = await confirmInrcy({
+      title: "Confirmer la commande ?",
+      message: `Produit : ${p.title}
+Mode : ${method === "EUR" ? "€" : "UI"}
+Prix : ${priceLabel}`,
+      confirmLabel: "Commander",
+      variant: "warning",
+    });
     if (!ok) return;
 
     const sendId = `${p.key}:${method}`;

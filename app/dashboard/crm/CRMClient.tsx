@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./crm.module.css";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
 import HelpModal from "../_components/HelpModal";
 import CRMContactModal from "./_components/CRMContactModal";
@@ -1277,7 +1278,13 @@ const exportExcel = async () => {
   async function removeSelected() {
     if (selectedContactIds.size === 0) return;
     const n = selectedContactIds.size;
-    if (!confirm(`🗑️ Supprimer ${n} contact${n > 1 ? "s" : ""} ?`)) return;
+    const ok = await confirmInrcy({
+      title: n > 1 ? "Supprimer les contacts ?" : "Supprimer le contact ?",
+      message: `Cette action supprimera définitivement ${n} contact${n > 1 ? "s" : ""}.`,
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
 
     setSaving(true);
     setError(null);
@@ -1308,7 +1315,13 @@ const exportExcel = async () => {
   }
 
   async function remove(id: string) {
-    if (!confirm("🗑️ ce contact ?")) return;
+    const ok = await confirmInrcy({
+      title: "Supprimer le contact ?",
+      message: "Cette action supprimera définitivement ce contact.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
 
     setSaving(true);
     setError(null);

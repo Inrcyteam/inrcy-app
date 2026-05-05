@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import { resolveProfileLogoUrl } from "@/lib/profileLogo";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy, promptInrcy } from "@/lib/inrcyDialog";
 import styles from "../../_documents/documents.module.css";
 import dash from "../../dashboard.module.css";
 import SettingsDrawer from "../../SettingsDrawer";
@@ -1092,7 +1093,14 @@ export default function NewFacturePage() {
       return;
     }
 
-    const templateName = window.prompt("Nom du modèle", "Modèle facture");
+    const templateName = await promptInrcy({
+      title: "Créer un modèle",
+      message: "Donnez un nom à ce modèle de facture pour le réutiliser plus tard.",
+      defaultValue: "Modèle facture",
+      placeholder: "Nom du modèle",
+      confirmLabel: "Créer modèle",
+      required: false,
+    });
     if (templateName === null) return;
 
     const cleanName = templateName.trim() || "Modèle facture";
@@ -2189,7 +2197,15 @@ export default function NewFacturePage() {
             disabled={finalizing || addingToCrm}
             onClick={async () => {
               if (!validateInvoiceAction({ requireEmail: true })) return;
-              if (!isFinalized && !window.confirm("Cette action va figer le document, continuez ?")) return;
+              if (!isFinalized) {
+                const ok = await confirmInrcy({
+                  title: "Figer la facture ?",
+                  message: "L’envoi par mail va figer ce document avant son ouverture dans iNrSend. Continuer ?",
+                  confirmLabel: "Figer et envoyer",
+                  variant: "warning",
+                });
+                if (!ok) return;
+              }
               const to = (clientEmail || "").trim();
               await uploadPdfAndOpenCompose(to);
             }}

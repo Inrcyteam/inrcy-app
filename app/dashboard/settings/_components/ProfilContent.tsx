@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabaseClient";
 import { createSignedLogoUrl, extractLogoPathFromUrl, resolveProfileLogoUrl, revokeBlobUrl } from "@/lib/profileLogo";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 
 type Props = {
   mode?: "page" | "drawer";
@@ -382,10 +383,13 @@ export default function ProfilContent({
     }
   };
 
-  const handleReset = () => {
-    const ok = window.confirm(
-      "Réinitialiser le profil ?\n\nCela efface les champs et remet Panier moyen = 250€ et Conversion = 20%."
-    );
+  const handleReset = async () => {
+    const ok = await confirmInrcy({
+      title: "Réinitialiser le profil ?",
+      message: "Cela efface les champs et remet Panier moyen = 250€ et Conversion = 20%.",
+      confirmLabel: "Réinitialiser",
+      variant: "danger",
+    });
     if (!ok) return;
 
     // reset juste en UI pour l’instant (on fera un delete en DB plus tard si tu veux)

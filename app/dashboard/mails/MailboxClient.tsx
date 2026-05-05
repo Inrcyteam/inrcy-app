@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./mails.module.css";
 import { createClient } from "@/lib/supabaseClient";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import MailboxHeader from "./_components/MailboxHeader";
 import MobileFoldersMenu from "./_components/MobileFoldersMenu";
@@ -1434,7 +1435,12 @@ async function deleteDraftPermanently(id: string) {
     if (!id) return;
     if (deletingDraftId) return;
 
-    const ok = window.confirm("Supprimer ce brouillon définitivement ?");
+    const ok = await confirmInrcy({
+      title: "Supprimer le brouillon ?",
+      message: "Cette action supprimera définitivement ce brouillon.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
     if (!ok) return;
 
     setDeletingDraftId(id);
@@ -1500,7 +1506,12 @@ async function deleteDraftPermanently(id: string) {
       if (selectedBulkCount <= 0) return;
 
       const label = selectedBulkCount > 1 ? `${selectedBulkCount} éléments sélectionnés` : "cet élément sélectionné";
-      const ok = window.confirm(`Supprimer ${label} ?`);
+      const ok = await confirmInrcy({
+        title: "Supprimer la sélection ?",
+        message: `Cette action supprimera ${label} de l’historique.`,
+        confirmLabel: "Supprimer",
+        variant: "danger",
+      });
       if (!ok) return;
 
       setDeletingHistorySelection(true);
@@ -1550,7 +1561,12 @@ async function deleteDraftPermanently(id: string) {
       if (!canDeleteHistoryItem(item)) return;
       if (deletingHistoryItemId || deletingHistorySelection) return;
 
-      const ok = window.confirm(`Supprimer cet élément de l’historique ${folderLabel(item.folder)} ?`);
+      const ok = await confirmInrcy({
+        title: "Supprimer l’élément ?",
+        message: `Cette action supprimera cet élément de l’historique ${folderLabel(item.folder)}.`,
+        confirmLabel: "Supprimer",
+        variant: "danger",
+      });
       if (!ok) return;
 
       setDeletingHistoryItemId(item.id);
@@ -1619,7 +1635,12 @@ async function deleteDraftPermanently(id: string) {
     }
 
     if (recipientsList.length >= BULK_CONFIRM_WARNING_THRESHOLD) {
-      const ok = window.confirm(bulkConfirmationMessage(recipientsList.length));
+      const ok = await confirmInrcy({
+        title: "Confirmer l’envoi en masse ?",
+        message: bulkConfirmationMessage(recipientsList.length),
+        confirmLabel: "Envoyer",
+        variant: "warning",
+      });
       if (!ok) return;
     }
 
@@ -1980,7 +2001,13 @@ async function deleteDraftPermanently(id: string) {
     const channel = String(activeDetailsChannelEntry?.key || "").trim();
     if (!publicationId || !channel) return;
     const label = activeDetailsChannelEntry?.label || formatChannelLabel(channel);
-    if (!window.confirm(`Supprimer la publication ${label} ?`)) return;
+    const ok = await confirmInrcy({
+      title: "Supprimer la publication ?",
+      message: `Cette action supprimera la publication ${label}.`,
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
 
     setDetailsActionBusy(true);
     setDetailsActionError(null);

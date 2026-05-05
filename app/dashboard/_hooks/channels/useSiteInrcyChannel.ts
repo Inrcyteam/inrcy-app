@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import { createClient } from "@/lib/supabaseClient";
 import { isManagedInrcySite } from "@/lib/inrcySite";
 import type { ActusFont, ActusTheme, GoogleProduct, Ownership } from "../../dashboard.types";
@@ -518,9 +519,12 @@ export function useSiteInrcyChannel({
     if (siteInrcyOwnership === "none") return;
     if (!siteInrcySavedUrl.trim()) return;
 
-    const ok = window.confirm(
-      "Supprimer ce lien va déconnecter automatiquement Google Analytics et Google Search Console pour la bulle Site iNrCy. Continuer ?"
-    );
+    const ok = await confirmInrcy({
+      title: "Supprimer le lien Site iNrCy ?",
+      message: "Cette action déconnectera automatiquement Google Analytics et Google Search Console pour la bulle Site iNrCy.",
+      confirmLabel: "Supprimer le lien",
+      variant: "danger",
+    });
     if (!ok) return;
 
     await disconnectAllSiteInrcyGoogleStats();
@@ -558,7 +562,13 @@ export function useSiteInrcyChannel({
   }, [disconnectAllSiteInrcyGoogleStats, patchChannelConnectionLocally, siteInrcyOwnership, siteInrcySavedUrl, triggerChannelRefresh]);
 
   const resetSiteInrcyAll = useCallback(async () => {
-    if (!confirm("Réinitialiser la configuration (lien + GA4 + Search Console) ?")) return;
+    const ok = await confirmInrcy({
+      title: "Réinitialiser la configuration ?",
+      message: "Cela supprimera le lien, GA4 et Search Console pour la bulle Site iNrCy.",
+      confirmLabel: "Réinitialiser",
+      variant: "danger",
+    });
+    if (!ok) return;
     if (siteInrcyOwnership === "none") return;
 
     await resetGoogleStats();

@@ -6,6 +6,7 @@ import SettingsDrawer from "../SettingsDrawer";
 import HelpButton from "../_components/HelpButton";
 import AgendaSettingsContent from "../settings/_components/AgendaSettingsContent";
 import HelpModal from "../_components/HelpModal";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import {
   accentFor,
   formatDayLabel,
@@ -580,8 +581,14 @@ export function AgendaSidebar({
                     event={ev}
                     meta={meta}
                     onClick={() => onOpenEvent(ev)}
-                    onDelete={() => {
-                      if (confirm("Supprimer cet évènement ?")) onDeleteEvent(ev.id);
+                    onDelete={async () => {
+                      const ok = await confirmInrcy({
+                        title: "Supprimer l’évènement ?",
+                        message: "Cette action supprimera définitivement cet évènement de l’agenda.",
+                        confirmLabel: "Supprimer",
+                        variant: "danger",
+                      });
+                      if (ok) onDeleteEvent(ev.id);
                     }}
                   />
                 </React.Fragment>

@@ -1,6 +1,7 @@
 "use client";
 
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -441,7 +442,12 @@ useEffect(() => {
   };
 
   const doCancel = async () => {
-    const ok = window.confirm("Confirmer la résiliation ? (préavis 1 mois)");
+    const ok = await confirmInrcy({
+      title: "Confirmer la résiliation ?",
+      message: "La résiliation sera programmée avec un préavis d’un mois.",
+      confirmLabel: "Résilier",
+      variant: "danger",
+    });
     if (!ok) return;
     try {
       setBillingMsg("");
@@ -463,7 +469,12 @@ useEffect(() => {
   };
 
   const doUncancel = async () => {
-    const ok = window.confirm("Annuler la résiliation programmée ?");
+    const ok = await confirmInrcy({
+      title: "Annuler la résiliation ?",
+      message: "Votre abonnement restera actif comme avant.",
+      confirmLabel: "Annuler la résiliation",
+      variant: "warning",
+    });
     if (!ok) return;
     try {
       setBillingMsg("");

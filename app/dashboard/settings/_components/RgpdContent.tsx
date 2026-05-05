@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 
 const LS_KEY = "inrcy_cookie_consent";
 
@@ -97,9 +98,12 @@ export default function RgpdContent({ mode = "page" }: Props) {
   async function deleteAccount() {
     setErr(null);
     setDone(null);
-    const ok = window.confirm(
-      "⚠️ Cette action supprime votre compte iNrCy et vos données associées.\n\nSouhaitez-vous vraiment continuer ?"
-    );
+    const ok = await confirmInrcy({
+      title: "Supprimer le compte ?",
+      message: "Cette action supprime votre compte iNrCy et vos données associées. Souhaitez-vous vraiment continuer ?",
+      confirmLabel: "Supprimer mon compte",
+      variant: "danger",
+    });
     if (!ok) return;
 
     setBusy("delete");

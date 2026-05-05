@@ -4,6 +4,7 @@ import StatusMessage from "../../_components/StatusMessage";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import { editableHtmlToSiteText, siteTextToEditableHtml, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import stylesDash from "../../dashboard/dashboard.module.css";
 import { ChannelImageAdapterCardsPanel, ChannelImageAdapterModal, ChannelPublicationPreview } from "@/app/dashboard/_components/ChannelImageAdapterTool";
@@ -650,7 +651,7 @@ export default function PublishModal({
     }
   };
 
-  const onDuplicateContentToAllChannels = () => {
+  const onDuplicateContentToAllChannels = async () => {
     const source = getDisplayPost(activeCard);
     const hasSourceContent = Boolean(String(source.title || "").trim() || String(source.content || "").trim());
 
@@ -664,10 +665,13 @@ export default function PublishModal({
       return;
     }
 
-    if (typeof window !== "undefined") {
-      const confirmed = window.confirm("Dupliquer ce contenu sur tous les canaux ?\n\nLe titre et le contenu des autres canaux seront remplacés.");
-      if (!confirmed) return;
-    }
+    const confirmed = await confirmInrcy({
+      title: "Dupliquer le contenu ?",
+      message: "Le titre et le contenu des autres canaux seront remplacés.",
+      confirmLabel: "Dupliquer",
+      variant: "warning",
+    });
+    if (!confirmed) return;
 
     const patch: Pick<ChannelPost, "title" | "content"> = {
       title: source.title,

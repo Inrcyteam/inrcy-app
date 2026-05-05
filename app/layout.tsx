@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import OrientationGuard from "./OrientationGuard";
 import CookieConsentBanner from "./_components/CookieConsentBanner";
+import InrcyDialogProvider from "./_components/InrcyDialogProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -46,6 +47,7 @@ export default function RootLayout({
       >
         <OrientationGuard />
         <CookieConsentBanner />
+        <InrcyDialogProvider />
         {children}
       </body>
     </html>
