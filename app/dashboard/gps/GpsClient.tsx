@@ -16,6 +16,16 @@ function normalizeText(input: string) {
     .trim();
 }
 
+
+function renderStrongParts(input: string) {
+  return input.split(/(\*\*.*?\*\*)/g).map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    return <span key={index}>{part}</span>;
+  });
+}
+
 type SearchHit = {
   article: GpsArticle;
   sectionId: string;
@@ -221,9 +231,7 @@ export default function GpsClient() {
                       <ol className={styles.steps}>
                         {article.steps.map((s, idx) => (
                           <li key={idx} className={styles.step}>
-                            <span
-                              dangerouslySetInnerHTML={{ __html: s.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }}
-                            />
+                            <span>{renderStrongParts(s)}</span>
                           </li>
                         ))}
                       </ol>

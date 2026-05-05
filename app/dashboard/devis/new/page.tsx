@@ -28,6 +28,7 @@ import {
   generateNumber,
   uid,
 } from "../../_documents/docUtils";
+import { cloneDocumentLines, hasReusableDocumentLine, prepareTemplateSnapshot } from "../../_documents/documentTemplateUtils";
 
 type Profile = {
   user_id: string;
@@ -939,7 +940,7 @@ export default function NewDevisPage() {
   };
 
   const saveAsTemplate = async () => {
-    const hasValidLine = lines.some((line) => (line.label || "").trim() && Number(line.qty) > 0 && Number(line.unitPrice) >= 0);
+    const hasValidLine = hasReusableDocumentLine(lines);
     if (!hasValidLine) {
       setFieldErrors((prev) => ({ ...prev, lines: "Ajoutez au moins une prestation valide avant d’enregistrer un modèle." }));
       setFormMessage(null);
@@ -958,22 +959,7 @@ export default function NewDevisPage() {
 
     const cleanName = templateName.trim() || "Modèle devis";
     const nowISO = new Date().toISOString();
-    const snapshot: DevisDraft["snapshot"] = {
-      number: "",
-      docDateISO: "",
-      clientName: "",
-      clientAddress: "",
-      billingAddress: "",
-      billingPostalCode: "",
-      billingCity: "",
-      deliveryAddress: "",
-      deliveryPostalCode: "",
-      deliveryCity: "",
-      sameAddresses: true,
-      clientEmail: "",
-      clientSiren: "",
-      clientVatNumber: "",
-      clientType: "",
+    const snapshot = prepareTemplateSnapshot<DevisDraft["snapshot"]>({
       vatDispense,
       operationCategory,
       serviceDate,
@@ -987,17 +973,11 @@ export default function NewDevisPage() {
       notes,
       quoteMention,
       validityDays,
-      lines: lines.map((line) => ({ ...line, id: uid("l") })),
+      lines: cloneDocumentLines(lines),
       discountKind,
       discountValue: Number(discountValue) || 0,
       discountDetails,
-      status: "brouillon",
-      isFinalized: false,
-      finalizedAt: null,
-      lockedAt: null,
-      isTemplate: true,
-      templateName: cleanName,
-    };
+    }, cleanName);
 
     const {
       data: { user },

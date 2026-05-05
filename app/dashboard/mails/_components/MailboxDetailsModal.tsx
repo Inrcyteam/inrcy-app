@@ -1,5 +1,6 @@
 import React from "react";
 import { useRouter } from "next/navigation";
+import { sanitizeHtml } from "@/lib/sanitizeHtml";
 import styles from "../mails.module.css";
 import { ChannelImageAdapterCardsPanel, ChannelPublicationPreview } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import {
@@ -140,6 +141,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   }, [open, detailsItem?.id, detailsEditMode]);
 
   if (!open) return null;
+
+  const safeDetailHtml = detailsItem?.detailHtml ? sanitizeHtml(detailsItem.detailHtml) : "";
 
   return (
           <div className={styles.modalOverlay} onClick={() => onClose()}>
@@ -525,7 +528,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                           {detailsItem.source !== "app_events" ? (
                             <div className={styles.messageBody}>
                               {detailsItem.detailHtml ? (
-                                <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
+                                <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: safeDetailHtml }} />
                               ) : (
                                 <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
                               )}
@@ -540,7 +543,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 return (
                                   <div className={styles.messageBody}>
                                     {detailsItem.detailHtml ? (
-                                      <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
+                                      <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: safeDetailHtml }} />
                                     ) : (
                                       <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
                                     )}
@@ -644,7 +647,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                           ) : showFallbackMessage ? (
                             <div className={styles.messageBody}>
                               {detailsItem.detailHtml ? (
-                                <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: detailsItem.detailHtml }} />
+                                <div className={styles.messageHtml} dangerouslySetInnerHTML={{ __html: safeDetailHtml }} />
                               ) : (
                                 <pre className={styles.messageText}>{detailsItem.detailText || ""}</pre>
                               )}

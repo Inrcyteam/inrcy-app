@@ -4,6 +4,7 @@ import StatusMessage from "../../_components/StatusMessage";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { readSanitizedElementHtml, syncSanitizedElementHtml } from "@/lib/sanitizeHtml";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { editableHtmlToSiteText, siteTextToEditableHtml, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import stylesDash from "../../dashboard/dashboard.module.css";
@@ -97,7 +98,7 @@ function RichSiteContentEditor({
     const node = localRef.current;
     if (!node) return;
 
-    const currentValue = editableHtmlToSiteText(node.innerHTML);
+    const currentValue = editableHtmlToSiteText(readSanitizedElementHtml(node));
     if (document.activeElement === node && currentValue === value) {
       lastSyncedValueRef.current = value;
       return;
@@ -105,15 +106,14 @@ function RichSiteContentEditor({
 
     if (lastSyncedValueRef.current === value && currentValue === value) return;
 
-    const nextHtml = siteTextToEditableHtml(value);
-    if (node.innerHTML !== nextHtml) node.innerHTML = nextHtml;
+    syncSanitizedElementHtml(node, siteTextToEditableHtml(value));
     lastSyncedValueRef.current = value;
   }, [value]);
 
   const sync = () => {
     const node = localRef.current;
     if (!node) return;
-    const nextValue = editableHtmlToSiteText(node.innerHTML);
+    const nextValue = editableHtmlToSiteText(readSanitizedElementHtml(node));
     lastSyncedValueRef.current = nextValue;
     onChange(nextValue);
   };
@@ -945,7 +945,7 @@ export default function PublishModal({
     editor.focus();
     const command = kind === "bold" ? "bold" : kind === "italic" ? "italic" : "underline";
     document.execCommand(command, false);
-    updatePost("site_web", { content: editableHtmlToSiteText(editor.innerHTML) });
+    updatePost("site_web", { content: editableHtmlToSiteText(readSanitizedElementHtml(editor)) });
   };
 
   const updateChannelTransform = (channel: ChannelKey, imageKey: string, patch: Partial<ImageTransform>) => {
