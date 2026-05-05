@@ -595,6 +595,8 @@ export default function NewFacturePage() {
       officialNumberAssignedAt?: string | null;
       officialSequenceYear?: number | null;
       officialSequenceValue?: number | null;
+      isTemplate?: boolean;
+      templateName?: string | null;
     };
   };
 
@@ -633,13 +635,13 @@ export default function NewFacturePage() {
   };
 
   const SAVES_TYPE = "facture" as const;
-  const TEMPLATE_TYPE = "facture_template" as const;
+  type DocumentsTab = "saves" | "templates";
 
   const [draftsOpen, setDraftsOpen] = useState(false);
+  const [documentsTab, setDocumentsTab] = useState<DocumentsTab>("saves");
   const [drafts, setDrafts] = useState<FactureDraft[]>([]);
   const [templates, setTemplates] = useState<FactureDraft[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
   const [isFinalized, setIsFinalized] = useState(false);
   const [finalizedAt, setFinalizedAt] = useState<string>("");
   const [finalizing, setFinalizing] = useState(false);
@@ -679,32 +681,15 @@ export default function NewFacturePage() {
         id: row.id,
         updatedAtISO: row.updated_at,
         name: row.name,
-        snapshot: row.payload,
+        snapshot: row.payload ?? {},
       }));
 
-      setDrafts(mapped);
-
-      setTemplatesLoading(true);
-      const { data: templateRows, error: templateError } = await supabase
-        .from("doc_saves")
-        .select("id,updated_at,name,payload")
-        .eq("user_id", user.id)
-        .eq("type", TEMPLATE_TYPE)
-        .order("updated_at", { ascending: false });
-
-      if (templateError) throw templateError;
-
-      setTemplates((templateRows ?? []).map((row: any) => ({
-        id: row.id,
-        updatedAtISO: row.updated_at,
-        name: row.name,
-        snapshot: row.payload,
-      })));
+      setDrafts(mapped.filter((item) => !item.snapshot?.isTemplate));
+      setTemplates(mapped.filter((item) => !!item.snapshot?.isTemplate));
     } catch (e) {
       console.error(e);
     } finally {
       setDraftsLoading(false);
-      setTemplatesLoading(false);
     }
   };
 
@@ -1091,11 +1076,132 @@ export default function NewFacturePage() {
 
     await refreshSaves();
     if (!options?.silent) {
+      setDocumentsTab("saves");
       setDraftsOpen(true);
       setFormMessage({ type: "success", text: currentSaveId ? "Facture mise à jour." : "Facture enregistrée." });
     }
 
     return savedId as string | undefined;
+  };
+
+  const saveAsTemplate = async () => {
+    const hasValidLine = lines.some((line) => (line.label || "").trim() && Number(line.qty) > 0 && Number(line.unitPrice) >= 0);
+    if (!hasValidLine) {
+      setFieldErrors((prev) => ({ ...prev, lines: "Ajoutez au moins une prestation valide avant d’enregistrer un modèle." }));
+      setFormMessage(null);
+      return;
+    }
+
+    const templateName = window.prompt("Nom du modèle", "Modèle facture");
+    if (templateName === null) return;
+
+    const cleanName = templateName.trim() || "Modèle facture";
+    const nowISO = new Date().toISOString();
+    const snapshot: FactureDraft["snapshot"] = {
+      number: "",
+      invoiceDate: "",
+      dueDate: "",
+      clientName: "",
+      clientAddress: "",
+      billingAddress: "",
+      billingPostalCode: "",
+      billingCity: "",
+      deliveryAddress: "",
+      deliveryPostalCode: "",
+      deliveryCity: "",
+      sameAddresses: true,
+      clientEmail: "",
+      clientSiren: "",
+      clientVatNumber: "",
+      clientType: "",
+      vatDispense,
+      operationCategory,
+      serviceDate,
+      servicePeriodStart,
+      servicePeriodEnd,
+      purchaseOrderReference,
+      depositKind,
+      depositValue,
+      vatOnDebits,
+      lateFeeRate,
+      fixedRecoveryFee40,
+      documentKind,
+      status: "brouillon",
+      paymentMethod,
+      paymentDetails,
+      notes,
+      invoiceMention,
+      lines: lines.map((line) => ({ ...line, id: uid("l") })),
+      discountKind,
+      discountValue: Number(discountValue) || 0,
+      discountDetails,
+      isFinalized: false,
+      finalizedAt: null,
+      lockedAt: null,
+      isTemplate: true,
+      templateName: cleanName,
+    };
+
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) return;
+
+    const { error } = await supabase.from("doc_saves").insert({
+      user_id: user.id,
+      type: SAVES_TYPE,
+      name: cleanName,
+      payload: snapshot,
+      updated_at: nowISO,
+    });
+
+    if (error) {
+      console.error(error);
+      setFormMessage({ type: "error", text: "Impossible d’enregistrer ce modèle pour le moment." });
+      return;
+    }
+
+    await refreshSaves();
+    setDocumentsTab("templates");
+    setDraftsOpen(true);
+    setFormMessage({ type: "success", text: "Modèle de facture enregistré." });
+  };
+
+  const applyTemplateSnapshot = (s: FactureDraft["snapshot"]) => {
+    const now = new Date();
+    const invoiceDateISO = now.toISOString().slice(0, 10);
+
+    setCurrentSaveId("");
+    setIsFinalized(false);
+    setFinalizedAt("");
+    setNumber(generateNumber("FAC"));
+    setInvoiceDate(invoiceDateISO);
+    setDueDate(dateWithAddedDays(invoiceDateISO, documentsSettings.invoice.dueDays));
+
+    setOperationCategory((s.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]) || (documentsSettings.common.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]));
+    setServiceDate(s.serviceDate || "");
+    setServicePeriodStart(s.servicePeriodStart || "");
+    setServicePeriodEnd(s.servicePeriodEnd || "");
+    setPurchaseOrderReference(s.purchaseOrderReference || "");
+    setDepositKind((s.depositKind as "" | "percent" | "amount") || documentsSettings.common.depositKind);
+    setDepositValue(s.depositValue || (documentsSettings.common.depositKind ? documentsSettings.common.depositValue : ""));
+    setVatOnDebits(typeof s.vatOnDebits === "boolean" ? s.vatOnDebits : documentsSettings.invoice.vatOnDebits);
+    setLateFeeRate(s.lateFeeRate || documentsSettings.invoice.lateFeeRate);
+    setFixedRecoveryFee40(typeof s.fixedRecoveryFee40 === "boolean" ? s.fixedRecoveryFee40 : documentsSettings.invoice.fixedRecoveryFee40);
+    setDocumentKind((s.documentKind as (typeof DOCUMENT_KIND_OPTIONS)[number]["key"]) || (documentsSettings.invoice.documentKind as (typeof DOCUMENT_KIND_OPTIONS)[number]["key"]));
+    setStatus(documentsSettings.invoice.status as DocRecord["status"] | "en_attente_paiement" | "");
+    setPaymentMethod(((s.paymentMethod as (typeof PAYMENT_METHODS)[number]["key"]) || documentsSettings.common.paymentMethod) as (typeof PAYMENT_METHODS)[number]["key"]);
+    setPaymentDetails(s.paymentDetails || documentsSettings.common.paymentDetails);
+    setNotes(s.notes || documentsSettings.common.notes);
+    setInvoiceMention(s.invoiceMention || documentsSettings.invoice.mention);
+    setLines(Array.isArray(s.lines) && s.lines.length ? s.lines.map((line) => ({ ...line, id: uid("l") })) : [makeDefaultLine(documentsSettings, vatDispense, 120)]);
+    setDiscountKind(s.discountKind || "");
+    setDiscountValue(Number(s.discountValue) || 0);
+    setDiscountDetails(s.discountDetails || "");
+    setFieldErrors({});
+    setDraftsOpen(false);
+    setFormMessage({ type: "success", text: "Modèle appliqué. Ajoutez ou vérifiez le client avant l’envoi." });
   };
 
   const addCurrentClientToCrm = async () => {
@@ -1214,123 +1320,6 @@ export default function NewFacturePage() {
     await refreshSaves();
   };
 
-  const saveTemplate = async () => {
-    const name = window.prompt("Nom du modèle", lines[0]?.label?.trim() || "Modèle facture");
-    if (!name?.trim()) return;
-
-    const snapshot: FactureDraft["snapshot"] = {
-      number: "",
-      invoiceDate: "",
-      dueDate: "",
-      clientName: "",
-      clientAddress: "",
-      billingAddress: "",
-      billingPostalCode: "",
-      billingCity: "",
-      deliveryAddress: "",
-      deliveryPostalCode: "",
-      deliveryCity: "",
-      sameAddresses: true,
-      clientEmail: "",
-      clientSiren: "",
-      clientVatNumber: "",
-      clientType: "",
-      vatDispense,
-      operationCategory,
-      serviceDate,
-      servicePeriodStart,
-      servicePeriodEnd,
-      purchaseOrderReference,
-      depositKind,
-      depositValue,
-      vatOnDebits,
-      lateFeeRate,
-      fixedRecoveryFee40,
-      documentKind,
-      status: "brouillon" as any,
-      paymentMethod,
-      paymentDetails,
-      notes,
-      invoiceMention,
-      lines: lines.map((line, index) => ({ ...line, id: `l_${index + 1}` })),
-      discountKind,
-      discountValue: Number(discountValue) || 0,
-      discountDetails,
-      isFinalized: false,
-      finalizedAt: null as any,
-      lockedAt: null as any,
-    };
-
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-    if (userErr || !user) return;
-
-    const { error } = await supabase.from("doc_saves").insert({
-      user_id: user.id,
-      type: TEMPLATE_TYPE,
-      name: name.trim(),
-      payload: snapshot,
-      updated_at: new Date().toISOString(),
-    });
-
-    if (error) {
-      console.error(error);
-      setFormMessage({ type: "error", text: "Impossible d’enregistrer ce modèle." });
-      return;
-    }
-
-    await refreshSaves();
-    setFormMessage({ type: "success", text: "Modèle de facture enregistré." });
-  };
-
-  const openTemplate = (d: FactureDraft) => {
-    applyDraftSnapshot(d.snapshot);
-    const today = new Date().toISOString().slice(0, 10);
-    setCurrentSaveId("");
-    setIsFinalized(false);
-    setFinalizedAt("");
-    setSelectedCrmContactId("");
-    setCrmOpen(false);
-    setFieldErrors({});
-    setClientName("");
-    setClientEmail("");
-    setClientSiren("");
-    setClientVatNumber("");
-    setClientType("");
-    setClientAddress("");
-    setBillingAddress("");
-    setBillingPostalCode("");
-    setBillingCity("");
-    setDeliveryAddress("");
-    setDeliveryPostalCode("");
-    setDeliveryCity("");
-    setSameAddresses(true);
-    setNumber(generateNumber("FAC"));
-    setInvoiceDate(today);
-    setDueDate(dateWithAddedDays(today, documentsSettings.invoice.dueDays));
-    setStatus(documentsSettings.invoice.status as DocRecord["status"] | "en_attente_paiement" | "");
-    setDraftsOpen(false);
-    setFormMessage({ type: "success", text: `Modèle “${d.name || d.snapshot.lines?.[0]?.label || "facture"}” appliqué. Ajoutez maintenant le client.` });
-  };
-
-  const deleteTemplate = async (id: string) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    await supabase
-      .from("doc_saves")
-      .delete()
-      .eq("user_id", user.id)
-      .eq("type", TEMPLATE_TYPE)
-      .eq("id", id);
-
-    await refreshSaves();
-  };
-
   const print = () => window.print();
 
   const waitForDomUpdate = () =>
@@ -1417,13 +1406,11 @@ export default function NewFacturePage() {
       return;
     }
 
-    let officialNumber = number || generateNumber("FAC");
-    if (!isFinalized) {
-      const finalized = await finalizeInvoice(docSaveId, "envoye");
-      if (!finalized) return;
-      officialNumber = finalized.number || officialNumber;
-      if (!number || number !== officialNumber) setNumber(officialNumber);
-    }
+    const finalized = await finalizeInvoice(docSaveId, "envoye");
+    if (!finalized) return;
+
+    const officialNumber = finalized.number || number || generateNumber("FAC");
+    if (!number || number !== officialNumber) setNumber(officialNumber);
     await waitForDomUpdate();
 
     const pdfBlob = await buildPdfBlob();
@@ -1501,6 +1488,7 @@ export default function NewFacturePage() {
               className={`${styles.closeBtn} ${styles.toolbarBtn}`}
               onClick={() => {
                 void refreshSaves();
+                setDocumentsTab("saves");
                 setDraftsOpen(true);
               }}
             >
@@ -1641,30 +1629,83 @@ export default function NewFacturePage() {
                   Fermer
                 </button>
               </div>
-
-              <div style={{ padding: "12px 14px 0", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <div style={{ fontWeight: 850 }}>Sauvegardes</div>
-                <button type="button" onClick={() => void saveTemplate()}>
-                  + Enregistrer comme modèle
+              <div style={{ display: "flex", gap: 8, padding: "10px 14px", background: "#111", borderBottom: "1px solid rgba(255,255,255,0.08)", position: "sticky", top: 52, zIndex: 2 }}>
+                <button type="button" className={documentsTab === "saves" ? styles.primaryBtn : styles.ghostBtn} onClick={() => setDocumentsTab("saves")}>
+                  Sauvegardes
+                </button>
+                <button type="button" className={documentsTab === "templates" ? styles.primaryBtn : styles.ghostBtn} onClick={() => setDocumentsTab("templates")}>
+                  Modèles
                 </button>
               </div>
 
-              {drafts.length === 0 ? (
-                <div style={{ padding: 14, opacity: 0.85 }}>Aucune facture sauvegardée.</div>
+              {documentsTab === "saves" ? (
+                drafts.length === 0 ? (
+                  <div style={{ padding: 14, opacity: 0.85 }}>Aucune facture sauvegardée.</div>
+                ) : (
+                  <div
+                    style={{
+                      padding: 14,
+                      display: "grid",
+                      gap: 10,
+                      maxHeight: drafts.length > 10 ? "62vh" : undefined,
+                      overflowY: drafts.length > 10 ? "auto" : undefined,
+                      paddingRight: drafts.length > 10 ? 8 : 14,
+                    }}
+                  >
+                    {drafts.map((d) => {
+                      const label = d.snapshot.number || "(Sans numéro)";
+                      const who = d.snapshot.clientName?.trim() ? ` — ${d.snapshot.clientName.trim()}` : "";
+                      return (
+                        <div
+                          key={d.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            padding: 10,
+                            border: "1px solid rgba(255,255,255,0.12)",
+                            borderRadius: 14,
+                            background: "rgba(255,255,255,0.04)",
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {label}
+                              {who}
+                            </div>
+                            <div style={{ fontSize: 12, opacity: 0.8 }}>
+                              Sauvegardé le {new Date(d.updatedAtISO).toLocaleString("fr-FR")}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            <button type="button" onClick={() => openDraft(d)}>
+                              Ouvrir
+                            </button>
+                            <button type="button" className={styles.ghostBtn} onClick={() => deleteDraft(d.id)}>
+                              Supprimer
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              ) : templates.length === 0 ? (
+                <div style={{ padding: 14, opacity: 0.85 }}>Aucun modèle de facture pour l’instant.</div>
               ) : (
                 <div
                   style={{
                     padding: 14,
                     display: "grid",
                     gap: 10,
-                    maxHeight: drafts.length > 10 ? "62vh" : undefined,
-                    overflowY: drafts.length > 10 ? "auto" : undefined,
-                    paddingRight: drafts.length > 10 ? 8 : 14,
+                    maxHeight: templates.length > 10 ? "62vh" : undefined,
+                    overflowY: templates.length > 10 ? "auto" : undefined,
+                    paddingRight: templates.length > 10 ? 8 : 14,
                   }}
                 >
-                  {drafts.map((d) => {
-                    const label = d.snapshot.number || "(Sans numéro)";
-                    const who = d.snapshot.clientName?.trim() ? ` — ${d.snapshot.clientName.trim()}` : "";
+                  {templates.map((d) => {
+                    const label = d.snapshot.templateName || d.name || "Modèle facture";
                     return (
                       <div
                         key={d.id}
@@ -1680,44 +1721,18 @@ export default function NewFacturePage() {
                         }}
                       >
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {label}
-                            {who}
-                          </div>
+                          <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
                           <div style={{ fontSize: 12, opacity: 0.8 }}>
-                            Sauvegardé le {new Date(d.updatedAtISO).toLocaleString("fr-FR")}
+                            Modèle enregistré le {new Date(d.updatedAtISO).toLocaleString("fr-FR")}
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                          <button type="button" onClick={() => openDraft(d)}>
-                            Ouvrir
+                          <button type="button" onClick={() => applyTemplateSnapshot(d.snapshot)}>
+                            Utiliser
                           </button>
                           <button type="button" className={styles.ghostBtn} onClick={() => deleteDraft(d.id)}>
                             Supprimer
                           </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div style={{ padding: "12px 14px 0", fontWeight: 850 }}>Modèles</div>
-              {templates.length === 0 ? (
-                <div style={{ padding: 14, opacity: 0.85 }}>Aucun modèle enregistré.</div>
-              ) : (
-                <div style={{ padding: 14, display: "grid", gap: 10 }}>
-                  {templates.map((d) => {
-                    const label = d.name || d.snapshot.lines?.[0]?.label || "Modèle facture";
-                    return (
-                      <div key={d.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: 10, border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, background: "rgba(255,255,255,0.04)" }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-                          <div style={{ fontSize: 12, opacity: 0.8 }}>Modèle · {new Date(d.updatedAtISO).toLocaleString("fr-FR")}</div>
-                        </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                          <button type="button" onClick={() => openTemplate(d)}>Utiliser</button>
-                          <button type="button" className={styles.ghostBtn} onClick={() => deleteTemplate(d.id)}>Supprimer</button>
                         </div>
                       </div>
                     );
@@ -2150,6 +2165,9 @@ export default function NewFacturePage() {
           <button type="button" onClick={() => { void saveDraft(); }} disabled={finalizing || addingToCrm}>
             Sauvegarder
           </button>
+          <button type="button" onClick={() => { void saveAsTemplate(); }} disabled={finalizing || addingToCrm}>
+            Créer modèle
+          </button>
           <button
             type="button"
             disabled={finalizing || addingToCrm || isFinalized}
@@ -2164,19 +2182,19 @@ export default function NewFacturePage() {
               }
             }}
           >
-            {finalizing ? "Émission…" : <>Figer<span className={styles.helpBubble} title="Fige la facture avec un numéro officiel. Les informations principales sont verrouillées pour sécuriser le document avant envoi au client.">?</span></>}
+            {finalizing ? "Figement…" : <>Figer<span className={styles.helpBubble} title="Fige la facture avec un numéro officiel. Les informations principales sont verrouillées pour sécuriser le document avant envoi au client.">?</span></>}
           </button>
           <button
             type="button"
             disabled={finalizing || addingToCrm}
             onClick={async () => {
               if (!validateInvoiceAction({ requireEmail: true })) return;
-              if (!isFinalized && !window.confirm("Cette action va figer la facture, enregistrer son numéro officiel et préparer l’envoi par mail. Voulez-vous continuer ?")) return;
+              if (!isFinalized && !window.confirm("Cette action va figer le document, continuez ?")) return;
               const to = (clientEmail || "").trim();
               await uploadPdfAndOpenCompose(to);
             }}
           >
-            {finalizing ? "Préparation…" : <>Envoyer par mail<span className={styles.helpBubble} title="Fige la facture, enregistre son numéro officiel dans la base, prépare le PDF puis ouvre l’envoi par email au client.">?</span></>}
+            {finalizing ? "Préparation…" : <>Envoyer par mail<span className={styles.helpBubble} title="Fige le document si besoin, prépare le PDF puis ouvre l’envoi par email au client.">?</span></>}
           </button>
           <button type="button" onClick={print} disabled={finalizing || addingToCrm}>
             Imprimer / PDF

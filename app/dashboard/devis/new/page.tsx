@@ -563,17 +563,26 @@ export default function NewDevisPage() {
   discountKind: DiscountKind | "";
   discountValue: number;
   discountDetails: string;
+  status?: DocRecord["status"];
+  isFinalized?: boolean;
+  finalizedAt?: string | null;
+  lockedAt?: string | null;
+  isTemplate?: boolean;
+  templateName?: string | null;
 };
   };
 
   const SAVES_TYPE = "devis" as const;
-  const TEMPLATE_TYPE = "devis_template" as const;
+  type DocumentsTab = "saves" | "templates";
 
   const [draftsOpen, setDraftsOpen] = useState(false);
+  const [documentsTab, setDocumentsTab] = useState<DocumentsTab>("saves");
   const [drafts, setDrafts] = useState<DevisDraft[]>([]);
   const [templates, setTemplates] = useState<DevisDraft[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [isFinalized, setIsFinalized] = useState(false);
+  const [finalizedAt, setFinalizedAt] = useState<string>("");
+  const [finalizing, setFinalizing] = useState(false);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -609,32 +618,15 @@ export default function NewDevisPage() {
         id: row.id,
         updatedAtISO: row.updated_at,
         name: row.name,
-        snapshot: row.payload,
+        snapshot: row.payload ?? {},
       }));
 
-      setDrafts(mapped);
-
-      setTemplatesLoading(true);
-      const { data: templateRows, error: templateError } = await supabase
-        .from("doc_saves")
-        .select("id,updated_at,name,payload")
-        .eq("user_id", user.id)
-        .eq("type", TEMPLATE_TYPE)
-        .order("updated_at", { ascending: false });
-
-      if (templateError) throw templateError;
-
-      setTemplates((templateRows ?? []).map((row: any) => ({
-        id: row.id,
-        updatedAtISO: row.updated_at,
-        name: row.name,
-        snapshot: row.payload,
-      })));
+      setDrafts(mapped.filter((item) => !item.snapshot?.isTemplate));
+      setTemplates(mapped.filter((item) => !!item.snapshot?.isTemplate));
     } catch (e) {
       console.error(e);
     } finally {
       setDraftsLoading(false);
-      setTemplatesLoading(false);
     }
   };
 
@@ -752,8 +744,9 @@ export default function NewDevisPage() {
     return true;
   };
 
-  const saveDraft = async (options?: { silent?: boolean }) => {
+  const saveDraft = async (options?: { silent?: boolean; asFinalized?: boolean; targetStatus?: DocRecord["status"] }) => {
     const nowISO = new Date().toISOString();
+    const nextFinalizedAt = options?.asFinalized ? (finalizedAt || nowISO) : finalizedAt;
     const finalNumber = number || generateNumber("DEV");
     if (!number) setNumber(finalNumber);
 
@@ -800,6 +793,10 @@ export default function NewDevisPage() {
   discountKind,
   discountValue: Number(discountValue) || 0,
   discountDetails,
+  status: options?.targetStatus || (isFinalized ? "envoye" : "brouillon"),
+  isFinalized: options?.asFinalized ? true : isFinalized,
+  finalizedAt: options?.asFinalized ? nextFinalizedAt : (finalizedAt || null),
+  lockedAt: options?.asFinalized ? nextFinalizedAt : (finalizedAt || null),
 };
 
     const {
@@ -843,9 +840,14 @@ export default function NewDevisPage() {
 
     const savedId = (savedRows?.[0] as { id?: string } | undefined)?.id || currentSaveId;
     if (savedId) setCurrentSaveId(savedId);
+    if (options?.asFinalized) {
+      setIsFinalized(true);
+      setFinalizedAt(nextFinalizedAt);
+    }
 
     await refreshSaves();
     if (!options?.silent) {
+      setDocumentsTab("saves");
       setDraftsOpen(true);
       setFormMessage({ type: "success", text: currentSaveId ? "Devis mis à jour." : "Devis enregistré." });
     }
@@ -898,6 +900,8 @@ export default function NewDevisPage() {
     setDiscountKind(s.discountKind);
     setDiscountValue(s.discountValue);
     setDiscountDetails(s.discountDetails || "");
+    setIsFinalized(!!s.isFinalized);
+    setFinalizedAt(typeof s.finalizedAt === "string" ? s.finalizedAt : "");
   };
 
   const convertCurrentDevisToInvoice = async () => {
@@ -933,10 +937,19 @@ export default function NewDevisPage() {
     await refreshSaves();
   };
 
-  const saveTemplate = async () => {
-    const name = window.prompt("Nom du modèle", lines[0]?.label?.trim() || "Modèle devis");
-    if (!name?.trim()) return;
+  const saveAsTemplate = async () => {
+    const hasValidLine = lines.some((line) => (line.label || "").trim() && Number(line.qty) > 0 && Number(line.unitPrice) >= 0);
+    if (!hasValidLine) {
+      setFieldErrors((prev) => ({ ...prev, lines: "Ajoutez au moins une prestation valide avant d’enregistrer un modèle." }));
+      setFormMessage(null);
+      return;
+    }
 
+    const templateName = window.prompt("Nom du modèle", "Modèle devis");
+    if (templateName === null) return;
+
+    const cleanName = templateName.trim() || "Modèle devis";
+    const nowISO = new Date().toISOString();
     const snapshot: DevisDraft["snapshot"] = {
       number: "",
       docDateISO: "",
@@ -966,10 +979,16 @@ export default function NewDevisPage() {
       notes,
       quoteMention,
       validityDays,
-      lines: lines.map((line, index) => ({ ...line, id: `l_${index + 1}` })),
+      lines: lines.map((line) => ({ ...line, id: uid("l") })),
       discountKind,
       discountValue: Number(discountValue) || 0,
       discountDetails,
+      status: "brouillon",
+      isFinalized: false,
+      finalizedAt: null,
+      lockedAt: null,
+      isTemplate: true,
+      templateName: cleanName,
     };
 
     const {
@@ -980,63 +999,50 @@ export default function NewDevisPage() {
 
     const { error } = await supabase.from("doc_saves").insert({
       user_id: user.id,
-      type: TEMPLATE_TYPE,
-      name: name.trim(),
+      type: SAVES_TYPE,
+      name: cleanName,
       payload: snapshot,
-      updated_at: new Date().toISOString(),
+      updated_at: nowISO,
     });
 
     if (error) {
       console.error(error);
-      setFormMessage({ type: "error", text: "Impossible d’enregistrer ce modèle." });
+      setFormMessage({ type: "error", text: "Impossible d’enregistrer ce modèle pour le moment." });
       return;
     }
 
     await refreshSaves();
+    setDocumentsTab("templates");
+    setDraftsOpen(true);
     setFormMessage({ type: "success", text: "Modèle de devis enregistré." });
   };
 
-  const openTemplate = (d: DevisDraft) => {
-    applyDraftSnapshot(d.snapshot);
-    const today = new Date().toISOString().slice(0, 10);
+  const applyTemplateSnapshot = (s: DevisDraft["snapshot"]) => {
     setCurrentSaveId("");
-    setSelectedCrmContactId("");
-    setCrmOpen(false);
-    setFieldErrors({});
-    setClientName("");
-    setClientEmail("");
-    setClientSiren("");
-    setClientVatNumber("");
-    setClientType("");
-    setClientAddress("");
-    setBillingAddress("");
-    setBillingPostalCode("");
-    setBillingCity("");
-    setDeliveryAddress("");
-    setDeliveryPostalCode("");
-    setDeliveryCity("");
-    setSameAddresses(true);
+    setIsFinalized(false);
+    setFinalizedAt("");
     setNumber(generateNumber("DEV"));
-    setDocDateISO(today);
-    setValidityDays(Number(d.snapshot.validityDays) || documentsSettings.quote.validityDays);
+    setDocDateISO(new Date().toISOString().slice(0, 10));
+
+    setOperationCategory((s.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]) || (documentsSettings.common.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]));
+    setServiceDate(s.serviceDate || "");
+    setServicePeriodStart(s.servicePeriodStart || "");
+    setServicePeriodEnd(s.servicePeriodEnd || "");
+    setPurchaseOrderReference(s.purchaseOrderReference || "");
+    setDepositKind((s.depositKind as "" | "percent" | "amount") || documentsSettings.common.depositKind);
+    setDepositValue(s.depositValue || (documentsSettings.common.depositKind ? documentsSettings.common.depositValue : ""));
+    setPaymentMethod(((s.paymentMethod as (typeof PAYMENT_METHODS)[number]["key"]) || documentsSettings.common.paymentMethod) as (typeof PAYMENT_METHODS)[number]["key"]);
+    setPaymentDetails(s.paymentDetails || documentsSettings.common.paymentDetails);
+    setNotes(s.notes || documentsSettings.common.notes);
+    setQuoteMention(s.quoteMention || documentsSettings.quote.mention);
+    setValidityDays(Number(s.validityDays) || documentsSettings.quote.validityDays);
+    setLines(Array.isArray(s.lines) && s.lines.length ? s.lines.map((line) => ({ ...line, id: uid("l") })) : [makeDefaultLine(documentsSettings, vatDispense)]);
+    setDiscountKind(s.discountKind || "");
+    setDiscountValue(Number(s.discountValue) || 0);
+    setDiscountDetails(s.discountDetails || "");
+    setFieldErrors({});
     setDraftsOpen(false);
-    setFormMessage({ type: "success", text: `Modèle “${d.name || d.snapshot.lines?.[0]?.label || "devis"}” appliqué. Ajoutez maintenant le client.` });
-  };
-
-  const deleteTemplate = async (id: string) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    await supabase
-      .from("doc_saves")
-      .delete()
-      .eq("user_id", user.id)
-      .eq("type", TEMPLATE_TYPE)
-      .eq("id", id);
-
-    await refreshSaves();
+    setFormMessage({ type: "success", text: "Modèle appliqué. Ajoutez ou vérifiez le client avant l’envoi." });
   };
 
   const print = () => window.print();
@@ -1118,14 +1124,17 @@ export default function NewDevisPage() {
       return;
     }
 
-    const docSaveId = await saveDraft({ silent: true });
+    setFinalizing(true);
+    const docSaveId = await saveDraft({ silent: true, asFinalized: true, targetStatus: "envoye" });
     if (!docSaveId) {
+      setFinalizing(false);
       setFormMessage({ type: "error", text: "Veuillez d’abord sauvegarder ce devis avant l’envoi." });
       return;
     }
 
     const pdfBlob = await buildPdfBlob();
     if (!pdfBlob) {
+      setFinalizing(false);
       setFormMessage({ type: "error", text: "Impossible de générer le PDF de ce devis pour le moment." });
       return;
     }
@@ -1139,6 +1148,7 @@ export default function NewDevisPage() {
 
     if (upErr) {
       console.error(upErr);
+      setFinalizing(false);
       setFormMessage({ type: "error", text: "Impossible de préparer ce devis pour l’envoi." });
       return;
     }
@@ -1154,6 +1164,7 @@ export default function NewDevisPage() {
     params.set("docType", "devis");
     params.set("docNumber", number || safeName.replace(/\.pdf$/i, ""));
     router.push(`/dashboard/mails?${params.toString()}`);
+    setFinalizing(false);
   };
 
   const addCurrentClientToCrm = async () => {
@@ -1247,6 +1258,7 @@ export default function NewDevisPage() {
               className={`${styles.closeBtn} ${styles.toolbarBtn}`}
               onClick={() => {
                 void refreshSaves();
+                setDocumentsTab("saves");
                 setDraftsOpen(true);
               }}
             >
@@ -1282,6 +1294,8 @@ export default function NewDevisPage() {
 
                 // Devis
                 setCurrentSaveId("");
+                setIsFinalized(false);
+                setFinalizedAt("");
                 setNumber(generateNumber("DEV"));
                 setDocDateISO(new Date().toISOString().slice(0, 10));
                 setValidityDays(documentsSettings.quote.validityDays);
@@ -1323,6 +1337,23 @@ export default function NewDevisPage() {
             <DocumentsSettingsContent />
           </SettingsDrawer>
 
+          {isFinalized ? (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "rgba(34,197,94,0.12)",
+                border: "1px solid rgba(34,197,94,0.35)",
+                fontSize: 13,
+                lineHeight: 1.4,
+              }}
+            >
+              Devis figé <strong>{number || "—"}</strong>
+              {finalizedAt ? <> · figé le {new Date(finalizedAt).toLocaleString("fr-FR")}</> : null}
+            </div>
+          ) : null}
+
           {draftsOpen ? (
             <div
               role="dialog"
@@ -1360,30 +1391,84 @@ export default function NewDevisPage() {
                     Fermer
                   </button>
                 </div>
-
-                <div style={{ padding: "12px 14px 0", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                  <div style={{ fontWeight: 850 }}>Sauvegardes</div>
-                  <button type="button" onClick={() => void saveTemplate()}>
-                    + Enregistrer comme modèle
+                <div style={{ display: "flex", gap: 8, padding: "10px 14px", background: "#0b1220", borderBottom: "1px solid rgba(255,255,255,0.08)", position: "sticky", top: 52, zIndex: 2 }}>
+                  <button type="button" className={documentsTab === "saves" ? styles.primaryBtn : styles.ghostBtn} onClick={() => setDocumentsTab("saves")}>
+                    Sauvegardes
+                  </button>
+                  <button type="button" className={documentsTab === "templates" ? styles.primaryBtn : styles.ghostBtn} onClick={() => setDocumentsTab("templates")}>
+                    Modèles
                   </button>
                 </div>
 
-                {drafts.length === 0 ? (
-                  <div style={{ padding: 14, opacity: 0.85 }}>Aucune sauvegarde pour l’instant.</div>
+                {documentsTab === "saves" ? (
+                  drafts.length === 0 ? (
+                    <div style={{ padding: 14, opacity: 0.85 }}>Aucune sauvegarde pour l’instant.</div>
+                  ) : (
+                    <div
+                      style={{
+                        padding: 14,
+                        display: "grid",
+                        gap: 8,
+                        maxHeight: drafts.length > 10 ? "62vh" : undefined,
+                        overflowY: drafts.length > 10 ? "auto" : undefined,
+                        paddingRight: drafts.length > 10 ? 8 : 14,
+                      }}
+                    >
+                      {drafts.map((d) => {
+                        const s = d.snapshot;
+                        const label = `${s.number || "(sans numéro)"} — ${s.clientName || "Client"}`;
+                        return (
+                          <div
+                            key={d.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                              padding: "10px 12px",
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              borderRadius: 12,
+                            }}
+                          >
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {label}
+                              </div>
+                              <div style={{ fontSize: 12, opacity: 0.8 }}>
+                                Sauvegardé le {new Date(d.updatedAtISO).toLocaleString("fr-FR")}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                              <button type="button" onClick={() => openDraft(d)}>
+                                Ouvrir
+                              </button>
+                              <button type="button" onClick={() => router.push(`/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent(d.id)}`)}>
+                                → Facture
+                              </button>
+                              <button type="button" onClick={() => deleteDraft(d.id)}>
+                                Supprimer
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                ) : templates.length === 0 ? (
+                  <div style={{ padding: 14, opacity: 0.85 }}>Aucun modèle de devis pour l’instant.</div>
                 ) : (
                   <div
                     style={{
                       padding: 14,
                       display: "grid",
                       gap: 8,
-                      maxHeight: drafts.length > 10 ? "62vh" : undefined,
-                      overflowY: drafts.length > 10 ? "auto" : undefined,
-                      paddingRight: drafts.length > 10 ? 8 : 14,
+                      maxHeight: templates.length > 10 ? "62vh" : undefined,
+                      overflowY: templates.length > 10 ? "auto" : undefined,
+                      paddingRight: templates.length > 10 ? 8 : 14,
                     }}
                   >
-                    {drafts.map((d) => {
-                      const s = d.snapshot;
-                      const label = `${s.number || "(sans numéro)"} — ${s.clientName || "Client"}`;
+                    {templates.map((d) => {
+                      const label = d.snapshot.templateName || d.name || "Modèle devis";
                       return (
                         <div
                           key={d.id}
@@ -1398,46 +1483,18 @@ export default function NewDevisPage() {
                           }}
                         >
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {label}
-                            </div>
+                            <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
                             <div style={{ fontSize: 12, opacity: 0.8 }}>
-                              Sauvegardé le {new Date(d.updatedAtISO).toLocaleString("fr-FR")}
+                              Modèle enregistré le {new Date(d.updatedAtISO).toLocaleString("fr-FR")}
                             </div>
                           </div>
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                            <button type="button" onClick={() => openDraft(d)}>
-                              Ouvrir
-                            </button>
-                            <button type="button" onClick={() => router.push(`/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent(d.id)}`)}>
-                              → Facture
+                            <button type="button" onClick={() => applyTemplateSnapshot(d.snapshot)}>
+                              Utiliser
                             </button>
                             <button type="button" onClick={() => deleteDraft(d.id)}>
                               Supprimer
                             </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div style={{ padding: "12px 14px 0", fontWeight: 850 }}>Modèles</div>
-                {templates.length === 0 ? (
-                  <div style={{ padding: 14, opacity: 0.85 }}>Aucun modèle enregistré.</div>
-                ) : (
-                  <div style={{ padding: 14, display: "grid", gap: 8 }}>
-                    {templates.map((d) => {
-                      const label = d.name || d.snapshot.lines?.[0]?.label || "Modèle devis";
-                      return (
-                        <div key={d.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 12px", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12 }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-                            <div style={{ fontSize: 12, opacity: 0.8 }}>Modèle · {new Date(d.updatedAtISO).toLocaleString("fr-FR")}</div>
-                          </div>
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                            <button type="button" onClick={() => openTemplate(d)}>Utiliser</button>
-                            <button type="button" onClick={() => deleteTemplate(d.id)}>Supprimer</button>
                           </div>
                         </div>
                       );
@@ -1779,14 +1836,17 @@ export default function NewDevisPage() {
           </details>
 
           <div className={styles.actionGrid}>
-            <button type="button" onClick={() => { void saveDraft(); }} disabled={addingToCrm}>Sauvegarder</button>
-            <button type="button" onClick={() => void convertCurrentDevisToInvoice()}>
+            <button type="button" onClick={() => { void saveDraft(); }} disabled={addingToCrm || finalizing}>Sauvegarder</button>
+            <button type="button" onClick={() => { void saveAsTemplate(); }} disabled={addingToCrm || finalizing}>Créer modèle</button>
+            <button type="button" onClick={() => void convertCurrentDevisToInvoice()} disabled={finalizing}>
               → Convertir en facture
             </button>
             <button
               type="button"
+              disabled={finalizing}
               onClick={async () => {
                 if (!validateQuoteAction({ requireEmail: true })) return;
+                if (!isFinalized && !window.confirm("Cette action va figer le document, continuez ?")) return;
                 const to = (clientEmail || "").trim();
                 const finalNumber = number || generateNumber("DEV");
                 if (!number) setNumber(finalNumber);
@@ -1794,9 +1854,9 @@ export default function NewDevisPage() {
                 await uploadPdfAndOpenCompose(to, `${finalNumber}.pdf`);
               }}
             >
-              Envoyer par mail<span className={styles.helpBubble} title="Prépare le PDF, sauvegarde le devis puis ouvre l’envoi par email au client. Pour une facture, l’envoi la fige officiellement.">?</span>
+              {finalizing ? "Préparation…" : <>Envoyer par mail<span className={styles.helpBubble} title="Fige le document si besoin, prépare le PDF puis ouvre l’envoi par email au client.">?</span></>}
             </button>
-            <button type="button" onClick={print}>
+            <button type="button" onClick={print} disabled={finalizing}>
               Imprimer / PDF
             </button>
           </div>

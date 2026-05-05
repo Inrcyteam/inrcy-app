@@ -129,7 +129,9 @@ export async function fetchDocRecords(kind: DocKind): Promise<DocRecord[]> {
 
   if (error) throw error;
 
-  return ((data ?? []) as DocSaveRow[]).map(normalizeDocSave);
+  return ((data ?? []) as DocSaveRow[])
+    .filter((row) => !((row.payload as Record<string, any> | undefined)?.isTemplate))
+    .map(normalizeDocSave);
 }
 
 export async function deleteDocRecord(kind: DocKind, id: string) {
