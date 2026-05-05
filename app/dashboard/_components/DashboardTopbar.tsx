@@ -26,7 +26,8 @@ type DashboardPanelName =
   | "inertie"
   | "boutique"
   | "notifications"
-  | "parrainage";
+  | "parrainage"
+  | "documents";
 
 type DashboardTopbarProps = {
   desktopNotificationMenuRef: RefObject<HTMLDivElement | null>;

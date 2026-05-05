@@ -101,6 +101,118 @@ export function TimeDropdown({ value, options, onChange }: TimeDropdownProps) {
   );
 }
 
+
+function normalizeContactSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+type ContactSearchDropdownProps = {
+  value: string;
+  contacts: CrmContact[];
+  loading: boolean;
+  onChange: (value: string) => void;
+};
+
+function ContactSearchDropdown({ value, contacts, loading, onChange }: ContactSearchDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const selectedContact = contacts.find((contact) => String(contact.id) === String(value));
+  const selectedLabel = selectedContact ? getContactOptionLabel(selectedContact) : "— Aucun —";
+  const normalizedQuery = normalizeContactSearch(query);
+  const filteredContacts = normalizedQuery
+    ? contacts.filter((contact) => normalizeContactSearch([getContactOptionLabel(contact), contact.email, contact.phone, contact.address, contact.city, contact.postal_code].filter(Boolean).join(" ")).includes(normalizedQuery))
+    : contacts;
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target;
+      if (rootRef.current && target instanceof Node && !rootRef.current.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className={styles.contactSearchDropdown} ref={rootRef}>
+      <button
+        type="button"
+        className={`${styles.input} ${styles.contactSearchTrigger}`}
+        onClick={() => setOpen((prev) => !prev)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className={styles.contactSearchSelected}>{loading ? "Chargement contacts…" : selectedLabel}</span>
+        <span aria-hidden="true">▾</span>
+      </button>
+
+      {open && (
+        <div className={styles.contactSearchMenu} role="listbox" aria-label="Choisir un contact CRM">
+          <input
+            className={styles.contactSearchInput}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Rechercher un contact, email, téléphone..."
+            autoFocus
+          />
+          <button
+            type="button"
+            className={`${styles.contactSearchOption} ${!value ? styles.contactSearchOptionActive : ""}`}
+            onClick={() => {
+              onChange("");
+              setQuery("");
+              setOpen(false);
+            }}
+          >
+            — Aucun —
+          </button>
+          {filteredContacts.length ? filteredContacts.map((contact) => {
+            const label = getContactOptionLabel(contact);
+            const isActive = String(contact.id) === String(value);
+            return (
+              <button
+                key={contact.id}
+                type="button"
+                className={`${styles.contactSearchOption} ${isActive ? styles.contactSearchOptionActive : ""}`}
+                role="option"
+                aria-selected={isActive}
+                onClick={() => {
+                  onChange(String(contact.id));
+                  setQuery("");
+                  setOpen(false);
+                }}
+              >
+                {label}
+              </button>
+            );
+          }) : (
+            <div className={styles.contactSearchEmpty}>Aucun contact trouvé.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type AgendaHeaderProps = {
   helpOpen: boolean;
   setHelpOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -648,19 +760,12 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
             <div className={styles.contactPickerRow}>
               <div className={styles.field}>
                 <div className={styles.label}>Contact CRM</div>
-                <select className={styles.input} value={props.rdvContactId} onChange={(e) => props.setRdvContactId(e.target.value)}>
-                  <option value="">— Aucun —</option>
-                  {props.contacts.map((contact) => (
-                    <option key={contact.id} value={contact.id}>
-                      {getContactOptionLabel(contact)}
-                    </option>
-                  ))}
-                </select>
-                {props.contactsLoading && (
-                  <div className={styles.eventSub} style={{ marginTop: 6 }}>
-                    Chargement contacts…
-                  </div>
-                )}
+                <ContactSearchDropdown
+                  value={props.rdvContactId}
+                  contacts={props.contacts}
+                  loading={props.contactsLoading}
+                  onChange={props.setRdvContactId}
+                />
               </div>
 
               <button
@@ -729,18 +834,12 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
 
                     <div className={styles.field}>
                       <div className={styles.label}>Contact CRM</div>
-                      <select
-                        className={styles.input}
+                      <ContactSearchDropdown
                         value={guest.contactId}
-                        onChange={(e) => props.onUpdateGuestContactId(guest.id, e.target.value)}
-                      >
-                        <option value="">— Aucun —</option>
-                        {props.contacts.map((contact) => (
-                          <option key={contact.id} value={contact.id}>
-                            {getContactOptionLabel(contact)}
-                          </option>
-                        ))}
-                      </select>
+                        contacts={props.contacts}
+                        loading={props.contactsLoading}
+                        onChange={(value) => props.onUpdateGuestContactId(guest.id, value)}
+                      />
                     </div>
 
                     <div className={styles.formGrid2}>

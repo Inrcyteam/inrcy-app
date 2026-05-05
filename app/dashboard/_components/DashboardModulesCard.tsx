@@ -19,7 +19,8 @@ type DashboardPanelName =
   | "inertie"
   | "boutique"
   | "notifications"
-  | "parrainage";
+  | "parrainage"
+  | "documents";
 
 type DashboardModulesCardProps = {
   goToModule: (path: string) => void;
@@ -236,6 +237,26 @@ export default function DashboardModulesCard({ goToModule, openPanel }: Dashboar
                   type="button"
                   onClick={() => goToModule("/dashboard/devis/new")}
                 >
+                  <span
+                    className={styles.gearSettingsBtn}
+                    role="button"
+                    tabIndex={0}
+                    title="Réglages par défaut"
+                    aria-label="Réglages par défaut Devis et Factures"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openPanel("documents");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openPanel("documents");
+                      }
+                    }}
+                  >
+                    <span className={styles.gearSettingsIcon} aria-hidden="true" />
+                  </span>
                   <div className={styles.gearInner}>
                     <div className={styles.gearTitle}>Devis</div>
                     <div className={styles.gearSub}>Déclenche des opportunités</div>
@@ -248,6 +269,26 @@ export default function DashboardModulesCard({ goToModule, openPanel }: Dashboar
                   type="button"
                   onClick={() => goToModule("/dashboard/factures/new")}
                 >
+                  <span
+                    className={styles.gearSettingsBtn}
+                    role="button"
+                    tabIndex={0}
+                    title="Réglages par défaut"
+                    aria-label="Réglages par défaut Devis et Factures"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openPanel("documents");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openPanel("documents");
+                      }
+                    }}
+                  >
+                    <span className={styles.gearSettingsIcon} aria-hidden="true" />
+                  </span>
                   <div className={styles.gearInner}>
                     <div className={styles.gearTitle}>Facturer</div>
                     <div className={styles.gearSub}>Transforme en CA</div>

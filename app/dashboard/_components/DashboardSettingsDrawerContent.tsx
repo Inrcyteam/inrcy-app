@@ -10,6 +10,7 @@ import AgendaSettingsContent from "../settings/_components/AgendaSettingsContent
 import InertiaContent from "../settings/_components/InertiaContent";
 import BoutiqueContent from "../settings/_components/BoutiqueContent";
 import NotificationsSettingsContent from "../settings/_components/NotificationsSettingsContent";
+import DocumentsSettingsContent from "../settings/_components/DocumentsSettingsContent";
 import ReferralPanel from "./ReferralPanel";
 import SiteInrcyPanelBlock from "./SiteInrcyPanelBlock";
 import SiteWebPanelBlock from "./SiteWebPanelBlock";
@@ -37,7 +38,8 @@ type DashboardPanelName =
   | "inertie"
   | "boutique"
   | "notifications"
-  | "parrainage";
+  | "parrainage"
+  | "documents";
 
 type DashboardSettingsDrawerContentProps = {
   panel: string | null;
@@ -131,6 +133,7 @@ export default function DashboardSettingsDrawerContent({
         />
       )}
       {panel === "notifications" && <NotificationsSettingsContent />}
+      {panel === "documents" && <DocumentsSettingsContent />}
 
       <SiteInrcyPanelBlock panel={panel} panelProps={siteInrcyPanelProps} />
       <SiteWebPanelBlock panel={panel} panelProps={siteWebPanelProps} />

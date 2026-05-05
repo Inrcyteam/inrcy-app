@@ -7,6 +7,16 @@ import { resolveProfileLogoUrl } from "@/lib/profileLogo";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import styles from "../../_documents/documents.module.css";
 import dash from "../../dashboard.module.css";
+import SettingsDrawer from "../../SettingsDrawer";
+import DocumentsSettingsContent from "../../settings/_components/DocumentsSettingsContent";
+import {
+  DEFAULT_INRDOCUMENTS_SETTINGS,
+  INRDOCUMENTS_SETTINGS_UPDATED_EVENT,
+  InrDocumentsSettings,
+  dateWithAddedDays,
+  makeDefaultLine,
+  normalizeInrDocumentsSettings,
+} from "@/lib/inrdocumentsSettings";
 import {
   DocRecord,
   LineItem,
@@ -48,6 +58,29 @@ type CrmContact = {
   postal_code?: string | null;
   siret?: string | null;
   vat_number?: string | null;
+  category?: string | null;
+  contact_type?: string | null;
+};
+
+type ClientType = "" | "particulier" | "professionnel" | "institution";
+
+function normalizeClientType(value: unknown): ClientType {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "particulier" || normalized === "professionnel" || normalized === "institution") return normalized;
+  return "";
+}
+
+type InvoiceFieldErrors = {
+  clientType?: string;
+  clientName?: string;
+  billingAddress?: string;
+  clientEmail?: string;
+  clientSiren?: string;
+  number?: string;
+  invoiceDate?: string;
+  dueDate?: string;
+  operationCategory?: string;
+  lines?: string;
 };
 
 
@@ -67,6 +100,10 @@ function addressContainsPart(address: string, part: string) {
   return normalize(address).includes(normalize(part));
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 function buildFullCrmAddress(address?: string | null, postalCode?: string | null, city?: string | null) {
   const parts: string[] = [];
   const base = normalizeAddressPart(address);
@@ -81,6 +118,14 @@ function buildFullCrmAddress(address?: string | null, postalCode?: string | null
     });
 
   return parts.join(" ").trim();
+}
+
+function normalizeLabel(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
 }
 
 
@@ -112,6 +157,8 @@ export default function NewFacturePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [documentsSettings, setDocumentsSettings] = useState<InrDocumentsSettings>(DEFAULT_INRDOCUMENTS_SETTINGS);
 
   // Toujours arriver en haut du module (évite de récupérer le scroll du dashboard)
   useEffect(() => {
@@ -139,6 +186,7 @@ export default function NewFacturePage() {
   const [clientEmail, setClientEmail] = useState("");
   const [clientSiren, setClientSiren] = useState("");
   const [clientVatNumber, setClientVatNumber] = useState("");
+  const [clientType, setClientType] = useState<ClientType>("");
   const [billingAddress, setBillingAddress] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [sameAddresses, setSameAddresses] = useState(true);
@@ -177,10 +225,13 @@ export default function NewFacturePage() {
   const [crmError, setCrmError] = useState<string | null>(null);
   const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
   const [formMessage, setFormMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<InvoiceFieldErrors>({});
   const [addingToCrm, setAddingToCrm] = useState(false);
   const [currentSaveId, setCurrentSaveId] = useState<string>("");
 
   const [crmOpen, setCrmOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [crmQuery, setCrmQuery] = useState("");
   const crmSelectRef = useRef<HTMLDivElement | null>(null);
 
   const crmLabel = (c: CrmContact) => {
@@ -192,11 +243,30 @@ export default function NewFacturePage() {
     return name;
   };
 
+  const crmSearchText = (c: CrmContact) => [
+    crmLabel(c),
+    c.email,
+    c.phone,
+    c.address,
+    c.billing_address,
+    c.delivery_address,
+    c.city,
+    c.postal_code,
+    c.siret,
+    c.vat_number,
+  ].filter(Boolean).join(" ");
+
   const sortedCrmContacts = useMemo(() => {
     const copy = [...crmContacts];
     copy.sort((a, b) => crmLabel(a).localeCompare(crmLabel(b), "fr", { sensitivity: "base" }));
     return copy;
   }, [crmContacts]);
+
+  const filteredCrmContacts = useMemo(() => {
+    const query = normalizeLabel(crmQuery);
+    if (!query) return sortedCrmContacts;
+    return sortedCrmContacts.filter((contact) => normalizeLabel(crmSearchText(contact)).includes(query));
+  }, [crmQuery, sortedCrmContacts]);
 
   const selectedCrmLabel = useMemo(() => {
     if (!selectedCrmContactId) return "";
@@ -268,10 +338,18 @@ export default function NewFacturePage() {
       (c.last_name || "").trim();
 
     const fullAddress = buildFullCrmAddress(c.billing_address || c.address, c.postal_code, c.city);
+    const fullDeliveryAddress = buildFullCrmAddress(c.delivery_address || c.address, c.postal_code, c.city);
 
     setClientName(displayName);
     setClientEmail((c.email || "").trim());
+    setClientSiren((c.siret || "").trim());
+    setClientVatNumber((c.vat_number || "").trim());
+    setClientType(normalizeClientType(c.category) || ((c.siret || c.company_name) ? "professionnel" : "particulier"));
     setPrimaryClientAddress(fullAddress);
+    if (fullDeliveryAddress && fullDeliveryAddress !== fullAddress) {
+      setSameAddresses(false);
+      setDeliveryAddress(fullDeliveryAddress);
+    }
   };
 
 
@@ -287,6 +365,14 @@ export default function NewFacturePage() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [crmOpen]);
 
+  const selectCrmContact = (c: CrmContact) => {
+    setSelectedCrmContactId(String(c.id));
+    applyCrmContact(c);
+    setFieldErrors((prev) => ({ ...prev, clientType: undefined, clientName: undefined, billingAddress: undefined, clientEmail: undefined, clientSiren: undefined }));
+    setCrmQuery("");
+    setCrmOpen(false);
+  };
+
 
   const [status, setStatus] = useState<DocRecord["status"] | "en_attente_paiement" | "">("");
 
@@ -295,11 +381,56 @@ export default function NewFacturePage() {
 
   const [paymentDetails, setPaymentDetails] = useState("");
   const [notes, setNotes] = useState("");
+  const [invoiceMention, setInvoiceMention] = useState("");
 
   // IMPORTANT: id stable au 1er render (pas de uid() ici)
   const [lines, setLines] = useState<LineItem[]>([
     { id: "l_1", label: "Prestation", qty: 1, unitPrice: 120, vatRate: 20 },
   ]);
+
+  const applyDocumentDefaults = (settings: InrDocumentsSettings) => {
+    setOperationCategory(settings.common.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]);
+    setDepositKind(settings.common.depositKind);
+    setDepositValue(settings.common.depositKind ? settings.common.depositValue : "");
+    setVatOnDebits(settings.invoice.vatOnDebits);
+    setLateFeeRate(settings.invoice.lateFeeRate);
+    setFixedRecoveryFee40(settings.invoice.fixedRecoveryFee40);
+    setDocumentKind(settings.invoice.documentKind as (typeof DOCUMENT_KIND_OPTIONS)[number]["key"]);
+    setStatus(settings.invoice.status as DocRecord["status"] | "en_attente_paiement" | "");
+    setPaymentMethod(settings.common.paymentMethod as (typeof PAYMENT_METHODS)[number]["key"]);
+    setPaymentDetails(settings.common.paymentDetails);
+    setNotes(settings.common.notes);
+    setInvoiceMention(settings.invoice.mention);
+    setDueDate(dateWithAddedDays(invoiceDate || new Date().toISOString().slice(0, 10), settings.invoice.dueDays));
+    setLines([makeDefaultLine(settings, vatDispense, 120)]);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const shouldApplyDefaults = !(searchParams.get("saveId") || searchParams.get("docSaveId") || searchParams.get("fromDevisSaveId") || searchParams.get("devisSaveId"));
+
+    const loadSettings = async (applyDefaults: boolean) => {
+      const response = await fetch("/api/documents/settings", { cache: "no-store" });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) return;
+      const nextSettings = normalizeInrDocumentsSettings(json?.settings);
+      if (cancelled) return;
+      setDocumentsSettings(nextSettings);
+      if (applyDefaults) applyDocumentDefaults(nextSettings);
+    };
+
+    void loadSettings(shouldApplyDefaults);
+
+    const onUpdated = () => {
+      void loadSettings(true);
+    };
+
+    window.addEventListener(INRDOCUMENTS_SETTINGS_UPDATED_EVENT, onUpdated);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(INRDOCUMENTS_SETTINGS_UPDATED_EVENT, onUpdated);
+    };
+  }, [searchParams]);
 
   // Init client-only (évite mismatch SSR/CSR)
   useEffect(() => {
@@ -368,6 +499,8 @@ export default function NewFacturePage() {
       clientEmail: string;
       clientSiren?: string;
       clientVatNumber?: string;
+      clientType?: ClientType;
+      vatDispense?: boolean;
       operationCategory?: (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"];
       serviceDate?: string;
       servicePeriodStart?: string;
@@ -383,6 +516,7 @@ export default function NewFacturePage() {
       paymentMethod: (typeof PAYMENT_METHODS)[number]["key"];
       paymentDetails: string;
       notes: string;
+      invoiceMention?: string;
       lines: LineItem[];
       discountKind: DiscountKind | "";
       discountValue: number;
@@ -407,6 +541,7 @@ export default function NewFacturePage() {
     clientEmail: string;
     clientSiren?: string;
     clientVatNumber?: string;
+    vatDispense?: boolean;
     operationCategory?: (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"];
     serviceDate?: string;
     servicePeriodStart?: string;
@@ -414,6 +549,10 @@ export default function NewFacturePage() {
     purchaseOrderReference?: string;
     depositKind?: "" | "percent" | "amount";
     depositValue?: string;
+    paymentMethod?: (typeof PAYMENT_METHODS)[number]["key"];
+    paymentDetails?: string;
+    notes?: string;
+    quoteMention?: string;
     validityDays: number;
     lines: LineItem[];
     discountKind: DiscountKind | "";
@@ -500,6 +639,7 @@ export default function NewFacturePage() {
     setClientEmail(s.clientEmail);
     setClientSiren(s.clientSiren || "");
     setClientVatNumber(s.clientVatNumber || "");
+    setClientType(normalizeClientType((s as any).clientType));
     setOperationCategory((s.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]) || "");
     setServiceDate(s.serviceDate || "");
     setServicePeriodStart(s.servicePeriodStart || "");
@@ -515,6 +655,7 @@ export default function NewFacturePage() {
     setPaymentMethod(s.paymentMethod);
     setPaymentDetails(s.paymentDetails);
     setNotes(s.notes);
+    setInvoiceMention(s.invoiceMention || documentsSettings.invoice.mention || "");
     setLines(s.lines);
     setDiscountKind(s.discountKind);
     setDiscountValue(s.discountValue);
@@ -607,16 +748,16 @@ export default function NewFacturePage() {
       }
 
       const now = new Date();
-      const due = new Date(now);
-      due.setDate(due.getDate() + 30);
+      const invoiceDateISO = now.toISOString().slice(0, 10);
+      const dueDateISO = dateWithAddedDays(invoiceDateISO, documentsSettings.invoice.dueDays);
 
       if (!cancelled) {
         setCurrentSaveId("");
         setIsFinalized(false);
         setFinalizedAt("");
         setNumber(generateNumber("FAC"));
-        setInvoiceDate(now.toISOString().slice(0, 10));
-        setDueDate(due.toISOString().slice(0, 10));
+        setInvoiceDate(invoiceDateISO);
+        setDueDate(dueDateISO);
         const nextBillingAddress = devis.billingAddress || devis.clientAddress || "";
         const nextSameAddresses = typeof devis.sameAddresses === "boolean"
           ? devis.sameAddresses
@@ -640,14 +781,15 @@ export default function NewFacturePage() {
         setPurchaseOrderReference(devis.purchaseOrderReference || "");
         setDepositKind((devis.depositKind as "" | "percent" | "amount") || "");
         setDepositValue(devis.depositValue || "");
-        setVatOnDebits(false);
-        setLateFeeRate("");
-        setFixedRecoveryFee40(true);
-        setDocumentKind("invoice");
-        setStatus("");
-        setPaymentMethod("");
-        setPaymentDetails("");
-        setNotes(`Facture créée depuis le devis ${devis.number || devisSaveId}.`);
+        setVatOnDebits(documentsSettings.invoice.vatOnDebits);
+        setLateFeeRate(documentsSettings.invoice.lateFeeRate);
+        setFixedRecoveryFee40(documentsSettings.invoice.fixedRecoveryFee40);
+        setDocumentKind(documentsSettings.invoice.documentKind as (typeof DOCUMENT_KIND_OPTIONS)[number]["key"]);
+        setStatus(documentsSettings.invoice.status as DocRecord["status"] | "en_attente_paiement" | "");
+        setPaymentMethod(((devis.paymentMethod as (typeof PAYMENT_METHODS)[number]["key"]) || documentsSettings.common.paymentMethod) as (typeof PAYMENT_METHODS)[number]["key"]);
+        setPaymentDetails(devis.paymentDetails || documentsSettings.common.paymentDetails);
+        setNotes(devis.notes || documentsSettings.common.notes || `Facture créée depuis le devis ${devis.number || devisSaveId}.`);
+        setInvoiceMention(documentsSettings.invoice.mention);
         setLines(Array.isArray(devis.lines) && devis.lines.length
           ? devis.lines.map((line: LineItem, index: number) => ({
               ...line,
@@ -666,9 +808,10 @@ export default function NewFacturePage() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams, supabase, vatDispense]);
+  }, [searchParams, supabase, vatDispense, documentsSettings]);
 
-  const addLine = () =>
+  const addLine = () => {
+    clearFieldError("lines");
     setLines((prev) => [
       ...prev,
       {
@@ -679,20 +822,70 @@ export default function NewFacturePage() {
         vatRate: vatDispense ? 0 : 20,
       },
     ]);
+  };
 
-  const removeLine = (id: string) =>
-    setLines((prev) => prev.filter((l) => l.id !== id));
+  const removeLine = (id: string) => {
+    clearFieldError("lines");
+    setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.id !== id) : prev));
+  };
 
-  const updateLine = (id: string, patch: Partial<LineItem>) =>
+  const updateLine = (id: string, patch: Partial<LineItem>) => {
+    clearFieldError("lines");
     setLines((prev) =>
       prev.map((l) => (l.id === id ? { ...l, ...patch } : l))
     );
+  };
 
+  const clearFieldError = (field: keyof InvoiceFieldErrors) => {
+    setFieldErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
+  };
+
+  const validateInvoiceAction = (options?: { requireEmail?: boolean }) => {
+    const nextErrors: InvoiceFieldErrors = {};
+    const requireEmail = !!options?.requireEmail;
+    const normalizedBillingAddress = (billingAddress || clientAddress || "").trim();
+    const hasValidLine = lines.some((line) => (line.label || "").trim() && Number(line.qty) > 0 && Number(line.unitPrice) >= 0);
+
+    if (!clientType) nextErrors.clientType = "Type de client obligatoire.";
+    if (!(clientName || "").trim()) nextErrors.clientName = "Nom client obligatoire.";
+    if (!normalizedBillingAddress) nextErrors.billingAddress = "Adresse de facturation obligatoire.";
+    if (clientType && clientType !== "particulier" && !(clientSiren || "").trim()) nextErrors.clientSiren = "SIREN client obligatoire pour ce type de client.";
+    if (!(number || "").trim()) nextErrors.number = "Numéro de facture obligatoire.";
+    if (!(invoiceDate || "").trim()) nextErrors.invoiceDate = "Date de facture obligatoire.";
+    if (!(dueDate || "").trim()) nextErrors.dueDate = "Échéance obligatoire.";
+    if (clientType && clientType !== "particulier" && !operationCategory) {
+      nextErrors.operationCategory = "Catégorie d’opération obligatoire pour ce type de client.";
+      setAdvancedOpen(true);
+    }
+    if (!hasValidLine) nextErrors.lines = "Ajoutez au moins une prestation valide (libellé, quantité et prix HT).";
+
+    const normalizedEmail = (clientEmail || "").trim();
+    if (requireEmail) {
+      if (!normalizedEmail) nextErrors.clientEmail = "Email client obligatoire pour envoyer par mail.";
+      else if (!isValidEmail(normalizedEmail)) nextErrors.clientEmail = "Email client invalide.";
+    } else if (normalizedEmail && !isValidEmail(normalizedEmail)) {
+      nextErrors.clientEmail = "Email client invalide.";
+    }
+
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      setFormMessage(null);
+      return false;
+    }
+    return true;
+  };
 
   const saveDraft = async (options?: { silent?: boolean }) => {
     const nowISO = new Date().toISOString();
     const finalNumber = number || generateNumber("FAC");
     if (!number) setNumber(finalNumber);
+
+    const normalizedEmail = (clientEmail || "").trim();
+    if (normalizedEmail && !isValidEmail(normalizedEmail)) {
+      setFieldErrors((prev) => ({ ...prev, clientEmail: "Email client invalide." }));
+      setFormMessage(null);
+      return null;
+    }
 
     const normalizedBillingAddress = billingAddress || clientAddress;
     const normalizedDeliveryAddress = sameAddresses ? normalizedBillingAddress : deliveryAddress;
@@ -709,6 +902,8 @@ export default function NewFacturePage() {
       clientEmail,
       clientSiren,
       clientVatNumber,
+      clientType,
+      vatDispense,
       operationCategory,
       serviceDate,
       servicePeriodStart,
@@ -724,6 +919,7 @@ export default function NewFacturePage() {
       paymentMethod,
       paymentDetails,
       notes,
+      invoiceMention,
       lines,
       discountKind,
       discountValue: Number(discountValue) || 0,
@@ -809,7 +1005,7 @@ export default function NewFacturePage() {
           billing_address: (billingAddress || "").trim(),
           delivery_address: sameAddresses ? "" : (deliveryAddress || "").trim(),
           contact_type: "client",
-          category: "professionnel",
+          category: clientType || "particulier",
           notes: [`Ajouté depuis Factures`, purchaseOrderReference ? `PO: ${purchaseOrderReference}` : ""].filter(Boolean).join(" — "),
         }),
       });
@@ -898,14 +1094,31 @@ export default function NewFacturePage() {
 
   const print = () => window.print();
 
+  const waitForDomUpdate = () =>
+    new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+
   const buildPdfBlob = async (): Promise<Blob | null> => {
     if (typeof window === "undefined") return null;
     const el = previewRef.current;
     if (!el) return null;
 
-    const noPrintEls = Array.from(el.querySelectorAll(`.${styles.noPrint}`)) as HTMLElement[];
-    const prev = noPrintEls.map((n) => n.style.display);
-    noPrintEls.forEach((n) => (n.style.display = "none"));
+    const hiddenSelector = [styles.noPrint, styles.printHidden, styles.printHiddenCell]
+      .filter(Boolean)
+      .map((className) => `.${className}`)
+      .join(", ");
+    const hiddenEls = hiddenSelector ? (Array.from(el.querySelectorAll(hiddenSelector)) as HTMLElement[]) : [];
+    const printOnlyEls = Array.from(el.querySelectorAll(`.${styles.printOnly}`)) as HTMLElement[];
+    const previousHiddenDisplay = hiddenEls.map((node) => node.style.display);
+    const previousPrintOnlyDisplay = printOnlyEls.map((node) => node.style.display);
+
+    hiddenEls.forEach((node) => {
+      node.style.display = "none";
+    });
+    printOnlyEls.forEach((node) => {
+      node.style.display = "block";
+    });
 
     const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
       import("html2canvas"),
@@ -916,7 +1129,12 @@ export default function NewFacturePage() {
     try {
       canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
     } finally {
-      noPrintEls.forEach((n, i) => (n.style.display = prev[i] || ""));
+      hiddenEls.forEach((node, index) => {
+        node.style.display = previousHiddenDisplay[index] || "";
+      });
+      printOnlyEls.forEach((node, index) => {
+        node.style.display = previousPrintOnlyDisplay[index] || "";
+      });
     }
 
     const imgData = canvas.toDataURL("image/png");
@@ -965,6 +1183,7 @@ export default function NewFacturePage() {
 
     const officialNumber = finalized.number || number || generateNumber("FAC");
     if (!number || number !== officialNumber) setNumber(officialNumber);
+    await waitForDomUpdate();
 
     const pdfBlob = await buildPdfBlob();
     if (!pdfBlob) {
@@ -1010,6 +1229,25 @@ export default function NewFacturePage() {
         ? "AVOIR"
         : "FACTURE";
 
+  const documentDesign = documentsSettings.common.design;
+  const previewClassName = [
+    styles.preview,
+    documentDesign.preset === "business" ? styles.previewDesignBusiness : "",
+    documentDesign.preset === "encadre" ? styles.previewDesignEncadre : "",
+    documentDesign.preset === "signature" ? styles.previewDesignSignature : "",
+    documentDesign.frame ? styles.previewFrame : "",
+    documentDesign.coloredTotals ? styles.previewColoredTotals : "",
+    documentDesign.coloredParties ? styles.previewColoredParties : "",
+    documentDesign.accentColor === "violet" ? styles.previewAccentViolet : "",
+    documentDesign.accentColor === "orange" ? styles.previewAccentOrange : "",
+    documentDesign.accentColor === "green" ? styles.previewAccentGreen : "",
+    documentDesign.accentColor === "gray" ? styles.previewAccentGray : "",
+    documentDesign.accentColor === "rose" ? styles.previewAccentRose : "",
+    documentDesign.accentColor === "teal" ? styles.previewAccentTeal : "",
+    documentDesign.accentColor === "gold" ? styles.previewAccentGold : "",
+    documentDesign.accentColor === "blue" ? styles.previewAccentBlue : "",
+  ].filter(Boolean).join(" ");
+
   return (
       <div className={`${dash.page} ${styles.editorPage}`}>
       <div className={styles.container}>
@@ -1029,6 +1267,60 @@ export default function NewFacturePage() {
             </button>
             <button
               type="button"
+              className={`${styles.closeBtn} ${styles.toolbarBtn}`}
+              onClick={() => {
+                setSelectedCrmContactId("");
+                setCrmOpen(false);
+                setFieldErrors({});
+                setFormMessage(null);
+
+                setClientName("");
+                setClientEmail("");
+                setClientSiren("");
+                setClientVatNumber("");
+                setClientType("");
+                setClientAddress("");
+                setBillingAddress("");
+                setDeliveryAddress("");
+                setSameAddresses(true);
+                setOperationCategory(documentsSettings.common.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]);
+                setServiceDate("");
+                setServicePeriodStart("");
+                setServicePeriodEnd("");
+                setPurchaseOrderReference("");
+                setDepositKind(documentsSettings.common.depositKind);
+                setDepositValue(documentsSettings.common.depositKind ? documentsSettings.common.depositValue : "");
+                setVatOnDebits(documentsSettings.invoice.vatOnDebits);
+                setLateFeeRate(documentsSettings.invoice.lateFeeRate);
+                setFixedRecoveryFee40(documentsSettings.invoice.fixedRecoveryFee40);
+                setDocumentKind(documentsSettings.invoice.documentKind as (typeof DOCUMENT_KIND_OPTIONS)[number]["key"]);
+
+                setCurrentSaveId("");
+                setIsFinalized(false);
+                setFinalizedAt("");
+                setNumber(generateNumber("FAC"));
+                const d = new Date();
+                const invoiceDateISO = d.toISOString().slice(0, 10);
+                setInvoiceDate(invoiceDateISO);
+                setDueDate(dateWithAddedDays(invoiceDateISO, documentsSettings.invoice.dueDays));
+
+                setStatus(documentsSettings.invoice.status as DocRecord["status"] | "en_attente_paiement" | "");
+                setPaymentMethod(documentsSettings.common.paymentMethod as (typeof PAYMENT_METHODS)[number]["key"]);
+                setPaymentDetails(documentsSettings.common.paymentDetails);
+                setNotes(documentsSettings.common.notes);
+                setInvoiceMention(documentsSettings.invoice.mention);
+
+                setDiscountKind("");
+                setDiscountValue(0);
+                setDiscountDetails("");
+
+                setLines([makeDefaultLine(documentsSettings, vatDispense, 120)]);
+              }}
+            >
+              Réinitialiser
+            </button>
+            <button
+              type="button"
               className={`${styles.closeBtn} ${styles.toolbarBtn} ${styles.switchBtnDevis}`}
               onClick={() => router.push("/dashboard/devis/new")}
             >
@@ -1037,64 +1329,22 @@ export default function NewFacturePage() {
             <button
               type="button"
               className={`${styles.closeBtn} ${styles.toolbarBtn}`}
-              onClick={() => {
-                setSelectedCrmContactId("");
-                setCrmOpen(false);
-
-                setClientName("");
-                setClientEmail("");
-                setClientSiren("");
-                setClientVatNumber("");
-                setClientAddress("");
-                setBillingAddress("");
-                setDeliveryAddress("");
-                setSameAddresses(true);
-                setOperationCategory("");
-                setServiceDate("");
-                setServicePeriodStart("");
-                setServicePeriodEnd("");
-                setPurchaseOrderReference("");
-                setDepositKind("");
-                setDepositValue("");
-                setVatOnDebits(false);
-                setLateFeeRate("");
-                setFixedRecoveryFee40(true);
-                setDocumentKind("invoice");
-
-                setCurrentSaveId("");
-                setIsFinalized(false);
-                setFinalizedAt("");
-                setNumber(generateNumber("FAC"));
-                const d = new Date();
-                setInvoiceDate(d.toISOString().slice(0, 10));
-                const dd = new Date();
-                dd.setDate(dd.getDate() + 30);
-                setDueDate(dd.toISOString().slice(0, 10));
-
-                setStatus("");
-                setPaymentMethod("");
-                setPaymentDetails("");
-                setNotes("");
-
-                setDiscountKind("");
-                setDiscountValue(0);
-                setDiscountDetails("");
-
-                setLines([{ id: "l_1", label: "Prestation", qty: 1, unitPrice: 120, vatRate: 20 }]);
-              }}
+              onClick={() => setSettingsOpen(true)}
             >
-              Réinitialiser
+              Réglages
             </button>
             <button type="button" className={`${styles.closeBtn} ${styles.toolbarBtn}`} onClick={() => router.push("/dashboard")}>
               Fermer
             </button>
           </div>
 
-          {formMessage ? (
-            <div style={{ marginTop: 10, color: formMessage.type === "success" ? "#22c55e" : "#ef4444", fontWeight: 800, fontSize: 13 }}>
-              {formMessage.text}
-            </div>
-          ) : null}
+          <SettingsDrawer
+            title="Réglages par défaut"
+            isOpen={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+          >
+            <DocumentsSettingsContent />
+          </SettingsDrawer>
 
           {isFinalized ? (
             <div
@@ -1208,83 +1458,128 @@ export default function NewFacturePage() {
         ) : null}
 
         
-        <div className={styles.field}>
-          <label>Importer un contact (CRM)</label>
+        <div className={styles.formBlock}>
+          <div className={styles.formBlockHeader}>
+            <div>
+              <div className={styles.formBlockTitleRow}><span className={styles.formBlockIcon} aria-hidden="true">👤</span><div className={styles.formBlockTitle}>Infos contact</div></div>
+              <div className={styles.formBlockSubtitle}>Import CRM, coordonnées et adresse du client.</div>
+            </div>
+          </div>
 
-          <div className={styles.crmSelect} ref={crmSelectRef}>
+        <div className={styles.crmActionBar} ref={crmSelectRef}>
+          <div className={styles.crmActionMain}>
+            <span className={styles.crmActionLabel}>Importer un contact</span>
             <button
               type="button"
-              className={styles.crmSelectButton}
+              className={styles.crmImportButton}
               onClick={() => setCrmOpen((v) => !v)}
               disabled={crmLoading || coreEditingLocked}
+              aria-haspopup="listbox"
+              aria-expanded={crmOpen}
             >
-              <span>
-                {selectedCrmLabel ||
-                  (crmLoading ? "Chargement..." : "Sélectionner un contact")}
+              <span className={styles.crmImportButtonText} title={selectedCrmLabel || "Importer / Rechercher un contact CRM"}>
+                {selectedCrmLabel || (crmLoading ? "Chargement..." : "Importer / Rechercher un contact CRM")}
               </span>
-              <span className={styles.crmSelectChevron}>▾</span>
+              <span aria-hidden="true">▾</span>
             </button>
 
             {crmOpen ? (
-              <div className={styles.crmSelectDropdown} role="listbox">
-                {sortedCrmContacts.map((c) => {
-                  const label = crmLabel(c);
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className={styles.crmSelectItem}
-                      onClick={() => {
-                        setSelectedCrmContactId(String(c.id));
-                        applyCrmContact(c);
-                        setCrmOpen(false);
-                      }}
-                    >
-                      {label}
-                      {c.email ? ` — ${c.email}` : ""}
-                    </button>
-                  );
-                })}
+              <div className={styles.crmSearchPanel} role="dialog" aria-label="Importer ou rechercher un contact CRM">
+                <input
+                  className={styles.crmSearchInput}
+                  type="search"
+                  value={crmQuery}
+                  onChange={(e) => setCrmQuery(e.target.value)}
+                  placeholder="Rechercher un contact, email, téléphone..."
+                  autoFocus
+                />
+                <div className={styles.crmSearchResults} role="listbox">
+                  {filteredCrmContacts.length ? filteredCrmContacts.map((c) => {
+                    const label = crmLabel(c);
+                    const line = c.email ? `${label} — ${c.email}` : label;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={styles.crmSearchItem}
+                        onClick={() => selectCrmContact(c)}
+                        title={line}
+                      >
+                        {line}
+                      </button>
+                    );
+                  }) : (
+                    <div className={styles.crmSearchEmpty}>Aucun contact trouvé. Remplissez le client puis utilisez “+ Ajouter au CRM”.</div>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>
 
+          <div className={`${styles.field} ${styles.crmClientTypeField}`}>
+            <label>Type de client<span className={styles.requiredMark}>*</span></label>
+            <select
+              value={clientType}
+              onChange={(e) => { setClientType(e.target.value as ClientType); clearFieldError("clientType"); clearFieldError("clientSiren"); clearFieldError("operationCategory" as any); }}
+              disabled={coreEditingLocked}
+            >
+              <option value="">—</option>
+              <option value="particulier">Particulier</option>
+              <option value="professionnel">Professionnel</option>
+              <option value="institution">Institution</option>
+            </select>
+            {fieldErrors.clientType ? <div className={styles.fieldError}>{fieldErrors.clientType}</div> : null}
+          </div>
+
+          <button
+            type="button"
+            className={styles.crmAddButton}
+            onClick={() => void addCurrentClientToCrm()}
+            disabled={finalizing || addingToCrm || coreEditingLocked}
+          >
+            {addingToCrm ? "Ajout CRM…" : "+ Ajouter au CRM"}
+          </button>
+
           {crmError ? (
-            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
-              ⚠️ {crmError}
-            </div>
+            <div style={{ gridColumn: "1 / -1", marginTop: -4, fontSize: 12, opacity: 0.8 }}>⚠️ {crmError}</div>
           ) : null}
         </div>
 
 <div className={styles.fourCol}>
           <div className={styles.field}>
-            <label>Client</label>
+            <label>Client<span className={styles.requiredMark}>*</span></label>
             <input
               value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
+              onChange={(e) => { setClientName(e.target.value); clearFieldError("clientName"); }}
               placeholder="Nom du client"
               disabled={coreEditingLocked}
             />
+            {fieldErrors.clientName ? <div className={styles.fieldError}>{fieldErrors.clientName}</div> : null}
           </div>
 
           <div className={styles.field}>
-            <label>Email client</label>
+            <label>Email client<span className={styles.requiredMark}>*</span></label>
             <input
               value={clientEmail}
-              onChange={(e) => setClientEmail(e.target.value)}
+              onChange={(e) => {
+                setClientEmail(e.target.value);
+                if (fieldErrors.clientEmail) setFieldErrors((prev) => ({ ...prev, clientEmail: undefined }));
+              }}
               placeholder="email@client.fr"
               disabled={coreEditingLocked}
             />
+            {fieldErrors.clientEmail ? <div className={styles.fieldError}>{fieldErrors.clientEmail}</div> : null}
           </div>
 
           <div className={styles.field}>
-            <label>SIREN client (optionnel)</label>
+            <label>SIREN client{clientType && clientType !== "particulier" ? <span className={styles.requiredMark}>*</span> : null}</label>
             <input
               value={clientSiren}
-              onChange={(e) => setClientSiren(e.target.value)}
+              onChange={(e) => { setClientSiren(e.target.value); clearFieldError("clientSiren"); }}
               placeholder="Ex : 123456789"
               disabled={coreEditingLocked}
             />
+            {fieldErrors.clientSiren ? <div className={styles.fieldError}>{fieldErrors.clientSiren}</div> : null}
           </div>
 
           <div className={styles.field}>
@@ -1299,13 +1594,14 @@ export default function NewFacturePage() {
         </div>
 
         <div className={styles.field}>
-          <label>Adresse de facturation</label>
+          <label>Adresse de facturation<span className={styles.requiredMark}>*</span></label>
           <input
             value={billingAddress}
-            onChange={(e) => setPrimaryClientAddress(e.target.value)}
+            onChange={(e) => { setPrimaryClientAddress(e.target.value); clearFieldError("billingAddress"); }}
             placeholder="Adresse, ville"
             disabled={coreEditingLocked}
           />
+          {fieldErrors.billingAddress ? <div className={styles.fieldError}>{fieldErrors.billingAddress}</div> : null}
         </div>
 
         <div className={styles.field}>
@@ -1344,315 +1640,235 @@ export default function NewFacturePage() {
           </div>
         ) : null}
 
+        </div>
+
+        <div className={styles.formBlock}>
+          <div className={styles.formBlockHeader}>
+            <div>
+              <div className={styles.formBlockTitleRow}><span className={styles.formBlockIcon} aria-hidden="true">🧾</span><div className={styles.formBlockTitle}>Infos facture</div></div>
+              <div className={styles.formBlockSubtitle}>Numéro, dates, options avancées et actions.</div>
+            </div>
+          </div>
+
         <div className={styles.compactThreeCol}>
           <div className={styles.field}>
-            <label>Numéro de facture</label>
+            <label>Numéro de facture<span className={styles.requiredMark}>*</span></label>
             <input
               value={number}
-              onChange={(e) => setNumber(e.target.value)}
+              onChange={(e) => { setNumber(e.target.value); clearFieldError("number"); }}
               placeholder="FAC-YYYYMMDD-XXXX"
               disabled={coreEditingLocked}
             />
+            {fieldErrors.number ? <div className={styles.fieldError}>{fieldErrors.number}</div> : null}
           </div>
 
           <div className={styles.field}>
-            <label>Date de facture</label>
+            <label>Date de facture<span className={styles.requiredMark}>*</span></label>
             <input
               type="date"
               value={invoiceDate}
-              onChange={(e) => setInvoiceDate(e.target.value)}
+              onChange={(e) => {
+                const nextDate = e.target.value;
+                setInvoiceDate(nextDate);
+                clearFieldError("invoiceDate");
+                setDueDate(dateWithAddedDays(nextDate, documentsSettings.invoice.dueDays));
+              }}
               disabled={coreEditingLocked}
             />
+            {fieldErrors.invoiceDate ? <div className={styles.fieldError}>{fieldErrors.invoiceDate}</div> : null}
           </div>
 
           <div className={styles.field}>
-            <label>Échéance</label>
+            <label>Échéance<span className={styles.requiredMark}>*</span></label>
             <input
               type="date"
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              onChange={(e) => { setDueDate(e.target.value); clearFieldError("dueDate"); }}
               disabled={coreEditingLocked}
             />
+            {fieldErrors.dueDate ? <div className={styles.fieldError}>{fieldErrors.dueDate}</div> : null}
           </div>
         </div>
 
-        <div className={styles.compactThreeCol}>
-          <div className={styles.field}>
-            <label>Type de document</label>
-            <select
-              value={documentKind}
-              onChange={(e) => setDocumentKind(e.target.value as (typeof DOCUMENT_KIND_OPTIONS)[number]["key"])}
-              disabled={coreEditingLocked}
-              style={{
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                borderRadius: 10,
-                padding: "10px 12px",
-                color: "white",
-              }}
-            >
-              {DOCUMENT_KIND_OPTIONS.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+        <details className={styles.advancedDetails} open={advancedOpen} onToggle={(e) => setAdvancedOpen(e.currentTarget.open)}>
+          <summary className={styles.advancedSummary}>Options avancées de la facture</summary>
+          <div className={styles.advancedBody}>
+            <div className={styles.advancedSection}>
+              <div className={styles.advancedSectionTitle}>Document</div>
+              <div className={styles.compactThreeCol}>
+                <div className={styles.field}>
+                  <label>Type de document</label>
+                  <select value={documentKind} onChange={(e) => setDocumentKind(e.target.value as (typeof DOCUMENT_KIND_OPTIONS)[number]["key"])} disabled={coreEditingLocked}>
+                    {DOCUMENT_KIND_OPTIONS.map((option) => (
+                      <option key={option.key} value={option.key}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label>Catégorie d’opération{clientType && clientType !== "particulier" ? <span className={styles.requiredMark}>*</span> : null}</label>
+                  <select value={operationCategory} onChange={(e) => { setOperationCategory(e.target.value as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]); clearFieldError("operationCategory"); }} disabled={coreEditingLocked}>
+                    {OPERATION_CATEGORY_OPTIONS.map((option) => (
+                      <option key={option.key} value={option.key}>{option.label}</option>
+                    ))}
+                  </select>
+                  {fieldErrors.operationCategory ? <div className={styles.fieldError}>{fieldErrors.operationCategory}</div> : null}
+                </div>
+                <div className={styles.field}>
+                  <label>Statut</label>
+                  <select value={status} onChange={(e) => setStatus(e.target.value as DocRecord["status"] | "en_attente_paiement" | "")} disabled={coreEditingLocked}>
+                    <option value="">—</option>
+                    <option value="brouillon">Brouillon</option>
+                    <option value="en_attente_paiement">En attente de paiement</option>
+                    <option value="envoye">Envoyé</option>
+                    <option value="paye">Payé</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.advancedSection}>
+              <div className={styles.advancedSectionTitle}>Acompte & paiement</div>
+              <div className={styles.compactThreeCol}>
+                <div className={styles.field}>
+                  <label>Acompte</label>
+                  <select
+                    value={depositKind}
+                    onChange={(e) => {
+                      const value = e.target.value as "" | "percent" | "amount";
+                      setDepositKind(value);
+                      if (!value) setDepositValue("");
+                    }}
+                    disabled={coreEditingLocked}
+                  >
+                    <option value="">—</option>
+                    <option value="percent">Pourcentage</option>
+                    <option value="amount">Montant</option>
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label>Valeur acompte</label>
+                  <input type="number" min="0" step="0.01" value={depositValue} onChange={(e) => setDepositValue(e.target.value)} placeholder={depositKind === "amount" ? "Ex : 300" : "Ex : 30"} disabled={coreEditingLocked || !depositKind} />
+                </div>
+                <div className={styles.field}>
+                  <label>Mode de paiement</label>
+                  <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as (typeof PAYMENT_METHODS)[number]["key"])} disabled={coreEditingLocked}>
+                    {PAYMENT_METHODS.map((method) => (
+                      <option key={method.key} value={method.key}>{method.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className={styles.field} style={{ marginBottom: 0 }}>
+                <label>IBAN</label>
+                <input value={paymentDetails} onChange={(e) => setPaymentDetails(e.target.value)} placeholder="Ex : IBAN FR76..." disabled={coreEditingLocked} />
+              </div>
+            </div>
+
+            <div className={styles.advancedSection}>
+              <div className={styles.advancedSectionTitle}>Échéance & mentions légales</div>
+              <div className={styles.compactThreeCol}>
+                <div className={styles.field}>
+                  <label>Pénalités de retard (%)</label>
+                  <input type="number" min="0" step="0.01" value={lateFeeRate} onChange={(e) => setLateFeeRate(e.target.value)} placeholder="Ex : 12.00" disabled={coreEditingLocked} />
+                </div>
+                <div className={styles.field}>
+                  <label>TVA sur les débits</label>
+                  <label className={styles.toggleInputLike}>
+                    <input type="checkbox" checked={vatOnDebits} onChange={(e) => setVatOnDebits(e.target.checked)} disabled={coreEditingLocked} />
+                    <span>{vatOnDebits ? "Oui" : "Non"}</span>
+                  </label>
+                </div>
+                <div className={styles.field}>
+                  <label>Indemnité forfaitaire de 40 €</label>
+                  <label className={styles.toggleInputLike}>
+                    <input type="checkbox" checked={fixedRecoveryFee40} onChange={(e) => setFixedRecoveryFee40(e.target.checked)} disabled={coreEditingLocked} />
+                    <span>{fixedRecoveryFee40 ? "Oui" : "Non"}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.advancedSection}>
+              <div className={styles.advancedSectionTitle}>Prestation</div>
+              <div className={styles.compactThreeCol}>
+                <div className={styles.field}>
+                  <label>Date de prestation / livraison</label>
+                  <input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} disabled={coreEditingLocked} />
+                </div>
+                <div className={styles.field}>
+                  <label>Début de prestation</label>
+                  <input type="date" value={servicePeriodStart} onChange={(e) => setServicePeriodStart(e.target.value)} disabled={coreEditingLocked} />
+                </div>
+                <div className={styles.field}>
+                  <label>Fin de prestation</label>
+                  <input type="date" value={servicePeriodEnd} onChange={(e) => setServicePeriodEnd(e.target.value)} disabled={coreEditingLocked} />
+                </div>
+              </div>
+              <div className={styles.field} style={{ marginBottom: 0 }}>
+                <label>Référence commande / PO</label>
+                <input value={purchaseOrderReference} onChange={(e) => setPurchaseOrderReference(e.target.value)} placeholder="Ex : BC-2026-014 / PO-7781" disabled={coreEditingLocked} />
+              </div>
+            </div>
+
+            <div className={styles.advancedSection}>
+              <div className={styles.advancedSectionTitle}>Notes & mentions</div>
+              <div className={styles.twoCol}>
+                <div className={styles.field}>
+                  <label>Notes</label>
+                  <textarea className={styles.advancedTextArea} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex : Merci pour votre confiance." disabled={coreEditingLocked} />
+                </div>
+                <div className={styles.field}>
+                  <label>Mention spécifique facture</label>
+                  <textarea className={styles.advancedTextArea} value={invoiceMention} onChange={(e) => setInvoiceMention(e.target.value)} placeholder="Ex : Aucun escompte pour paiement anticipé." disabled={coreEditingLocked} />
+                </div>
+              </div>
+            </div>
           </div>
-
-          <div className={styles.field}>
-            <label>Catégorie d’opération</label>
-            <select
-              value={operationCategory}
-              onChange={(e) => setOperationCategory(e.target.value as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"])}
-              disabled={coreEditingLocked}
-              style={{
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                borderRadius: 10,
-                padding: "10px 12px",
-                color: "white",
-              }}
-            >
-              {OPERATION_CATEGORY_OPTIONS.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.field}>
-            <label>Taux pénalités de retard (%)</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={lateFeeRate}
-              onChange={(e) => setLateFeeRate(e.target.value)}
-              placeholder="Ex : 12.00"
-              disabled={coreEditingLocked}
-            />
-          </div>
-        </div>
-
-        <div className={styles.compactThreeCol}>
-          <div className={styles.field}>
-            <label>Date de prestation / livraison</label>
-            <input
-              type="date"
-              value={serviceDate}
-              onChange={(e) => setServiceDate(e.target.value)}
-              disabled={coreEditingLocked}
-            />
-          </div>
-
-          <div className={styles.field}>
-            <label>Début de prestation</label>
-            <input
-              type="date"
-              value={servicePeriodStart}
-              onChange={(e) => setServicePeriodStart(e.target.value)}
-              disabled={coreEditingLocked}
-            />
-          </div>
-
-          <div className={styles.field}>
-            <label>Fin de prestation</label>
-            <input
-              type="date"
-              value={servicePeriodEnd}
-              onChange={(e) => setServicePeriodEnd(e.target.value)}
-              disabled={coreEditingLocked}
-            />
-          </div>
-        </div>
-
-        <div className={styles.compactThreeCol}>
-          <div className={styles.field}>
-            <label>Référence commande / PO</label>
-            <input
-              value={purchaseOrderReference}
-              onChange={(e) => setPurchaseOrderReference(e.target.value)}
-              placeholder="Ex : BC-2026-014 / PO-7781"
-              disabled={coreEditingLocked}
-            />
-          </div>
-
-          <div className={styles.field}>
-            <label>Acompte</label>
-            <select
-              value={depositKind}
-              onChange={(e) => setDepositKind(e.target.value as "" | "percent" | "amount")}
-              disabled={coreEditingLocked}
-              style={{
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                borderRadius: 10,
-                padding: "10px 12px",
-                color: "white",
-                width: "100%",
-                minWidth: 0,
-              }}
-            >
-              <option value="">—</option>
-              <option value="percent">Pourcentage</option>
-              <option value="amount">Montant</option>
-            </select>
-          </div>
-
-          <div className={styles.field}>
-            <label>Valeur acompte</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={depositValue}
-              onChange={(e) => setDepositValue(e.target.value)}
-              placeholder={depositKind === "amount" ? "Ex : 300" : "Ex : 30"}
-              disabled={coreEditingLocked || !depositKind}
-              style={{ width: "100%", minWidth: 0 }}
-            />
-          </div>
-        </div>
-
-        <div className={styles.field}>
-          <label className={styles.checkboxLabel} style={{ cursor: coreEditingLocked ? "not-allowed" : "pointer" }}>
-            <input
-              className={styles.checkboxInput}
-              type="checkbox"
-              checked={vatOnDebits}
-              onChange={(e) => setVatOnDebits(e.target.checked)}
-              disabled={coreEditingLocked}
-            />
-            <span>TVA sur les débits (si applicable)</span>
-          </label>
-        </div>
-
-        <div className={styles.field}>
-          <label className={styles.checkboxLabel} style={{ cursor: coreEditingLocked ? "not-allowed" : "pointer" }}>
-            <input
-              className={styles.checkboxInput}
-              type="checkbox"
-              checked={fixedRecoveryFee40}
-              onChange={(e) => setFixedRecoveryFee40(e.target.checked)}
-              disabled={coreEditingLocked}
-            />
-            <span>Mentionner l’indemnité forfaitaire de 40 € pour frais de recouvrement</span>
-          </label>
-        </div>
-
-        <div
-          className={styles.twoCol}
-        >
-          <div className={styles.field}>
-            <label>Statut</label>
-            <select
-              value={status}
-              onChange={(e) =>
-                setStatus(e.target.value as DocRecord["status"])
-              }
-              style={{
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                borderRadius: 10,
-                padding: "10px 12px",
-                color: "white",
-              }}
-            >
-              {!isFinalized ? <option value="">—</option> : null}
-              {!isFinalized ? <option value="brouillon">brouillon</option> : null}
-              <option value="en_attente_paiement">en attente de paiement</option>
-              <option value="envoye">envoyé</option>
-              <option value="paye">payé</option>
-            </select>
-          </div>
-
-          <div className={styles.field}>
-            <label>Mode de paiement</label>
-            <select
-              value={paymentMethod}
-              onChange={(e) =>
-                setPaymentMethod(
-                  e.target.value as (typeof PAYMENT_METHODS)[number]["key"]
-                )
-              }
-              style={{
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                borderRadius: 10,
-                padding: "10px 12px",
-                color: "white",
-              }}
-            >
-              {PAYMENT_METHODS.map((m) => (
-                <option key={m.key} value={m.key}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className={styles.field}>
-          <label>Détails paiement (IBAN, lien, etc.)</label>
-          <input
-            value={paymentDetails}
-            onChange={(e) => setPaymentDetails(e.target.value)}
-            placeholder="Ex: IBAN FR76 .... / Paiement sous 30 jours"
-          />
-        </div>
-
-        <div className={styles.field}>
-          <label>Notes (optionnel)</label>
-          <input
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Ex: Merci pour votre confiance."
-          />
-        </div>
+        </details>
 
         <div className={styles.actionGrid}>
           <button type="button" onClick={() => { void saveDraft(); }} disabled={finalizing || addingToCrm}>
             Sauvegarder
           </button>
-          <button type="button" onClick={() => void addCurrentClientToCrm()} disabled={finalizing || addingToCrm}>
-            {addingToCrm ? "Ajout CRM…" : "Ajouter au CRM"}
+          <button
+            type="button"
+            disabled={finalizing || addingToCrm || isFinalized}
+            title={isFinalized ? "Cette facture est déjà figée." : undefined}
+            onClick={async () => {
+              if (!validateInvoiceAction()) return;
+              const docSaveId = await saveDraft({ silent: true });
+              if (!docSaveId) return;
+              const finalized = await finalizeInvoice(docSaveId, "en_attente_paiement");
+              if (finalized) {
+                setFormMessage({ type: "success", text: `Facture figée sous le numéro ${finalized.number}.` });
+              }
+            }}
+          >
+            {finalizing ? "Émission…" : <>Émettre / figer<span className={styles.helpBubble} title="Fige la facture avec un numéro officiel. Les informations principales sont verrouillées pour sécuriser le document avant envoi au client.">?</span></>}
           </button>
-          {!isFinalized ? (
-            <button
-              type="button"
-              disabled={finalizing || addingToCrm}
-              onClick={async () => {
-                const docSaveId = await saveDraft({ silent: true });
-                if (!docSaveId) return;
-                const finalized = await finalizeInvoice(docSaveId, "en_attente_paiement");
-                if (finalized) {
-                  setFormMessage({ type: "success", text: `Facture figée sous le numéro ${finalized.number}.` });
-                }
-              }}
-            >
-              {finalizing ? "Émission…" : "Émettre / figer"}
-            </button>
-          ) : null}
           <button
             type="button"
             disabled={finalizing || addingToCrm}
             onClick={async () => {
+              if (!validateInvoiceAction({ requireEmail: true })) return;
               const to = (clientEmail || "").trim();
-              if (!to) {
-                setFormMessage({ type: "error", text: "Veuillez d’abord ajouter un email client pour envoyer un message." });
-                return;
-              }
-
               await uploadPdfAndOpenCompose(to);
             }}
           >
-            {finalizing ? "Préparation…" : "Envoyer par mail"}
+            {finalizing ? "Préparation…" : <>Envoyer par mail<span className={styles.helpBubble} title="Prépare le PDF et ouvre l’envoi par email au client. Ce bouton sert à transmettre le document, pas à le figer.">?</span></>}
           </button>
           <button type="button" onClick={print} disabled={finalizing || addingToCrm}>
             Imprimer / PDF
           </button>
         </div>
+
+        <div className={styles.requiredHint}>* champs obligatoires selon le type de client. L’email client est requis uniquement pour l’envoi par mail.</div>
+
+          {formMessage ? (
+            <div className={`${styles.actionMessage} ${formMessage.type === "success" ? styles.actionMessageSuccess : styles.actionMessageError}`}>
+              {formMessage.text}
+            </div>
+          ) : null}
 
           {vatDispense ? (
             <p style={{ marginTop: 12, opacity: 0.9 }}>
@@ -1660,10 +1876,11 @@ export default function NewFacturePage() {
               <strong>TVA non applicable (article 293 B du CGI)</strong>
             </p>
           ) : null}
+          </div>
         </div>
 
         {/* Aperçu document */}
-        <div className={styles.preview} ref={previewRef}>
+        <div className={previewClassName} ref={previewRef}>
         <div className={styles.previewHeader}>
           <div>
             <div className={styles.title}>{documentTitle}</div>
@@ -1699,16 +1916,9 @@ export default function NewFacturePage() {
           ) : null}
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 24,
-            marginBottom: 18,
-          }}
-        >
-          <div>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Prestataire</div>
+        <div className={styles.previewParties}>
+          <div className={styles.previewPartyCard}>
+            <div className={styles.previewPartyTitle}>Prestataire</div>
             <div style={{ fontWeight: 600 }}>
               {profile?.company_legal_name ?? "—"}
             </div>
@@ -1744,8 +1954,8 @@ export default function NewFacturePage() {
             </div>
           </div>
 
-          <div>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Client</div>
+          <div className={styles.previewPartyCard}>
+            <div className={styles.previewPartyTitle}>Client</div>
             <div style={{ fontWeight: 600 }}>{clientName || "—"}</div>
             {clientSiren ? <div>SIREN : {clientSiren}</div> : null}
             {clientVatNumber ? <div>TVA : {clientVatNumber}</div> : null}
@@ -1863,21 +2073,15 @@ export default function NewFacturePage() {
                   {formatEuro(calcLineHT(l))}
                 </td>
                 <td className={styles.printHiddenCell} style={{ textAlign: "right" }}>
-                  {idx > 0 ? (
+                  {lines.length > 1 ? (
                     <button
                       type="button"
+                      className={styles.removeLineBtn}
                       onClick={() => removeLine(l.id)}
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        background: "transparent",
-                        borderRadius: 10,
-                        padding: "8px 10px",
-                        cursor: "pointer",
-                      }}
                       title="Supprimer la ligne"
                       disabled={coreEditingLocked}
                     >
-                      −
+                      ×
                     </button>
                   ) : null}
                 </td>
@@ -1891,6 +2095,7 @@ export default function NewFacturePage() {
             + Ajouter une prestation
           </button>
         </div>
+        {fieldErrors.lines ? <div className={styles.fieldError} style={{ marginTop: 6 }}>{fieldErrors.lines}</div> : null}
 
         <div
           style={{
@@ -1952,8 +2157,9 @@ export default function NewFacturePage() {
               </div>
             ) : null}
             {notes ? <div style={{ marginTop: 8 }}>{notes}</div> : null}
+            {invoiceMention ? <div style={{ marginTop: 8 }}>{invoiceMention}</div> : null}
           </div>
-          <div>
+          <div className={styles.previewTotalsBox}>
             <div style={{ marginBottom: 8 }} className={styles.noPrint}>
               <div style={{ fontWeight: 650, marginBottom: 6 }}>Remise commerciale</div>
               <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 8 }}>
@@ -2019,6 +2225,7 @@ export default function NewFacturePage() {
               <strong>{formatEuro(totals.totalTVA)}</strong>
             </div>
             <div
+              className={styles.previewTotalsMain}
               style={{
                 display: "flex",
                 justifyContent: "space-between",
@@ -2041,7 +2248,7 @@ export default function NewFacturePage() {
               </div>
             ) : null}
             {totals.discountTTC > 0 ? (
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 18 }}>
+              <div className={styles.previewTotalsMain} style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 18 }}>
                 <span>Total à payer</span>
                 <strong>{formatEuro(totals.totalDue)}</strong>
               </div>

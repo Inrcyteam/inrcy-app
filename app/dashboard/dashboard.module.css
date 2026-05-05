@@ -4067,3 +4067,55 @@ transform: scale(1.50);
     justify-content: flex-start;
   }
 }
+
+/* Roue réglages sur les bulles Devis / Facturer */
+.gearSettingsBtn{
+  position:absolute;
+  top:14px;
+  right:18px;
+  z-index:4;
+  width:30px;
+  height:30px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.18);
+  background:rgba(255,255,255,0.09);
+  display:grid;
+  place-items:center;
+  cursor:pointer;
+  transition: transform .16s ease, background .16s ease, border-color .16s ease;
+}
+
+.gearSettingsBtn:hover,
+.gearSettingsBtn:focus-visible{
+  transform: translateY(-1px) rotate(16deg);
+  background:rgba(255,255,255,0.15);
+  border-color:rgba(255,255,255,0.32);
+  outline:none;
+}
+
+.gearSettingsIcon{
+  width:13px;
+  height:13px;
+  border-radius:999px;
+  border:2px solid rgba(255,255,255,0.82);
+  position:relative;
+  display:block;
+}
+
+.gearSettingsIcon::before,
+.gearSettingsIcon::after{
+  content:"";
+  position:absolute;
+  border-radius:999px;
+  pointer-events:none;
+}
+
+.gearSettingsIcon::before{
+  inset:-7px;
+  border:1px dashed rgba(255,255,255,0.28);
+}
+
+.gearSettingsIcon::after{
+  inset:3px;
+  background:rgba(255,255,255,0.82);
+}

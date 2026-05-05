@@ -86,6 +86,9 @@ function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
   };
 
   const onDelete = async (id: string) => {
+    const doc = docs.find((item) => item.id === id);
+    if (doc?.isFinalized) return;
+
     try {
       await deleteDocRecord(kind, id);
       await refresh();
@@ -137,6 +140,7 @@ function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
             <tbody>
               {rows.map((d) => {
                 const isPaid = d.status === "paye";
+                const deletionLocked = !!d.isFinalized;
                 return (
                   <tr key={d.id}>
                     <td style={{ fontWeight: 650 }}>{d.number}</td>
@@ -162,8 +166,15 @@ function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
                       >
                         Marquer payé
                       </button>
-                      <button type="button" onClick={() => onDelete(d.id)} className={styles.ghostBtn}>
-                        Supprimer
+                      <button
+                        type="button"
+                        onClick={() => onDelete(d.id)}
+                        className={styles.ghostBtn}
+                        disabled={deletionLocked}
+                        title={deletionLocked ? "Une facture figée ne peut pas être supprimée." : undefined}
+                        style={deletionLocked ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+                      >
+                        {deletionLocked ? "Figée" : "Supprimer"}
                       </button>
                     </td>
                   </tr>

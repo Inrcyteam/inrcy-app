@@ -22,7 +22,8 @@ export type DashboardPanelName =
   | "inertie"
   | "boutique"
   | "notifications"
-  | "parrainage";
+  | "parrainage"
+  | "documents";
 
 const PANEL_RETURN_QUERY_KEYS = ["linked", "ok", "error", "message", "warning", "toast", "activated", "skipped"];
 

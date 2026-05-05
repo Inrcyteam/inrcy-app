@@ -25,7 +25,8 @@ type DashboardPanelName =
   | "inertie"
   | "boutique"
   | "notifications"
-  | "parrainage";
+  | "parrainage"
+  | "documents";
 
 type BubbleViewMode = "list" | "carousel";
 
