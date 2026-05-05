@@ -19,18 +19,12 @@ export default function OrientationGuard() {
   const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
 
-  // Factures / Devis : portrait ET paysage autorisés.
-  // Le blocage paysage a été retiré pour permettre une création rapide sur mobile.
-  const flexibleOrientationRoutes = useMemo(
+  const landscapeRoutes = useMemo(
     () => ["/dashboard/factures", "/dashboard/devis"],
     []
   );
 
-  // Garde une liste dédiée si certains modules doivent encore forcer le paysage plus tard.
-  const landscapeRoutes = useMemo(() => [] as string[], []);
-
-  const allowsAnyOrientation = flexibleOrientationRoutes.some((r) => pathname?.startsWith(r));
-  const mustBeLandscape = !allowsAnyOrientation && landscapeRoutes.some((r) => pathname?.startsWith(r));
+  const mustBeLandscape = landscapeRoutes.some((r) => pathname?.startsWith(r));
 
   useEffect(() => {
     const check = () => {
@@ -51,6 +45,7 @@ export default function OrientationGuard() {
   useEffect(() => {
     if (!pathname || !isMobileOrTablet) return;
 
+    const target = mustBeLandscape ? "landscape" : "portrait";
     let cancelled = false;
 
     (async () => {
@@ -61,20 +56,15 @@ export default function OrientationGuard() {
             unlock?: () => void;
           };
         };
-
-        if (allowsAnyOrientation) {
-          anyScreen.orientation?.unlock?.();
-        } else if (anyScreen.orientation?.lock) {
-          const target = mustBeLandscape ? "landscape" : "portrait";
+        if (anyScreen.orientation?.lock) {
           await anyScreen.orientation.lock(target);
-        }
-
-        if (!cancelled) {
-          setTimeout(() => {
-            if (!cancelled) {
-              setIsLandscape(window.innerWidth > window.innerHeight);
-            }
-          }, 120);
+          if (!cancelled) {
+            setTimeout(() => {
+              if (!cancelled) {
+                setIsLandscape(window.innerWidth > window.innerHeight);
+              }
+            }, 120);
+          }
         }
       } catch {
         // iOS Safari / navigateurs non compatibles: le fallback visuel prendra le relais
@@ -84,7 +74,7 @@ export default function OrientationGuard() {
     return () => {
       cancelled = true;
     };
-  }, [pathname, allowsAnyOrientation, mustBeLandscape, isMobileOrTablet]);
+  }, [pathname, mustBeLandscape, isMobileOrTablet]);
 
 
   // ✅ Logo: on tente png puis svg puis sans extension
@@ -102,8 +92,8 @@ export default function OrientationGuard() {
   // ✅ Desktop large → jamais d’overlay
   if (!isMobileOrTablet) return null;
 
-  const showLandscapeBlock = !allowsAnyOrientation && mustBeLandscape && !isLandscape;
-  const showPortraitBlock = !allowsAnyOrientation && !mustBeLandscape && isLandscape;
+  const showLandscapeBlock = mustBeLandscape && !isLandscape;
+  const showPortraitBlock = !mustBeLandscape && isLandscape;
 
   if (!showLandscapeBlock && !showPortraitBlock) return null;
 
