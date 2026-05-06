@@ -66,10 +66,26 @@ type CrmContact = {
 
 type ClientType = "" | "particulier" | "professionnel" | "institution";
 
+type ServiceDateMode = "single" | "period";
+
+
 function normalizeClientType(value: unknown): ClientType {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (normalized === "particulier" || normalized === "professionnel" || normalized === "institution") return normalized;
   return "";
+}
+
+function inferServiceDateMode(value: {
+  serviceDateMode?: unknown;
+  serviceDate?: string | null;
+  servicePeriodStart?: string | null;
+  servicePeriodEnd?: string | null;
+}): ServiceDateMode {
+  if (value.serviceDateMode === "period" || value.serviceDateMode === "single") {
+    return value.serviceDateMode;
+  }
+  if (value.servicePeriodStart || value.servicePeriodEnd) return "period";
+  return "single";
 }
 
 type QuoteFieldErrors = {
@@ -254,9 +270,20 @@ export default function NewDevisPage() {
   const [deliveryCity, setDeliveryCity] = useState("");
   const [sameAddresses, setSameAddresses] = useState(true);
   const [operationCategory, setOperationCategory] = useState<(typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]>("");
+  const [serviceDateMode, setServiceDateMode] = useState<ServiceDateMode>("single");
   const [serviceDate, setServiceDate] = useState("");
   const [servicePeriodStart, setServicePeriodStart] = useState("");
   const [servicePeriodEnd, setServicePeriodEnd] = useState("");
+
+  const updateServiceDateMode = (mode: ServiceDateMode) => {
+    setServiceDateMode(mode);
+    if (mode === "single") {
+      setServicePeriodStart("");
+      setServicePeriodEnd("");
+    } else {
+      setServiceDate("");
+    }
+  };
   const [purchaseOrderReference, setPurchaseOrderReference] = useState("");
   const [depositKind, setDepositKind] = useState<"" | "percent" | "amount">("");
   const [depositValue, setDepositValue] = useState("");
@@ -578,6 +605,7 @@ export default function NewDevisPage() {
   clientType?: ClientType;
   vatDispense?: boolean;
   operationCategory?: (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"];
+  serviceDateMode?: ServiceDateMode;
   serviceDate?: string;
   servicePeriodStart?: string;
   servicePeriodEnd?: string;
@@ -789,6 +817,9 @@ export default function NewDevisPage() {
 
    const normalizedBillingAddress = buildFullCrmAddress(billingAddress, billingPostalCode, billingCity);
    const normalizedDeliveryAddress = sameAddresses ? normalizedBillingAddress : buildFullCrmAddress(deliveryAddress, deliveryPostalCode, deliveryCity);
+   const savedServiceDate = serviceDateMode === "single" ? serviceDate : "";
+   const savedServicePeriodStart = serviceDateMode === "period" ? servicePeriodStart : "";
+   const savedServicePeriodEnd = serviceDateMode === "period" ? servicePeriodEnd : "";
 
    const snapshot: DevisDraft["snapshot"] = {
   number: finalNumber,
@@ -808,9 +839,10 @@ export default function NewDevisPage() {
   clientType,
   vatDispense,
   operationCategory,
-  serviceDate,
-  servicePeriodStart,
-  servicePeriodEnd,
+  serviceDateMode,
+  serviceDate: savedServiceDate,
+  servicePeriodStart: savedServicePeriodStart,
+  servicePeriodEnd: savedServicePeriodEnd,
   purchaseOrderReference,
   depositKind,
   depositValue,
@@ -915,9 +947,11 @@ export default function NewDevisPage() {
     setClientVatNumber(s.clientVatNumber || "");
     setClientType(normalizeClientType((s as any).clientType));
     setOperationCategory((s.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]) || "");
-    setServiceDate(s.serviceDate || "");
-    setServicePeriodStart(s.servicePeriodStart || "");
-    setServicePeriodEnd(s.servicePeriodEnd || "");
+    const nextServiceDateMode = inferServiceDateMode(s);
+    setServiceDateMode(nextServiceDateMode);
+    setServiceDate(nextServiceDateMode === "single" ? s.serviceDate || "" : "");
+    setServicePeriodStart(nextServiceDateMode === "period" ? s.servicePeriodStart || "" : "");
+    setServicePeriodEnd(nextServiceDateMode === "period" ? s.servicePeriodEnd || "" : "");
     setPurchaseOrderReference(s.purchaseOrderReference || "");
     setDepositKind((s.depositKind as "" | "percent" | "amount") || "");
     setDepositValue(s.depositValue || "");
@@ -987,12 +1021,16 @@ export default function NewDevisPage() {
 
     const cleanName = templateName.trim() || "Modèle devis";
     const nowISO = new Date().toISOString();
+    const savedServiceDate = serviceDateMode === "single" ? serviceDate : "";
+    const savedServicePeriodStart = serviceDateMode === "period" ? servicePeriodStart : "";
+    const savedServicePeriodEnd = serviceDateMode === "period" ? servicePeriodEnd : "";
     const snapshot = prepareTemplateSnapshot<DevisDraft["snapshot"]>({
       vatDispense,
       operationCategory,
-      serviceDate,
-      servicePeriodStart,
-      servicePeriodEnd,
+      serviceDateMode,
+      serviceDate: savedServiceDate,
+      servicePeriodStart: savedServicePeriodStart,
+      servicePeriodEnd: savedServicePeriodEnd,
       purchaseOrderReference,
       depositKind,
       depositValue,
@@ -1041,9 +1079,11 @@ export default function NewDevisPage() {
     setDocDateISO(new Date().toISOString().slice(0, 10));
 
     setOperationCategory((s.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]) || (documentsSettings.common.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]));
-    setServiceDate(s.serviceDate || "");
-    setServicePeriodStart(s.servicePeriodStart || "");
-    setServicePeriodEnd(s.servicePeriodEnd || "");
+    const nextServiceDateMode = inferServiceDateMode(s);
+    setServiceDateMode(nextServiceDateMode);
+    setServiceDate(nextServiceDateMode === "single" ? s.serviceDate || "" : "");
+    setServicePeriodStart(nextServiceDateMode === "period" ? s.servicePeriodStart || "" : "");
+    setServicePeriodEnd(nextServiceDateMode === "period" ? s.servicePeriodEnd || "" : "");
     setPurchaseOrderReference(s.purchaseOrderReference || "");
     setDepositKind((s.depositKind as "" | "percent" | "amount") || documentsSettings.common.depositKind);
     setDepositValue(s.depositValue || (documentsSettings.common.depositKind ? documentsSettings.common.depositValue : ""));
@@ -1301,6 +1341,7 @@ export default function NewDevisPage() {
                 setDeliveryAddress("");
                 setSameAddresses(true);
                 setOperationCategory(documentsSettings.common.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]);
+                setServiceDateMode("single");
                 setServiceDate("");
                 setServicePeriodStart("");
                 setServicePeriodEnd("");
@@ -1818,20 +1859,48 @@ export default function NewDevisPage() {
 
               <div className={styles.advancedSection}>
                 <div className={styles.advancedSectionTitle}>Prestation</div>
-                <div className={`${styles.compactThreeCol} ${styles.mobileStackGrid}`}>
-                  <div className={styles.field}>
-                    <label>Date de prestation / livraison</label>
-                    <DocumentDateInput value={serviceDate} onChange={setServiceDate} />
-                  </div>
-                  <div className={styles.field}>
-                    <label>Début de prestation</label>
-                    <DocumentDateInput value={servicePeriodStart} onChange={setServicePeriodStart} />
-                  </div>
-                  <div className={styles.field}>
-                    <label>Fin de prestation</label>
-                    <DocumentDateInput value={servicePeriodEnd} onChange={setServicePeriodEnd} />
-                  </div>
+                <div className={styles.serviceDateModeSelector} role="radiogroup" aria-label="Type de date de prestation">
+                  <label className={`${styles.serviceDateModeOption} ${serviceDateMode === "single" ? styles.serviceDateModeOptionActive : ""}`}>
+                    <input
+                      type="radio"
+                      name="devisServiceDateMode"
+                      value="single"
+                      checked={serviceDateMode === "single"}
+                      onChange={() => updateServiceDateMode("single")}
+                    />
+                    <span>Date unique</span>
+                  </label>
+                  <label className={`${styles.serviceDateModeOption} ${serviceDateMode === "period" ? styles.serviceDateModeOptionActive : ""}`}>
+                    <input
+                      type="radio"
+                      name="devisServiceDateMode"
+                      value="period"
+                      checked={serviceDateMode === "period"}
+                      onChange={() => updateServiceDateMode("period")}
+                    />
+                    <span>Période</span>
+                  </label>
                 </div>
+
+                {serviceDateMode === "single" ? (
+                  <div className={styles.serviceDateSingleGrid}>
+                    <div className={styles.field}>
+                      <label>Date de prestation / livraison</label>
+                      <DocumentDateInput value={serviceDate} onChange={setServiceDate} />
+                    </div>
+                  </div>
+                ) : (
+                  <div className={styles.serviceDateFieldsGrid}>
+                    <div className={styles.field}>
+                      <label>Début de prestation</label>
+                      <DocumentDateInput value={servicePeriodStart} onChange={setServicePeriodStart} />
+                    </div>
+                    <div className={styles.field}>
+                      <label>Fin de prestation</label>
+                      <DocumentDateInput value={servicePeriodEnd} onChange={setServicePeriodEnd} />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className={styles.advancedSection}>
@@ -1909,12 +1978,12 @@ export default function NewDevisPage() {
               <div style={{ marginTop: 6, color: "#444" }}>
                 Date : {docDateISO ? new Date(docDateISO).toLocaleDateString("fr-FR") : "—"}
               </div>
-              {serviceDate ? (
+              {serviceDateMode === "single" && serviceDate ? (
                 <div style={{ marginTop: 4, color: "#444" }}>
                   Prestation / livraison : {new Date(serviceDate).toLocaleDateString("fr-FR")}
                 </div>
               ) : null}
-              {servicePeriodStart || servicePeriodEnd ? (
+              {serviceDateMode === "period" && (servicePeriodStart || servicePeriodEnd) ? (
                 <div style={{ marginTop: 4, color: "#444" }}>
                   Période : {servicePeriodStart ? new Date(servicePeriodStart).toLocaleDateString("fr-FR") : "—"}
                   {servicePeriodEnd ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}` : ""}
@@ -2084,12 +2153,12 @@ export default function NewDevisPage() {
                   <strong>Catégorie :</strong> {OPERATION_CATEGORY_OPTIONS.find((option) => option.key === operationCategory)?.label}
                 </div>
               ) : null}
-              {serviceDate ? (
+              {serviceDateMode === "single" && serviceDate ? (
                 <div style={{ marginTop: 6 }}>
                   <strong>Date de prestation / livraison :</strong> {new Date(serviceDate).toLocaleDateString("fr-FR")}
                 </div>
               ) : null}
-              {servicePeriodStart || servicePeriodEnd ? (
+              {serviceDateMode === "period" && (servicePeriodStart || servicePeriodEnd) ? (
                 <div style={{ marginTop: 6 }}>
                   <strong>Période de prestation :</strong> {servicePeriodStart ? new Date(servicePeriodStart).toLocaleDateString("fr-FR") : "—"}
                   {servicePeriodEnd ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}` : ""}
