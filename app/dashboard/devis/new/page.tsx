@@ -86,6 +86,34 @@ type QuoteFieldErrors = {
   lines?: string;
 };
 
+function DocumentDateInput({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className={styles.dateInputWrap}>
+      <input
+        className={styles.dateInput}
+        type="date"
+        lang="fr-FR"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+      />
+      <span className={styles.dateInputIcon} aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M7 3v3M17 3v3M4.5 9h15M6.5 5.5h13v15h-15v-15h2Z" />
+        </svg>
+      </span>
+    </div>
+  );
+}
+
 function normalizeAddressPart(value?: string | null) {
   return String(value ?? "").trim().replace(/\s+/g, " ");
 }
@@ -1717,10 +1745,9 @@ export default function NewDevisPage() {
 
             <div className={styles.field}>
               <label>Date du devis<span className={styles.requiredMark}>*</span></label>
-              <input
-                type="date"
+              <DocumentDateInput
                 value={docDateISO}
-                onChange={(e) => { setDocDateISO(e.target.value); clearFieldError("docDateISO"); }}
+                onChange={(value) => { setDocDateISO(value); clearFieldError("docDateISO"); }}
               />
               {fieldErrors.docDateISO ? <div className={styles.fieldError}>{fieldErrors.docDateISO}</div> : null}
             </div>
@@ -1791,18 +1818,18 @@ export default function NewDevisPage() {
 
               <div className={styles.advancedSection}>
                 <div className={styles.advancedSectionTitle}>Prestation</div>
-                <div className={styles.compactThreeCol}>
+                <div className={`${styles.compactThreeCol} ${styles.mobileStackGrid}`}>
                   <div className={styles.field}>
                     <label>Date de prestation / livraison</label>
-                    <input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} />
+                    <DocumentDateInput value={serviceDate} onChange={setServiceDate} />
                   </div>
                   <div className={styles.field}>
                     <label>Début de prestation</label>
-                    <input type="date" value={servicePeriodStart} onChange={(e) => setServicePeriodStart(e.target.value)} />
+                    <DocumentDateInput value={servicePeriodStart} onChange={setServicePeriodStart} />
                   </div>
                   <div className={styles.field}>
                     <label>Fin de prestation</label>
-                    <input type="date" value={servicePeriodEnd} onChange={(e) => setServicePeriodEnd(e.target.value)} />
+                    <DocumentDateInput value={servicePeriodEnd} onChange={setServicePeriodEnd} />
                   </div>
                 </div>
               </div>

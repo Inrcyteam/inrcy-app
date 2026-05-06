@@ -87,6 +87,34 @@ type InvoiceFieldErrors = {
   lines?: string;
 };
 
+function DocumentDateInput({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className={styles.dateInputWrap}>
+      <input
+        className={styles.dateInput}
+        type="date"
+        lang="fr-FR"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+      />
+      <span className={styles.dateInputIcon} aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M7 3v3M17 3v3M4.5 9h15M6.5 5.5h13v15h-15v-15h2Z" />
+        </svg>
+      </span>
+    </div>
+  );
+}
+
 
 function normalizeAddressPart(value?: string | null) {
   return String(value ?? "").trim().replace(/\s+/g, " ");
@@ -1972,7 +2000,7 @@ export default function NewFacturePage() {
             </div>
           </div>
 
-        <div className={styles.compactThreeCol}>
+        <div className={`${styles.compactThreeCol} ${styles.mobileStackGrid}`}>
           <div className={styles.field}>
             <label>Numéro de facture<span className={styles.requiredMark}>*</span></label>
             <input
@@ -1986,14 +2014,12 @@ export default function NewFacturePage() {
 
           <div className={styles.field}>
             <label>Date de facture<span className={styles.requiredMark}>*</span></label>
-            <input
-              type="date"
+            <DocumentDateInput
               value={invoiceDate}
-              onChange={(e) => {
-                const nextDate = e.target.value;
-                setInvoiceDate(nextDate);
+              onChange={(value) => {
+                setInvoiceDate(value);
                 clearFieldError("invoiceDate");
-                setDueDate(dateWithAddedDays(nextDate, documentsSettings.invoice.dueDays));
+                setDueDate(dateWithAddedDays(value, documentsSettings.invoice.dueDays));
               }}
               disabled={coreEditingLocked}
             />
@@ -2002,10 +2028,9 @@ export default function NewFacturePage() {
 
           <div className={styles.field}>
             <label>Échéance<span className={styles.requiredMark}>*</span></label>
-            <input
-              type="date"
+            <DocumentDateInput
               value={dueDate}
-              onChange={(e) => { setDueDate(e.target.value); clearFieldError("dueDate"); }}
+              onChange={(value) => { setDueDate(value); clearFieldError("dueDate"); }}
               disabled={coreEditingLocked}
             />
             {fieldErrors.dueDate ? <div className={styles.fieldError}>{fieldErrors.dueDate}</div> : null}
@@ -2112,18 +2137,18 @@ export default function NewFacturePage() {
 
             <div className={styles.advancedSection}>
               <div className={styles.advancedSectionTitle}>Prestation</div>
-              <div className={styles.compactThreeCol}>
+              <div className={`${styles.compactThreeCol} ${styles.mobileStackGrid}`}>
                 <div className={styles.field}>
                   <label>Date de prestation / livraison</label>
-                  <input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} disabled={coreEditingLocked} />
+                  <DocumentDateInput value={serviceDate} onChange={setServiceDate} disabled={coreEditingLocked} />
                 </div>
                 <div className={styles.field}>
                   <label>Début de prestation</label>
-                  <input type="date" value={servicePeriodStart} onChange={(e) => setServicePeriodStart(e.target.value)} disabled={coreEditingLocked} />
+                  <DocumentDateInput value={servicePeriodStart} onChange={setServicePeriodStart} disabled={coreEditingLocked} />
                 </div>
                 <div className={styles.field}>
                   <label>Fin de prestation</label>
-                  <input type="date" value={servicePeriodEnd} onChange={(e) => setServicePeriodEnd(e.target.value)} disabled={coreEditingLocked} />
+                  <DocumentDateInput value={servicePeriodEnd} onChange={setServicePeriodEnd} disabled={coreEditingLocked} />
                 </div>
               </div>
               <div className={styles.field} style={{ marginBottom: 0 }}>

@@ -892,6 +892,37 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .eventMainGrid > *, .eventTimeGrid > *{min-width:0}
 .gridSpan2{grid-column:span 2}
 .dateField{min-width:0}
+.dateInputWrap{position:relative;width:100%;min-width:0}
+.dateInput{padding-right:42px;min-width:0;appearance:none;-webkit-appearance:none}
+.dateInputIcon{
+  position:absolute;
+  right:12px;
+  top:50%;
+  transform:translateY(-50%);
+  width:18px;
+  height:18px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  line-height:1;
+  pointer-events:none;
+  color:rgba(255,255,255,0.78);
+}
+.dateInputIcon svg{
+  width:18px;
+  height:18px;
+  display:block;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.dateInput::-webkit-calendar-picker-indicator{
+  opacity:0;
+  cursor:pointer;
+}
+
 .contactPickerRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end}
 .sectionAction{height:42px;border-radius:12px;white-space:nowrap}
 .emptyHint{
@@ -914,6 +945,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 @media (max-width: 760px){
   .formGrid2,.formGrid3,.eventMainGrid{grid-template-columns:1fr}
   .eventTimeGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dateField{grid-column:1 / -1}
   .gridSpan2{grid-column:auto}
   .contactPickerRow{grid-template-columns:1fr}
   .sectionAction{width:100%}
@@ -923,6 +955,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 @media (max-width: 360px){
   .eventTimeGrid{gap:8px}
   .eventTimeGrid .input{padding-left:9px;padding-right:9px;font-size:14px}
+  .eventTimeGrid .dateInput{padding-right:38px}
+  .dateInputIcon{right:11px;width:17px;height:17px}
+  .dateInputIcon svg{width:17px;height:17px}
 }
 
 

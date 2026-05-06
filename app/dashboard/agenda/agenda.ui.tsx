@@ -731,14 +731,21 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
 
               <div className={`${styles.field} ${styles.dateField}`}>
                 <div className={styles.label}>Date</div>
-                <input
-                  className={styles.input}
-                  type="date"
-                  lang="fr-FR"
-                  value={props.rdvDate}
-                  onChange={(e) => props.setRdvDate(e.target.value)}
-                  placeholder="JJ/MM/AAAA"
-                />
+                <div className={styles.dateInputWrap}>
+                  <input
+                    className={`${styles.input} ${styles.dateInput}`}
+                    type="date"
+                    lang="fr-FR"
+                    value={props.rdvDate}
+                    onChange={(e) => props.setRdvDate(e.target.value)}
+                    placeholder="JJ/MM/AAAA"
+                  />
+                  <span className={styles.dateInputIcon} aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                      <path d="M7 3v3M17 3v3M4.5 9h15M6.5 5.5h13v15h-15v-15h2Z" />
+                    </svg>
+                  </span>
+                </div>
               </div>
 
               <div className={styles.field}>

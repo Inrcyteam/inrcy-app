@@ -1681,6 +1681,95 @@
   box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.26), 0 0 16px rgba(248, 113, 113, 0.12) !important;
 }
 
+
+/* --- Champs date iPhone safe : icône calendrier custom + grille mobile fiable --- */
+.dateInputWrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.dateInputWrap .dateInput {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-right: 42px;
+  color-scheme: dark;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.dateInputIcon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.dateInputIcon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dateInputWrap .dateInput::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  cursor: pointer;
+}
+
+@media (max-width: 700px) {
+  .mobileStackGrid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .mobileStackGrid .field label {
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .mobileStackGrid .field input,
+  .mobileStackGrid .field select {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .mobileStackGrid .dateInputWrap .dateInput {
+    padding-right: 42px;
+  }
+}
+
+@media (max-width: 360px) {
+  .dateInputWrap .dateInput {
+    padding-left: 10px;
+    padding-right: 38px;
+    font-size: 13px;
+  }
+
+  .dateInputIcon {
+    right: 10px;
+    width: 17px;
+    height: 17px;
+  }
+
+  .dateInputIcon svg {
+    width: 17px;
+    height: 17px;
+  }
+}
+
 @page {
   size: A4 portrait;
   margin: 8mm;
