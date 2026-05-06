@@ -17,7 +17,11 @@ test.describe('documents creation pages', () => {
     await expect(page).toHaveURL(/\/dashboard\/devis\/new/, { timeout: 30_000 });
 
     await expect(
-      page.getByText(/devis|client|crm/i).first()
+      page.getByRole('heading', { name: /créer un devis/i })
+    ).toBeAttached({ timeout: 20_000 });
+
+    await expect(
+      page.getByText(/client|crm/i).first()
     ).toBeVisible({ timeout: 20_000 });
 
     await runtime.expectNoErrors();
@@ -32,7 +36,11 @@ test.describe('documents creation pages', () => {
     await expect(page).toHaveURL(/\/dashboard\/factures\/new/, { timeout: 30_000 });
 
     await expect(
-      page.getByText(/facture|client|crm/i).first()
+      page.getByRole('heading', { name: /créer une facture/i })
+    ).toBeAttached({ timeout: 20_000 });
+
+    await expect(
+      page.getByText(/client|crm/i).first()
     ).toBeVisible({ timeout: 20_000 });
 
     await runtime.expectNoErrors();
