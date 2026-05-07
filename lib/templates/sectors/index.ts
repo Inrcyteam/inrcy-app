@@ -17,6 +17,7 @@ import { financeTemplates, buildFinanceJobTemplates } from './finance';
 import { evenementielTemplates, buildEvenementielJobTemplates } from './evenementiel';
 import { animalierTemplates, buildAnimalierJobTemplates } from './animalier';
 import { transportTemplates, buildTransportJobTemplates } from './transport';
+import { hygiene_habitatTemplates, buildHygieneHabitatJobTemplates } from './hygiene_habitat';
 import { autreTemplates, buildAutreJobTemplates } from './autre';
 
 export const SECTOR_TEMPLATE_DEFINITIONS: Record<string, SectorTemplateDefinition> = {
@@ -36,6 +37,7 @@ export const SECTOR_TEMPLATE_DEFINITIONS: Record<string, SectorTemplateDefinitio
   evenementiel: evenementielTemplates,
   animalier: animalierTemplates,
   transport: transportTemplates,
+  hygiene_habitat: hygiene_habitatTemplates,
   autre: autreTemplates,
 };
 
@@ -92,6 +94,9 @@ export function buildSectorTemplates(): TemplateDef[] {
         break;
       case 'transport':
         out.push(...buildTransportJobTemplates());
+        break;
+      case 'hygiene_habitat':
+        out.push(...buildHygieneHabitatJobTemplates());
         break;
       case 'autre':
         out.push(...buildAutreJobTemplates());

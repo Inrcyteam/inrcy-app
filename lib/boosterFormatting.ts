@@ -50,7 +50,7 @@ function decodeBasicHtmlEntities(input: string) {
 }
 
 export function siteTextToEditableHtml(input: unknown) {
-  const raw = String(input ?? "").replace(/\r\n/g, "\n");
+  const raw = decodeBasicHtmlEntities(String(input ?? "")).replace(/\r\n/g, "\n");
   if (!raw.trim()) return "";
 
   return applyInlineSiteFormattingToEscaped(escapeHtml(raw))
@@ -87,7 +87,7 @@ export function editableHtmlToSiteText(input: unknown) {
 }
 
 export function renderBoosterSiteContentHtml(input: unknown) {
-  const raw = String(input ?? "").trim();
+  const raw = decodeBasicHtmlEntities(String(input ?? "")).trim();
   if (!raw) return "";
 
   const escaped = escapeHtml(raw).replace(/\r\n/g, "\n");

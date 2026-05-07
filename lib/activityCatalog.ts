@@ -186,6 +186,18 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
       ambulance: { label: 'Transport médical', services: ['Transport assis', 'Transport médicalisé', 'Aller-retour consultation', 'Hospitalisation', 'Réservation', 'Prise en charge administrative', 'Accompagnement patient', 'Disponibilités'] },
     },
   },
+
+  hygiene_habitat: {
+    label: 'Hygiène / Habitat',
+    jobs: {
+      deratiseur: { label: 'Dératiseur', services: ['Dératisation', 'Désinsectisation', 'Traitement nuisibles', 'Intervention urgence', 'Contrat prévention', 'Traitement souris', 'Traitement rats', 'Diagnostic infestation'] },
+      nettoyage: { label: 'Nettoyage', services: ['Nettoyage industriel', 'Nettoyage bureaux', 'Nettoyage vitres', 'Remise en état', 'Nettoyage après chantier', 'Désinfection', 'Entretien régulier', 'Intervention ponctuelle'] },
+      debarras: { label: 'Débarras', services: ['Débarras maison', 'Débarras cave', 'Débarras grenier', 'Succession', 'Encombrants', 'Nettoyage après débarras', 'Intervention rapide', 'Devis gratuit'] },
+      vitrier: { label: 'Vitrier', services: ['Remplacement vitre', 'Double vitrage', 'Vitrine magasin', 'Dépannage casse', 'Pose vitrage', 'Sécurisation', 'Miroiterie', 'Urgence vitrerie'] },
+      ramonage: { label: 'Ramonage', services: ['Ramonage cheminée', 'Entretien conduit', 'Poêle à bois', 'Certificat ramonage', 'Intervention annuelle', 'Diagnostic conduit', 'Nettoyage conduit', 'Conseils sécurité'] },
+    },
+  },
+
   autre: {
     label: 'Autre',
     jobs: {

@@ -15,6 +15,7 @@ export const ACTIVITY_SECTOR_OPTIONS = [
   { value: 'evenementiel', label: 'Événementiel' },
   { value: 'animalier', label: 'Animalier' },
   { value: 'transport', label: 'Transport' },
+  { value: 'hygiene_habitat', label: 'Hygiène / Habitat' },
   { value: 'autre', label: 'Autre' },
 ] as const;
 
@@ -40,7 +41,7 @@ export function inferSectorCategoryFromProfession(input?: string | null): Activi
   const value = String(input || '').toLowerCase();
   if (!value) return DEFAULT_ACTIVITY_SECTOR;
 
-  if (/(plomb|chauffag|électric|electric|maçon|macon|couvreur|menuis|carrel|peintre|charpent|paysag|piscin|clim|vitrier|serrur|bât|bat|travaux|renov|terrassement|façade|facade|isolation)/.test(value)) return 'artisan_btp';
+  if (/(plomb|chauffag|électric|electric|maçon|macon|couvreur|menuis|carrel|peintre|charpent|paysag|piscin|clim|serrur|bât|bat|travaux|renov|terrassement|façade|facade|isolation)/.test(value)) return 'artisan_btp';
   if (/(garage|auto|carross|pneu|moto|contrôle technique|controle technique|vidange|pare-brise|pare brise)/.test(value)) return 'automobile';
   if (/(boutique|magasin|fleur|boulang|pâtiss|patiss|épicer|epicer|librair|opticien|bijout|commerce|concept store|friperie)/.test(value)) return 'commerce_boutique';
   if (/(restaurant|hôtel|hotel|bar|brasserie|snack|traiteur|café|cafe|bistr|pizzeria|chambre d'hôtes|chambre d'hotes)/.test(value)) return 'hotel_restaurant';

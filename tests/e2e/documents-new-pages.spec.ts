@@ -17,7 +17,7 @@ test.describe('documents creation pages', () => {
     await expect(page).toHaveURL(/\/dashboard\/devis\/new/, { timeout: 30_000 });
 
     await expect(
-      page.getByText(/créer un devis/i).first()
+      page.locator('h1:visible', { hasText: /créer un devis/i }).first()
     ).toBeVisible({ timeout: 20_000 });
 
     await expect(
@@ -36,7 +36,7 @@ test.describe('documents creation pages', () => {
     await expect(page).toHaveURL(/\/dashboard\/factures\/new/, { timeout: 30_000 });
 
     await expect(
-      page.getByText(/créer une facture/i).first()
+      page.locator('h1:visible', { hasText: /créer une facture/i }).first()
     ).toBeVisible({ timeout: 20_000 });
 
     await expect(
