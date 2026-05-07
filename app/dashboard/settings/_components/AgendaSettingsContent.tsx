@@ -201,7 +201,7 @@ export default function AgendaSettingsContent() {
           Réglages iNr’Calendar
         </div>
         <div style={{ marginTop: 6, fontSize: 13, color: "rgba(255,255,255,0.70)", lineHeight: 1.45 }}>
-          Gérez la boîte d’envoi des rappels et les moments où vos clients reçoivent les mails.
+          Gérez la boîte d’envoi et les créneaux des rappels par mail.
         </div>
       </div>
 
@@ -212,7 +212,7 @@ export default function AgendaSettingsContent() {
 
       <GlassCard
         title="Boîte d’envoi des rappels"
-        subtitle="Les mails de rappel client partiront de cette boîte iNr’Send."
+        subtitle="Les mails de rappel partiront de cette boîte mail iNr’Send."
       >
         <select
           className="agendaSettings_select"
@@ -241,7 +241,7 @@ export default function AgendaSettingsContent() {
 
       <GlassCard
         title="Créneaux des rappels"
-        subtitle="Par défaut : 24h et 2h avant le rendez-vous. Vous pouvez ajouter la confirmation et le rappel 48h."
+        subtitle="Les rappels sont envoyés par mail au client, aux invités éventuels ainsi qu’à vous."
       >
         <label style={checkboxLabelStyle}>
           <input
