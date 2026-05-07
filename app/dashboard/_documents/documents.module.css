@@ -903,7 +903,7 @@
 
 
 .titleBadge {
-  display: none;
+  display: flex;
   align-items: center;
   min-height: 42px;
   max-width: 100%;
