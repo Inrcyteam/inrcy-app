@@ -213,10 +213,6 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  if (recipients.length === 1) {
-    return NextResponse.json({ error: "Une campagne CRM nécessite au moins 2 destinataires autorisés." }, { status: 400 });
-  }
-
   const dispatchState = await evaluateCampaignDispatchState({ userId: user.id, integrationId: accountId });
   const deliveryConfig = getMailCampaignDeliveryConfig();
   const now = new Date().toISOString();
