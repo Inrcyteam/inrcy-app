@@ -1,7 +1,6 @@
 export const ACTIVITY_SECTOR_OPTIONS = [
   { value: 'animalier', label: 'Animalier' },
   { value: 'automobile', label: 'Automobile' },
-  { value: 'autre', label: 'Autre' },
   { value: 'beaute_bien_etre', label: 'Beauté / Bien-être' },
   { value: 'artisan_btp', label: 'BTP' },
   { value: 'commerce_boutique', label: 'Commerce / Boutique' },
@@ -20,6 +19,7 @@ export const ACTIVITY_SECTOR_OPTIONS = [
   { value: 'services_entreprises', label: 'Services aux entreprises' },
   { value: 'services_particuliers', label: 'Services aux particuliers' },
   { value: 'transport', label: 'Transport' },
+  { value: 'autre', label: 'Autre' },
 ] as const;
 
 export type ActivitySectorCategory = (typeof ACTIVITY_SECTOR_OPTIONS)[number]['value'];
