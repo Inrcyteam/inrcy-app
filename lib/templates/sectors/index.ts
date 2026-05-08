@@ -7,12 +7,15 @@ import { commerce_boutiqueTemplates, buildCommerceBoutiqueJobTemplates } from '.
 import { hotel_restaurantTemplates, buildHotelRestaurantJobTemplates } from './hotel_restaurant';
 import { beaute_bien_etreTemplates, buildBeauteBienEtreJobTemplates } from './beaute_bien_etre';
 import { santeTemplates, buildSanteJobTemplates } from './sante';
+import { securiteTemplates, buildSecuriteJobTemplates } from './securite';
 import { medecine_douceTemplates, buildMedecineDouceJobTemplates } from './medecine_douce';
 import { immobilierTemplates, buildImmobilierJobTemplates } from './immobilier';
 import { services_particuliersTemplates, buildServicesParticuliersJobTemplates } from './services_particuliers';
 import { services_entreprisesTemplates, buildServicesEntreprisesJobTemplates } from './services_entreprises';
 import { communicationTemplates, buildCommunicationJobTemplates } from './communication';
+import { industrieTemplates, buildIndustrieJobTemplates } from './industrie';
 import { juridiqueTemplates, buildJuridiqueJobTemplates } from './juridique';
+import { exterieur_jardinTemplates, buildExterieurJardinJobTemplates } from './exterieur_jardin';
 import { financeTemplates, buildFinanceJobTemplates } from './finance';
 import { evenementielTemplates, buildEvenementielJobTemplates } from './evenementiel';
 import { animalierTemplates, buildAnimalierJobTemplates } from './animalier';
@@ -27,14 +30,17 @@ export const SECTOR_TEMPLATE_DEFINITIONS: Record<string, SectorTemplateDefinitio
   hotel_restaurant: hotel_restaurantTemplates,
   beaute_bien_etre: beaute_bien_etreTemplates,
   sante: santeTemplates,
+  securite: securiteTemplates,
   medecine_douce: medecine_douceTemplates,
   immobilier: immobilierTemplates,
+  industrie: industrieTemplates,
   services_particuliers: services_particuliersTemplates,
   services_entreprises: services_entreprisesTemplates,
   communication: communicationTemplates,
   juridique: juridiqueTemplates,
   finance: financeTemplates,
   evenementiel: evenementielTemplates,
+  exterieur_jardin: exterieur_jardinTemplates,
   animalier: animalierTemplates,
   transport: transportTemplates,
   hygiene_habitat: hygiene_habitatTemplates,
@@ -65,6 +71,9 @@ export function buildSectorTemplates(): TemplateDef[] {
       case 'sante':
         out.push(...buildSanteJobTemplates());
         break;
+      case 'securite':
+        out.push(...buildSecuriteJobTemplates());
+        break;
       case 'medecine_douce':
         out.push(...buildMedecineDouceJobTemplates());
         break;
@@ -80,8 +89,14 @@ export function buildSectorTemplates(): TemplateDef[] {
       case 'communication':
         out.push(...buildCommunicationJobTemplates());
         break;
+      case 'industrie':
+        out.push(...buildIndustrieJobTemplates());
+        break;
       case 'juridique':
         out.push(...buildJuridiqueJobTemplates());
+        break;
+      case 'exterieur_jardin':
+        out.push(...buildExterieurJardinJobTemplates());
         break;
       case 'finance':
         out.push(...buildFinanceJobTemplates());

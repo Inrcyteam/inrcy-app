@@ -1,5 +1,7 @@
 import { buildSectorTemplates } from "@/lib/templates/sectorCatalog";
 import { type ActivitySectorCategory } from "@/lib/activitySectors";
+import type { IntelligentTemplateContext, IntelligentTemplateMetadata } from "@/lib/templates/intelligentContext";
+import { buildIntelligentTemplateContext, mergeIntelligentTemplateContext, sortTemplatesByIntelligentContext } from "@/lib/templates/intelligentContext";
 
 // Central registry for Booster/Fidéliser mail templates.
 // ✅ Version "dense" : vrais contenus, structurés, et auto-remplis via Mon Profil + Mon activité.
@@ -22,6 +24,7 @@ export type TemplateDef = {
   ctaLabel?: string;
   sectorCategory?: ActivitySectorCategory;
   professionKey?: string;
+  intelligent?: IntelligentTemplateMetadata;
 };
 
 const BASE_TEMPLATES: TemplateDef[] = [
@@ -621,10 +624,16 @@ export function getTemplates(
   action: TemplateAction,
   module?: TemplateModule,
   sectorCategory?: ActivitySectorCategory | null,
-  professionKey?: string | null
+  professionKey?: string | null,
+  intelligentContext?: IntelligentTemplateContext | null
 ): TemplateDef[] {
   const inferredModule: TemplateModule =
     module ?? (action === "avis" || action === "offres" ? "booster" : "fideliser");
+
+  const effectiveContext = mergeIntelligentTemplateContext(
+    buildIntelligentTemplateContext({ action, module: inferredModule, channel: "email" }),
+    intelligentContext
+  );
 
   const scoped = TEMPLATES.filter((t) => {
     if (t.action !== action || t.module !== inferredModule) return false;
@@ -635,9 +644,9 @@ export function getTemplates(
 
   if (sectorCategory && professionKey) {
     const dedicated = scoped.filter((t) => t.professionKey === professionKey);
-    if (dedicated.length) return dedicated;
+    if (dedicated.length) return sortTemplatesByIntelligentContext(dedicated, effectiveContext);
   }
 
-  return scoped.filter((t) => !t.professionKey);
+  return sortTemplatesByIntelligentContext(scoped.filter((t) => !t.professionKey), effectiveContext);
 }
 

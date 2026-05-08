@@ -11,190 +11,30 @@ type SectorCatalog = {
 };
 
 export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
-  artisan_btp: {
-    label: 'Artisan / BTP',
+  animalier: {
+    label: 'Animalier',
     jobs: {
-      macon: { label: 'Maçon', services: ['Maçonnerie générale', 'Dalle béton', 'Mur porteur', 'Ouverture mur', 'Terrasse', 'Fondations', 'Clôture maçonnée', 'Petits travaux de maçonnerie'] },
-      plombier: { label: 'Plombier', services: ['Dépannage fuite', 'Débouchage', 'Remplacement chauffe-eau', 'Installation sanitaire', 'Rénovation salle de bain', 'Recherche de fuite', 'Entretien plomberie', 'Urgence plomberie'] },
-      electricien: { label: 'Électricien', services: ['Dépannage électrique', 'Mise aux normes', 'Installation tableau électrique', 'Éclairage intérieur', 'Éclairage extérieur', 'Prises et interrupteurs', 'Rénovation électrique', 'Bornes / solutions de recharge'] },
-      couvreur: { label: 'Couvreur', services: ['Réparation toiture', 'Recherche infiltration', 'Nettoyage toiture', 'Pose couverture', 'Zinguerie', 'Isolation toiture', 'Entretien gouttières', 'Urgence après intempéries'] },
-      chauffagiste: { label: 'Chauffagiste', services: ['Entretien chaudière', 'Dépannage chauffage', 'Installation chaudière', 'Pompe à chaleur', 'Radiateurs', 'Chauffe-eau', 'Contrat d’entretien', 'Urgence chauffage'] },
-      menuisier: { label: 'Menuisier', services: ['Menuiserie intérieure', 'Pose de portes', 'Pose de fenêtres', 'Placards sur mesure', 'Escaliers', 'Aménagement intérieur', 'Volets', 'Rénovation menuiserie'] },
-      peintre: { label: 'Peintre', services: ['Peinture intérieure', 'Peinture extérieure', 'Préparation supports', 'Rafraîchissement logement', 'Revêtements muraux', 'Protection façade', 'Décoration', 'Peinture après sinistre'] },
-      carreleur: { label: 'Carreleur', services: ['Pose carrelage', 'Faïence salle de bain', 'Crédence cuisine', 'Terrasse carrelée', 'Ragréage', 'Réparation joints', 'Pose grand format', 'Rénovation sols'] },
-      paysagiste: { label: 'Paysagiste', services: ['Entretien jardin', 'Création de massif', 'Tonte', 'Taille de haies', 'Terrassement léger', 'Arrosage', 'Clôtures extérieures', 'Aménagement paysager'] },
-      pisciniste: { label: 'Pisciniste', services: ['Entretien piscine', 'Mise en service', 'Hivernage', 'Réparation équipement', 'Pose liner', 'Traitement eau', 'Sécurité piscine', 'Construction / rénovation'] },
+      ecurie: { label: 'Écurie / Centre équestre', services: ['Pension cheval', 'Cours', 'Balades', 'Stage', 'Demi-pension', 'Sorties concours', 'Travail du cheval', 'Visite découverte'] },
+      educateur_canin: { label: 'Éducateur canin', services: ['Bilan comportemental', 'Éducation chiot', 'Rééducation', 'Cours individuels', 'Cours collectifs', 'Balades éducatives', 'Conseils maîtres', 'Suivi'] },
+      eleveur: { label: 'Éleveur', services: ['Présentation élevage', 'Disponibilités', 'Conseils adoption', 'Réservation', 'Suivi portée', 'Visite élevage', 'Informations santé', 'Accompagnement nouveau propriétaire'] },
+      pension_animaliere: { label: 'Pension animale', services: ['Garde chien', 'Garde chat', 'Promenade', 'Jeux / socialisation', 'Séjour court', 'Séjour long', 'Visite des installations', 'Réservation'] },
+      pet_sitter: { label: 'Pet-sitter', services: ['Visite à domicile', 'Promenade', 'Garde courte durée', 'Garde vacances', 'Soins de base', 'Nouvelles régulières', 'Rencontre préalable', 'Devis personnalisé'] },
+      toilettage: { label: 'Salon de toilettage', services: ['Toilettage chien', 'Toilettage chat', 'Bain', 'Tonte', 'Démêlage', 'Coupe griffes', 'Entretien pelage', 'Forfait entretien'] },
+      veterinaire: { label: 'Vétérinaire', services: ['Consultation', 'Vaccination', 'Bilan santé', 'Urgence', 'Conseils prévention', 'Chirurgie', 'Suivi animal', 'Informations cabinet'] },
     },
   },
   automobile: {
     label: 'Automobile',
     jobs: {
-      garage_auto: { label: 'Garage auto', services: ['Révision', 'Vidange', 'Freinage', 'Diagnostic panne', 'Distribution', 'Embrayage', 'Pré-contrôle technique', 'Entretien courant'] },
       carrosserie: { label: 'Carrosserie', services: ['Débosselage', 'Peinture carrosserie', 'Réparation choc', 'Pare-chocs', 'Remplacement éléments', 'Lustrage', 'Rénovation optiques', 'Véhicule de courtoisie'] },
       centre_auto: { label: 'Centre auto', services: ['Pneus', 'Parallélisme', 'Batterie', 'Freins', 'Vidange', 'Balais essuie-glace', 'Climatisation', 'Diagnostic rapide'] },
+      controle_technique: { label: 'Contrôle technique', services: ['Contrôle périodique', 'Contre-visite', 'Contrôle pollution', 'Véhicule utilitaire', 'Véhicule particulier', 'Rendez-vous rapide', 'Rappel échéance', 'Informations contrôle'] },
+      depannage_auto: { label: 'Dépannage auto', services: ['Remorquage', 'Batterie', 'Panne démarrage', 'Crevaison', 'Ouverture véhicule', 'Assistance route', 'Diagnostic sur place', 'Intervention urgence'] },
+      garage_auto: { label: 'Garage auto', services: ['Révision', 'Vidange', 'Freinage', 'Diagnostic panne', 'Distribution', 'Embrayage', 'Pré-contrôle technique', 'Entretien courant'] },
       garage_moto: { label: 'Garage moto', services: ['Entretien moto', 'Pneus moto', 'Freinage', 'Révision scooter', 'Diagnostic', 'Préparation saison', 'Pièces / accessoires', 'Réparation mécanique'] },
       lavage_auto: { label: 'Lavage auto', services: ['Lavage extérieur', 'Nettoyage intérieur', 'Shampoing sièges', 'Lustrage', 'Préparation vente', 'Traitement carrosserie', 'Nettoyage utilitaire', 'Formule abonnement'] },
-      depannage_auto: { label: 'Dépannage auto', services: ['Remorquage', 'Batterie', 'Panne démarrage', 'Crevaison', 'Ouverture véhicule', 'Assistance route', 'Diagnostic sur place', 'Intervention urgence'] },
-    },
-  },
-  commerce_boutique: {
-    label: 'Commerce / Boutique',
-    jobs: {
-      boutique_mode: { label: 'Boutique mode', services: ['Nouvelle collection', 'Conseil style', 'Essayage', 'Retouches', 'Accessoires', 'Sélection saisonnière', 'Carte cadeau', 'Privatisation boutique'] },
-      fleuriste: { label: 'Fleuriste', services: ['Bouquets', 'Compositions florales', 'Mariage', 'Deuil', 'Livraison fleurs', 'Abonnement floral', 'Décoration événement', 'Conseil entretien fleurs'] },
-      boulangerie: { label: 'Boulangerie / Pâtisserie', services: ['Pain du jour', 'Pâtisseries', 'Commande spéciale', 'Pièces montées', 'Snacking', 'Traiteur sucré / salé', 'Livraison', 'Formules entreprise'] },
-      opticien: { label: 'Opticien', services: ['Lunettes de vue', 'Lunettes solaires', 'Ajustement monture', 'Lentilles', 'Contrôle visuel', 'Devis mutuelle', 'Entretien lunettes', 'Conseil équipement'] },
-      epicerie: { label: 'Épicerie / Commerce alimentaire', services: ['Produits frais', 'Paniers du moment', 'Produits locaux', 'Commande spéciale', 'Livraison', 'Click & collect', 'Coffrets cadeau', 'Événements dégustation'] },
-      librairie: { label: 'Librairie / Papeterie', services: ['Sélection livres', 'Commande ouvrage', 'Papeterie', 'Cadeaux', 'Animations / dédicaces', 'Listes scolaires', 'Conseil lecture', 'Réservation'] },
-    },
-  },
-  hotel_restaurant: {
-    label: 'Hôtel / Restaurant',
-    jobs: {
-      restaurant: { label: 'Restaurant', services: ['Menu du jour', 'Réservation', 'Repas de groupe', 'Événement privé', 'Carte saisonnière', 'Vente à emporter', 'Livraison', 'Carte cadeau'] },
-      hotel: { label: 'Hôtel', services: ['Réservation chambre', 'Séjour week-end', 'Offre entreprise', 'Petit-déjeuner', 'Accueil groupe', 'Événement / séminaire', 'Carte cadeau', 'Offre saisonnière'] },
-      bar: { label: 'Bar / Café', services: ['Happy hour', 'Soirée à thème', 'Réservation groupe', 'Afterwork', 'Diffusion événement', 'Petite restauration', 'Privatisation', 'Animations'] },
-      snack: { label: 'Snack / Fast food', services: ['Menu rapide', 'Commande à emporter', 'Livraison', 'Formules midi', 'Offres étudiantes', 'Privatisation', 'Événements', 'Carte fidélité'] },
-      traiteur: { label: 'Traiteur', services: ['Cocktail', 'Buffet', 'Mariage', 'Entreprise', 'Livraison', 'Plateaux repas', 'Événement privé', 'Devis sur mesure'] },
-      chambre_hotes: { label: 'Chambre d’hôtes / Gîte', services: ['Réservation séjour', 'Week-end', 'Bon cadeau', 'Accueil famille', 'Séjour thématique', 'Petit-déjeuner', 'Long séjour', 'Conseils visite locale'] },
-    },
-  },
-  beaute_bien_etre: {
-    label: 'Beauté / Bien-être',
-    jobs: {
-      coiffeur: { label: 'Coiffeur / Barber', services: ['Coupe femme', 'Coupe homme', 'Brushing', 'Coloration', 'Balayage', 'Coiffure événement', 'Soin capillaire', 'Abonnement / fidélité'] },
-      estheticienne: { label: 'Institut de beauté', services: ['Soin visage', 'Soin corps', 'Épilation', 'Beauté des mains', 'Beauté des pieds', 'Maquillage', 'Carte cadeau', 'Cure / abonnement'] },
-      spa: { label: 'Spa / Bien-être', services: ['Massage', 'Accès spa', 'Rituel duo', 'Sauna / hammam', 'Cure bien-être', 'Bon cadeau', 'Offre détente', 'Privatisation'] },
-      onglerie: { label: 'Onglerie', services: ['Pose gel', 'Semi-permanent', 'Remplissage', 'Nail art', 'Beauté des mains', 'Beauté des pieds', 'Réparation ongle', 'Carte fidélité'] },
-      masseur: { label: 'Massage / Relaxation', services: ['Massage détente', 'Massage sportif', 'Massage duo', 'Drainage', 'Bon cadeau', 'Cure', 'Séance découverte', 'Conseils bien-être'] },
-      tatoueur: { label: 'Tatouage / Piercing', services: ['Projet tatouage', 'Retouche', 'Flash du moment', 'Piercing', 'Conseils cicatrisation', 'Carte cadeau', 'Rendez-vous projet', 'Création personnalisée'] },
-    },
-  },
-  sante: {
-    label: 'Santé',
-    jobs: {
-      medecin_generaliste: { label: 'Médecin généraliste', services: ['Consultation', 'Suivi patient', 'Prévention', 'Téléconsultation', 'Renouvellement', 'Dossier médical', 'Vaccination', 'Informations cabinet'] },
-      dentiste: { label: 'Dentiste', services: ['Bilan dentaire', 'Détartrage', 'Urgence dentaire', 'Soins', 'Prothèse', 'Implantologie', 'Orthodontie', 'Conseils hygiène'] },
-      kine: { label: 'Kinésithérapeute', services: ['Rééducation', 'Massage', 'Drainage', 'Suivi post-opératoire', 'Sport', 'Douleurs chroniques', 'Respiratoire', 'Exercices à domicile'] },
-      osteopathe: { label: 'Ostéopathe', services: ['Consultation adulte', 'Consultation nourrisson', 'Sportif', 'Douleurs dos', 'Suivi postural', 'Conseils prévention', 'Urgence rendez-vous', 'Entretiens réguliers'] },
-      pharmacie: { label: 'Pharmacie', services: ['Conseil santé', 'Parapharmacie', 'Vaccination', 'Matériel médical', 'Ordonnances', 'Téléservice', 'Livraison / retrait', 'Prévention saisonnière'] },
-      infirmier: { label: 'Infirmier / Infirmière', services: ['Soins à domicile', 'Prises de sang', 'Pansements', 'Suivi traitement', 'Accompagnement patient', 'Vaccination', 'Conseils', 'Disponibilités intervention'] },
-    },
-  },
-  medecine_douce: {
-    label: 'Médecine douce',
-    jobs: {
-      naturopathe: { label: 'Naturopathe', services: ['Bilan vitalité', 'Conseils nutrition', 'Gestion stress', 'Sommeil', 'Accompagnement saisonnier', 'Séance découverte', 'Programme bien-être', 'Atelier'] },
-      sophrologue: { label: 'Sophrologue', services: ['Gestion stress', 'Sommeil', 'Préparation examen', 'Confiance en soi', 'Burn-out', 'Séance individuelle', 'Atelier', 'Respiration'] },
-      reflexologue: { label: 'Réflexologue', services: ['Réflexologie plantaire', 'Réflexologie palmaire', 'Gestion stress', 'Détente', 'Accompagnement douleur', 'Séance découverte', 'Cure', 'Carte cadeau'] },
-      hypnotherapeute: { label: 'Hypnothérapeute', services: ['Gestion stress', 'Confiance', 'Arrêt tabac', 'Sommeil', 'Phobies', 'Séance découverte', 'Accompagnement personnalisé', 'Suivi'] },
-      energeticien: { label: 'Praticien énergétique', services: ['Séance énergétique', 'Rééquilibrage', 'Fatigue', 'Émotions', 'Ancrage', 'Découverte', 'Suivi régulier', 'Atelier'] },
-      shiatsu: { label: 'Shiatsu / Pratique corporelle', services: ['Séance shiatsu', 'Détente', 'Équilibre', 'Stress', 'Fatigue', 'Programme bien-être', 'Séance découverte', 'Suivi'] },
-    },
-  },
-  immobilier: {
-    label: 'Immobilier',
-    jobs: {
-      agence_immobiliere: { label: 'Agence immobilière', services: ['Estimation', 'Vente', 'Location', 'Visite', 'Mise en valeur du bien', 'Accompagnement acheteur', 'Accompagnement vendeur', 'Conseils marché local'] },
-      courtier: { label: 'Courtier', services: ['Étude financement', 'Simulation', 'Renégociation', 'Assurance emprunteur', 'Accompagnement dossier', 'Investissement', 'Premier achat', 'Conseils budget'] },
-      gestion_locative: { label: 'Gestion locative', services: ['Mise en location', 'Gestion quotidienne', 'Sélection locataire', 'États des lieux', 'Suivi propriétaire', 'Conseils rentabilité', 'Garanties', 'Accompagnement juridique'] },
-      syndic: { label: 'Syndic / Copropriété', services: ['Gestion copropriété', 'Suivi travaux', 'Assemblées', 'Communication résidents', 'Interventions techniques', 'Accompagnement conseil syndical', 'Suivi prestataires', 'Information réglementaire'] },
-      home_staging: { label: 'Home staging', services: ['Valorisation bien', 'Conseil déco', 'Préparation visite', 'Mise en scène', 'Optimisation photos', 'Pack vente', 'Accompagnement vendeur', 'Visite conseil'] },
-    },
-  },
-  services_particuliers: {
-    label: 'Services aux particuliers',
-    jobs: {
-      aide_domicile: { label: 'Aide à domicile', services: ['Accompagnement quotidien', 'Courses', 'Présence', 'Aide administrative', 'Aide repas', 'Soutien autonomie', 'Visites régulières', 'Devis personnalisé'] },
-      menage: { label: 'Ménage / Entretien', services: ['Ménage régulier', 'Grand nettoyage', 'Fin de chantier', 'Vitres', 'Repassage', 'Nettoyage locatif', 'Intervention ponctuelle', 'Formule abonnement'] },
-      jardinage: { label: 'Jardinage', services: ['Tonte', 'Taille haies', 'Désherbage', 'Entretien saisonnier', 'Remise en état', 'Petits aménagements', 'Évacuation déchets verts', 'Contrat entretien'] },
-      garde_enfants: { label: 'Garde d’enfants', services: ['Garde régulière', 'Sortie école', 'Aide devoirs', 'Garde ponctuelle', 'Mercredi / vacances', 'Accompagnement activités', 'Baby-sitting soirée', 'Rencontre préalable'] },
-      depannage_domestique: { label: 'Dépannage à domicile', services: ['Petit bricolage', 'Montage meuble', 'Réparation', 'Installation équipement', 'Petites urgences', 'Intervention rapide', 'Devis simple', 'Entretien courant'] },
-      conciergerie: { label: 'Conciergerie', services: ['Gestion location courte durée', 'Accueil voyageurs', 'Ménage', 'Linge', 'Check-in / check-out', 'Assistance', 'Optimisation annonce', 'Suivi propriétaire'] },
-    },
-  },
-  services_entreprises: {
-    label: 'Services aux entreprises',
-    jobs: {
-      consultant: { label: 'Consultant', services: ['Audit', 'Conseil stratégique', 'Accompagnement projet', 'Atelier', 'Formation', 'Diagnostic', 'Suivi mission', 'Intervention ponctuelle'] },
-      agence_marketing: { label: 'Agence marketing / communication', services: ['Stratégie', 'Création contenu', 'Community management', 'Publicité', 'SEO', 'Emailing', 'Branding', 'Reporting'] },
-      organisme_formation: { label: 'Formation', services: ['Formation inter', 'Formation intra', 'Atelier', 'Coaching', 'Programme sur mesure', 'E-learning', 'Audit besoins', 'Suivi apprenants'] },
-      informatique: { label: 'Informatique / IT', services: ['Dépannage informatique', 'Maintenance', 'Cybersécurité', 'Installation matériel', 'Sauvegarde', 'Cloud', 'Support utilisateur', 'Audit système'] },
-      expert_comptable: { label: 'Expert-comptable / Gestion', services: ['Comptabilité', 'Paie', 'Conseil gestion', 'Création entreprise', 'Tableau de bord', 'Déclarations', 'Accompagnement dirigeant', 'Rendez-vous bilan'] },
-      juridique: { label: 'Juridique / Conseil', services: ['Conseil', 'Rédaction', 'Accompagnement dossier', 'Conformité', 'Audit', 'Rendez-vous', 'Formation', 'Suivi client'] },
-    },
-  },
-
-  communication: {
-    label: 'Communication',
-    jobs: {
-      agence_communication: { label: 'Agence de communication', services: ['Stratégie de communication', 'Identité visuelle', 'Campagne locale', 'Communication digitale', 'Accompagnement image de marque', 'Supports print', 'Conseil éditorial', 'Plan d’action'] },
-      community_manager: { label: 'Community manager', services: ['Calendrier éditorial', 'Gestion réseaux sociaux', 'Création de contenus', 'Animation de communauté', 'Réponses messages', 'Reporting', 'Stratégie Instagram / Facebook', 'Shooting / reels'] },
-      redacteur_web: { label: 'Rédacteur web / Copywriter', services: ['Pages site web', 'Articles SEO', 'Emails marketing', 'Fiches service', 'Storytelling', 'Optimisation conversion', 'Réécriture', 'Calendrier éditorial'] },
-      graphiste: { label: 'Graphiste / Studio créatif', services: ['Logo', 'Charte graphique', 'Flyers', 'Brochures', 'Visuels réseaux sociaux', 'Cartes de visite', 'Supports publicitaires', 'Habillage de marque'] },
-      agence_seo: { label: 'Agence SEO / SEA', services: ['Audit SEO', 'Optimisation pages', 'Rédaction SEO', 'Campagnes Google Ads', 'Suivi positionnement', 'Netlinking', 'Reporting', 'Accompagnement visibilité locale'] },
-    },
-  },
-  juridique: {
-    label: 'Juridique',
-    jobs: {
-      avocat: { label: 'Avocat', services: ['Premier rendez-vous', 'Conseil juridique', 'Analyse dossier', 'Rédaction d’actes', 'Négociation', 'Procédure', 'Suivi client', 'Accompagnement contentieux'] },
-      notaire: { label: 'Notaire', services: ['Rendez-vous étude', 'Achat immobilier', 'Succession', 'Donation', 'Contrat de mariage', 'Création société', 'Conseil patrimonial', 'Signature acte'] },
-      juriste_entreprise: { label: 'Juriste / Conseil aux entreprises', services: ['Contrats', 'Conformité', 'CGV / mentions légales', 'Protection des données', 'Secrétariat juridique', 'Audit juridique', 'Accompagnement création', 'Support dirigeants'] },
-      huissier: { label: 'Commissaire de justice / Huissier', services: ['Constat', 'Recouvrement', 'Signification', 'Exécution décision', 'Jeux concours', 'Conseil pré-contentieux', 'Rendez-vous étude', 'Suivi dossier'] },
-    },
-  },
-  finance: {
-    label: 'Finance',
-    jobs: {
-      expert_comptable_finance: { label: 'Cabinet comptable / financier', services: ['Comptabilité', 'Bilan', 'Tableau de bord', 'Prévisionnel', 'Déclarations', 'Accompagnement dirigeant', 'Optimisation gestion', 'Rendez-vous conseil'] },
-      courtier_credit: { label: 'Courtier en crédit', services: ['Simulation', 'Étude financement', 'Crédit immobilier', 'Renégociation', 'Assurance emprunteur', 'Montage dossier', 'Accompagnement banque', 'Conseil budget'] },
-      gestion_patrimoine: { label: 'Conseiller en gestion de patrimoine', services: ['Bilan patrimonial', 'Stratégie d’investissement', 'Préparation retraite', 'Transmission', 'Optimisation fiscale', 'Assurance-vie', 'Rendez-vous conseil', 'Suivi patrimonial'] },
-      daf_externalise: { label: 'DAF externalisé / Conseil financier', services: ['Pilotage trésorerie', 'Budget', 'Reporting', 'Prévisionnel', 'Analyse rentabilité', 'Structuration financière', 'Recherche financement', 'Accompagnement dirigeant'] },
-    },
-  },
-  evenementiel: {
-    label: 'Événementiel',
-    jobs: {
-      dj: { label: 'DJ / Animation', services: ['Mariage', 'Anniversaire', 'Soirée entreprise', 'Sonorisation', 'Éclairage', 'Playlist sur mesure', 'Pack animation', 'Devis événement'] },
-      photographe: { label: 'Photographe', services: ['Mariage', 'Portrait', 'Famille', 'Entreprise', 'Événement', 'Shooting extérieur', 'Album / tirages', 'Séance découverte'] },
-      wedding_planner: { label: 'Wedding planner', services: ['Organisation mariage', 'Coordination jour J', 'Sélection prestataires', 'Décoration', 'Planning', 'Accompagnement budget', 'Cérémonie laïque', 'Rendez-vous découverte'] },
-      location_materiel: { label: 'Location de matériel', services: ['Location mobilier', 'Sonorisation', 'Éclairage', 'Vaisselle', 'Structures', 'Livraison', 'Installation', 'Devis sur mesure'] },
-      traiteur_evenementiel: { label: 'Traiteur événementiel', services: ['Cocktail', 'Buffet', 'Repas assis', 'Brunch', 'Entreprise', 'Mariage', 'Livraison', 'Devis sur mesure'] },
-      decorateur_evenementiel: { label: 'Décoration événementielle', services: ['Scénographie', 'Décoration salle', 'Arche / cérémonie', 'Table / centre de table', 'Location déco', 'Installation', 'Coordination', 'Projet sur mesure'] },
-    },
-  },
-  animalier: {
-    label: 'Animalier',
-    jobs: {
-      veterinaire: { label: 'Vétérinaire', services: ['Consultation', 'Vaccination', 'Bilan santé', 'Urgence', 'Conseils prévention', 'Chirurgie', 'Suivi animal', 'Informations cabinet'] },
-      toilettage: { label: 'Salon de toilettage', services: ['Toilettage chien', 'Toilettage chat', 'Bain', 'Tonte', 'Démêlage', 'Coupe griffes', 'Entretien pelage', 'Forfait entretien'] },
-      pension_animaliere: { label: 'Pension animale', services: ['Garde chien', 'Garde chat', 'Promenade', 'Jeux / socialisation', 'Séjour court', 'Séjour long', 'Visite des installations', 'Réservation'] },
-      ecurie: { label: 'Écurie / Centre équestre', services: ['Pension cheval', 'Cours', 'Balades', 'Stage', 'Demi-pension', 'Sorties concours', 'Travail du cheval', 'Visite découverte'] },
-      educateur_canin: { label: 'Éducateur canin', services: ['Bilan comportemental', 'Éducation chiot', 'Rééducation', 'Cours individuels', 'Cours collectifs', 'Balades éducatives', 'Conseils maîtres', 'Suivi'] },
-      pet_sitter: { label: 'Pet-sitter', services: ['Visite à domicile', 'Promenade', 'Garde courte durée', 'Garde vacances', 'Soins de base', 'Nouvelles régulières', 'Rencontre préalable', 'Devis personnalisé'] },
-    },
-  },
-  transport: {
-    label: 'Transport',
-    jobs: {
-      taxi: { label: 'Taxi', services: ['Trajet local', 'Gare', 'Aéroport', 'Transport médical', 'Mise à disposition', 'Réservation', 'Entreprise', 'Course longue distance'] },
-      vtc: { label: 'VTC', services: ['Transfert gare', 'Transfert aéroport', 'Trajet professionnel', 'Mise à disposition', 'Événement', 'Longue distance', 'Réservation', 'Accueil personnalisé'] },
-      marchandises: { label: 'Transport de marchandises', services: ['Livraison locale', 'Messagerie', 'Transport express', 'Tournées régulières', 'Transport palettes', 'Livraison entreprise', 'Course dédiée', 'Devis logistique'] },
-      demenagement: { label: 'Déménagement', services: ['Visite technique', 'Déménagement particulier', 'Déménagement entreprise', 'Emballage', 'Garde-meuble', 'Monte-meubles', 'Transport longue distance', 'Devis sur mesure'] },
-      coursier: { label: 'Coursier / Livraison', services: ['Course urgente', 'Livraison documents', 'Livraison colis', 'Tournées', 'Entreprise', 'Suivi livraison', 'Course dédiée', 'Devis pro'] },
-      ambulance: { label: 'Transport médical', services: ['Transport assis', 'Transport médicalisé', 'Aller-retour consultation', 'Hospitalisation', 'Réservation', 'Prise en charge administrative', 'Accompagnement patient', 'Disponibilités'] },
-    },
-  },
-
-  hygiene_habitat: {
-    label: 'Hygiène / Habitat',
-    jobs: {
-      deratiseur: { label: 'Dératiseur', services: ['Dératisation', 'Désinsectisation', 'Traitement nuisibles', 'Intervention urgence', 'Contrat prévention', 'Traitement souris', 'Traitement rats', 'Diagnostic infestation'] },
-      nettoyage: { label: 'Nettoyage', services: ['Nettoyage industriel', 'Nettoyage bureaux', 'Nettoyage vitres', 'Remise en état', 'Nettoyage après chantier', 'Désinfection', 'Entretien régulier', 'Intervention ponctuelle'] },
-      debarras: { label: 'Débarras', services: ['Débarras maison', 'Débarras cave', 'Débarras grenier', 'Succession', 'Encombrants', 'Nettoyage après débarras', 'Intervention rapide', 'Devis gratuit'] },
-      vitrier: { label: 'Vitrier', services: ['Remplacement vitre', 'Double vitrage', 'Vitrine magasin', 'Dépannage casse', 'Pose vitrage', 'Sécurisation', 'Miroiterie', 'Urgence vitrerie'] },
-      ramonage: { label: 'Ramonage', services: ['Ramonage cheminée', 'Entretien conduit', 'Poêle à bois', 'Certificat ramonage', 'Intervention annuelle', 'Diagnostic conduit', 'Nettoyage conduit', 'Conseils sécurité'] },
+      location_vehicules: { label: 'Location de véhicules', services: ['Location courte durée', 'Location utilitaire', 'Location longue durée', 'Réservation véhicule', 'Assurance', 'Options', 'Devis location', 'Disponibilités'] },
+      pare_brise: { label: 'Pare-brise', services: ['Remplacement pare-brise', 'Réparation impact', 'Vitrage latéral', 'Lunette arrière', 'Calibration caméra', 'Prise en charge assurance', 'Intervention rapide', 'Diagnostic vitrage'] },
     },
   },
 
@@ -204,7 +44,239 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
       autre_activite: { label: 'Autre activité', services: ['Prestation principale', 'Service complémentaire', 'Conseil', 'Accompagnement', 'Intervention', 'Offre découverte', 'Suivi client', 'Demande de devis'] },
     },
   },
-};
+
+  beaute_bien_etre: {
+    label: 'Beauté / Bien-être',
+    jobs: {
+      coach_sportif: { label: 'Coach sportif', services: ['Coaching individuel', 'Programme personnalisé', 'Remise en forme', 'Renforcement musculaire', 'Perte de poids', 'Préparation physique', 'Suivi à distance', 'Bilan forme'] },
+      coiffeur: { label: 'Coiffeur / Barber', services: ['Coupe femme', 'Coupe homme', 'Brushing', 'Coloration', 'Balayage', 'Coiffure événement', 'Soin capillaire', 'Abonnement / fidélité'] },
+      estheticienne: { label: 'Institut de beauté', services: ['Soin visage', 'Soin corps', 'Épilation', 'Beauté des mains', 'Beauté des pieds', 'Maquillage', 'Carte cadeau', 'Cure / abonnement'] },
+      masseur: { label: 'Massage / Relaxation', services: ['Massage détente', 'Massage sportif', 'Massage duo', 'Drainage', 'Bon cadeau', 'Cure', 'Séance découverte', 'Conseils bien-être'] },
+      nutritionniste: { label: 'Nutritionniste', services: ['Bilan nutritionnel', 'Rééquilibrage alimentaire', 'Suivi personnalisé', 'Programme nutrition', 'Objectif forme', 'Conseils repas', 'Accompagnement sportif', 'Rendez-vous suivi'] },
+      onglerie: { label: 'Onglerie', services: ['Pose gel', 'Semi-permanent', 'Remplissage', 'Nail art', 'Beauté des mains', 'Beauté des pieds', 'Réparation ongle', 'Carte fidélité'] },
+      spa: { label: 'Spa / Bien-être', services: ['Massage', 'Accès spa', 'Rituel duo', 'Sauna / hammam', 'Cure bien-être', 'Bon cadeau', 'Offre détente', 'Privatisation'] },
+      tatoueur: { label: 'Tatouage / Piercing', services: ['Projet tatouage', 'Retouche', 'Flash du moment', 'Piercing', 'Conseils cicatrisation', 'Carte cadeau', 'Rendez-vous projet', 'Création personnalisée'] },
+    },
+  },
+  artisan_btp: {
+    label: 'BTP',
+    jobs: {
+      carreleur: { label: 'Carreleur', services: ['Pose carrelage', 'Faïence salle de bain', 'Crédence cuisine', 'Terrasse carrelée', 'Ragréage', 'Réparation joints', 'Pose grand format', 'Rénovation sols'] },
+      charpente: { label: 'Charpente', services: ['Charpente traditionnelle', 'Charpente bois', 'Traitement charpente', 'Rénovation charpente', 'Extension bois', 'Diagnostic structure', 'Réparation charpente', 'Devis travaux'] },
+      chauffagiste: { label: 'Chauffagiste', services: ['Entretien chaudière', 'Dépannage chauffage', 'Installation chaudière', 'Pompe à chaleur', 'Radiateurs', 'Chauffe-eau', 'Contrat d’entretien', 'Urgence chauffage'] },
+      construction: { label: 'Construction', services: ['Construction maison', 'Extension', 'Gros œuvre', 'Coordination travaux', 'Étude projet', 'Devis construction', 'Suivi chantier', 'Réception travaux'] },
+      couvreur: { label: 'Couvreur', services: ['Réparation toiture', 'Recherche infiltration', 'Nettoyage toiture', 'Pose couverture', 'Zinguerie', 'Isolation toiture', 'Entretien gouttières', 'Urgence après intempéries'] },
+      electricien: { label: 'Électricien', services: ['Dépannage électrique', 'Mise aux normes', 'Installation tableau électrique', 'Éclairage intérieur', 'Éclairage extérieur', 'Prises et interrupteurs', 'Rénovation électrique', 'Bornes / solutions de recharge'] },
+      facade: { label: 'Façade', services: ['Ravalement façade', 'Nettoyage façade', 'Enduit extérieur', 'Traitement fissures', 'Peinture façade', 'Isolation extérieure', 'Diagnostic façade', 'Devis ravalement'] },
+      macon: { label: 'Maçon', services: ['Maçonnerie générale', 'Dalle béton', 'Mur porteur', 'Ouverture mur', 'Terrasse', 'Fondations', 'Clôture maçonnée', 'Petits travaux de maçonnerie'] },
+      menuisier: { label: 'Menuisier', services: ['Menuiserie intérieure', 'Pose de portes', 'Pose de fenêtres', 'Placards sur mesure', 'Escaliers', 'Aménagement intérieur', 'Volets', 'Rénovation menuiserie'] },
+      peintre: { label: 'Peintre', services: ['Peinture intérieure', 'Peinture extérieure', 'Préparation supports', 'Rafraîchissement logement', 'Revêtements muraux', 'Protection façade', 'Décoration', 'Peinture après sinistre'] },
+      plombier: { label: 'Plombier', services: ['Dépannage fuite', 'Débouchage', 'Remplacement chauffe-eau', 'Installation sanitaire', 'Rénovation salle de bain', 'Recherche de fuite', 'Entretien plomberie', 'Urgence plomberie'] },
+      renovation: { label: 'Rénovation', services: ['Rénovation intérieure', 'Rénovation complète', 'Second œuvre', 'Aménagement logement', 'Coordination artisans', 'Modernisation habitat', 'Suivi chantier', 'Devis rénovation'] },
+      serrurerie: { label: 'Serrurerie', services: ['Ouverture porte', 'Remplacement serrure', 'Blindage porte', 'Dépannage urgence', 'Sécurisation accès', 'Cylindre haute sécurité', 'Rideau métallique', 'Devis serrurerie'] },
+      terrassement: { label: 'Terrassement', services: ['Terrassement terrain', 'Préparation chantier', 'Fondations', 'Tranchées réseaux', 'Nivellement', 'Assainissement extérieur', 'Accès chantier', 'Devis terrassement'] },
+    },
+  },
+  commerce_boutique: {
+    label: 'Commerce / Boutique',
+    jobs: {
+      bijouterie: { label: 'Bijouterie', services: ['Bijoux', 'Montres', 'Réparation bijou', 'Création personnalisée', 'Gravure', 'Conseil cadeau', 'Entretien', 'Commande spéciale'] },
+      boulangerie: { label: 'Boulangerie / Pâtisserie', services: ['Pain du jour', 'Pâtisseries', 'Commande spéciale', 'Pièces montées', 'Snacking', 'Traiteur sucré / salé', 'Livraison', 'Formules entreprise'] },
+      boutique_mode: { label: 'Boutique mode', services: ['Nouvelle collection', 'Conseil style', 'Essayage', 'Retouches', 'Accessoires', 'Sélection saisonnière', 'Carte cadeau', 'Privatisation boutique'] },
+      caviste: { label: 'Caviste', services: ['Conseil vin', 'Sélection bouteilles', 'Coffrets cadeau', 'Dégustation', 'Accords mets vins', 'Commande spéciale', 'Événement cave', 'Livraison locale'] },
+      epicerie: { label: 'Épicerie / Commerce alimentaire', services: ['Produits frais', 'Paniers du moment', 'Produits locaux', 'Commande spéciale', 'Livraison', 'Click & collect', 'Coffrets cadeau', 'Événements dégustation'] },
+      fleuriste: { label: 'Fleuriste', services: ['Bouquets', 'Compositions florales', 'Mariage', 'Deuil', 'Livraison fleurs', 'Abonnement floral', 'Décoration événement', 'Conseil entretien fleurs'] },
+      librairie: { label: 'Librairie / Papeterie', services: ['Sélection livres', 'Commande ouvrage', 'Papeterie', 'Cadeaux', 'Animations / dédicaces', 'Listes scolaires', 'Conseil lecture', 'Réservation'] },
+      magasin_meubles: { label: 'Magasin de meubles', services: ['Mobilier salon', 'Mobilier chambre', 'Conseil aménagement', 'Commande meuble', 'Livraison', 'Montage', 'Showroom', 'Projet sur mesure'] },
+      opticien: { label: 'Opticien', services: ['Lunettes de vue', 'Lunettes solaires', 'Ajustement monture', 'Lentilles', 'Contrôle visuel', 'Devis mutuelle', 'Entretien lunettes', 'Conseil équipement'] },
+    },
+  },
+
+  communication: {
+    label: 'Communication',
+    jobs: {
+      agence_communication: { label: 'Agence de communication', services: ['Stratégie de communication', 'Identité visuelle', 'Campagne locale', 'Communication digitale', 'Accompagnement image de marque', 'Supports print', 'Conseil éditorial', 'Plan d’action'] },
+      agence_seo: { label: 'Agence SEO / SEA', services: ['Audit SEO', 'Optimisation pages', 'Rédaction SEO', 'Campagnes Google Ads', 'Suivi positionnement', 'Netlinking', 'Reporting', 'Accompagnement visibilité locale'] },
+      community_manager: { label: 'Community manager', services: ['Calendrier éditorial', 'Gestion réseaux sociaux', 'Création de contenus', 'Animation de communauté', 'Réponses messages', 'Reporting', 'Stratégie Instagram / Facebook', 'Shooting / reels'] },
+      graphiste: { label: 'Graphiste / Studio créatif', services: ['Logo', 'Charte graphique', 'Flyers', 'Brochures', 'Visuels réseaux sociaux', 'Cartes de visite', 'Supports publicitaires', 'Habillage de marque'] },
+      redacteur_web: { label: 'Rédacteur web / Copywriter', services: ['Pages site web', 'Articles SEO', 'Emails marketing', 'Fiches service', 'Storytelling', 'Optimisation conversion', 'Réécriture', 'Calendrier éditorial'] },
+    },
+  },
+
+  evenementiel: {
+    label: 'Événementiel',
+    jobs: {
+      decorateur_evenementiel: { label: 'Décoration événementielle', services: ['Scénographie', 'Décoration salle', 'Arche / cérémonie', 'Table / centre de table', 'Location déco', 'Installation', 'Coordination', 'Projet sur mesure'] },
+      dj: { label: 'DJ / Animation', services: ['Mariage', 'Anniversaire', 'Soirée entreprise', 'Sonorisation', 'Éclairage', 'Playlist sur mesure', 'Pack animation', 'Devis événement'] },
+      location_materiel: { label: 'Location de matériel', services: ['Location mobilier', 'Sonorisation', 'Éclairage', 'Vaisselle', 'Structures', 'Livraison', 'Installation', 'Devis sur mesure'] },
+      photographe: { label: 'Photographe', services: ['Mariage', 'Portrait', 'Famille', 'Entreprise', 'Événement', 'Shooting extérieur', 'Album / tirages', 'Séance découverte'] },
+      salle_reception: { label: 'Salle de réception', services: ['Location salle', 'Mariage', 'Séminaire', 'Anniversaire', 'Capacité accueil', 'Visite salle', 'Options réception', 'Devis événement'] },
+      traiteur_evenementiel: { label: 'Traiteur événementiel', services: ['Cocktail', 'Buffet', 'Repas assis', 'Brunch', 'Entreprise', 'Mariage', 'Livraison', 'Devis sur mesure'] },
+      videaste: { label: 'Vidéaste', services: ['Film événement', 'Mariage', 'Vidéo entreprise', 'Interview', 'Montage vidéo', 'Clip promotionnel', 'Captation', 'Devis vidéo'] },
+      wedding_planner: { label: 'Wedding planner', services: ['Organisation mariage', 'Coordination jour J', 'Sélection prestataires', 'Décoration', 'Planning', 'Accompagnement budget', 'Cérémonie laïque', 'Rendez-vous découverte'] },
+    },
+  },
+  exterieur_jardin: {
+    label: 'Extérieur / Jardin',
+    jobs: {
+      arrosage_automatique: { label: 'Arrosage automatique', services: ['Installation arrosage', 'Programmation', 'Goutte-à-goutte', 'Arrosage pelouse', 'Maintenance réseau', 'Réglage saisonnier', 'Diagnostic fuite', 'Devis installation'] },
+      cloture_portail: { label: 'Clôture / Portail', services: ['Pose clôture', 'Pose portail', 'Portail motorisé', 'Brise-vue', 'Sécurisation accès', 'Réparation portail', 'Clôture rigide', 'Devis extérieur'] },
+      elagueur: { label: 'Élagueur', services: ['Élagage', 'Abattage', 'Taille raisonnée', 'Dessouchage', 'Évacuation déchets verts', 'Diagnostic arbre', 'Intervention sécurisée', 'Devis élagage'] },
+      entretien_jardin: { label: 'Entretien de jardin', services: ['Tonte', 'Taille de haies', 'Désherbage', 'Nettoyage extérieur', 'Entretien saisonnier', 'Ramassage feuilles', 'Remise en état', 'Contrat entretien'] },
+      paysagiste: { label: 'Paysagiste', services: ['Création jardin', 'Aménagement paysager', 'Massifs', 'Plantations', 'Allées extérieures', 'Terrasse paysagée', 'Conseil végétal', 'Devis aménagement'] },
+      pisciniste: { label: 'Pisciniste', services: ['Construction piscine', 'Rénovation piscine', 'Entretien piscine', 'Mise en service', 'Hivernage', 'Traitement eau', 'Réparation équipement', 'Sécurité piscine'] },
+      terrassement_paysager: { label: 'Terrassement paysager', services: ['Préparation terrain', 'Nivellement jardin', 'Création accès', 'Tranchées extérieures', 'Drainage', 'Empierrement', 'Remodelage terrain', 'Devis terrassement'] },
+    },
+  },
+  finance: {
+    label: 'Finance',
+    jobs: {
+      expert_comptable_finance: { label: 'Cabinet comptable / financier', services: ['Comptabilité', 'Bilan', 'Tableau de bord', 'Prévisionnel', 'Déclarations', 'Accompagnement dirigeant', 'Optimisation gestion', 'Rendez-vous conseil'] },
+      gestion_patrimoine: { label: 'Conseiller en gestion de patrimoine', services: ['Bilan patrimonial', 'Stratégie d’investissement', 'Préparation retraite', 'Transmission', 'Optimisation fiscale', 'Assurance-vie', 'Rendez-vous conseil', 'Suivi patrimonial'] },
+      courtier_credit: { label: 'Courtier en crédit', services: ['Simulation', 'Étude financement', 'Crédit immobilier', 'Renégociation', 'Assurance emprunteur', 'Montage dossier', 'Accompagnement banque', 'Conseil budget'] },
+      daf_externalise: { label: 'DAF externalisé / Conseil financier', services: ['Pilotage trésorerie', 'Budget', 'Reporting', 'Prévisionnel', 'Analyse rentabilité', 'Structuration financière', 'Recherche financement', 'Accompagnement dirigeant'] },
+    },
+  },
+
+  hotel_restaurant: {
+    label: 'Hôtel / Restaurant',
+    jobs: {
+      bar: { label: 'Bar / Café', services: ['Happy hour', 'Soirée à thème', 'Réservation groupe', 'Afterwork', 'Diffusion événement', 'Petite restauration', 'Privatisation', 'Animations'] },
+      chambre_hotes: { label: 'Chambre d’hôtes / Gîte', services: ['Réservation séjour', 'Week-end', 'Bon cadeau', 'Accueil famille', 'Séjour thématique', 'Petit-déjeuner', 'Long séjour', 'Conseils visite locale'] },
+      hotel: { label: 'Hôtel', services: ['Réservation chambre', 'Séjour week-end', 'Offre entreprise', 'Petit-déjeuner', 'Accueil groupe', 'Événement / séminaire', 'Carte cadeau', 'Offre saisonnière'] },
+      restaurant: { label: 'Restaurant', services: ['Menu du jour', 'Réservation', 'Repas de groupe', 'Événement privé', 'Carte saisonnière', 'Vente à emporter', 'Livraison', 'Carte cadeau'] },
+      snack: { label: 'Snack / Fast food', services: ['Menu rapide', 'Commande à emporter', 'Livraison', 'Formules midi', 'Offres étudiantes', 'Privatisation', 'Événements', 'Carte fidélité'] },
+      traiteur: { label: 'Traiteur', services: ['Cocktail', 'Buffet', 'Mariage', 'Entreprise', 'Livraison', 'Plateaux repas', 'Événement privé', 'Devis sur mesure'] },
+    },
+  },
+
+
+  hygiene_habitat: {
+    label: 'Hygiène / Habitat',
+    jobs: {
+      assainissement: { label: 'Assainissement', services: ['Diagnostic assainissement', 'Débouchage canalisation', 'Curage', 'Pompage', 'Entretien fosse', 'Mise aux normes', 'Intervention urgence', 'Devis assainissement'] },
+      debarras: { label: 'Débarras', services: ['Débarras maison', 'Débarras cave', 'Débarras grenier', 'Succession', 'Encombrants', 'Nettoyage après débarras', 'Intervention rapide', 'Devis gratuit'] },
+      deratiseur: { label: 'Dératiseur', services: ['Dératisation', 'Désinsectisation', 'Traitement nuisibles', 'Intervention urgence', 'Contrat prévention', 'Traitement souris', 'Traitement rats', 'Diagnostic infestation'] },
+      desinsectisation: { label: 'Désinsectisation', services: ['Traitement insectes', 'Punaises de lit', 'Guêpes / frelons', 'Cafards', 'Fourmis', 'Diagnostic infestation', 'Intervention urgence', 'Contrat prévention'] },
+      nettoyage: { label: 'Nettoyage', services: ['Nettoyage industriel', 'Nettoyage bureaux', 'Nettoyage vitres', 'Remise en état', 'Nettoyage après chantier', 'Désinfection', 'Entretien régulier', 'Intervention ponctuelle'] },
+      ramonage: { label: 'Ramonage', services: ['Ramonage cheminée', 'Entretien conduit', 'Poêle à bois', 'Certificat ramonage', 'Intervention annuelle', 'Diagnostic conduit', 'Nettoyage conduit', 'Conseils sécurité'] },
+      traitement_humidite: { label: 'Traitement humidité', services: ['Diagnostic humidité', 'Remontées capillaires', 'Traitement murs', 'Ventilation', 'Assèchement', 'Prévention moisissures', 'Contrôle logement', 'Devis traitement'] },
+      vitrier: { label: 'Vitrier', services: ['Remplacement vitre', 'Double vitrage', 'Vitrine magasin', 'Dépannage casse', 'Pose vitrage', 'Sécurisation', 'Miroiterie', 'Urgence vitrerie'] },
+    },
+  },
+  immobilier: {
+    label: 'Immobilier',
+    jobs: {
+      agence_immobiliere: { label: 'Agence immobilière', services: ['Estimation', 'Vente', 'Location', 'Visite', 'Mise en valeur du bien', 'Accompagnement acheteur', 'Accompagnement vendeur', 'Conseils marché local'] },
+      courtier: { label: 'Courtier', services: ['Étude financement', 'Simulation', 'Renégociation', 'Assurance emprunteur', 'Accompagnement dossier', 'Investissement', 'Premier achat', 'Conseils budget'] },
+      diagnostiqueur_immobilier: { label: 'Diagnostiqueur immobilier', services: ['DPE', 'Diagnostic amiante', 'Diagnostic plomb', 'Diagnostic électricité', 'Diagnostic gaz', 'ERP', 'Audit logement', 'Devis diagnostics'] },
+      gestion_locative: { label: 'Gestion locative', services: ['Mise en location', 'Gestion quotidienne', 'Sélection locataire', 'États des lieux', 'Suivi propriétaire', 'Conseils rentabilité', 'Garanties', 'Accompagnement juridique'] },
+      home_staging: { label: 'Home staging', services: ['Valorisation bien', 'Conseil déco', 'Préparation visite', 'Mise en scène', 'Optimisation photos', 'Pack vente', 'Accompagnement vendeur', 'Visite conseil'] },
+      promoteur_immobilier: { label: 'Promoteur immobilier', services: ['Programme immobilier', 'Vente neuf', 'Réservation logement', 'Investissement', 'Suivi projet', 'Informations chantier', 'Accompagnement acquéreur', 'Rendez-vous programme'] },
+      syndic: { label: 'Syndic / Copropriété', services: ['Gestion copropriété', 'Suivi travaux', 'Assemblées', 'Communication résidents', 'Interventions techniques', 'Accompagnement conseil syndical', 'Suivi prestataires', 'Information réglementaire'] },
+    },
+  },
+  industrie: {
+    label: 'Industrie',
+    jobs: {
+      chaudronnerie: { label: 'Chaudronnerie', services: ['Fabrication chaudronnée', 'Soudure', 'Assemblage métal', 'Réparation pièces', 'Prototype', 'Plan technique', 'Intervention atelier', 'Devis fabrication'] },
+      fabrication_industrielle: { label: 'Fabrication industrielle', services: ['Production série', 'Assemblage', 'Sous-traitance industrielle', 'Contrôle qualité', 'Prototype', 'Planification production', 'Conditionnement', 'Devis industriel'] },
+      maintenance_industrielle: { label: 'Maintenance industrielle', services: ['Maintenance préventive', 'Dépannage machine', 'Diagnostic panne', 'Intervention site', 'Contrat maintenance', 'Remise en service', 'Contrôle équipements', 'Rapport intervention'] },
+      mecanique_industrielle: { label: 'Mécanique industrielle', services: ['Mécanique de précision', 'Réparation mécanique', 'Assemblage mécanique', 'Contrôle dimensionnel', 'Pièces techniques', 'Maintenance mécanique', 'Montage', 'Devis mécanique'] },
+      metallurgie: { label: 'Métallurgie', services: ['Transformation métal', 'Découpe', 'Pliage', 'Assemblage', 'Traitement métal', 'Fabrication sur plan', 'Contrôle qualité', 'Devis métallurgie'] },
+      plasturgie: { label: 'Plasturgie', services: ['Fabrication plastique', 'Injection plastique', 'Pièces techniques', 'Prototype', 'Assemblage plastique', 'Contrôle qualité', 'Petite série', 'Devis plasturgie'] },
+      scierie: { label: 'Scierie', services: ['Sciage bois', 'Bois de construction', 'Débit sur mesure', 'Bois d’aménagement', 'Séchage bois', 'Conseil essence', 'Commande professionnelle', 'Devis bois'] },
+      soudure_industrielle: { label: 'Soudure industrielle', services: ['Soudure TIG', 'Soudure MIG/MAG', 'Réparation soudure', 'Assemblage métal', 'Intervention sur site', 'Contrôle soudure', 'Fabrication pièce', 'Devis soudure'] },
+      traitement_surface: { label: 'Traitement de surface', services: ['Traitement anticorrosion', 'Sablage', 'Peinture industrielle', 'Métallisation', 'Préparation surface', 'Protection pièces', 'Contrôle finition', 'Devis traitement'] },
+      usinage: { label: 'Usinage', services: ['Usinage CNC', 'Fraisage', 'Tournage', 'Pièce sur plan', 'Petite série', 'Prototype', 'Contrôle précision', 'Devis usinage'] },
+    },
+  },
+  juridique: {
+    label: 'Juridique',
+    jobs: {
+      avocat: { label: 'Avocat', services: ['Premier rendez-vous', 'Conseil juridique', 'Analyse dossier', 'Rédaction d’actes', 'Négociation', 'Procédure', 'Suivi client', 'Accompagnement contentieux'] },
+      huissier: { label: 'Commissaire de justice / Huissier', services: ['Constat', 'Recouvrement', 'Signification', 'Exécution décision', 'Jeux concours', 'Conseil pré-contentieux', 'Rendez-vous étude', 'Suivi dossier'] },
+      juriste_entreprise: { label: 'Juriste / Conseil aux entreprises', services: ['Contrats', 'Conformité', 'CGV / mentions légales', 'Protection des données', 'Secrétariat juridique', 'Audit juridique', 'Accompagnement création', 'Support dirigeants'] },
+      notaire: { label: 'Notaire', services: ['Rendez-vous étude', 'Achat immobilier', 'Succession', 'Donation', 'Contrat de mariage', 'Création société', 'Conseil patrimonial', 'Signature acte'] },
+    },
+  },
+
+  medecine_douce: {
+    label: 'Médecine douce',
+    jobs: {
+      hypnotherapeute: { label: 'Hypnothérapeute', services: ['Gestion stress', 'Confiance', 'Arrêt tabac', 'Sommeil', 'Phobies', 'Séance découverte', 'Accompagnement personnalisé', 'Suivi'] },
+      magnetiseur: { label: 'Magnétiseur', services: ['Séance magnétisme', 'Rééquilibrage énergétique', 'Accompagnement émotionnel', 'Fatigue', 'Stress', 'Séance découverte', 'Suivi personnalisé', 'Conseils bien-être'] },
+      naturopathe: { label: 'Naturopathe', services: ['Bilan vitalité', 'Conseils nutrition', 'Gestion stress', 'Sommeil', 'Accompagnement saisonnier', 'Séance découverte', 'Programme bien-être', 'Atelier'] },
+      energeticien: { label: 'Praticien énergétique', services: ['Séance énergétique', 'Rééquilibrage', 'Fatigue', 'Émotions', 'Ancrage', 'Découverte', 'Suivi régulier', 'Atelier'] },
+      reflexologue: { label: 'Réflexologue', services: ['Réflexologie plantaire', 'Réflexologie palmaire', 'Gestion stress', 'Détente', 'Accompagnement douleur', 'Séance découverte', 'Cure', 'Carte cadeau'] },
+      reiki: { label: 'Reiki', services: ['Séance reiki', 'Harmonisation énergétique', 'Détente', 'Gestion stress', 'Accompagnement émotionnel', 'Séance découverte', 'Suivi régulier', 'Atelier initiation'] },
+      shiatsu: { label: 'Shiatsu / Pratique corporelle', services: ['Séance shiatsu', 'Détente', 'Équilibre', 'Stress', 'Fatigue', 'Programme bien-être', 'Séance découverte', 'Suivi'] },
+      sophrologue: { label: 'Sophrologue', services: ['Gestion stress', 'Sommeil', 'Préparation examen', 'Confiance en soi', 'Burn-out', 'Séance individuelle', 'Atelier', 'Respiration'] },
+    },
+  },
+  sante: {
+    label: 'Santé',
+    jobs: {
+      dentiste: { label: 'Dentiste', services: ['Bilan dentaire', 'Détartrage', 'Urgence dentaire', 'Soins', 'Prothèse', 'Implantologie', 'Orthodontie', 'Conseils hygiène'] },
+      infirmier: { label: 'Infirmier / Infirmière', services: ['Soins à domicile', 'Prises de sang', 'Pansements', 'Suivi traitement', 'Accompagnement patient', 'Vaccination', 'Conseils', 'Disponibilités intervention'] },
+      kine: { label: 'Kinésithérapeute', services: ['Rééducation', 'Massage', 'Drainage', 'Suivi post-opératoire', 'Sport', 'Douleurs chroniques', 'Respiratoire', 'Exercices à domicile'] },
+      medecin_generaliste: { label: 'Médecin généraliste', services: ['Consultation', 'Suivi patient', 'Prévention', 'Téléconsultation', 'Renouvellement', 'Dossier médical', 'Vaccination', 'Informations cabinet'] },
+      orthophoniste: { label: 'Orthophoniste', services: ['Bilan orthophonique', 'Troubles langage', 'Rééducation', 'Suivi enfant', 'Suivi adulte', 'Accompagnement famille', 'Rendez-vous suivi', 'Informations cabinet'] },
+      osteopathe: { label: 'Ostéopathe', services: ['Consultation adulte', 'Consultation nourrisson', 'Sportif', 'Douleurs dos', 'Suivi postural', 'Conseils prévention', 'Urgence rendez-vous', 'Entretiens réguliers'] },
+      pharmacie: { label: 'Pharmacie', services: ['Conseil santé', 'Parapharmacie', 'Vaccination', 'Matériel médical', 'Ordonnances', 'Téléservice', 'Livraison / retrait', 'Prévention saisonnière'] },
+      podologue: { label: 'Podologue', services: ['Bilan podologique', 'Soins pédicurie', 'Semelles orthopédiques', 'Suivi sportif', 'Douleurs pied', 'Conseils chaussage', 'Suivi patient', 'Rendez-vous cabinet'] },
+      psychologue: { label: 'Psychologue', services: ['Consultation individuelle', 'Accompagnement adulte', 'Accompagnement enfant', 'Gestion stress', 'Burn-out', 'Soutien émotionnel', 'Suivi régulier', 'Rendez-vous découverte'] },
+    },
+  },
+
+
+  securite: {
+    label: 'Sécurité',
+    jobs: {
+      agent_securite: { label: 'Agent de sécurité', services: ['Surveillance site', 'Contrôle entrées', 'Ronde sécurité', 'Accueil sécurité', 'Prévention risques', 'Événementiel', 'Gardiennage', 'Devis sécurité'] },
+      controle_acces: { label: 'Contrôle d’accès', services: ['Installation contrôle accès', 'Badge / lecteur', 'Interphone', 'Portail sécurisé', 'Maintenance système', 'Audit accès', 'Sécurisation locaux', 'Devis installation'] },
+      securite_incendie: { label: 'Sécurité incendie', services: ['Prévention incendie', 'Agent SSIAP', 'Ronde incendie', 'Contrôle équipements', 'Évacuation', 'Consignes sécurité', 'Formation sensibilisation', 'Audit site'] },
+      telesurveillance: { label: 'Télésurveillance', services: ['Surveillance à distance', 'Gestion alertes', 'Abonnement télésurveillance', 'Intervention alarme', 'Installation système', 'Maintenance', 'Audit sécurité', 'Devis protection'] },
+      videosurveillance: { label: 'Vidéosurveillance', services: ['Installation caméras', 'Caméra extérieure', 'Enregistrement vidéo', 'Maintenance système', 'Audit sécurité', 'Accès à distance', 'Protection locaux', 'Devis vidéosurveillance'] },
+    },
+  },
+
+  services_entreprises: {
+    label: 'Services aux entreprises',
+    jobs: {
+      agence_marketing: { label: 'Agence marketing / communication', services: ['Stratégie', 'Création contenu', 'Community management', 'Publicité', 'SEO', 'Emailing', 'Branding', 'Reporting'] },
+      consultant: { label: 'Consultant', services: ['Audit', 'Conseil stratégique', 'Accompagnement projet', 'Atelier', 'Formation', 'Diagnostic', 'Suivi mission', 'Intervention ponctuelle'] },
+      expert_comptable: { label: 'Expert-comptable / Gestion', services: ['Comptabilité', 'Paie', 'Conseil gestion', 'Création entreprise', 'Tableau de bord', 'Déclarations', 'Accompagnement dirigeant', 'Rendez-vous bilan'] },
+      organisme_formation: { label: 'Formation', services: ['Formation inter', 'Formation intra', 'Atelier', 'Coaching', 'Programme sur mesure', 'E-learning', 'Audit besoins', 'Suivi apprenants'] },
+      informatique: { label: 'Informatique / IT', services: ['Dépannage informatique', 'Maintenance', 'Cybersécurité', 'Installation matériel', 'Sauvegarde', 'Cloud', 'Support utilisateur', 'Audit système'] },
+      juridique: { label: 'Juridique / Conseil', services: ['Conseil', 'Rédaction', 'Accompagnement dossier', 'Conformité', 'Audit', 'Rendez-vous', 'Formation', 'Suivi client'] },
+      recrutement: { label: 'Recrutement', services: ['Recherche candidat', 'Préqualification', 'Entretien', 'Annonce emploi', 'Sourcing', 'Accompagnement RH', 'Audit besoin', 'Suivi recrutement'] },
+      secretariat_externalise: { label: 'Secrétariat externalisé', services: ['Gestion appels', 'Gestion agenda', 'Saisie administrative', 'Suivi dossiers', 'Relances clients', 'Devis / factures', 'Assistance administrative', 'Organisation'] },
+    },
+  },
+  services_particuliers: {
+    label: 'Services aux particuliers',
+    jobs: {
+      aide_domicile: { label: 'Aide à domicile', services: ['Accompagnement quotidien', 'Courses', 'Présence', 'Aide administrative', 'Aide repas', 'Soutien autonomie', 'Visites régulières', 'Devis personnalisé'] },
+      conciergerie: { label: 'Conciergerie', services: ['Gestion location courte durée', 'Accueil voyageurs', 'Ménage', 'Linge', 'Check-in / check-out', 'Assistance', 'Optimisation annonce', 'Suivi propriétaire'] },
+      depannage_domestique: { label: 'Dépannage à domicile', services: ['Petit bricolage', 'Montage meuble', 'Réparation', 'Installation équipement', 'Petites urgences', 'Intervention rapide', 'Devis simple', 'Entretien courant'] },
+      garde_enfants: { label: 'Garde d’enfants', services: ['Garde régulière', 'Sortie école', 'Aide devoirs', 'Garde ponctuelle', 'Mercredi / vacances', 'Accompagnement activités', 'Baby-sitting soirée', 'Rencontre préalable'] },
+      jardinage: { label: 'Jardinage', services: ['Tonte', 'Taille haies', 'Désherbage', 'Entretien saisonnier', 'Remise en état', 'Petits aménagements', 'Évacuation déchets verts', 'Contrat entretien'] },
+      menage: { label: 'Ménage / Entretien', services: ['Ménage régulier', 'Grand nettoyage', 'Fin de chantier', 'Vitres', 'Repassage', 'Nettoyage locatif', 'Intervention ponctuelle', 'Formule abonnement'] },
+    },
+  },
+
+  transport: {
+    label: 'Transport',
+    jobs: {
+      ambulance: { label: 'Ambulancier', services: ['Transport assis', 'Transport médicalisé', 'Aller-retour consultation', 'Hospitalisation', 'Réservation', 'Prise en charge administrative', 'Accompagnement patient', 'Disponibilités'] },
+      coursier: { label: 'Coursier / Livraison', services: ['Course urgente', 'Livraison documents', 'Livraison colis', 'Tournées', 'Entreprise', 'Suivi livraison', 'Course dédiée', 'Devis pro'] },
+      demenagement: { label: 'Déménagement', services: ['Visite technique', 'Déménagement particulier', 'Déménagement entreprise', 'Emballage', 'Garde-meuble', 'Monte-meubles', 'Transport longue distance', 'Devis sur mesure'] },
+      taxi: { label: 'Taxi', services: ['Trajet local', 'Gare', 'Aéroport', 'Transport médical', 'Mise à disposition', 'Réservation', 'Entreprise', 'Course longue distance'] },
+      marchandises: { label: 'Transport de marchandises', services: ['Livraison locale', 'Messagerie', 'Transport express', 'Tournées régulières', 'Transport palettes', 'Livraison entreprise', 'Course dédiée', 'Devis logistique'] },
+      vtc: { label: 'VTC', services: ['Transfert gare', 'Transfert aéroport', 'Trajet professionnel', 'Mise à disposition', 'Événement', 'Longue distance', 'Réservation', 'Accueil personnalisé'] },
+    },
+  },};
 
 export function getJobsForSector(sector: string) {
   const pack = ACTIVITY_CATALOG[sector as ActivitySectorCategory] ?? ACTIVITY_CATALOG.autre;

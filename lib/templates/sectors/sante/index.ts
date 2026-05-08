@@ -1,14 +1,17 @@
 import { santeTemplates } from './common';
 import { createJobTemplates } from '../shared';
-import { medecin_generalisteJobTemplates } from './medecin_generaliste';
 import { dentisteJobTemplates } from './dentiste';
+import { infirmierJobTemplates } from './infirmier';
 import { kineJobTemplates } from './kine';
+import { medecin_generalisteJobTemplates } from './medecin_generaliste';
+import { orthophonisteJobTemplates } from './orthophoniste';
 import { osteopatheJobTemplates } from './osteopathe';
 import { pharmacieJobTemplates } from './pharmacie';
-import { infirmierJobTemplates } from './infirmier';
+import { podologueJobTemplates } from './podologue';
+import { psychologueJobTemplates } from './psychologue';
 
 export { santeTemplates };
 
 export function buildSanteJobTemplates() {
-  return [medecin_generalisteJobTemplates, dentisteJobTemplates, kineJobTemplates, osteopatheJobTemplates, pharmacieJobTemplates, infirmierJobTemplates].flatMap((definition) => createJobTemplates(definition));
+  return [dentisteJobTemplates, infirmierJobTemplates, kineJobTemplates, medecin_generalisteJobTemplates, orthophonisteJobTemplates, osteopatheJobTemplates, pharmacieJobTemplates, podologueJobTemplates, psychologueJobTemplates].flatMap((definition) => createJobTemplates(definition));
 }

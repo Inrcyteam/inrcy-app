@@ -1629,6 +1629,9 @@ async function deleteDraftPermanently(id: string) {
       return;
     }
 
+    const trackedCampaign = pendingTrack;
+    const shouldSendAsCampaign = recipientsList.length > 1 || trackedCampaign !== null;
+
     if (recipientsList.length > 1 && composeType !== "mail") {
       setToast("L’envoi individuel en masse est disponible uniquement pour les mails classiques.");
       return;
@@ -1646,15 +1649,17 @@ async function deleteDraftPermanently(id: string) {
 
     setSendBusy(true);
     try {
-      if (recipientsList.length > 1) {
-        const campaignFolder = getBulkCampaignFolder();
+      if (shouldSendAsCampaign) {
+        const campaignFolder = trackedCampaign?.kind && trackedCampaign?.type
+          ? folderFromTrack(trackedCampaign.kind, trackedCampaign.type, isBusinessMailFolder(folder) ? folder : "mails")
+          : getBulkCampaignFolder();
         const templateKey = composeTemplateKey || searchParams?.get("template_key") || "";
         const campaignPayload = {
           accountId: selectedAccount.id,
           type: composeType,
           folder: campaignFolder,
-          trackKind: pendingTrack?.kind || undefined,
-          trackType: pendingTrack?.type || undefined,
+          trackKind: trackedCampaign?.kind || undefined,
+          trackType: trackedCampaign?.type || undefined,
           templateKey: templateKey || undefined,
           subject: normalizeMailSubject(subject.trim() || "(sans objet)"),
           text: text || "",
@@ -1686,7 +1691,7 @@ async function deleteDraftPermanently(id: string) {
           return;
         }
 
-        if (pendingTrack) setPendingTrack(null);
+        if (trackedCampaign) setPendingTrack(null);
         const queuedCount = Math.max(0, Number(data?.queued ?? recipientsList.length));
         const blockedDuplicates = Math.max(0, Number(data?.blockedDuplicates ?? 0));
         const ignoredInvalid = Math.max(0, Number(data?.ignoredInvalid ?? 0));
@@ -1738,28 +1743,6 @@ async function deleteDraftPermanently(id: string) {
         return;
       }
 
-      if (pendingTrack) {
-        try {
-          await fetch(`/api/${pendingTrack.kind}/events`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: pendingTrack.type,
-              payload: {
-                ...(pendingTrack.payload || {}),
-                integration_id: selectedAccount.id,
-                to: recipientsList[0],
-                recipients: 1,
-                subject: normalizeMailSubject(subject.trim() || "(sans objet)"),
-              },
-            }),
-          });
-        } catch {
-          // Tracking must never block sending
-        } finally {
-          setPendingTrack(null);
-        }
-      }
 
       setToast("Message envoyé.");
       setComposeOpen(false);

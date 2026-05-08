@@ -1,14 +1,16 @@
 import { evenementielTemplates } from './common';
 import { createJobTemplates } from '../shared';
-import { djJobTemplates } from './dj';
-import { photographeJobTemplates } from './photographe';
-import { wedding_plannerJobTemplates } from './wedding_planner';
-import { location_materielJobTemplates } from './location_materiel';
-import { traiteur_evenementielJobTemplates } from './traiteur_evenementiel';
 import { decorateur_evenementielJobTemplates } from './decorateur_evenementiel';
+import { djJobTemplates } from './dj';
+import { location_materielJobTemplates } from './location_materiel';
+import { photographeJobTemplates } from './photographe';
+import { salle_receptionJobTemplates } from './salle_reception';
+import { traiteur_evenementielJobTemplates } from './traiteur_evenementiel';
+import { videasteJobTemplates } from './videaste';
+import { wedding_plannerJobTemplates } from './wedding_planner';
 
 export { evenementielTemplates };
 
 export function buildEvenementielJobTemplates() {
-  return [djJobTemplates, photographeJobTemplates, wedding_plannerJobTemplates, location_materielJobTemplates, traiteur_evenementielJobTemplates, decorateur_evenementielJobTemplates].flatMap((definition) => createJobTemplates(definition));
+  return [decorateur_evenementielJobTemplates, djJobTemplates, location_materielJobTemplates, photographeJobTemplates, salle_receptionJobTemplates, traiteur_evenementielJobTemplates, videasteJobTemplates, wedding_plannerJobTemplates].flatMap((definition) => createJobTemplates(definition));
 }

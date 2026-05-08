@@ -1,4 +1,5 @@
 import type { TemplateAction, TemplateDef } from '@/lib/messageTemplates';
+import { buildTemplateMetadata } from '@/lib/templates/intelligentContext';
 import type { ActivitySectorCategory } from '@/lib/activitySectors';
 
 export type SectorPack = {
@@ -46,7 +47,8 @@ const boosterOffresSeeds: VariantSeed[] = [
       'Bonjour,\n\n' +
       `Nous lançons une offre découverte pensée pour {{metier}}. L’objectif : ${pack.promoLead}.\n\n` +
       '✅ Ce que comprend l’offre\n' +
-      '• [Votre offre découverte]\n' +
+      `• Une première approche adaptée à ${pack.audience}\n` +
+      `• Un bénéfice clair : ${pack.signature}\n` +
       '• Prestations concernées : {{services}}\n' +
       '• Zone : {{zones}}\n\n' +
       '👉 Demander les détails / réserver : {{cta_url}}\n\n' +
@@ -61,9 +63,9 @@ const boosterOffresSeeds: VariantSeed[] = [
       'Bonjour,\n\n' +
       `Chez {{nom_entreprise}}, nous proposons actuellement une ${pack.seasonal}.\n\n` +
       '🔎 Idéal pour\n' +
-      '• [type de besoin]\n' +
-      '• [période / saison]\n' +
-      '• [bénéfice principal]\n\n' +
+      `• ${pack.audience}\n` +
+      `• ${pack.localHook}\n` +
+      `• ${pack.signature}\n\n` +
       '📍 Nous intervenons sur {{zones}}.\n' +
       '📞 Contact direct : {{telephone}}\n\n' +
       'Bien à vous,\n{{nom_entreprise}}',
@@ -73,13 +75,13 @@ const boosterOffresSeeds: VariantSeed[] = [
     slug: 'flash',
     title: 'Offre flash',
     subject: 'Offre flash cette semaine — {{nom_entreprise}}',
-    body: () =>
+    body: (pack) =>
       'Bonjour,\n\n' +
       'Nous avons ouvert quelques créneaux / disponibilités et nous en profitons pour proposer une offre flash.\n\n' +
       '⚡ Offre limitée\n' +
-      '• [avantage]\n' +
-      '• Jusqu’au [date]\n' +
-      '• Sur : {{services}}\n\n' +
+      '• créneau ou avantage prioritaire selon vos disponibilités\n' +
+      `• priorité aux demandes liées à ${pack.localHook}\n` +
+      '• sur : {{services}}\n\n' +
       '👉 Réserver / demander un devis : {{cta_url}}\n\n' +
       'À bientôt,\n{{prenom}} — {{nom_entreprise}}',
     ctaLabel: '{{cta_label}}',
@@ -92,9 +94,9 @@ const boosterOffresSeeds: VariantSeed[] = [
       'Bonjour,\n\n' +
       `Pour remercier nos clients réguliers, nous mettons en place un ${pack.loyalty}.\n\n` +
       '🎁 Avantage fidélité\n' +
-      '• [détail de l’avantage]\n' +
-      '• Valable sur : {{services}}\n' +
-      '• Contact : {{telephone}}\n\n' +
+      `• un suivi ou avantage adapté aux clients qui reviennent pour ${pack.localHook}\n` +
+      '• valable sur : {{services}}\n' +
+      '• contact : {{telephone}}\n\n' +
       'Merci pour votre confiance,\n{{prenom}} — {{nom_entreprise}}',
     ctaLabel: 'En profiter',
   },
@@ -102,13 +104,13 @@ const boosterOffresSeeds: VariantSeed[] = [
     slug: 'nouveau_client',
     title: 'Offre de bienvenue',
     subject: 'Bienvenue chez {{nom_entreprise}}',
-    body: () =>
+    body: (pack) =>
       'Bonjour,\n\n' +
       'Si c’est votre première prise de contact avec {{nom_entreprise}}, nous avons prévu une offre de bienvenue.\n\n' +
       '🎁 Offre nouveau client\n' +
-      '• Avantage : [remise / bonus / priorité]\n' +
-      '• Applicable sur : {{services}}\n' +
-      '• Zone : {{zones}}\n\n' +
+      `• un premier échange pour cadrer votre besoin en ${pack.label.toLowerCase()}\n` +
+      '• applicable sur : {{services}}\n' +
+      '• zone : {{zones}}\n\n' +
       '👉 Démarrer : {{cta_url}}\n\n' +
       'À bientôt,\n{{prenom}} — {{nom_entreprise}}',
     ctaLabel: 'Découvrir',
@@ -117,14 +119,14 @@ const boosterOffresSeeds: VariantSeed[] = [
     slug: 'pack',
     title: 'Offre pack / formule',
     subject: 'Pack utile du moment — {{nom_entreprise}}',
-    body: () =>
+    body: (pack) =>
       'Bonjour,\n\n' +
       'Nous avons réuni plusieurs prestations complémentaires dans une formule simple et avantageuse.\n\n' +
       '📦 Le pack comprend\n' +
-      '• [prestation 1]\n' +
-      '• [prestation 2]\n' +
-      '• [bonus / garantie]\n\n' +
-      'Parfait pour : [situation client]\n' +
+      '• plusieurs prestations complémentaires : {{services}}\n' +
+      `• une approche cohérente pour ${pack.audience}\n` +
+      `• un suivi pensé pour ${pack.signature}\n\n` +
+      `Parfait pour : ${pack.localHook}\n` +
       '👉 Plus d’infos : {{cta_url}}\n\n' +
       'Bien à vous,\n{{nom_entreprise}}',
     ctaLabel: '{{cta_label}}',
@@ -152,9 +154,9 @@ const boosterOffresSeeds: VariantSeed[] = [
       'Bonjour,\n\n' +
       `Nous lançons une nouvelle formule liée à notre activité {{metier}} pour ${pack.promoLead}.\n\n` +
       '🚀 Ce lancement comprend\n' +
-      '• [nouvelle formule]\n' +
-      '• [bénéfice client]\n' +
-      '• [condition ou durée]\n\n' +
+      `• une formule dédiée à ${pack.label.toLowerCase()}\n` +
+      `• un bénéfice concret : ${pack.signature}\n` +
+      '• une prise de contact simple pour adapter la solution\n\n' +
       '📍 Disponible sur : {{zones}}\n' +
       '👉 En profiter : {{cta_url}}\n\n' +
       'Bien à vous,\n{{nom_entreprise}}',
@@ -202,9 +204,9 @@ const fideliserInformationsSeeds: VariantSeed[] = [
       'Bonjour,\n\n' +
       `Nous faisons évoluer notre activité {{metier}} pour ${pack.infoLead}.\n\n` +
       '🆕 Nouveauté\n' +
-      '• [nom de la nouveauté]\n' +
-      '• Pour qui : [public concerné]\n' +
-      '• Bénéfice : [bénéfice]\n\n' +
+      `• une évolution utile autour de ${pack.localHook}\n` +
+      `• pour : ${pack.audience}\n` +
+      `• bénéfice : ${pack.signature}\n\n` +
       '👉 Plus d’infos : {{cta_url}}\n\n' +
       'Cordialement,\n{{nom_entreprise}}',
     ctaLabel: '{{cta_label}}',
@@ -230,9 +232,9 @@ const fideliserInformationsSeeds: VariantSeed[] = [
       'Bonjour,\n\n' +
       `Petit conseil autour de notre métier {{metier}}, lié à ${pack.localHook}.\n\n` +
       '💡 Conseil du moment\n' +
-      '• [conseil 1]\n' +
-      '• [conseil 2]\n' +
-      '• [conseil 3]\n\n' +
+      `• anticipez les besoins liés à ${pack.localHook}\n` +
+      '• vérifiez les délais, contraintes ou préparatifs nécessaires\n' +
+      `• privilégiez une solution adaptée à ${pack.audience}\n\n` +
       'Si besoin, nous restons disponibles sur {{zones}}.\n\n' +
       'Cordialement,\n{{nom_entreprise}}',
   },
@@ -244,22 +246,22 @@ const fideliserInformationsSeeds: VariantSeed[] = [
       'Bonjour,\n\n' +
       `Petit point d’actualité sur notre activité {{metier}}. Notre priorité reste ${pack.signature}.\n\n` +
       '🗞️ Actualité\n' +
-      '• [actualité 1]\n' +
-      '• [actualité 2]\n' +
-      '• [actualité 3]\n\n' +
+      `• point sur les demandes liées à ${pack.localHook}\n` +
+      '• rappel de nos prestations principales : {{services}}\n' +
+      `• conseil pratique pour ${pack.audience}\n\n` +
       'À bientôt,\n{{prenom}} — {{nom_entreprise}}',
   },
   {
     slug: 'partenariat',
     title: 'Partenariat / nouveauté',
     subject: 'Une nouveauté utile pour nos clients',
-    body: () =>
+    body: (pack) =>
       'Bonjour,\n\n' +
       'Nous mettons en place un nouveau partenariat / service complémentaire pour mieux accompagner nos clients.\n\n' +
       '🤝 Ce que cela apporte\n' +
-      '• [bénéfice 1]\n' +
-      '• [bénéfice 2]\n' +
-      '• [bénéfice 3]\n\n' +
+      `• une réponse plus complète pour ${pack.audience}\n` +
+      `• plus de cohérence autour de ${pack.localHook}\n` +
+      '• un accompagnement plus simple, du premier contact au suivi\n\n' +
       'Toujours avec notre approche : {{forces}}\n\n' +
       'Bien à vous,\n{{nom_entreprise}}',
   },
@@ -271,9 +273,9 @@ const fideliserInformationsSeeds: VariantSeed[] = [
       'Bonjour,\n\n' +
       `Parce que notre activité s’adresse à ${pack.audience}, nous partageons aujourd’hui une actualité locale utile.\n\n` +
       '📍 Dans votre secteur\n' +
-      '• [actualité locale]\n' +
-      '• [période concernée]\n' +
-      '• [conseil associé]\n\n' +
+      `• besoins fréquents autour de ${pack.localHook}\n` +
+      '• période propice pour anticiper une demande ou un rendez-vous\n' +
+      `• conseil : ${pack.maintenance}\n\n` +
       'Bien à vous,\n{{nom_entreprise}}',
   },
   {
@@ -284,21 +286,21 @@ const fideliserInformationsSeeds: VariantSeed[] = [
       'Bonjour,\n\n' +
       `Aujourd’hui, nous vous partageons un aperçu de notre métier {{metier}} et de notre manière de travailler pour ${pack.signature}.\n\n` +
       '🔍 En pratique\n' +
-      '• [étape 1]\n' +
-      '• [étape 2]\n' +
-      '• [étape 3]\n\n' +
+      '• écoute du besoin et du contexte\n' +
+      `• conseil adapté à ${pack.localHook}\n` +
+      '• réalisation, suivi ou recommandation claire\n\n' +
       'Merci pour votre confiance,\n{{prenom}} — {{nom_entreprise}}',
   },
   {
     slug: 'disponibilites',
     title: 'Mise à jour des disponibilités',
     subject: 'Nos disponibilités et délais du moment',
-    body: () =>
+    body: (pack) =>
       'Bonjour,\n\n' +
       'Petit point utile sur nos disponibilités actuelles.\n\n' +
       '📅 En ce moment\n' +
-      '• créneaux ouverts : [créneaux]\n' +
-      '• délais moyens : [délais]\n' +
+      '• créneaux ouverts selon nos disponibilités actuelles\n' +
+      `• délais à vérifier selon le besoin et ${pack.localHook}\n` +
       '• secteurs couverts : {{zones}}\n\n' +
       'Pour vérifier un créneau, appelez-nous au {{telephone}}.\n\n' +
       'Bien à vous,\n{{nom_entreprise}}',
@@ -307,12 +309,12 @@ const fideliserInformationsSeeds: VariantSeed[] = [
     slug: 'faq',
     title: 'Réponses aux questions fréquentes',
     subject: '3 réponses utiles sur {{metier}}',
-    body: () =>
+    body: (pack) =>
       'Bonjour,\n\n' +
       'Voici 3 réponses rapides aux questions que l’on nous pose souvent.\n\n' +
-      '1) [question fréquente 1]\n' +
-      '2) [question fréquente 2]\n' +
-      '3) [question fréquente 3]\n\n' +
+      `1) Quand faut-il anticiper une demande liée à ${pack.localHook} ?\n` +
+      '2) Quelles prestations sont les plus adaptées à votre situation ?\n' +
+      '3) Comment se déroule la prise en charge ou le suivi ?\n\n' +
       'Si vous voulez un avis adapté à votre cas, répondez simplement à ce mail.\n\n' +
       'Cordialement,\n{{prenom}} — {{nom_entreprise}}',
   },
@@ -522,13 +524,13 @@ const fideliserEnquetesSeeds: VariantSeed[] = [
     slug: 'nouveau_service',
     title: 'Avis sur un futur service',
     subject: 'Votre avis sur une future nouveauté',
-    body: () =>
+    body: (pack) =>
       'Bonjour,\n\n' +
       'Nous réfléchissons à lancer une nouvelle offre / un nouveau service. Avant cela, nous aimerions connaître votre avis.\n\n' +
       'Seriez-vous intéressé par :\n' +
-      '• [service / formule 1]\n' +
-      '• [service / formule 2]\n' +
-      '• [service / formule 3]\n\n' +
+      '• une formule simple autour de {{services}}\n' +
+      `• un accompagnement plus régulier lié à ${pack.localHook}\n` +
+      '• une offre avec suivi, rappel ou conseil personnalisé\n\n' +
       'Un simple retour nous aide beaucoup.\n\n' +
       'Merci,\n{{prenom}} — {{nom_entreprise}}',
   },
@@ -577,13 +579,13 @@ const fideliserEnquetesSeeds: VariantSeed[] = [
     slug: 'offre_idee',
     title: 'Test d’idée / nouvelle formule',
     subject: 'Que pensez-vous de cette nouvelle idée ?',
-    body: () =>
+    body: (pack) =>
       'Bonjour,\n\n' +
       'Nous testons une idée de nouvelle formule pour mieux répondre aux besoins de nos clients.\n\n' +
       'Seriez-vous intéressé par :\n' +
-      '• une formule simple\n' +
-      '• une formule premium\n' +
-      '• une formule avec suivi régulier\n\n' +
+      `• une formule simple pour ${pack.localHook}\n` +
+      `• une formule premium pour ${pack.audience}\n` +
+      '• une formule avec suivi régulier ou rappel automatique\n\n' +
       'Un simple “oui / non / pourquoi” nous aide déjà beaucoup.\n\n' +
       'Merci,\n{{prenom}} — {{nom_entreprise}}',
   },
@@ -620,6 +622,7 @@ function buildTemplatesForAction(
     subject: seed.subject,
     body: seed.body(pack),
     ctaLabel: seed.ctaLabel,
+    intelligent: buildTemplateMetadata({ module: moduleName, action, slug: seed.slug, priority: professionKey ? 70 : 55 }),
     sectorCategory: sector,
     professionKey,
   }));
