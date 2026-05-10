@@ -39,14 +39,68 @@ export default function DashboardHelpModals({
   return (
     <>
       <HelpModal open={helpGeneratorOpen} title="Générateur iNrCy" onClose={onCloseGenerator}>
-        <p style={{ marginTop: 0 }}>
-          Le Générateur iNrCy est le moteur de votre activité. Il connecte vos canaux pour capter des prospects et générer des opportunités.
-        </p>
-        <ol style={{ margin: 0, paddingLeft: 18 }}>
-          <li>Connectez vos canaux</li>
-          <li>Activez des actions (Booster / Fidéliser)</li>
-          <li>Suivez vos opportunités et vos contacts</li>
-        </ol>
+        <div
+          style={{
+            marginTop: 0,
+            borderRadius: 18,
+            padding: 18,
+            background:
+              "linear-gradient(135deg, rgba(0,180,255,0.14), rgba(167,72,255,0.14), rgba(255,92,138,0.10))",
+            border: "1px solid rgba(110,180,255,0.18)",
+            boxShadow: "0 0 40px rgba(87,117,255,0.12)",
+          }}
+        >
+          <p style={{ marginTop: 0, fontSize: 15, lineHeight: 1.6 }}>
+            Le Générateur iNrCy centralise vos canaux et vos outils de communication afin de développer votre visibilité, attirer de nouveaux contacts et stimuler votre activité.
+          </p>
+
+          <div style={{ display: "grid", gap: 14 }}>
+            <div>
+              <div style={{ fontWeight: 700, color: "#66d9ff", marginBottom: 6 }}>⚡ Unités d’Inertie</div>
+              <div style={{ opacity: 0.92, lineHeight: 1.55 }}>
+                Points générés par votre activité et votre communication sur iNrCy (Booster, Fidéliser, publications, actions marketing…). Plus votre générateur est actif, plus vous accumulez d’Unités d’Inertie utilisables dans la Boutique iNrCy.
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 700, color: "#ff9ad5", marginBottom: 6 }}>💰 CA potentiel 30 jours</div>
+              <div style={{ opacity: 0.92, lineHeight: 1.55 }}>
+                Estimation du chiffre d’affaires pouvant être généré dans les 30 prochains jours selon votre activité, vos canaux et votre dynamique de communication.
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 700, color: "#7df7c4", marginBottom: 6 }}>📈 Demandes captées</div>
+              <div style={{ opacity: 0.92, lineHeight: 1.55 }}>
+                Analyse business des statistiques réelles de vos canaux sur les 7 et 30 derniers jours.
+                Appels, clics, itinéraires, visites engagées, formulaires ou prises de contact : iNrCy identifie les contacts sérieux générés grâce à la qualité de vos canaux et aux actions de communication réalisées.
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 700, color: "#ffd36f", marginBottom: 6 }}>🚀 Opportunités activables</div>
+              <div style={{ opacity: 0.92, lineHeight: 1.55 }}>
+                Contacts supplémentaires pouvant être générés grâce aux actions de communication réalisées dans iNrCy.
+                Chaque opportunité activable représente une nouvelle demande potentielle à capter via vos canaux de communication.
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: 18,
+              padding: "12px 14px",
+              borderRadius: 14,
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              fontSize: 13,
+              lineHeight: 1.5,
+              opacity: 0.95,
+            }}
+          >
+            Les données affichées sont calculées automatiquement à partir de l’activité détectée sur vos canaux et dans votre générateur iNrCy.
+          </div>
+        </div>
       </HelpModal>
 
       <HelpModal open={helpCanauxOpen} title="Canaux" onClose={onCloseCanaux}>
