@@ -1,5 +1,4 @@
 import styles from "../dashboard.module.css";
-import HelpButton from "./HelpButton";
 import DashboardActionButton from "./DashboardActionButton";
 import type { ModuleAction, ModuleStatus } from "../dashboard.types";
 
@@ -42,11 +41,6 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
 
         <div className={styles.bubbleTitleRow}>
           <div className={styles.bubbleTitle}>{item.name}</div>
-          {item.helpKind === "site_inrcy" && item.onHelpSiteInrcy ? (
-            <HelpButton onClick={item.onHelpSiteInrcy} title="Aide : Site iNrCy" size={22} />
-          ) : item.helpKind === "site_web" && item.onHelpSiteWeb ? (
-            <HelpButton onClick={item.onHelpSiteWeb} title="Aide : Site web" size={22} />
-          ) : null}
         </div>
 
         <div className={styles.bubbleStatusCompact}>

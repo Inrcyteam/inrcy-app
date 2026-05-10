@@ -54,9 +54,10 @@ export default function HelpModal({ open, title, onClose, children }: Props) {
       <div
         style={{
           position: "relative",
-          width: "min(760px, 100%)",
-          maxHeight: "min(78vh, 720px)",
-          overflow: "auto",
+          width: "min(980px, 100%)",
+          maxHeight: "min(92vh, 980px)",
+          overflowY: "auto",
+          overflowX: "hidden",
           borderRadius: 18,
           border: "1px solid rgba(255,255,255,0.14)",
           background: "rgba(7,12,24,0.92)",

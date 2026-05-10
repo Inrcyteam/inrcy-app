@@ -103,13 +103,82 @@ export default function DashboardHelpModals({
         </div>
       </HelpModal>
 
-      <HelpModal open={helpCanauxOpen} title="Canaux" onClose={onCloseCanaux}>
-        <p style={{ marginTop: 0 }}>
-          Connectez chaque canal pour créer une synergie entre tous vos outils de communication et capter davantage de prospects et de clients.
-        </p>
-        <p style={{ marginBottom: 0 }}>
-          Pour connecter un canal : ouvrez le panneau <strong>Configurer</strong>, cliquez sur les boutons indiqués, puis suivez les étapes demandées.
-        </p>
+      <HelpModal open={helpCanauxOpen} title="Canaux iNrCy" onClose={onCloseCanaux}>
+        <div
+          style={{
+            marginTop: 0,
+            borderRadius: 18,
+            padding: 24,
+            background:
+              "linear-gradient(135deg, rgba(0,180,255,0.14), rgba(167,72,255,0.14), rgba(255,92,138,0.10))",
+            border: "1px solid rgba(110,180,255,0.18)",
+            boxShadow: "0 0 40px rgba(87,117,255,0.12)",
+          }}
+        >
+          <p style={{ marginTop: 0, marginBottom: 28, fontSize: 15.5, lineHeight: 1.8 }}>
+            Les canaux iNrCy représentent les différentes sources de visibilité connectées à votre générateur.
+            Chaque canal alimente votre activité avec ses statistiques, ses interactions et ses performances.
+          </p>
+
+          <div style={{ display: "grid", gap: 24 }}>
+            <div>
+              <div style={{ fontWeight: 700, color: "#66d9ff", marginBottom: 10 }}>🌐 Site iNrCy</div>
+              <div style={{ opacity: 0.96, lineHeight: 1.75, fontSize: 14.5 }}>
+                Votre machine à leads intelligente. Disponible uniquement avec un site créé par iNrCy. Les statistiques et publications Booster remontent automatiquement dans votre générateur.
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 700, color: "#ff9ad5", marginBottom: 10 }}>🖥️ Site web</div>
+              <div style={{ opacity: 0.96, lineHeight: 1.75, fontSize: 14.5 }}>
+                Transforme vos visiteurs en contacts potentiels. Ajoutez l’URL de votre site, connectez Google Analytics / Search Console et intégrez l’iframe iNrCy pour analyser vos performances et afficher vos publications Booster.
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 700, color: "#7df7c4", marginBottom: 10 }}>📍 Google Business</div>
+              <div style={{ opacity: 0.96, lineHeight: 1.75, fontSize: 14.5 }}>
+                Développe votre visibilité locale grâce aux appels, clics, itinéraires et interactions Google. Connectez votre fiche Google Business Profile pour centraliser automatiquement vos statistiques.
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 700, color: "#ffd36f", marginBottom: 10 }}>📘 Facebook</div>
+              <div style={{ opacity: 0.96, lineHeight: 1.75, fontSize: 14.5 }}>
+                Diffuse votre activité et développe l’engagement autour de vos publications. Connectez votre page Facebook pour publier et analyser vos performances directement depuis iNrCy.
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 700, color: "#d6a4ff", marginBottom: 10 }}>📸 Instagram</div>
+              <div style={{ opacity: 0.96, lineHeight: 1.75, fontSize: 14.5 }}>
+                Renforce votre image de marque grâce à vos contenus visuels et à l’engagement généré. Connectez votre compte Instagram professionnel pour diffuser vos publications depuis iNrCy.
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 700, color: "#89c6ff", marginBottom: 10 }}>💼 LinkedIn</div>
+              <div style={{ opacity: 0.96, lineHeight: 1.75, fontSize: 14.5 }}>
+                Développe votre visibilité professionnelle et votre réseau business. Connectez votre page LinkedIn pour publier vos contenus professionnels directement depuis iNrCy.
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: 22,
+              padding: "14px 16px",
+              borderRadius: 14,
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              fontSize: 13,
+              lineHeight: 1.6,
+              opacity: 0.95,
+            }}
+          >
+            Plus vos canaux sont actifs et alimentés par des actions de communication, plus votre générateur augmente sa capacité à attirer de nouveaux contacts.
+          </div>
+        </div>
       </HelpModal>
 
       <HelpModal open={helpSiteInrcyOpen} title="Site iNrCy" onClose={onCloseSiteInrcy}>
