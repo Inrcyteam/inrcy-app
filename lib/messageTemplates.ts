@@ -44,7 +44,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "• Prestations : {{services}}\n" +
       "• Zone d’intervention : {{zones}}\n" +
       "• Nos points forts : {{forces}}\n\n" +
-      "👉 Pour laisser un avis (1 minute) : {{avis_url}}\n\n" +
+      "👉 Pour laisser un avis (1 minute) :\n{{avis_url}}\n\n" +
       "Si vous préférez, vous pouvez aussi nous répondre directement à ce mail : nous lisons tout.\n\n" +
       "Merci d’avance,\n" +
       "{{prenom}} {{nom}}\n" +
@@ -68,7 +68,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "• Métier : {{secteur}}\n" +
       "• Prestations : {{services}}\n" +
       "• Zone d’intervention : {{zones}}\n\n" +
-      "👉 Laisser un avis Trustpilot (1 minute) : {{avis_url}}\n\n" +
+      "👉 Laisser un avis Trustpilot (1 minute) :\n{{avis_url}}\n\n" +
       "Un grand merci,\n" +
       "{{prenom}} {{nom}}\n" +
       "{{nom_entreprise}}\n" +
@@ -87,7 +87,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     body:
       "Bonjour,\n\n" +
       "Merci pour votre confiance. Un avis sur PagesJaunes nous aide à être plus visibles localement et à continuer d’offrir un service de qualité.\n\n" +
-      "✅ En 1 minute : {{avis_url}}\n\n" +
+      "✅ En 1 minute :\n{{avis_url}}\n\n" +
       "Si vous préférez, répondez directement à ce mail avec votre ressenti : nous lisons tout.\n\n" +
       "Merci d’avance,\n" +
       "{{prenom}} {{nom}}\n" +
@@ -106,7 +106,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     body:
       "Bonjour,\n\n" +
       "Merci encore pour votre confiance. Si vous avez 1 minute, votre avis nous aide beaucoup (et aide d’autres personnes à nous choisir).\n\n" +
-      "👉 Lien pour laisser un avis : {{avis_url}}\n\n" +
+      "👉 Lien pour laisser un avis :\n{{avis_url}}\n\n" +
       "Quelques mots suffisent : ce que vous avez apprécié, et ce qu’on pourrait améliorer.\n\n" +
       "Merci !\n" +
       "{{prenom}} — {{nom_entreprise}}\n" +
@@ -480,7 +480,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "• Intervention : [rappel court]\n" +
       "• Conseils : [rappel court]\n\n" +
       "Si vous avez la moindre question (ou si vous observez un point à surveiller), vous pouvez nous joindre facilement : {{telephone}}.\n\n" +
-      "Et si vous souhaitez nous aider : un avis ici → {{avis_url}}\n\n" +
+      "Et si vous souhaitez nous aider :\n{{avis_url}}\n\n" +
       "Cordialement,\n{{prenom}} — {{nom_entreprise}}",
     ctaLabel: "Laisser un avis",
   },

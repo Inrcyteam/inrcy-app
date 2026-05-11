@@ -17,6 +17,7 @@ type Props = {
   mode?: "page" | "drawer";
   onActivitySaved?: () => void;
   onActivityReset?: () => void;
+  onCloseDrawer?: () => void;
 };
 
 type BusinessActivityForm = {
@@ -34,7 +35,7 @@ type BusinessActivityForm = {
 
 const TABLE = "business_profiles";
 
-export default function ActivityContent({ mode = "page", onActivitySaved, onActivityReset }: Props) {
+export default function ActivityContent({ mode = "page", onActivitySaved, onActivityReset, onCloseDrawer }: Props) {
   const initial: BusinessActivityForm = useMemo(
     () => ({
       sectorCategory: "",
@@ -323,8 +324,12 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
       }
 
       setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
       onActivitySaved?.();
+      if (mode === "drawer") {
+        window.setTimeout(() => onCloseDrawer?.(), 700);
+      } else {
+        window.setTimeout(() => setSaved(false), 2500);
+      }
     } catch (e: unknown) {
       setError(getSimpleFrenchErrorMessage(e, "Impossible d'enregistrer cette activité."));
     } finally {

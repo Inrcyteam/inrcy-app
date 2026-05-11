@@ -2266,6 +2266,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           checkActivity={checkActivity}
           inertiaSnapshot={inertiaSnapshot}
           openPanel={openPanel}
+          onCloseDrawer={closePanel}
           referralName={referralName}
           referralPhone={referralPhone}
           referralEmail={referralEmail}

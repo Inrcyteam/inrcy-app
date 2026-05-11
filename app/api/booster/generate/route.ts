@@ -12,7 +12,7 @@ import {
   type BoosterTheme,
 } from "@/lib/boosterPrompt";
 import { sanitizeGmbGeneratedPost } from "@/lib/googleBusinessCompliance";
-import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
+import { sanitizeBoosterSiteText, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 
 type Payload = {
   idea?: string;
@@ -69,8 +69,8 @@ function normalizePost(channel: BoosterChannels, raw: Partial<ChannelPost> | und
   const content = String(raw?.content || "").trim();
 
   return {
-    title: (siteChannel ? title : stripSiteTextFormatting(title)).slice(0, 90),
-    content: (siteChannel ? content : stripSiteTextFormatting(content)).slice(0, siteChannel ? 6000 : 2000),
+    title: (siteChannel ? sanitizeBoosterSiteText(title) : stripSiteTextFormatting(title)).slice(0, 90),
+    content: (siteChannel ? sanitizeBoosterSiteText(content) : stripSiteTextFormatting(content)).slice(0, siteChannel ? 6000 : 2000),
     cta: stripSiteTextFormatting(raw?.cta || "").slice(0, 180),
     hashtags: cleanHashtags(raw?.hashtags),
   };

@@ -118,7 +118,7 @@ export default function FacebookPanel(props: any) {
             placeholder={facebookAccountConnected ? "Compte connecté" : "Aucun compte connecté"}
             style={{
               flex: "1 1 280px",
-              minWidth: 220,
+              minWidth: 0,
               borderRadius: 12,
               border: "1px solid rgba(255,255,255,0.14)",
               background: "rgba(15,23,42,0.65)",
@@ -189,7 +189,7 @@ export default function FacebookPanel(props: any) {
               disabled={facebookPageBusy}
               style={{
                 flex: "1 1 260px",
-                minWidth: 220,
+                minWidth: 0,
                 borderRadius: 12,
                 border: "1px solid rgba(255,255,255,0.14)",
                 background: "rgba(15,23,42,0.65)",
@@ -250,7 +250,7 @@ export default function FacebookPanel(props: any) {
             placeholder={facebookPageConnected ? "Lien récupéré automatiquement" : "Sélectionne une page pour générer le lien"}
             style={{
               flex: "1 1 280px",
-              minWidth: 220,
+              minWidth: 0,
               borderRadius: 12,
               border: "1px solid rgba(255,255,255,0.14)",
               background: "rgba(15,23,42,0.65)",

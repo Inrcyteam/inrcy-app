@@ -129,7 +129,7 @@ export default function SiteInrcyPanel(props: any) {
             title={hasSiteInrcyUrl ? "Supprimez d'abord le lien enregistré pour en saisir un nouveau." : undefined}
             style={{
               flex: "1 1 280px",
-              minWidth: 220,
+              minWidth: 0,
               borderRadius: 12,
               border: "1px solid rgba(255,255,255,0.14)",
               background: "rgba(15,23,42,0.65)",

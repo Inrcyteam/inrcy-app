@@ -90,9 +90,66 @@ export function applyAutoSignatureToText(text: string, signature: string): strin
   return `${normalizedBase}\n\n${normalizedSig}`;
 }
 
+function normalizeHref(rawUrl: string): string {
+  const value = String(rawUrl || "").trim();
+  if (!value) return "";
+
+  if (/^mailto:/i.test(value) || /^tel:/i.test(value)) return value;
+  if (/^www\./i.test(value)) return `https://${value}`;
+  return value;
+}
+
+function splitTrailingUrlPunctuation(url: string): { hrefPart: string; trailingPart: string } {
+  let hrefPart = String(url || "");
+  let trailingPart = "";
+
+  while (/[.,;:!?)]$/.test(hrefPart)) {
+    const last = hrefPart.slice(-1);
+
+    // Keep balanced closing parenthesis inside the URL.
+    if (last === ")") {
+      const openCount = (hrefPart.match(/\(/g) || []).length;
+      const closeCount = (hrefPart.match(/\)/g) || []).length;
+      if (closeCount <= openCount) break;
+    }
+
+    trailingPart = last + trailingPart;
+    hrefPart = hrefPart.slice(0, -1);
+  }
+
+  return { hrefPart, trailingPart };
+}
+
+function linkifyUrls(text: string): string {
+  const source = String(text || "");
+  const urlRegex = /((?:https?:\/\/|www\.)[^\s<]+|mailto:[^\s<]+|tel:[^\s<]+)/gi;
+  let html = "";
+  let lastIndex = 0;
+
+  for (const match of source.matchAll(urlRegex)) {
+    const rawMatch = match[0];
+    const index = match.index ?? 0;
+    const { hrefPart, trailingPart } = splitTrailingUrlPunctuation(rawMatch);
+    const href = normalizeHref(hrefPart);
+
+    html += escapeHtml(source.slice(lastIndex, index));
+
+    if (href) {
+      html += `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;word-break:break-all;overflow-wrap:anywhere;">${escapeHtml(hrefPart)}</a>${escapeHtml(trailingPart)}`;
+    } else {
+      html += escapeHtml(rawMatch);
+    }
+
+    lastIndex = index + rawMatch.length;
+  }
+
+  html += escapeHtml(source.slice(lastIndex));
+  return html;
+}
+
 export function textToSimpleHtml(text: string): string {
-  const escaped = escapeHtml(text).replace(/\n/g, "<br/>");
-  return `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif; white-space:normal; line-height:1.5;">${escaped}</div>`;
+  const linked = linkifyUrls(text).replace(/\n/g, "<br/>");
+  return `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif; white-space:normal; line-height:1.5;">${linked}</div>`;
 }
 
 export function applyAutoSignatureToHtml(baseHtml: string, signatureText: string, signatureImageUrl?: string | null, signatureImageWidth?: number | null): string {

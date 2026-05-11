@@ -56,7 +56,7 @@ export default function BaseModal({
         display: "flex",
         alignItems: "stretch",
         justifyContent: "stretch",
-        padding: `max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))`,
+        padding: `max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left))`,
         boxSizing: "border-box",
         overflow: "hidden",
       }}
@@ -98,7 +98,7 @@ export default function BaseModal({
               width: "100%",
               minWidth: 0,
               display: "grid",
-              gridTemplateColumns: "auto 1fr auto",
+              gridTemplateColumns: "minmax(0, auto) minmax(0, 1fr) minmax(0, auto)",
               alignItems: "center",
               gap: 12,
             }}
@@ -176,7 +176,9 @@ const pillStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.16)",
   background: "rgba(255,255,255,0.06)",
   color: "inherit",
-  whiteSpace: "nowrap",
+  whiteSpace: "normal",
+  textAlign: "center",
+  maxWidth: "100%",
 };
 
 const closeBtnStyle: React.CSSProperties = {

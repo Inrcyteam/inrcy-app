@@ -28,7 +28,11 @@ import {
   generateNumber,
   uid,
 } from "../../_documents/docUtils";
-import { cloneDocumentLines, hasReusableDocumentLine, prepareTemplateSnapshot } from "../../_documents/documentTemplateUtils";
+import {
+  cloneDocumentLines,
+  hasReusableDocumentLine,
+  prepareTemplateSnapshot,
+} from "../../_documents/documentTemplateUtils";
 
 type Profile = {
   user_id: string;
@@ -68,10 +72,16 @@ type ClientType = "" | "particulier" | "professionnel" | "institution";
 
 type ServiceDateMode = "single" | "period";
 
-
 function normalizeClientType(value: unknown): ClientType {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (normalized === "particulier" || normalized === "professionnel" || normalized === "institution") return normalized;
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (
+    normalized === "particulier" ||
+    normalized === "professionnel" ||
+    normalized === "institution"
+  )
+    return normalized;
   return "";
 }
 
@@ -81,7 +91,10 @@ function inferServiceDateMode(value: {
   servicePeriodStart?: string | null;
   servicePeriodEnd?: string | null;
 }): ServiceDateMode {
-  if (value.serviceDateMode === "period" || value.serviceDateMode === "single") {
+  if (
+    value.serviceDateMode === "period" ||
+    value.serviceDateMode === "single"
+  ) {
     return value.serviceDateMode;
   }
   if (value.servicePeriodStart || value.servicePeriodEnd) return "period";
@@ -131,7 +144,9 @@ function DocumentDateInput({
 }
 
 function normalizeAddressPart(value?: string | null) {
-  return String(value ?? "").trim().replace(/\s+/g, " ");
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 function addressContainsPart(address: string, part: string) {
@@ -146,7 +161,11 @@ function addressContainsPart(address: string, part: string) {
   return normalize(address).includes(normalize(part));
 }
 
-function buildFullCrmAddress(address?: string | null, postalCode?: string | null, city?: string | null) {
+function buildFullCrmAddress(
+  address?: string | null,
+  postalCode?: string | null,
+  city?: string | null,
+) {
   const parts: string[] = [];
   const base = normalizeAddressPart(address);
   if (base) parts.push(base);
@@ -172,7 +191,6 @@ function splitFrenchAddress(value?: string | null) {
     city: normalizeAddressPart(match[3]),
   };
 }
-
 
 const VAT_OPTIONS = [0, 5.5, 10, 20];
 
@@ -236,14 +254,14 @@ export default function NewDevisPage() {
   const searchParams = useSearchParams();
   const supabase = createClient();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [documentsSettings, setDocumentsSettings] = useState<InrDocumentsSettings>(DEFAULT_INRDOCUMENTS_SETTINGS);
+  const [documentsSettings, setDocumentsSettings] =
+    useState<InrDocumentsSettings>(DEFAULT_INRDOCUMENTS_SETTINGS);
 
   // Toujours arriver en haut du module (évite de récupérer le scroll du dashboard)
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.scrollTo(0, 0);
   }, []);
-
 
   // PDF → Supabase Storage (PJ iNrbox)
   const ATTACH_BUCKET = "inrbox_attachments";
@@ -269,8 +287,10 @@ export default function NewDevisPage() {
   const [deliveryPostalCode, setDeliveryPostalCode] = useState("");
   const [deliveryCity, setDeliveryCity] = useState("");
   const [sameAddresses, setSameAddresses] = useState(true);
-  const [operationCategory, setOperationCategory] = useState<(typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]>("");
-  const [serviceDateMode, setServiceDateMode] = useState<ServiceDateMode>("single");
+  const [operationCategory, setOperationCategory] =
+    useState<(typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]>("");
+  const [serviceDateMode, setServiceDateMode] =
+    useState<ServiceDateMode>("single");
   const [serviceDate, setServiceDate] = useState("");
   const [servicePeriodStart, setServicePeriodStart] = useState("");
   const [servicePeriodEnd, setServicePeriodEnd] = useState("");
@@ -287,20 +307,31 @@ export default function NewDevisPage() {
   const [purchaseOrderReference, setPurchaseOrderReference] = useState("");
   const [depositKind, setDepositKind] = useState<"" | "percent" | "amount">("");
   const [depositValue, setDepositValue] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<(typeof PAYMENT_METHODS)[number]["key"]>("");
+  const [paymentMethod, setPaymentMethod] =
+    useState<(typeof PAYMENT_METHODS)[number]["key"]>("");
   const [paymentDetails, setPaymentDetails] = useState("");
   const [notes, setNotes] = useState("");
   const [quoteMention, setQuoteMention] = useState("");
 
-  const billingFullAddress = buildFullCrmAddress(billingAddress, billingPostalCode, billingCity);
-  const deliveryFullAddress = buildFullCrmAddress(deliveryAddress, deliveryPostalCode, deliveryCity);
+  const billingFullAddress = buildFullCrmAddress(
+    billingAddress,
+    billingPostalCode,
+    billingCity,
+  );
+  const deliveryFullAddress = buildFullCrmAddress(
+    deliveryAddress,
+    deliveryPostalCode,
+    deliveryCity,
+  );
 
   const setPrimaryClientAddress = (value: string) => {
     const parsed = splitFrenchAddress(value);
     setBillingAddress(parsed.address);
     setBillingPostalCode(parsed.postal_code);
     setBillingCity(parsed.city);
-    setClientAddress(buildFullCrmAddress(parsed.address, parsed.postal_code, parsed.city));
+    setClientAddress(
+      buildFullCrmAddress(parsed.address, parsed.postal_code, parsed.city),
+    );
     if (sameAddresses) {
       setDeliveryAddress(parsed.address);
       setDeliveryPostalCode(parsed.postal_code);
@@ -309,7 +340,11 @@ export default function NewDevisPage() {
   };
 
   useEffect(() => {
-    const full = buildFullCrmAddress(billingAddress, billingPostalCode, billingCity);
+    const full = buildFullCrmAddress(
+      billingAddress,
+      billingPostalCode,
+      billingCity,
+    );
     setClientAddress(full);
     if (!sameAddresses) return;
     setDeliveryAddress(billingAddress);
@@ -320,15 +355,21 @@ export default function NewDevisPage() {
   // --- Remise commerciale (appliquée sur le total TTC)
   const [discountKind, setDiscountKind] = useState<DiscountKind | "">("");
   const [discountValue, setDiscountValue] = useState<number>(0);
-  const [discountDetails, setDiscountDetails] = useState<string>("" );
+  const [discountDetails, setDiscountDetails] = useState<string>("");
 
   // --- CRM: import d'un contact pour pré-remplir automatiquement
   const [crmContacts, setCrmContacts] = useState<CrmContact[]>([]);
   const [crmLoading, setCrmLoading] = useState(false);
   const [crmError, setCrmError] = useState<string | null>(null);
   const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
-  const [formMessage, setFormMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
-  const [crmActionMessage, setCrmActionMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [formMessage, setFormMessage] = useState<{
+    type: "error" | "success";
+    text: string;
+  } | null>(null);
+  const [crmActionMessage, setCrmActionMessage] = useState<{
+    type: "error" | "success";
+    text: string;
+  } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<QuoteFieldErrors>({});
   const [addingToCrm, setAddingToCrm] = useState(false);
   const [currentSaveId, setCurrentSaveId] = useState<string>("");
@@ -341,14 +382,21 @@ export default function NewDevisPage() {
 
   // ✅ Pré-remplissage depuis CRM / iNrBox
   useEffect(() => {
-    const name = searchParams.get("clientName") || searchParams.get("name") || "";
-    const email = searchParams.get("clientEmail") || searchParams.get("email") || "";
-    const address = searchParams.get("clientAddress") || searchParams.get("address") || "";
+    const name =
+      searchParams.get("clientName") || searchParams.get("name") || "";
+    const email =
+      searchParams.get("clientEmail") || searchParams.get("email") || "";
+    const address =
+      searchParams.get("clientAddress") || searchParams.get("address") || "";
     const siren = searchParams.get("clientSiren") || "";
     const vatNumber = searchParams.get("clientVatNumber") || "";
     const billing = searchParams.get("billingAddress") || "";
-    const billingPostal = searchParams.get("billingPostalCode") || searchParams.get("postal_code") || "";
-    const billingCityParam = searchParams.get("billingCity") || searchParams.get("city") || "";
+    const billingPostal =
+      searchParams.get("billingPostalCode") ||
+      searchParams.get("postal_code") ||
+      "";
+    const billingCityParam =
+      searchParams.get("billingCity") || searchParams.get("city") || "";
     const delivery = searchParams.get("deliveryAddress") || "";
     if (name) setClientName((prev) => prev || name);
     if (email) setClientEmail((prev) => prev || email);
@@ -358,24 +406,36 @@ export default function NewDevisPage() {
       setClientAddress((prev) => prev || address);
       const parsed = splitFrenchAddress(billing || address);
       setBillingAddress((prev) => prev || parsed.address);
-      setBillingPostalCode((prev) => prev || billingPostal || parsed.postal_code);
+      setBillingPostalCode(
+        (prev) => prev || billingPostal || parsed.postal_code,
+      );
       setBillingCity((prev) => prev || billingCityParam || parsed.city);
       const parsedDelivery = splitFrenchAddress(delivery || billing || address);
       setDeliveryAddress((prev) => prev || parsedDelivery.address);
-      setDeliveryPostalCode((prev) => prev || billingPostal || parsedDelivery.postal_code);
-      setDeliveryCity((prev) => prev || billingCityParam || parsedDelivery.city);
+      setDeliveryPostalCode(
+        (prev) => prev || billingPostal || parsedDelivery.postal_code,
+      );
+      setDeliveryCity(
+        (prev) => prev || billingCityParam || parsedDelivery.city,
+      );
     } else {
       if (billing) {
         const parsed = splitFrenchAddress(billing);
         setBillingAddress((prev) => prev || parsed.address);
-        setBillingPostalCode((prev) => prev || billingPostal || parsed.postal_code);
+        setBillingPostalCode(
+          (prev) => prev || billingPostal || parsed.postal_code,
+        );
         setBillingCity((prev) => prev || billingCityParam || parsed.city);
       }
       if (delivery) {
         const parsedDelivery = splitFrenchAddress(delivery);
         setDeliveryAddress((prev) => prev || parsedDelivery.address);
-        setDeliveryPostalCode((prev) => prev || billingPostal || parsedDelivery.postal_code);
-        setDeliveryCity((prev) => prev || billingCityParam || parsedDelivery.city);
+        setDeliveryPostalCode(
+          (prev) => prev || billingPostal || parsedDelivery.postal_code,
+        );
+        setDeliveryCity(
+          (prev) => prev || billingCityParam || parsedDelivery.city,
+        );
       }
     }
   }, []);
@@ -393,13 +453,26 @@ export default function NewDevisPage() {
         const json = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          throw new Error(getSimpleFrenchErrorMessage(json?.error, "Impossible de charger les contacts CRM."));
+          throw new Error(
+            getSimpleFrenchErrorMessage(
+              json?.error,
+              "Impossible de charger les contacts CRM.",
+            ),
+          );
         }
 
-        const contacts: CrmContact[] = Array.isArray(json?.contacts) ? json.contacts : [];
+        const contacts: CrmContact[] = Array.isArray(json?.contacts)
+          ? json.contacts
+          : [];
         if (!cancelled) setCrmContacts(contacts);
       } catch (e: any) {
-        if (!cancelled) setCrmError(getSimpleFrenchErrorMessage(e, "Impossible de charger les contacts CRM."));
+        if (!cancelled)
+          setCrmError(
+            getSimpleFrenchErrorMessage(
+              e,
+              "Impossible de charger les contacts CRM.",
+            ),
+          );
       } finally {
         if (!cancelled) setCrmLoading(false);
       }
@@ -414,18 +487,34 @@ export default function NewDevisPage() {
   const applyCrmContact = (c: CrmContact) => {
     const displayName = contactDisplayName(c);
 
-    const billingParsed = splitFrenchAddress(c.billing_address || c.address || "");
-    const deliveryParsed = splitFrenchAddress(c.delivery_address || c.address || "");
-    const nextBillingPostal = normalizeAddressPart(c.postal_code) || billingParsed.postal_code;
+    const billingParsed = splitFrenchAddress(
+      c.billing_address || c.address || "",
+    );
+    const deliveryParsed = splitFrenchAddress(
+      c.delivery_address || c.address || "",
+    );
+    const nextBillingPostal =
+      normalizeAddressPart(c.postal_code) || billingParsed.postal_code;
     const nextBillingCity = normalizeAddressPart(c.city) || billingParsed.city;
-    const fullAddress = buildFullCrmAddress(billingParsed.address, nextBillingPostal, nextBillingCity);
-    const fullDeliveryAddress = buildFullCrmAddress(deliveryParsed.address, nextBillingPostal, nextBillingCity);
+    const fullAddress = buildFullCrmAddress(
+      billingParsed.address,
+      nextBillingPostal,
+      nextBillingCity,
+    );
+    const fullDeliveryAddress = buildFullCrmAddress(
+      deliveryParsed.address,
+      nextBillingPostal,
+      nextBillingCity,
+    );
 
     setClientName(displayName);
     setClientEmail((c.email || "").trim());
     setClientSiren((c.siret || "").trim());
     setClientVatNumber((c.vat_number || "").trim());
-    setClientType(normalizeClientType(c.category) || ((c.siret || c.company_name) ? "professionnel" : "particulier"));
+    setClientType(
+      normalizeClientType(c.category) ||
+        (c.siret || c.company_name ? "professionnel" : "particulier"),
+    );
     setBillingAddress(billingParsed.address);
     setBillingPostalCode(nextBillingPostal);
     setBillingCity(nextBillingCity);
@@ -456,12 +545,18 @@ export default function NewDevisPage() {
   const filteredCrmContacts = useMemo(() => {
     const query = normalizeLabel(crmQuery);
     if (!query) return sortedCrmContacts;
-    return sortedCrmContacts.filter((contact) => normalizeLabel(contactSearchText(contact)).includes(query));
+    return sortedCrmContacts.filter((contact) =>
+      normalizeLabel(contactSearchText(contact)).includes(query),
+    );
   }, [crmQuery, sortedCrmContacts]);
 
   const selectedCrmContact = useMemo(() => {
     if (!selectedCrmContactId) return null;
-    return sortedCrmContacts.find((x) => String(x.id) === String(selectedCrmContactId)) || null;
+    return (
+      sortedCrmContacts.find(
+        (x) => String(x.id) === String(selectedCrmContactId),
+      ) || null
+    );
   }, [selectedCrmContactId, sortedCrmContacts]);
 
   // fermer le dropdown au clic extérieur
@@ -487,7 +582,16 @@ export default function NewDevisPage() {
   const selectCrmContact = (c: CrmContact) => {
     setSelectedCrmContactId(String(c.id));
     applyCrmContact(c);
-    setFieldErrors((prev) => ({ ...prev, clientType: undefined, clientName: undefined, billingAddress: undefined, billingPostalCode: undefined, billingCity: undefined, clientEmail: undefined, clientSiren: undefined }));
+    setFieldErrors((prev) => ({
+      ...prev,
+      clientType: undefined,
+      clientName: undefined,
+      billingAddress: undefined,
+      billingPostalCode: undefined,
+      billingCity: undefined,
+      clientEmail: undefined,
+      clientSiren: undefined,
+    }));
     setCrmQuery("");
     setCrmOpen(false);
   };
@@ -502,10 +606,17 @@ export default function NewDevisPage() {
   ]);
 
   const applyDocumentDefaults = (settings: InrDocumentsSettings) => {
-    setOperationCategory(settings.common.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]);
+    setOperationCategory(
+      settings.common
+        .operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"],
+    );
     setDepositKind(settings.common.depositKind);
-    setDepositValue(settings.common.depositKind ? settings.common.depositValue : "");
-    setPaymentMethod(settings.common.paymentMethod as (typeof PAYMENT_METHODS)[number]["key"]);
+    setDepositValue(
+      settings.common.depositKind ? settings.common.depositValue : "",
+    );
+    setPaymentMethod(
+      settings.common.paymentMethod as (typeof PAYMENT_METHODS)[number]["key"],
+    );
     setPaymentDetails(settings.common.paymentDetails);
     setNotes(settings.common.notes);
     setQuoteMention(settings.quote.mention);
@@ -515,10 +626,14 @@ export default function NewDevisPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const shouldApplyDefaults = !(searchParams.get("saveId") || searchParams.get("docSaveId"));
+    const shouldApplyDefaults = !(
+      searchParams.get("saveId") || searchParams.get("docSaveId")
+    );
 
     const loadSettings = async (applyDefaults: boolean) => {
-      const response = await fetch("/api/documents/settings", { cache: "no-store" });
+      const response = await fetch("/api/documents/settings", {
+        cache: "no-store",
+      });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) return;
       const nextSettings = normalizeInrDocumentsSettings(json?.settings);
@@ -536,7 +651,10 @@ export default function NewDevisPage() {
     window.addEventListener(INRDOCUMENTS_SETTINGS_UPDATED_EVENT, onUpdated);
     return () => {
       cancelled = true;
-      window.removeEventListener(INRDOCUMENTS_SETTINGS_UPDATED_EVENT, onUpdated);
+      window.removeEventListener(
+        INRDOCUMENTS_SETTINGS_UPDATED_EVENT,
+        onUpdated,
+      );
     };
   }, [searchParams]);
 
@@ -556,7 +674,7 @@ export default function NewDevisPage() {
       const { data } = await supabase
         .from("profiles")
         .select(
-          "user_id,company_legal_name,hq_address,hq_zip,hq_city,contact_email,phone,siren,rcs_city,vat_number,vat_dispense,logo_url,logo_path"
+          "user_id,company_legal_name,hq_address,hq_zip,hq_city,contact_email,phone,siren,rcs_city,vat_number,vat_dispense,logo_url,logo_path",
         )
         .eq("user_id", user.id)
         .single();
@@ -566,7 +684,15 @@ export default function NewDevisPage() {
         logo_url: data?.logo_url ?? null,
       });
 
-      setProfile(data ? ({ ...(data as Profile), logo_url: resolvedLogo.logoUrl, logo_path: resolvedLogo.logoPath } as Profile) : null);
+      setProfile(
+        data
+          ? ({
+              ...(data as Profile),
+              logo_url: resolvedLogo.logoUrl,
+              logo_path: resolvedLogo.logoPath,
+            } as Profile)
+          : null,
+      );
     };
     load();
   }, [supabase]);
@@ -577,9 +703,9 @@ export default function NewDevisPage() {
         lines,
         vatDispense,
         discountKind ? (discountKind as DiscountKind) : null,
-        discountValue
+        discountValue,
       ),
-    [lines, vatDispense, discountKind, discountValue]
+    [lines, vatDispense, discountKind, discountValue],
   );
 
   // --- Sauvegardes (brouillons locaux)
@@ -588,46 +714,46 @@ export default function NewDevisPage() {
     updatedAtISO: string;
     name?: string | null;
     snapshot: {
-  number: string;
-  docDateISO: string;
-  clientName: string;
-  clientAddress: string;
-  billingAddress?: string;
-  billingPostalCode?: string;
-  billingCity?: string;
-  deliveryAddress?: string;
-  deliveryPostalCode?: string;
-  deliveryCity?: string;
-  sameAddresses?: boolean;
-  clientEmail: string;
-  clientSiren?: string;
-  clientVatNumber?: string;
-  clientType?: ClientType;
-  vatDispense?: boolean;
-  operationCategory?: (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"];
-  serviceDateMode?: ServiceDateMode;
-  serviceDate?: string;
-  servicePeriodStart?: string;
-  servicePeriodEnd?: string;
-  purchaseOrderReference?: string;
-  depositKind?: "" | "percent" | "amount";
-  depositValue?: string;
-  paymentMethod?: (typeof PAYMENT_METHODS)[number]["key"];
-  paymentDetails?: string;
-  notes?: string;
-  quoteMention?: string;
-  validityDays: number;
-  lines: LineItem[];
-  discountKind: DiscountKind | "";
-  discountValue: number;
-  discountDetails: string;
-  status?: DocRecord["status"];
-  isFinalized?: boolean;
-  finalizedAt?: string | null;
-  lockedAt?: string | null;
-  isTemplate?: boolean;
-  templateName?: string | null;
-};
+      number: string;
+      docDateISO: string;
+      clientName: string;
+      clientAddress: string;
+      billingAddress?: string;
+      billingPostalCode?: string;
+      billingCity?: string;
+      deliveryAddress?: string;
+      deliveryPostalCode?: string;
+      deliveryCity?: string;
+      sameAddresses?: boolean;
+      clientEmail: string;
+      clientSiren?: string;
+      clientVatNumber?: string;
+      clientType?: ClientType;
+      vatDispense?: boolean;
+      operationCategory?: (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"];
+      serviceDateMode?: ServiceDateMode;
+      serviceDate?: string;
+      servicePeriodStart?: string;
+      servicePeriodEnd?: string;
+      purchaseOrderReference?: string;
+      depositKind?: "" | "percent" | "amount";
+      depositValue?: string;
+      paymentMethod?: (typeof PAYMENT_METHODS)[number]["key"];
+      paymentDetails?: string;
+      notes?: string;
+      quoteMention?: string;
+      validityDays: number;
+      lines: LineItem[];
+      discountKind: DiscountKind | "";
+      discountValue: number;
+      discountDetails: string;
+      status?: DocRecord["status"];
+      isFinalized?: boolean;
+      finalizedAt?: string | null;
+      lockedAt?: string | null;
+      isTemplate?: boolean;
+      templateName?: string | null;
+    };
   };
 
   const SAVES_TYPE = "devis" as const;
@@ -692,9 +818,9 @@ export default function NewDevisPage() {
     void refreshSaves();
   }, []);
 
-
   useEffect(() => {
-    const saveId = searchParams.get("saveId") || searchParams.get("docSaveId") || "";
+    const saveId =
+      searchParams.get("saveId") || searchParams.get("docSaveId") || "";
     if (!saveId) return;
 
     let cancelled = false;
@@ -716,19 +842,27 @@ export default function NewDevisPage() {
 
       if (error) {
         console.error(error);
-        if (!cancelled) setFormMessage({ type: "error", text: "Impossible de réouvrir ce devis." });
+        if (!cancelled)
+          setFormMessage({
+            type: "error",
+            text: "Impossible de réouvrir ce devis.",
+          });
         return;
       }
 
       if (!data?.payload) {
-        if (!cancelled) setFormMessage({ type: "error", text: "Devis introuvable." });
+        if (!cancelled)
+          setFormMessage({ type: "error", text: "Devis introuvable." });
         return;
       }
 
       if (!cancelled) {
         applyDraftSnapshot(data.payload as DevisDraft["snapshot"]);
         setCurrentSaveId(data.id);
-        setFormMessage({ type: "success", text: "Devis réouvert depuis iNrSend." });
+        setFormMessage({
+          type: "success",
+          text: "Devis réouvert depuis iNrSend.",
+        });
       }
     };
 
@@ -755,7 +889,9 @@ export default function NewDevisPage() {
 
   const removeLine = (id: string) => {
     clearFieldError("lines");
-    setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.id !== id) : prev));
+    setLines((prev) =>
+      prev.length > 1 ? prev.filter((l) => l.id !== id) : prev,
+    );
   };
 
   const updateLine = (id: string, patch: Partial<LineItem>) => {
@@ -764,32 +900,55 @@ export default function NewDevisPage() {
   };
 
   const clearFieldError = (field: keyof QuoteFieldErrors) => {
-    setFieldErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
+    setFieldErrors((prev) =>
+      prev[field] ? { ...prev, [field]: undefined } : prev,
+    );
   };
 
   const validateQuoteAction = (options?: { requireEmail?: boolean }) => {
     const nextErrors: QuoteFieldErrors = {};
     const requireEmail = !!options?.requireEmail;
-    const hasValidLine = lines.some((line) => (line.label || "").trim() && Number(line.qty) > 0 && Number(line.unitPrice) >= 0);
+    const hasValidLine = lines.some(
+      (line) =>
+        (line.label || "").trim() &&
+        Number(line.qty) > 0 &&
+        Number(line.unitPrice) >= 0,
+    );
 
     if (!clientType) nextErrors.clientType = "Type de client obligatoire.";
-    if (!(clientName || "").trim()) nextErrors.clientName = "Nom client obligatoire.";
-    if (!billingAddress.trim()) nextErrors.billingAddress = "Adresse obligatoire.";
-    if (!billingPostalCode.trim()) nextErrors.billingPostalCode = "Code postal obligatoire.";
+    if (!(clientName || "").trim())
+      nextErrors.clientName = "Nom client obligatoire.";
+    if (!billingAddress.trim())
+      nextErrors.billingAddress = "Adresse obligatoire.";
+    if (!billingPostalCode.trim())
+      nextErrors.billingPostalCode = "Code postal obligatoire.";
     if (!billingCity.trim()) nextErrors.billingCity = "Ville obligatoire.";
-    if (clientType && clientType !== "particulier" && !(clientSiren || "").trim()) nextErrors.clientSiren = "SIREN client obligatoire pour ce type de client.";
-    if (!(number || "").trim()) nextErrors.number = "Numéro de devis obligatoire.";
-    if (!(docDateISO || "").trim()) nextErrors.docDateISO = "Date du devis obligatoire.";
+    if (
+      clientType &&
+      clientType !== "particulier" &&
+      !(clientSiren || "").trim()
+    )
+      nextErrors.clientSiren =
+        "SIREN client obligatoire pour ce type de client.";
+    if (!(number || "").trim())
+      nextErrors.number = "Numéro de devis obligatoire.";
+    if (!(docDateISO || "").trim())
+      nextErrors.docDateISO = "Date du devis obligatoire.";
     if (!Number(validityDays) || Number(validityDays) < 1) {
       nextErrors.validityDays = "Durée de validité obligatoire.";
       setAdvancedOpen(true);
     }
-    if (!hasValidLine) nextErrors.lines = "Ajoutez au moins une prestation valide (libellé, quantité et prix HT).";
+    if (!hasValidLine)
+      nextErrors.lines =
+        "Ajoutez au moins une prestation valide (libellé, quantité et prix HT).";
 
     const normalizedEmail = (clientEmail || "").trim();
     if (requireEmail) {
-      if (!normalizedEmail) nextErrors.clientEmail = "Email client obligatoire pour envoyer par mail.";
-      else if (!isValidEmail(normalizedEmail)) nextErrors.clientEmail = "Email client invalide.";
+      if (!normalizedEmail)
+        nextErrors.clientEmail =
+          "Email client obligatoire pour envoyer par mail.";
+      else if (!isValidEmail(normalizedEmail))
+        nextErrors.clientEmail = "Email client invalide.";
     } else if (normalizedEmail && !isValidEmail(normalizedEmail)) {
       nextErrors.clientEmail = "Email client invalide.";
     }
@@ -802,64 +961,85 @@ export default function NewDevisPage() {
     return true;
   };
 
-  const saveDraft = async (options?: { silent?: boolean; asFinalized?: boolean; targetStatus?: DocRecord["status"] }) => {
+  const saveDraft = async (options?: {
+    silent?: boolean;
+    asFinalized?: boolean;
+    targetStatus?: DocRecord["status"];
+  }) => {
     const nowISO = new Date().toISOString();
-    const nextFinalizedAt = options?.asFinalized ? (finalizedAt || nowISO) : finalizedAt;
+    const nextFinalizedAt = options?.asFinalized
+      ? finalizedAt || nowISO
+      : finalizedAt;
     const finalNumber = number || generateNumber("DEV");
     if (!number) setNumber(finalNumber);
 
     const normalizedEmail = (clientEmail || "").trim();
     if (normalizedEmail && !isValidEmail(normalizedEmail)) {
-      setFieldErrors((prev) => ({ ...prev, clientEmail: "Email client invalide." }));
+      setFieldErrors((prev) => ({
+        ...prev,
+        clientEmail: "Email client invalide.",
+      }));
       setFormMessage(null);
       return null;
     }
 
-   const normalizedBillingAddress = buildFullCrmAddress(billingAddress, billingPostalCode, billingCity);
-   const normalizedDeliveryAddress = sameAddresses ? normalizedBillingAddress : buildFullCrmAddress(deliveryAddress, deliveryPostalCode, deliveryCity);
-   const savedServiceDate = serviceDateMode === "single" ? serviceDate : "";
-   const savedServicePeriodStart = serviceDateMode === "period" ? servicePeriodStart : "";
-   const savedServicePeriodEnd = serviceDateMode === "period" ? servicePeriodEnd : "";
+    const normalizedBillingAddress = buildFullCrmAddress(
+      billingAddress,
+      billingPostalCode,
+      billingCity,
+    );
+    const normalizedDeliveryAddress = sameAddresses
+      ? normalizedBillingAddress
+      : buildFullCrmAddress(deliveryAddress, deliveryPostalCode, deliveryCity);
+    const savedServiceDate = serviceDateMode === "single" ? serviceDate : "";
+    const savedServicePeriodStart =
+      serviceDateMode === "period" ? servicePeriodStart : "";
+    const savedServicePeriodEnd =
+      serviceDateMode === "period" ? servicePeriodEnd : "";
 
-   const snapshot: DevisDraft["snapshot"] = {
-  number: finalNumber,
-  docDateISO: docDateISO || new Date().toISOString().slice(0, 10),
-  clientName,
-  clientAddress: normalizedBillingAddress,
-  billingAddress: billingAddress.trim(),
-  billingPostalCode: billingPostalCode.trim(),
-  billingCity: billingCity.trim(),
-  deliveryAddress: sameAddresses ? billingAddress.trim() : deliveryAddress.trim(),
-  deliveryPostalCode: sameAddresses ? billingPostalCode.trim() : deliveryPostalCode.trim(),
-  deliveryCity: sameAddresses ? billingCity.trim() : deliveryCity.trim(),
-  sameAddresses,
-  clientEmail,
-  clientSiren,
-  clientVatNumber,
-  clientType,
-  vatDispense,
-  operationCategory,
-  serviceDateMode,
-  serviceDate: savedServiceDate,
-  servicePeriodStart: savedServicePeriodStart,
-  servicePeriodEnd: savedServicePeriodEnd,
-  purchaseOrderReference,
-  depositKind,
-  depositValue,
-  paymentMethod,
-  paymentDetails,
-  notes,
-  quoteMention,
-  validityDays,
-  lines,
-  discountKind,
-  discountValue: Number(discountValue) || 0,
-  discountDetails,
-  status: options?.targetStatus || (isFinalized ? "envoye" : "brouillon"),
-  isFinalized: options?.asFinalized ? true : isFinalized,
-  finalizedAt: options?.asFinalized ? nextFinalizedAt : (finalizedAt || null),
-  lockedAt: options?.asFinalized ? nextFinalizedAt : (finalizedAt || null),
-};
+    const snapshot: DevisDraft["snapshot"] = {
+      number: finalNumber,
+      docDateISO: docDateISO || new Date().toISOString().slice(0, 10),
+      clientName,
+      clientAddress: normalizedBillingAddress,
+      billingAddress: billingAddress.trim(),
+      billingPostalCode: billingPostalCode.trim(),
+      billingCity: billingCity.trim(),
+      deliveryAddress: sameAddresses
+        ? billingAddress.trim()
+        : deliveryAddress.trim(),
+      deliveryPostalCode: sameAddresses
+        ? billingPostalCode.trim()
+        : deliveryPostalCode.trim(),
+      deliveryCity: sameAddresses ? billingCity.trim() : deliveryCity.trim(),
+      sameAddresses,
+      clientEmail,
+      clientSiren,
+      clientVatNumber,
+      clientType,
+      vatDispense,
+      operationCategory,
+      serviceDateMode,
+      serviceDate: savedServiceDate,
+      servicePeriodStart: savedServicePeriodStart,
+      servicePeriodEnd: savedServicePeriodEnd,
+      purchaseOrderReference,
+      depositKind,
+      depositValue,
+      paymentMethod,
+      paymentDetails,
+      notes,
+      quoteMention,
+      validityDays,
+      lines,
+      discountKind,
+      discountValue: Number(discountValue) || 0,
+      discountDetails,
+      status: options?.targetStatus || (isFinalized ? "envoye" : "brouillon"),
+      isFinalized: options?.asFinalized ? true : isFinalized,
+      finalizedAt: options?.asFinalized ? nextFinalizedAt : finalizedAt || null,
+      lockedAt: options?.asFinalized ? nextFinalizedAt : finalizedAt || null,
+    };
 
     const {
       data: { user },
@@ -896,11 +1076,15 @@ export default function NewDevisPage() {
 
     if (error) {
       console.error(error);
-      setFormMessage({ type: "error", text: "Impossible d’enregistrer ce devis pour le moment." });
+      setFormMessage({
+        type: "error",
+        text: "Impossible d’enregistrer ce devis pour le moment.",
+      });
       return;
     }
 
-    const savedId = (savedRows?.[0] as { id?: string } | undefined)?.id || currentSaveId;
+    const savedId =
+      (savedRows?.[0] as { id?: string } | undefined)?.id || currentSaveId;
     if (savedId) setCurrentSaveId(savedId);
     if (options?.asFinalized) {
       setIsFinalized(true);
@@ -911,25 +1095,49 @@ export default function NewDevisPage() {
     if (!options?.silent) {
       setDocumentsTab("saves");
       setDraftsOpen(true);
-      setFormMessage({ type: "success", text: currentSaveId ? "Devis mis à jour." : "Devis enregistré." });
+      setFormMessage({
+        type: "success",
+        text: currentSaveId ? "Devis mis à jour." : "Devis enregistré.",
+      });
     }
 
     return savedId as string | undefined;
   };
 
   const applyDraftSnapshot = (s: DevisDraft["snapshot"]) => {
-    const legacyBilling = splitFrenchAddress(s.billingAddress || s.clientAddress || "");
+    const legacyBilling = splitFrenchAddress(
+      s.billingAddress || s.clientAddress || "",
+    );
     const nextBillingAddress = legacyBilling.address;
-    const nextBillingPostalCode = (s as any).billingPostalCode || legacyBilling.postal_code;
+    const nextBillingPostalCode =
+      (s as any).billingPostalCode || legacyBilling.postal_code;
     const nextBillingCity = (s as any).billingCity || legacyBilling.city;
-    const nextBillingFullAddress = buildFullCrmAddress(nextBillingAddress, nextBillingPostalCode, nextBillingCity);
-    const legacyDelivery = splitFrenchAddress(s.deliveryAddress || nextBillingFullAddress);
-    const nextSameAddresses = typeof s.sameAddresses === "boolean"
-      ? s.sameAddresses
-      : !s.deliveryAddress || buildFullCrmAddress(legacyDelivery.address, (s as any).deliveryPostalCode || legacyDelivery.postal_code, (s as any).deliveryCity || legacyDelivery.city) === nextBillingFullAddress;
-    const nextDeliveryAddress = nextSameAddresses ? nextBillingAddress : legacyDelivery.address;
-    const nextDeliveryPostalCode = nextSameAddresses ? nextBillingPostalCode : ((s as any).deliveryPostalCode || legacyDelivery.postal_code);
-    const nextDeliveryCity = nextSameAddresses ? nextBillingCity : ((s as any).deliveryCity || legacyDelivery.city);
+    const nextBillingFullAddress = buildFullCrmAddress(
+      nextBillingAddress,
+      nextBillingPostalCode,
+      nextBillingCity,
+    );
+    const legacyDelivery = splitFrenchAddress(
+      s.deliveryAddress || nextBillingFullAddress,
+    );
+    const nextSameAddresses =
+      typeof s.sameAddresses === "boolean"
+        ? s.sameAddresses
+        : !s.deliveryAddress ||
+          buildFullCrmAddress(
+            legacyDelivery.address,
+            (s as any).deliveryPostalCode || legacyDelivery.postal_code,
+            (s as any).deliveryCity || legacyDelivery.city,
+          ) === nextBillingFullAddress;
+    const nextDeliveryAddress = nextSameAddresses
+      ? nextBillingAddress
+      : legacyDelivery.address;
+    const nextDeliveryPostalCode = nextSameAddresses
+      ? nextBillingPostalCode
+      : (s as any).deliveryPostalCode || legacyDelivery.postal_code;
+    const nextDeliveryCity = nextSameAddresses
+      ? nextBillingCity
+      : (s as any).deliveryCity || legacyDelivery.city;
 
     setNumber(s.number);
     setDocDateISO(s.docDateISO);
@@ -946,16 +1154,25 @@ export default function NewDevisPage() {
     setClientSiren(s.clientSiren || "");
     setClientVatNumber(s.clientVatNumber || "");
     setClientType(normalizeClientType((s as any).clientType));
-    setOperationCategory((s.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]) || "");
+    setOperationCategory(
+      (s.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]) ||
+        "",
+    );
     const nextServiceDateMode = inferServiceDateMode(s);
     setServiceDateMode(nextServiceDateMode);
     setServiceDate(nextServiceDateMode === "single" ? s.serviceDate || "" : "");
-    setServicePeriodStart(nextServiceDateMode === "period" ? s.servicePeriodStart || "" : "");
-    setServicePeriodEnd(nextServiceDateMode === "period" ? s.servicePeriodEnd || "" : "");
+    setServicePeriodStart(
+      nextServiceDateMode === "period" ? s.servicePeriodStart || "" : "",
+    );
+    setServicePeriodEnd(
+      nextServiceDateMode === "period" ? s.servicePeriodEnd || "" : "",
+    );
     setPurchaseOrderReference(s.purchaseOrderReference || "");
     setDepositKind((s.depositKind as "" | "percent" | "amount") || "");
     setDepositValue(s.depositValue || "");
-    setPaymentMethod((s.paymentMethod as (typeof PAYMENT_METHODS)[number]["key"]) || "");
+    setPaymentMethod(
+      (s.paymentMethod as (typeof PAYMENT_METHODS)[number]["key"]) || "",
+    );
     setPaymentDetails(s.paymentDetails || "");
     setNotes(s.notes || "");
     setQuoteMention(s.quoteMention || documentsSettings.quote.mention || "");
@@ -971,11 +1188,16 @@ export default function NewDevisPage() {
   const convertCurrentDevisToInvoice = async () => {
     const devisSaveId = await saveDraft({ silent: true });
     if (!devisSaveId) {
-      setFormMessage({ type: "error", text: "Impossible de préparer ce devis pour la conversion." });
+      setFormMessage({
+        type: "error",
+        text: "Impossible de préparer ce devis pour la conversion.",
+      });
       return;
     }
 
-    router.push(`/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent(devisSaveId)}`);
+    router.push(
+      `/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent(devisSaveId)}`,
+    );
   };
 
   const openDraft = (d: DevisDraft) => {
@@ -1004,14 +1226,19 @@ export default function NewDevisPage() {
   const saveAsTemplate = async () => {
     const hasValidLine = hasReusableDocumentLine(lines);
     if (!hasValidLine) {
-      setFieldErrors((prev) => ({ ...prev, lines: "Ajoutez au moins une prestation valide avant d’enregistrer un modèle." }));
+      setFieldErrors((prev) => ({
+        ...prev,
+        lines:
+          "Ajoutez au moins une prestation valide avant d’enregistrer un modèle.",
+      }));
       setFormMessage(null);
       return;
     }
 
     const templateName = await promptInrcy({
       title: "Créer un modèle",
-      message: "Donnez un nom à ce modèle de devis pour le réutiliser plus tard.",
+      message:
+        "Donnez un nom à ce modèle de devis pour le réutiliser plus tard.",
       defaultValue: "Modèle devis",
       placeholder: "Nom du modèle",
       confirmLabel: "Créer modèle",
@@ -1022,28 +1249,33 @@ export default function NewDevisPage() {
     const cleanName = templateName.trim() || "Modèle devis";
     const nowISO = new Date().toISOString();
     const savedServiceDate = serviceDateMode === "single" ? serviceDate : "";
-    const savedServicePeriodStart = serviceDateMode === "period" ? servicePeriodStart : "";
-    const savedServicePeriodEnd = serviceDateMode === "period" ? servicePeriodEnd : "";
-    const snapshot = prepareTemplateSnapshot<DevisDraft["snapshot"]>({
-      vatDispense,
-      operationCategory,
-      serviceDateMode,
-      serviceDate: savedServiceDate,
-      servicePeriodStart: savedServicePeriodStart,
-      servicePeriodEnd: savedServicePeriodEnd,
-      purchaseOrderReference,
-      depositKind,
-      depositValue,
-      paymentMethod,
-      paymentDetails,
-      notes,
-      quoteMention,
-      validityDays,
-      lines: cloneDocumentLines(lines),
-      discountKind,
-      discountValue: Number(discountValue) || 0,
-      discountDetails,
-    }, cleanName);
+    const savedServicePeriodStart =
+      serviceDateMode === "period" ? servicePeriodStart : "";
+    const savedServicePeriodEnd =
+      serviceDateMode === "period" ? servicePeriodEnd : "";
+    const snapshot = prepareTemplateSnapshot<DevisDraft["snapshot"]>(
+      {
+        vatDispense,
+        operationCategory,
+        serviceDateMode,
+        serviceDate: savedServiceDate,
+        servicePeriodStart: savedServicePeriodStart,
+        servicePeriodEnd: savedServicePeriodEnd,
+        purchaseOrderReference,
+        depositKind,
+        depositValue,
+        paymentMethod,
+        paymentDetails,
+        notes,
+        quoteMention,
+        validityDays,
+        lines: cloneDocumentLines(lines),
+        discountKind,
+        discountValue: Number(discountValue) || 0,
+        discountDetails,
+      },
+      cleanName,
+    );
 
     const {
       data: { user },
@@ -1061,7 +1293,10 @@ export default function NewDevisPage() {
 
     if (error) {
       console.error(error);
-      setFormMessage({ type: "error", text: "Impossible d’enregistrer ce modèle pour le moment." });
+      setFormMessage({
+        type: "error",
+        text: "Impossible d’enregistrer ce modèle pour le moment.",
+      });
       return;
     }
 
@@ -1078,27 +1313,58 @@ export default function NewDevisPage() {
     setNumber(generateNumber("DEV"));
     setDocDateISO(new Date().toISOString().slice(0, 10));
 
-    setOperationCategory((s.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]) || (documentsSettings.common.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]));
+    setOperationCategory(
+      (s.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]) ||
+        (documentsSettings.common
+          .operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]),
+    );
     const nextServiceDateMode = inferServiceDateMode(s);
     setServiceDateMode(nextServiceDateMode);
     setServiceDate(nextServiceDateMode === "single" ? s.serviceDate || "" : "");
-    setServicePeriodStart(nextServiceDateMode === "period" ? s.servicePeriodStart || "" : "");
-    setServicePeriodEnd(nextServiceDateMode === "period" ? s.servicePeriodEnd || "" : "");
+    setServicePeriodStart(
+      nextServiceDateMode === "period" ? s.servicePeriodStart || "" : "",
+    );
+    setServicePeriodEnd(
+      nextServiceDateMode === "period" ? s.servicePeriodEnd || "" : "",
+    );
     setPurchaseOrderReference(s.purchaseOrderReference || "");
-    setDepositKind((s.depositKind as "" | "percent" | "amount") || documentsSettings.common.depositKind);
-    setDepositValue(s.depositValue || (documentsSettings.common.depositKind ? documentsSettings.common.depositValue : ""));
-    setPaymentMethod(((s.paymentMethod as (typeof PAYMENT_METHODS)[number]["key"]) || documentsSettings.common.paymentMethod) as (typeof PAYMENT_METHODS)[number]["key"]);
-    setPaymentDetails(s.paymentDetails || documentsSettings.common.paymentDetails);
+    setDepositKind(
+      (s.depositKind as "" | "percent" | "amount") ||
+        documentsSettings.common.depositKind,
+    );
+    setDepositValue(
+      s.depositValue ||
+        (documentsSettings.common.depositKind
+          ? documentsSettings.common.depositValue
+          : ""),
+    );
+    setPaymentMethod(
+      ((s.paymentMethod as (typeof PAYMENT_METHODS)[number]["key"]) ||
+        documentsSettings.common
+          .paymentMethod) as (typeof PAYMENT_METHODS)[number]["key"],
+    );
+    setPaymentDetails(
+      s.paymentDetails || documentsSettings.common.paymentDetails,
+    );
     setNotes(s.notes || documentsSettings.common.notes);
     setQuoteMention(s.quoteMention || documentsSettings.quote.mention);
-    setValidityDays(Number(s.validityDays) || documentsSettings.quote.validityDays);
-    setLines(Array.isArray(s.lines) && s.lines.length ? s.lines.map((line) => ({ ...line, id: uid("l") })) : [makeDefaultLine(documentsSettings, vatDispense)]);
+    setValidityDays(
+      Number(s.validityDays) || documentsSettings.quote.validityDays,
+    );
+    setLines(
+      Array.isArray(s.lines) && s.lines.length
+        ? s.lines.map((line) => ({ ...line, id: uid("l") }))
+        : [makeDefaultLine(documentsSettings, vatDispense)],
+    );
     setDiscountKind(s.discountKind || "");
     setDiscountValue(Number(s.discountValue) || 0);
     setDiscountDetails(s.discountDetails || "");
     setFieldErrors({});
     setDraftsOpen(false);
-    setFormMessage({ type: "success", text: "Modèle appliqué. Ajoutez ou vérifiez le client avant l’envoi." });
+    setFormMessage({
+      type: "success",
+      text: "Modèle appliqué. Ajoutez ou vérifiez le client avant l’envoi.",
+    });
   };
 
   const print = () => window.print();
@@ -1108,14 +1374,24 @@ export default function NewDevisPage() {
     const el = previewRef.current;
     if (!el) return null;
 
-    const hiddenSelector = [styles.noPrint, styles.printHidden, styles.printHiddenCell]
+    const hiddenSelector = [
+      styles.noPrint,
+      styles.printHidden,
+      styles.printHiddenCell,
+    ]
       .filter(Boolean)
       .map((className) => `.${className}`)
       .join(", ");
-    const hiddenEls = hiddenSelector ? (Array.from(el.querySelectorAll(hiddenSelector)) as HTMLElement[]) : [];
-    const printOnlyEls = Array.from(el.querySelectorAll(`.${styles.printOnly}`)) as HTMLElement[];
+    const hiddenEls = hiddenSelector
+      ? (Array.from(el.querySelectorAll(hiddenSelector)) as HTMLElement[])
+      : [];
+    const printOnlyEls = Array.from(
+      el.querySelectorAll(`.${styles.printOnly}`),
+    ) as HTMLElement[];
     const previousHiddenDisplay = hiddenEls.map((node) => node.style.display);
-    const previousPrintOnlyDisplay = printOnlyEls.map((node) => node.style.display);
+    const previousPrintOnlyDisplay = printOnlyEls.map(
+      (node) => node.style.display,
+    );
 
     hiddenEls.forEach((node) => {
       node.style.display = "none";
@@ -1176,22 +1452,35 @@ export default function NewDevisPage() {
       error: userErr,
     } = await supabase.auth.getUser();
     if (userErr || !user) {
-      setFormMessage({ type: "error", text: "Vous devez être connecté pour envoyer par mail." });
+      setFormMessage({
+        type: "error",
+        text: "Vous devez être connecté pour envoyer par mail.",
+      });
       return;
     }
 
     setFinalizing(true);
-    const docSaveId = await saveDraft({ silent: true, asFinalized: true, targetStatus: "envoye" });
+    const docSaveId = await saveDraft({
+      silent: true,
+      asFinalized: true,
+      targetStatus: "envoye",
+    });
     if (!docSaveId) {
       setFinalizing(false);
-      setFormMessage({ type: "error", text: "Veuillez d’abord sauvegarder ce devis avant l’envoi." });
+      setFormMessage({
+        type: "error",
+        text: "Veuillez d’abord sauvegarder ce devis avant l’envoi.",
+      });
       return;
     }
 
     const pdfBlob = await buildPdfBlob();
     if (!pdfBlob) {
       setFinalizing(false);
-      setFormMessage({ type: "error", text: "Impossible de générer le PDF de ce devis pour le moment." });
+      setFormMessage({
+        type: "error",
+        text: "Impossible de générer le PDF de ce devis pour le moment.",
+      });
       return;
     }
 
@@ -1205,7 +1494,10 @@ export default function NewDevisPage() {
     if (upErr) {
       console.error(upErr);
       setFinalizing(false);
-      setFormMessage({ type: "error", text: "Impossible de préparer ce devis pour l’envoi." });
+      setFormMessage({
+        type: "error",
+        text: "Impossible de préparer ce devis pour l’envoi.",
+      });
       return;
     }
 
@@ -1226,13 +1518,20 @@ export default function NewDevisPage() {
   const addCurrentClientToCrm = async () => {
     const displayName = (clientName || "").trim();
     const email = (clientEmail || "").trim();
-    const primaryAddress = buildFullCrmAddress(billingAddress, billingPostalCode, billingCity).trim();
+    const primaryAddress = buildFullCrmAddress(
+      billingAddress,
+      billingPostalCode,
+      billingCity,
+    ).trim();
 
     setFormMessage(null);
     setCrmActionMessage(null);
 
     if (!displayName && !email && !primaryAddress) {
-      setCrmActionMessage({ type: "error", text: "Renseignez au moins un nom, un email ou une adresse client." });
+      setCrmActionMessage({
+        type: "error",
+        text: "Renseignez au moins un nom, un email ou une adresse client.",
+      });
       return;
     }
 
@@ -1253,18 +1552,34 @@ export default function NewDevisPage() {
           delivery_address: sameAddresses ? "" : (deliveryAddress || "").trim(),
           contact_type: "client",
           category: clientType || "particulier",
-          notes: [`Ajouté depuis Devis`, purchaseOrderReference ? `PO: ${purchaseOrderReference}` : ""].filter(Boolean).join(" — "),
+          notes: [
+            `Ajouté depuis Devis`,
+            purchaseOrderReference ? `PO: ${purchaseOrderReference}` : "",
+          ]
+            .filter(Boolean)
+            .join(" — "),
         }),
       });
 
       const json = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(getSimpleFrenchErrorMessage(json?.error, "Impossible d’ajouter ce client au CRM."));
+        throw new Error(
+          getSimpleFrenchErrorMessage(
+            json?.error,
+            "Impossible d’ajouter ce client au CRM.",
+          ),
+        );
       }
 
       setCrmActionMessage({ type: "success", text: "Client ajouté au CRM." });
     } catch (error) {
-      setCrmActionMessage({ type: "error", text: getSimpleFrenchErrorMessage(error, "Impossible d’ajouter ce client au CRM.") });
+      setCrmActionMessage({
+        type: "error",
+        text: getSimpleFrenchErrorMessage(
+          error,
+          "Impossible d’ajouter ce client au CRM.",
+        ),
+      });
     } finally {
       setAddingToCrm(false);
     }
@@ -1274,13 +1589,18 @@ export default function NewDevisPage() {
     if (crmLoading) return "Chargement...";
     if (selectedCrmContact) {
       const name = contactDisplayName(selectedCrmContact);
-      return selectedCrmContact.email ? `${name} — ${selectedCrmContact.email}` : name;
+      return selectedCrmContact.email
+        ? `${name} — ${selectedCrmContact.email}`
+        : name;
     }
     return "Importer / Rechercher un contact CRM";
   }, [crmLoading, selectedCrmContact]);
 
   const paymentLabel = useMemo(() => {
-    return PAYMENT_METHODS.find((method) => method.key === paymentMethod)?.label || "—";
+    return (
+      PAYMENT_METHODS.find((method) => method.key === paymentMethod)?.label ||
+      "—"
+    );
   }, [paymentMethod]);
 
   const documentDesign = documentsSettings.common.design;
@@ -1300,7 +1620,9 @@ export default function NewDevisPage() {
     documentDesign.accentColor === "teal" ? styles.previewAccentTeal : "",
     documentDesign.accentColor === "gold" ? styles.previewAccentGold : "",
     documentDesign.accentColor === "blue" ? styles.previewAccentBlue : "",
-  ].filter(Boolean).join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className={`${dash.page} ${styles.editorPage}`}>
@@ -1323,7 +1645,18 @@ export default function NewDevisPage() {
             <button
               type="button"
               className={`${styles.closeBtn} ${styles.toolbarBtn}`}
-              onClick={() => {
+              onClick={async () => {
+                const ok = await confirmInrcy({
+                  eyebrow: "Document en cours",
+                  title: "Réinitialiser le devis ?",
+                  message:
+                    "Cette action supprimera la saisie actuelle et remettra le document à zéro.",
+                  cancelLabel: "Annuler",
+                  confirmLabel: "Réinitialiser",
+                  variant: "danger",
+                });
+                if (!ok) return;
+
                 // CRM
                 setSelectedCrmContactId("");
                 setCrmOpen(false);
@@ -1340,14 +1673,21 @@ export default function NewDevisPage() {
                 setBillingAddress("");
                 setDeliveryAddress("");
                 setSameAddresses(true);
-                setOperationCategory(documentsSettings.common.operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]);
+                setOperationCategory(
+                  documentsSettings.common
+                    .operationCategory as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"],
+                );
                 setServiceDateMode("single");
                 setServiceDate("");
                 setServicePeriodStart("");
                 setServicePeriodEnd("");
                 setPurchaseOrderReference("");
                 setDepositKind(documentsSettings.common.depositKind);
-                setDepositValue(documentsSettings.common.depositKind ? documentsSettings.common.depositValue : "");
+                setDepositValue(
+                  documentsSettings.common.depositKind
+                    ? documentsSettings.common.depositValue
+                    : "",
+                );
 
                 // Devis
                 setCurrentSaveId("");
@@ -1381,7 +1721,11 @@ export default function NewDevisPage() {
             >
               Réglages
             </button>
-            <button type="button" className={`${styles.closeBtn} ${styles.toolbarBtn}`} onClick={() => router.push("/dashboard")}>
+            <button
+              type="button"
+              className={`${styles.closeBtn} ${styles.toolbarBtn}`}
+              onClick={() => router.push("/dashboard")}
+            >
               Fermer
             </button>
           </div>
@@ -1407,7 +1751,9 @@ export default function NewDevisPage() {
               }}
             >
               Devis figé <strong>{number || "—"}</strong>
-              {finalizedAt ? <> · figé le {new Date(finalizedAt).toLocaleString("fr-FR")}</> : null}
+              {finalizedAt ? (
+                <> · figé le {new Date(finalizedAt).toLocaleString("fr-FR")}</>
+              ) : null}
             </div>
           ) : null}
 
@@ -1442,24 +1788,70 @@ export default function NewDevisPage() {
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", position: "sticky", top: 0, zIndex: 2, padding: "14px 14px 10px", background: "#0b1220", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "center",
+                    position: "sticky",
+                    top: 0,
+                    zIndex: 2,
+                    padding: "14px 14px 10px",
+                    background: "#0b1220",
+                    borderBottom: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
                   <div style={{ fontWeight: 750, fontSize: 16 }}>Documents</div>
-                  <button type="button" className={styles.closeBtn} onClick={() => setDraftsOpen(false)}>
+                  <button
+                    type="button"
+                    className={styles.closeBtn}
+                    onClick={() => setDraftsOpen(false)}
+                  >
                     Fermer
                   </button>
                 </div>
-                <div style={{ display: "flex", gap: 8, padding: "10px 14px", background: "#0b1220", borderBottom: "1px solid rgba(255,255,255,0.08)", position: "sticky", top: 52, zIndex: 2 }}>
-                  <button type="button" className={documentsTab === "saves" ? styles.primaryBtn : styles.ghostBtn} onClick={() => setDocumentsTab("saves")}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    padding: "10px 14px",
+                    background: "#0b1220",
+                    borderBottom: "1px solid rgba(255,255,255,0.08)",
+                    position: "sticky",
+                    top: 52,
+                    zIndex: 2,
+                  }}
+                >
+                  <button
+                    type="button"
+                    className={
+                      documentsTab === "saves"
+                        ? styles.primaryBtn
+                        : styles.ghostBtn
+                    }
+                    onClick={() => setDocumentsTab("saves")}
+                  >
                     Sauvegardes
                   </button>
-                  <button type="button" className={documentsTab === "templates" ? styles.primaryBtn : styles.ghostBtn} onClick={() => setDocumentsTab("templates")}>
+                  <button
+                    type="button"
+                    className={
+                      documentsTab === "templates"
+                        ? styles.primaryBtn
+                        : styles.ghostBtn
+                    }
+                    onClick={() => setDocumentsTab("templates")}
+                  >
                     Modèles
                   </button>
                 </div>
 
                 {documentsTab === "saves" ? (
                   drafts.length === 0 ? (
-                    <div style={{ padding: 14, opacity: 0.85 }}>Aucune sauvegarde pour l’instant.</div>
+                    <div style={{ padding: 14, opacity: 0.85 }}>
+                      Aucune sauvegarde pour l’instant.
+                    </div>
                   ) : (
                     <div
                       style={{
@@ -1488,21 +1880,51 @@ export default function NewDevisPage() {
                             }}
                           >
                             <div style={{ minWidth: 0 }}>
-                              <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              <div
+                                style={{
+                                  fontWeight: 650,
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
                                 {label}
                               </div>
                               <div style={{ fontSize: 12, opacity: 0.8 }}>
-                                Sauvegardé le {new Date(d.updatedAtISO).toLocaleString("fr-FR")}
+                                Sauvegardé le{" "}
+                                {new Date(d.updatedAtISO).toLocaleString(
+                                  "fr-FR",
+                                )}
                               </div>
                             </div>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                              <button type="button" onClick={() => openDraft(d)}>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 8,
+                                flexWrap: "wrap",
+                                justifyContent: "flex-end",
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => openDraft(d)}
+                              >
                                 Ouvrir
                               </button>
-                              <button type="button" onClick={() => router.push(`/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent(d.id)}`)}>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  router.push(
+                                    `/dashboard/factures/new?fromDevisSaveId=${encodeURIComponent(d.id)}`,
+                                  )
+                                }
+                              >
                                 → Facture
                               </button>
-                              <button type="button" onClick={() => deleteDraft(d.id)}>
+                              <button
+                                type="button"
+                                onClick={() => deleteDraft(d.id)}
+                              >
                                 Supprimer
                               </button>
                             </div>
@@ -1512,7 +1934,9 @@ export default function NewDevisPage() {
                     </div>
                   )
                 ) : templates.length === 0 ? (
-                  <div style={{ padding: 14, opacity: 0.85 }}>Aucun modèle de devis pour l’instant.</div>
+                  <div style={{ padding: 14, opacity: 0.85 }}>
+                    Aucun modèle de devis pour l’instant.
+                  </div>
                 ) : (
                   <div
                     style={{
@@ -1525,7 +1949,8 @@ export default function NewDevisPage() {
                     }}
                   >
                     {templates.map((d) => {
-                      const label = d.snapshot.templateName || d.name || "Modèle devis";
+                      const label =
+                        d.snapshot.templateName || d.name || "Modèle devis";
                       return (
                         <div
                           key={d.id}
@@ -1540,16 +1965,39 @@ export default function NewDevisPage() {
                           }}
                         >
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+                            <div
+                              style={{
+                                fontWeight: 650,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {label}
+                            </div>
                             <div style={{ fontSize: 12, opacity: 0.8 }}>
-                              Modèle enregistré le {new Date(d.updatedAtISO).toLocaleString("fr-FR")}
+                              Modèle enregistré le{" "}
+                              {new Date(d.updatedAtISO).toLocaleString("fr-FR")}
                             </div>
                           </div>
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                            <button type="button" onClick={() => applyTemplateSnapshot(d.snapshot)}>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              flexWrap: "wrap",
+                              justifyContent: "flex-end",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => applyTemplateSnapshot(d.snapshot)}
+                            >
                               Utiliser
                             </button>
-                            <button type="button" onClick={() => deleteDraft(d.id)}>
+                            <button
+                              type="button"
+                              onClick={() => deleteDraft(d.id)}
+                            >
                               Supprimer
                             </button>
                           </div>
@@ -1565,407 +2013,681 @@ export default function NewDevisPage() {
           <div className={styles.formBlock}>
             <div className={styles.formBlockHeader}>
               <div>
-                <div className={styles.formBlockTitleRow}><span className={styles.formBlockIcon} aria-hidden="true">👤</span><div className={styles.formBlockTitle}>Infos contact</div></div>
-                <div className={styles.formBlockSubtitle}>Import CRM, coordonnées et adresse du client.</div>
+                <div className={styles.formBlockTitleRow}>
+                  <span className={styles.formBlockIcon} aria-hidden="true">
+                    👤
+                  </span>
+                  <div className={styles.formBlockTitle}>Infos contact</div>
+                </div>
+                <div className={styles.formBlockSubtitle}>
+                  Import CRM, coordonnées et adresse du client.
+                </div>
               </div>
             </div>
 
-          <div className={styles.crmActionBar} ref={crmBoxRef}>
-            <div className={styles.crmActionMain}>
-              <span className={styles.crmActionLabel}>Importer un contact</span>
-              <button
-                type="button"
-                className={styles.crmImportButton}
-                onClick={() => setCrmOpen((v) => !v)}
-                disabled={crmLoading}
-                aria-haspopup="listbox"
-                aria-expanded={crmOpen}
-              >
-                <span className={styles.crmImportButtonText} title={crmButtonText}>{crmButtonText}</span>
-                <span aria-hidden="true">▾</span>
-              </button>
+            <div className={styles.crmActionBar} ref={crmBoxRef}>
+              <div className={styles.crmActionMain}>
+                <span className={styles.crmActionLabel}>
+                  Importer un contact
+                </span>
+                <button
+                  type="button"
+                  className={styles.crmImportButton}
+                  onClick={() => setCrmOpen((v) => !v)}
+                  disabled={crmLoading}
+                  aria-haspopup="listbox"
+                  aria-expanded={crmOpen}
+                >
+                  <span
+                    className={styles.crmImportButtonText}
+                    title={crmButtonText}
+                  >
+                    {crmButtonText}
+                  </span>
+                  <span aria-hidden="true">▾</span>
+                </button>
 
-              {crmOpen ? (
-                <div className={styles.crmSearchPanel} role="dialog" aria-label="Importer ou rechercher un contact CRM">
-                  <input
-                    className={styles.crmSearchInput}
-                    type="search"
-                    value={crmQuery}
-                    onChange={(e) => setCrmQuery(e.target.value)}
-                    placeholder="Rechercher un contact, email, téléphone..."
-                    autoFocus
-                  />
-                  <div className={styles.crmSearchResults} role="listbox">
-                    {filteredCrmContacts.length ? filteredCrmContacts.map((c) => {
-                      const name = contactDisplayName(c);
-                      const line = c.email ? `${name} — ${c.email}` : name;
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          className={styles.crmSearchItem}
-                          onClick={() => selectCrmContact(c)}
-                          title={line}
-                        >
-                          {line}
-                        </button>
-                      );
-                    }) : (
-                      <div className={styles.crmSearchEmpty}>Aucun contact trouvé. Remplissez le client puis utilisez “+ Ajouter au CRM”.</div>
-                    )}
+                {crmOpen ? (
+                  <div
+                    className={styles.crmSearchPanel}
+                    role="dialog"
+                    aria-label="Importer ou rechercher un contact CRM"
+                  >
+                    <input
+                      className={styles.crmSearchInput}
+                      type="search"
+                      value={crmQuery}
+                      onChange={(e) => setCrmQuery(e.target.value)}
+                      placeholder="Rechercher un contact, email, téléphone..."
+                      autoFocus
+                    />
+                    <div className={styles.crmSearchResults} role="listbox">
+                      {filteredCrmContacts.length ? (
+                        filteredCrmContacts.map((c) => {
+                          const name = contactDisplayName(c);
+                          const line = c.email ? `${name} — ${c.email}` : name;
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              className={styles.crmSearchItem}
+                              onClick={() => selectCrmContact(c)}
+                              title={line}
+                            >
+                              {line}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className={styles.crmSearchEmpty}>
+                          Aucun contact trouvé. Remplissez le client puis
+                          utilisez “+ Ajouter au CRM”.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className={`${styles.field} ${styles.crmClientTypeField}`}>
+                <label>
+                  Type de client<span className={styles.requiredMark}>*</span>
+                </label>
+                <select
+                  value={clientType}
+                  onChange={(e) => {
+                    setClientType(e.target.value as ClientType);
+                    clearFieldError("clientType");
+                    clearFieldError("clientSiren");
+                  }}
+                >
+                  <option value="">—</option>
+                  <option value="particulier">Particulier</option>
+                  <option value="professionnel">Professionnel</option>
+                  <option value="institution">Institution</option>
+                </select>
+                {fieldErrors.clientType ? (
+                  <div className={styles.fieldError}>
+                    {fieldErrors.clientType}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className={styles.crmAddColumn}>
+                <button
+                  type="button"
+                  className={styles.crmAddButton}
+                  onClick={() => void addCurrentClientToCrm()}
+                  disabled={addingToCrm}
+                >
+                  {addingToCrm ? "Ajout CRM…" : "+ Ajouter au CRM"}
+                </button>
+                {crmActionMessage ? (
+                  <div
+                    className={`${styles.crmActionMessage} ${crmActionMessage.type === "success" ? styles.crmActionMessageSuccess : styles.crmActionMessageError}`}
+                  >
+                    {crmActionMessage.text}
+                  </div>
+                ) : null}
+              </div>
+
+              {crmError ? (
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    marginTop: -4,
+                    fontSize: 12,
+                    opacity: 0.8,
+                  }}
+                >
+                  ⚠️ {crmError}
+                </div>
+              ) : null}
+            </div>
+
+            <div className={styles.fourCol}>
+              <div className={styles.field}>
+                <label>
+                  Client<span className={styles.requiredMark}>*</span>
+                </label>
+                <input
+                  value={clientName}
+                  onChange={(e) => {
+                    setClientName(e.target.value);
+                    clearFieldError("clientName");
+                  }}
+                  placeholder="Nom du client"
+                />
+                {fieldErrors.clientName ? (
+                  <div className={styles.fieldError}>
+                    {fieldErrors.clientName}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className={styles.field}>
+                <label>
+                  Email client<span className={styles.requiredMark}>*</span>
+                </label>
+                <input
+                  value={clientEmail}
+                  onChange={(e) => {
+                    setClientEmail(e.target.value);
+                    clearFieldError("clientEmail");
+                  }}
+                  placeholder="email@client.fr"
+                />
+                {fieldErrors.clientEmail ? (
+                  <div className={styles.fieldError}>
+                    {fieldErrors.clientEmail}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className={styles.field}>
+                <label>
+                  SIREN client
+                  {clientType && clientType !== "particulier" ? (
+                    <span className={styles.requiredMark}>*</span>
+                  ) : (
+                    <span> (optionnel)</span>
+                  )}
+                </label>
+                <input
+                  value={clientSiren}
+                  onChange={(e) => {
+                    setClientSiren(e.target.value);
+                    clearFieldError("clientSiren");
+                  }}
+                  placeholder="Ex : 123456789"
+                />
+                {fieldErrors.clientSiren ? (
+                  <div className={styles.fieldError}>
+                    {fieldErrors.clientSiren}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className={styles.field}>
+                <label>N° TVA client (optionnel)</label>
+                <input
+                  value={clientVatNumber}
+                  onChange={(e) => setClientVatNumber(e.target.value)}
+                  placeholder="Ex : FR12345678901"
+                />
+              </div>
+            </div>
+
+            <div className={styles.compactThreeCol}>
+              <div className={styles.field}>
+                <label>
+                  Adresse<span className={styles.requiredMark}>*</span>
+                </label>
+                <input
+                  value={billingAddress}
+                  onChange={(e) => {
+                    setBillingAddress(e.target.value);
+                    clearFieldError("billingAddress");
+                  }}
+                  placeholder="Adresse"
+                />
+                {fieldErrors.billingAddress ? (
+                  <div className={styles.fieldError}>
+                    {fieldErrors.billingAddress}
+                  </div>
+                ) : null}
+              </div>
+              <div className={styles.field}>
+                <label>
+                  Code postal<span className={styles.requiredMark}>*</span>
+                </label>
+                <input
+                  value={billingPostalCode}
+                  onChange={(e) => {
+                    setBillingPostalCode(e.target.value);
+                    clearFieldError("billingPostalCode");
+                  }}
+                  placeholder="Ex : 62440"
+                />
+                {fieldErrors.billingPostalCode ? (
+                  <div className={styles.fieldError}>
+                    {fieldErrors.billingPostalCode}
+                  </div>
+                ) : null}
+              </div>
+              <div className={styles.field}>
+                <label>
+                  Ville<span className={styles.requiredMark}>*</span>
+                </label>
+                <input
+                  value={billingCity}
+                  onChange={(e) => {
+                    setBillingCity(e.target.value);
+                    clearFieldError("billingCity");
+                  }}
+                  placeholder="Ex : Harnes"
+                />
+                {fieldErrors.billingCity ? (
+                  <div className={styles.fieldError}>
+                    {fieldErrors.billingCity}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className={styles.field}>
+              <label className={styles.checkboxLabel}>
+                <input
+                  className={styles.checkboxInput}
+                  type="checkbox"
+                  checked={sameAddresses}
+                  onChange={(e) => setSameAddresses(e.target.checked)}
+                />
+                <span>
+                  Adresse de livraison identique à l’adresse de facturation
+                </span>
+              </label>
+            </div>
+
+            {!sameAddresses ? (
+              <div
+                style={{
+                  marginTop: -2,
+                  marginBottom: 4,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.04)",
+                }}
+              >
+                <div className={styles.compactThreeCol}>
+                  <div className={styles.field} style={{ marginBottom: 0 }}>
+                    <label>Adresse de livraison</label>
+                    <input
+                      value={deliveryAddress}
+                      onChange={(e) => setDeliveryAddress(e.target.value)}
+                      placeholder="Adresse"
+                    />
+                  </div>
+                  <div className={styles.field} style={{ marginBottom: 0 }}>
+                    <label>Code postal livraison</label>
+                    <input
+                      value={deliveryPostalCode}
+                      onChange={(e) => setDeliveryPostalCode(e.target.value)}
+                      placeholder="Ex : 62440"
+                    />
+                  </div>
+                  <div className={styles.field} style={{ marginBottom: 0 }}>
+                    <label>Ville livraison</label>
+                    <input
+                      value={deliveryCity}
+                      onChange={(e) => setDeliveryCity(e.target.value)}
+                      placeholder="Ex : Harnes"
+                    />
                   </div>
                 </div>
-              ) : null}
-            </div>
-
-            <div className={`${styles.field} ${styles.crmClientTypeField}`}>
-              <label>Type de client<span className={styles.requiredMark}>*</span></label>
-              <select
-                value={clientType}
-                onChange={(e) => { setClientType(e.target.value as ClientType); clearFieldError("clientType"); clearFieldError("clientSiren"); }}
-              >
-                <option value="">—</option>
-                <option value="particulier">Particulier</option>
-                <option value="professionnel">Professionnel</option>
-                <option value="institution">Institution</option>
-              </select>
-              {fieldErrors.clientType ? <div className={styles.fieldError}>{fieldErrors.clientType}</div> : null}
-            </div>
-
-            <div className={styles.crmAddColumn}>
-              <button
-                type="button"
-                className={styles.crmAddButton}
-                onClick={() => void addCurrentClientToCrm()}
-                disabled={addingToCrm}
-              >
-                {addingToCrm ? "Ajout CRM…" : "+ Ajouter au CRM"}
-              </button>
-              {crmActionMessage ? (
-                <div className={`${styles.crmActionMessage} ${crmActionMessage.type === "success" ? styles.crmActionMessageSuccess : styles.crmActionMessageError}`}>
-                  {crmActionMessage.text}
-                </div>
-              ) : null}
-            </div>
-
-            {crmError ? (
-              <div style={{ gridColumn: "1 / -1", marginTop: -4, fontSize: 12, opacity: 0.8 }}>⚠️ {crmError}</div>
-            ) : null}
-          </div>
-
-          <div className={styles.fourCol}>
-            <div className={styles.field}>
-              <label>Client<span className={styles.requiredMark}>*</span></label>
-              <input value={clientName} onChange={(e) => { setClientName(e.target.value); clearFieldError("clientName"); }} placeholder="Nom du client" />
-              {fieldErrors.clientName ? <div className={styles.fieldError}>{fieldErrors.clientName}</div> : null}
-            </div>
-
-            <div className={styles.field}>
-              <label>Email client<span className={styles.requiredMark}>*</span></label>
-              <input
-                value={clientEmail}
-                onChange={(e) => {
-                  setClientEmail(e.target.value);
-                  clearFieldError("clientEmail");
-                }}
-                placeholder="email@client.fr"
-              />
-              {fieldErrors.clientEmail ? <div className={styles.fieldError}>{fieldErrors.clientEmail}</div> : null}
-            </div>
-
-            <div className={styles.field}>
-              <label>SIREN client{clientType && clientType !== "particulier" ? <span className={styles.requiredMark}>*</span> : <span> (optionnel)</span>}</label>
-              <input
-                value={clientSiren}
-                onChange={(e) => { setClientSiren(e.target.value); clearFieldError("clientSiren"); }}
-                placeholder="Ex : 123456789"
-              />
-              {fieldErrors.clientSiren ? <div className={styles.fieldError}>{fieldErrors.clientSiren}</div> : null}
-            </div>
-
-            <div className={styles.field}>
-              <label>N° TVA client (optionnel)</label>
-              <input
-                value={clientVatNumber}
-                onChange={(e) => setClientVatNumber(e.target.value)}
-                placeholder="Ex : FR12345678901"
-              />
-            </div>
-          </div>
-
-          <div className={styles.compactThreeCol}>
-            <div className={styles.field}>
-            <label>Adresse<span className={styles.requiredMark}>*</span></label>
-            <input
-              value={billingAddress}
-              onChange={(e) => { setBillingAddress(e.target.value); clearFieldError("billingAddress"); }}
-              placeholder="Adresse"
-              />
-            {fieldErrors.billingAddress ? <div className={styles.fieldError}>{fieldErrors.billingAddress}</div> : null}
-          </div>
-            <div className={styles.field}>
-            <label>Code postal<span className={styles.requiredMark}>*</span></label>
-            <input
-              value={billingPostalCode}
-              onChange={(e) => { setBillingPostalCode(e.target.value); clearFieldError("billingPostalCode"); }}
-              placeholder="Ex : 62440"
-              />
-            {fieldErrors.billingPostalCode ? <div className={styles.fieldError}>{fieldErrors.billingPostalCode}</div> : null}
-          </div>
-            <div className={styles.field}>
-            <label>Ville<span className={styles.requiredMark}>*</span></label>
-            <input
-              value={billingCity}
-              onChange={(e) => { setBillingCity(e.target.value); clearFieldError("billingCity"); }}
-              placeholder="Ex : Harnes"
-              />
-            {fieldErrors.billingCity ? <div className={styles.fieldError}>{fieldErrors.billingCity}</div> : null}
-          </div>
-        </div>
-
-          <div className={styles.field}>
-            <label className={styles.checkboxLabel}>
-              <input
-                className={styles.checkboxInput}
-                type="checkbox"
-                checked={sameAddresses}
-                onChange={(e) => setSameAddresses(e.target.checked)}
-              />
-              <span>Adresse de livraison identique à l’adresse de facturation</span>
-            </label>
-          </div>
-
-          {!sameAddresses ? (
-            <div
-              style={{
-                marginTop: -2,
-                marginBottom: 4,
-                padding: 12,
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.04)",
-              }}
-            >
-              <div className={styles.compactThreeCol}>
-                <div className={styles.field} style={{ marginBottom: 0 }}>
-                  <label>Adresse de livraison</label>
-                  <input value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} placeholder="Adresse" />
-                </div>
-                <div className={styles.field} style={{ marginBottom: 0 }}>
-                  <label>Code postal livraison</label>
-                  <input value={deliveryPostalCode} onChange={(e) => setDeliveryPostalCode(e.target.value)} placeholder="Ex : 62440" />
-                </div>
-                <div className={styles.field} style={{ marginBottom: 0 }}>
-                  <label>Ville livraison</label>
-                  <input value={deliveryCity} onChange={(e) => setDeliveryCity(e.target.value)} placeholder="Ex : Harnes" />
-                </div>
               </div>
-            </div>
-          ) : null}
-
+            ) : null}
           </div>
 
           <div className={styles.formBlock}>
             <div className={styles.formBlockHeader}>
               <div>
-                <div className={styles.formBlockTitleRow}><span className={styles.formBlockIcon} aria-hidden="true">📄</span><div className={styles.formBlockTitle}>Infos devis</div></div>
-                <div className={styles.formBlockSubtitle}>Numéro, date, options avancées et actions.</div>
-              </div>
-            </div>
-
-          <div className={styles.twoCol}>
-            <div className={styles.field}>
-              <label>Numéro de devis<span className={styles.requiredMark}>*</span></label>
-              <input
-                value={number}
-                onChange={(e) => { setNumber(e.target.value); clearFieldError("number"); }}
-                placeholder="DEV-YYYYMMDD-XXXX"
-              />
-              {fieldErrors.number ? <div className={styles.fieldError}>{fieldErrors.number}</div> : null}
-            </div>
-
-            <div className={styles.field}>
-              <label>Date du devis<span className={styles.requiredMark}>*</span></label>
-              <DocumentDateInput
-                value={docDateISO}
-                onChange={(value) => { setDocDateISO(value); clearFieldError("docDateISO"); }}
-              />
-              {fieldErrors.docDateISO ? <div className={styles.fieldError}>{fieldErrors.docDateISO}</div> : null}
-            </div>
-          </div>
-
-          <details className={styles.advancedDetails} open={advancedOpen} onToggle={(e) => setAdvancedOpen(e.currentTarget.open)}>
-            <summary className={styles.advancedSummary}>Options avancées du devis</summary>
-            <div className={styles.advancedBody}>
-              <div className={styles.advancedSection}>
-                <div className={styles.advancedSectionTitle}>Document</div>
-                <div className={styles.compactThreeCol}>
-                  <div className={styles.field}>
-                    <label>Durée de validité (jours)<span className={styles.requiredMark}>*</span></label>
-                    <input type="number" min="1" value={validityDays} onChange={(e) => { setValidityDays(Number(e.target.value) || 1); clearFieldError("validityDays"); }} />
-                    {fieldErrors.validityDays ? <div className={styles.fieldError}>{fieldErrors.validityDays}</div> : null}
-                  </div>
-                  <div className={styles.field}>
-                    <label>Catégorie d’opération</label>
-                    <select value={operationCategory} onChange={(e) => setOperationCategory(e.target.value as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"])}>
-                      {OPERATION_CATEGORY_OPTIONS.map((option) => (
-                        <option key={option.key} value={option.key}>{option.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className={styles.field}>
-                    <label>Référence commande / PO</label>
-                    <input value={purchaseOrderReference} onChange={(e) => setPurchaseOrderReference(e.target.value)} placeholder="Ex : BC-2026-014 / PO-7781" />
-                  </div>
+                <div className={styles.formBlockTitleRow}>
+                  <span className={styles.formBlockIcon} aria-hidden="true">
+                    📄
+                  </span>
+                  <div className={styles.formBlockTitle}>Infos devis</div>
                 </div>
-              </div>
-
-              <div className={styles.advancedSection}>
-                <div className={styles.advancedSectionTitle}>Acompte & paiement</div>
-                <div className={styles.compactThreeCol}>
-                  <div className={styles.field}>
-                    <label>Acompte</label>
-                    <select
-                      value={depositKind}
-                      onChange={(e) => {
-                        const value = e.target.value as "" | "percent" | "amount";
-                        setDepositKind(value);
-                        if (!value) setDepositValue("");
-                      }}
-                    >
-                      <option value="">—</option>
-                      <option value="percent">Pourcentage</option>
-                      <option value="amount">Montant</option>
-                    </select>
-                  </div>
-                  <div className={styles.field}>
-                    <label>Valeur acompte</label>
-                    <input type="number" min="0" step="0.01" value={depositValue} onChange={(e) => setDepositValue(e.target.value)} placeholder={depositKind === "amount" ? "Ex : 300" : "Ex : 30"} disabled={!depositKind} />
-                  </div>
-                  <div className={styles.field}>
-                    <label>Mode de paiement</label>
-                    <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as (typeof PAYMENT_METHODS)[number]["key"])}>
-                      {PAYMENT_METHODS.map((method) => (
-                        <option key={method.key} value={method.key}>{method.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className={styles.field} style={{ marginBottom: 0 }}>
-                  <label>IBAN</label>
-                  <input value={paymentDetails} onChange={(e) => setPaymentDetails(e.target.value)} placeholder="Ex : IBAN FR76..." />
-                </div>
-              </div>
-
-              <div className={styles.advancedSection}>
-                <div className={styles.advancedSectionTitle}>Prestation</div>
-                <div className={styles.serviceDateModeSelector} role="radiogroup" aria-label="Type de date de prestation">
-                  <label className={`${styles.serviceDateModeOption} ${serviceDateMode === "single" ? styles.serviceDateModeOptionActive : ""}`}>
-                    <input
-                      type="radio"
-                      name="devisServiceDateMode"
-                      value="single"
-                      checked={serviceDateMode === "single"}
-                      onChange={() => updateServiceDateMode("single")}
-                    />
-                    <span>Date unique</span>
-                  </label>
-                  <label className={`${styles.serviceDateModeOption} ${serviceDateMode === "period" ? styles.serviceDateModeOptionActive : ""}`}>
-                    <input
-                      type="radio"
-                      name="devisServiceDateMode"
-                      value="period"
-                      checked={serviceDateMode === "period"}
-                      onChange={() => updateServiceDateMode("period")}
-                    />
-                    <span>Période</span>
-                  </label>
-                </div>
-
-                {serviceDateMode === "single" ? (
-                  <div className={styles.serviceDateSingleGrid}>
-                    <div className={styles.field}>
-                      <label>Date de prestation / livraison</label>
-                      <DocumentDateInput value={serviceDate} onChange={setServiceDate} />
-                    </div>
-                  </div>
-                ) : (
-                  <div className={styles.serviceDateFieldsGrid}>
-                    <div className={styles.field}>
-                      <label>Début de prestation</label>
-                      <DocumentDateInput value={servicePeriodStart} onChange={setServicePeriodStart} />
-                    </div>
-                    <div className={styles.field}>
-                      <label>Fin de prestation</label>
-                      <DocumentDateInput value={servicePeriodEnd} onChange={setServicePeriodEnd} />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className={styles.advancedSection}>
-                <div className={styles.advancedSectionTitle}>Notes & mentions</div>
-                <div className={styles.twoCol}>
-                  <div className={styles.field}>
-                    <label>Notes</label>
-                    <textarea className={styles.advancedTextArea} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex : Merci pour votre confiance." />
-                  </div>
-                  <div className={styles.field}>
-                    <label>Mention spécifique devis</label>
-                    <textarea className={styles.advancedTextArea} value={quoteMention} onChange={(e) => setQuoteMention(e.target.value)} placeholder="Ex : Devis valable selon disponibilité." />
-                  </div>
+                <div className={styles.formBlockSubtitle}>
+                  Numéro, date, options avancées et actions.
                 </div>
               </div>
             </div>
-          </details>
 
-          <div className={styles.actionGrid}>
-            <button type="button" onClick={() => { void saveDraft(); }} disabled={addingToCrm || finalizing}>Sauvegarder</button>
-            <button type="button" onClick={() => { void saveAsTemplate(); }} disabled={addingToCrm || finalizing}>Créer modèle</button>
-            <button type="button" onClick={() => void convertCurrentDevisToInvoice()} disabled={finalizing}>
-              → Convertir en facture
-            </button>
-            <button
-              type="button"
-              disabled={finalizing}
-              onClick={async () => {
-                if (!validateQuoteAction({ requireEmail: true })) return;
-                if (!isFinalized) {
-                  const ok = await confirmInrcy({
-                    title: "Figer le devis ?",
-                    message: "L’envoi par mail va figer ce document avant son ouverture dans iNrSend. Continuer ?",
-                    confirmLabel: "Figer et envoyer",
-                    variant: "warning",
-                  });
-                  if (!ok) return;
-                }
-                const to = (clientEmail || "").trim();
-                const finalNumber = number || generateNumber("DEV");
-                if (!number) setNumber(finalNumber);
+            <div className={styles.twoCol}>
+              <div className={styles.field}>
+                <label>
+                  Numéro de devis<span className={styles.requiredMark}>*</span>
+                </label>
+                <input
+                  value={number}
+                  onChange={(e) => {
+                    setNumber(e.target.value);
+                    clearFieldError("number");
+                  }}
+                  placeholder="DEV-YYYYMMDD-XXXX"
+                />
+                {fieldErrors.number ? (
+                  <div className={styles.fieldError}>{fieldErrors.number}</div>
+                ) : null}
+              </div>
 
-                await uploadPdfAndOpenCompose(to, `${finalNumber}.pdf`);
-              }}
+              <div className={styles.field}>
+                <label>
+                  Date du devis<span className={styles.requiredMark}>*</span>
+                </label>
+                <DocumentDateInput
+                  value={docDateISO}
+                  onChange={(value) => {
+                    setDocDateISO(value);
+                    clearFieldError("docDateISO");
+                  }}
+                />
+                {fieldErrors.docDateISO ? (
+                  <div className={styles.fieldError}>
+                    {fieldErrors.docDateISO}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <details
+              className={styles.advancedDetails}
+              open={advancedOpen}
+              onToggle={(e) => setAdvancedOpen(e.currentTarget.open)}
             >
-              {finalizing ? "Préparation…" : <>Envoyer par mail<span className={styles.helpBubble} title="Fige le document si besoin, prépare le PDF puis ouvre l’envoi par email au client.">?</span></>}
-            </button>
-            <button type="button" onClick={print} disabled={finalizing}>
-              Imprimer / PDF
-            </button>
-          </div>
+              <summary className={styles.advancedSummary}>
+                Options avancées du devis
+              </summary>
+              <div className={styles.advancedBody}>
+                <div className={styles.advancedSection}>
+                  <div className={styles.advancedSectionTitle}>Document</div>
+                  <div className={styles.compactThreeCol}>
+                    <div className={styles.field}>
+                      <label>
+                        Durée de validité (jours)
+                        <span className={styles.requiredMark}>*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={validityDays}
+                        onChange={(e) => {
+                          setValidityDays(Number(e.target.value) || 1);
+                          clearFieldError("validityDays");
+                        }}
+                      />
+                      {fieldErrors.validityDays ? (
+                        <div className={styles.fieldError}>
+                          {fieldErrors.validityDays}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className={styles.field}>
+                      <label>Catégorie d’opération</label>
+                      <select
+                        value={operationCategory}
+                        onChange={(e) =>
+                          setOperationCategory(
+                            e.target
+                              .value as (typeof OPERATION_CATEGORY_OPTIONS)[number]["key"],
+                          )
+                        }
+                      >
+                        {OPERATION_CATEGORY_OPTIONS.map((option) => (
+                          <option key={option.key} value={option.key}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className={styles.field}>
+                      <label>Référence commande / PO</label>
+                      <input
+                        value={purchaseOrderReference}
+                        onChange={(e) =>
+                          setPurchaseOrderReference(e.target.value)
+                        }
+                        placeholder="Ex : BC-2026-014 / PO-7781"
+                      />
+                    </div>
+                  </div>
+                </div>
 
-          <div className={styles.requiredHint}>* champs obligatoires selon le type de client. L’email client est requis uniquement pour l’envoi par mail.</div>
+                <div className={styles.advancedSection}>
+                  <div className={styles.advancedSectionTitle}>
+                    Acompte & paiement
+                  </div>
+                  <div className={styles.compactThreeCol}>
+                    <div className={styles.field}>
+                      <label>Acompte</label>
+                      <select
+                        value={depositKind}
+                        onChange={(e) => {
+                          const value = e.target.value as
+                            | ""
+                            | "percent"
+                            | "amount";
+                          setDepositKind(value);
+                          if (!value) setDepositValue("");
+                        }}
+                      >
+                        <option value="">—</option>
+                        <option value="percent">Pourcentage</option>
+                        <option value="amount">Montant</option>
+                      </select>
+                    </div>
+                    <div className={styles.field}>
+                      <label>Valeur acompte</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={depositValue}
+                        onChange={(e) => setDepositValue(e.target.value)}
+                        placeholder={
+                          depositKind === "amount" ? "Ex : 300" : "Ex : 30"
+                        }
+                        disabled={!depositKind}
+                      />
+                    </div>
+                    <div className={styles.field}>
+                      <label>Mode de paiement</label>
+                      <select
+                        value={paymentMethod}
+                        onChange={(e) =>
+                          setPaymentMethod(
+                            e.target
+                              .value as (typeof PAYMENT_METHODS)[number]["key"],
+                          )
+                        }
+                      >
+                        {PAYMENT_METHODS.map((method) => (
+                          <option key={method.key} value={method.key}>
+                            {method.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className={styles.field} style={{ marginBottom: 0 }}>
+                    <label>IBAN</label>
+                    <input
+                      value={paymentDetails}
+                      onChange={(e) => setPaymentDetails(e.target.value)}
+                      placeholder="Ex : IBAN FR76..."
+                    />
+                  </div>
+                </div>
 
-          {formMessage ? (
-            <div className={`${styles.actionMessage} ${formMessage.type === "success" ? styles.actionMessageSuccess : styles.actionMessageError}`}>
-              {formMessage.text}
+                <div className={styles.advancedSection}>
+                  <div className={styles.advancedSectionTitle}>Prestation</div>
+                  <div
+                    className={styles.serviceDateModeSelector}
+                    role="radiogroup"
+                    aria-label="Type de date de prestation"
+                  >
+                    <label
+                      className={`${styles.serviceDateModeOption} ${serviceDateMode === "single" ? styles.serviceDateModeOptionActive : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="devisServiceDateMode"
+                        value="single"
+                        checked={serviceDateMode === "single"}
+                        onChange={() => updateServiceDateMode("single")}
+                      />
+                      <span>Date unique</span>
+                    </label>
+                    <label
+                      className={`${styles.serviceDateModeOption} ${serviceDateMode === "period" ? styles.serviceDateModeOptionActive : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="devisServiceDateMode"
+                        value="period"
+                        checked={serviceDateMode === "period"}
+                        onChange={() => updateServiceDateMode("period")}
+                      />
+                      <span>Période</span>
+                    </label>
+                  </div>
+
+                  {serviceDateMode === "single" ? (
+                    <div className={styles.serviceDateSingleGrid}>
+                      <div className={styles.field}>
+                        <label>Date de prestation / livraison</label>
+                        <DocumentDateInput
+                          value={serviceDate}
+                          onChange={setServiceDate}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={styles.serviceDateFieldsGrid}>
+                      <div className={styles.field}>
+                        <label>Début de prestation</label>
+                        <DocumentDateInput
+                          value={servicePeriodStart}
+                          onChange={setServicePeriodStart}
+                        />
+                      </div>
+                      <div className={styles.field}>
+                        <label>Fin de prestation</label>
+                        <DocumentDateInput
+                          value={servicePeriodEnd}
+                          onChange={setServicePeriodEnd}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className={styles.advancedSection}>
+                  <div className={styles.advancedSectionTitle}>
+                    Notes & mentions
+                  </div>
+                  <div className={styles.twoCol}>
+                    <div className={styles.field}>
+                      <label>Notes</label>
+                      <textarea
+                        className={styles.advancedTextArea}
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Ex : Merci pour votre confiance."
+                      />
+                    </div>
+                    <div className={styles.field}>
+                      <label>Mention spécifique devis</label>
+                      <textarea
+                        className={styles.advancedTextArea}
+                        value={quoteMention}
+                        onChange={(e) => setQuoteMention(e.target.value)}
+                        placeholder="Ex : Devis valable selon disponibilité."
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <div className={styles.actionGrid}>
+              <button
+                type="button"
+                onClick={() => {
+                  void saveDraft();
+                }}
+                disabled={addingToCrm || finalizing}
+              >
+                Sauvegarder
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void saveAsTemplate();
+                }}
+                disabled={addingToCrm || finalizing}
+              >
+                Créer modèle
+              </button>
+              <button
+                type="button"
+                onClick={() => void convertCurrentDevisToInvoice()}
+                disabled={finalizing}
+              >
+                → Convertir en facture
+              </button>
+              <button
+                type="button"
+                disabled={finalizing}
+                onClick={async () => {
+                  if (!validateQuoteAction({ requireEmail: true })) return;
+                  if (!isFinalized) {
+                    const ok = await confirmInrcy({
+                      title: "Figer le devis ?",
+                      message:
+                        "L’envoi par mail va figer ce document avant son ouverture dans iNrSend. Continuer ?",
+                      confirmLabel: "Figer et envoyer",
+                      variant: "warning",
+                    });
+                    if (!ok) return;
+                  }
+                  const to = (clientEmail || "").trim();
+                  const finalNumber = number || generateNumber("DEV");
+                  if (!number) setNumber(finalNumber);
+
+                  await uploadPdfAndOpenCompose(to, `${finalNumber}.pdf`);
+                }}
+              >
+                {finalizing ? (
+                  "Préparation…"
+                ) : (
+                  <>
+                    Envoyer par mail
+                    <span
+                      className={styles.helpBubble}
+                      title="Fige le document si besoin, prépare le PDF puis ouvre l’envoi par email au client."
+                    >
+                      ?
+                    </span>
+                  </>
+                )}
+              </button>
+              <button type="button" onClick={print} disabled={finalizing}>
+                Imprimer / PDF
+              </button>
             </div>
-          ) : null}
 
-          {vatDispense ? (
-            <p style={{ marginTop: 12, opacity: 0.9 }}>
-              TVA désactivée : <strong>TVA non applicable (article 293 B du CGI)</strong>
-            </p>
-          ) : null}
+            <div className={styles.requiredHint}>
+              * champs obligatoires selon le type de client. L’email client est
+              requis uniquement pour l’envoi par mail.
+            </div>
+
+            {formMessage ? (
+              <div
+                className={`${styles.actionMessage} ${formMessage.type === "success" ? styles.actionMessageSuccess : styles.actionMessageError}`}
+              >
+                {formMessage.text}
+              </div>
+            ) : null}
+
+            {vatDispense ? (
+              <p style={{ marginTop: 12, opacity: 0.9 }}>
+                TVA désactivée :{" "}
+                <strong>TVA non applicable (article 293 B du CGI)</strong>
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -1976,24 +2698,38 @@ export default function NewDevisPage() {
               <div className={styles.title}>DEVIS</div>
               <div>{number || "—"}</div>
               <div style={{ marginTop: 6, color: "#444" }}>
-                Date : {docDateISO ? new Date(docDateISO).toLocaleDateString("fr-FR") : "—"}
+                Date :{" "}
+                {docDateISO
+                  ? new Date(docDateISO).toLocaleDateString("fr-FR")
+                  : "—"}
               </div>
               {serviceDateMode === "single" && serviceDate ? (
                 <div style={{ marginTop: 4, color: "#444" }}>
-                  Prestation / livraison : {new Date(serviceDate).toLocaleDateString("fr-FR")}
+                  Prestation / livraison :{" "}
+                  {new Date(serviceDate).toLocaleDateString("fr-FR")}
                 </div>
               ) : null}
-              {serviceDateMode === "period" && (servicePeriodStart || servicePeriodEnd) ? (
+              {serviceDateMode === "period" &&
+              (servicePeriodStart || servicePeriodEnd) ? (
                 <div style={{ marginTop: 4, color: "#444" }}>
-                  Période : {servicePeriodStart ? new Date(servicePeriodStart).toLocaleDateString("fr-FR") : "—"}
-                  {servicePeriodEnd ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}` : ""}
+                  Période :{" "}
+                  {servicePeriodStart
+                    ? new Date(servicePeriodStart).toLocaleDateString("fr-FR")
+                    : "—"}
+                  {servicePeriodEnd
+                    ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}`
+                    : ""}
                 </div>
               ) : null}
             </div>
 
             {profile?.logo_url ? (
               <div className={styles.logoBox} aria-label="Logo">
-                <img src={profile.logo_url} alt="Logo" className={styles.logoImg} />
+                <img
+                  src={profile.logo_url}
+                  alt="Logo"
+                  className={styles.logoImg}
+                />
               </div>
             ) : null}
           </div>
@@ -2001,10 +2737,12 @@ export default function NewDevisPage() {
           <div className={styles.previewParties}>
             <div className={styles.previewPartyCard}>
               <div className={styles.previewPartyTitle}>Prestataire</div>
-              <div style={{ fontWeight: 600 }}>{profile?.company_legal_name ?? "—"}</div>
+              <div style={{ fontWeight: 600 }}>
+                {profile?.company_legal_name ?? "—"}
+              </div>
               <div>{profile?.hq_address ?? ""}</div>
               <div>
-                {(profile?.hq_zip ?? "")} {(profile?.hq_city ?? "")}
+                {profile?.hq_zip ?? ""} {profile?.hq_city ?? ""}
               </div>
 
               <div style={{ marginTop: 6, fontSize: 13, color: "#444" }}>
@@ -2046,7 +2784,9 @@ export default function NewDevisPage() {
                   <strong>Adresse de livraison :</strong> {deliveryFullAddress}
                 </div>
               ) : null}
-              <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>{clientEmail || ""}</div>
+              <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>
+                {clientEmail || ""}
+              </div>
             </div>
           </div>
 
@@ -2058,7 +2798,10 @@ export default function NewDevisPage() {
                 <th style={{ width: 120 }}>PU HT</th>
                 <th style={{ width: 90 }}>TVA</th>
                 <th style={{ width: 120, textAlign: "right" }}>Total HT</th>
-                <th className={styles.printHiddenCell} style={{ width: 44 }}></th>
+                <th
+                  className={styles.printHiddenCell}
+                  style={{ width: 44 }}
+                ></th>
               </tr>
             </thead>
             <tbody>
@@ -2068,9 +2811,16 @@ export default function NewDevisPage() {
                     <input
                       className={styles.printHidden}
                       value={l.label}
-                      onChange={(e) => updateLine(l.id, { label: e.target.value })}
+                      onChange={(e) =>
+                        updateLine(l.id, { label: e.target.value })
+                      }
                       placeholder="Ex: Entretien boîte de vitesse"
-                      style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}
+                      style={{
+                        width: "100%",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                      }}
                     />
                     <span className={styles.printOnly}>{l.label || "—"}</span>
                   </td>
@@ -2079,8 +2829,15 @@ export default function NewDevisPage() {
                       className={styles.printHidden}
                       type="number"
                       value={l.qty}
-                      onChange={(e) => updateLine(l.id, { qty: Number(e.target.value) })}
-                      style={{ width: 64, border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}
+                      onChange={(e) =>
+                        updateLine(l.id, { qty: Number(e.target.value) })
+                      }
+                      style={{
+                        width: 64,
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                      }}
                     />
                     <span className={styles.printOnly}>{l.qty}</span>
                   </td>
@@ -2089,18 +2846,34 @@ export default function NewDevisPage() {
                       className={styles.printHidden}
                       type="number"
                       value={l.unitPrice}
-                      onChange={(e) => updateLine(l.id, { unitPrice: Number(e.target.value) })}
-                      style={{ width: 110, border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}
+                      onChange={(e) =>
+                        updateLine(l.id, { unitPrice: Number(e.target.value) })
+                      }
+                      style={{
+                        width: 110,
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                      }}
                     />
-                    <span className={styles.printOnly}>{formatEuro(l.unitPrice)}</span>
+                    <span className={styles.printOnly}>
+                      {formatEuro(l.unitPrice)}
+                    </span>
                   </td>
                   <td>
                     <select
                       className={styles.printHidden}
                       value={vatDispense ? 0 : l.vatRate}
                       disabled={vatDispense}
-                      onChange={(e) => updateLine(l.id, { vatRate: Number(e.target.value) })}
-                      style={{ width: 80, border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}
+                      onChange={(e) =>
+                        updateLine(l.id, { vatRate: Number(e.target.value) })
+                      }
+                      style={{
+                        width: 80,
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                      }}
                     >
                       {VAT_OPTIONS.map((v) => (
                         <option key={v} value={v}>
@@ -2108,10 +2881,22 @@ export default function NewDevisPage() {
                         </option>
                       ))}
                     </select>
-                    <span className={styles.printOnly}>{vatDispense ? 0 : l.vatRate}%</span>
+                    <span className={styles.printOnly}>
+                      {vatDispense ? 0 : l.vatRate}%
+                    </span>
                   </td>
-                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{formatEuro(calcLineHT(l))}</td>
-                  <td className={styles.printHiddenCell} style={{ textAlign: "right" }}>
+                  <td
+                    style={{
+                      textAlign: "right",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {formatEuro(calcLineHT(l))}
+                  </td>
+                  <td
+                    className={styles.printHiddenCell}
+                    style={{ textAlign: "right" }}
+                  >
                     {lines.length > 1 ? (
                       <button
                         type="button"
@@ -2129,15 +2914,33 @@ export default function NewDevisPage() {
           </table>
 
           <div className={`${styles.previewAddLineWrap} ${styles.noPrint}`}>
-            <button type="button" className={styles.previewAddLineBtn} onClick={addLine}>
+            <button
+              type="button"
+              className={styles.previewAddLineBtn}
+              onClick={addLine}
+            >
               + Ajouter une prestation
             </button>
           </div>
-          {fieldErrors.lines ? <div className={styles.fieldError} style={{ marginTop: 6 }}>{fieldErrors.lines}</div> : null}
+          {fieldErrors.lines ? (
+            <div className={styles.fieldError} style={{ marginTop: 6 }}>
+              {fieldErrors.lines}
+            </div>
+          ) : null}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", marginTop: 18, gap: 24 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 260px",
+              marginTop: 18,
+              gap: 24,
+            }}
+          >
             <div style={{ fontSize: 12, color: "#444", lineHeight: 1.4 }}>
-              <div>Les prix sont exprimés en euros. Le devis est valable {validityDays} jours.</div>
+              <div>
+                Les prix sont exprimés en euros. Le devis est valable{" "}
+                {validityDays} jours.
+              </div>
               {paymentMethod || paymentDetails ? (
                 <div style={{ marginTop: 6 }}>
                   <strong>Paiement :</strong> {paymentLabel}
@@ -2150,28 +2953,44 @@ export default function NewDevisPage() {
               ) : null}
               {operationCategory ? (
                 <div style={{ marginTop: 6 }}>
-                  <strong>Catégorie :</strong> {OPERATION_CATEGORY_OPTIONS.find((option) => option.key === operationCategory)?.label}
+                  <strong>Catégorie :</strong>{" "}
+                  {
+                    OPERATION_CATEGORY_OPTIONS.find(
+                      (option) => option.key === operationCategory,
+                    )?.label
+                  }
                 </div>
               ) : null}
               {serviceDateMode === "single" && serviceDate ? (
                 <div style={{ marginTop: 6 }}>
-                  <strong>Date de prestation / livraison :</strong> {new Date(serviceDate).toLocaleDateString("fr-FR")}
+                  <strong>Date de prestation / livraison :</strong>{" "}
+                  {new Date(serviceDate).toLocaleDateString("fr-FR")}
                 </div>
               ) : null}
-              {serviceDateMode === "period" && (servicePeriodStart || servicePeriodEnd) ? (
+              {serviceDateMode === "period" &&
+              (servicePeriodStart || servicePeriodEnd) ? (
                 <div style={{ marginTop: 6 }}>
-                  <strong>Période de prestation :</strong> {servicePeriodStart ? new Date(servicePeriodStart).toLocaleDateString("fr-FR") : "—"}
-                  {servicePeriodEnd ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}` : ""}
+                  <strong>Période de prestation :</strong>{" "}
+                  {servicePeriodStart
+                    ? new Date(servicePeriodStart).toLocaleDateString("fr-FR")
+                    : "—"}
+                  {servicePeriodEnd
+                    ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}`
+                    : ""}
                 </div>
               ) : null}
               {purchaseOrderReference ? (
                 <div style={{ marginTop: 6 }}>
-                  <strong>Référence commande / PO :</strong> {purchaseOrderReference}
+                  <strong>Référence commande / PO :</strong>{" "}
+                  {purchaseOrderReference}
                 </div>
               ) : null}
               {depositKind && depositValue ? (
                 <div style={{ marginTop: 6 }}>
-                  <strong>Acompte demandé :</strong> {depositKind === "amount" ? `${depositValue} €` : `${depositValue} %`}
+                  <strong>Acompte demandé :</strong>{" "}
+                  {depositKind === "amount"
+                    ? `${depositValue} €`
+                    : `${depositValue} %`}
                 </div>
               ) : null}
               {vatDispense ? (
@@ -2183,14 +3002,25 @@ export default function NewDevisPage() {
 
             <div className={styles.previewTotalsBox}>
               <div className={styles.noPrint} style={{ marginBottom: 8 }}>
-                <div style={{ fontWeight: 650, marginBottom: 6 }}>Remise commerciale</div>
-                <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8 }}>
+                <div style={{ fontWeight: 650, marginBottom: 6 }}>
+                  Remise commerciale
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "110px 1fr",
+                    gap: 8,
+                  }}
+                >
                   <select
                     value={discountKind}
                     onChange={(e) => {
                       const v = e.target.value as any;
                       setDiscountKind(v);
-                      if (!v) { setDiscountValue(0); setDiscountDetails(""); }
+                      if (!v) {
+                        setDiscountValue(0);
+                        setDiscountDetails("");
+                      }
                     }}
                     style={{
                       background: "white",
@@ -2209,10 +3039,21 @@ export default function NewDevisPage() {
                     min={0}
                     step="0.01"
                     value={discountValue}
-                    onChange={(e) => setDiscountValue(Number(e.target.value) || 0)}
-                    placeholder={discountKind === "percent" ? "Ex: 10" : "Ex: 50"}
+                    onChange={(e) =>
+                      setDiscountValue(Number(e.target.value) || 0)
+                    }
+                    placeholder={
+                      discountKind === "percent" ? "Ex: 10" : "Ex: 50"
+                    }
                     disabled={!discountKind}
-                    style={{ width: "100%", background: "white", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 12px", color: "#111" }}
+                    style={{
+                      width: "100%",
+                      background: "white",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      padding: "10px 12px",
+                      color: "#111",
+                    }}
                   />
                   <textarea
                     value={discountDetails}
@@ -2220,25 +3061,60 @@ export default function NewDevisPage() {
                     placeholder="Détail de la remise (optionnel)"
                     disabled={!discountKind}
                     rows={2}
-                    style={{ gridColumn: "1 / -1", width: "100%", background: "white", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 12px", color: "#111", resize: "vertical" }}
+                    style={{
+                      gridColumn: "1 / -1",
+                      width: "100%",
+                      background: "white",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      padding: "10px 12px",
+                      color: "#111",
+                      resize: "vertical",
+                    }}
                   />
                 </div>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: 6,
+                }}
+              >
                 <span>Total HT</span>
                 <strong>{formatEuro(totals.totalHT)}</strong>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: 6,
+                }}
+              >
                 <span>TVA</span>
                 <strong>{formatEuro(totals.totalTVA)}</strong>
               </div>
-              <div className={styles.previewTotalsMain} style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 18 }}>
+              <div
+                className={styles.previewTotalsMain}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginTop: 10,
+                  fontSize: 18,
+                }}
+              >
                 <span>Total TTC</span>
                 <strong>{formatEuro(totals.totalTTC)}</strong>
               </div>
               {totals.discountTTC > 0 ? (
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginTop: 8,
+                  }}
+                >
                   <span>Remise</span>
                   <strong>- {formatEuro(totals.discountTTC)}</strong>
                 </div>
@@ -2249,7 +3125,15 @@ export default function NewDevisPage() {
                 </div>
               ) : null}
               {totals.discountTTC > 0 ? (
-                <div className={styles.previewTotalsMain} style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 18 }}>
+                <div
+                  className={styles.previewTotalsMain}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginTop: 8,
+                    fontSize: 18,
+                  }}
+                >
                   <span>Total à payer</span>
                   <strong>{formatEuro(totals.totalDue)}</strong>
                 </div>
@@ -2276,7 +3160,9 @@ export default function NewDevisPage() {
                 minHeight: 90,
               }}
             >
-              <div style={{ fontWeight: 750, marginBottom: 6 }}>Bon pour accord</div>
+              <div style={{ fontWeight: 750, marginBottom: 6 }}>
+                Bon pour accord
+              </div>
               <div style={{ fontSize: 12, color: "#444" }}>Signature :</div>
             </div>
           </div>

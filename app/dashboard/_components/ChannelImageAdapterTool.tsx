@@ -1094,20 +1094,18 @@ export function ChannelImageAdapterModal({
   const previewBg = previewBackgroundStyle(backgroundMode, backgroundColor);
 
   const isMobile = viewportWidth <= 768;
+  const isTinyMobile = viewportWidth <= 390;
   const isCompact = viewportWidth <= 1180;
-  const modalWidth = isMobile
-    ? "calc(100vw - max(8px, env(safe-area-inset-left)) - max(8px, env(safe-area-inset-right)))"
-    : "min(1580px, calc(100vw - 28px))";
-  const modalHeight = isMobile
-    ? "calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 28px)"
-    : "min(940px, calc(100dvh - 28px))";
-  const modalPadding = isMobile ? 10 : 18;
-  const previewMinHeight = isMobile ? 120 : isCompact ? 320 : 0;
-  const controlsGridColumns = isMobile ? "1fr 1fr" : "48px 48px 1fr 1fr";
+  const modalWidth = isMobile ? "100%" : "min(1580px, calc(100vw - 28px))";
+  const modalHeight = isMobile ? "100%" : "min(940px, calc(100dvh - 28px))";
+  const modalPadding = isTinyMobile ? 8 : isMobile ? 10 : 18;
+  const previewMinHeight = isMobile ? (isTinyMobile ? 150 : 180) : isCompact ? 320 : 0;
+  const previewHeight = isMobile ? "clamp(150px, 42dvh, 260px)" : undefined;
+  const controlsGridColumns = isMobile ? "repeat(2, minmax(0, 1fr))" : "48px 48px 1fr 1fr";
   const contentGridTemplateColumns = isMobile ? undefined : isCompact ? "minmax(0, 1fr)" : "minmax(0, 1fr) 300px 320px";
   const contentGridTemplateRows = isMobile ? undefined : isCompact ? "auto auto auto" : undefined;
   return (
-    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? "calc(env(safe-area-inset-top) + 14px) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left))" : 16, overflow: "hidden" }}>
+    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? "max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left))" : 16, overflow: "hidden", boxSizing: "border-box" }}>
       <div onClick={(event) => event.stopPropagation()} style={{ width: modalWidth, maxWidth: "100%", height: modalHeight, maxHeight: "100%", minWidth: 0, minHeight: 0, alignSelf: isMobile ? "stretch" : undefined, justifySelf: isMobile ? "stretch" : undefined, borderRadius: isMobile ? 20 : 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: modalPadding, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: isMobile ? 10 : 16, overflow: "hidden", boxSizing: "border-box" }}>
         <div style={{ display: isMobile ? "grid" : "flex", alignItems: isMobile ? "start" : "center", justifyContent: "space-between", gap: isMobile ? 8 : 12, minHeight: isMobile ? "auto" : 52, flexWrap: "wrap", minWidth: 0 }}>
           <div style={{ minWidth: 0, flex: "1 1 280px", paddingLeft: isMobile ? "max(6px, env(safe-area-inset-left))" : 0, paddingRight: isMobile ? 4 : 0, boxSizing: "border-box" }}>
@@ -1116,7 +1114,7 @@ export function ChannelImageAdapterModal({
             </div>
             <div style={{ fontSize: 12, opacity: 0.74, marginTop: 4, overflowWrap: "anywhere", paddingLeft: isMobile ? 2 : 0 }}>{subtitle}</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 4 : 8, flexShrink: 1, flexWrap: "nowrap", justifyContent: "flex-end", width: isMobile ? "100%" : undefined, minWidth: 0, overflow: "hidden", boxSizing: "border-box" }}>
+          <div style={{ display: "flex", alignItems: "stretch", gap: isMobile ? 6 : 8, flexShrink: 1, flexWrap: "wrap", justifyContent: isMobile ? "stretch" : "flex-end", width: isMobile ? "100%" : undefined, minWidth: 0, overflow: "visible", boxSizing: "border-box" }}>
             {onApplyToChannelImages ? <button type="button" className={buttonClassName} onClick={onApplyToChannelImages} style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "1 1 0" : undefined, maxWidth: isMobile ? "none" : undefined, justifyContent: "center", alignItems: "center", fontSize: isMobile ? 11 : undefined, lineHeight: 1.1, padding: isMobile ? "0 6px" : "0 16px", whiteSpace: "normal", textAlign: "center", boxSizing: "border-box" }}>Appliquer partout</button> : null}
             {onApplyToSelectedChannels ? <button type="button" className={buttonClassName} onClick={onApplyToSelectedChannels} style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center", alignItems: "center", fontSize: isMobile ? 11 : undefined, lineHeight: 1.1, padding: isMobile ? "0 6px" : "0 16px", whiteSpace: "normal", textAlign: "center", boxSizing: "border-box" }}>Appliquer aux canaux</button> : null}
             {onResetChannel ? <button type="button" className={buttonClassName} onClick={onResetChannel} style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center", alignItems: "center", fontSize: isMobile ? 11 : undefined, lineHeight: 1.1, padding: isMobile ? "0 6px" : "0 16px", whiteSpace: "nowrap", textAlign: "center", boxSizing: "border-box" }}>Réinit. canal</button> : null}
@@ -1125,10 +1123,10 @@ export function ChannelImageAdapterModal({
           </div>
         </div>
 
-        <div style={{ minHeight: 0, minWidth: 0, display: isMobile ? "flex" : "grid",
-    flexDirection: isMobile ? "column" : undefined, gridTemplateColumns: contentGridTemplateColumns, gridTemplateRows: contentGridTemplateRows, gap: isMobile ? 24 : 18, alignItems: "stretch", overflowY: "auto", overflowX: "hidden", paddingRight: isMobile ? 2 : 0, paddingBottom: isMobile ? "max(96px, env(safe-area-inset-bottom))" : 0, WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", boxSizing: "border-box" }}>
+        <div style={{ minHeight: 0, minWidth: 0, maxWidth: "100%", display: isMobile ? "flex" : "grid",
+    flexDirection: isMobile ? "column" : undefined, gridTemplateColumns: contentGridTemplateColumns, gridTemplateRows: contentGridTemplateRows, gap: isMobile ? 18 : 18, alignItems: "stretch", overflowY: "auto", overflowX: "hidden", paddingRight: isMobile ? 0 : 0, paddingBottom: isMobile ? "max(72px, env(safe-area-inset-bottom))" : 0, WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", boxSizing: "border-box" }}>
           <div style={{ minWidth: 0, minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, gridTemplateRows: isMobile ? undefined : "minmax(0, 1fr) auto", gap: isMobile ? 10 : undefined, order: isMobile ? 2 : 1, flex: isMobile ? "0 0 auto" : undefined }}>
-            <div style={{ minWidth: 0, width: "100%", minHeight: previewMinHeight, height: isMobile ? 220 : undefined, maxHeight: isMobile ? 220 : undefined, display: "grid", placeItems: "center", borderRadius: isMobile ? 18 : 24, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.02))", padding: isMobile ? 8 : 14, overflow: "hidden", flex: isMobile ? "0 0 auto" : undefined, boxSizing: "border-box" }}>
+            <div style={{ minWidth: 0, width: "100%", minHeight: previewMinHeight, height: previewHeight, maxHeight: isMobile ? "42dvh" : undefined, display: "grid", placeItems: "center", borderRadius: isMobile ? 18 : 24, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.02))", padding: isMobile ? 6 : 14, overflow: "hidden", flex: isMobile ? "0 0 auto" : undefined, boxSizing: "border-box" }}>
               <div
                 ref={previewRef}
                 onWheel={onWheel}
@@ -1198,7 +1196,7 @@ export function ChannelImageAdapterModal({
                   style={{
                     minHeight: 0,
                     display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : isCompact ? "repeat(auto-fit, minmax(180px, 1fr))" : undefined,
+                    gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : isCompact ? "repeat(auto-fit, minmax(min(180px, 100%), 1fr))" : undefined,
                     alignContent: "start",
                     gap: 8,
                     overflowX: "hidden",

@@ -47,6 +47,7 @@ type DashboardSettingsDrawerContentProps = {
   checkActivity: () => void | Promise<void>;
   inertiaSnapshot: any;
   openPanel: (name: DashboardPanelName) => void;
+  onCloseDrawer: () => void;
   referralName: string;
   referralPhone: string;
   referralEmail: string;
@@ -73,6 +74,7 @@ export default function DashboardSettingsDrawerContent({
   checkActivity,
   inertiaSnapshot,
   openPanel,
+  onCloseDrawer,
   referralName,
   referralPhone,
   referralEmail,
@@ -96,8 +98,8 @@ export default function DashboardSettingsDrawerContent({
     <>
       {panel === "contact" && <ContactContent mode="drawer" />}
       {panel === "compte" && <AccountContent mode="drawer" />}
-      {panel === "profil" && <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} />}
-      {panel === "activite" && <ActivityContent mode="drawer" onActivitySaved={checkActivity} onActivityReset={checkActivity} />}
+      {panel === "profil" && <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} onCloseDrawer={onCloseDrawer} />}
+      {panel === "activite" && <ActivityContent mode="drawer" onActivitySaved={checkActivity} onActivityReset={checkActivity} onCloseDrawer={onCloseDrawer} />}
       {panel === "abonnement" && <AbonnementContent mode="drawer" />}
       {panel === "legal" && <LegalContent mode="drawer" />}
       {panel === "rgpd" && <RgpdContent mode="drawer" />}

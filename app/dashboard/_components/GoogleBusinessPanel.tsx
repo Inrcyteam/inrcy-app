@@ -113,7 +113,7 @@ export default function GoogleBusinessPanel(props: any) {
             placeholder={gmbAccountConnected ? "Compte connecté" : "Aucun compte connecté"}
             style={{
               flex: "1 1 280px",
-              minWidth: 220,
+              minWidth: 0,
               borderRadius: 12,
               border: "1px solid rgba(255,255,255,0.14)",
               background: "rgba(15,23,42,0.65)",
@@ -177,7 +177,7 @@ export default function GoogleBusinessPanel(props: any) {
               disabled={gmbLocationBusy}
               style={{
                 flex: "1 1 260px",
-                minWidth: 220,
+                minWidth: 0,
                 borderRadius: 12,
                 border: "1px solid rgba(255,255,255,0.14)",
                 background: "rgba(15,23,42,0.65)",
@@ -245,7 +245,7 @@ export default function GoogleBusinessPanel(props: any) {
             placeholder={gmbConfigured ? "Lien récupéré automatiquement" : "Sélectionne un établissement pour générer le lien"}
             style={{
               flex: "1 1 280px",
-              minWidth: 220,
+              minWidth: 0,
               borderRadius: 12,
               border: "1px solid rgba(255,255,255,0.14)",
               background: "rgba(15,23,42,0.65)",

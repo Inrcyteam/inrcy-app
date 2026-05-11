@@ -11,6 +11,7 @@ type Props = {
   mode?: "page" | "drawer";
   onProfileSaved?: () => void;
   onProfileReset?: () => void;
+  onCloseDrawer?: () => void;
 };
 
 // Petit helper pour éviter les crashs sur JSON invalide
@@ -65,6 +66,7 @@ export default function ProfilContent({
   mode = "page",
   onProfileSaved,
   onProfileReset,
+  onCloseDrawer,
 }: Props) {
   const defaultEmail = "pro@exemple.com";    // placeholder tant que Supabase n'est pas branché
 
@@ -374,8 +376,12 @@ export default function ProfilContent({
       }
 
       setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
       onProfileSaved?.();
+      if (mode === "drawer") {
+        window.setTimeout(() => onCloseDrawer?.(), 700);
+      } else {
+        window.setTimeout(() => setSaved(false), 2500);
+      }
     } catch (err: any) {
       console.error(err);
       setSaved(false);

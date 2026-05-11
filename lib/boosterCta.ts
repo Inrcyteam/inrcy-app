@@ -1,4 +1,4 @@
-import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
+import { sanitizeBoosterSiteText, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 
 export type BoosterChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 export type BoosterCtaMode = "none" | "website" | "call" | "message" | "custom";
@@ -123,8 +123,8 @@ export function buildCtaTextForChannel(channel: BoosterChannelKey, post: Partial
 
 function buildPrimaryBoosterText(channel: BoosterChannelKey, post: Partial<BoosterPostLike> | null | undefined) {
   const isSiteChannel = channel === "inrcy_site" || channel === "site_web";
-  const title = collapseWhitespace(isSiteChannel ? String(post?.title || "") : stripSiteTextFormatting(post?.title || ""));
-  const content = collapseWhitespace(isSiteChannel ? String(post?.content || "") : stripSiteTextFormatting(post?.content || ""));
+  const title = collapseWhitespace(isSiteChannel ? sanitizeBoosterSiteText(post?.title || "") : stripSiteTextFormatting(post?.title || ""));
+  const content = collapseWhitespace(isSiteChannel ? sanitizeBoosterSiteText(post?.content || "") : stripSiteTextFormatting(post?.content || ""));
 
   if ((channel === "facebook" || channel === "linkedin") && title && content) {
     return collapseWhitespace(`${title} — ${content}`);

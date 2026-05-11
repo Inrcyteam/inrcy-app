@@ -16,12 +16,28 @@ function normalizeAllowedTag(tag: string) {
   return t;
 }
 
+function stripEscapedInlineTagArtifacts(input: string) {
+  return String(input || "")
+    .replace(new RegExp(`&lt;\\s*\\/?\\s*(${ALLOWED_INLINE_TAGS})(?:\\s+[^&]*?)?\\s*\\/?\\s*&gt;`, "gi"), "")
+    .replace(new RegExp(`&amp;lt;\\s*\\/?\\s*(${ALLOWED_INLINE_TAGS})(?:\\s+[^&]*?)?\\s*\\/?\\s*&amp;gt;`, "gi"), "");
+}
+
+function normalizeGeneratedInlineTags(input: string) {
+  return String(input || "")
+    .replace(/<\s*(strong|b)\b[^>]*>/gi, "<strong>")
+    .replace(/<\s*\/\s*(strong|b)\s*>/gi, "</strong>")
+    .replace(/<\s*(em|i)\b[^>]*>/gi, "<em>")
+    .replace(/<\s*\/\s*(em|i)\s*>/gi, "</em>")
+    .replace(/<\s*u\b[^>]*>/gi, "<u>")
+    .replace(/<\s*\/\s*u\s*>/gi, "</u>");
+}
+
 function applyInlineSiteFormattingToEscaped(input: string) {
   let out = String(input || "");
   const allowedTagRegex = new RegExp(`&lt;(${ALLOWED_INLINE_TAGS})&gt;([\\s\\S]*?)&lt;\\/\\1&gt;`, "gi");
 
-  // Restore only the exact inline tags we allow after escaping everything else.
-  // The loop keeps nested formats working, e.g. <strong><u>texte</u></strong>.
+  // Restore only complete, balanced inline tags. Broken/orphan tags are removed below,
+  // so they can never appear on the public site as literal "<strong>" text.
   for (let i = 0; i < 8; i += 1) {
     const before = out;
     out = out.replace(allowedTagRegex, (_match, tag, inner) => {
@@ -31,11 +47,11 @@ function applyInlineSiteFormattingToEscaped(input: string) {
     if (out === before) break;
   }
 
-  // Keep backward compatibility with previously generated Markdown content.
+  // Keep backward compatibility with generated Markdown content.
   out = out.replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>");
   out = out.replace(/(^|[^*])\*([^*\n]+?)\*/g, "$1<em>$2</em>");
 
-  return out;
+  return stripEscapedInlineTagArtifacts(out);
 }
 
 function decodeBasicHtmlEntities(input: string) {
@@ -49,12 +65,60 @@ function decodeBasicHtmlEntities(input: string) {
     .replace(/&#39;/gi, "'");
 }
 
+export function sanitizeBoosterSiteText(input: unknown) {
+  let text = decodeBasicHtmlEntities(String(input ?? ""))
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+
+  text = normalizeGeneratedInlineTags(text)
+    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\s*\/\s*(div|p|li|h[1-6])\s*>/gi, "\n")
+    .replace(/<\s*(div|p|li|h[1-6])\b[^>]*>/gi, "")
+    .replace(new RegExp(`<\\s*\\/?\\s*(?!strong\\b|em\\b|u\\b)[a-z][^>]*>`, "gi"), "")
+    .replace(new RegExp(`<\\s*\\/?\\s*(${ALLOWED_INLINE_TAGS})(?:\\s+[^>]*?)?\\s*\\/?\\s*>`, "gi"), (tag) => {
+      const match = String(tag).match(/^<\s*(\/?)\s*(strong|b|em|i|u)\b/i);
+      if (!match) return "";
+      const slash = match[1] ? "/" : "";
+      const safeTag = normalizeAllowedTag(match[2]);
+      return `<${slash}${safeTag}>`;
+    })
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  // Remove orphan allowed tags by simulating a very small inline-tag stack.
+  const tokens: string[] = [];
+  const stack: Array<{ tag: string; index: number }> = [];
+  const parts = text.split(/(<\/?(?:strong|em|u)>)/gi);
+  for (const part of parts) {
+    const open = part.match(/^<(strong|em|u)>$/i);
+    const close = part.match(/^<\/(strong|em|u)>$/i);
+    if (open) {
+      stack.push({ tag: open[1].toLowerCase(), index: tokens.length });
+      tokens.push(`<${open[1].toLowerCase()}>`);
+    } else if (close) {
+      const tag = close[1].toLowerCase();
+      const last = stack[stack.length - 1];
+      if (last?.tag === tag) {
+        stack.pop();
+        tokens.push(`</${tag}>`);
+      }
+      // Mismatched/extra closing tag is dropped.
+    } else {
+      tokens.push(part);
+    }
+  }
+  for (const leftover of stack) tokens[leftover.index] = "";
+
+  return tokens.join("").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export function siteTextToEditableHtml(input: unknown) {
-  const raw = decodeBasicHtmlEntities(String(input ?? "")).replace(/\r\n/g, "\n");
+  const raw = sanitizeBoosterSiteText(input);
   if (!raw.trim()) return "";
 
-  return applyInlineSiteFormattingToEscaped(escapeHtml(raw))
-    .replace(/\n/g, "<br />");
+  return applyInlineSiteFormattingToEscaped(escapeHtml(raw)).replace(/\n/g, "<br />");
 }
 
 export function editableHtmlToSiteText(input: unknown) {
@@ -83,11 +147,11 @@ export function editableHtmlToSiteText(input: unknown) {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  return html;
+  return sanitizeBoosterSiteText(html);
 }
 
 export function renderBoosterSiteContentHtml(input: unknown) {
-  const raw = decodeBasicHtmlEntities(String(input ?? "")).trim();
+  const raw = sanitizeBoosterSiteText(input);
   if (!raw) return "";
 
   const escaped = escapeHtml(raw).replace(/\r\n/g, "\n");
@@ -100,8 +164,9 @@ export function renderBoosterSiteContentHtml(input: unknown) {
 }
 
 export function stripSiteTextFormatting(input: unknown) {
-  return String(input ?? "")
+  return decodeBasicHtmlEntities(String(input ?? ""))
     .replace(new RegExp(`<\\/?\\s*(${ALLOWED_INLINE_TAGS})[^>]*>`, "gi"), "")
+    .replace(new RegExp(`&lt;\\/?\\s*(${ALLOWED_INLINE_TAGS})[^&]*?&gt;`, "gi"), "")
     .replace(/\*\*([^*\n]+?)\*\*/g, "$1")
     .replace(/(^|[^*])\*([^*\n]+?)\*/g, "$1$2")
     .replace(/\s+\n/g, "\n")

@@ -15,7 +15,7 @@ import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
-import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
+import { sanitizeBoosterSiteText, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 
 type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
 
@@ -484,8 +484,8 @@ const body = await req.json().catch(() => null);
       const rawTitle = String(raw.title || fallbackTitle || "").trim();
       const rawContent = String(raw.content || fallbackContent || "").trim();
       const rawCta = String(raw.cta || fallbackCta || "").trim();
-      const title = isSiteChannel ? rawTitle : stripSiteTextFormatting(rawTitle);
-      const content = isSiteChannel ? rawContent : stripSiteTextFormatting(rawContent);
+      const title = isSiteChannel ? sanitizeBoosterSiteText(rawTitle) : stripSiteTextFormatting(rawTitle);
+      const content = isSiteChannel ? sanitizeBoosterSiteText(rawContent) : stripSiteTextFormatting(rawContent);
       const cta = stripSiteTextFormatting(rawCta);
       const ctaMode = String(raw.ctaMode || "").trim();
       const ctaUrl = String(raw.ctaUrl || "").trim();

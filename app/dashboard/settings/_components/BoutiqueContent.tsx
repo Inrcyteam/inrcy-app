@@ -492,7 +492,7 @@ Prix : ${priceLabel}`,
                   flexWrap: "wrap",
                 }}
               >
-                <div style={{ minWidth: 220 }}>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ color: "rgba(255,255,255,0.92)", fontWeight: 850, fontSize: 13 }}>
                     {o.product_name}
                     <span style={{ color: "rgba(255,255,255,0.55)", fontWeight: 700 }}> — #{o.id.slice(0, 8)}</span>
