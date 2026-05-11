@@ -756,7 +756,14 @@ const body = await req.json().catch(() => null);
 
           await setDelivery(ch, { status: "delivered", error: null });
 
-          results[ch] = { ok: true, external_id: resp.mediaId, diagnostics: resp };
+          results[ch] = {
+            ok: true,
+            external_id: resp.mediaId,
+            instagram_media_type: resp.mediaType,
+            instagram_parent_media_id: resp.parentMediaId || resp.mediaId,
+            instagram_child_media_ids: resp.childMediaIds || resp.childContainerIds || [],
+            diagnostics: resp,
+          };
           continue;
         }
 

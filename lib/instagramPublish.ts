@@ -2,11 +2,17 @@ const FACEBOOK_GRAPH_VERSION = "v20.0";
 
 type PublishOk = {
   ok: true;
-  /** Published Instagram media id */
+  /** Published Instagram media id. For carousels, this is the parent media id. */
   mediaId: string;
+  mediaType: "IMAGE" | "CAROUSEL_ALBUM";
+  parentMediaId?: string | null;
+  childContainerIds?: string[];
+  childMediaIds?: string[];
   diagnostics?: {
     containerId?: string;
     childContainerIds?: string[];
+    childMediaIds?: string[];
+    detailsResponse?: any;
     createResponse?: any;
     childCreateResponses?: any[];
     statusChecks?: any[];
@@ -137,6 +143,18 @@ async function publishInstagramContainer(params: {
   return fetchJson(publishUrl, { method: "POST" });
 }
 
+async function getInstagramMediaDetails(params: {
+  mediaId: string;
+  accessToken: string;
+}) {
+  const qs = new URLSearchParams({
+    fields: "id,media_type,media_product_type,permalink,children{id,media_type,permalink}",
+    access_token: params.accessToken,
+  });
+  const url = `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(params.mediaId)}?${qs.toString()}`;
+  return fetchJson(url, { method: "GET" });
+}
+
 /**
  * Publish a single-photo post to an Instagram Business/Creator account using Instagram Graph API.
  */
@@ -187,7 +205,7 @@ export async function instagramPublishPhoto(params: {
     if (!waitResult.ok) {
       return {
         ok: false,
-        error: waitResult.error,
+        error: ("error" in waitResult ? waitResult.error : "Instagram met trop de temps à répondre."),
         diagnostics: {
           containerId,
           createResponse: createJson,
@@ -232,6 +250,10 @@ export async function instagramPublishPhoto(params: {
     return {
       ok: true,
       mediaId,
+      mediaType: "IMAGE",
+      parentMediaId: mediaId,
+      childContainerIds: [],
+      childMediaIds: [],
       diagnostics: {
         containerId,
         createResponse: createJson,
@@ -307,7 +329,7 @@ export async function instagramPublishCarousel(params: {
       if (!waitResult.ok) {
         return {
           ok: false,
-          error: waitResult.error,
+          error: ("error" in waitResult ? waitResult.error : "Instagram met trop de temps à répondre."),
           diagnostics: { childContainerIds, childCreateResponses, childStatusChecks },
         };
       }
@@ -350,7 +372,7 @@ export async function instagramPublishCarousel(params: {
     if (!waitResult.ok) {
       return {
         ok: false,
-        error: waitResult.error,
+        error: ("error" in waitResult ? waitResult.error : "Instagram met trop de temps à répondre."),
         diagnostics: {
           containerId,
           childContainerIds,
@@ -401,12 +423,23 @@ export async function instagramPublishCarousel(params: {
       };
     }
 
+    const { res: detailsRes, json: detailsJson } = await getInstagramMediaDetails({ mediaId, accessToken });
+    const childMediaIds = Array.isArray(detailsJson?.children?.data)
+      ? detailsJson.children.data.map((child: any) => String(child?.id || "").trim()).filter(Boolean)
+      : [];
+
     return {
       ok: true,
       mediaId,
+      mediaType: "CAROUSEL_ALBUM",
+      parentMediaId: mediaId,
+      childContainerIds,
+      childMediaIds,
       diagnostics: {
         containerId,
         childContainerIds,
+        childMediaIds,
+        detailsResponse: detailsRes.ok ? detailsJson : { ok: false, status: detailsRes.status, raw: detailsJson },
         childCreateResponses,
         childStatusChecks,
         createResponse: createJson,

@@ -1096,17 +1096,20 @@ export function ChannelImageAdapterModal({
   const isMobile = viewportWidth <= 768;
   const isTinyMobile = viewportWidth <= 390;
   const isCompact = viewportWidth <= 1180;
-  const modalWidth = isMobile ? "100%" : "min(1580px, calc(100vw - 28px))";
-  const modalHeight = isMobile ? "100%" : "min(940px, calc(100dvh - 28px))";
-  const modalPadding = isTinyMobile ? 8 : isMobile ? 10 : 18;
+  const mobileOuterPadding = isTinyMobile ? 8 : 10;
+  const mobileViewportWidth = `calc(100dvw - ${mobileOuterPadding * 2}px)`;
+  const mobileViewportHeight = `calc(100dvh - ${mobileOuterPadding * 2}px)`;
+  const modalWidth = isMobile ? mobileViewportWidth : "min(1580px, calc(100vw - 28px))";
+  const modalHeight = isMobile ? mobileViewportHeight : "min(940px, calc(100dvh - 28px))";
+  const modalPadding = isTinyMobile ? 10 : isMobile ? 12 : 18;
   const previewMinHeight = isMobile ? (isTinyMobile ? 150 : 180) : isCompact ? 320 : 0;
   const previewHeight = isMobile ? "clamp(150px, 42dvh, 260px)" : undefined;
   const controlsGridColumns = isMobile ? "repeat(2, minmax(0, 1fr))" : "48px 48px 1fr 1fr";
   const contentGridTemplateColumns = isMobile ? undefined : isCompact ? "minmax(0, 1fr)" : "minmax(0, 1fr) 300px 320px";
   const contentGridTemplateRows = isMobile ? undefined : isCompact ? "auto auto auto" : undefined;
   return (
-    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? "max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left))" : 16, overflow: "hidden", boxSizing: "border-box" }}>
-      <div onClick={(event) => event.stopPropagation()} style={{ width: modalWidth, maxWidth: "100%", height: modalHeight, maxHeight: "100%", minWidth: 0, minHeight: 0, alignSelf: isMobile ? "stretch" : undefined, justifySelf: isMobile ? "stretch" : undefined, borderRadius: isMobile ? 20 : 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: modalPadding, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: isMobile ? 10 : 16, overflow: "hidden", boxSizing: "border-box" }}>
+    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? mobileOuterPadding : 16, overflow: "hidden", boxSizing: "border-box" }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: modalWidth, maxWidth: isMobile ? mobileViewportWidth : "100%", height: modalHeight, maxHeight: isMobile ? mobileViewportHeight : "100%", minWidth: 0, minHeight: 0, alignSelf: isMobile ? "stretch" : undefined, justifySelf: isMobile ? "stretch" : undefined, borderRadius: isMobile ? 20 : 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: modalPadding, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: isMobile ? 10 : 16, overflow: "hidden", boxSizing: "border-box" }}>
         <div style={{ display: isMobile ? "grid" : "flex", alignItems: isMobile ? "start" : "center", justifyContent: "space-between", gap: isMobile ? 8 : 12, minHeight: isMobile ? "auto" : 52, flexWrap: "wrap", minWidth: 0 }}>
           <div style={{ minWidth: 0, flex: "1 1 280px", paddingLeft: isMobile ? "max(6px, env(safe-area-inset-left))" : 0, paddingRight: isMobile ? 4 : 0, boxSizing: "border-box" }}>
             <div style={{ fontWeight: 900, fontSize: isMobile ? 16 : 18, whiteSpace: isMobile ? "normal" : "nowrap", overflow: "visible", textOverflow: "ellipsis", lineHeight: 1.2, overflowWrap: "anywhere", wordBreak: "break-word", paddingLeft: isMobile ? 2 : 0 }}>
@@ -1123,7 +1126,7 @@ export function ChannelImageAdapterModal({
           </div>
         </div>
 
-        <div style={{ minHeight: 0, minWidth: 0, maxWidth: "100%", display: isMobile ? "flex" : "grid",
+        <div style={{ minHeight: 0, minWidth: 0, width: "100%", maxWidth: "100%", display: isMobile ? "flex" : "grid",
     flexDirection: isMobile ? "column" : undefined, gridTemplateColumns: contentGridTemplateColumns, gridTemplateRows: contentGridTemplateRows, gap: isMobile ? 18 : 18, alignItems: "stretch", overflowY: "auto", overflowX: "hidden", paddingRight: isMobile ? 0 : 0, paddingBottom: isMobile ? "max(72px, env(safe-area-inset-bottom))" : 0, WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", boxSizing: "border-box" }}>
           <div style={{ minWidth: 0, minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, gridTemplateRows: isMobile ? undefined : "minmax(0, 1fr) auto", gap: isMobile ? 10 : undefined, order: isMobile ? 2 : 1, flex: isMobile ? "0 0 auto" : undefined }}>
             <div style={{ minWidth: 0, width: "100%", minHeight: previewMinHeight, height: previewHeight, maxHeight: isMobile ? "42dvh" : undefined, display: "grid", placeItems: "center", borderRadius: isMobile ? 18 : 24, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.02))", padding: isMobile ? 6 : 14, overflow: "hidden", flex: isMobile ? "0 0 auto" : undefined, boxSizing: "border-box" }}>
@@ -1151,11 +1154,11 @@ export function ChannelImageAdapterModal({
                 </div>
               </div>
             </div>
-            <div style={{ fontSize: 12, opacity: 0.72, padding: "10px 2px 0" }}>Déplacez l’image, ajustez le zoom, choisissez Remplir ou Adapter, puis enregistrez. {isolationNote || "Ces réglages concernent uniquement ce canal."}</div>
+            <div style={{ fontSize: 12, opacity: 0.72, padding: isMobile ? "12px 10px 0" : "10px 2px 0", lineHeight: 1.55, width: "100%", maxWidth: "100%", boxSizing: "border-box", overflowWrap: "break-word", wordBreak: "normal" }}>Déplacez l’image, ajustez le zoom, choisissez Remplir ou Adapter, puis enregistrez. {isolationNote || "Ces réglages concernent uniquement ce canal."}</div>
           </div>
 
           <div style={{ minWidth: 0, minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, alignContent: "start", gap: 12, order: isMobile ? 2 : 1, flex: isMobile ? "0 0 auto" : undefined }}>
-            <div style={{ display: "grid", gap: 8, padding: 14, borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
+            <div style={{ display: "grid", gap: 8, padding: isMobile ? 12 : 14, borderRadius: 20, minWidth: 0, width: "100%", boxSizing: "border-box", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div style={{ fontSize: 12, opacity: 0.82 }}>Cadrage</div><div style={{ fontSize: 11, opacity: 0.55 }}>{fitLabel} • {zoomLabel}</div></div>
               <div style={{ display: "grid", gridTemplateColumns: controlsGridColumns, gap: 8 }}>
                 <button type="button" className={buttonClassName} onClick={onZoomOut} style={{ justifyContent: "center" }}>−</button>
@@ -1167,12 +1170,12 @@ export function ChannelImageAdapterModal({
               <button type="button" className={buttonClassName} onClick={onReset} style={{ width: "100%", justifyContent: "center" }}>Réinitialiser cette image</button>
             </div>
 
-            <div style={{ display: "grid", gap: 6, padding: 12, borderRadius: 18, border: "1px solid rgba(76,195,255,0.18)", background: "rgba(76,195,255,0.06)", fontSize: 12, lineHeight: 1.35 }}>
+            <div style={{ display: "grid", gap: 6, padding: 12, borderRadius: 18, minWidth: 0, width: "100%", boxSizing: "border-box", border: "1px solid rgba(76,195,255,0.18)", background: "rgba(76,195,255,0.06)", fontSize: 12, lineHeight: 1.35 }}>
               <b>Réglage isolé</b>
               <span style={{ opacity: 0.78 }}>{isolationNote || "Ce cadrage ne modifie pas les autres canaux ni les autres sites."}</span>
             </div>
 
-            <div style={{ display: "grid", gap: 10, padding: 14, borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
+            <div style={{ display: "grid", gap: 10, padding: isMobile ? 12 : 14, borderRadius: 20, minWidth: 0, width: "100%", boxSizing: "border-box", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
               <div style={{ fontSize: 12, opacity: 0.82 }}>Arrière-plan</div>
               <select value={bgMode} onChange={(e) => onBackgroundModeChange(e.target.value as BackgroundMode)} style={{ width: "100%", minHeight: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "#ffffff", color: "#111827", padding: "0 12px" }}>
                 <option value="transparent" style={{ background: "#ffffff", color: "#111827" }}>Transparent</option>
