@@ -441,6 +441,14 @@ const {
   connectLinkedinAccount,
   disconnectLinkedinAccount,
   saveLinkedinProfileUrl,
+  linkedinOrganizations,
+  linkedinOrganizationsLoading,
+  linkedinSelectedOrganizationId,
+  setLinkedinSelectedOrganizationId,
+  linkedinSelectedOrganizationName,
+  setLinkedinSelectedOrganizationName,
+  loadLinkedinOrganizations,
+  selectLinkedinOrganization,
   setPanelSuccess: setLinkedinPanelSuccess,
   setPanelError: setLinkedinPanelError,
 } = useLinkedinChannel({
@@ -788,6 +796,8 @@ const loadSiteInrcy = useCallback(async () => {
     linkedinConnected: !!liObj?.connected,
     linkedinConnectionStatus: (liObj?.connected || liObj?.accountConnected ? "connected" : "disconnected") as ConnectionDisplayStatus,
     linkedinDisplayName: String(liObj?.displayName ?? ""),
+    linkedinSelectedOrganizationId: String(liObj?.orgId ?? ""),
+    linkedinSelectedOrganizationName: String(liObj?.orgName ?? ""),
     gmbUrl: gmbObj?.url ?? "",
     gmbAccountConnected: !!gmbObj?.connected,
     gmbConfigured: !!gmbObj?.resource_id,
@@ -848,6 +858,8 @@ const loadSiteInrcy = useCallback(async () => {
       nextState.linkedinConnectionStatus = (states?.linkedin?.connection_status || (states?.linkedin?.connected ? "connected" : "disconnected")) as ConnectionDisplayStatus;
       if (states?.linkedin?.display_name) nextState.linkedinDisplayName = String(states.linkedin.display_name);
       if (states?.linkedin?.profile_url) nextState.linkedinUrl = String(states.linkedin.profile_url);
+      if ((states?.linkedin as any)?.organization_id) nextState.linkedinSelectedOrganizationId = String((states.linkedin as any).organization_id);
+      if ((states?.linkedin as any)?.organization_name) nextState.linkedinSelectedOrganizationName = String((states.linkedin as any).organization_name);
     } else {
       const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([
         fetchGoogleConnected("site_inrcy", "ga4"),
@@ -892,6 +904,8 @@ const loadSiteInrcy = useCallback(async () => {
   setLinkedinConnected(nextState.linkedinConnected);
   setLinkedinConnectionStatus(nextState.linkedinConnectionStatus);
   setLinkedinDisplayName(nextState.linkedinDisplayName);
+  setLinkedinSelectedOrganizationId(nextState.linkedinSelectedOrganizationId);
+  setLinkedinSelectedOrganizationName(nextState.linkedinSelectedOrganizationName);
   setGmbUrl(nextState.gmbUrl);
   setGmbAccountConnected(nextState.gmbAccountConnected);
   setGmbConfigured(nextState.gmbConfigured);
@@ -2163,6 +2177,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     instagramAccountConnected, instagramConnected, instagramConnectionStatus, instagramUrl, instagramUrlError, instagramUrlNotice, instagramUsername,
     isDrawerMutationPending,
     linkedinAccountConnected, linkedinConnected, linkedinConnectionStatus, linkedinDisplayName, linkedinUrl, linkedinUrlError, linkedinUrlNotice,
+    linkedinOrganizations, linkedinOrganizationsLoading, linkedinSelectedOrganizationId, linkedinSelectedOrganizationName, loadLinkedinOrganizations, selectLinkedinOrganization,
     loadFacebookPages, loadGmbAccountsAndLocations, loadInstagramAccounts,
     resetSiteInrcyAll, resetSiteWebAll,
     saveFacebookPageFromDrawer, saveGmbLocationFromDrawer, saveInstagramProfileFromDrawer, saveLinkedinProfileUrlFromDrawer, saveSiteInrcyUrlFromDrawer, saveSiteWebUrlFromDrawer,

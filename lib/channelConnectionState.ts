@@ -81,6 +81,8 @@ export type ChannelStates = {
     resource_id: string | null;
     display_name: string | null;
     profile_url: string | null;
+    organization_id: string | null;
+    organization_name: string | null;
   };
 };
 
@@ -297,6 +299,8 @@ export async function getChannelConnectionStates(
       resource_id: asString(li.resource_id) || null,
       display_name: asString(li.resource_label) || asString(li.display_name) || asString(liSettings.displayName) || null,
       profile_url: asString(liMeta.profile_url) || asString(liMeta.profile) || asString(liSettings.url) || null,
+      organization_id: asString(liMeta.org_id) || asString(liSettings.orgId) || null,
+      organization_name: asString(liMeta.org_name) || asString(liSettings.orgName) || null,
     },
   };
 }

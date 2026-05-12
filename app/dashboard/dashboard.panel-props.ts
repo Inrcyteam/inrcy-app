@@ -81,6 +81,13 @@ export function buildDashboardPanelProps(a: any) {
     linkedinUrlNotice: a.linkedinUrlNotice,
     linkedinUrlError: a.linkedinUrlError,
     setLinkedinUrlNotice: a.setLinkedinUrlNotice,
+    linkedinOrganizations: a.linkedinOrganizations,
+    linkedinOrganizationsLoading: a.linkedinOrganizationsLoading,
+    linkedinSelectedOrganizationId: a.linkedinSelectedOrganizationId,
+    linkedinSelectedOrganizationName: a.linkedinSelectedOrganizationName,
+    loadLinkedinOrganizations: a.loadLinkedinOrganizations,
+    selectLinkedinOrganization: a.selectLinkedinOrganization,
+    useLinkedinPersonalProfile: a.useLinkedinPersonalProfile,
   };
 
   const siteInrcyPanelProps = {
