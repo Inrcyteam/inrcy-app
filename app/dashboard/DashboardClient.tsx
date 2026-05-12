@@ -796,7 +796,7 @@ const loadSiteInrcy = useCallback(async () => {
     instagramConnected: !!igObj?.connected,
     instagramConnectionStatus: (igObj?.connected ? "connected" : "disconnected") as ConnectionDisplayStatus,
     instagramUsername: String(igObj?.username ?? ""),
-    linkedinUrl: liObj?.url ?? "",
+    linkedinUrl: liObj?.orgId ? (liObj?.orgUrl ?? liObj?.url ?? "") : (liObj?.profileUrl ?? liObj?.url ?? ""),
     linkedinAccountConnected: !!liObj?.accountConnected,
     linkedinConnected: !!liObj?.connected,
     linkedinConnectionStatus: (liObj?.connected || liObj?.accountConnected ? "connected" : "disconnected") as ConnectionDisplayStatus,
@@ -862,8 +862,12 @@ const loadSiteInrcy = useCallback(async () => {
       nextState.linkedinConnected = !!states?.linkedin?.connected;
       nextState.linkedinConnectionStatus = (states?.linkedin?.connection_status || (states?.linkedin?.connected ? "connected" : "disconnected")) as ConnectionDisplayStatus;
       if (states?.linkedin?.display_name) nextState.linkedinDisplayName = String(states.linkedin.display_name);
-      if (states?.linkedin?.profile_url) nextState.linkedinUrl = String(states.linkedin.profile_url);
-      if ((states?.linkedin as any)?.organization_id) nextState.linkedinSelectedOrganizationId = String((states.linkedin as any).organization_id);
+      if ((states?.linkedin as any)?.organization_id) {
+        nextState.linkedinSelectedOrganizationId = String((states.linkedin as any).organization_id);
+        nextState.linkedinUrl = String((states.linkedin as any).organization_url || states.linkedin.profile_url || "");
+      } else if (states?.linkedin?.profile_url) {
+        nextState.linkedinUrl = String(states.linkedin.profile_url);
+      }
       if ((states?.linkedin as any)?.organization_name) nextState.linkedinSelectedOrganizationName = String((states.linkedin as any).organization_name);
     } else {
       const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([

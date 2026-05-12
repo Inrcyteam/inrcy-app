@@ -203,9 +203,9 @@ function mapChannelConnection(channel: DashboardChannelKey, states: ChannelState
         expired: state.expired,
         requiresUpdate: state.requiresUpdate,
         connectionStatus: state.connection_status,
-        resourceId: state.resource_id,
+        resourceId: state.organization_id || state.resource_id,
         resourceLabel: state.organization_name || state.display_name,
-        resourceUrl: state.profile_url,
+        resourceUrl: state.organization_id ? state.organization_url : state.profile_url,
       };
     }
   }

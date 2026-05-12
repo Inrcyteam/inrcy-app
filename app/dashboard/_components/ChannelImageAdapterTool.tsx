@@ -165,6 +165,10 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function safePreviewZoom(fit: "contain" | "cover", zoom?: number) {
+  return clampNumber(zoom || 1, 0.4, fit === "cover" ? 3 : 1);
+}
+
 function useViewportWidth(defaultWidth = 1440) {
   const [viewportWidth, setViewportWidth] = useState<number>(typeof window === "undefined" ? defaultWidth : window.innerWidth);
 
@@ -248,7 +252,7 @@ function FinalImageFrame({
   const mode = getTransformBackgroundMode(transform, fallbackMode);
   const backgroundColor = transform.backgroundColor;
   const fit = transform.fit || "cover";
-  const zoom = clampNumber(transform.zoom || 1, 0.4, 3);
+  const zoom = safePreviewZoom(fit, transform.zoom);
 
   const imageWidth = meta?.width || 0;
   const imageHeight = meta?.height || 0;

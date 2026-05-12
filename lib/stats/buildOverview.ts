@@ -1146,7 +1146,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           },
           linkedin: {
             label: channelStates.linkedin.organization_name || channelStates.linkedin.display_name || null,
-            url: channelStates.linkedin.profile_url || null,
+            url: channelStates.linkedin.organization_id ? channelStates.linkedin.organization_url : channelStates.linkedin.profile_url,
           },
         },
         totals: {

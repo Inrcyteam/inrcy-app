@@ -42,6 +42,7 @@ import {
   getChannelDefaultCtaLabel,
   getCtaModeHelp,
   getDefaultTransform,
+  getEffectiveTransformZoom,
   getOptimizedTransform,
   getWebsiteSourceLabel,
   makeImageKey,
@@ -656,6 +657,7 @@ export default function PublishModal({
       imageMetaByKey[activeEditorImageKey],
     );
   const activeEditorMeta = imageMetaByKey[activeEditorImageKey];
+  const activeEffectiveZoom = getEffectiveTransformZoom(activeEditorTransform);
   const activeBackgroundMode = getBackgroundMode(activeEditorTransform);
   const activeBackgroundColor = getBackgroundFill(
     activeEditorTransform.backgroundMode || activeBackgroundMode,
@@ -1311,6 +1313,9 @@ export default function PublishModal({
         : "#ffffff");
     updateChannelTransform(channel, imageKey, {
       fit: "contain",
+      zoom: 1,
+      offsetX: 0,
+      offsetY: 0,
       backgroundMode:
         backgroundMode === "transparent" ? "transparent" : "color",
       backgroundColor,
@@ -1328,7 +1333,9 @@ export default function PublishModal({
 
   const nudgeZoom = (delta: number) => {
     if (!activeEditorImageKey) return;
-    const nextZoom = clamp((activeEditorTransform.zoom || 1) + delta, 0.4, 3);
+    const maxZoom = activeEditorTransform.fit === "cover" ? 3 : 1;
+    const currentZoom = getEffectiveTransformZoom(activeEditorTransform);
+    const nextZoom = clamp(currentZoom + delta, 0.4, maxZoom);
     updateChannelTransform(activeImageChannel, activeEditorImageKey, {
       zoom: nextZoom,
     });
@@ -1347,10 +1354,12 @@ export default function PublishModal({
     const rect = previewStageRef.current.getBoundingClientRect();
     const pointerX = event.clientX - rect.left;
     const pointerY = event.clientY - rect.top;
+    const maxZoom = activeEditorTransform.fit === "cover" ? 3 : 1;
+    const currentZoom = getEffectiveTransformZoom(activeEditorTransform);
     const nextZoom = clamp(
-      (activeEditorTransform.zoom || 1) + (event.deltaY < 0 ? 0.08 : -0.08),
+      currentZoom + (event.deltaY < 0 ? 0.08 : -0.08),
       0.4,
-      3,
+      maxZoom,
     );
 
     const nextLayout = computePreviewLayout({
@@ -3512,7 +3521,7 @@ export default function PublishModal({
         backgroundMode={activeBackgroundMode}
         backgroundColor={activeBackgroundColor}
         fitLabel={activeEditorTransform.fit === "cover" ? "Remplir" : "Adapter"}
-        zoomLabel={`zoom ${activeEditorTransform.zoom.toFixed(2)}×`}
+        zoomLabel={`zoom ${activeEffectiveZoom.toFixed(2)}×`}
         previewSrc={
           activeEditorImageKey ? previewByKey[activeEditorImageKey] : ""
         }
@@ -3576,6 +3585,9 @@ export default function PublishModal({
                   backgroundMode: "transparent",
                   blurBackground: false,
                   fit: "contain",
+                  zoom: 1,
+                  offsetX: 0,
+                  offsetY: 0,
                 }
               : {
                   backgroundMode: "color",
@@ -3588,6 +3600,9 @@ export default function PublishModal({
                       : "#ffffff"),
                   blurBackground: false,
                   fit: "contain",
+                  zoom: 1,
+                  offsetX: 0,
+                  offsetY: 0,
                 },
           )
         }
@@ -3598,6 +3613,9 @@ export default function PublishModal({
             backgroundColor: color,
             blurBackground: false,
             fit: "contain",
+            zoom: 1,
+            offsetX: 0,
+            offsetY: 0,
           })
         }
         pillButtonStyle={pillBtn}

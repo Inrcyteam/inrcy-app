@@ -7,6 +7,7 @@ import {
   formatChannelLabel,
   getPublicationBackgroundMode,
   getPublicationChannelPreset,
+  getPublicationEffectiveZoom,
   offsetFromPublicationDrawPosition,
   publicationClamp,
   withPublicationBackgroundMode,
@@ -62,7 +63,8 @@ export default function MailboxPublicationImageAdapterModal(props: MailboxPublic
     transform,
   });
   const backgroundMode = getPublicationBackgroundMode(transform);
-  const zoomLabel = `zoom ${Number(transform.zoom || 1).toFixed(2)}×`;
+  const effectiveZoom = getPublicationEffectiveZoom(transform);
+  const zoomLabel = `zoom ${effectiveZoom.toFixed(2)}×`;
 
   return (
     <ChannelImageAdapterModal
@@ -87,7 +89,7 @@ export default function MailboxPublicationImageAdapterModal(props: MailboxPublic
                 const rect = publicationImageAdapterStageRef.current.getBoundingClientRect();
                 const pointerX = event.clientX - rect.left;
                 const pointerY = event.clientY - rect.top;
-                const nextZoom = publicationClamp((transform.zoom || 1) + (event.deltaY < 0 ? 0.08 : -0.08), 0.4, 3);
+                const nextZoom = publicationClamp(effectiveZoom + (event.deltaY < 0 ? 0.08 : -0.08), 0.4, transform.fit === "cover" ? 3 : 1);
                 const nextLayout = computePublicationPreviewLayout({
                   containerWidth: rect.width,
                   containerHeight: rect.height,
@@ -146,8 +148,8 @@ export default function MailboxPublicationImageAdapterModal(props: MailboxPublic
                 publicationImageAdapterDragRef.current = null;
                 setIsPublicationImageAdapterDragging(false);
               }}
-              onZoomOut={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: { ...asset.transform, zoom: publicationClamp((asset.transform.zoom || 1) - 0.08, 0.4, 3) } } : asset))}
-              onZoomIn={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: { ...asset.transform, zoom: publicationClamp((asset.transform.zoom || 1) + 0.08, 0.4, 3) } } : asset))}
+              onZoomOut={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: { ...asset.transform, zoom: publicationClamp(getPublicationEffectiveZoom(asset.transform) - 0.08, 0.4, asset.transform.fit === "cover" ? 3 : 1) } } : asset))}
+              onZoomIn={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: { ...asset.transform, zoom: publicationClamp(getPublicationEffectiveZoom(asset.transform) + 0.08, 0.4, asset.transform.fit === "cover" ? 3 : 1) } } : asset))}
               onContain={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: withPublicationBackgroundMode({ ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, getPublicationBackgroundMode(asset.transform)) } : asset))}
               onCover={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: withPublicationBackgroundMode({ ...asset.transform, fit: "cover", zoom: 1, offsetX: 0, offsetY: 0 }, "black") } : asset))}
               onReset={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: buildPublicationDefaultTransform(channel) } : asset))}
@@ -156,8 +158,8 @@ export default function MailboxPublicationImageAdapterModal(props: MailboxPublic
               onApplyToChannelImages={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.selected ? { ...asset, transform: { ...transform } } : asset))}
               onResetChannel={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.selected ? { ...asset, transform: buildPublicationDefaultTransform(channel) } : asset))}
               isolationNote={`Ce réglage concerne uniquement ${formatChannelLabel(channel)}. Les autres canaux restent indépendants.`}
-              onBackgroundModeChange={(mode) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: mode === "blur" ? withPublicationBackgroundMode({ ...asset.transform, fit: "contain" }, "blur") : mode === "transparent" ? withPublicationBackgroundMode({ ...asset.transform, fit: "contain" }, "transparent") : { ...withPublicationBackgroundMode({ ...asset.transform, fit: "contain" }, "color"), backgroundColor: asset.transform.backgroundColor || "#e8f6ff" } } : asset))}
-              onBackgroundColorChange={(color) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: { ...withPublicationBackgroundMode({ ...asset.transform, fit: "contain" }, "color"), backgroundColor: color } } : asset))}
+              onBackgroundModeChange={(mode) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: mode === "blur" ? withPublicationBackgroundMode({ ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, "blur") : mode === "transparent" ? withPublicationBackgroundMode({ ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, "transparent") : { ...withPublicationBackgroundMode({ ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, "color"), backgroundColor: asset.transform.backgroundColor || "#e8f6ff" } } : asset))}
+              onBackgroundColorChange={(color) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: { ...withPublicationBackgroundMode({ ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, "color"), backgroundColor: color } } : asset))}
               pillButtonStyle={pillBtn}
               pillButtonActiveStyle={pillBtnActive}
               sidebarItems={(publicationEditImagesByChannel[channel]?.assets || []).map((asset, index) => ({

@@ -771,8 +771,11 @@ const body = await req.json().catch(() => null);
           const li = asRecord(liRow);
           const auth = await getLinkedInAccessToken({ userId });
           const accessToken = auth.accessToken || "";
-          const authorUrn = auth.authorUrn || String(li["resource_id"] ?? "");
-          const orgUrn = auth.orgUrn || String(asRecord(li["meta"])["org_urn"] ?? "");
+          const liMeta = asRecord(li["meta"]);
+          const rawAuthorUrn = auth.authorUrn || String(li["resource_id"] ?? "");
+          const authorUrn = rawAuthorUrn.startsWith("urn:li:person:") ? rawAuthorUrn : "";
+          const selectedOrgId = String(liMeta["org_id"] || "").trim();
+          const orgUrn = auth.orgUrn || String(liMeta["org_urn"] || "") || (selectedOrgId ? `urn:li:organization:${selectedOrgId}` : "");
           const useAuthor = orgUrn || authorUrn;
           if (String(li["status"] ?? "") !== "connected" || !accessToken || !useAuthor) {
             const liError = auth.error && auth.refreshTokenPresent

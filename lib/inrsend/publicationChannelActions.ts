@@ -942,7 +942,11 @@ async function replaceChannelDelivery(params: {
     const li = asRecord(liRow);
     const auth = await getLinkedInAccessToken({ userId });
     const accessToken = auth.accessToken || "";
-    const authorUrn = auth.orgUrn || auth.authorUrn || String(asRecord(li.meta).org_urn ?? li.resource_id ?? "");
+    const liMeta = asRecord(li.meta);
+    const rawAuthorUrn = auth.authorUrn || String(li.resource_id ?? "");
+    const memberAuthorUrn = rawAuthorUrn.startsWith("urn:li:person:") ? rawAuthorUrn : "";
+    const selectedOrgId = String(liMeta.org_id || "").trim();
+    const authorUrn = auth.orgUrn || String(liMeta.org_urn || "") || (selectedOrgId ? `urn:li:organization:${selectedOrgId}` : "") || memberAuthorUrn;
     if (String(li.status ?? "") !== "connected" || !accessToken || !authorUrn) {
       throw new Error(auth.error || "Votre compte LinkedIn n’est pas encore correctement relié.");
     }

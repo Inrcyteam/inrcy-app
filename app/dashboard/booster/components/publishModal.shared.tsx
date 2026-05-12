@@ -360,6 +360,22 @@ export function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+export function getEffectiveTransformZoom(transform: Pick<ImageTransform, "fit" | "zoom">) {
+  const maxZoom = transform.fit === "cover" ? 3 : 1;
+  return clamp(transform.zoom || 1, 0.4, maxZoom);
+}
+
+export function normalizeContainTransform(transform: ImageTransform): ImageTransform {
+  if (transform.fit === "cover") return transform;
+  return {
+    ...transform,
+    fit: "contain",
+    zoom: getEffectiveTransformZoom(transform),
+    offsetX: clamp(transform.offsetX || 0, -100, 100),
+    offsetY: clamp(transform.offsetY || 0, -100, 100),
+  };
+}
+
 export function getBackgroundMode(transform: ImageTransform): BackgroundMode {
   if (transform.backgroundMode === "blur") return transform.backgroundColor ? "color" : "brand";
   if (transform.backgroundMode) return transform.backgroundMode;
@@ -403,7 +419,7 @@ export function computePreviewLayout(params: {
   const baseScale = transform.fit === "cover"
     ? Math.max(containerWidth / imageWidth, containerHeight / imageHeight)
     : Math.min(containerWidth / imageWidth, containerHeight / imageHeight);
-  const scale = baseScale * clamp(transform.zoom || 1, 0.4, 3);
+  const scale = baseScale * getEffectiveTransformZoom(transform);
   const drawW = imageWidth * scale;
   const drawH = imageHeight * scale;
   const maxX = Math.abs(drawW - containerWidth) / 2;
@@ -530,7 +546,7 @@ export async function renderChannelImage(params: {
     const iw = img.naturalWidth || img.width;
     const ih = img.naturalHeight || img.height;
     const baseScale = transform.fit === "cover" ? Math.max(cw / iw, ch / ih) : Math.min(cw / iw, ch / ih);
-    const scale = baseScale * clamp(transform.zoom || 1, 0.4, 3);
+    const scale = baseScale * getEffectiveTransformZoom(transform);
     const drawW = iw * scale;
     const drawH = ih * scale;
     const maxX = Math.abs(drawW - cw) / 2;

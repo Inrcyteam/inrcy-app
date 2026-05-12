@@ -83,6 +83,7 @@ export type ChannelStates = {
     profile_url: string | null;
     organization_id: string | null;
     organization_name: string | null;
+    organization_url: string | null;
   };
 };
 
@@ -222,6 +223,9 @@ export async function getChannelConnectionStates(
   const liConnected = Boolean(((liStatus === "connected" || liStatus === "account_connected") && liHasReusableAuth && !liExpired) || liSettings.accountConnected || liSettings.connected);
   const liConnectionStatus = getConnectionDisplayStatus(liConnected, "channel:linkedin", liMeta);
   const liRequiresUpdate = liConnectionStatus === "needs_update";
+  const liActiveOrganizationId = asString(liMeta.org_id) || asString(liSettings.orgId) || "";
+  const liProfileUrl = asString(liMeta.profile_url) || asString(liMeta.profile) || asString(liSettings.profileUrl) || (!liActiveOrganizationId ? asString(liSettings.url) : "") || null;
+  const liOrganizationUrl = asString(liMeta.org_url) || asString(liSettings.orgUrl) || (liActiveOrganizationId ? asString(liSettings.url) : "") || null;
 
   const gmb = latestIntegration(rows, "google", "gmb", "gmb");
   const gmbSettings = asRecord(settings.gmb);
@@ -298,9 +302,10 @@ export async function getChannelConnectionStates(
       connection_status: liConnectionStatus,
       resource_id: asString(li.resource_id) || null,
       display_name: asString(liMeta.profile_display_name) || asString(li.display_name) || asString(liSettings.displayName) || asString(li.resource_label) || null,
-      profile_url: asString(liMeta.org_url) || asString(liSettings.orgUrl) || asString(liMeta.profile_url) || asString(liMeta.profile) || asString(liSettings.url) || null,
+      profile_url: liProfileUrl,
       organization_id: asString(liMeta.org_id) || asString(liSettings.orgId) || null,
       organization_name: asString(liMeta.org_name) || asString(liSettings.orgName) || null,
+      organization_url: liOrganizationUrl,
     },
   };
 }

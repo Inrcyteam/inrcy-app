@@ -44,9 +44,13 @@ export async function GET() {
           href: states.instagram.profile_url,
         },
         linkedin: {
-          type: "profile",
-          label: states.linkedin.display_name || states.linkedin.profile_url,
-          href: states.linkedin.profile_url,
+          type: states.linkedin.organization_id ? "page" : "profile",
+          label: states.linkedin.organization_id
+            ? (states.linkedin.organization_name || states.linkedin.organization_url)
+            : (states.linkedin.display_name || states.linkedin.profile_url),
+          href: states.linkedin.organization_id
+            ? states.linkedin.organization_url
+            : states.linkedin.profile_url,
         },
       },
     });

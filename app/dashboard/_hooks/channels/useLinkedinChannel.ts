@@ -186,7 +186,16 @@ export function useLinkedinChannel({
       if (cleanOrgs.length === 1) {
         const only = cleanOrgs[0];
         const alreadyConnected = linkedinSelectedOrganizationId === only.id && linkedinConnected && !options?.resetSelection;
-        if (!alreadyConnected) {
+        const shouldRefreshStoredLabel = alreadyConnected && (
+          (only.name && only.name !== linkedinSelectedOrganizationName) ||
+          (only.url && only.url !== linkedinUrl)
+        );
+
+        if (alreadyConnected) {
+          setLinkedinSelectedOrganizationName(only.name);
+          if (only.url) setLinkedinUrl(only.url);
+          if (shouldRefreshStoredLabel) await persistLinkedinOrganization(only, { silent: true });
+        } else {
           const ok = await persistLinkedinOrganization(only, { silent: true });
           if (ok) setPanelSuccess(`Page LinkedIn « ${only.name} » connectée automatiquement.`, 2600);
         }
@@ -198,6 +207,12 @@ export function useLinkedinChannel({
       if (matchedSelected?.name) {
         setLinkedinSelectedOrganizationName(matchedSelected.name);
         if (matchedSelected.url && !options?.resetSelection) setLinkedinUrl(matchedSelected.url);
+        if (!options?.resetSelection && (
+          matchedSelected.name !== linkedinSelectedOrganizationName ||
+          (matchedSelected.url && matchedSelected.url !== linkedinUrl)
+        )) {
+          await persistLinkedinOrganization(matchedSelected, { silent: true });
+        }
       }
 
       if (!cleanOrgs.length) {
@@ -218,7 +233,7 @@ export function useLinkedinChannel({
     } finally {
       setLinkedinOrganizationsLoading(false);
     }
-  }, [linkedinAccountConnected, linkedinConnected, linkedinSelectedOrganizationId, persistLinkedinOrganization, setPanelSuccess, setPanelError]);
+  }, [linkedinAccountConnected, linkedinConnected, linkedinSelectedOrganizationId, linkedinSelectedOrganizationName, linkedinUrl, persistLinkedinOrganization, setPanelSuccess, setPanelError]);
 
   useEffect(() => {
     const linked = searchParams?.get("linked");

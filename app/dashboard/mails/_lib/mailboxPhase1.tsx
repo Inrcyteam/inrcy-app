@@ -381,6 +381,11 @@ export function publicationClamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+export function getPublicationEffectiveZoom(transform: Pick<PublicationImageTransform, "fit" | "zoom">) {
+  const maxZoom = transform.fit === "cover" ? 3 : 1;
+  return publicationClamp(transform.zoom || 1, 0.4, maxZoom);
+}
+
 export function getPublicationChannelPreset(channel: string): PublicationImageRenderPreset {
   return PUBLICATION_CHANNEL_PRESETS[normalizeChannelKey(channel)] || { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: true };
 }
@@ -449,7 +454,7 @@ export function computePublicationPreviewLayout(params: {
   const baseScale = transform.fit === "cover"
     ? Math.max(containerWidth / imageWidth, containerHeight / imageHeight)
     : Math.min(containerWidth / imageWidth, containerHeight / imageHeight);
-  const scale = baseScale * publicationClamp(transform.zoom || 1, 0.4, 3);
+  const scale = baseScale * getPublicationEffectiveZoom(transform);
   const drawW = imageWidth * scale;
   const drawH = imageHeight * scale;
   const maxX = Math.abs(drawW - containerWidth) / 2;
@@ -513,7 +518,7 @@ export async function renderPublicationImageAsset(params: {
     const iw = img.naturalWidth || img.width;
     const ih = img.naturalHeight || img.height;
     const baseScale = transform.fit === "cover" ? Math.max(cw / iw, ch / ih) : Math.min(cw / iw, ch / ih);
-    const scale = baseScale * publicationClamp(transform.zoom || 1, 0.4, 3);
+    const scale = baseScale * getPublicationEffectiveZoom(transform);
     const drawW = iw * scale;
     const drawH = ih * scale;
     const maxX = Math.abs(drawW - cw) / 2;
