@@ -8,6 +8,7 @@ import { asRecord, asString } from "@/lib/tsSafe";
 import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getLinkedInOAuthScope } from "@/lib/linkedinScopes";
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
@@ -134,19 +135,36 @@ export async function GET(req: Request) {
     const refreshToken = String(token?.refresh_token || "");
     const refreshTokenExpiresIn = Number(token?.refresh_token_expires_in);
 
-    // OpenID Connect userinfo (works when openid scope granted)
-    let userinfo: Record<string, unknown> = {};
-    try {
-      userinfo = await fetchJson("https://api.linkedin.com/v2/userinfo", accessToken);
-    } catch {
-      userinfo = {};
-    }
+    // LinkedIn peut répondre via OpenID (/v2/userinfo) ou via les anciens endpoints
+    // r_liteprofile / r_emailaddress. On accepte les deux pour éviter les blocages
+    // quand l'app Community Management n'a pas OpenID Connect activé.
+    let sub = "";
+    let name = "";
+    let email = "";
+    let profileUrl: unknown = null;
 
-    const sub = String(userinfo?.sub || "");
-    const name = String(userinfo?.name || userinfo?.localizedFirstName || "");
-    const email = String(userinfo?.email || "");
-    // OpenID Connect can optionally provide a public profile URL via the standard "profile" claim.
-    const profileUrl = asRecord(userinfo)["profile"] || asRecord(userinfo)["profile_url"] || null;
+    try {
+      const userinfo = await fetchJson("https://api.linkedin.com/v2/userinfo", accessToken);
+      sub = String(userinfo?.sub || "");
+      name = String(userinfo?.name || userinfo?.localizedFirstName || "");
+      email = String(userinfo?.email || "");
+      profileUrl = asRecord(userinfo)["profile"] || asRecord(userinfo)["profile_url"] || null;
+    } catch {
+      try {
+        const me = await fetchJson("https://api.linkedin.com/v2/me", accessToken);
+        sub = String(me?.id || "");
+        const firstName = asString(asRecord(asRecord(me?.localizedFirstName))["fr_FR"]) || asString(me?.localizedFirstName);
+        const lastName = asString(asRecord(asRecord(me?.localizedLastName))["fr_FR"]) || asString(me?.localizedLastName);
+        name = [firstName, lastName].filter(Boolean).join(" ").trim();
+      } catch {}
+
+      try {
+        const emailData = await fetchJson("https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))", accessToken);
+        const elements = Array.isArray(emailData?.elements) ? emailData.elements as unknown[] : [];
+        const first = asRecord(elements[0]);
+        email = asString(asRecord(first["handle~"])["emailAddress"]) || "";
+      } catch {}
+    }
 
     const authorUrn = sub ? `urn:li:person:${sub}` : "";
 
@@ -175,7 +193,7 @@ const payload: Record<string, unknown> = {
   email_address: email || null,
   display_name: name || null,
   provider_account_id: sub || null,
-  scopes: process.env.LINKEDIN_SCOPE_OVERRIDES || "openid profile email w_member_social",
+  scopes: getLinkedInOAuthScope(),
   access_token_enc: encryptToken(accessToken),
   refresh_token_enc: refreshTokenEncToStore,
   expires_at: expiresAt,

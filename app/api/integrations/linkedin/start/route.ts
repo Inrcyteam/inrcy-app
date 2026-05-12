@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
+import { getLinkedInOAuthScope } from "@/lib/linkedinScopes";
 
 export async function GET(request: Request) {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
@@ -14,14 +15,7 @@ export async function GET(request: Request) {
   const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=linkedin", "/dashboard?panel=linkedin");
   const { stateB64, nonce, cookieName } = makeOAuthState("linkedin", returnTo);
 
-  const defaultScopes = [
-    "openid",
-    "profile",
-    "email",
-    "w_member_social",
-  ];
-
-  const scope = (process.env.LINKEDIN_SCOPE_OVERRIDES || defaultScopes.join(" ")).trim();
+  const scope = getLinkedInOAuthScope();
 
   const params = new URLSearchParams({
     response_type: "code",
