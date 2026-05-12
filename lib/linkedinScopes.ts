@@ -1,9 +1,16 @@
 import "server-only";
 
 const DEFAULT_LINKEDIN_SCOPES = [
-  "r_liteprofile",
-  "r_emailaddress",
+  "r_basicprofile",
   "w_member_social",
+  "rw_organization_admin",
+  "r_organization_social",
+  "w_organization_social",
+  "r_organization_followers",
+  "r_organization_social_feed",
+  "w_organization_social_feed",
+  "r_member_postAnalytics",
+  "r_member_profileAnalytics",
 ];
 
 export function getLinkedInOAuthScope() {

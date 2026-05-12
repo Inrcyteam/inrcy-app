@@ -135,36 +135,23 @@ export async function GET(req: Request) {
     const refreshToken = String(token?.refresh_token || "");
     const refreshTokenExpiresIn = Number(token?.refresh_token_expires_in);
 
-    // LinkedIn peut répondre via OpenID (/v2/userinfo) ou via les anciens endpoints
-    // r_liteprofile / r_emailaddress. On accepte les deux pour éviter les blocages
-    // quand l'app Community Management n'a pas OpenID Connect activé.
+    // App LinkedIn Community Management : on utilise uniquement les scopes
+    // réellement autorisés dans le portail développeur, notamment r_basicprofile.
+    // Ne pas appeler /v2/userinfo, /v2/emailAddress, ni demander openid/email/r_emailaddress.
     let sub = "";
     let name = "";
-    let email = "";
+    const email = "";
     let profileUrl: unknown = null;
 
     try {
-      const userinfo = await fetchJson("https://api.linkedin.com/v2/userinfo", accessToken);
-      sub = String(userinfo?.sub || "");
-      name = String(userinfo?.name || userinfo?.localizedFirstName || "");
-      email = String(userinfo?.email || "");
-      profileUrl = asRecord(userinfo)["profile"] || asRecord(userinfo)["profile_url"] || null;
-    } catch {
-      try {
-        const me = await fetchJson("https://api.linkedin.com/v2/me", accessToken);
-        sub = String(me?.id || "");
-        const firstName = asString(asRecord(asRecord(me?.localizedFirstName))["fr_FR"]) || asString(me?.localizedFirstName);
-        const lastName = asString(asRecord(asRecord(me?.localizedLastName))["fr_FR"]) || asString(me?.localizedLastName);
-        name = [firstName, lastName].filter(Boolean).join(" ").trim();
-      } catch {}
-
-      try {
-        const emailData = await fetchJson("https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))", accessToken);
-        const elements = Array.isArray(emailData?.elements) ? emailData.elements as unknown[] : [];
-        const first = asRecord(elements[0]);
-        email = asString(asRecord(first["handle~"])["emailAddress"]) || "";
-      } catch {}
-    }
+      const me = await fetchJson("https://api.linkedin.com/v2/me", accessToken);
+      const meRec = asRecord(me);
+      sub = String(meRec["id"] || "");
+      const firstName = asString(asRecord(asRecord(meRec["localizedFirstName"]))["fr_FR"]) || asString(meRec["localizedFirstName"]);
+      const lastName = asString(asRecord(asRecord(meRec["localizedLastName"]))["fr_FR"]) || asString(meRec["localizedLastName"]);
+      name = [firstName, lastName].filter(Boolean).join(" ").trim();
+      profileUrl = meRec["vanityName"] ? `https://www.linkedin.com/in/${String(meRec["vanityName"])}` : null;
+    } catch {}
 
     const authorUrn = sub ? `urn:li:person:${sub}` : "";
 
