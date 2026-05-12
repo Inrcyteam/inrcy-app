@@ -27,7 +27,6 @@ const inputStyle = {
 
 export default function LinkedinPanel(props: any) {
   const {
-    linkedinConnected,
     linkedinAccountConnected,
     linkedinConnectionStatus,
     linkedinDisplayName,
@@ -46,20 +45,26 @@ export default function LinkedinPanel(props: any) {
     linkedinOrganizationsLoading,
     linkedinSelectedOrganizationId,
     linkedinSelectedOrganizationName,
+    linkedinOrganizationPickerOpen,
     loadLinkedinOrganizations,
     selectLinkedinOrganization,
-    useLinkedinPersonalProfile,
   } = props;
 
   const hasCompanyPage = !!linkedinSelectedOrganizationId || !!linkedinSelectedOrganizationName;
   const profileReady = !!linkedinAccountConnected;
-  const linkedinNeedsUpdate = linkedinConnectionStatus === "needs_update" && (linkedinConnected || linkedinAccountConnected);
+  const linkedinNeedsUpdate = linkedinConnectionStatus === "needs_update" && linkedinAccountConnected;
   const linkedinStatusLabel = linkedinNeedsUpdate ? "À actualiser" : hasCompanyPage ? "Profil + page connectés" : profileReady ? "Profil connecté" : "À connecter";
   const linkedinStatusDot = linkedinNeedsUpdate
     ? "rgba(245,158,11,0.95)"
     : profileReady
       ? "rgba(34,197,94,0.95)"
       : "rgba(148,163,184,0.9)";
+
+  const linkBlockTitle = hasCompanyPage ? "Lien page entreprise LinkedIn" : "Lien profil personnel LinkedIn";
+  const linkBlockHelp = hasCompanyPage
+    ? "Lien public de la page entreprise utilisée dans iNrStats et dans le bouton Voir."
+    : "Lien public du profil personnel utilisé dans iNrStats et dans le bouton Voir.";
+  const linkPlaceholder = hasCompanyPage ? "Lien de la page entreprise LinkedIn" : "Lien du profil LinkedIn";
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -111,106 +116,95 @@ export default function LinkedinPanel(props: any) {
           </div>
         </div>
       ) : (
-        <>
-          <div style={cardStyle}>
-            <div className={styles.blockHeaderRow}>
-              <div className={styles.blockTitle}>Profil personnel LinkedIn</div>
-              <ConnectionPill connected={profileReady} status={linkedinNeedsUpdate ? "needs_update" : undefined} />
-            </div>
-            <div className={styles.blockSub}>
-              {hasCompanyPage
-                ? "Profil utilisé pour autoriser la page entreprise LinkedIn."
-                : "Canal actif : publication et données exploitées depuis le profil personnel."}
-            </div>
+        <div style={cardStyle}>
+          <div className={styles.blockHeaderRow}>
+            <div className={styles.blockTitle}>Profil personnel LinkedIn</div>
+            <ConnectionPill connected={profileReady} status={linkedinNeedsUpdate ? "needs_update" : undefined} />
+          </div>
+          <div className={styles.blockSub}>
+            {hasCompanyPage
+              ? "Profil connecté pour autoriser et piloter la page entreprise LinkedIn."
+              : "Canal actif : publication et données exploitées depuis le profil personnel."}
+          </div>
 
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <input value={linkedinDisplayName} readOnly placeholder="Profil connecté" style={{ ...inputStyle, opacity: 1 }} />
+
+            {linkedinNeedsUpdate ? (
+              <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={() => void connectLinkedinAccount?.("profile")} disabled={linkedinAccountBusy}>
+                Actualiser
+              </button>
+            ) : null}
+
+            <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectLinkedinAccount()} disabled={linkedinAccountBusy}>
+              {linkedinAccountBusy ? "Déconnexion..." : "Déconnecter"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {profileReady ? (
+        <div style={cardStyle}>
+          <div className={styles.blockHeaderRow}>
+            <div className={styles.blockTitle}>{hasCompanyPage ? "Page entreprise LinkedIn" : "Connecter une page entreprise"}</div>
+            <ConnectionPill connected={hasCompanyPage} />
+          </div>
+          <div className={styles.blockSub}>
+            {hasCompanyPage
+              ? "Canal actif : publication et données exploitées depuis la page entreprise."
+              : "Sélectionnez la page entreprise à connecter. Si une seule page est disponible, elle sera connectée automatiquement."}
+          </div>
+
+          <div style={{ display: "grid", gap: 10 }}>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <input value={linkedinDisplayName} readOnly placeholder="Profil connecté" style={{ ...inputStyle, opacity: 1 }} />
+              <input
+                value={linkedinSelectedOrganizationName || ""}
+                readOnly
+                placeholder="Aucune page entreprise connectée"
+                style={{ ...inputStyle, opacity: linkedinSelectedOrganizationName ? 1 : 0.8 }}
+              />
 
-              {hasCompanyPage ? (
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.connectBtn}`}
-                  onClick={() => void useLinkedinPersonalProfile?.()}
-                  disabled={linkedinAccountBusy}
-                >
-                  Utiliser ce profil
-                </button>
-              ) : null}
-
-              {linkedinNeedsUpdate ? (
-                <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={() => void connectLinkedinAccount?.("profile")} disabled={linkedinAccountBusy}>
-                  Actualiser
-                </button>
-              ) : null}
-
-              <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectLinkedinAccount()} disabled={linkedinAccountBusy}>
-                {linkedinAccountBusy ? "Déconnexion..." : "Déconnecter"}
+              <button
+                type="button"
+                className={`${styles.actionBtn} ${styles.connectBtn}`}
+                onClick={() => void loadLinkedinOrganizations?.({ resetSelection: true })}
+                disabled={linkedinOrganizationsLoading}
+              >
+                {linkedinOrganizationsLoading ? "Chargement..." : hasCompanyPage ? "Charger les pages" : "Connecter une page"}
               </button>
             </div>
+
+            {linkedinOrganizationPickerOpen && linkedinOrganizations.length > 1 ? (
+              <select
+                value={linkedinSelectedOrganizationId || ""}
+                onChange={(event) => void selectLinkedinOrganization?.(event.target.value)}
+                style={{
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(15,23,42,0.95)",
+                  colorScheme: "dark",
+                  padding: "10px 12px",
+                  color: "white",
+                  outline: "none",
+                }}
+              >
+                <option value="">Sélectionner la page entreprise</option>
+                {linkedinOrganizations.map((org: any) => (
+                  <option key={org.id} value={org.id}>{org.name}</option>
+                ))}
+              </select>
+            ) : null}
           </div>
-
-          <div style={cardStyle}>
-            <div className={styles.blockHeaderRow}>
-              <div className={styles.blockTitle}>Page entreprise LinkedIn</div>
-              <ConnectionPill connected={hasCompanyPage} />
-            </div>
-            <div className={styles.blockSub}>
-              {hasCompanyPage
-                ? "Canal actif : publication et données exploitées depuis la page entreprise."
-                : "Sélectionnez la page entreprise à connecter. Si une seule page est disponible, elle sera connectée automatiquement."}
-            </div>
-
-            <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <input
-                  value={linkedinSelectedOrganizationName || ""}
-                  readOnly
-                  placeholder="Aucune page entreprise connectée"
-                  style={{ ...inputStyle, opacity: linkedinSelectedOrganizationName ? 1 : 0.8 }}
-                />
-
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.connectBtn}`}
-                  onClick={() => void loadLinkedinOrganizations?.()}
-                  disabled={linkedinOrganizationsLoading}
-                >
-                  {linkedinOrganizationsLoading ? "Recherche..." : hasCompanyPage ? "Changer de page" : "Sélectionner une page"}
-                </button>
-              </div>
-
-              {linkedinOrganizations.length > 0 ? (
-                <select
-                  value={linkedinSelectedOrganizationId || ""}
-                  onChange={(event) => void selectLinkedinOrganization?.(event.target.value)}
-                  style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(15,23,42,0.95)",
-                    colorScheme: "dark",
-                    padding: "10px 12px",
-                    color: "white",
-                    outline: "none",
-                  }}
-                >
-                  <option value="">Choisir une page entreprise</option>
-                  {linkedinOrganizations.map((org: any) => (
-                    <option key={org.id} value={org.id}>{org.name}</option>
-                  ))}
-                </select>
-              ) : null}
-            </div>
-          </div>
-        </>
-      )}
+        </div>
+      ) : null}
 
       <div style={cardStyle}>
         <div className={styles.blockHeaderRow}>
-          <div className={styles.blockTitle}>Lien public LinkedIn</div>
+          <div className={styles.blockTitle}>{linkBlockTitle}</div>
           <ConnectionPill connected={!!linkedinUrl?.trim()} />
         </div>
-        <div className={styles.blockSub}>Optionnel : utile pour le bouton Voir dans le tableau de bord.</div>
+        <div className={styles.blockSub}>{linkBlockHelp}</div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <input
@@ -219,7 +213,7 @@ export default function LinkedinPanel(props: any) {
               setLinkedinUrlNotice(null);
               setLinkedinUrl(e.target.value);
             }}
-            placeholder="Lien LinkedIn (optionnel)"
+            placeholder={linkPlaceholder}
             style={{ ...inputStyle, opacity: linkedinUrl ? 1 : 0.8 }}
           />
 

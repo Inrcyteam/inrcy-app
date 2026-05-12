@@ -188,8 +188,12 @@ const payload: Record<string, unknown> = {
   resource_label: name || null,
   meta: {
     ...existingMeta,
-    profile_url: profileUrl,
+    profile_display_name: name || existingMeta["profile_display_name"] || null,
+    profile_url: profileUrl || existingMeta["profile_url"] || null,
     org_urn: null,
+    org_id: null,
+    org_name: null,
+    org_url: null,
     refresh_token_expires_in: Number.isFinite(refreshTokenExpiresIn) ? refreshTokenExpiresIn : existingMeta["refresh_token_expires_in"] ?? null,
     ...withCurrentConnectionVersion("channel:linkedin", {}),
   },
@@ -213,7 +217,11 @@ await supabaseAdmin
           accountConnected: true,
           connected: true,
           displayName: name || null,
-          url: profileUrl,
+          url: profileUrl || "",
+          profileUrl: profileUrl || "",
+          orgId: "",
+          orgName: "",
+          orgUrl: "",
         },
       };
       await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });

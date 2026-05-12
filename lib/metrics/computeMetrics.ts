@@ -280,7 +280,7 @@ export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
       const liContentSends = getTotalMetric(m, ['postSendCount']);
       const liContentProfileViews = getTotalMetric(m, ['profileViewFromContentCount']);
       const liClicks = getTotalMetric(m, [
-        'cta_clicks', 'ctaClicks', 'link_clicks', 'linkClicks', 'website_clicks', 'websiteClicks', 'clickCount', 'clicks',
+        'cta_clicks', 'ctaClicks', 'link_clicks', 'linkClicks', 'website_clicks', 'websiteClicks', 'clickCount', 'clicks', 'pageClicks',
         'linkClickCount', 'premiumCtaClickCount',
         'outbound_clicks', 'outboundClicks', 'profile_views', 'profileVisits', 'profile_visits', 'profileViewFromContentCount', 'searchAppearances', 'search_appearances',
       ]);
@@ -321,9 +321,9 @@ export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
       const estimate = directSignals + memberEstimate;
       if (directSignals > 0) {
         const capped = Math.min(directSignals * CAP_MULTIPLIER_WHEN_STRONG_SIGNAL + memberEstimate * 0.5, estimate);
-        return roundNonNeg(capped);
+        return Math.max(1, roundNonNeg(capped));
       }
-      return roundNonNeg(memberEstimate);
+      return Math.max(1, roundNonNeg(memberEstimate));
     }
 
     const ctaClicks = getTotalMetric(m, [
@@ -381,8 +381,8 @@ export function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): 
 
   const impressionsTotal = getTotalMetric(m, ['impressions', 'post_impressions', 'postImpressions', 'post_impressions_sum', 'IMPRESSIONS', 'impressionCount', 'viewerImpressions', 'reach', 'REACH']) || 0;
   const engagementsTotal = getTotalMetric(m, ['engagements', 'post_engagements', 'postEngagements', 'ENGAGEMENTS', 'total_engagements', 'page_engaged_users', 'post_engaged_users_sum', 'reactions', 'comments', 'shares', 'likes', 'saves', 'replies', 'video_views', 'videoViews']) || 0;
-  const ctaClicksTotal = getTotalMetric(m, ['cta_clicks', 'ctaClicks', 'link_clicks', 'linkClicks', 'website_clicks', 'websiteClicks', 'page_website_clicks_logged_in_unique', 'WEBSITE_CLICKS', 'CLICK_COUNT', 'clickCount', 'clicks', 'outbound_clicks', 'outboundClicks', 'profile_links_taps', 'profile_visits', 'profile_activity']) || 0;
-  const audienceTotal = getTotalMetric(m, ['followers', 'followerCount', 'follower_count', 'followers_count', 'fans', 'fanCount', 'fan_count', 'audience', 'subscribers']) || 0;
+  const ctaClicksTotal = getTotalMetric(m, ['cta_clicks', 'ctaClicks', 'link_clicks', 'linkClicks', 'website_clicks', 'websiteClicks', 'page_website_clicks_logged_in_unique', 'WEBSITE_CLICKS', 'CLICK_COUNT', 'clickCount', 'clicks', 'pageClicks', 'outbound_clicks', 'outboundClicks', 'profile_links_taps', 'profile_visits', 'profile_activity']) || 0;
+  const audienceTotal = getTotalMetric(m, ['followers', 'followerCount', 'memberFollowersCount', 'follower_count', 'followers_count', 'fans', 'fanCount', 'fan_count', 'audience', 'subscribers']) || 0;
 
   const impressionsPerDay = impressionsTotal / baseDays;
   const engagementsPerDay = engagementsTotal / baseDays;
@@ -395,7 +395,7 @@ export function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): 
     const newFollowersTotal = getTotalMetric(m, ['newFollowers', 'followerGainedFromContentCount']);
     const postsPublishedTotal = getTotalMetric(m, ['postsPublished']);
     const uniqueImpressionsTotal = getTotalMetric(m, ['uniqueImpressionsCount']);
-    const contentClicksTotal = getTotalMetric(m, ['linkClickCount', 'premiumCtaClickCount', 'clickCount', 'clicks']);
+    const contentClicksTotal = getTotalMetric(m, ['linkClickCount', 'premiumCtaClickCount', 'clickCount', 'clicks', 'pageClicks']);
     const contentSavesTotal = getTotalMetric(m, ['postSaveCount']);
     const contentSendsTotal = getTotalMetric(m, ['postSendCount']);
     const contentProfileViewsTotal = getTotalMetric(m, ['profileViewFromContentCount', 'profileViews']);

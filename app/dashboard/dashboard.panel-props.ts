@@ -84,6 +84,7 @@ export function buildDashboardPanelProps(a: any) {
     setLinkedinUrlNotice: a.setLinkedinUrlNotice,
     linkedinOrganizations: a.linkedinOrganizations,
     linkedinOrganizationsLoading: a.linkedinOrganizationsLoading,
+    linkedinOrganizationPickerOpen: a.linkedinOrganizationPickerOpen,
     linkedinSelectedOrganizationId: a.linkedinSelectedOrganizationId,
     linkedinSelectedOrganizationName: a.linkedinSelectedOrganizationName,
     loadLinkedinOrganizations: a.loadLinkedinOrganizations,

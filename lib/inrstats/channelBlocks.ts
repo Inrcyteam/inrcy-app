@@ -204,7 +204,7 @@ function mapChannelConnection(channel: DashboardChannelKey, states: ChannelState
         requiresUpdate: state.requiresUpdate,
         connectionStatus: state.connection_status,
         resourceId: state.resource_id,
-        resourceLabel: state.display_name,
+        resourceLabel: state.organization_name || state.display_name,
         resourceUrl: state.profile_url,
       };
     }

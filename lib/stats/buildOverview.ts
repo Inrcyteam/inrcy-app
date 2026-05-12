@@ -1145,7 +1145,7 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
             url: channelStates.instagram.profile_url || String(asRecord(asRecord(latestIntegrationAny("instagram", "instagram", "instagram"))["meta"])["profile_url"] || "") || null,
           },
           linkedin: {
-            label: channelStates.linkedin.display_name || null,
+            label: channelStates.linkedin.organization_name || channelStates.linkedin.display_name || null,
             url: channelStates.linkedin.profile_url || null,
           },
         },

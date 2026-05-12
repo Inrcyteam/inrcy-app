@@ -16,7 +16,7 @@ type TriggerChannelRefresh = (channel: DashboardChannelKey) => Promise<void>;
 
 type UpdateRootSettingsKey = (key: "gmb" | "facebook" | "instagram" | "linkedin", nextObj: any) => Promise<void>;
 
-type LinkedinOrganization = { id: string; name: string };
+type LinkedinOrganization = { id: string; name: string; url?: string | null };
 type LinkedinConnectionTarget = "profile" | "organization";
 
 type UseLinkedinChannelOptions = {
@@ -43,6 +43,7 @@ export function useLinkedinChannel({
   const [linkedinUrlError, setLinkedinUrlError] = useState<string | null>(null);
   const [linkedinOrganizations, setLinkedinOrganizations] = useState<LinkedinOrganization[]>([]);
   const [linkedinOrganizationsLoading, setLinkedinOrganizationsLoading] = useState(false);
+  const [linkedinOrganizationPickerOpen, setLinkedinOrganizationPickerOpen] = useState(false);
   const [linkedinSelectedOrganizationId, setLinkedinSelectedOrganizationId] = useState<string>("");
   const [linkedinSelectedOrganizationName, setLinkedinSelectedOrganizationName] = useState<string>("");
   const organizationsAutoLoadRef = useRef(false);
@@ -83,6 +84,7 @@ export function useLinkedinChannel({
     setLinkedinDisplayName("");
     setLinkedinUrl("");
     setLinkedinOrganizations([]);
+    setLinkedinOrganizationPickerOpen(false);
     setLinkedinSelectedOrganizationId("");
     setLinkedinSelectedOrganizationName("");
     organizationsAutoLoadRef.current = false;
@@ -100,8 +102,10 @@ export function useLinkedinChannel({
       connected: false,
       displayName: "",
       url: "",
+      profileUrl: "",
       orgId: "",
       orgName: "",
+      orgUrl: "",
     });
     await triggerChannelRefresh("linkedin");
     setPanelSuccess("Compte LinkedIn déconnecté.");
@@ -110,10 +114,11 @@ export function useLinkedinChannel({
   const persistLinkedinOrganization = useCallback(async (org: LinkedinOrganization, options?: { silent?: boolean }) => {
     if (!org?.id) return false;
 
+    const resolvedUrl = (org.url || `https://www.linkedin.com/company/${org.id}`).trim();
     const res = await fetch("/api/integrations/linkedin/select-organization", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orgId: org.id, orgName: org.name }),
+      body: JSON.stringify({ orgId: org.id, orgName: org.name, orgUrl: resolvedUrl }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -121,18 +126,22 @@ export function useLinkedinChannel({
       return false;
     }
 
+    const nextUrl = String(data?.profileUrl || data?.organizationUrl || resolvedUrl || linkedinUrl || "");
     setLinkedinSelectedOrganizationId(org.id);
     setLinkedinSelectedOrganizationName(org.name);
+    setLinkedinOrganizationPickerOpen(false);
     setLinkedinAccountConnected(true);
     setLinkedinConnected(true);
     setLinkedinConnectionStatus("connected");
+    if (nextUrl) setLinkedinUrl(nextUrl);
     await updateRootSettingsKey("linkedin", {
       accountConnected: true,
       connected: true,
       displayName: linkedinDisplayName,
-      url: linkedinUrl,
+      url: nextUrl,
       orgId: org.id,
       orgName: org.name,
+      orgUrl: nextUrl,
     });
     patchChannelConnectionLocally("linkedin", {
       connected: true,
@@ -140,14 +149,14 @@ export function useLinkedinChannel({
       configured: true,
       resourceId: org.id,
       resourceLabel: org.name,
-      resourceUrl: linkedinUrl || null,
+      resourceUrl: nextUrl || null,
     }, { clearData: true });
     await triggerChannelRefresh("linkedin");
     if (!options?.silent) setPanelSuccess(`Page LinkedIn « ${org.name} » connectée.`, 2400);
     return true;
   }, [linkedinDisplayName, linkedinUrl, updateRootSettingsKey, patchChannelConnectionLocally, triggerChannelRefresh, setPanelSuccess, setPanelError]);
 
-  const loadLinkedinOrganizations = useCallback(async () => {
+  const loadLinkedinOrganizations = useCallback(async (options?: { resetSelection?: boolean }) => {
     if (!linkedinAccountConnected) {
       setPanelError("Connectez d'abord votre accès LinkedIn.", "Connectez d'abord votre accès LinkedIn.", 2600);
       return;
@@ -164,40 +173,45 @@ export function useLinkedinChannel({
           const record = org && typeof org === "object" ? (org as Record<string, unknown>) : {};
           const rawId = record.id;
           const rawName = record.name;
+          const rawUrl = record.url;
           const id = typeof rawId === "string" ? rawId : String(rawId || "");
           const name = typeof rawName === "string" ? rawName : String(rawName || id || "");
-          return { id, name };
+          const url = typeof rawUrl === "string" && rawUrl.trim() ? rawUrl.trim() : (id ? `https://www.linkedin.com/company/${id}` : null);
+          return { id, name, url };
         })
         .filter((org: LinkedinOrganization) => Boolean(org.id && org.name));
 
       setLinkedinOrganizations(cleanOrgs);
 
-      const matchedSelected = cleanOrgs.find((org: LinkedinOrganization) => org.id === linkedinSelectedOrganizationId);
-      if (matchedSelected?.name) setLinkedinSelectedOrganizationName(matchedSelected.name);
-
-      if (!linkedinSelectedOrganizationId && cleanOrgs?.[0]?.id) {
-        setLinkedinSelectedOrganizationId(cleanOrgs[0].id);
-        setLinkedinSelectedOrganizationName(cleanOrgs[0].name);
-      }
-
       if (cleanOrgs.length === 1) {
         const only = cleanOrgs[0];
-        const alreadyConnected = linkedinSelectedOrganizationId === only.id && linkedinConnected;
+        const alreadyConnected = linkedinSelectedOrganizationId === only.id && linkedinConnected && !options?.resetSelection;
         if (!alreadyConnected) {
           const ok = await persistLinkedinOrganization(only, { silent: true });
           if (ok) setPanelSuccess(`Page LinkedIn « ${only.name} » connectée automatiquement.`, 2600);
         }
+        setLinkedinOrganizationPickerOpen(false);
         return;
       }
 
+      const matchedSelected = cleanOrgs.find((org: LinkedinOrganization) => org.id === linkedinSelectedOrganizationId);
+      if (matchedSelected?.name) {
+        setLinkedinSelectedOrganizationName(matchedSelected.name);
+        if (matchedSelected.url && !options?.resetSelection) setLinkedinUrl(matchedSelected.url);
+      }
+
       if (!cleanOrgs.length) {
+        setLinkedinOrganizationPickerOpen(false);
         setPanelError(
           "Aucune page LinkedIn administrée trouvée. Vérifie les droits OAuth puis reconnecte LinkedIn.",
           "Aucune page LinkedIn administrée trouvée.",
           4200,
         );
-      } else if (!linkedinSelectedOrganizationId) {
-        setPanelSuccess("Sélectionnez la page LinkedIn à connecter.", 2400);
+      } else {
+        setLinkedinOrganizationPickerOpen(true);
+        if (!linkedinSelectedOrganizationId || options?.resetSelection) {
+          setPanelSuccess("Sélectionnez la page LinkedIn à connecter.", 2400);
+        }
       }
     } catch (error) {
       setPanelError(error, "Impossible de récupérer les pages LinkedIn.", 4200);
@@ -217,15 +231,14 @@ export function useLinkedinChannel({
       return;
     }
 
-    const hasCompanyPage = Boolean(linkedinSelectedOrganizationId || linkedinSelectedOrganizationName);
-    if (!linkedinAccountConnected || hasCompanyPage || linkedinOrganizationsLoading || organizationsAutoLoadRef.current) return;
+    if (!linkedinAccountConnected || linkedinOrganizationsLoading || organizationsAutoLoadRef.current) return;
 
     organizationsAutoLoadRef.current = true;
     void loadLinkedinOrganizations();
-  }, [panel, searchParams, linkedinAccountConnected, linkedinSelectedOrganizationId, linkedinSelectedOrganizationName, linkedinOrganizationsLoading, loadLinkedinOrganizations]);
+  }, [panel, searchParams, linkedinAccountConnected, linkedinOrganizationsLoading, loadLinkedinOrganizations]);
 
   const selectLinkedinOrganization = useCallback(async (orgId: string) => {
-    const org = linkedinOrganizations.find((item) => item.id === orgId);
+    const org = linkedinOrganizations.find((item: LinkedinOrganization) => item.id === orgId);
     if (!org) return;
     await persistLinkedinOrganization(org);
   }, [linkedinOrganizations, persistLinkedinOrganization]);
@@ -247,17 +260,22 @@ export function useLinkedinChannel({
       return;
     }
 
+    const nextUrl = String(data?.profileUrl || linkedinUrl || "");
     setLinkedinSelectedOrganizationId("");
     setLinkedinSelectedOrganizationName("");
+    setLinkedinOrganizationPickerOpen(false);
     setLinkedinConnected(true);
     setLinkedinConnectionStatus("connected");
+    if (nextUrl) setLinkedinUrl(nextUrl);
     await updateRootSettingsKey("linkedin", {
       accountConnected: true,
       connected: true,
       displayName: linkedinDisplayName,
-      url: linkedinUrl,
+      url: nextUrl,
+      profileUrl: nextUrl,
       orgId: "",
       orgName: "",
+      orgUrl: "",
     });
     patchChannelConnectionLocally("linkedin", {
       connected: true,
@@ -265,7 +283,7 @@ export function useLinkedinChannel({
       configured: true,
       resourceId: null,
       resourceLabel: linkedinDisplayName || null,
-      resourceUrl: linkedinUrl || null,
+      resourceUrl: nextUrl || null,
     }, { clearData: true });
     await triggerChannelRefresh("linkedin");
     setPanelSuccess("Profil personnel LinkedIn activé.", 2200);
@@ -283,19 +301,27 @@ export function useLinkedinChannel({
         raw.startsWith("https://www.linkedin.com/company/") ||
         raw.startsWith("https://linkedin.com/company/");
       if (!ok) {
-        setPanelError("Lien LinkedIn invalide.", "Lien LinkedIn invalide. Exemple : https://www.linkedin.com/in/ton-profil", 3600);
+        setPanelError("Lien LinkedIn invalide.", "Lien LinkedIn invalide. Exemple : https://www.linkedin.com/in/ton-profil ou https://www.linkedin.com/company/ta-page", 3600);
         return;
       }
     }
 
-    await updateRootSettingsKey("linkedin", {
+    const nextLinkedinSettings: Record<string, unknown> = {
       accountConnected: linkedinAccountConnected,
       connected: linkedinConnected,
       displayName: linkedinDisplayName,
       url: raw,
       orgId: linkedinSelectedOrganizationId,
       orgName: linkedinSelectedOrganizationName,
-    });
+    };
+    if (linkedinSelectedOrganizationId) {
+      nextLinkedinSettings.orgUrl = raw;
+    } else {
+      nextLinkedinSettings.profileUrl = raw;
+      nextLinkedinSettings.orgUrl = "";
+    }
+
+    await updateRootSettingsKey("linkedin", nextLinkedinSettings);
 
     patchChannelConnectionLocally("linkedin", {
       connected: linkedinConnected,
@@ -328,6 +354,7 @@ export function useLinkedinChannel({
     saveLinkedinProfileUrl,
     linkedinOrganizations,
     linkedinOrganizationsLoading,
+    linkedinOrganizationPickerOpen,
     linkedinSelectedOrganizationId,
     setLinkedinSelectedOrganizationId,
     linkedinSelectedOrganizationName,

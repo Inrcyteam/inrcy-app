@@ -27,6 +27,10 @@ export async function POST() {
           connected: false,
           displayName: null,
           url: null,
+          profileUrl: null,
+          orgId: "",
+          orgName: "",
+          orgUrl: "",
         },
       },
     }, { onConflict: "user_id" });
