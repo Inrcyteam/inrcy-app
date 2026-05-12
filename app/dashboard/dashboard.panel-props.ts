@@ -72,6 +72,7 @@ export function buildDashboardPanelProps(a: any) {
     linkedinConnectionStatus: a.linkedinConnectionStatus,
     linkedinDisplayName: a.linkedinDisplayName,
     connectLinkedinAccount: a.connectLinkedinAccount,
+    connectLinkedinBusinessAccount: a.connectLinkedinBusinessAccount,
     disconnectLinkedinAccount: a.disconnectLinkedinAccountFromDrawer,
     linkedinAccountBusy: a.isDrawerMutationPending("linkedin:account:disconnect"),
     linkedinUrl: a.linkedinUrl,

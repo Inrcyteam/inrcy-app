@@ -273,12 +273,16 @@ export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
       const liComments = getTotalMetric(m, ['commentCount', 'comments']);
       const liShares = getTotalMetric(m, ['shareCount', 'shares']);
       const liLikes = getTotalMetric(m, ['likeCount', 'likes', 'reactions']);
-      const liNewFollowers = getTotalMetric(m, ['newFollowers']);
+      const liNewFollowers = getTotalMetric(m, ['newFollowers', 'followerGainedFromContentCount']);
       const liPostsPublished = getTotalMetric(m, ['postsPublished']);
       const liUniqueImpr = getTotalMetric(m, ['uniqueImpressionsCount']);
+      const liContentSaves = getTotalMetric(m, ['postSaveCount']);
+      const liContentSends = getTotalMetric(m, ['postSendCount']);
+      const liContentProfileViews = getTotalMetric(m, ['profileViewFromContentCount']);
       const liClicks = getTotalMetric(m, [
         'cta_clicks', 'ctaClicks', 'link_clicks', 'linkClicks', 'website_clicks', 'websiteClicks', 'clickCount', 'clicks',
-        'outbound_clicks', 'outboundClicks', 'profile_views', 'profileVisits', 'profile_visits', 'searchAppearances', 'search_appearances',
+        'linkClickCount', 'premiumCtaClickCount',
+        'outbound_clicks', 'outboundClicks', 'profile_views', 'profileVisits', 'profile_visits', 'profileViewFromContentCount', 'searchAppearances', 'search_appearances',
       ]);
       const directSignals =
         messages +
@@ -292,6 +296,9 @@ export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
         liNewFollowers * 2.0 +
         liLikes * 0.6 +
         liPostsPublished * 0.5 +
+        liContentSaves * 0.7 +
+        liContentSends * 0.7 +
+        liContentProfileViews * 0.75 +
         liUniqueImpr * 0.015 +
         socialImpr * 0.005;
       const memberEstimate = memberRawScore / 2.5;
@@ -301,6 +308,14 @@ export function computeCapturedForCube(cube: CubeKey, ov: Overview): number {
         liShares > 0 ||
         liLikes > 0 ||
         liNewFollowers > 0 ||
+        liContentSaves > 0 ||
+        liContentSends > 0 ||
+        liContentProfileViews > 0 ||
+        liUniqueImpr > 0 ||
+        socialImpr > 0 ||
+        profileViews > 0 ||
+        searchAppearances > 0 ||
+        liPageViews > 0 ||
         directSignals > 0;
       if (!hasAnySignal) return 0;
       const estimate = directSignals + memberEstimate;
@@ -361,8 +376,8 @@ export function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): 
   const m = node.metrics;
   if (!connected) return 0;
 
-  const coldStartBaseline = cubeKey === 'instagram' ? 0.18 : cubeKey === 'linkedin' ? 0.12 : 0.20;
-  if (!m || safeObj(m).error) return coldStartBaseline;
+  const coldStartBaseline = cubeKey === 'instagram' ? 0.18 : cubeKey === 'linkedin' ? 0 : 0.20;
+  if (!m || safeObj(m).error) return cubeKey === 'linkedin' ? 0 : coldStartBaseline;
 
   const impressionsTotal = getTotalMetric(m, ['impressions', 'post_impressions', 'postImpressions', 'post_impressions_sum', 'IMPRESSIONS', 'impressionCount', 'viewerImpressions', 'reach', 'REACH']) || 0;
   const engagementsTotal = getTotalMetric(m, ['engagements', 'post_engagements', 'postEngagements', 'ENGAGEMENTS', 'total_engagements', 'page_engaged_users', 'post_engaged_users_sum', 'reactions', 'comments', 'shares', 'likes', 'saves', 'replies', 'video_views', 'videoViews']) || 0;
@@ -377,9 +392,30 @@ export function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): 
     const commentsTotal = getTotalMetric(m, ['commentCount', 'comments']);
     const sharesTotal = getTotalMetric(m, ['shareCount', 'shares']);
     const likesTotal = getTotalMetric(m, ['likeCount', 'likes', 'reactions']);
-    const newFollowersTotal = getTotalMetric(m, ['newFollowers']);
+    const newFollowersTotal = getTotalMetric(m, ['newFollowers', 'followerGainedFromContentCount']);
     const postsPublishedTotal = getTotalMetric(m, ['postsPublished']);
     const uniqueImpressionsTotal = getTotalMetric(m, ['uniqueImpressionsCount']);
+    const contentClicksTotal = getTotalMetric(m, ['linkClickCount', 'premiumCtaClickCount', 'clickCount', 'clicks']);
+    const contentSavesTotal = getTotalMetric(m, ['postSaveCount']);
+    const contentSendsTotal = getTotalMetric(m, ['postSendCount']);
+    const contentProfileViewsTotal = getTotalMetric(m, ['profileViewFromContentCount', 'profileViews']);
+
+    const hasRealLinkedInSignal =
+      impressionsTotal > 0 ||
+      uniqueImpressionsTotal > 0 ||
+      engagementsTotal > 0 ||
+      commentsTotal > 0 ||
+      sharesTotal > 0 ||
+      likesTotal > 0 ||
+      newFollowersTotal > 0 ||
+      postsPublishedTotal > 0 ||
+      contentClicksTotal > 0 ||
+      contentSavesTotal > 0 ||
+      contentSendsTotal > 0 ||
+      contentProfileViewsTotal > 0 ||
+      audienceTotal > 0;
+
+    if (!hasRealLinkedInSignal) return 0;
 
     const currentPerDay = clamp(
       0.03 +
@@ -387,6 +423,10 @@ export function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): 
         (sharesTotal / baseDays) * 0.18 +
         (newFollowersTotal / baseDays) * 0.14 +
         (likesTotal / baseDays) * 0.05 +
+        (contentClicksTotal / baseDays) * 0.20 +
+        (contentSavesTotal / baseDays) * 0.12 +
+        (contentSendsTotal / baseDays) * 0.10 +
+        (contentProfileViewsTotal / baseDays) * 0.16 +
         (postsPublishedTotal / baseDays) * 0.08 +
         (uniqueImpressionsTotal / baseDays) * 0.004 +
         (impressionsTotal / baseDays) * 0.0015,

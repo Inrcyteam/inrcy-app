@@ -1002,10 +1002,12 @@ const sources: Array<{ key: StatsSourceKey; ga4Property?: string; gscProperty?: 
           const authorUrn = auth.authorUrn || "";
           const end = dateWindow.end;
           const start = dateWindow.start;
-          if (authorUrn.startsWith("urn:li:person:")) {
+          if (orgUrn) {
+            sourcesStatus.linkedin.metrics = await liFetchOrgAnalytics(token, orgUrn, start, end);
+          } else if (authorUrn.startsWith("urn:li:person:")) {
             sourcesStatus.linkedin.metrics = await liFetchMemberAnalytics(token, authorUrn, start, end);
           } else {
-            const resolvedOrgUrn = orgUrn || (await liResolveFirstAdminOrgUrn(token));
+            const resolvedOrgUrn = await liResolveFirstAdminOrgUrn(token);
             sourcesStatus.linkedin.metrics = await liFetchOrgAnalytics(token, resolvedOrgUrn, start, end);
           }
         } catch (e) {

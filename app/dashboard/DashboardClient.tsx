@@ -439,6 +439,7 @@ const {
   setLinkedinUrlNotice,
   linkedinUrlError,
   connectLinkedinAccount,
+  connectLinkedinBusinessAccount,
   disconnectLinkedinAccount,
   saveLinkedinProfileUrl,
   linkedinOrganizations,
@@ -449,9 +450,12 @@ const {
   setLinkedinSelectedOrganizationName,
   loadLinkedinOrganizations,
   selectLinkedinOrganization,
+  useLinkedinPersonalProfile,
   setPanelSuccess: setLinkedinPanelSuccess,
   setPanelError: setLinkedinPanelError,
 } = useLinkedinChannel({
+  panel,
+  searchParams,
   patchChannelConnectionLocally: patchChannelConnectionLocallyProxy,
   triggerChannelRefresh: triggerChannelRefreshProxy,
   updateRootSettingsKey,
@@ -2160,7 +2164,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
   const locals = {
     canConfigureSite, canConnectSiteInrcyGoogle, canConnectSiteWebGoogle,
-    connectFacebookAccount, connectFacebookBusinessAccount, connectGmbAccount, connectInstagramAccount, connectInstagramBusinessAccount, connectLinkedinAccount,
+    connectFacebookAccount, connectFacebookBusinessAccount, connectGmbAccount, connectInstagramAccount, connectInstagramBusinessAccount, connectLinkedinAccount, connectLinkedinBusinessAccount,
     connectSiteInrcyGa4, connectSiteInrcyGsc, connectSiteWebGa4, connectSiteWebGsc,
     deleteSiteInrcyUrlFromDrawer, deleteSiteWebUrlFromDrawer,
     disconnectFacebookAccountFromDrawer, disconnectFacebookPageFromDrawer, disconnectGmbAccountFromDrawer, disconnectGmbBusinessFromDrawer,
@@ -2177,7 +2181,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     instagramAccountConnected, instagramConnected, instagramConnectionStatus, instagramUrl, instagramUrlError, instagramUrlNotice, instagramUsername,
     isDrawerMutationPending,
     linkedinAccountConnected, linkedinConnected, linkedinConnectionStatus, linkedinDisplayName, linkedinUrl, linkedinUrlError, linkedinUrlNotice,
-    linkedinOrganizations, linkedinOrganizationsLoading, linkedinSelectedOrganizationId, linkedinSelectedOrganizationName, loadLinkedinOrganizations, selectLinkedinOrganization,
+    linkedinOrganizations, linkedinOrganizationsLoading, linkedinSelectedOrganizationId, linkedinSelectedOrganizationName, loadLinkedinOrganizations, selectLinkedinOrganization, useLinkedinPersonalProfile,
     loadFacebookPages, loadGmbAccountsAndLocations, loadInstagramAccounts,
     resetSiteInrcyAll, resetSiteWebAll,
     saveFacebookPageFromDrawer, saveGmbLocationFromDrawer, saveInstagramProfileFromDrawer, saveLinkedinProfileUrlFromDrawer, saveSiteInrcyUrlFromDrawer, saveSiteWebUrlFromDrawer,

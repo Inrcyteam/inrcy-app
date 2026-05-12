@@ -1,5 +1,5 @@
 const LI_API = "https://api.linkedin.com/rest";
-const LI_VERSION = process.env.LINKEDIN_API_VERSION || "202602";
+const LI_VERSION = process.env.LINKEDIN_API_VERSION || "202604";
 
 async function fetchLinkedInJson(url: string, accessToken: string, extraHeaders?: Record<string, string>) {
   const res = await fetch(url, {
@@ -82,6 +82,12 @@ function aggregatePostAnalyticsElements(elements: unknown): Record<string, numbe
     likes: 0,
     commentCount: 0,
     shareCount: 0,
+    postSendCount: 0,
+    postSaveCount: 0,
+    linkClickCount: 0,
+    premiumCtaClickCount: 0,
+    followerGainedFromContentCount: 0,
+    profileViewFromContentCount: 0,
   };
   if (!Array.isArray(elements)) return totals;
 
@@ -105,6 +111,26 @@ function aggregatePostAnalyticsElements(elements: unknown): Record<string, numbe
         break;
       case "RESHARE":
         totals.shareCount += count;
+        break;
+      case "POST_SEND":
+        totals.postSendCount += count;
+        break;
+      case "POST_SAVE":
+        totals.postSaveCount += count;
+        break;
+      case "LINK_CLICKS":
+        totals.linkClickCount += count;
+        break;
+      case "PREMIUM_CTA_CLICKS":
+        totals.premiumCtaClickCount += count;
+        break;
+      case "FOLLOWER_GAINED_FROM_CONTENT":
+        totals.followerGainedFromContentCount += count;
+        totals.newFollowers = (totals.newFollowers || 0) + count;
+        break;
+      case "PROFILE_VIEW_FROM_CONTENT":
+        totals.profileViewFromContentCount += count;
+        totals.profileViews = (totals.profileViews || 0) + count;
         break;
       default:
         break;
@@ -135,7 +161,20 @@ async function liFetchMemberFollowers(accessToken: string, start: Date, end: Dat
 }
 
 async function liFetchMemberPostAnalytics(accessToken: string, start: Date, end: Date): Promise<Record<string, number>> {
-  const queryTypes = ["IMPRESSION", "MEMBERS_REACHED", "REACTION", "COMMENT", "RESHARE"];
+  const queryTypes = [
+    "IMPRESSION",
+    "MEMBERS_REACHED",
+    "REACTION",
+    "COMMENT",
+    "RESHARE",
+    // API versions récentes : signaux d'intention supplémentaires.
+    "LINK_CLICKS",
+    "PREMIUM_CTA_CLICKS",
+    "POST_SAVE",
+    "POST_SEND",
+    "FOLLOWER_GAINED_FROM_CONTENT",
+    "PROFILE_VIEW_FROM_CONTENT",
+  ];
   const settled = await Promise.allSettled(
     queryTypes.map((queryType) =>
       fetchLinkedInJson(

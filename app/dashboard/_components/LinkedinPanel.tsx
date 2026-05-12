@@ -32,6 +32,7 @@ export default function LinkedinPanel(props: any) {
     linkedinConnectionStatus,
     linkedinDisplayName,
     connectLinkedinAccount,
+    connectLinkedinBusinessAccount,
     disconnectLinkedinAccount,
     linkedinUrl,
     setLinkedinUrl,
@@ -93,7 +94,7 @@ export default function LinkedinPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.connectBtn}`}
-              onClick={connectLinkedinAccount}
+              onClick={() => void connectLinkedinAccount?.("profile")}
               style={{ justifyContent: "center", padding: "8px 16px", width: "auto" }}
             >
               Profil personnel
@@ -102,7 +103,7 @@ export default function LinkedinPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.connectBtn}`}
-              onClick={connectLinkedinAccount}
+              onClick={() => void connectLinkedinBusinessAccount?.()}
               style={{ justifyContent: "center", padding: "8px 16px", width: "auto" }}
             >
               Page entreprise
@@ -114,7 +115,7 @@ export default function LinkedinPanel(props: any) {
           <div style={cardStyle}>
             <div className={styles.blockHeaderRow}>
               <div className={styles.blockTitle}>Profil personnel LinkedIn</div>
-              <ConnectionPill connected={profileReady && !hasCompanyPage} status={linkedinNeedsUpdate ? "needs_update" : undefined} />
+              <ConnectionPill connected={profileReady} status={linkedinNeedsUpdate ? "needs_update" : undefined} />
             </div>
             <div className={styles.blockSub}>
               {hasCompanyPage
@@ -137,7 +138,7 @@ export default function LinkedinPanel(props: any) {
               ) : null}
 
               {linkedinNeedsUpdate ? (
-                <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectLinkedinAccount} disabled={linkedinAccountBusy}>
+                <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={() => void connectLinkedinAccount?.("profile")} disabled={linkedinAccountBusy}>
                   Actualiser
                 </button>
               ) : null}
@@ -156,7 +157,7 @@ export default function LinkedinPanel(props: any) {
             <div className={styles.blockSub}>
               {hasCompanyPage
                 ? "Canal actif : publication et données exploitées depuis la page entreprise."
-                : "Optionnel : connecter une page administrée par le profil LinkedIn."}
+                : "Sélectionnez la page entreprise à connecter. Si une seule page est disponible, elle sera connectée automatiquement."}
             </div>
 
             <div style={{ display: "grid", gap: 10 }}>
@@ -174,7 +175,7 @@ export default function LinkedinPanel(props: any) {
                   onClick={() => void loadLinkedinOrganizations?.()}
                   disabled={linkedinOrganizationsLoading}
                 >
-                  {linkedinOrganizationsLoading ? "Recherche..." : hasCompanyPage ? "Changer de page" : "Connecter une page"}
+                  {linkedinOrganizationsLoading ? "Recherche..." : hasCompanyPage ? "Changer de page" : "Sélectionner une page"}
                 </button>
               </div>
 

@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { clearAllToolCaches } from "@/lib/statsCache";
 import { asRecord } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
+async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
+  await clearAllToolCaches(supabase, userId);
+}
 
 export async function POST(req: Request) {
   const supabase = await createSupabaseServer();
@@ -47,6 +54,7 @@ export async function POST(req: Request) {
           org_id: null,
           org_name: null,
         }),
+        updated_at: new Date().toISOString(),
       })
       .eq("user_id", user.id)
       .eq("provider", "linkedin")
@@ -69,6 +77,8 @@ export async function POST(req: Request) {
       await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
     } catch {}
 
+    await invalidateUserStatsCache(supabase, user.id);
+
     return NextResponse.json({ ok: true, mode: "profile" });
   }
 
@@ -87,6 +97,7 @@ export async function POST(req: Request) {
         org_id: orgId,
         org_name: orgName,
       }),
+      updated_at: new Date().toISOString(),
     })
     .eq("user_id", user.id)
     .eq("provider", "linkedin")
@@ -109,5 +120,7 @@ export async function POST(req: Request) {
     await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
   } catch {}
 
-  return NextResponse.json({ ok: true, mode: "organization", profileUrl: null });
+  await invalidateUserStatsCache(supabase, user.id);
+
+  return NextResponse.json({ ok: true, mode: "organization", organizationId: orgId, organizationName: orgName, profileUrl: null });
 }

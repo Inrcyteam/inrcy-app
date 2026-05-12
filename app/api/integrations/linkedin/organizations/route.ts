@@ -8,7 +8,7 @@ async function fetchJson(url: string, accessToken: string) {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "X-Restli-Protocol-Version": "2.0.0",
-      "Linkedin-Version": process.env.LINKEDIN_API_VERSION || "202602",
+      "Linkedin-Version": process.env.LINKEDIN_API_VERSION || "202604",
       "Content-Type": "application/json",
     },
     cache: "no-store",
