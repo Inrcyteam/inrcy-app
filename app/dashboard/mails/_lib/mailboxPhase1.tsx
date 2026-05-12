@@ -41,8 +41,6 @@ export function buildDefaultMailText(opts: { kind: SendType; name?: string; docR
 
   const ref = (opts.docRef || "").trim();
   const refPart = ref ? ` ${ref}` : "";
-  const closing = opts.signature?.trim() || "Cordialement,";
-
   if (opts.kind === "facture") {
     return [
       hello,
@@ -50,8 +48,6 @@ export function buildDefaultMailText(opts: { kind: SendType; name?: string; docR
       `Veuillez trouver ci-joint votre facture${refPart}.`,
       "",
       "Je reste à votre disposition si besoin.",
-      "",
-      closing,
     ].join("\n");
   }
 
@@ -62,8 +58,6 @@ export function buildDefaultMailText(opts: { kind: SendType; name?: string; docR
       `Veuillez trouver ci-joint votre devis${refPart}.`,
       "",
       "Je reste disponible pour toute question ou modification.",
-      "",
-      closing,
     ].join("\n");
   }
 
@@ -71,8 +65,6 @@ export function buildDefaultMailText(opts: { kind: SendType; name?: string; docR
     hello,
     "",
     "Je me permets de vous contacter.",
-    "",
-    closing,
   ].join("\n");
 }
 // iNrSend : centre d'historique des envois + envoi simple de mails.

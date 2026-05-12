@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
+import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { textToSimpleHtml } from "@/lib/inrsendSignature";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs, type MailAttachmentRef } from "@/lib/mailAttachmentRefs";
@@ -631,7 +632,7 @@ export async function processPendingMailCampaigns(opts?: {
       }
 
       const unsubscribeUrl = buildRecipientUnsubscribeUrl(campaignId, recipientId);
-      const rawTextBody = asString(campaign.body_text) || "";
+      const rawTextBody = stripTemplateSignatureBlock(asString(campaign.body_text) || "");
       const rawHtmlBody = asString(campaign.body_html) || "";
       const textBody = appendUnsubscribeFooterToText(rawTextBody, unsubscribeUrl);
       const htmlBase = rawHtmlBody.trim() ? rawHtmlBody : textToSimpleHtml(rawTextBody);

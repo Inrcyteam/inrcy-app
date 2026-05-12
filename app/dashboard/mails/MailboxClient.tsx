@@ -24,7 +24,6 @@ import {
   MAILBOX_RECIPIENTS_PAGE_SIZE,
   MAIL_ACCOUNTS_UPDATED_EVENT,
   applyCampaignRecipientsFilter,
-  applySignaturePreview,
   buildDefaultMailText,
   bulkConfirmationMessage,
   campaignCounts,
@@ -424,8 +423,7 @@ export default function MailboxClient() {
     setPendingTrack(null);
     setTo("");
     setSubject("");
-    const signature = signatureEnabled ? signaturePreview : "";
-    setText(buildDefaultMailText({ kind: nextType, signature }));
+    setText(buildDefaultMailText({ kind: nextType }));
     setFiles([]);
     setComposeAttachments([]);
     setComposeRecipientHints([]);
@@ -1176,7 +1174,7 @@ export default function MailboxClient() {
 
     if (toParam) setTo(toParam);
     if (subjParam) setSubject(normalizeMailSubject(subjParam));
-    if (textParam) setText(applySignaturePreview(textParam, signatureEnabled ? signaturePreview : ""));
+    if (textParam) setText(stripTemplateSignatureBlock(textParam));
 
     const urlRecipientHints = !sessionRecipientHints.length && toParam && contactIdParam
       ? normalizeEmails(toParam).map((email, index) => ({
@@ -1196,7 +1194,7 @@ export default function MailboxClient() {
       else if (nameParam) setSubject((prev) => (prev?.trim() ? prev : `Message pour ${nameParam}`));
     }
     if (!textParam?.trim()) {
-      setText((prev) => (prev?.trim() ? prev : buildDefaultMailText({ kind: nextType, name: nameParam, docRef, signature: signatureEnabled ? signaturePreview : "" })));
+      setText((prev) => (prev?.trim() ? prev : buildDefaultMailText({ kind: nextType, name: nameParam, docRef })));
     }
 
     // Open the modal.
@@ -1289,24 +1287,24 @@ export default function MailboxClient() {
 
           if (j?.body_text) {
             const renderedBody = String(j.body_text);
-            const sanitizedBody = signatureEnabled ? stripTemplateSignatureBlock(renderedBody) : renderedBody;
-            setText(applySignaturePreview(sanitizedBody, signatureEnabled ? signaturePreview : ""));
+            const sanitizedBody = stripTemplateSignatureBlock(renderedBody);
+            setText(sanitizedBody);
           } else if (preText) {
-            const sanitizedBody = signatureEnabled ? stripTemplateSignatureBlock(preText) : preText;
-            setText(applySignaturePreview(sanitizedBody, signatureEnabled ? signaturePreview : ""));
+            const sanitizedBody = stripTemplateSignatureBlock(preText);
+            setText(sanitizedBody);
           }
         } catch {
           if (preSubject) setSubject(normalizeMailSubject(preSubject));
           if (preText) {
-            const sanitizedBody = signatureEnabled ? stripTemplateSignatureBlock(preText) : preText;
-            setText(applySignaturePreview(sanitizedBody, signatureEnabled ? signaturePreview : ""));
+            const sanitizedBody = stripTemplateSignatureBlock(preText);
+            setText(sanitizedBody);
           }
         }
       } else {
         if (preSubject) setSubject(normalizeMailSubject(preSubject));
         if (preText) {
-          const sanitizedBody = signatureEnabled ? stripTemplateSignatureBlock(preText) : preText;
-          setText(applySignaturePreview(sanitizedBody, signatureEnabled ? signaturePreview : ""));
+          const sanitizedBody = stripTemplateSignatureBlock(preText);
+          setText(sanitizedBody);
         }
       }
 
@@ -1323,9 +1321,9 @@ export default function MailboxClient() {
     setText((prev) => {
       const base = String(prev || "");
       if (!base.trim()) {
-        return buildDefaultMailText({ kind: composeType, signature: signatureEnabled ? signaturePreview : "" });
+        return buildDefaultMailText({ kind: composeType });
       }
-      return signatureEnabled ? applySignaturePreview(base, signaturePreview) : base;
+      return stripTemplateSignatureBlock(base);
     });
   }, [composeOpen, composeType, signatureEnabled, signaturePreview]);
 

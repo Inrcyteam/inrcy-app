@@ -1,4 +1,5 @@
 import { asRecord, asString } from "@/lib/tsSafe";
+import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 
 const SIGNATURE_IMAGE_BUCKET = "booster";
 
@@ -14,6 +15,7 @@ export type SupabaseLike = {
 };
 
 export const DEFAULT_INRSEND_SIGNATURE_TEMPLATE = [
+  "Cordialement,",
   "{{nom_complet}}",
   "{{nom_entreprise}}",
   "Tél : {{telephone}}",
@@ -78,7 +80,7 @@ export function renderSignatureTemplate(template: string, context: Record<string
 }
 
 export function applyAutoSignatureToText(text: string, signature: string): string {
-  const base = String(text || "").trimEnd();
+  const base = stripTemplateSignatureBlock(String(text || "")).trimEnd();
   const sig = compactLines(signature);
   if (!sig) return base;
 

@@ -8,6 +8,7 @@ import { getConnectionDisplayStatus, mailConnectionKind } from "@/lib/connection
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import { parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
+import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 
 export const runtime = "nodejs";
 
@@ -126,7 +127,7 @@ export async function POST(req: Request) {
   const accountId = String(body.accountId || "").trim();
   const type = String(body.type || "mail").trim() || "mail";
   const subject = normalizeMailSubject(String(body.subject || "").trim() || "(sans objet)");
-  const text = String(body.text || "");
+  const text = stripTemplateSignatureBlock(String(body.text || ""));
   const html = String(body.html || "");
   const sourceDocSaveId = String(body.sourceDocSaveId || "").trim();
   const sourceDocType = String(body.sourceDocType || "").trim();

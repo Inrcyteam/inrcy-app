@@ -9,6 +9,7 @@ import { decryptSecret } from "@/lib/imapCrypto";
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml } from "@/lib/inrsendSignature";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { getConnectionDisplayStatus, mailConnectionKind } from "@/lib/connectionVersions";
+import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 
 export type SendMailBinaryAttachment = {
   filename: string;
@@ -377,9 +378,9 @@ export async function sendMailFromIntegration(params: {
     throw new Error("Cette boîte d’envoi doit être actualisée avant de pouvoir envoyer.");
   }
 
-  const baseText = params.text || "";
-  const baseHtml = params.html || textToSimpleHtml(baseText);
   const includeAutoSignature = params.includeAutoSignature !== false;
+  const baseText = includeAutoSignature ? stripTemplateSignatureBlock(params.text || "") : params.text || "";
+  const baseHtml = params.html || textToSimpleHtml(baseText);
   const attachments = Array.isArray(params.attachments) ? params.attachments : [];
 
   let finalText = baseText;

@@ -7,6 +7,7 @@ import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
+import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import { getConnectionDisplayStatus } from "@/lib/connectionVersions";
 import { enforceRateLimit } from "@/lib/rateLimit";
@@ -133,8 +134,9 @@ const handler = async (req: Request) => {
     }
 
     const signatureSettings = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId, account });
-    const finalText = applyAutoSignatureToText(text || "", signatureSettings.signatureText);
-    const finalHtml = applyAutoSignatureToHtml(textToSimpleHtml(text || ""), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
+    const cleanText = stripTemplateSignatureBlock(text || "");
+    const finalText = applyAutoSignatureToText(cleanText, signatureSettings.signatureText);
+    const finalHtml = applyAutoSignatureToHtml(textToSimpleHtml(cleanText), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
 
     // Supabase row typing may be '{}' depending on generated types.
     // Parse defensively from unknown to avoid Next.js build-time type errors.
