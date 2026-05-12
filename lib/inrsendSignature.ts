@@ -79,6 +79,18 @@ export function renderSignatureTemplate(template: string, context: Record<string
   return compactLines(rendered);
 }
 
+function buildFallbackSignature(context: Record<string, string>): string {
+  const company = String(context.nom_entreprise || "").trim();
+  if (company) return compactLines(`L’équipe ${company}`);
+  return "Envoyé via iNrCy";
+}
+
+function needsFallbackSignature(signatureText: string): boolean {
+  const normalized = compactLines(signatureText).toLowerCase();
+  if (!normalized) return true;
+  return /^(cordialement|bien à vous|bien cordialement|merci|à bientôt|a bientôt)[,!.\s]*$/i.test(normalized);
+}
+
 export function applyAutoSignatureToText(text: string, signature: string): string {
   const base = stripTemplateSignatureBlock(String(text || "")).trimEnd();
   const sig = compactLines(signature);
@@ -222,6 +234,7 @@ export async function buildInrSendSignature(args: {
 }): Promise<{ enabled: boolean; template: string; imagePath: string; imageUrl: string; imageWidth: number; signatureText: string }> {
   const { enabled, template, imagePath, imageUrl, imageWidth, profile } = await getInrSendSignatureSettings(args.supabase, args.userId);
   const context = buildSignatureContext({ profile, account: args.account });
-  const signatureText = enabled ? renderSignatureTemplate(template, context) : "";
+  const renderedSignatureText = enabled ? renderSignatureTemplate(template, context) : "";
+  const signatureText = enabled && needsFallbackSignature(renderedSignatureText) ? buildFallbackSignature(context) : renderedSignatureText;
   return { enabled, template, imagePath, imageUrl, imageWidth, signatureText };
 }

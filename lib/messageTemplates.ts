@@ -2,6 +2,7 @@ import { buildSectorTemplates } from "@/lib/templates/sectorCatalog";
 import { type ActivitySectorCategory } from "@/lib/activitySectors";
 import type { IntelligentTemplateContext, IntelligentTemplateMetadata } from "@/lib/templates/intelligentContext";
 import { buildIntelligentTemplateContext, mergeIntelligentTemplateContext, sortTemplatesByIntelligentContext } from "@/lib/templates/intelligentContext";
+import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 
 // Central registry for Booster/Fidéliser mail templates.
 // ✅ Version "dense" : vrais contenus, structurés, et auto-remplis via Mon Profil + Mon activité.
@@ -618,7 +619,14 @@ const BASE_TEMPLATES: TemplateDef[] = [
 
 const SECTOR_TEMPLATES: TemplateDef[] = buildSectorTemplates();
 
-export const TEMPLATES: TemplateDef[] = [...BASE_TEMPLATES, ...SECTOR_TEMPLATES];
+function cleanTemplateForSending(template: TemplateDef): TemplateDef {
+  return {
+    ...template,
+    body: stripTemplateSignatureBlock(template.body),
+  };
+}
+
+export const TEMPLATES: TemplateDef[] = [...BASE_TEMPLATES, ...SECTOR_TEMPLATES].map(cleanTemplateForSending);
 
 export function getTemplates(
   action: TemplateAction,

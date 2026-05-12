@@ -10,6 +10,7 @@ import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignatu
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { getConnectionDisplayStatus, mailConnectionKind } from "@/lib/connectionVersions";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
+import { appendUnsubscribeFooterToHtml, appendUnsubscribeFooterToText } from "@/lib/mailSuppression";
 
 export type SendMailBinaryAttachment = {
   filename: string;
@@ -352,6 +353,7 @@ export async function sendMailFromIntegration(params: {
   text?: string;
   html?: string;
   includeAutoSignature?: boolean;
+  unsubscribeUrl?: string;
   attachments?: SendMailBinaryAttachment[];
 }) {
   const { userId, accountId, to } = params;
@@ -390,6 +392,11 @@ export async function sendMailFromIntegration(params: {
     const signature = await buildInrSendSignature({ supabase: supabaseAdmin as any, userId, account });
     finalText = applyAutoSignatureToText(baseText, signature.signatureText);
     finalHtml = applyAutoSignatureToHtml(baseHtml, signature.signatureText, signature.imageUrl, signature.imageWidth);
+  }
+
+  if (params.unsubscribeUrl) {
+    finalText = appendUnsubscribeFooterToText(finalText, params.unsubscribeUrl);
+    finalHtml = appendUnsubscribeFooterToHtml(finalHtml, params.unsubscribeUrl);
   }
 
   if (provider === "gmail") {

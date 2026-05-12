@@ -6,8 +6,6 @@ import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs, type MailAttachmentRef } from "@/lib/mailAttachmentRefs";
 import { providerBatchLimit } from "@/lib/crmRecipients";
 import {
-  appendUnsubscribeFooterToHtml,
-  appendUnsubscribeFooterToText,
   buildRecipientUnsubscribeUrl,
   classifyMailFailure,
   fetchSuppressedEmailsByUser,
@@ -632,11 +630,12 @@ export async function processPendingMailCampaigns(opts?: {
       }
 
       const unsubscribeUrl = buildRecipientUnsubscribeUrl(campaignId, recipientId);
-      const rawTextBody = stripTemplateSignatureBlock(asString(campaign.body_text) || "");
+      const originalTextBody = asString(campaign.body_text) || "";
+      const rawTextBody = stripTemplateSignatureBlock(originalTextBody);
       const rawHtmlBody = asString(campaign.body_html) || "";
-      const textBody = appendUnsubscribeFooterToText(rawTextBody, unsubscribeUrl);
-      const htmlBase = rawHtmlBody.trim() ? rawHtmlBody : textToSimpleHtml(rawTextBody);
-      const htmlBody = appendUnsubscribeFooterToHtml(htmlBase, unsubscribeUrl);
+      const textBody = rawTextBody;
+      const htmlWasLikelyBuiltFromTemplate = originalTextBody.trim() !== rawTextBody.trim();
+      const htmlBody = htmlWasLikelyBuiltFromTemplate || !rawHtmlBody.trim() ? textToSimpleHtml(rawTextBody) : rawHtmlBody;
 
       try {
         const sendResult = await sendMailFromIntegration({
@@ -646,6 +645,7 @@ export async function processPendingMailCampaigns(opts?: {
           subject: normalizeMailSubject(asString(campaign.subject) || "(sans objet)"),
           text: textBody,
           html: htmlBody || undefined,
+          unsubscribeUrl,
           attachments,
         });
 

@@ -243,13 +243,13 @@ export function appendUnsubscribeFooterToText(text: string, unsubscribeUrl: stri
   if (!unsubscribeUrl) return base;
   if (textHasUnsubscribeLink(base, unsubscribeUrl)) return base;
   const footer = `Vous ne souhaitez plus recevoir ces emails ? Désinscription : ${unsubscribeUrl}`;
-  return base ? `${base}\n\n---\n${footer}` : footer;
+  return base ? `${base}\n\n${footer}` : footer;
 }
 
 export function appendUnsubscribeFooterToHtml(html: string, unsubscribeUrl: string) {
   const base = String(html || "").trim();
   if (!unsubscribeUrl) return base;
   if (base.includes(unsubscribeUrl) || /désinscrire/i.test(base)) return base;
-  const footer = `<p style="margin-top:24px;font-size:12px;color:#6b7280">Vous ne souhaitez plus recevoir ces emails ? <a href="${unsubscribeUrl}" target="_blank" rel="noopener noreferrer">Se désinscrire</a></p>`;
+  const footer = `<p style="margin-top:16px;font-size:12px;color:#6b7280">Vous ne souhaitez plus recevoir ces emails ? <a href="${unsubscribeUrl}" target="_blank" rel="noopener noreferrer">Se désinscrire</a></p>`;
   return base ? `${base}${footer}` : footer;
 }

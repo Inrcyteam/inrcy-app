@@ -1,4 +1,4 @@
-const SIGNOFF_LINE_RE = /^(?:cordialement|bien à vous|bien cordialement|à bientôt|a bient[oô]t|au plaisir|bonne journée|bonne journee|bon week-end|bonne soirée|bonne soiree)[\s,;:!.-]*$/i;
+const SIGNOFF_LINE_RE = /^(?:cordialement|bien à vous|bien cordialement|à bientôt|a bient[oô]t|au plaisir|merci(?: d[’']avance)?|merci d’avance|bonne journée|bonne journee|bon week-end|bonne soirée|bonne soiree)[\s,;:!.-]*$/i;
 const CONTACT_LINE_RE = /^(?:t[ée]l(?:[ée]phone)?\s*:|tel\s*:|email\s*:|e-mail\s*:|site\s*:|adresse\s*:|portable\s*:|mobile\s*:|\+?\d|📞|✉️|📍)/i;
 const PLACEHOLDER_CONTACT_RE = /\{\{\s*(?:prenom|nom|nom_complet|nom_entreprise|telephone|email|adresse|code_postal|ville|site_url|facebook_url|gmb_url)\s*\}\}/i;
 
