@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./agenda.module.css";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
   addDays,
@@ -32,6 +33,102 @@ import {
   type RdvMode,
 } from "./agenda.shared";
 import { AgendaCalendarCard, AgendaEventModal, AgendaHeader, AgendaSidebar } from "./agenda.ui";
+
+
+function normalizeCompareValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => normalizeCompareValue(item));
+  if (value && typeof value === "object") {
+    const input = value as Record<string, unknown>;
+    const output: Record<string, unknown> = {};
+    for (const key of Object.keys(input).sort()) {
+      const item = normalizeCompareValue(input[key]);
+      if (item === undefined || item === "") continue;
+      output[key] = item;
+    }
+    return output;
+  }
+  if (typeof value === "string") return value.trim();
+  return value ?? null;
+}
+
+function stableCompareString(value: unknown) {
+  return JSON.stringify(normalizeCompareValue(value));
+}
+
+function comparableIso(value: unknown) {
+  const time = Date.parse(String(value ?? ""));
+  return Number.isFinite(time) ? new Date(time).toISOString() : "";
+}
+
+function comparableContact(value: unknown) {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    crm_contact_id: String(raw.crm_contact_id ?? raw.contactId ?? raw.id ?? "").trim(),
+    display_name: String(raw.display_name ?? "").trim(),
+    first_name: String(raw.first_name ?? "").trim(),
+    last_name: String(raw.last_name ?? "").trim(),
+    company_name: String(raw.company_name ?? "").trim(),
+    email: String(raw.email ?? "").trim().toLowerCase(),
+    phone: String(raw.phone ?? "").trim(),
+    address: String(raw.address ?? "").trim(),
+    city: String(raw.city ?? "").trim(),
+    postal_code: String(raw.postal_code ?? "").trim(),
+    siren: String(raw.siren ?? "").trim(),
+    category: String(raw.category ?? "").trim(),
+    contact_type: String(raw.contact_type ?? "").trim(),
+    notes: String(raw.notes ?? "").trim(),
+    important: Boolean(raw.important),
+  };
+}
+
+function comparableGuests(value: unknown) {
+  const list = Array.isArray(value) ? value : [];
+  return list
+    .map((item) => comparableContact(item))
+    .filter((item) => item.display_name || item.email || item.crm_contact_id)
+    .sort((a, b) => `${a.email}|${a.display_name}`.localeCompare(`${b.email}|${b.display_name}`));
+}
+
+function comparableMeta(value: unknown) {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const intervention = raw.intervention && typeof raw.intervention === "object" ? (raw.intervention as Record<string, unknown>) : {};
+  const reminders = raw.reminders && typeof raw.reminders === "object" ? (raw.reminders as Record<string, unknown>) : {};
+  return {
+    kind: String(raw.kind ?? "intervention").trim(),
+    contact: comparableContact(raw.contact),
+    guests: comparableGuests(raw.guests),
+    reminders: {
+      mailAccountId: String(reminders.mailAccountId ?? reminders.mail_account_id ?? "").trim(),
+    },
+    intervention: {
+      status: String(intervention.status ?? "").trim(),
+      address: normalizeCompareValue(intervention.address),
+    },
+  };
+}
+
+function comparablePayload(payload: any) {
+  return stableCompareString({
+    summary: String(payload?.summary ?? "Évènement").trim(),
+    description: String(payload?.description ?? "").trim(),
+    location: String(payload?.location ?? "").trim(),
+    start: comparableIso(payload?.start),
+    end: comparableIso(payload?.end),
+    inrcy: comparableMeta(payload?.inrcy),
+  });
+}
+
+function comparableEvent(event: DayEvent | undefined | null) {
+  if (!event) return "";
+  return stableCompareString({
+    summary: String(event.summary ?? "Évènement").trim(),
+    description: String(event.description ?? "").trim(),
+    location: String(event.location ?? "").trim(),
+    start: comparableIso(event.startDate ?? event.start),
+    end: comparableIso(event.endDate ?? event.end),
+    inrcy: comparableMeta(event.inrcy),
+  });
+}
 
 export default function AgendaClient() {
   const [helpOpen, setHelpOpen] = useState(false);
@@ -635,6 +732,28 @@ export default function AgendaClient() {
           );
         }
       } else {
+        const currentEvent = normalized.find((event) => event.id === rdvEventId);
+        const hasLocalChanges = comparablePayload(payload) !== comparableEvent(currentEvent);
+
+        if (!hasLocalChanges) {
+          setRdvOpen(false);
+          setSuccess("Aucune modification détectée.");
+          return;
+        }
+
+        const confirmed = await confirmInrcy({
+          eyebrow: "Agenda",
+          title: "Confirmer la modification",
+          message: "Ce rendez-vous va être mis à jour. Les mails de mise à jour seront envoyés selon vos réglages. Voulez-vous continuer ?",
+          confirmLabel: "Confirmer la modification",
+          cancelLabel: "Annuler",
+          variant: "warning",
+        });
+
+        if (!confirmed) {
+          return;
+        }
+
         const response = await fetch(`/api/calendar/events?id=${encodeURIComponent(rdvEventId)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -647,6 +766,12 @@ export default function AgendaClient() {
               ? await getSimpleFrenchApiError(response, "Impossible de modifier le rendez-vous.")
               : getSimpleFrenchErrorMessage(json?.error, "Impossible de modifier le rendez-vous.")
           );
+        }
+
+        if (json?.unchanged) {
+          setRdvOpen(false);
+          setSuccess("Aucune modification détectée.");
+          return;
         }
       }
 

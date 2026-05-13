@@ -39,6 +39,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Pouvez-vous partager votre avis sur {{nom_entreprise}} ?",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Merci encore pour votre confiance. Chez {{nom_entreprise}}, chaque retour compte : il nous aide à améliorer notre service et permet à d’autres personnes de nous trouver.\n\n" +
       "🧩 Rappel de notre activité\n" +
       "• Métier : {{secteur}}\n" +
@@ -47,7 +48,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "• Nos points forts : {{forces}}\n\n" +
       "👉 Pour laisser un avis (1 minute) :\n{{avis_url}}\n\n" +
       "Si vous préférez, vous pouvez aussi nous répondre directement à ce mail : nous lisons tout.\n\n" +
-      "Merci d’avance,\n" +
+      "" +
       "{{prenom}} {{nom}}\n" +
       "{{nom_entreprise}}\n" +
       "Tél : {{telephone}}\n" +
@@ -64,13 +65,14 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Votre avis compte (Trustpilot) — {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Merci encore pour votre confiance. Votre retour nous aide énormément à améliorer notre service et à rassurer de nouveaux clients.\n\n" +
       "🧩 Rappel de notre activité\n" +
       "• Métier : {{secteur}}\n" +
       "• Prestations : {{services}}\n" +
       "• Zone d’intervention : {{zones}}\n\n" +
       "👉 Laisser un avis Trustpilot (1 minute) :\n{{avis_url}}\n\n" +
-      "Un grand merci,\n" +
+      "" +
       "{{prenom}} {{nom}}\n" +
       "{{nom_entreprise}}\n" +
       "Tél : {{telephone}}\n" +
@@ -87,10 +89,11 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Pouvez-vous laisser un avis sur PagesJaunes ? — {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Merci pour votre confiance. Un avis sur PagesJaunes nous aide à être plus visibles localement et à continuer d’offrir un service de qualité.\n\n" +
       "✅ En 1 minute :\n{{avis_url}}\n\n" +
       "Si vous préférez, répondez directement à ce mail avec votre ressenti : nous lisons tout.\n\n" +
-      "Merci d’avance,\n" +
+      "" +
       "{{prenom}} {{nom}}\n" +
       "{{nom_entreprise}} — {{telephone}}\n" +
       "{{adresse}}, {{code_postal}} {{ville}}",
@@ -106,10 +109,11 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Un petit avis pour {{nom_entreprise}} ?",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Merci encore pour votre confiance. Si vous avez 1 minute, votre avis nous aide beaucoup (et aide d’autres personnes à nous choisir).\n\n" +
       "👉 Lien pour laisser un avis :\n{{avis_url}}\n\n" +
       "Quelques mots suffisent : ce que vous avez apprécié, et ce qu’on pourrait améliorer.\n\n" +
-      "Merci !\n" +
+      "" +
       "{{prenom}} — {{nom_entreprise}}\n" +
       "{{telephone}}",
     ctaLabel: "Laisser un avis",
@@ -125,6 +129,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Offre du moment chez {{nom_entreprise}} ({{ville}})",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Nous lançons une offre spéciale sur un produit que nous recommandons souvent à nos clients.\n\n" +
       "✅ Ce que vous obtenez\n" +
       "• Produit : [Nom du produit]\n" +
@@ -135,7 +140,8 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "📍 Disponible sur : {{zones}}\n" +
       "🕒 Horaires : {{jours_ouverture}} — {{horaires_ouverture}}\n\n" +
       "Pour en profiter : {{cta_url}}\n\n" +
-      "À bientôt,\n{{prenom}} — {{nom_entreprise}}\nTél : {{telephone}}",
+      "Notre objectif reste toujours le même : proposer une solution utile, claire et durable à nos clients.\n\n" +
+      "{{prenom}} — {{nom_entreprise}}\nTél : {{telephone}}",
     ctaLabel: "{{cta_label}}",
   },
   {
@@ -147,6 +153,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Remise sur [service] — {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Bonne nouvelle : nous proposons en ce moment une remise sur une prestation très demandée.\n\n" +
       "🎯 Offre\n" +
       "• Prestation : [Nom du service]\n" +
@@ -157,7 +164,8 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "Nos forces : {{forces}}\n\n" +
       "📍 Zone : {{zones}}\n" +
       "📞 Pour réserver : {{telephone}} (ou {{cta_url}})\n\n" +
-      "Bien à vous,\n{{prenom}} {{nom}} — {{nom_entreprise}}",
+      "Les disponibilités peuvent évoluer rapidement selon la période : n'hésitez pas à nous contacter pour échanger sur votre besoin.\n\n" +
+      "{{prenom}} {{nom}} — {{nom_entreprise}}",
     ctaLabel: "{{cta_label}}",
   },
   {
@@ -169,6 +177,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Devis gratuit et rapide — {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Vous avez un besoin en {{secteur}} ? Nous pouvons vous aider rapidement.\n\n" +
       "📌 Ce que comprend notre devis\n" +
       "• Analyse de votre besoin\n" +
@@ -177,8 +186,9 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "Nos prestations principales : {{services}}\n" +
       "Zone d’intervention : {{zones}}\n\n" +
       "👉 Demander un devis : {{cta_url}}\n" +
+      "Nous prenons le temps d'étudier chaque demande afin de proposer une solution claire, réaliste et adaptée à votre budget.\n" +
       "Ou appelez-nous : {{telephone}}\n\n" +
-      "À bientôt,\n{{prenom}} — {{nom_entreprise}}",
+      "{{prenom}} — {{nom_entreprise}}",
     ctaLabel: "Demander un devis",
   },
   {
@@ -190,6 +200,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Offre limitée : [nom de l’offre] (jusqu’au [date])",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Nous lançons une offre limitée (jusqu’au [date]) pour répondre aux demandes fréquentes sur {{zones}}.\n\n" +
       "🔥 L’offre\n" +
       "• [Bénéfice #1]\n" +
@@ -197,8 +208,9 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "• [Garantie / bonus] \n\n" +
       "✅ Idéal si vous recherchez : {{services}}\n\n" +
       "Pour réserver un créneau : {{cta_url}}\n" +
+      "Cette offre est proposée dans la limite des créneaux actuellement disponibles.\n" +
       "Horaires : {{jours_ouverture}} — {{horaires_ouverture}}\n\n" +
-      "Cordialement,\n{{nom_entreprise}} — {{telephone}}",
+      "{{nom_entreprise}} — {{telephone}}",
     ctaLabel: "{{cta_label}}",
   },
   {
@@ -210,6 +222,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Offre saisonnière : préparation / entretien ({{ville}})",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Selon la saison, certains besoins reviennent souvent. Nous avons préparé une offre spéciale pour vous permettre d’anticiper sereinement.\n\n" +
       "🌿 Offre saisonnière\n" +
       "• Pour : [type de situation saisonnière]\n" +
@@ -219,7 +232,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "Nos forces : {{forces}}\n\n" +
       "📍 Intervention : {{zones}}\n" +
       "👉 Infos / réservation : {{cta_url}}\n\n" +
-      "À bientôt,\n{{prenom}} — {{nom_entreprise}}",
+      "{{prenom}} — {{nom_entreprise}}",
     ctaLabel: "{{cta_label}}",
   },
   {
@@ -231,6 +244,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Bienvenue ! Offre nouveau client — {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Si c’est votre première demande chez {{nom_entreprise}}, nous avons prévu une offre de bienvenue.\n\n" +
       "🎁 Offre nouveau client\n" +
       "• Avantage : [remise / bonus / priorité] \n" +
@@ -241,7 +255,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "2) On vous propose une solution claire\n" +
       "3) On planifie l’intervention au meilleur créneau\n\n" +
       "👉 Démarrer : {{cta_url}}\n\n" +
-      "Bien à vous,\n{{prenom}} — {{nom_entreprise}}\n{{telephone}}",
+      "{{prenom}} — {{nom_entreprise}}\n{{telephone}}",
     ctaLabel: "{{cta_label}}",
   },
   {
@@ -253,6 +267,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Merci ! Avantage fidélité chez {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Merci pour votre fidélité. Pour vous récompenser, nous vous faisons bénéficier d’un avantage dédié.\n\n" +
       "⭐ Avantage fidélité\n" +
       "• [Avantage concret : remise, contrôle offert, extension de garantie…]\n" +
@@ -273,6 +288,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "🎁 Cartes cadeaux — Offrez un service {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Vous cherchez une idée utile et originale ? Nous proposons des cartes cadeaux à offrir, valables sur nos prestations.\n\n" +
       "🎁 Cartes cadeaux {{nom_entreprise}}\n" +
       "• Montant au choix : [montant]€ / [montant]€ / [autre]\n" +
@@ -285,7 +301,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "3) Le bénéficiaire nous contacte pour réserver\n\n" +
       "👉 Commander une carte cadeau : {{cta_url}}\n" +
       "Ou par téléphone : {{telephone}}\n\n" +
-      "À bientôt,\n" +
+      "" +
       "{{prenom}} — {{nom_entreprise}}",
     ctaLabel: "Commander",
   },
@@ -301,6 +317,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "{{nom_entreprise}} recrute sur {{zones}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Nous renforçons l’équipe {{nom_entreprise}} pour répondre à la demande sur {{zones}}.\n\n" +
       "📣 Poste : [intitulé]\n" +
       "• Missions : [3 points]\n" +
@@ -319,6 +336,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Nouveau : [service] chez {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Nous lançons une nouvelle prestation pour répondre à une demande fréquente sur {{zones}}.\n\n" +
       "🆕 Nouveau service : [Nom du service]\n" +
       "• Pour qui : [types de clients / cas] \n" +
@@ -327,7 +345,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "📍 Zone d’intervention : {{zones}}\n" +
       "🕒 Horaires : {{jours_ouverture}} — {{horaires_ouverture}}\n\n" +
       "👉 En savoir plus / réserver : {{cta_url}}\n\n" +
-      "Bien à vous,\n{{prenom}} — {{nom_entreprise}}",
+      "{{prenom}} — {{nom_entreprise}}",
     ctaLabel: "{{cta_label}}",
   },
   {
@@ -339,13 +357,14 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Nouveau produit recommandé par {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Nous ajoutons un nouveau produit à nos recommandations, car il répond très bien aux besoins liés à {{secteur}}.\n\n" +
       "🧩 Produit : [Nom]\n" +
       "• Avantage : [bénéfice concret]\n" +
       "• Dans quels cas : [cas d’usage]\n" +
       "• Disponibilité : [infos] \n\n" +
       "Vous souhaitez vérifier si c’est adapté à votre situation ? Répondez à ce mail ou contactez-nous : {{telephone}}.\n\n" +
-      "Cordialement,\n{{nom_entreprise}}",
+      "{{nom_entreprise}}",
   },
   {
     key: "fideliser_infos_nouveau_materiel",
@@ -356,12 +375,13 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Nous investissons dans un nouvel équipement ({{nom_entreprise}})",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Pour améliorer la qualité et la régularité de nos interventions, nous venons d’investir dans un nouvel équipement.\n\n" +
       "🔧 Équipement : [Nom]\n" +
       "• Ce que ça change pour vous : [2-3 bénéfices]\n" +
       "• Sur quelles prestations : {{services}}\n\n" +
       "Notre objectif : des résultats plus fiables, avec notre exigence habituelle.\n\n" +
-      "À bientôt,\n{{prenom}} — {{nom_entreprise}}",
+      "{{prenom}} — {{nom_entreprise}}",
   },
   {
     key: "fideliser_infos_nouveau_collaborateur",
@@ -372,12 +392,13 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "L’équipe {{nom_entreprise}} s’agrandit",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Nous sommes heureux de vous présenter notre nouveau collaborateur : [Prénom].\n\n" +
       "👋 Son rôle\n" +
       "• Missions : [missions]\n" +
       "• Spécialités : [spécialités]\n\n" +
       "Cela nous permet de rester disponibles sur {{zones}} et de réduire les délais sur les demandes liées à : {{services}}.\n\n" +
-      "Bien à vous,\n{{nom_entreprise}}",
+      "{{nom_entreprise}}",
   },
   {
     key: "fideliser_infos_formation_certif",
@@ -388,12 +409,13 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Nouvelle certification / formation — {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Pour garantir un service irréprochable, nous continuons à nous former régulièrement.\n\n" +
       "🎓 Formation / certification : [Nom]\n" +
       "• Ce que ça apporte : [bénéfices] \n" +
       "• Pour quels besoins : {{services}}\n\n" +
       "Notre promesse : {{forces}}\n\n" +
-      "Cordialement,\n{{prenom}} — {{nom_entreprise}}",
+      "{{prenom}} — {{nom_entreprise}}",
   },
   {
     key: "fideliser_infos_partenaire",
@@ -404,13 +426,14 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Nouveau partenaire — {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Nous avons noué un partenariat avec [Nom du partenaire] afin de mieux vous servir sur {{zones}}.\n\n" +
       "🤝 Pourquoi ce partenariat ?\n" +
       "• [bénéfice #1]\n" +
       "• [bénéfice #2]\n\n" +
       "Cela complète nos prestations : {{services}}\n\n" +
       "Si vous souhaitez en discuter : {{telephone}}\n\n" +
-      "Bien à vous,\n{{nom_entreprise}}",
+      "{{nom_entreprise}}",
   },
   {
     key: "fideliser_infos_realisation",
@@ -421,6 +444,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Dernière réalisation de {{nom_entreprise}} ({{ville}})",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Nous partageons une réalisation récente pour vous donner une idée concrète de notre méthode.\n\n" +
       "🏁 Contexte\n" +
       "• Besoin : [besoin]\n" +
@@ -429,7 +453,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "Ce type de besoin correspond à nos prestations : {{services}}\n" +
       "Zone : {{zones}}\n\n" +
       "Vous avez une question similaire ? Contact : {{telephone}}\n\n" +
-      "Cordialement,\n{{prenom}} — {{nom_entreprise}}",
+      "{{prenom}} — {{nom_entreprise}}",
   },
   {
     key: "fideliser_infos_evenement",
@@ -440,13 +464,14 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "On se retrouve à [événement] ? — {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Nous participons à [événement] le [date] à [lieu].\n\n" +
       "🎟️ Pourquoi venir ?\n" +
       "• Découvrir nos solutions autour de {{secteur}}\n" +
       "• Échanger sur vos besoins ({{services}})\n" +
       "• Obtenir des conseils personnalisés\n\n" +
       "Si vous souhaitez prendre un créneau sur place : {{telephone}}\n\n" +
-      "À bientôt,\n{{nom_entreprise}}",
+      "{{nom_entreprise}}",
   },
   {
     key: "fideliser_infos_generique",
@@ -457,13 +482,14 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Des nouvelles de {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Petit point d’actualité de {{nom_entreprise}} :\n\n" +
       "🗞️ [Actualité #1]\n" +
       "🗞️ [Actualité #2]\n" +
       "🗞️ [Actualité #3]\n\n" +
       "Rappel : nous intervenons sur {{zones}} pour : {{services}}.\n\n" +
       "Besoin d’un conseil ? {{telephone}} — {{email}}\n\n" +
-      "Bien à vous,\n{{prenom}} — {{nom_entreprise}}",
+      "{{prenom}} — {{nom_entreprise}}",
   },
 
   // ---- SUIVIS ----
@@ -476,13 +502,14 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Merci pour votre confiance — {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Merci de nous avoir fait confiance pour votre besoin.\n\n" +
       "✅ Ce que nous avons fait\n" +
       "• Intervention : [rappel court]\n" +
       "• Conseils : [rappel court]\n\n" +
       "Si vous avez la moindre question (ou si vous observez un point à surveiller), vous pouvez nous joindre facilement : {{telephone}}.\n\n" +
       "Et si vous souhaitez nous aider :\n{{avis_url}}\n\n" +
-      "Cordialement,\n{{prenom}} — {{nom_entreprise}}",
+      "{{prenom}} — {{nom_entreprise}}",
     ctaLabel: "Laisser un avis",
   },
   {
@@ -494,13 +521,14 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Tout se passe bien depuis notre passage ? — {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Nous prenons des nouvelles suite à notre intervention. Tout se passe bien depuis ?\n\n" +
       "🔎 Si vous pouvez, dites-nous simplement :\n" +
       "1) Est-ce que le résultat est conforme à vos attentes ?\n" +
       "2) Avez-vous une question / un point à ajuster ?\n\n" +
       "Nous restons disponibles sur {{zones}} ({{jours_ouverture}} — {{horaires_ouverture}}).\n\n" +
       "Réponse rapide par mail, ou par téléphone : {{telephone}}\n\n" +
-      "Bien à vous,\n{{prenom}} — {{nom_entreprise}}",
+      "{{prenom}} — {{nom_entreprise}}",
   },
   {
     key: "fideliser_suivis_rappel_entretien",
@@ -511,13 +539,14 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Rappel : contrôle / entretien recommandé",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Petit rappel : pour conserver un résultat durable, un contrôle / entretien est recommandé après [X] mois.\n\n" +
       "✅ Pourquoi c’est utile\n" +
       "• Prévenir les récidives\n" +
       "• Maintenir la performance\n" +
       "• Identifier les points faibles avant qu’ils ne deviennent coûteux\n\n" +
       "Vous souhaitez que l’on programme un créneau ? {{cta_url}}\n\n" +
-      "Cordialement,\n{{nom_entreprise}} — {{telephone}}",
+      "{{nom_entreprise}} — {{telephone}}",
     ctaLabel: "{{cta_label}}",
   },
   {
@@ -529,6 +558,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Un petit mot de {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Un petit message pour vous remercier de votre confiance.\n\n" +
       "Si vous avez un besoin (ou une question) autour de {{services}}, nous sommes là : {{telephone}}.\n\n" +
       "Bonne journée,\n{{prenom}} — {{nom_entreprise}}",
@@ -542,6 +572,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Suite à votre demande — devis {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Je reviens vers vous suite à votre demande de devis.\n\n" +
       "Si vous le souhaitez, on peut affiner ensemble :\n" +
       "• le besoin exact\n" +
@@ -549,7 +580,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "• la meilleure option (budget / qualité)\n\n" +
       "📞 Un rapide échange : {{telephone}}\n" +
       "Ou répondez à ce mail avec vos disponibilités.\n\n" +
-      "Cordialement,\n{{prenom}} — {{nom_entreprise}}",
+      "{{prenom}} — {{nom_entreprise}}",
   },
 
   {
@@ -561,11 +592,12 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Relance — facture {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Je me permets une petite relance concernant la facture en attente.\n\n" +
       "✅ Si le règlement a déjà été effectué, ignorez ce message (et merci).\n" +
       "Sinon, pouvez-vous me dire quand vous prévoyez le paiement ?\n\n" +
       "📩 Si besoin, je peux vous renvoyer la facture ou ajuster le mode de règlement.\n\n" +
-      "Merci d’avance,\n" +
+      "" +
       "{{prenom}} — {{nom_entreprise}}\n" +
       "{{telephone}}",
   },
@@ -580,6 +612,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "2 minutes pour améliorer notre service ? — {{nom_entreprise}}",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Pour continuer à améliorer {{nom_entreprise}}, pourriez-vous répondre à ces 3 questions rapides ?\n\n" +
       "1) Sur 10, quelle note donneriez-vous à notre intervention ?\n" +
       "2) Qu’est-ce qui vous a le plus plu ?\n" +
@@ -596,11 +629,12 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "Une question rapide (vos besoins à venir)",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Pour mieux anticiper, dites-nous : avez-vous un besoin prévu dans les prochains mois concernant :\n" +
       "• {{services}} ?\n\n" +
       "Si oui : quand, et sur quelle zone ({{zones}}) ?\n\n" +
       "Répondez simplement à ce mail, ou contactez-nous : {{telephone}}\n\n" +
-      "Merci !\n{{nom_entreprise}}",
+      "{{nom_entreprise}}",
   },
   {
     key: "fideliser_enquetes_recommandations",
@@ -611,9 +645,10 @@ const BASE_TEMPLATES: TemplateDef[] = [
     subject: "À qui recommanderiez-vous {{nom_entreprise}} ?",
     body:
       "Bonjour,\n\n" +
+      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
       "Dernière petite question : à qui recommanderiez-vous nos services ? (amis, famille, voisins, entreprise…)\n\n" +
       "Si vous avez un contact à nous partager, répondez avec un prénom + numéro/mail (si vous avez son accord).\n\n" +
-      "Merci d’avance,\n{{prenom}} — {{nom_entreprise}}\n{{telephone}}",
+      "{{prenom}} — {{nom_entreprise}}\n{{telephone}}",
   },
 ];
 

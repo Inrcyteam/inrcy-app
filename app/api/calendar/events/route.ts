@@ -131,6 +131,61 @@ function resetReminderDelivery(metaInput: unknown) {
   };
 }
 
+function toComparableIso(value: unknown) {
+  const time = Date.parse(String(value ?? ""));
+  return Number.isFinite(time) ? new Date(time).toISOString() : "";
+}
+
+function normalizeOptionalString(value: unknown) {
+  const cleaned = cleanString(value);
+  return cleaned || null;
+}
+
+function normalizeComparable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => normalizeComparable(item));
+  if (value && typeof value === "object") {
+    const input = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(input).sort()) {
+      const item = normalizeComparable(input[key]);
+      if (item === undefined) continue;
+      if (item === "") continue;
+      if (Array.isArray(item) && item.length === 0) {
+        out[key] = [];
+        continue;
+      }
+      out[key] = item;
+    }
+    return out;
+  }
+  if (typeof value === "string") return value.trim();
+  return value ?? null;
+}
+
+function stableStringify(value: unknown) {
+  return JSON.stringify(normalizeComparable(value));
+}
+
+function buildEventComparable(input: {
+  title: unknown;
+  description: unknown;
+  location: unknown;
+  allDay: unknown;
+  startAt: unknown;
+  endAt: unknown;
+  meta: unknown;
+}) {
+  return stableStringify({
+    title: normalizeOptionalString(input.title) || "(Sans titre)",
+    description: normalizeOptionalString(input.description),
+    location: normalizeOptionalString(input.location),
+    all_day: Boolean(input.allDay),
+    start_at: toComparableIso(input.startAt),
+    end_at: toComparableIso(input.endAt),
+    meta: input.meta,
+  });
+}
+
 function buildAgendaMeta(input: unknown, previous?: unknown, rootContact?: unknown) {
   const next = safeObj(input);
   const prev = safeObj(previous);
@@ -673,7 +728,7 @@ export async function PATCH(req: Request) {
 
   const { data: current, error: currentError } = await supabase
     .from("agenda_events")
-    .select("meta,start_at,end_at,title,description,location")
+    .select("meta,start_at,end_at,title,description,location,all_day")
     .eq("id", id)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -697,20 +752,46 @@ export async function PATCH(req: Request) {
     endAt = new Date(body.end!).toISOString();
   }
 
+  const nextTitle = body.summary ?? current.title ?? "(Sans titre)";
+  const nextDescription = body.description ?? current.description ?? null;
+  const nextLocation = body.location ?? current.location ?? null;
   const nextMetaRaw = buildAgendaMeta(body.inrcy, current.meta, body.contact);
-  const scheduleChanged = String(current.start_at || "") !== startAt || String(current.end_at || "") !== endAt;
+
+  const scheduleChanged =
+    toComparableIso(current.start_at) !== toComparableIso(startAt) ||
+    toComparableIso(current.end_at) !== toComparableIso(endAt) ||
+    Boolean(current.all_day) !== allDay;
   const recipientsChanged = getContactEmailsFromMeta(current.meta) !== getContactEmailsFromMeta(nextMetaRaw);
-  const detailsChanged =
-    String(current.title ?? "") !== String(body.summary ?? current.title ?? "") ||
-    String(current.description ?? "") !== String(body.description ?? current.description ?? "") ||
-    String(current.location ?? "") !== String(body.location ?? current.location ?? "");
   const nextMeta = scheduleChanged || recipientsChanged ? resetReminderDelivery(nextMetaRaw) : nextMetaRaw;
-  const eventChanged = scheduleChanged || recipientsChanged || detailsChanged;
+
+  const beforeComparable = buildEventComparable({
+    title: current.title,
+    description: current.description,
+    location: current.location,
+    allDay: current.all_day,
+    startAt: current.start_at,
+    endAt: current.end_at,
+    meta: current.meta,
+  });
+  const afterComparable = buildEventComparable({
+    title: nextTitle,
+    description: nextDescription,
+    location: nextLocation,
+    allDay,
+    startAt,
+    endAt,
+    meta: nextMeta,
+  });
+  const eventChanged = beforeComparable !== afterComparable;
+
+  if (!eventChanged) {
+    return NextResponse.json({ ok: true, unchanged: true, message: "Aucune modification détectée." });
+  }
 
   const patch: Record<string, unknown> = {
-    title: body.summary ?? undefined,
-    description: body.description ?? undefined,
-    location: body.location ?? undefined,
+    title: nextTitle,
+    description: nextDescription,
+    location: nextLocation,
     all_day: allDay,
     start_at: startAt,
     end_at: endAt,
@@ -720,14 +801,14 @@ export async function PATCH(req: Request) {
   const { error } = await supabase.from("agenda_events").update(patch).eq("id", id).eq("user_id", user.id);
 
   if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
-  await createAgendaConfirmationNotification(user.id, String(body.summary ?? current.title ?? "(Sans titre)"), startAt).catch(() => null);
+  await createAgendaConfirmationNotification(user.id, String(nextTitle), startAt).catch(() => null);
   if (eventChanged) {
     await sendAgendaConfirmationEmails({
       userId: user.id,
       row: {
-        title: String(body.summary ?? current.title ?? "(Sans titre)"),
-        description: body.description ?? (typeof current.description === "string" ? current.description : null),
-        location: body.location ?? (typeof current.location === "string" ? current.location : null),
+        title: String(nextTitle),
+        description: typeof nextDescription === "string" ? nextDescription : null,
+        location: typeof nextLocation === "string" ? nextLocation : null,
         start_at: startAt,
         end_at: endAt,
       },

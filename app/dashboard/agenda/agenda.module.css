@@ -905,8 +905,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   align-items:center;
   justify-content:center;
   line-height:1;
-  pointer-events:none;
+  border:0;
+  padding:0;
+  background:transparent;
+  cursor:pointer;
   color:rgba(255,255,255,0.78);
+}
+.dateInputIcon:hover,
+.dateInputIcon:focus-visible{
+  color:rgba(255,255,255,0.96);
+}
+.dateInputIcon:focus-visible{
+  outline:2px solid rgba(77,163,255,0.55);
+  outline-offset:3px;
+  border-radius:8px;
 }
 .dateInputIcon svg{
   width:18px;

@@ -668,11 +668,28 @@ type AgendaEventModalProps = {
 };
 
 export function AgendaEventModal(props: AgendaEventModalProps) {
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
+
   if (!props.open) return null;
 
   const updateAndClear = <T,>(setter: (value: T) => void, value: T) => {
     setter(value);
     props.clearCrmAddFeedback();
+  };
+
+  const openDatePicker = () => {
+    const input = dateInputRef.current;
+    if (!input) return;
+
+    input.focus();
+
+    if (typeof input.showPicker === "function") {
+      try {
+        input.showPicker();
+      } catch {
+        // Certains navigateurs refusent showPicker hors interaction directe.
+      }
+    }
   };
 
   return (
@@ -733,6 +750,7 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
                 <div className={styles.label}>Date</div>
                 <div className={styles.dateInputWrap}>
                   <input
+                    ref={dateInputRef}
                     className={`${styles.input} ${styles.dateInput}`}
                     type="date"
                     lang="fr-FR"
@@ -740,11 +758,16 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
                     onChange={(e) => props.setRdvDate(e.target.value)}
                     placeholder="JJ/MM/AAAA"
                   />
-                  <span className={styles.dateInputIcon} aria-hidden="true">
-                    <svg viewBox="0 0 24 24" focusable="false">
+                  <button
+                    type="button"
+                    className={styles.dateInputIcon}
+                    onClick={openDatePicker}
+                    aria-label="Choisir une date"
+                  >
+                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
                       <path d="M7 3v3M17 3v3M4.5 9h15M6.5 5.5h13v15h-15v-15h2Z" />
                     </svg>
-                  </span>
+                  </button>
                 </div>
               </div>
 
