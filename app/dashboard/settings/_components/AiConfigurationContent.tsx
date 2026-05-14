@@ -14,6 +14,7 @@ type AiConfigForm = {
   length: "short" | "medium" | "detailed";
   addressMode: "vous" | "tu" | "auto";
   creativity: "stable" | "balanced" | "creative";
+  customInstructions: string;
 };
 
 const TABLE = "business_profiles";
@@ -27,6 +28,7 @@ const initialForm: AiConfigForm = {
   length: "medium",
   addressMode: "vous",
   creativity: "balanced",
+  customInstructions: "",
 };
 
 const selectOption: React.CSSProperties = { color: "#0b1020", background: "#ffffff" };
@@ -46,6 +48,16 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
   }), []);
+
+  const signatureCard: React.CSSProperties = useMemo(() => ({
+    ...card,
+    position: "relative",
+    overflow: "hidden",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background:
+      "linear-gradient(135deg, rgba(56,189,248,0.22), rgba(167,139,250,0.22), rgba(244,114,182,0.18), rgba(251,146,60,0.12))",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.08)",
+  }), [card]);
 
   const input: React.CSSProperties = useMemo(() => ({
     width: "100%",
@@ -91,7 +103,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
         if (user) {
           const { data, error: dbErr } = await supabase
             .from(TABLE)
-            .select("tone, preferred_cta, communication_style, emoji_level, ai_length, address_mode, ai_creativity")
+            .select("*")
             .eq("user_id", user.id)
             .maybeSingle();
           if (dbErr) throw new Error(dbErr.message);
@@ -103,6 +115,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
             length: (data?.ai_length || initialForm.length) as AiConfigForm["length"],
             addressMode: (data?.address_mode || initialForm.addressMode) as AiConfigForm["addressMode"],
             creativity: (data?.ai_creativity || initialForm.creativity) as AiConfigForm["creativity"],
+            customInstructions: String(data?.ai_custom_instructions || initialForm.customInstructions),
           };
         }
 
@@ -144,6 +157,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
             ai_length: form.length,
             address_mode: form.addressMode,
             ai_creativity: form.creativity,
+            ai_custom_instructions: form.customInstructions.trim(),
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id" }
@@ -168,12 +182,25 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <div style={card}>
-        <div style={{ fontSize: 18, fontWeight: 950, color: "rgba(255,255,255,0.96)", marginBottom: 6 }}>
-          Configuration IA
+      <div style={signatureCard}>
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            right: -36,
+            top: -44,
+            width: 130,
+            height: 130,
+            borderRadius: 999,
+            background: "radial-gradient(circle, rgba(255,255,255,0.26), transparent 66%)",
+            pointerEvents: "none",
+          }}
+        />
+        <div style={{ fontSize: 18, fontWeight: 950, color: "rgba(255,255,255,0.98)", marginBottom: 8 }}>
+          ✨ Votre signature IA
         </div>
-        <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 13, lineHeight: 1.5 }}>
-          Réglez une fois le style de communication. Booster reste rapide : le pro écrit une phrase, iNrCy applique ces préférences automatiquement.
+        <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 13, lineHeight: 1.55, maxWidth: 520 }}>
+          Réglez une fois le style de communication de votre entreprise. Ensuite, Booster reste simple : vous écrivez une phrase, iNrCy génère des contenus adaptés à votre image.
         </div>
       </div>
 
@@ -251,6 +278,20 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
                 <span style={hint}>Utilisé comme CTA par défaut lorsque le canal le permet.</span>
               </label>
             </div>
+
+            <label style={label}>
+              <span style={labelTitle}>Consignes à respecter / à éviter</span>
+              <textarea
+                style={{ ...input, minHeight: 96, resize: "vertical", lineHeight: 1.45 }}
+                value={form.customInstructions}
+                maxLength={500}
+                onChange={(e) => set("customInstructions", e.target.value.slice(0, 500))}
+                placeholder={'Ex : éviter un ton trop commercial, ne pas utiliser trop d’emojis, ne pas dire “pas cher”, rester sobre et rassurant.'}
+              />
+              <span style={hint}>
+                Optionnel. Très utile pour éviter les mots, promesses ou tournures qui ne correspondent pas à l’image de l’entreprise.
+              </span>
+            </label>
 
             {error ? <div style={{ color: "rgba(248,113,113,0.95)", fontWeight: 800 }}>{error}</div> : null}
             {saved ? <div style={{ color: "rgba(34,197,94,0.95)", fontWeight: 900 }}>Configuration IA enregistrée ✅</div> : null}

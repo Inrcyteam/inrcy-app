@@ -8,7 +8,8 @@ alter table public.business_profiles
   add column if not exists emoji_level text not null default 'light',
   add column if not exists ai_length text not null default 'medium',
   add column if not exists address_mode text not null default 'vous',
-  add column if not exists ai_creativity text not null default 'balanced';
+  add column if not exists ai_creativity text not null default 'balanced',
+  add column if not exists ai_custom_instructions text not null default '';
 
 comment on column public.business_profiles.customer_typologies is 'Typologies de clientèle ciblées : particuliers, professionnels, collectivites.';
 comment on column public.business_profiles.communication_style is 'Préférence de style IA global.';
@@ -18,3 +19,5 @@ comment on column public.business_profiles.address_mode is 'Tutoiement, vouvoiem
 comment on column public.business_profiles.ai_creativity is 'Niveau de créativité IA utilisé par Booster.';
 
 comment on column public.business_profiles.business_description is 'Présentation courte de l’activité utilisée pour personnaliser les contenus IA.';
+
+comment on column public.business_profiles.ai_custom_instructions is 'Consignes personnalisées à respecter ou à éviter dans les contenus générés par l IA.';

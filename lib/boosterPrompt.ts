@@ -428,6 +428,7 @@ export function boosterUserPrompt(args: {
     CREATIVITY_LABELS,
     "Équilibré",
   );
+  const aiCustomInstructions = cleanText(business.ai_custom_instructions, 500);
   const customerTypes = labelsFromArray(
     business.customer_typologies,
     CUSTOMER_TYPE_LABELS,
@@ -468,6 +469,7 @@ export function boosterUserPrompt(args: {
     `- Tutoiement / vouvoiement : ${addressMode}`,
     `- Créativité IA : ${creativity}`,
     `- CTA préféré : ${preferredCta}`,
+    optionalLine("Consignes à respecter / à éviter", aiCustomInstructions, 500),
   ]);
 
   const siteSeoHints = compactLines([
@@ -521,6 +523,7 @@ Consignes supplémentaires :
 - Ne jamais considérer une ancienne publication comme une information actuelle certaine si elle contredit l'intention du jour.
 - Le style demandé doit changer visiblement le ton, les accroches, le rythme des phrases et la présence d'emojis. Ne fais pas seulement une variation légère.
 - La configuration IA enregistrée prime sur le style historique sobre/équilibré/dynamique si les deux donnent des signaux différents.
+- Respecter les consignes personnalisées à respecter / à éviter si elles sont renseignées, sans jamais annuler les règles de conformité, les règles Google Business ou les contraintes de vérité.
 - Si la typologie client est renseignée : particuliers = rassurant/simple/proximité ; professionnels = efficacité/expertise/réactivité ; collectivités = sérieux/fiabilité/conformité.
 - Si les horaires sont renseignés, les utiliser seulement si cela apporte une information utile. Ne pas les répéter partout.
 - Si les forces sont renseignées, les transformer en bénéfices concrets sans en faire une liste froide.

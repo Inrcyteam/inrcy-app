@@ -252,6 +252,18 @@ export default function DashboardTopbar({
               role="menuitem"
               onClick={() => {
                 setMenuOpen(false);
+                openPanel("ia");
+              }}
+            >
+              Configuration IA
+            </button>
+
+            <button
+              className={styles.mobileMenuItem}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
                 openPanel("notifications");
               }}
             >
