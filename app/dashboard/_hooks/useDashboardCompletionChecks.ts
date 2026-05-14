@@ -24,6 +24,7 @@ const REQUIRED_ACTIVITY_FIELDS = [
   "opening_days",
   "opening_hours",
   "strengths",
+  "customer_typologies",
 ] as const;
 
 export function useDashboardCompletionChecks() {
@@ -39,7 +40,9 @@ export function useDashboardCompletionChecks() {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("first_name,last_name,phone,contact_email,company_legal_name,hq_address,hq_zip,hq_city,hq_country,siren,rcs_city")
+      .select(
+        "first_name,last_name,phone,contact_email,company_legal_name,hq_address,hq_zip,hq_city,hq_country,siren,rcs_city",
+      )
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -75,7 +78,9 @@ export function useDashboardCompletionChecks() {
     }
 
     const businessRecord = business as Record<string, unknown>;
-    const decodedSector = decodeBusinessSector(String(businessRecord.sector ?? ""));
+    const decodedSector = decodeBusinessSector(
+      String(businessRecord.sector ?? ""),
+    );
     const hasSectorCategory = !!decodedSector.sectorCategory;
     const hasProfession = decodedSector.profession.trim().length > 0;
 

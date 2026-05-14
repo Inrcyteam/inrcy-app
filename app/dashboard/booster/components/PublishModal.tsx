@@ -1,6 +1,7 @@
 import HelpButton from "../../_components/HelpButton";
 import HelpModal from "../../_components/HelpModal";
 import StatusMessage from "../../_components/StatusMessage";
+import AiConfigurationContent from "../../settings/_components/AiConfigurationContent";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
@@ -232,6 +233,7 @@ export default function PublishModal({
     message: string;
   } | null>(null);
   const [publishHelpOpen, setPublishHelpOpen] = useState(false);
+  const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
   const [instagramHashtagsInput, setInstagramHashtagsInput] = useState("");
   const [emptyContentWarningChannels, setEmptyContentWarningChannels] =
     useState<ChannelKey[]>([]);
@@ -335,11 +337,11 @@ export default function PublishModal({
   }, [postsByChannel.instagram?.hashtags?.join("|") ?? ""]);
 
   useEffect(() => {
-    onOverlayOpenChange?.(isImageEditorOpen);
+    onOverlayOpenChange?.(isImageEditorOpen || aiConfigurationOpen);
     return () => {
       onOverlayOpenChange?.(false);
     };
-  }, [isImageEditorOpen, onOverlayOpenChange]);
+  }, [isImageEditorOpen, aiConfigurationOpen, onOverlayOpenChange]);
 
   useEffect(() => {
     let alive = true;
@@ -2050,6 +2052,87 @@ export default function PublishModal({
         </div>
       </HelpModal>
 
+      {aiConfigurationOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Configuration IA"
+          onClick={() => setAiConfigurationOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10020,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            justifyContent: isMobile ? "stretch" : "flex-end",
+            overflow: "hidden",
+            padding: isMobile ? 0 : undefined,
+          }}
+        >
+          <aside
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: isMobile ? "100vw" : "min(560px, 92vw)",
+              maxWidth: "100vw",
+              height: isMobile ? "100dvh" : "100%",
+              boxSizing: "border-box",
+              background: "rgba(16,16,16,0.98)",
+              borderLeft: isMobile ? 0 : "1px solid rgba(255,255,255,0.08)",
+              padding: isMobile
+                ? "max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))"
+                : 16,
+              overflowY: "auto",
+              overflowX: "hidden",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: isMobile ? "flex-start" : "center",
+                justifyContent: "space-between",
+                gap: 12,
+                minWidth: 0,
+                flexWrap: isMobile ? "wrap" : "nowrap",
+              }}
+            >
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: isMobile ? 17 : 18,
+                  fontWeight: 700,
+                  minWidth: 0,
+                  maxWidth: "100%",
+                  overflowWrap: "anywhere",
+                  lineHeight: 1.2,
+                  color: "white",
+                }}
+              >
+                Configuration IA
+              </h2>
+              <button
+                type="button"
+                onClick={() => setAiConfigurationOpen(false)}
+                style={{
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "transparent",
+                  color: "white",
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                Fermer
+              </button>
+            </div>
+            <div style={{ marginTop: 12, minWidth: 0, maxWidth: "100%", overflowX: "hidden" }}>
+              <AiConfigurationContent mode="drawer" />
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+
       {finalReviewOpen ? (
         <div
           style={{
@@ -2684,78 +2767,39 @@ export default function PublishModal({
         className={styles.blockCard}
         style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}
       >
-        <div className={styles.blockTitle} style={{ marginBottom: 8 }}>
-          Votre intention
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            marginBottom: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          <div className={styles.blockTitle}>Votre intention</div>
+          <button
+            type="button"
+            className={styles.secondaryBtn}
+            onClick={() => setAiConfigurationOpen(true)}
+            style={{
+              minHeight: 34,
+              padding: "7px 12px",
+              fontSize: 12,
+              fontWeight: 900,
+              whiteSpace: "nowrap",
+            }}
+          >
+            ⚙️ Configuration IA
+          </button>
         </div>
         <div
           className={styles.subtitle}
           style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}
         >
-          Choisissez le thème si vous le souhaitez, puis écrivez votre phrase.
-          iNrCy adapte ensuite le contenu à chaque canal.
+Écrivez simplement votre idée. iNrCy comprend le contexte et adapte automatiquement le contenu à chaque canal.
         </div>
         <div style={{ display: "grid", gap: 10 }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile
-                ? "1fr"
-                : "minmax(0, 1fr) minmax(0, 1fr)",
-              gap: 10,
-              alignItems: "start",
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>
-                Thème
-              </div>
-              <select
-                value={theme}
-                onChange={(e) => onThemeChange(e.target.value as ThemeKey)}
-                style={darkSelectStyle as React.CSSProperties}
-              >
-                {THEME_OPTIONS.map((opt) => (
-                  <option
-                    key={opt.value || "empty"}
-                    value={opt.value}
-                    style={darkOptionStyle}
-                  >
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>
-                Style
-              </div>
-              <select
-                value={contentStyle}
-                onChange={(e) => setContentStyle(e.target.value as StyleKey)}
-                style={darkSelectStyle as React.CSSProperties}
-              >
-                {STYLE_OPTIONS.map((opt) => (
-                  <option
-                    key={opt.value}
-                    value={opt.value}
-                    style={darkOptionStyle}
-                  >
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <div
-                style={{
-                  fontSize: 11,
-                  marginTop: 6,
-                  color: "rgba(255,255,255,0.62)",
-                  lineHeight: 1.45,
-                }}
-              >
-                {STYLE_HELPERS[contentStyle]}
-              </div>
-            </div>
-          </div>
           <div>
             <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>
               Phrase libre

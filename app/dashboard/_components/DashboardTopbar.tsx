@@ -12,6 +12,7 @@ type DashboardPanelName =
   | "profil"
   | "compte"
   | "activite"
+  | "ia"
   | "abonnement"
   | "mails"
   | "agenda"

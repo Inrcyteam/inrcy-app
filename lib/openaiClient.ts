@@ -11,12 +11,14 @@ export async function openaiGenerateJSON<T extends OpenAIResponseJSON>(opts: {
   system: string;
   input: string;
   maxOutputTokens?: number;
+  temperature?: number;
 }): Promise<T> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("Missing OPENAI_API_KEY");
 
   const model = opts.model || process.env.OPENAI_MODEL || "gpt-4o-mini";
   const max_output_tokens = Math.max(128, Math.min(3000, opts.maxOutputTokens ?? 700));
+  const temperature = typeof opts.temperature === "number" ? Math.max(0, Math.min(2, opts.temperature)) : undefined;
 
   const res = await fetchWithRetry("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -27,6 +29,7 @@ export async function openaiGenerateJSON<T extends OpenAIResponseJSON>(opts: {
     body: JSON.stringify({
       model,
       max_output_tokens,
+      ...(temperature === undefined ? {} : { temperature }),
 
       // ✅ Responses API: output formatting (json_object / json_schema / text)
       text: {

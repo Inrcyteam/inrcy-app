@@ -4,7 +4,11 @@ import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
-import { ACTIVITY_SECTOR_OPTIONS, decodeBusinessSector, encodeBusinessSector } from "@/lib/activitySectors";
+import {
+  ACTIVITY_SECTOR_OPTIONS,
+  decodeBusinessSector,
+  encodeBusinessSector,
+} from "@/lib/activitySectors";
 import {
   getJobsForSector,
   getServicesForSectorAndJob,
@@ -23,33 +27,38 @@ type Props = {
 type BusinessActivityForm = {
   sectorCategory: string;
   sector: string; // métier (code)
+  activityDescription: string;
   selectedServices: string[];
   customServices: string;
   interventionZones: string;
   openingDays: string;
   openingHours: string;
   strengths: string;
-  tone: "pro" | "friendly" | "premium" | "direct";
-  preferredCta: "appeler" | "devis" | "message";
+  customerTypes: string[];
 };
 
 const TABLE = "business_profiles";
 
-export default function ActivityContent({ mode = "page", onActivitySaved, onActivityReset, onCloseDrawer }: Props) {
+export default function ActivityContent({
+  mode = "page",
+  onActivitySaved,
+  onActivityReset,
+  onCloseDrawer,
+}: Props) {
   const initial: BusinessActivityForm = useMemo(
     () => ({
       sectorCategory: "",
       sector: "",
+      activityDescription: "",
       selectedServices: [],
       customServices: "",
       interventionZones: "",
       openingDays: "",
       openingHours: "",
       strengths: "",
-      tone: "pro",
-      preferredCta: "devis",
+      customerTypes: [],
     }),
-    []
+    [],
   );
 
   const [form, setForm] = useState<BusinessActivityForm>(initial);
@@ -63,16 +72,16 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
     if (!form.sector) return base;
     const currentExists = base.some((opt) => opt.value === form.sector);
     if (currentExists) return base;
-    const fallbackLabel = getJobLabel(form.sectorCategory, form.sector) || form.sector;
+    const fallbackLabel =
+      getJobLabel(form.sectorCategory, form.sector) || form.sector;
     return [...base, { value: form.sector, label: fallbackLabel }];
   }, [form.sectorCategory, form.sector]);
 
   const currentServiceOptions = useMemo(
     () => getServicesForSectorAndJob(form.sectorCategory, form.sector),
-    [form.sectorCategory, form.sector]
+    [form.sectorCategory, form.sector],
   );
   const isCustomJobSector = form.sectorCategory === "autre";
-
 
   const allSelectedServices = useMemo(() => {
     const extras = normalizeLines(form.customServices);
@@ -162,7 +171,8 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
       setError("");
       try {
         const supabase = createClient();
-        const { data: authData, error: authErr } = await supabase.auth.getUser();
+        const { data: authData, error: authErr } =
+          await supabase.auth.getUser();
         if (authErr) throw new Error(authErr.message);
         const user = authData?.user;
         if (!user) return;
@@ -178,20 +188,37 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
 
         const decodedSector = decodeBusinessSector(data.sector ?? "");
         const rawServices = Array.isArray(data.services)
-          ? data.services.map((s: unknown) => String(s || "").trim()).filter(Boolean)
+          ? data.services
+              .map((s: unknown) => String(s || "").trim())
+              .filter(Boolean)
           : normalizeLines(data.services_text ?? "");
-        const normalizedProfession = isValidJobForSector(decodedSector.sectorCategory, decodedSector.profession)
+        const normalizedProfession = isValidJobForSector(
+          decodedSector.sectorCategory,
+          decodedSector.profession,
+        )
           ? decodedSector.profession
-          : (findJobValueByLabel(decodedSector.sectorCategory, decodedSector.profession) || "");
+          : findJobValueByLabel(
+              decodedSector.sectorCategory,
+              decodedSector.profession,
+            ) || "";
         const knownServices = normalizedProfession
-          ? getServicesForSectorAndJob(decodedSector.sectorCategory, normalizedProfession)
+          ? getServicesForSectorAndJob(
+              decodedSector.sectorCategory,
+              normalizedProfession,
+            )
           : [];
-        const selectedServices = rawServices.filter((item: string) => knownServices.includes(item));
-        const customServices = rawServices.filter((item: string) => !knownServices.includes(item)).join("\n");
+        const selectedServices = rawServices.filter((item: string) =>
+          knownServices.includes(item),
+        );
+        const customServices = rawServices
+          .filter((item: string) => !knownServices.includes(item))
+          .join("\n");
 
         setForm({
           sectorCategory: decodedSector.sectorCategory,
           sector: normalizedProfession,
+          activityDescription:
+            data.business_description ?? data.activity_description ?? "",
           selectedServices,
           customServices,
           interventionZones: Array.isArray(data.intervention_zones)
@@ -199,9 +226,14 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
             : (data.intervention_zones_text ?? ""),
           openingDays: data.opening_days ?? "",
           openingHours: data.opening_hours ?? "",
-          strengths: Array.isArray(data.strengths) ? data.strengths.join("\n") : (data.strengths_text ?? ""),
-          tone: (data.tone ?? "pro") as BusinessActivityForm["tone"],
-          preferredCta: (data.preferred_cta ?? "devis") as BusinessActivityForm["preferredCta"],
+          strengths: Array.isArray(data.strengths)
+            ? data.strengths.join("\n")
+            : (data.strengths_text ?? ""),
+          customerTypes: Array.isArray(data.customer_typologies)
+            ? data.customer_typologies
+                .map((item: unknown) => String(item || ""))
+                .filter(Boolean)
+            : [],
         });
       } catch (e: unknown) {
         console.error(e);
@@ -213,7 +245,10 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
     load();
   }, []);
 
-  const set = <K extends keyof BusinessActivityForm>(key: K, value: BusinessActivityForm[K]) => {
+  const set = <K extends keyof BusinessActivityForm>(
+    key: K,
+    value: BusinessActivityForm[K],
+  ) => {
     setSaved(false);
     setError("");
     setForm((p) => ({ ...p, [key]: value }));
@@ -253,6 +288,17 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
     }));
   };
 
+  const toggleCustomerType = (customerType: string) => {
+    setSaved(false);
+    setError("");
+    setForm((p) => ({
+      ...p,
+      customerTypes: p.customerTypes.includes(customerType)
+        ? p.customerTypes.filter((item) => item !== customerType)
+        : [...p.customerTypes, customerType],
+    }));
+  };
+
   function normalizeLines(v: string) {
     return String(v || "")
       .split("\n")
@@ -279,18 +325,23 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
 
       const payload = {
         user_id: user.id,
-        sector: encodeBusinessSector(form.sectorCategory, getJobLabel(form.sectorCategory, form.sector) || form.sector.trim()),
+        sector: encodeBusinessSector(
+          form.sectorCategory,
+          getJobLabel(form.sectorCategory, form.sector) || form.sector.trim(),
+        ),
         services: allSelectedServices,
+        business_description: form.activityDescription.trim(),
         intervention_zones: normalizeCommaList(form.interventionZones),
         opening_days: form.openingDays.trim(),
         opening_hours: form.openingHours.trim(),
         strengths: normalizeLines(form.strengths),
-        tone: form.tone,
-        preferred_cta: form.preferredCta,
+        customer_typologies: form.customerTypes,
         updated_at: new Date().toISOString(),
       };
 
-      const { error: upErr } = await supabase.from(TABLE).upsert(payload, { onConflict: "user_id" });
+      const { error: upErr } = await supabase
+        .from(TABLE)
+        .upsert(payload, { onConflict: "user_id" });
       if (upErr) throw new Error(upErr.message);
 
       const isComplete =
@@ -300,7 +351,8 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
         normalizeCommaList(form.interventionZones).length > 0 &&
         form.openingDays.trim().length > 0 &&
         form.openingHours.trim().length > 0 &&
-        normalizeLines(form.strengths).length > 0;
+        normalizeLines(form.strengths).length > 0 &&
+        form.customerTypes.length > 0;
 
       if (isComplete) {
         try {
@@ -331,7 +383,12 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
         window.setTimeout(() => setSaved(false), 2500);
       }
     } catch (e: unknown) {
-      setError(getSimpleFrenchErrorMessage(e, "Impossible d'enregistrer cette activité."));
+      setError(
+        getSimpleFrenchErrorMessage(
+          e,
+          "Impossible d'enregistrer cette activité.",
+        ),
+      );
     } finally {
       setSaving(false);
     }
@@ -340,7 +397,8 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
   const handleReset = async () => {
     const ok = await confirmInrcy({
       title: "Réinitialiser l’activité ?",
-      message: "Cela efface les informations d’activité en cours dans le formulaire.",
+      message:
+        "Cela efface les informations d’activité en cours dans le formulaire.",
       confirmLabel: "Réinitialiser",
       variant: "danger",
     });
@@ -355,7 +413,8 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
     <div style={{ display: "grid", gap: 12 }}>
       <div style={card}>
         <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
-          Ces informations servent à générer des contenus cohérents avec votre entreprise.
+          Ces informations servent à générer des contenus cohérents avec votre
+          entreprise.
         </p>
       </div>
 
@@ -371,14 +430,23 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
                 value={form.sectorCategory}
                 onChange={(e) => handleSectorChange(e.target.value)}
               >
-                <option value="" style={selectOption}>Choisir un secteur</option>
+                <option value="" style={selectOption}>
+                  Choisir un secteur
+                </option>
                 {ACTIVITY_SECTOR_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value} style={selectOption}>
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    style={selectOption}
+                  >
                     {option.label}
                   </option>
                 ))}
               </select>
-              <span style={hint}>Cette catégorie pilote les modèles proposés dans Booster, Fidéliser et les publications IA.</span>
+              <span style={hint}>
+                Cette catégorie pilote les modèles proposés dans Booster,
+                Fidéliser et les publications IA.
+              </span>
             </label>
 
             <label style={label}>
@@ -398,15 +466,40 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
                   onChange={(e) => handleProfessionChange(e.target.value)}
                   disabled={!form.sectorCategory}
                 >
-                  <option value="" style={selectOption}>Choisir un métier</option>
+                  <option value="" style={selectOption}>
+                    Choisir un métier
+                  </option>
                   {currentJobOptions.map((option) => (
-                    <option key={option.value} value={option.value} style={selectOption}>
+                    <option
+                      key={option.value}
+                      value={option.value}
+                      style={selectOption}
+                    >
                       {option.label}
                     </option>
                   ))}
                 </select>
               )}
-              <span style={hint}>Le métier reste utilisé comme base n°2 pour personnaliser les textes, mots-clés et publications. En choisissant “Autre”, vous pouvez saisir un métier libre qui sera aussi utilisé par les templates et l’IA.</span>
+              <span style={hint}>
+                Le métier reste utilisé comme base n°2 pour personnaliser les
+                textes, mots-clés et publications. En choisissant “Autre”, vous
+                pouvez saisir un métier libre qui sera aussi utilisé par les
+                templates et l’IA.
+              </span>
+            </label>
+
+            <label style={label}>
+              <span style={labelTitle}>Présentation courte de l’activité</span>
+              <textarea
+                style={{ ...input, minHeight: 96, resize: "vertical" }}
+                value={form.activityDescription}
+                onChange={(e) => set("activityDescription", e.target.value)}
+                placeholder={`Ex: Entreprise familiale spécialisée dans les interventions rapides et soignées. Nous accompagnons les clients avec des conseils simples et un suivi sérieux.`}
+              />
+              <span style={hint}>
+                Optionnel, mais très utile pour que l’IA écrive avec la vraie
+                personnalité de l’entreprise.
+              </span>
             </label>
 
             <div style={label}>
@@ -416,7 +509,15 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
                   {currentServiceOptions.map((service) => {
                     const checked = form.selectedServices.includes(service);
                     return (
-                      <label key={service} style={{ ...chipLabel, boxShadow: checked ? "0 0 0 1px rgba(56,189,248,0.35) inset" : undefined }}>
+                      <label
+                        key={service}
+                        style={{
+                          ...chipLabel,
+                          boxShadow: checked
+                            ? "0 0 0 1px rgba(56,189,248,0.35) inset"
+                            : undefined,
+                        }}
+                      >
                         <input
                           type="checkbox"
                           checked={checked}
@@ -435,7 +536,10 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
                     : "Choisissez d’abord un métier pour afficher la liste de prestations cohérentes."}
                 </div>
               )}
-              <span style={hint}>Ces prestations alimentent les templates et l’IA pour des contenus plus cohérents.</span>
+              <span style={hint}>
+                Ces prestations alimentent les templates et l’IA pour des
+                contenus plus cohérents.
+              </span>
             </div>
 
             <label style={label}>
@@ -446,7 +550,10 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
                 onChange={(e) => set("customServices", e.target.value)}
                 placeholder={`1 ligne = 1 prestation supplémentaire\nEx: Contrat entretien premium\nEx: Intervention week-end`}
               />
-              <span style={hint}>Ajoutez ici des prestations spécifiques non présentes dans la liste.</span>
+              <span style={hint}>
+                Ajoutez ici des prestations spécifiques non présentes dans la
+                liste.
+              </span>
             </label>
 
             <label style={label}>
@@ -457,10 +564,18 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
                 onChange={(e) => set("interventionZones", e.target.value)}
                 placeholder={`Ex: Berck, Rang-du-Fliers, Montreuil\nOu: Côte d’Opale (rayon 30km)`}
               />
-              <span style={hint}>Séparées par des virgules ou retours à la ligne.</span>
+              <span style={hint}>
+                Séparées par des virgules ou retours à la ligne.
+              </span>
             </label>
 
-            <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+            <div
+              style={{
+                display: "grid",
+                gap: 14,
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              }}
+            >
               <label style={label}>
                 <span style={labelTitle}>Jours</span>
                 <input
@@ -493,40 +608,66 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
               <span style={hint}>3 à 6 forces suffisent. Court.</span>
             </label>
 
-            <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-              <label style={label}>
-                <span style={labelTitle}>Ton</span>
-                <select style={input} value={form.tone} onChange={(e) => set("tone", e.target.value as BusinessActivityForm["tone"])}>
-                  <option value="pro" style={selectOption}>Professionnel</option>
-                  <option value="direct" style={selectOption}>Direct</option>
-                  <option value="friendly" style={selectOption}>Amical</option>
-                  <option value="premium" style={selectOption}>Premium</option>
-                </select>
-              </label>
-
-              <label style={label}>
-                <span style={labelTitle}>Bouton préféré</span>
-                <select
-                  style={input}
-                  value={form.preferredCta}
-                  onChange={(e) => set("preferredCta", e.target.value as BusinessActivityForm["preferredCta"])}
-                >
-                  <option value="devis" style={selectOption}>Demander un devis</option>
-                  <option value="appeler" style={selectOption}>Appeler</option>
-                  <option value="message" style={selectOption}>Envoyer un message</option>
-                </select>
-              </label>
+            <div style={label}>
+              <span style={labelTitle}>Typologie de clientèle</span>
+              <div style={checkboxGrid}>
+                {[
+                  { value: "particuliers", label: "Particuliers" },
+                  { value: "professionnels", label: "Professionnels" },
+                  { value: "collectivites", label: "Collectivités" },
+                ].map((option) => {
+                  const checked = form.customerTypes.includes(option.value);
+                  return (
+                    <label
+                      key={option.value}
+                      style={{
+                        ...chipLabel,
+                        boxShadow: checked
+                          ? "0 0 0 1px rgba(56,189,248,0.35) inset"
+                          : undefined,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleCustomerType(option.value)}
+                        style={{ accentColor: "#38bdf8", flex: "0 0 auto" }}
+                      />
+                      <span style={{ minWidth: 0 }}>{option.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <span style={hint}>
+                Aide l’IA à adapter les arguments, le vocabulaire et le niveau
+                de sérieux selon vos clients.
+              </span>
             </div>
 
             {error ? (
-              <div style={{ color: "rgba(248,113,113,0.95)", fontWeight: 800 }}>{error}</div>
+              <div style={{ color: "rgba(248,113,113,0.95)", fontWeight: 800 }}>
+                {error}
+              </div>
             ) : null}
             {saved ? (
-              <div style={{ color: "rgba(34,197,94,0.95)", fontWeight: 900 }}>Enregistré ✅</div>
+              <div style={{ color: "rgba(34,197,94,0.95)", fontWeight: 900 }}>
+                Enregistré ✅
+              </div>
             ) : null}
 
-            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-              <button type="button" style={primaryBtn} disabled={saving} onClick={save}>
+            <div
+              style={{
+                display: "grid",
+                gap: 10,
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              }}
+            >
+              <button
+                type="button"
+                style={primaryBtn}
+                disabled={saving}
+                onClick={save}
+              >
                 {saving ? "Enregistrement…" : "Enregistrer"}
               </button>
               <button
@@ -549,7 +690,8 @@ export default function ActivityContent({ mode = "page", onActivitySaved, onActi
 
             {mode === "drawer" ? (
               <div style={{ fontSize: 12, opacity: 0.7 }}>
-                Astuce : plus vos informations sont précises, plus les contenus IA sont bons.
+                Astuce : plus vos informations sont précises, plus les contenus
+                IA sont bons.
               </div>
             ) : null}
           </div>

@@ -1,4 +1,8 @@
-import { decodeBusinessSector, getActivitySectorLabel } from "@/lib/activitySectors";
+import { getJobLabel } from "@/lib/activityCatalog";
+import {
+  decodeBusinessSector,
+  getActivitySectorLabel,
+} from "@/lib/activitySectors";
 
 export type BoosterChannels =
   | "inrcy_site"
@@ -19,6 +23,24 @@ export type BoosterTheme =
   | "autre";
 
 export type BoosterStyle = "sobre" | "equilibre" | "dynamique";
+
+export type BoosterHiddenAngle =
+  | "retour_terrain"
+  | "conseil_pratique"
+  | "coulisses"
+  | "storytelling"
+  | "question_engageante"
+  | "mini_astuce"
+  | "proximite_locale"
+  | "preuve_concrete";
+
+export type BoosterRecentPublication = {
+  title?: string | null;
+  content?: string | null;
+  cta?: string | null;
+  idea?: string | null;
+  created_at?: string | null;
+};
 
 const CHANNEL_LABELS: Record<BoosterChannels, string> = {
   inrcy_site: "Site iNrCy",
@@ -46,6 +68,207 @@ const STYLE_LABELS: Record<BoosterStyle, string> = {
   dynamique: "Dynamique",
 };
 
+const HIDDEN_ANGLE_LABELS: Record<BoosterHiddenAngle, string> = {
+  retour_terrain: "Retour terrain",
+  conseil_pratique: "Conseil pratique",
+  coulisses: "Coulisses du métier",
+  storytelling: "Petite histoire concrète",
+  question_engageante: "Question engageante",
+  mini_astuce: "Mini astuce",
+  proximite_locale: "Proximité locale",
+  preuve_concrete: "Preuve concrète",
+};
+
+const HIDDEN_ANGLE_INSTRUCTIONS: Record<BoosterHiddenAngle, string> = {
+  retour_terrain:
+    "Partir d'une situation réaliste vécue sur le terrain ou d'une intervention du quotidien, sans inventer de détail précis non fourni.",
+  conseil_pratique:
+    "Apporter un conseil simple et utile au lecteur, relié naturellement à l'intention du pro.",
+  coulisses:
+    "Montrer discrètement l'envers du décor : préparation, méthode, soin apporté, organisation ou façon de travailler.",
+  storytelling:
+    "Donner une impression de petite histoire concrète avec un début naturel, mais sans créer de faux client, faux lieu ou faux événement.",
+  question_engageante:
+    "Ouvrir ou rythmer le message avec une question naturelle qui parle au besoin du lecteur, sans faire racoleur.",
+  mini_astuce:
+    "Glisser une astuce courte, pratique et facile à comprendre, sans transformer le post en tutoriel complet.",
+  proximite_locale:
+    "Renforcer la proximité avec la ville, les zones ou les habitudes locales, de manière naturelle et non répétitive.",
+  preuve_concrete:
+    "Mettre en avant des éléments concrets : prestation, méthode, réactivité, soin, résultat attendu ou point de vigilance, sans promesse exagérée.",
+};
+
+const CHANNEL_EDITORIAL_PLAYBOOKS: Record<BoosterChannels, string> = {
+  inrcy_site:
+    "Objectif : produire une actualité utile pour le site iNrCy. Priorité au SEO local naturel, à la clarté et à la conversion douce. Accroche informative, paragraphes lisibles, mots-clés intégrés sans bourrage, 2 à 5 expressions importantes en gras Markdown uniquement dans le contenu.",
+  site_web:
+    "Objectif : produire un contenu publiable sur le site web du pro. Priorité au référencement local durable, à la crédibilité métier et à la lecture fluide. Mettre en avant le métier, la ville, les prestations cohérentes avec l'intention et les zones, sans transformer le texte en liste de mots-clés.",
+  gmb:
+    "Objectif : informer localement sur Google Business. Texte factuel, concret, rassurant et très sobre. Une information utile dès le début, pas de ton promotionnel agressif, pas d'emoji, pas de hashtag, pas de téléphone, pas d'email, pas d'URL, pas de remise, pas de promesse invérifiable.",
+  facebook:
+    "Objectif : créer de la proximité et donner envie d'interagir. Ton humain, accessible, local, conversationnel. On peut parler du quotidien, d'une intervention, d'un conseil ou d'un besoin client typique, sans inventer de faux témoignage. CTA naturel, pas trop vendeur.",
+  instagram:
+    "Objectif : donner une impression visuelle et vivante. Texte plus direct, spontané, chaleureux, avec des phrases courtes et du relief. Faire sentir l'ambiance, le geste, le résultat ou le moment. Hashtags utiles et ciblés. Ne pas écrire 'lien en bio' sauf si l'information est fournie.",
+  linkedin:
+    "Objectif : renforcer l'expertise et la crédibilité professionnelle. Ton posé, utile, structuré et humain. Montrer une méthode, un point de vigilance, une valeur métier ou une réflexion professionnelle. Éviter le ton trop commercial, les emojis excessifs et les accroches de vente directe.",
+};
+
+function formatChannelPlaybooks(channels: BoosterChannels[]) {
+  return Array.from(new Set(channels))
+    .map((channel) => `- ${CHANNEL_LABELS[channel]} : ${CHANNEL_EDITORIAL_PLAYBOOKS[channel]}`)
+    .join("\n");
+}
+
+export function pickBoosterHiddenAngle(): BoosterHiddenAngle {
+  const angles = Object.keys(HIDDEN_ANGLE_LABELS) as BoosterHiddenAngle[];
+  return angles[Math.floor(Math.random() * angles.length)] || "retour_terrain";
+}
+
+const TONE_LABELS: Record<string, string> = {
+  pro: "Professionnel",
+  friendly: "Chaleureux",
+  premium: "Premium",
+  direct: "Direct",
+};
+
+const CTA_LABELS: Record<string, string> = {
+  devis: "Demander un devis",
+  appeler: "Appeler",
+  message: "Envoyer un message",
+};
+
+const COMMUNICATION_STYLE_LABELS: Record<string, string> = {
+  local_humain: "Local et humain",
+  professionnel: "Professionnel",
+  premium: "Haut de gamme",
+  simple: "Simple et accessible",
+  moderne: "Moderne et dynamique",
+};
+
+const EMOJI_LEVEL_LABELS: Record<string, string> = {
+  none: "Aucun emoji",
+  light: "Emojis légers",
+  moderate: "Emojis modérés",
+  dynamic: "Emojis dynamiques",
+};
+
+const LENGTH_LABELS: Record<string, string> = {
+  short: "Court",
+  medium: "Moyen",
+  detailed: "Détaillé",
+};
+
+const ADDRESS_MODE_LABELS: Record<string, string> = {
+  vous: "Vouvoiement",
+  tu: "Tutoiement",
+  auto: "Automatique selon le canal et le métier",
+};
+
+const CREATIVITY_LABELS: Record<string, string> = {
+  stable: "Stable et maîtrisé",
+  balanced: "Équilibré",
+  creative: "Créatif et plus vivant",
+};
+
+const CUSTOMER_TYPE_LABELS: Record<string, string> = {
+  particuliers: "Particuliers",
+  professionnels: "Professionnels",
+  collectivites: "Collectivités",
+};
+
+function labelFromMap(
+  value: unknown,
+  labels: Record<string, string>,
+  fallback = "Non précisé",
+) {
+  const key = String(value || "").trim();
+  return key ? labels[key] || key : fallback;
+}
+
+function labelsFromArray(value: unknown, labels: Record<string, string>) {
+  if (!Array.isArray(value)) return "Non précisé";
+  const out = value
+    .map((item) => labelFromMap(item, labels, ""))
+    .filter(Boolean);
+  return out.length ? out.join(", ") : "Non précisé";
+}
+
+function cleanText(value: unknown, maxLength = 220) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function cleanList(value: unknown, maxItems = 8, maxItemLength = 70) {
+  const rawItems = Array.isArray(value)
+    ? value
+    : String(value ?? "")
+        .split(/[,;\n]/)
+        .map((item) => item.trim());
+
+  return Array.from(
+    new Set(
+      rawItems.map((item) => cleanText(item, maxItemLength)).filter(Boolean),
+    ),
+  ).slice(0, maxItems);
+}
+
+function joinList(value: unknown, maxItems = 8, fallback = "Non renseigné") {
+  const items = cleanList(value, maxItems);
+  return items.length ? items.join(", ") : fallback;
+}
+
+function optionalLine(label: string, value: unknown, maxLength = 220) {
+  const clean = cleanText(value, maxLength);
+  return clean ? `- ${label} : ${clean}` : "";
+}
+
+function optionalListLine(label: string, value: unknown, maxItems = 8) {
+  const items = cleanList(value, maxItems);
+  return items.length ? `- ${label} : ${items.join(", ")}` : "";
+}
+
+function compactLines(lines: string[]) {
+  return lines.filter((line) => line.trim()).join("\n");
+}
+
+function formatRecentPublications(
+  publications?: BoosterRecentPublication[] | null,
+) {
+  if (!Array.isArray(publications) || !publications.length) return "";
+
+  return publications
+    .slice(0, 5)
+    .map((publication, index) => {
+      const title = cleanText(publication.title, 90);
+      const idea = cleanText(publication.idea, 120);
+      const content = cleanText(publication.content, 220);
+      const cta = cleanText(publication.cta, 80);
+
+      const parts = [
+        title ? `titre: ${title}` : "",
+        idea ? `idée: ${idea}` : "",
+        content ? `extrait: ${content}` : "",
+        cta ? `cta: ${cta}` : "",
+      ].filter(Boolean);
+
+      return parts.length ? `${index + 1}. ${parts.join(" | ")}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function getActivityDescription(business: Record<string, any>) {
+  return (
+    business.business_description ||
+    business.activity_description ||
+    business.company_description ||
+    business.description ||
+    ""
+  );
+}
+
 export function boosterSystemPrompt() {
   return `Tu es un assistant marketing local pour des pros de proximité en France.
 
@@ -57,13 +280,24 @@ Important :
 - Tu peux reformuler, structurer et enrichir légèrement, mais sans mentir.
 - Tu dois tenir compte du secteur, du métier, des prestations, de la ville et du thème choisi.
 - Les trois styles (sobre, équilibré, dynamique) doivent produire des textes VISIBLEMENT différents. Pas de simples nuances.
+- Les contenus doivent sembler écrits par un vrai professionnel local, pas par une IA marketing.
+- Éviter les formulations trop parfaites, trop génériques ou trop publicitaires.
+- Varier naturellement les tournures, les rythmes et les débuts de phrases.
+- Le texte doit parfois sembler spontané, concret et vivant.
+- Intégrer quand c'est pertinent des éléments de terrain, de quotidien métier ou de ressenti humain.
+- Éviter les structures systématiques du type : accroche marketing + liste de bénéfices + CTA artificiel.
+- Ne pas répéter toujours les mêmes expressions marketing ou emojis.
+- Éviter autant que possible les formulations comme : "Découvrez", "N'hésitez pas à", "Nous sommes ravis", "Profitez de", sauf si cela paraît réellement naturel.
+- Le lecteur ne doit jamais avoir l'impression que le texte a été généré automatiquement.
+- Ne pas produire un plan trop mécanique ni des paragraphes qui se ressemblent d'une génération à l'autre.
+- Préférer une écriture incarnée : phrases simples, détails concrets, rythme naturel, sans surjouer.
 
 Règles par canal :
-- Site iNrCy / Site web : texte SEO local de 180 à 320 mots, sans rallonger inutilement. Intégrer naturellement le métier principal, la ville, 2 à 4 prestations, 1 à 3 zones d'intervention et des variantes de mots-clés proches. Remplacer les phrases vagues par des phrases utiles au référencement. Pour le contenu uniquement, mettre en gras 2 à 5 expressions clés maximum avec le format Markdown **expression** (métier + ville, prestation, zone). Ne jamais mettre une phrase entière en gras et ne jamais faire de liste brute de mots-clés.
-- Google Business : texte local, utile, simple, environ 80 à 140 mots, strictement conforme aux règles Google Business Profile.
-- Facebook : texte engageant, clair, avec un peu plus de matière, environ 80 à 160 mots.
-- Instagram : texte visuel, direct et vivant, mais avec assez de matière pour donner du relief, environ 70 à 140 mots, hashtags utiles.
-- LinkedIn : texte plus professionnel, crédible et structuré, environ 100 à 220 mots.
+- Site iNrCy / Site web : texte SEO local de 180 à 320 mots, sans rallonger inutilement. Intégrer naturellement le métier principal, la ville, 2 à 4 prestations, 1 à 3 zones d'intervention et des variantes de mots-clés proches. Remplacer les phrases vagues par des phrases utiles au référencement. Pour le contenu uniquement, mettre en gras 2 à 5 expressions clés maximum avec le format Markdown **expression** (métier + ville, prestation, zone). Ne jamais mettre une phrase entière en gras et ne jamais faire de liste brute de mots-clés. Le style doit rester humain et lisible, pas une page SEO artificielle.
+- Google Business : texte local, utile, simple, environ 80 à 140 mots, strictement conforme aux règles Google Business Profile. Commencer par une information concrète, rester factuel, pas d'emoji, pas de hashtag, pas de téléphone, pas d'email, pas d'URL, pas de réduction ni de promesse agressive.
+- Facebook : texte engageant, clair, proche du quotidien et de la vie locale, environ 80 à 160 mots. Le ton doit donner l'impression d'un vrai pro qui parle à sa communauté, pas d'une publicité générique.
+- Instagram : texte visuel, direct, spontané et vivant, environ 70 à 140 mots. Donner une impression d'image, d'ambiance, de geste métier ou de résultat. Hashtags utiles, ciblés, jamais une liste générique.
+- LinkedIn : texte plus professionnel, crédible, utile et structuré, environ 100 à 220 mots. Mettre en avant expertise, méthode, recul métier ou conseil pro. Éviter le ton vendeur, les slogans et les emojis excessifs.
 - Facebook / Instagram / LinkedIn / Google Business : ne jamais utiliser de Markdown ni de balises HTML de formatage. Ces canaux doivent rester en texte brut.
 
 Différences de styles à respecter impérativement :
@@ -90,7 +324,8 @@ Règles d'emojis par style et par canal :
 
 Contraintes :
 - Français uniquement.
-- Ton pro, humain, local, simple.
+- Ton pro, humain, local, simple et crédible.
+- Les textes doivent rester naturels et conversationnels.
 - Pas de jargon marketing inutile.
 - Pas de promesses illégales ou invérifiables.
 - Pas d'adresse exacte ni de nom de client.
@@ -132,60 +367,174 @@ export function boosterUserPrompt(args: {
   channels: BoosterChannels[];
   profile?: Record<string, any> | null;
   business?: Record<string, any> | null;
+  hiddenAngle?: BoosterHiddenAngle;
+  recentPublications?: BoosterRecentPublication[] | null;
 }) {
   const profile = args.profile || {};
   const business = args.business || {};
 
-  const company = profile.company_legal_name || profile.companyLegalName || "";
-  const city = profile.hq_city || profile.hqCity || "";
-  const phone = profile.phone || "";
-  const email = profile.contact_email || profile.contactEmail || "";
+  const company = cleanText(
+    profile.company_legal_name || profile.companyLegalName || "",
+    100,
+  );
+  const city = cleanText(profile.hq_city || profile.hqCity || "", 80);
+  const phone = cleanText(profile.phone || "", 60);
+  const email = cleanText(
+    profile.contact_email || profile.contactEmail || "",
+    100,
+  );
+  const postalCode = cleanText(profile.hq_zip || profile.hqZip || "", 20);
 
   const decodedSector = decodeBusinessSector(business.sector || "");
-  const profession = decodedSector.profession || "";
   const sectorCategory = getActivitySectorLabel(decodedSector.sectorCategory);
-  const zones = business.intervention_zones || [];
-  const days = business.opening_days || "";
-  const hours = business.opening_hours || "";
-  const strengths = business.strengths || [];
-  const services = business.services || [];
-  const tone = business.tone || "pro";
-  const preferredCta = business.preferred_cta || "Demandez un devis";
+  const profession = cleanText(
+    getJobLabel(decodedSector.sectorCategory, decodedSector.profession) ||
+      decodedSector.profession,
+    120,
+  );
+  const zones = cleanList(
+    business.intervention_zones || business.intervention_zones_text,
+    6,
+  );
+  const days = cleanText(business.opening_days, 80);
+  const hours = cleanText(business.opening_hours, 80);
+  const strengths = cleanList(business.strengths || business.strengths_text, 6);
+  const services = cleanList(business.services || business.services_text, 10);
+  const activityDescription = cleanText(getActivityDescription(business), 420);
+  const tone = labelFromMap(business.tone, TONE_LABELS, "Professionnel");
+  const preferredCta = labelFromMap(
+    business.preferred_cta,
+    CTA_LABELS,
+    "Demander un devis",
+  );
+  const communicationStyle = labelFromMap(
+    business.communication_style,
+    COMMUNICATION_STYLE_LABELS,
+    "Local et humain",
+  );
+  const emojiLevel = labelFromMap(
+    business.emoji_level,
+    EMOJI_LEVEL_LABELS,
+    "Emojis légers",
+  );
+  const length = labelFromMap(business.ai_length, LENGTH_LABELS, "Moyen");
+  const addressMode = labelFromMap(
+    business.address_mode,
+    ADDRESS_MODE_LABELS,
+    "Vouvoiement",
+  );
+  const creativity = labelFromMap(
+    business.ai_creativity,
+    CREATIVITY_LABELS,
+    "Équilibré",
+  );
+  const customerTypes = labelsFromArray(
+    business.customer_typologies,
+    CUSTOMER_TYPE_LABELS,
+  );
+  const hiddenAngle = args.hiddenAngle || "retour_terrain";
+  const hiddenAngleLabel = HIDDEN_ANGLE_LABELS[hiddenAngle];
+  const hiddenAngleInstruction = HIDDEN_ANGLE_INSTRUCTIONS[hiddenAngle];
+  const recentPublicationMemory = formatRecentPublications(args.recentPublications);
+  const channelPlaybooks = formatChannelPlaybooks(args.channels);
+
+  const businessIdentity = compactLines([
+    optionalLine("Entreprise", company, 100),
+    optionalLine("Ville principale", city, 80),
+    optionalLine("Code postal", postalCode, 20),
+    optionalLine("Téléphone", phone, 60),
+    optionalLine("Email", email, 100),
+  ]);
+
+  const activityContext = compactLines([
+    optionalLine("Secteur d'activité", sectorCategory, 80),
+    optionalLine("Métier exact", profession, 120),
+    optionalLine("Présentation de l'activité", activityDescription, 420),
+    optionalListLine("Prestations / spécialités", services, 10),
+    optionalListLine("Zones d'intervention", zones, 6),
+    optionalLine("Jours d'ouverture", days, 80),
+    optionalLine("Horaires", hours, 80),
+    optionalListLine("Forces commerciales", strengths, 6),
+    customerTypes !== "Non précisé"
+      ? `- Typologie de clientèle : ${customerTypes}`
+      : "",
+  ]);
+
+  const aiConfiguration = compactLines([
+    `- Ton principal : ${tone}`,
+    `- Style de communication : ${communicationStyle}`,
+    `- Niveau d'emojis : ${emojiLevel}`,
+    `- Longueur favorite : ${length}`,
+    `- Tutoiement / vouvoiement : ${addressMode}`,
+    `- Créativité IA : ${creativity}`,
+    `- CTA préféré : ${preferredCta}`,
+  ]);
+
+  const siteSeoHints = compactLines([
+    profession ? `- Mot-clé métier prioritaire : ${profession}` : "",
+    city ? `- Ville prioritaire : ${city}` : "",
+    services.length
+      ? `- Prestations SEO à exploiter : ${services.slice(0, 5).join(", ")}`
+      : "",
+    zones.length
+      ? `- Zones SEO à exploiter : ${zones.slice(0, 4).join(", ")}`
+      : "",
+  ]);
 
   return `Intention du pro :
 ${args.idea}
 
 Thème choisi : ${THEME_LABELS[args.theme]}
 Style souhaité : ${STYLE_LABELS[args.style]}
-
 Canaux à générer : ${args.channels.map((c) => CHANNEL_LABELS[c]).join(", ")}
 
-Infos profil :
-- Entreprise : ${company}
-- Ville : ${city}
-- Téléphone : ${phone}
-- Email : ${email}
+Guides éditoriaux précis par canal demandé :
+${channelPlaybooks}
 
-Infos activité :
-- Secteur d'activité : ${sectorCategory}
-- Métier : ${profession}
-- Prestations cochées : ${Array.isArray(services) ? services.join(", ") : String(services || "")}
-- Zones d'intervention : ${Array.isArray(zones) ? zones.join(", ") : String(zones || "")}
-- Jours : ${days}
-- Horaires : ${hours}
-- Forces : ${Array.isArray(strengths) ? strengths.join(", ") : String(strengths || "")}
-- Ton : ${tone}
-- CTA préféré : ${preferredCta}
+Identité entreprise disponible :
+${businessIdentity || "- Aucune information d'identité complète renseignée."}
+
+Contexte Mon activité à utiliser en priorité :
+${activityContext || "- Mon activité est encore peu renseigné. Rester général, ne rien inventer."}
+
+Références SEO locales pour les canaux site :
+${siteSeoHints || "- Aucune référence SEO locale précise renseignée."}
+
+Configuration IA enregistrée :
+${aiConfiguration}
+
+Angle éditorial invisible choisi par iNrCy :
+- Type : ${hiddenAngleLabel}
+- Consigne : ${hiddenAngleInstruction}
+- Important : utiliser cet angle comme inspiration discrète. Ne jamais nommer l'angle dans le texte et ne pas le forcer si ce n'est pas pertinent pour un canal.
+
+Historique récent des publications à ne pas répéter :
+${recentPublicationMemory || "- Aucun historique récent disponible."}
 
 Consignes supplémentaires :
 - Adapter clairement le contenu à chaque canal demandé.
+- Utiliser en priorité le contexte Mon activité quand il est renseigné : métier exact, prestations/spécialités, zones, forces, horaires et typologie de clientèle.
+- Ne jamais afficher les champs absents et ne jamais inventer de prestation, de zone, de client, d'avis, de prix ou de résultat précis.
+- Utiliser l'angle éditorial invisible pour varier les générations et éviter les textes répétitifs.
+- Utiliser l'historique récent uniquement comme garde-fou anti-répétition : ne pas copier, paraphraser ou reprendre les mêmes accroches, idées, CTA, structures ou tournures.
+- Si l'intention actuelle ressemble à une ancienne publication, choisir un angle différent et une accroche différente, sans mentionner l'historique.
+- Ne jamais considérer une ancienne publication comme une information actuelle certaine si elle contredit l'intention du jour.
 - Le style demandé doit changer visiblement le ton, les accroches, le rythme des phrases et la présence d'emojis. Ne fais pas seulement une variation légère.
-- Site iNrCy / Site web : version SEO locale, naturelle et concrète. Garder une longueur proche de la version actuelle : ne pas allonger le contenu, densifier plutôt les phrases existantes. Intégrer plus souvent, mais sans bourrage, le métier exact, la ville, les prestations cochées, les zones d'intervention et leurs variantes sémantiques. Dans le content uniquement, ajoute 2 à 5 mises en gras maximum avec le format Markdown **...** sur des expressions importantes, jamais sur une phrase complète. Quand c'est pertinent, intégrer naturellement le téléphone ou l'email de contact. Cette version est obligatoire si le canal site est demandé : ne jamais laisser title/content/cta vides.
-- Instagram : plus direct, plus visuel, mais pas expédié en quelques lignes. Donner assez de matière pour que le message existe vraiment.
-- LinkedIn : ton plus professionnel, plus structuré et plus développé que Facebook.
+- La configuration IA enregistrée prime sur le style historique sobre/équilibré/dynamique si les deux donnent des signaux différents.
+- Si la typologie client est renseignée : particuliers = rassurant/simple/proximité ; professionnels = efficacité/expertise/réactivité ; collectivités = sérieux/fiabilité/conformité.
+- Si les horaires sont renseignés, les utiliser seulement si cela apporte une information utile. Ne pas les répéter partout.
+- Si les forces sont renseignées, les transformer en bénéfices concrets sans en faire une liste froide.
+- Si les zones sont renseignées, citer 1 à 3 zones naturellement selon le canal, jamais sous forme de bourrage local.
+- Si les prestations sont renseignées, choisir les plus cohérentes avec l'intention du pro au lieu de toutes les citer.
+- Site iNrCy / Site web : version SEO locale, naturelle et concrète. Garder une longueur proche de la version actuelle : ne pas allonger le contenu, densifier plutôt les phrases existantes. Intégrer naturellement le métier exact, la ville, les prestations cochées, les zones d'intervention et leurs variantes sémantiques. Dans le content uniquement, ajoute 2 à 5 mises en gras maximum avec le format Markdown **...** sur des expressions importantes, jamais sur une phrase complète. Quand c'est pertinent, intégrer naturellement le téléphone ou l'email de contact. Cette version est obligatoire si le canal site est demandé : ne jamais laisser title/content/cta vides.
+- Instagram : plus direct, plus visuel, plus spontané et plus émotionnel, mais pas expédié en quelques lignes. Donner assez de matière pour que le message existe vraiment.
+- LinkedIn : ton plus professionnel, plus crédible, plus expertise et plus humain que Facebook. Éviter le ton vendeur ou trop commercial.
 - Google Business : ton local, utile, concret et strictement informatif. Ne jamais rappeler le téléphone, l'email, un lien, un hashtag ou une promesse commerciale agressive.
-- Facebook : ton engageant et accessible. Le téléphone ou l'email peuvent être utilisés ponctuellement si cela aide à contacter l'entreprise.
-- Utiliser en priorité le métier exact et les prestations cochées quand elles existent.
+- Facebook : ton engageant, humain et accessible. Le texte peut sembler plus spontané et proche du quotidien. Le téléphone ou l'email peuvent être utilisés ponctuellement si cela aide à contacter l'entreprise.
+- Respecter le niveau d'emojis configuré, tout en gardant 0 emoji sur Site iNrCy / Site web et une grande sobriété sur Google Business.
+- Respecter la longueur favorite configurée sans casser les minimums utiles par canal.
+- Respecter le tutoiement/vouvoiement configuré. En mode automatique, privilégier le vouvoiement pour LinkedIn, Google Business et les métiers sérieux/réglementés.
+- Respecter le CTA préféré lorsque le canal le permet, sauf Google Business qui doit rester neutre.
 - Pour Site iNrCy / Site web uniquement : renforcer le référencement naturel en répétant naturellement le couple métier + ville et les prestations principales, sans dépasser la longueur demandée et sans enchaîner des mots-clés artificiels.
 - Pour Site iNrCy / Site web uniquement : utiliser uniquement le gras Markdown **...** avec modération sur les expressions SEO principales. Pour tous les autres canaux, ne jamais mettre de gras, d’italique, de souligné ou de balise HTML.
 
@@ -194,5 +543,5 @@ Exigences précises par style :
 - Si le style demandé est "Équilibré" : produire un texte humain, chaleureux, engageant et naturel. Accroche plus vivante. Phrases fluides avec du relief. Emojis modérés selon le canal.
 - Si le style demandé est "Dynamique" : produire un texte visiblement plus punchy et entraînant. Commencer par une accroche plus forte. Utiliser des phrases plus rythmées et plus courtes quand c'est pertinent. Sur Facebook et Instagram, autoriser une présence d'emojis plus marquée que dans les autres styles, tout en restant lisible et professionnel.
 
-Rappel important : les trois styles doivent être nettement différents à la lecture.`;
+Rappel important : les contenus doivent être à l'image de l'entreprise, mais rester vrais. Les contenus doivent aussi varier naturellement d'une génération à l'autre pour éviter l'effet robotique.`;
 }

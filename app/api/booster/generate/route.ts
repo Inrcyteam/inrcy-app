@@ -7,9 +7,12 @@ import { withApi } from "@/lib/observability/withApi";
 import {
   boosterSystemPrompt,
   boosterUserPrompt,
+  pickBoosterHiddenAngle,
   type BoosterChannels,
   type BoosterStyle,
   type BoosterTheme,
+  type BoosterHiddenAngle,
+  type BoosterRecentPublication,
 } from "@/lib/boosterPrompt";
 import { sanitizeGmbGeneratedPost } from "@/lib/googleBusinessCompliance";
 import { sanitizeBoosterSiteText, stripSiteTextFormatting } from "@/lib/boosterFormatting";
@@ -39,12 +42,15 @@ const allowedThemes: BoosterTheme[] = ["", "promotion", "information", "conseil"
 const allowedStyles: BoosterStyle[] = ["sobre", "equilibre", "dynamique"];
 const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web"]);
 
-function cleanHashtags(input: unknown) {
+function cleanHashtags(channel: BoosterChannels, input: unknown) {
+  if (channel === "gmb" || siteChannels.has(channel)) return [];
+
+  const limit = channel === "instagram" ? 8 : channel === "linkedin" ? 3 : 2;
   return Array.isArray(input)
     ? input
         .map((h) => String(h || "").trim().replace(/^#+/, ""))
         .filter(Boolean)
-        .slice(0, 8)
+        .slice(0, limit)
     : [];
 }
 
@@ -72,7 +78,7 @@ function normalizePost(channel: BoosterChannels, raw: Partial<ChannelPost> | und
     title: (siteChannel ? sanitizeBoosterSiteText(title) : stripSiteTextFormatting(title)).slice(0, 90),
     content: (siteChannel ? sanitizeBoosterSiteText(content) : stripSiteTextFormatting(content)).slice(0, siteChannel ? 6000 : 2000),
     cta: stripSiteTextFormatting(raw?.cta || "").slice(0, 180),
-    hashtags: cleanHashtags(raw?.hashtags),
+    hashtags: cleanHashtags(channel, raw?.hashtags),
   };
 }
 
@@ -81,6 +87,13 @@ function hasRequiredContent(channel: BoosterChannels, post: ChannelPost | undefi
   if (!post.title.trim() || !post.content.trim() || !post.cta.trim()) return false;
   const minContentLength = siteChannels.has(channel) ? 120 : 40;
   return post.content.trim().length >= minContentLength;
+}
+
+function getCreativityTemperature(business: JsonRecord | null) {
+  const creativity = String(business?.ai_creativity || "balanced");
+  if (creativity === "stable") return 0.55;
+  if (creativity === "creative") return 0.92;
+  return 0.78;
 }
 
 function computeMaxOutputTokens(channels: BoosterChannels[]) {
@@ -93,6 +106,41 @@ function computeMaxOutputTokens(channels: BoosterChannels[]) {
   return Math.min(2800, Math.max(1000, budget));
 }
 
+function cleanRecentPublicationField(value: unknown, maxLength: number) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+async function fetchRecentPublicationMemory(
+  supabase: { from: (table: string) => any },
+  userId: string,
+): Promise<BoosterRecentPublication[]> {
+  try {
+    const { data, error } = await supabase
+      .from("publications")
+      .select("title,content,cta,idea,created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (error || !Array.isArray(data)) return [];
+
+    return data
+      .map((row) => ({
+        title: cleanRecentPublicationField(row?.title, 90),
+        content: cleanRecentPublicationField(row?.content, 260),
+        cta: cleanRecentPublicationField(row?.cta, 90),
+        idea: cleanRecentPublicationField(row?.idea, 140),
+        created_at: cleanRecentPublicationField(row?.created_at, 40),
+      }))
+      .filter((row) => row.title || row.content || row.idea || row.cta);
+  } catch {
+    return [];
+  }
+}
+
 async function generateVersions(args: {
   idea: string;
   theme: BoosterTheme;
@@ -100,7 +148,9 @@ async function generateVersions(args: {
   channels: BoosterChannels[];
   profile: JsonRecord | null;
   business: JsonRecord | null;
+  recentPublications?: BoosterRecentPublication[];
   extraInstructions?: string;
+  hiddenAngle?: BoosterHiddenAngle;
 }) {
   const system = boosterSystemPrompt();
   const baseInput = boosterUserPrompt({
@@ -110,6 +160,8 @@ async function generateVersions(args: {
     channels: args.channels,
     profile: args.profile,
     business: args.business,
+    hiddenAngle: args.hiddenAngle,
+    recentPublications: args.recentPublications,
   });
   const input = args.extraInstructions ? `${baseInput}
 
@@ -119,6 +171,7 @@ ${args.extraInstructions}` : baseInput;
     system,
     input,
     maxOutputTokens: computeMaxOutputTokens(args.channels),
+    temperature: getCreativityTemperature(args.business),
   });
 }
 
@@ -161,6 +214,9 @@ const handler = async (req: Request) => {
       business = null;
     }
 
+    const recentPublications = await fetchRecentPublicationMemory(supabase, userId);
+    const hiddenAngle = pickBoosterHiddenAngle();
+
     const out = await generateVersions({
       idea,
       theme,
@@ -168,6 +224,8 @@ const handler = async (req: Request) => {
       channels,
       profile: (profile ?? null) as JsonRecord | null,
       business,
+      recentPublications,
+      hiddenAngle,
     });
 
     const rawVersions =
@@ -190,6 +248,8 @@ const handler = async (req: Request) => {
         channels: missingChannels,
         profile: (profile ?? null) as JsonRecord | null,
         business,
+        recentPublications,
+        hiddenAngle,
         extraInstructions:
           "IMPORTANT : certains canaux précédents étaient vides ou trop courts. Regénère uniquement les canaux demandés ci-dessus. Pour chaque canal, title, content et cta doivent être non vides. Pour un canal site, le content doit être complet, naturel et utile, jamais vide ni résumé en une ligne.",
       });

@@ -8,6 +8,7 @@ type OpenPanelName =
   | "profil"
   | "compte"
   | "activite"
+  | "ia"
   | "abonnement"
   | "mails"
   | "site_inrcy"
@@ -159,6 +160,7 @@ export default function UserMenu(props: {
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("compte")}>Mon compte</button>
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("profil")}>Mon profil</button>
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("activite")}>Mon activité</button>
+          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("ia")}>Configuration IA</button>
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("notifications")}>Notifications</button>
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("abonnement")}>Mon abonnement</button>
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("inertie")}>Mon inertie</button>

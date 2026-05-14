@@ -2,6 +2,7 @@ import ContactContent from "../settings/_components/ContactContent";
 import AccountContent from "../settings/_components/AccountContent";
 import ProfilContent from "../settings/_components/ProfilContent";
 import ActivityContent from "../settings/_components/ActivityContent";
+import AiConfigurationContent from "../settings/_components/AiConfigurationContent";
 import AbonnementContent from "../settings/_components/AbonnementContent";
 import LegalContent from "../settings/_components/LegalContent";
 import RgpdContent from "../settings/_components/RgpdContent";
@@ -24,6 +25,7 @@ type DashboardPanelName =
   | "profil"
   | "compte"
   | "activite"
+  | "ia"
   | "abonnement"
   | "mails"
   | "agenda"
@@ -100,6 +102,7 @@ export default function DashboardSettingsDrawerContent({
       {panel === "compte" && <AccountContent mode="drawer" />}
       {panel === "profil" && <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} onCloseDrawer={onCloseDrawer} />}
       {panel === "activite" && <ActivityContent mode="drawer" onActivitySaved={checkActivity} onActivityReset={checkActivity} onCloseDrawer={onCloseDrawer} />}
+      {panel === "ia" && <AiConfigurationContent mode="drawer" />}
       {panel === "abonnement" && <AbonnementContent mode="drawer" />}
       {panel === "legal" && <LegalContent mode="drawer" />}
       {panel === "rgpd" && <RgpdContent mode="drawer" />}
