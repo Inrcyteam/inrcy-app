@@ -223,6 +223,15 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                   >
                     💾
                   </button>
+                  <button
+                    className={`${styles.btnGhost} ${styles.composeHeaderIconBtn}`}
+                    onClick={onOpenSettings}
+                    type="button"
+                    aria-label="Ouvrir les réglages iNr’Send"
+                    title="Réglages iNr’Send"
+                  >
+                    ⚙️
+                  </button>
                   <button className={`${styles.btnGhost} ${styles.composeCloseBtn}`} onClick={() => void requestClose()} type="button" aria-label="Fermer" title="Fermer">
                     ✕
                   </button>
@@ -594,15 +603,6 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                           <span className={`${styles.badge} ${signatureEnabled ? styles.composeSignatureOn : styles.composeSignatureOff}`}>
                             {signatureEnabled ? "Activée" : "Désactivée"}
                           </span>
-                          <button
-                            type="button"
-                            className={`${styles.btnGhost} ${styles.composeSettingsBtn}`}
-                            onClick={onOpenSettings}
-                            title="Réglages iNr’Send"
-                            aria-label="Ouvrir les réglages iNr’Send"
-                          >
-                            ⚙️
-                          </button>
                         </div>
                       </div>
 
