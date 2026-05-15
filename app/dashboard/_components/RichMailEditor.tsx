@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState, type CSSProperties } from "react";
-import { normalizeRichMailHtmlForSend, richMailHtmlToText, sanitizeRichMailHtml, textToRichMailHtml } from "@/lib/mailRichText";
+import { highlightTemplatePlaceholdersInHtml, normalizeRichMailHtmlForSend, richMailHtmlToText, sanitizeRichMailHtml, stripTemplatePlaceholderHighlights, textToRichMailHtml } from "@/lib/mailRichText";
 
 type RichMailEditorProps = {
   text: string;
@@ -14,6 +14,7 @@ type RichMailEditorProps = {
   toolbarTitle?: React.ReactNode;
   hideToolbarLabel?: boolean;
   compactToolbar?: boolean;
+  highlightTemplatePlaceholders?: boolean;
 };
 
 export default function RichMailEditor({
@@ -27,6 +28,7 @@ export default function RichMailEditor({
   toolbarTitle,
   hideToolbarLabel = false,
   compactToolbar = false,
+  highlightTemplatePlaceholders = true,
 }: RichMailEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const lastHtmlRef = useRef("");
@@ -35,22 +37,28 @@ export default function RichMailEditor({
   useEffect(() => {
     const node = editorRef.current;
     if (!node) return;
-    const nextHtml = normalizeRichMailHtmlForSend(text, html || textToRichMailHtml(text));
+    const normalizedHtml = normalizeRichMailHtmlForSend(text, html || textToRichMailHtml(text));
+    const nextHtml = highlightTemplatePlaceholders ? highlightTemplatePlaceholdersInHtml(normalizedHtml) : stripTemplatePlaceholderHighlights(normalizedHtml);
     if (lastHtmlRef.current === nextHtml) return;
     if (node.innerHTML === nextHtml) return;
     node.innerHTML = nextHtml;
     lastHtmlRef.current = nextHtml;
     setIsEmpty(!String(text || "").trim());
-  }, [html, text]);
+  }, [highlightTemplatePlaceholders, html, text]);
 
-  const emitChange = () => {
+  const emitChange = (syncDisplay = false) => {
     const node = editorRef.current;
     if (!node) return;
-    const cleanHtml = sanitizeRichMailHtml(node.innerHTML);
+    const rawHtml = stripTemplatePlaceholderHighlights(node.innerHTML);
+    const cleanHtml = sanitizeRichMailHtml(rawHtml);
+    const displayHtml = highlightTemplatePlaceholders ? highlightTemplatePlaceholdersInHtml(cleanHtml) : cleanHtml;
     const cleanText = richMailHtmlToText(cleanHtml || node.innerText || "");
-    lastHtmlRef.current = cleanHtml;
+    if (syncDisplay && node.innerHTML !== displayHtml) {
+      node.innerHTML = displayHtml;
+    }
+    lastHtmlRef.current = displayHtml;
     setIsEmpty(!cleanText.trim());
-    onChange({ text: cleanText, html: cleanHtml || textToRichMailHtml(cleanText) });
+    onChange({ text: cleanText, html: displayHtml || textToRichMailHtml(cleanText) });
   };
 
   const applyCommand = (command: "bold" | "italic" | "underline") => {
@@ -65,6 +73,7 @@ export default function RichMailEditor({
     emitChange();
   };
 
+  const fillAvailable = minHeight === 0 || minHeight === "0" || minHeight === "0px";
   const buttonStyle = compactToolbar ? compactToolbarButtonStyle : toolbarButtonStyle;
   const toolbar = (
     <div style={{ display: "flex", gap: compactToolbar ? 5 : 6, alignItems: "center", flex: "0 0 auto" }}>
@@ -114,8 +123,8 @@ export default function RichMailEditor({
       <div
         style={{
           position: "relative",
-          flex: "0 0 auto",
-          minHeight,
+          flex: fillAvailable ? "1 1 0" : "0 0 auto",
+          minHeight: fillAvailable ? 0 : minHeight,
           display: "flex",
           overflow: "hidden",
         }}
@@ -142,8 +151,8 @@ export default function RichMailEditor({
           role="textbox"
           aria-multiline="true"
           className={className}
-          onInput={emitChange}
-          onBlur={emitChange}
+          onInput={() => emitChange()}
+          onBlur={() => emitChange(true)}
           onPaste={(event) => {
             event.preventDefault();
             const pasted = event.clipboardData.getData("text/plain") || "";
@@ -151,11 +160,12 @@ export default function RichMailEditor({
             emitChange();
           }}
           style={{
+            ...editorStyle,
             width: "100%",
             flex: "1 1 auto",
-            minHeight: "100%",
+            minHeight: fillAvailable ? 0 : "100%",
             height: "100%",
-            maxHeight: "none",
+            maxHeight: "100%",
             overflowY: "auto",
             overflowX: "hidden",
             WebkitOverflowScrolling: "touch",
@@ -170,7 +180,6 @@ export default function RichMailEditor({
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
             outline: "none",
-            ...editorStyle,
           }}
         />
       </div>

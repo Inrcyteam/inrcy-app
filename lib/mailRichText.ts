@@ -9,6 +9,10 @@ const ENTITY_REPLACEMENTS: Record<string, string> = {
 
 const ALLOWED_TAGS = new Set(["strong", "b", "em", "i", "u", "br", "div", "p", "span", "a"]);
 const URL_RE = /https?:\/\/[^\s<>()"']+/gi;
+const TEMPLATE_PLACEHOLDER_RE = /\[[^\]\n]{1,80}\]/g;
+const TEMPLATE_PLACEHOLDER_SPAN_STYLE =
+  "color:#fb7185;font-weight:900;background:rgba(248,113,113,0.14);border:1px solid rgba(248,113,113,0.28);border-radius:6px;padding:0 3px;box-decoration-break:clone;-webkit-box-decoration-break:clone;";
+
 
 export function escapeRichMailHtml(value: string): string {
   return String(value || "")
@@ -45,6 +49,40 @@ function linkifyEscapedUrls(escapedText: string): string {
     const safeLabel = escapeRichMailHtml(decodeEntities(hrefPart));
     return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeLabel}</a>${escapeRichMailHtml(decodeEntities(trailingPart))}`;
   });
+}
+
+export function stripTemplatePlaceholderHighlights(html: string): string {
+  return String(html || "").replace(
+    /<span\b(?=[^>]*\bdata-inrcy-placeholder\s*=)[^>]*>([\s\S]*?)<\/span>/gi,
+    "$1"
+  );
+}
+
+export function extractTemplatePlaceholders(value: string): string[] {
+  TEMPLATE_PLACEHOLDER_RE.lastIndex = 0;
+  const matches = String(value || "").match(TEMPLATE_PLACEHOLDER_RE) || [];
+  TEMPLATE_PLACEHOLDER_RE.lastIndex = 0;
+  return Array.from(new Set(matches.map((item) => item.trim()).filter(Boolean)));
+}
+
+export function highlightTemplatePlaceholdersInHtml(html: string): string {
+  const source = stripTemplatePlaceholderHighlights(String(html || ""));
+  TEMPLATE_PLACEHOLDER_RE.lastIndex = 0;
+  if (!source || !TEMPLATE_PLACEHOLDER_RE.test(source)) {
+    TEMPLATE_PLACEHOLDER_RE.lastIndex = 0;
+    return source;
+  }
+  TEMPLATE_PLACEHOLDER_RE.lastIndex = 0;
+
+  return source
+    .split(/(<[^>]+>)/g)
+    .map((part) => {
+      if (!part || part.startsWith("<")) return part;
+      return part.replace(TEMPLATE_PLACEHOLDER_RE, (match) => {
+        return `<span data-inrcy-placeholder="1" style="${TEMPLATE_PLACEHOLDER_SPAN_STYLE}">${match}</span>`;
+      });
+    })
+    .join("");
 }
 
 export function textToRichMailHtml(text: string): string {
@@ -90,6 +128,9 @@ export function sanitizeRichMailHtml(html: string): string {
         const href = getSafeHref(String(attrs || ""));
         if (!href) return "";
         return `<a href="${escapeRichMailHtml(href)}" target="_blank" rel="noopener noreferrer">`;
+      }
+      if (normalizedTag === "span" && /\bdata-inrcy-placeholder\s*=/.test(String(attrs || ""))) {
+        return `<span data-inrcy-placeholder="1" style="${TEMPLATE_PLACEHOLDER_SPAN_STYLE}">`;
       }
       return `<${normalizedTag}>`;
     })

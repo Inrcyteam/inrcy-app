@@ -4,7 +4,9 @@ import stylesDash from "../../dashboard/dashboard.module.css";
 import { getTemplates, type TemplateDef } from "@/lib/messageTemplates";
 import { useBusinessTemplateContext } from "@/app/dashboard/_hooks/useBusinessTemplateContext";
 import RichMailEditor from "@/app/dashboard/_components/RichMailEditor";
-import { textToRichMailHtml } from "@/lib/mailRichText";
+import TemplateSubjectInlineEditor from "@/app/dashboard/_components/TemplateSubjectInlineEditor";
+import { extractTemplatePlaceholders, textToRichMailHtml } from "@/lib/mailRichText";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 
 export default function InformModal({
   styles,
@@ -80,6 +82,19 @@ export default function InformModal({
   }, [selected?.key]);
 
   const onNext = async () => {
+    const placeholders = extractTemplatePlaceholders(`${subject}\n${body}`);
+    if (placeholders.length > 0) {
+      const preview = placeholders.slice(0, 6).join(", ");
+      const more = placeholders.length > 6 ? ` et ${placeholders.length - 6} autre(s)` : "";
+      const shouldContinue = await confirmInrcy({
+        title: "Éléments à compléter",
+        message: `Votre message contient encore des éléments entre crochets : ${preview}${more}. Voulez-vous continuer quand même ?`,
+        confirmLabel: "Continuer quand même",
+        cancelLabel: "Corriger le message",
+        variant: "warning",
+      });
+      if (!shouldContinue) return;
+    }
     const q = new URLSearchParams();
     q.set("folder", "informations");
     if (selected?.key) q.set("template_key", selected.key);
@@ -148,15 +163,21 @@ export default function InformModal({
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <div style={sectionStyle}>
-            <div style={sectionHeaderStyle}>Objet</div>
-            <input
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="Objet"
-                className={styles.input}
-                style={{ width: "100%", fontSize: 16, boxSizing: "border-box", display: "block", maxWidth: "100%" }}
-              />
+          <div style={isMobile ? mobileSubjectSectionStyle : sectionStyle}>
+            {isMobile ? (
+              <TemplateSubjectInlineEditor value={subject} onChange={setSubject} />
+            ) : (
+              <>
+                <div style={sectionHeaderStyle}>Objet</div>
+                <input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Objet"
+                  className={styles.input}
+                  style={{ width: "100%", fontSize: 16, boxSizing: "border-box", display: "block", maxWidth: "100%" }}
+                />
+              </>
+            )}
           </div>
 
           <div style={{ ...sectionStyle, ...messageSectionStyle }}>
@@ -175,8 +196,8 @@ export default function InformModal({
               editorStyle={{
                 ...messageTextareaStyle,
                 minHeight: isMobile ? 0 : messageTextareaStyle.minHeight,
-                height: "auto",
-                maxHeight: "none",
+                height: "100%",
+                maxHeight: "100%",
               }}
             />
           </div>
@@ -202,6 +223,12 @@ const sectionStyle: CSSProperties = {
   borderRadius: 18,
   padding: 12,
 };
+
+const mobileSubjectSectionStyle: CSSProperties = {
+  ...sectionStyle,
+  padding: "10px 12px",
+};
+
 
 const sectionHeaderStyle: CSSProperties = {
   fontSize: 13,
