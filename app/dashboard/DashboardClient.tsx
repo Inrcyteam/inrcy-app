@@ -51,6 +51,7 @@ export default function DashboardClient() {
   const [helpSiteInrcyOpen, setHelpSiteInrcyOpen] = useState(false);
   const [helpSiteWebOpen, setHelpSiteWebOpen] = useState(false);
   const [helpInertieOpen, setHelpInertieOpen] = useState(false);
+  const [helpInstagramOpen, setHelpInstagramOpen] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
@@ -2281,7 +2282,11 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         isOpen={isDrawerPanel(panel)}
         onClose={closePanel}
         headerActions={
-          panel === "inertie" ? <HelpButton onClick={() => setHelpInertieOpen(true)} title="Aide : Mon inertie" /> : null
+          panel === "inertie" ? (
+            <HelpButton onClick={() => setHelpInertieOpen(true)} title="Aide : Mon inertie" />
+          ) : panel === "instagram" ? (
+            <HelpButton onClick={() => setHelpInstagramOpen(true)} title="Aide connexion Instagram" />
+          ) : null
         }
       >
         <DashboardSettingsDrawerContent
@@ -2318,11 +2323,13 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         helpSiteInrcyOpen={helpSiteInrcyOpen}
         helpSiteWebOpen={helpSiteWebOpen}
         helpInertieOpen={helpInertieOpen}
+        helpInstagramOpen={helpInstagramOpen}
         onCloseGenerator={() => setHelpGeneratorOpen(false)}
         onCloseCanaux={() => setHelpCanauxOpen(false)}
         onCloseSiteInrcy={() => setHelpSiteInrcyOpen(false)}
         onCloseSiteWeb={() => setHelpSiteWebOpen(false)}
         onCloseInertie={() => setHelpInertieOpen(false)}
+        onCloseInstagram={() => setHelpInstagramOpen(false)}
       />
 
       <footer className={styles.footer}>
