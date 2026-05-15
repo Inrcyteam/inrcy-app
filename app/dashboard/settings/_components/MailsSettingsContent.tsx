@@ -809,6 +809,9 @@ Email : {{email}}`));
                   setSignaturePreview(String(data?.preview || ""));
                   setSignatureImageWidth(Number(data?.imageWidth || signatureImageWidth) || 400);
                   setSignatureToast("✅ Signature enregistrée.");
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(new CustomEvent("inrsend:signature-updated"));
+                  }
                 } catch (e: any) {
                   setSignatureToast(`⚠️ ${getSimpleFrenchErrorMessage(e, "Impossible d’enregistrer la signature.")}`);
                 } finally {

@@ -1050,6 +1050,15 @@ export default function MailboxClient() {
     void loadSignature(selectedAccountId || undefined);
   }, [composeOpen, selectedAccountId]);
 
+  useEffect(() => {
+    const handleSignatureUpdated = () => {
+      void loadSignature(selectedAccountId || undefined);
+    };
+
+    window.addEventListener("inrsend:signature-updated", handleSignatureUpdated);
+    return () => window.removeEventListener("inrsend:signature-updated", handleSignatureUpdated);
+  }, [selectedAccountId]);
+
   // refresh des changements de filtres / recherche
   useEffect(() => {
     void loadHistory({ page: 1 });
@@ -2098,7 +2107,10 @@ async function deleteDraftPermanently(id: string) {
           onCloseHelp={() => setHelpOpen(false)}
           onOpenFolders={() => setMobileFoldersOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
-          onCloseSettings={() => setSettingsOpen(false)}
+          onCloseSettings={() => {
+            setSettingsOpen(false);
+            void loadSignature(selectedAccountId || undefined);
+          }}
         />
 
         <MobileFoldersMenu
@@ -2247,6 +2259,7 @@ async function deleteDraftPermanently(id: string) {
         <MailboxComposeModal
           open={composeOpen}
           onClose={() => setComposeOpen(false)}
+          onOpenSettings={() => setSettingsOpen(true)}
           draftId={draftId}
           mailAccounts={mailAccounts}
           selectedAccountId={selectedAccountId}

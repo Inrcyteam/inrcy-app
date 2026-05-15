@@ -5,10 +5,12 @@ import { pill } from "../_lib/mailboxPhase1";
 import { normalizeEmails } from "../_lib/mailboxPhase25";
 import { inputStyle, textareaStyle } from "./mailboxInlineStyles";
 import RichMailEditor from "@/app/dashboard/_components/RichMailEditor";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 
 type MailboxComposeModalProps = {
   open: boolean;
   onClose: () => void;
+  onOpenSettings: () => void;
   draftId: string | null;
   mailAccounts: any[];
   selectedAccountId: string;
@@ -66,6 +68,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
   const {
     open,
     onClose,
+    onOpenSettings,
     draftId,
     mailAccounts,
     selectedAccountId,
@@ -119,6 +122,36 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     setToast,
   } = props;
 
+  const hasComposeWork = React.useMemo(() => {
+    return Boolean(
+      draftId ||
+      to.trim() ||
+      subject.trim() ||
+      text.trim() ||
+      html.trim() ||
+      selectedCrmCount > 0 ||
+      composeAttachments.length > 0
+    );
+  }, [composeAttachments.length, draftId, html, selectedCrmCount, subject, text, to]);
+
+  const requestClose = React.useCallback(async () => {
+    if (!hasComposeWork) {
+      onClose();
+      return;
+    }
+
+    const confirmed = await confirmInrcy({
+      title: "Fermer le message ?",
+      message: "Vous avez un message en cours. Voulez-vous vraiment fermer cette fenêtre sans l’envoyer ni sauvegarder le brouillon ?",
+      confirmLabel: "Fermer sans sauvegarder",
+      cancelLabel: "Continuer l’édition",
+      variant: "warning",
+    });
+
+    if (confirmed) onClose();
+  }, [hasComposeWork, onClose]);
+
+
   if (!open) return null;
 
   const composeInputStyle: React.CSSProperties = {
@@ -165,7 +198,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
   };
 
   return (
-          <div className={styles.modalOverlay} onClick={() => onClose()}>
+          <div className={styles.modalOverlay} onClick={(e) => e.stopPropagation()}>
             <div className={`${styles.modalCard} ${styles.composeModalCard}`} onClick={(e) => e.stopPropagation()}>
               <div className={`${styles.modalHeader} ${styles.composeModalHeader}`}>
                 <div className={styles.composeHeaderTitleWrap}>
@@ -179,9 +212,21 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                   <div className={styles.composeSubtitle}>Préparez un message clair, choisissez vos contacts CRM et envoyez depuis votre boîte connectée.</div>
                 </div>
 
-                <button className={`${styles.btnGhost} ${styles.composeCloseBtn}`} onClick={() => onClose()} type="button" aria-label="Fermer">
-                  ✕
-                </button>
+                <div className={styles.composeHeaderActions}>
+                  <button
+                    className={`${styles.btnGhost} ${styles.composeHeaderIconBtn}`}
+                    onClick={() => void saveDraft()}
+                    type="button"
+                    aria-label="Sauvegarder le brouillon"
+                    title="Sauvegarder le brouillon"
+                    disabled={sendBusy}
+                  >
+                    💾
+                  </button>
+                  <button className={`${styles.btnGhost} ${styles.composeCloseBtn}`} onClick={() => void requestClose()} type="button" aria-label="Fermer" title="Fermer">
+                    ✕
+                  </button>
+                </div>
               </div>
 
               <div className={`${styles.modalBody} ${styles.composeModalBody}`}>
@@ -545,9 +590,20 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                           <div className={styles.composeSignaturePreviewTitle}><span className={styles.composeSectionIcon}>✅</span>Signature automatique</div>
                           <div className={styles.composeSignaturePreviewHint}>Elle sera ajoutée automatiquement en bas du mail à l’envoi.</div>
                         </div>
-                        <span className={`${styles.badge} ${signatureEnabled ? styles.composeSignatureOn : styles.composeSignatureOff}`}>
-                          {signatureEnabled ? "Activée" : "Désactivée"}
-                        </span>
+                        <div className={styles.composeSignatureActions}>
+                          <span className={`${styles.badge} ${signatureEnabled ? styles.composeSignatureOn : styles.composeSignatureOff}`}>
+                            {signatureEnabled ? "Activée" : "Désactivée"}
+                          </span>
+                          <button
+                            type="button"
+                            className={`${styles.btnGhost} ${styles.composeSettingsBtn}`}
+                            onClick={onOpenSettings}
+                            title="Réglages iNr’Send"
+                            aria-label="Ouvrir les réglages iNr’Send"
+                          >
+                            ⚙️
+                          </button>
+                        </div>
                       </div>
 
                       {signatureEnabled ? (
@@ -581,12 +637,9 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
 
               <div className={`${styles.modalFooter} ${styles.composeModalFooter}`}>
                 <div className={styles.composeAttachmentDock}>
-                  <div className={styles.composeAttachmentTitle}>
-                    <span className={styles.composeSectionIcon}>📎</span>
-                    <span>Pièces jointes</span>
-                  </div>
                   <label htmlFor={fileInputId} className={styles.btnAttach}>
-                    Joindre
+                    <span aria-hidden>📎</span>
+                    <span>Joindre</span>
                   </label>
                   <span className={styles.composeAttachmentStatus}>
                     {composeAttachments.length > 0 ? `${composeAttachments.length} fichier${composeAttachments.length > 1 ? "s" : ""}` : attachBusy ? "Préparation…" : "Aucun fichier"}
@@ -611,9 +664,6 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                 </div>
 
                 <div className={styles.composeFooterActions}>
-                  <button className={`${styles.btnGhost} ${styles.composeDraftBtn}`} onClick={saveDraft} type="button" disabled={sendBusy}>
-                    💾 Sauvegarder brouillon
-                  </button>
                   <button className={`${styles.btnPrimary} ${styles.composeSendBtn}`} onClick={doSend} type="button" disabled={sendBusy}>
                     {sendBusy ? "Envoi…" : "Envoyer"}
                   </button>

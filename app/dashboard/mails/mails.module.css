@@ -3418,6 +3418,14 @@
   overflow-wrap: anywhere;
 }
 
+.composeHeaderActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.composeHeaderIconBtn,
 .composeCloseBtn {
   width: 44px;
   height: 44px;
@@ -3426,6 +3434,11 @@
   justify-content: center;
   font-size: 18px;
   flex: 0 0 auto;
+}
+
+.composeHeaderIconBtn {
+  font-size: 16px;
+  background: linear-gradient(135deg, rgba(56,189,248,0.12), rgba(167,139,250,0.12));
 }
 
 .composeModalBody {
@@ -3534,6 +3547,25 @@
   min-width: 0;
 }
 
+.composeSignatureActions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.composeSettingsBtn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 12px;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+  background: rgba(255,255,255,0.07);
+}
+
 .composeSignaturePreviewHint {
   margin-top: 3px;
   color: rgba(255,255,255,0.58);
@@ -3588,7 +3620,7 @@
 
 .composeModalFooter {
   padding: 12px 20px;
-  background: rgba(4,7,18,0.82);
+  background: rgba(4,7,18,0.86);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid rgba(255,255,255,0.12);
@@ -3596,32 +3628,37 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  min-height: 78px;
+  min-height: 72px;
 }
 
 .composeAttachmentDock {
   min-width: 0;
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: auto auto auto minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
 }
 
 .composeAttachmentTitle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: rgba(255,255,255,0.92);
-  font-size: 13px;
-  font-weight: 950;
-  white-space: nowrap;
+  display: none;
 }
 
 .composeAttachmentStatus {
   color: rgba(255,255,255,0.62);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.composeAttachmentDock .btnAttach {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 15px;
+  font-weight: 950;
 }
 
 .composeAttachmentChips {
@@ -3699,10 +3736,15 @@
     display: none;
   }
 
+  .composeHeaderIconBtn,
   .composeCloseBtn {
     width: 40px;
     height: 40px;
     border-radius: 14px;
+  }
+
+  .composeHeaderActions {
+    gap: 6px;
   }
 
   .composeModalBody {
@@ -3742,47 +3784,45 @@
   }
 
   .composeModalFooter {
-    padding: 10px 12px;
-    gap: 10px;
-    align-items: stretch;
-    flex-direction: column;
-    min-height: 132px;
+    padding: 9px 10px calc(9px + env(safe-area-inset-bottom));
+    gap: 8px;
+    align-items: center;
+    flex-direction: row;
+    min-height: 66px;
   }
 
   .composeAttachmentDock {
-    grid-template-columns: auto auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, auto);
     gap: 8px;
-  }
-
-  .composeAttachmentTitle {
-    grid-column: 1 / -1;
-  }
-
-  .composeAttachmentChips {
-    grid-column: 1 / -1;
-    max-width: 100%;
-  }
-
-  .composeAttachmentChips .fileChip {
-    max-width: 78vw;
-  }
-
-  .composeFooterActions {
-    width: 100%;
-    gap: 8px;
-  }
-
-  .composeDraftBtn,
-  .composeSendBtn {
-    min-height: 44px;
-    padding: 10px 12px;
-  }
-
-  .composeDraftBtn {
     flex: 1 1 auto;
   }
 
+  .composeAttachmentStatus {
+    max-width: 92px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .composeAttachmentChips {
+    display: none;
+  }
+
+  .composeAttachmentDock .btnAttach {
+    min-height: 44px;
+    padding: 10px 12px;
+    border-radius: 14px;
+  }
+
+  .composeFooterActions {
+    width: auto;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+
   .composeSendBtn {
+    min-height: 44px;
+    padding: 10px 14px;
+    border-radius: 14px;
     flex: 0 0 auto;
   }
 }
