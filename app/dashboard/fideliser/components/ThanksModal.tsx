@@ -157,7 +157,6 @@ export default function ThanksModal({
           </div>
 
           <div style={{ ...sectionStyle, ...messageSectionStyle }}>
-            <div style={sectionHeaderStyle}>Message</div>
             <RichMailEditor
               text={body}
               html={bodyHtml}
@@ -166,6 +165,8 @@ export default function ThanksModal({
                 setBodyHtml(html);
               }}
               placeholder="Votre message…"
+              toolbarTitle={<span style={{ ...sectionHeaderStyle, marginBottom: 0 }}>Message</span>}
+              compactToolbar
               className={styles.textarea}
               editorStyle={{
                 ...messageTextareaStyle,

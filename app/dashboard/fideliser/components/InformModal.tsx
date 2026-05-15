@@ -160,7 +160,6 @@ export default function InformModal({
           </div>
 
           <div style={{ ...sectionStyle, ...messageSectionStyle }}>
-            <div style={sectionHeaderStyle}>Message</div>
             <RichMailEditor
               text={body}
               html={bodyHtml}
@@ -169,6 +168,8 @@ export default function InformModal({
                 setBodyHtml(html);
               }}
               placeholder="Votre message…"
+              toolbarTitle={<span style={{ ...sectionHeaderStyle, marginBottom: 0 }}>Message</span>}
+              compactToolbar
               className={styles.textarea}
               editorStyle={{
                 ...messageTextareaStyle,

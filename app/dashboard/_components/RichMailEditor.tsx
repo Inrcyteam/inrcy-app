@@ -11,6 +11,9 @@ type RichMailEditorProps = {
   minHeight?: string | number;
   className?: string;
   editorStyle?: CSSProperties;
+  toolbarTitle?: React.ReactNode;
+  hideToolbarLabel?: boolean;
+  compactToolbar?: boolean;
 };
 
 export default function RichMailEditor({
@@ -21,6 +24,9 @@ export default function RichMailEditor({
   minHeight = "clamp(180px, 30vh, 260px)",
   className,
   editorStyle,
+  toolbarTitle,
+  hideToolbarLabel = false,
+  compactToolbar = false,
 }: RichMailEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const lastHtmlRef = useRef("");
@@ -59,21 +65,41 @@ export default function RichMailEditor({
     emitChange();
   };
 
+  const buttonStyle = compactToolbar ? compactToolbarButtonStyle : toolbarButtonStyle;
+  const toolbar = (
+    <div style={{ display: "flex", gap: compactToolbar ? 5 : 6, alignItems: "center", flex: "0 0 auto" }}>
+      <button type="button" onClick={() => applyCommand("bold")} aria-label="Gras" title="Gras" style={buttonStyle}>
+        <strong>B</strong>
+      </button>
+      <button type="button" onClick={() => applyCommand("italic")} aria-label="Italique" title="Italique" style={buttonStyle}>
+        <em>I</em>
+      </button>
+      <button type="button" onClick={() => applyCommand("underline")} aria-label="Souligné" title="Souligné" style={buttonStyle}>
+        <span style={{ textDecoration: "underline" }}>U</span>
+      </button>
+    </div>
+  );
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>Mise en forme du message</span>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <button type="button" onClick={() => applyCommand("bold")} aria-label="Gras" title="Gras" style={toolbarButtonStyle}>
-            <strong>B</strong>
-          </button>
-          <button type="button" onClick={() => applyCommand("italic")} aria-label="Italique" title="Italique" style={toolbarButtonStyle}>
-            <em>I</em>
-          </button>
-          <button type="button" onClick={() => applyCommand("underline")} aria-label="Souligné" title="Souligné" style={toolbarButtonStyle}>
-            <span style={{ textDecoration: "underline" }}>U</span>
-          </button>
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: compactToolbar ? 6 : 8, flex: 1, minHeight: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: toolbarTitle || hideToolbarLabel ? "space-between" : "space-between",
+          gap: 8,
+          flexWrap: "nowrap",
+          minWidth: 0,
+        }}
+      >
+        {toolbarTitle ? (
+          <div style={{ minWidth: 0, flex: "1 1 auto" }}>{toolbarTitle}</div>
+        ) : hideToolbarLabel ? (
+          <span aria-hidden="true" style={{ flex: "1 1 auto" }} />
+        ) : (
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.62)", minWidth: 0 }}>Mise en forme du message</span>
+        )}
+        {toolbar}
       </div>
 
       <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex" }}>
@@ -141,4 +167,13 @@ const toolbarButtonStyle: CSSProperties = {
   fontWeight: 900,
   cursor: "pointer",
   boxShadow: "0 8px 18px rgba(0,0,0,0.16)",
+};
+
+const compactToolbarButtonStyle: CSSProperties = {
+  ...toolbarButtonStyle,
+  minWidth: 28,
+  height: 28,
+  borderRadius: 9,
+  fontSize: 13,
+  boxShadow: "0 6px 14px rgba(0,0,0,0.14)",
 };

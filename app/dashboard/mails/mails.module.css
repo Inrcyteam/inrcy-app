@@ -3826,3 +3826,31 @@
     flex: 0 0 auto;
   }
 }
+
+/* Mobile compose header: compact and readable */
+@media (max-width: 640px) {
+  .composeModalHeader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .composeTitleRow {
+    gap: 0;
+    min-width: 0;
+  }
+
+  .composeTitleIcon,
+  .composeTypeBadge {
+    display: none;
+  }
+
+  .composeTitleText {
+    font-size: clamp(15px, 4.2vw, 17px);
+    line-height: 1.05;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

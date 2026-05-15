@@ -576,12 +576,6 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                   </section>
 
                   <section className={`${styles.composeSection} ${styles.composeMessageSection}`}>
-                    <div className={styles.composeSectionHeader}>
-                      <div>
-                        <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>✍️</span>Message</div>
-                        <div className={styles.composeSectionHint}>Ajoutez la touche finale avant l’envoi.</div>
-                      </div>
-                    </div>
                     <RichMailEditor
                       text={text}
                       html={html}
@@ -590,6 +584,13 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                         setHtml(nextHtml);
                       }}
                       placeholder="Votre message…"
+                      toolbarTitle={
+                        <div>
+                          <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>✍️</span>Message</div>
+                          <div className={styles.composeSectionHint}>Ajoutez la touche finale avant l’envoi.</div>
+                        </div>
+                      }
+                      compactToolbar
                       minHeight={"clamp(260px, 38vh, 430px)"}
                       editorStyle={composeEditorStyle}
                     />
