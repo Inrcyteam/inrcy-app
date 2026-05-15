@@ -2,7 +2,9 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { textToSimpleHtml } from "@/lib/inrsendSignature";
+import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
+import { awardWeeklyFeatureUseForCampaign } from "@/lib/loyalty/serverAward";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs, type MailAttachmentRef } from "@/lib/mailAttachmentRefs";
 import { providerBatchLimit } from "@/lib/crmRecipients";
 import {
@@ -497,7 +499,7 @@ export async function processPendingMailCampaigns(opts?: {
 
   let query = supabaseAdmin
     .from("mail_campaigns")
-    .select("id,user_id,integration_id,provider,type,subject,body_text,body_html,attachments,status,folder")
+    .select("id,user_id,integration_id,provider,type,subject,body_text,body_html,attachments,status,folder,track_kind,track_type")
     .in("status", ["queued", "processing", "paused"])
     .order("created_at", { ascending: true })
     .limit(maxCampaigns);
@@ -632,7 +634,7 @@ export async function processPendingMailCampaigns(opts?: {
       const unsubscribeUrl = buildRecipientUnsubscribeUrl(campaignId, recipientId);
       const originalTextBody = asString(campaign.body_text) || "";
       const rawTextBody = stripTemplateSignatureBlock(originalTextBody);
-      const rawHtmlBody = asString(campaign.body_html) || "";
+      const rawHtmlBody = sanitizeRichMailHtml(asString(campaign.body_html) || "");
       const textBody = rawTextBody;
       const htmlWasLikelyBuiltFromTemplate = originalTextBody.trim() !== rawTextBody.trim();
       const htmlBody = htmlWasLikelyBuiltFromTemplate || !rawHtmlBody.trim() ? textToSimpleHtml(rawTextBody) : rawHtmlBody;
@@ -697,6 +699,20 @@ export async function processPendingMailCampaigns(opts?: {
     }
 
     const counters = await refreshCampaignCounters(campaignId);
+    if (counters.sentCount > 0) {
+      try {
+        await awardWeeklyFeatureUseForCampaign({
+          userId,
+          campaignId,
+          trackKind: asString(campaign.track_kind),
+          trackType: asString(campaign.track_type),
+          folder: asString(campaign.folder),
+          sentCount: counters.sentCount,
+        });
+      } catch {
+        // Le crédit UI ne doit jamais bloquer l'envoi de la campagne.
+      }
+    }
     if (counters.status === "processing" || counters.status === "queued" || counters.status === "paused") {
       busyIntegrationIds.add(integrationId);
     }

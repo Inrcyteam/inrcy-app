@@ -10,6 +10,7 @@ import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignatu
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { getConnectionDisplayStatus, mailConnectionKind } from "@/lib/connectionVersions";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
+import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { appendUnsubscribeFooterToHtml, appendUnsubscribeFooterToText } from "@/lib/mailSuppression";
 
 export type SendMailBinaryAttachment = {
@@ -382,7 +383,7 @@ export async function sendMailFromIntegration(params: {
 
   const includeAutoSignature = params.includeAutoSignature !== false;
   const baseText = includeAutoSignature ? stripTemplateSignatureBlock(params.text || "") : params.text || "";
-  const baseHtml = params.html || textToSimpleHtml(baseText);
+  const baseHtml = sanitizeRichMailHtml(params.html || "") || textToSimpleHtml(baseText);
   const attachments = Array.isArray(params.attachments) ? params.attachments : [];
 
   let finalText = baseText;

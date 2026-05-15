@@ -164,6 +164,13 @@ const ADDRESS_MODE_LABELS: Record<string, string> = {
   auto: "Automatique selon le canal et le métier",
 };
 
+const AI_VOICE_LABELS: Record<string, string> = {
+  auto: "Automatique selon le contexte",
+  je: "Je / première personne du singulier",
+  nous: "Nous / première personne du pluriel",
+  neutral: "Neutre, sans je ni nous",
+};
+
 const CREATIVITY_LABELS: Record<string, string> = {
   stable: "Stable et maîtrisé",
   balanced: "Équilibré",
@@ -423,6 +430,11 @@ export function boosterUserPrompt(args: {
     ADDRESS_MODE_LABELS,
     "Vouvoiement",
   );
+  const aiVoice = labelFromMap(
+    business.ai_voice,
+    AI_VOICE_LABELS,
+    "Automatique selon le contexte",
+  );
   const creativity = labelFromMap(
     business.ai_creativity,
     CREATIVITY_LABELS,
@@ -467,6 +479,7 @@ export function boosterUserPrompt(args: {
     `- Niveau d'emojis : ${emojiLevel}`,
     `- Longueur favorite : ${length}`,
     `- Tutoiement / vouvoiement : ${addressMode}`,
+    `- Voix de l'entreprise : ${aiVoice}`,
     `- Créativité IA : ${creativity}`,
     `- CTA préféré : ${preferredCta}`,
     optionalLine("Consignes à respecter / à éviter", aiCustomInstructions, 500),
@@ -537,6 +550,7 @@ Consignes supplémentaires :
 - Respecter le niveau d'emojis configuré, tout en gardant 0 emoji sur Site iNrCy / Site web et une grande sobriété sur Google Business.
 - Respecter la longueur favorite configurée sans casser les minimums utiles par canal.
 - Respecter le tutoiement/vouvoiement configuré. En mode automatique, privilégier le vouvoiement pour LinkedIn, Google Business et les métiers sérieux/réglementés.
+- Respecter la voix de l'entreprise configurée : "Je" = parler au nom d'une personne seule, "Nous" = parler au nom de l'entreprise/l'équipe, "Neutre" = éviter autant que possible je et nous, "Automatique" = choisir naturellement selon le profil et le contexte. Ne pas mélanger je et nous dans un même contenu sauf nécessité grammaticale.
 - Respecter le CTA préféré lorsque le canal le permet, sauf Google Business qui doit rester neutre.
 - Pour Site iNrCy / Site web uniquement : renforcer le référencement naturel en répétant naturellement le couple métier + ville et les prestations principales, sans dépasser la longueur demandée et sans enchaîner des mots-clés artificiels.
 - Pour Site iNrCy / Site web uniquement : utiliser uniquement le gras Markdown **...** avec modération sur les expressions SEO principales. Pour tous les autres canaux, ne jamais mettre de gras, d’italique, de souligné ou de balise HTML.

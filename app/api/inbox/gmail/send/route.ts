@@ -7,6 +7,7 @@ import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailA
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
+import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import { getConnectionDisplayStatus } from "@/lib/connectionVersions";
 function asRecord(v: unknown): Record<string, unknown> {
@@ -272,7 +273,7 @@ const handler = async (req: Request) => {
   const signatureSettings = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId, account });
   const cleanText = stripTemplateSignatureBlock(text || "");
   const finalText = applyAutoSignatureToText(cleanText, signatureSettings.signatureText);
-  const finalHtml = applyAutoSignatureToHtml(html || textToSimpleHtml(cleanText), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
+  const finalHtml = applyAutoSignatureToHtml(sanitizeRichMailHtml(html) || textToSimpleHtml(cleanText), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
 
 
   // ✅ tokens (chiffrés en DB)

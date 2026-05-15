@@ -12,6 +12,7 @@ import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailA
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
+import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import { enforceRateLimit } from "@/lib/rateLimit";
 
@@ -108,7 +109,7 @@ const handler = async (req: Request) => {
     const signatureSettings = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId, account: accRec });
     const cleanText = stripTemplateSignatureBlock(text || "");
     const finalText = applyAutoSignatureToText(cleanText, signatureSettings.signatureText);
-    const finalHtml = applyAutoSignatureToHtml(html || textToSimpleHtml(cleanText), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
+    const finalHtml = applyAutoSignatureToHtml(sanitizeRichMailHtml(html) || textToSimpleHtml(cleanText), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
 
     if (attachmentRefs.length > 0) {
       const downloaded = await downloadMailAttachmentRefs(supabase, attachmentRefs);

@@ -13,6 +13,7 @@ type AiConfigForm = {
   emojiLevel: "none" | "light" | "moderate" | "dynamic";
   length: "short" | "medium" | "detailed";
   addressMode: "vous" | "tu" | "auto";
+  aiVoice: "auto" | "je" | "nous" | "neutral";
   creativity: "stable" | "balanced" | "creative";
   customInstructions: string;
 };
@@ -27,6 +28,7 @@ const initialForm: AiConfigForm = {
   emojiLevel: "light",
   length: "medium",
   addressMode: "vous",
+  aiVoice: "auto",
   creativity: "balanced",
   customInstructions: "",
 };
@@ -41,7 +43,11 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
   const [error, setError] = useState("");
 
   const card: React.CSSProperties = useMemo(() => ({
-    padding: 16,
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
+    padding: "clamp(12px, 3.6vw, 16px)",
     borderRadius: 16,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.045)",
@@ -61,6 +67,11 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
 
   const input: React.CSSProperties = useMemo(() => ({
     width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
+    fontSize: 16,
+    lineHeight: 1.35,
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(255,255,255,0.04)",
@@ -69,8 +80,8 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
     outline: "none",
   }), []);
 
-  const label: React.CSSProperties = { display: "grid", gap: 8 };
-  const labelTitle: React.CSSProperties = { color: "rgba(255,255,255,0.85)", fontSize: 13, fontWeight: 800 };
+  const label: React.CSSProperties = { display: "grid", gap: 8, minWidth: 0, maxWidth: "100%" };
+  const labelTitle: React.CSSProperties = { color: "rgba(255,255,255,0.85)", fontSize: 13, fontWeight: 800, lineHeight: 1.25 };
   const hint: React.CSSProperties = { color: "rgba(255,255,255,0.65)", fontSize: 12, lineHeight: 1.35 };
   const primaryBtn: React.CSSProperties = {
     border: "1px solid rgba(255,255,255,0.18)",
@@ -80,6 +91,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
     padding: "10px 12px",
     cursor: saving ? "default" : "pointer",
     fontWeight: 900,
+    fontSize: 16,
     width: "100%",
     opacity: saving ? 0.7 : 1,
   };
@@ -114,6 +126,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
             emojiLevel: (data?.emoji_level || initialForm.emojiLevel) as AiConfigForm["emojiLevel"],
             length: (data?.ai_length || initialForm.length) as AiConfigForm["length"],
             addressMode: (data?.address_mode || initialForm.addressMode) as AiConfigForm["addressMode"],
+            aiVoice: (data?.ai_voice || initialForm.aiVoice) as AiConfigForm["aiVoice"],
             creativity: (data?.ai_creativity || initialForm.creativity) as AiConfigForm["creativity"],
             customInstructions: String(data?.ai_custom_instructions || initialForm.customInstructions),
           };
@@ -156,6 +169,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
             emoji_level: form.emojiLevel,
             ai_length: form.length,
             address_mode: form.addressMode,
+            ai_voice: form.aiVoice,
             ai_creativity: form.creativity,
             ai_custom_instructions: form.customInstructions.trim(),
             updated_at: new Date().toISOString(),
@@ -181,7 +195,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
   };
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div style={{ display: "grid", gap: 16, minWidth: 0, maxWidth: "100%", overflowX: "hidden" }}>
       <div style={signatureCard}>
         <div
           aria-hidden
@@ -196,10 +210,10 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
             pointerEvents: "none",
           }}
         />
-        <div style={{ fontSize: 18, fontWeight: 950, color: "rgba(255,255,255,0.98)", marginBottom: 8 }}>
+        <div style={{ fontSize: "clamp(16px, 4.6vw, 18px)", fontWeight: 950, color: "rgba(255,255,255,0.98)", marginBottom: 8, lineHeight: 1.25, overflowWrap: "break-word" }}>
           ✨ Votre signature IA
         </div>
-        <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 13, lineHeight: 1.55, maxWidth: 520 }}>
+        <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 13, lineHeight: 1.55, maxWidth: 520, overflowWrap: "break-word" }}>
           Réglez une fois le style de communication de votre entreprise. Ensuite, Booster reste simple : vous écrivez une phrase, iNrCy génère des contenus adaptés à votre image.
         </div>
       </div>
@@ -209,7 +223,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
           <div style={{ color: "rgba(255,255,255,0.72)", fontSize: 13 }}>Chargement…</div>
         ) : (
           <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+            <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", minWidth: 0, maxWidth: "100%" }}>
               <label style={label}>
                 <span style={labelTitle}>Ton principal</span>
                 <select style={input} value={form.tone} onChange={(e) => set("tone", e.target.value as AiConfigForm["tone"])}>
@@ -260,6 +274,16 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
               </label>
 
               <label style={label}>
+                <span style={labelTitle}>Voix de l’entreprise</span>
+                <select style={input} value={form.aiVoice} onChange={(e) => set("aiVoice", e.target.value as AiConfigForm["aiVoice"])}>
+                  <option value="auto" style={selectOption}>Automatique</option>
+                  <option value="je" style={selectOption}>Je</option>
+                  <option value="nous" style={selectOption}>Nous</option>
+                  <option value="neutral" style={selectOption}>Neutre</option>
+                </select>
+              </label>
+
+              <label style={label}>
                 <span style={labelTitle}>Créativité IA</span>
                 <select style={input} value={form.creativity} onChange={(e) => set("creativity", e.target.value as AiConfigForm["creativity"])}>
                   <option value="stable" style={selectOption}>Stable</option>
@@ -296,9 +320,9 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
             {error ? <div style={{ color: "rgba(248,113,113,0.95)", fontWeight: 800 }}>{error}</div> : null}
             {saved ? <div style={{ color: "rgba(34,197,94,0.95)", fontWeight: 900 }}>Configuration IA enregistrée ✅</div> : null}
 
-            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", minWidth: 0, maxWidth: "100%" }}>
               <button type="button" style={primaryBtn} disabled={saving} onClick={save}>{saving ? "Enregistrement…" : "Enregistrer"}</button>
-              <button type="button" disabled={saving} onClick={reset} style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "white", borderRadius: 14, padding: "10px 12px", cursor: saving ? "default" : "pointer", fontWeight: 900 }}>
+              <button type="button" disabled={saving} onClick={reset} style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "white", borderRadius: 14, padding: "10px 12px", cursor: saving ? "default" : "pointer", fontWeight: 900, fontSize: 16 }}>
                 Réinitialiser
               </button>
             </div>

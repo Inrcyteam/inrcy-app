@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type Props = {
   title: string;
@@ -12,16 +12,38 @@ type Props = {
 };
 
 export default function SettingsDrawer({ title, isOpen, onClose, headerActions, children }: Props) {
-  const [viewportWidth, setViewportWidth] = useState<number>(typeof window === "undefined" ? 1440 : window.innerWidth);
+  // Valeurs stables côté serveur/client au premier rendu : évite les erreurs React #418
+  // quand le drawer est ouvert directement via /dashboard?panel=ia sur mobile.
+  const [viewportWidth, setViewportWidth] = useState<number>(1440);
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const isMobile = viewportWidth <= 640;
 
   useEffect(() => {
-    if (!isOpen || typeof window === "undefined") return;
-    const onResize = () => setViewportWidth(window.innerWidth);
-    onResize();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [isOpen]);
+    if (typeof window === "undefined") return;
+
+    const updateViewport = () => {
+      setViewportWidth(window.innerWidth);
+      setViewportHeight(Math.round(window.visualViewport?.height || window.innerHeight));
+    };
+
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    window.addEventListener("orientationchange", updateViewport);
+    window.visualViewport?.addEventListener("resize", updateViewport);
+    window.visualViewport?.addEventListener("scroll", updateViewport);
+
+    return () => {
+      window.removeEventListener("resize", updateViewport);
+      window.removeEventListener("orientationchange", updateViewport);
+      window.visualViewport?.removeEventListener("resize", updateViewport);
+      window.visualViewport?.removeEventListener("scroll", updateViewport);
+    };
+  }, []);
+
+  const drawerHeight = useMemo(
+    () => (isMobile ? (viewportHeight ? `${viewportHeight}px` : "100svh") : "100%"),
+    [isMobile, viewportHeight],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -63,17 +85,44 @@ export default function SettingsDrawer({ title, isOpen, onClose, headerActions, 
         style={{
           width: isMobile ? "100vw" : "min(560px, 92vw)",
           maxWidth: "100vw",
-          height: isMobile ? "100dvh" : "100%",
+          height: drawerHeight,
+          maxHeight: drawerHeight,
           boxSizing: "border-box",
           background: "rgba(16,16,16,0.98)",
           borderLeft: isMobile ? 0 : "1px solid rgba(255,255,255,0.08)",
           padding: isMobile ? "max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))" : 16,
           overflowY: "auto",
           overflowX: "hidden",
+          overscrollBehavior: "contain",
+          WebkitOverflowScrolling: "touch",
         }}
       >
-        <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 12, minWidth: 0, flexWrap: isMobile ? "wrap" : "nowrap" }}>
-          <h2 style={{ margin: 0, fontSize: isMobile ? 17 : 18, fontWeight: 700, minWidth: 0, maxWidth: "100%", overflowWrap: "anywhere", lineHeight: 1.2 }}>{title}</h2>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) auto",
+            alignItems: "center",
+            gap: 12,
+            minWidth: 0,
+            width: "100%",
+          }}
+        >
+          <h2
+            style={{
+              margin: 0,
+              color: "white",
+              fontSize: "clamp(16px, 4.3vw, 18px)",
+              fontWeight: 800,
+              minWidth: 0,
+              maxWidth: "100%",
+              overflowWrap: "break-word",
+              wordBreak: "normal",
+              hyphens: "auto",
+              lineHeight: 1.25,
+            }}
+          >
+            {title}
+          </h2>
 
           {/* Zone actions (ex: ?) + Fermer avec gap */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" }}>

@@ -4,6 +4,7 @@ import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { pill } from "../_lib/mailboxPhase1";
 import { normalizeEmails } from "../_lib/mailboxPhase25";
 import { inputStyle, textareaStyle } from "./mailboxInlineStyles";
+import RichMailEditor from "@/app/dashboard/_components/RichMailEditor";
 
 type MailboxComposeModalProps = {
   open: boolean;
@@ -19,6 +20,8 @@ type MailboxComposeModalProps = {
   setSubject: React.Dispatch<React.SetStateAction<string>>;
   text: string;
   setText: React.Dispatch<React.SetStateAction<string>>;
+  html: string;
+  setHtml: React.Dispatch<React.SetStateAction<string>>;
   composeRecipientList: string[];
   isBulkCampaignCompose: boolean;
   bulkCampaignNotice: { tone: "strong" | "danger" | "warning" | "info"; title: string; text: string } | null;
@@ -73,6 +76,8 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     setSubject,
     text,
     setText,
+    html,
+    setHtml,
     composeRecipientList,
     isBulkCampaignCompose,
     bulkCampaignNotice,
@@ -455,8 +460,18 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                   </label>
 
                   <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Message (texte)</span>
-                    <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} style={textareaStyle} />
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Message</span>
+                    <RichMailEditor
+                      text={text}
+                      html={html}
+                      onChange={({ text: nextText, html: nextHtml }) => {
+                        setText(nextText);
+                        setHtml(nextHtml);
+                      }}
+                      placeholder="Votre message…"
+                      minHeight={"clamp(170px, 28vh, 260px)"}
+                      editorStyle={textareaStyle}
+                    />
                     {signatureEnabled && signatureImageUrl ? (
                       <div
                         style={{

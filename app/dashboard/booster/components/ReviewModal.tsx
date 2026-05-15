@@ -3,6 +3,8 @@ import { useRouter } from "next/navigation";
 import stylesDash from "../../dashboard/dashboard.module.css";
 import { getTemplates, type TemplateDef } from "@/lib/messageTemplates";
 import { useBusinessTemplateContext } from "@/app/dashboard/_hooks/useBusinessTemplateContext";
+import RichMailEditor from "@/app/dashboard/_components/RichMailEditor";
+import { textToRichMailHtml } from "@/lib/mailRichText";
 
 export default function ReviewModal({
   styles,
@@ -36,6 +38,7 @@ export default function ReviewModal({
   }, [templates]);
 
   const [body, setBody] = useState("");
+  const [bodyHtml, setBodyHtml] = useState("");
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -52,6 +55,7 @@ export default function ReviewModal({
     const txt = selected.body;
     setSubject(subj);
     setBody(txt);
+    setBodyHtml(textToRichMailHtml(txt));
 
     (async () => {
       try {
@@ -62,7 +66,11 @@ export default function ReviewModal({
         });
         const j = await r.json().catch(() => ({}));
         if (j?.subject) setSubject(String(j.subject));
-        if (j?.body_text) setBody(String(j.body_text));
+        if (j?.body_text) {
+          const renderedBody = String(j.body_text);
+          setBody(renderedBody);
+          setBodyHtml(textToRichMailHtml(renderedBody));
+        }
       } catch {}
     })();
   }, [selected?.key]);
@@ -73,6 +81,7 @@ export default function ReviewModal({
     if (selected?.key) q.set("template_key", selected.key);
     q.set("prefill_subject", subject);
     q.set("prefill_text", body);
+    q.set("prefill_html", bodyHtml || textToRichMailHtml(body));
     q.set("compose", "1");
 
     q.set("track_kind", "booster");
@@ -92,7 +101,7 @@ export default function ReviewModal({
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 }}>
       <div className={styles.blockCard} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, maxWidth: "100%", boxSizing: "border-box", height: "100%" }}>
-        <div className={styles.blockTitle} style={{ marginBottom: 10, fontSize: 20 }}>
+        <div className={styles.blockTitle} style={{ marginBottom: 10, fontSize: 20, display: isMobile ? "none" : "block" }}>
           Modèle d’email — Récolter
         </div>
 
@@ -100,8 +109,8 @@ export default function ReviewModal({
           Choisissez un email préconçu, modifiez si besoin, puis cliquez sur Suivant.
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(255,255,255,0.64)", marginBottom: 8, textTransform: "uppercase" }}>
+        <div style={{ marginBottom: isMobile ? 8 : 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(255,255,255,0.64)", marginBottom: 8, textTransform: "uppercase", display: isMobile ? "none" : "block" }}>
             Modèle dédié
           </div>
           <select
@@ -145,13 +154,20 @@ export default function ReviewModal({
           </div>
 
           <div style={{ ...sectionStyle, ...messageSectionStyle }}>
-            <div style={sectionHeaderStyle}>Message (texte)</div>
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
+            <div style={sectionHeaderStyle}>Message</div>
+            <RichMailEditor
+              text={body}
+              html={bodyHtml}
+              onChange={({ text, html }) => {
+                setBody(text);
+                setBodyHtml(html);
+              }}
               placeholder="Votre message…"
               className={styles.textarea}
-              style={messageTextareaStyle}
+              editorStyle={{
+                ...messageTextareaStyle,
+                minHeight: isMobile ? "clamp(260px, 46vh, 520px)" : messageTextareaStyle.minHeight,
+              }}
             />
           </div>
 

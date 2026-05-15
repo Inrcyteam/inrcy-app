@@ -44,6 +44,10 @@ export default function InertiaContent({ snapshot, onOpenBoutique }: Props) {
           return;
         }
 
+        // Déclenche une réparation légère des missions hebdo si une campagne/publication
+        // a été envoyée mais que le crédit UI n'a pas encore été inscrit.
+        await fetch("/api/loyalty/weekly-summary", { cache: "no-store" }).catch(() => null);
+
         const balanceRes = await supabase
           .from("loyalty_balance")
           .select("balance")

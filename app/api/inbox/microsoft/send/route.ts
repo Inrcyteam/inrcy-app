@@ -8,6 +8,7 @@ import { downloadMailAttachmentRefs, parseMailAttachmentRefs } from "@/lib/mailA
 import { applyAutoSignatureToHtml, applyAutoSignatureToText, buildInrSendSignature, textToSimpleHtml, type SupabaseLike } from "@/lib/inrsendSignature";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
+import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import { getConnectionDisplayStatus } from "@/lib/connectionVersions";
 import { enforceRateLimit } from "@/lib/rateLimit";
@@ -81,6 +82,7 @@ const handler = async (req: Request) => {
     let to = "";
     let subject = "(sans objet)";
     let text = "";
+    let html = "";
     let attachmentRefs: ReturnType<typeof parseMailAttachmentRefs> = [];
 
     if (ct.includes("multipart/form-data")) {
@@ -94,6 +96,7 @@ const handler = async (req: Request) => {
       to = String(formData.get("to") || "").trim();
       subject = normalizeMailSubject(String(formData.get("subject") || "(sans objet)"));
       text = String(formData.get("text") || "");
+      html = String(formData.get("html") || "");
     } else {
       const body = await req.json().catch(() => ({}));
       accountId = String(body.accountId || "").trim();
@@ -105,6 +108,7 @@ const handler = async (req: Request) => {
       to = String(body.to || "").trim();
       subject = normalizeMailSubject(String(body.subject || "(sans objet)"));
       text = String(body.text || "");
+      html = String(body.html || "");
       attachmentRefs = parseMailAttachmentRefs(body.attachments);
     }
 
@@ -136,7 +140,7 @@ const handler = async (req: Request) => {
     const signatureSettings = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId, account });
     const cleanText = stripTemplateSignatureBlock(text || "");
     const finalText = applyAutoSignatureToText(cleanText, signatureSettings.signatureText);
-    const finalHtml = applyAutoSignatureToHtml(textToSimpleHtml(cleanText), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
+    const finalHtml = applyAutoSignatureToHtml(sanitizeRichMailHtml(html) || textToSimpleHtml(cleanText), signatureSettings.signatureText, signatureSettings.imageUrl, signatureSettings.imageWidth);
 
     // Supabase row typing may be '{}' depending on generated types.
     // Parse defensively from unknown to avoid Next.js build-time type errors.
@@ -214,7 +218,7 @@ const handler = async (req: Request) => {
       to_emails: to,
       subject: subject || null,
       body_text: finalText || null,
-      body_html: null,
+      body_html: finalHtml || null,
       provider: "microsoft",
       provider_message_id: null,
       source_doc_save_id: sourceDocSaveId || null,

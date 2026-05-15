@@ -228,6 +228,7 @@ export default function PublishModal({
   >({});
   const [activeCard, setActiveCard] = useState<DisplayKey>("site");
   const [isMobile, setIsMobile] = useState(false);
+  const [drawerViewportHeight, setDrawerViewportHeight] = useState<number | null>(null);
   const [duplicateFeedback, setDuplicateFeedback] = useState<{
     kind: "success" | "error";
     message: string;
@@ -464,11 +465,25 @@ export default function PublishModal({
   }, [ctaDefaults]);
 
   useEffect(() => {
-    const check = () =>
-      setIsMobile(typeof window !== "undefined" && window.innerWidth <= 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
+    if (typeof window === "undefined") return;
+
+    const updateViewport = () => {
+      setIsMobile(window.innerWidth <= 768);
+      setDrawerViewportHeight(Math.round(window.visualViewport?.height || window.innerHeight));
+    };
+
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    window.addEventListener("orientationchange", updateViewport);
+    window.visualViewport?.addEventListener("resize", updateViewport);
+    window.visualViewport?.addEventListener("scroll", updateViewport);
+
+    return () => {
+      window.removeEventListener("resize", updateViewport);
+      window.removeEventListener("orientationchange", updateViewport);
+      window.visualViewport?.removeEventListener("resize", updateViewport);
+      window.visualViewport?.removeEventListener("scroll", updateViewport);
+    };
   }, []);
 
   const scrollToPublishArea = (behavior: ScrollBehavior = "smooth") => {
@@ -2019,6 +2034,12 @@ export default function PublishModal({
     setFinalReviewOpen(false);
   };
 
+  const aiDrawerHeight = isMobile
+    ? drawerViewportHeight
+      ? `${drawerViewportHeight}px`
+      : "100svh"
+    : "100%";
+
   const confirmFinalReview = async () => {
     const preparedPostsByChannel =
       finalReviewPosts || buildPreparedPostsByChannel();
@@ -2074,7 +2095,8 @@ export default function PublishModal({
             style={{
               width: isMobile ? "100vw" : "min(560px, 92vw)",
               maxWidth: "100vw",
-              height: isMobile ? "100dvh" : "100%",
+              height: aiDrawerHeight,
+              maxHeight: aiDrawerHeight,
               boxSizing: "border-box",
               background: "rgba(16,16,16,0.98)",
               borderLeft: isMobile ? 0 : "1px solid rgba(255,255,255,0.08)",
@@ -2083,27 +2105,31 @@ export default function PublishModal({
                 : 16,
               overflowY: "auto",
               overflowX: "hidden",
+              overscrollBehavior: "contain",
+              WebkitOverflowScrolling: "touch",
             }}
           >
             <div
               style={{
-                display: "flex",
-                alignItems: isMobile ? "flex-start" : "center",
-                justifyContent: "space-between",
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) auto",
+                alignItems: "center",
                 gap: 12,
                 minWidth: 0,
-                flexWrap: isMobile ? "wrap" : "nowrap",
+                width: "100%",
               }}
             >
               <h2
                 style={{
                   margin: 0,
-                  fontSize: isMobile ? 17 : 18,
-                  fontWeight: 700,
+                  fontSize: "clamp(16px, 4.3vw, 18px)",
+                  fontWeight: 800,
                   minWidth: 0,
                   maxWidth: "100%",
-                  overflowWrap: "anywhere",
-                  lineHeight: 1.2,
+                  overflowWrap: "break-word",
+                  wordBreak: "normal",
+                  hyphens: "auto",
+                  lineHeight: 1.25,
                   color: "white",
                 }}
               >

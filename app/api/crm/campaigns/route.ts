@@ -9,6 +9,7 @@ import { enforceRateLimit } from "@/lib/rateLimit";
 import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import { parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
+import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 
 export const runtime = "nodejs";
 
@@ -128,7 +129,7 @@ export async function POST(req: Request) {
   const type = String(body.type || "mail").trim() || "mail";
   const subject = normalizeMailSubject(String(body.subject || "").trim() || "(sans objet)");
   const text = stripTemplateSignatureBlock(String(body.text || ""));
-  const html = String(body.html || "");
+  const html = sanitizeRichMailHtml(String(body.html || ""));
   const sourceDocSaveId = String(body.sourceDocSaveId || "").trim();
   const sourceDocType = String(body.sourceDocType || "").trim();
   const sourceDocNumber = String(body.sourceDocNumber || "").trim();

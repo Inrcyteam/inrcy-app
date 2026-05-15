@@ -120,6 +120,7 @@ import {
 } from "./_lib/mailboxPhase25";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
+import { normalizeRichMailHtmlForSend, textToRichMailHtml } from "@/lib/mailRichText";
 
 export default function MailboxClient() {
   const [helpOpen, setHelpOpen] = useState(false);
@@ -251,6 +252,7 @@ export default function MailboxClient() {
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
   const [text, setText] = useState("");
+  const [html, setHtml] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [composeAttachments, setComposeAttachments] = useState<ComposeAttachmentRef[]>([]);
   const [composeRecipientHints, setComposeRecipientHints] = useState<ComposeCrmRecipientHint[]>([]);
@@ -413,6 +415,12 @@ export default function MailboxClient() {
 
   const counts = folderCounts;
 
+  function setComposeBody(nextText: string, nextHtml?: string | null) {
+    const cleanText = stripTemplateSignatureBlock(String(nextText || ""));
+    setText(cleanText);
+    setHtml(normalizeRichMailHtmlForSend(cleanText, nextHtml || textToRichMailHtml(cleanText)));
+  }
+
   function resetCompose(nextType: SendType = "mail") {
     setDraftId(null);
     setComposeType(nextType);
@@ -423,7 +431,7 @@ export default function MailboxClient() {
     setPendingTrack(null);
     setTo("");
     setSubject("");
-    setText(buildDefaultMailText({ kind: nextType }));
+    setComposeBody(buildDefaultMailText({ kind: nextType }));
     setFiles([]);
     setComposeAttachments([]);
     setComposeRecipientHints([]);
@@ -538,7 +546,7 @@ export default function MailboxClient() {
       setComposeSourceDocType(raw.source_doc_type === "facture" || raw.source_doc_type === "devis" ? raw.source_doc_type : "");
       setComposeSourceDocNumber(String(raw.source_doc_number || ""));
       setSubject(normalizeMailSubject(String(raw.subject || item.subject || "").trim() || "(sans objet)"));
-      setText(String(raw.body_text || item.detailText || ""));
+      setComposeBody(String(raw.body_text || item.detailText || ""), String(raw.body_html || ""));
       setFiles([]);
       setComposeAttachments(normalizeCampaignAttachments(raw.attachments));
       setTo(mode === "resend" ? recipients.map((recipient) => recipient.email).join(", ") : "");
@@ -1174,7 +1182,8 @@ export default function MailboxClient() {
 
     if (toParam) setTo(toParam);
     if (subjParam) setSubject(normalizeMailSubject(subjParam));
-    if (textParam) setText(stripTemplateSignatureBlock(textParam));
+    const htmlParam = safeDecode(searchParams?.get("html") || searchParams?.get("body_html") || "");
+    if (textParam || htmlParam) setComposeBody(textParam, htmlParam || undefined);
 
     const urlRecipientHints = !sessionRecipientHints.length && toParam && contactIdParam
       ? normalizeEmails(toParam).map((email, index) => ({
@@ -1193,8 +1202,13 @@ export default function MailboxClient() {
       else if (nextType === "devis") setSubject((prev) => (prev?.trim() ? prev : `Envoi de votre devis ${docRef || ""}`.trim()));
       else if (nameParam) setSubject((prev) => (prev?.trim() ? prev : `Message pour ${nameParam}`));
     }
-    if (!textParam?.trim()) {
-      setText((prev) => (prev?.trim() ? prev : buildDefaultMailText({ kind: nextType, name: nameParam, docRef })));
+    if (!textParam?.trim() && !htmlParam?.trim()) {
+      setText((prev) => {
+        if (prev?.trim()) return prev;
+        const fallback = buildDefaultMailText({ kind: nextType, name: nameParam, docRef });
+        setHtml(textToRichMailHtml(fallback));
+        return fallback;
+      });
     }
 
     // Open the modal.
@@ -1232,6 +1246,7 @@ export default function MailboxClient() {
   useEffect(() => {
     const preSubjectRaw = searchParams?.get("prefill_subject") || "";
     const preTextRaw = searchParams?.get("prefill_text") || "";
+    const preHtmlRaw = searchParams?.get("prefill_html") || "";
     const templateKey = searchParams?.get("template_key") || "";
     const open = (searchParams?.get("compose") || "").toLowerCase();
     if (templateKey) setComposeTemplateKey(templateKey);
@@ -1263,10 +1278,11 @@ export default function MailboxClient() {
     }
 
     // Only prefill when something is provided
-    if (!preSubjectRaw && !preTextRaw && !templateKey) return;
+    if (!preSubjectRaw && !preTextRaw && !preHtmlRaw && !templateKey) return;
 
     const preSubject = safeDecode(preSubjectRaw);
     const preText = safeDecode(preTextRaw);
+    const preHtml = safeDecode(preHtmlRaw);
 
     const run = async () => {
       // If we have a template key, ask the server to render placeholders + compute links.
@@ -1285,26 +1301,24 @@ export default function MailboxClient() {
           if (j?.subject) setSubject(normalizeMailSubject(String(j.subject)));
           else if (preSubject) setSubject(normalizeMailSubject(preSubject));
 
-          if (j?.body_text) {
+          if (preHtml) {
+            setComposeBody(preText || String(j?.body_text || ""), preHtml);
+          } else if (j?.body_text) {
             const renderedBody = String(j.body_text);
-            const sanitizedBody = stripTemplateSignatureBlock(renderedBody);
-            setText(sanitizedBody);
+            setComposeBody(renderedBody);
           } else if (preText) {
-            const sanitizedBody = stripTemplateSignatureBlock(preText);
-            setText(sanitizedBody);
+            setComposeBody(preText);
           }
         } catch {
           if (preSubject) setSubject(normalizeMailSubject(preSubject));
-          if (preText) {
-            const sanitizedBody = stripTemplateSignatureBlock(preText);
-            setText(sanitizedBody);
+          if (preText || preHtml) {
+            setComposeBody(preText, preHtml || undefined);
           }
         }
       } else {
         if (preSubject) setSubject(normalizeMailSubject(preSubject));
-        if (preText) {
-          const sanitizedBody = stripTemplateSignatureBlock(preText);
-          setText(sanitizedBody);
+        if (preText || preHtml) {
+          setComposeBody(preText, preHtml || undefined);
         }
       }
 
@@ -1320,10 +1334,9 @@ export default function MailboxClient() {
     if (!composeOpen) return;
     setText((prev) => {
       const base = String(prev || "");
-      if (!base.trim()) {
-        return buildDefaultMailText({ kind: composeType });
-      }
-      return stripTemplateSignatureBlock(base);
+      const next = base.trim() ? stripTemplateSignatureBlock(base) : buildDefaultMailText({ kind: composeType });
+      setHtml((currentHtml) => normalizeRichMailHtmlForSend(next, currentHtml || textToRichMailHtml(next)));
+      return next;
     });
   }, [composeOpen, composeType, signatureEnabled, signaturePreview]);
 
@@ -1403,7 +1416,7 @@ export default function MailboxClient() {
       to_emails: to.trim(),
       subject: subject.trim() || null,
       body_text: text || null,
-      body_html: null,
+      body_html: normalizeRichMailHtmlForSend(text, html),
       provider: selectedAccount?.provider || null,
       source_doc_save_id: composeSourceDocSaveId || null,
       source_doc_type: composeSourceDocType || null,
@@ -1661,7 +1674,7 @@ async function deleteDraftPermanently(id: string) {
           templateKey: templateKey || undefined,
           subject: normalizeMailSubject(subject.trim() || "(sans objet)"),
           text: text || "",
-          html: "",
+          html: normalizeRichMailHtmlForSend(text, html),
           recipients: recipientsList.map((email) => {
             const lower = email.toLowerCase();
             const hint = composeRecipientHintsByEmail.get(lower);
@@ -1721,7 +1734,7 @@ async function deleteDraftPermanently(id: string) {
         to: recipientsList[0],
         subject: normalizeMailSubject(subject.trim() || "(sans objet)"),
         text: text || "",
-        html: "",
+        html: normalizeRichMailHtmlForSend(text, html),
         type: composeType,
         ...(draftId ? { sendItemId: draftId } : {}),
         attachments: composeAttachments,
@@ -2061,7 +2074,7 @@ async function deleteDraftPermanently(id: string) {
       setComposeType(raw.type as SendType);
       setTo(raw.to_emails || "");
       setSubject(normalizeMailSubject(raw.subject || ""));
-      setText(raw.body_text || "");
+      setComposeBody(raw.body_text || "", raw.body_html || "");
       setFiles([]);
     }
   }
@@ -2236,6 +2249,8 @@ async function deleteDraftPermanently(id: string) {
           setSubject={setSubject}
           text={text}
           setText={setText}
+          html={html}
+          setHtml={setHtml}
           composeRecipientList={composeRecipientList}
           isBulkCampaignCompose={isBulkCampaignCompose}
           bulkCampaignNotice={bulkCampaignNotice}
