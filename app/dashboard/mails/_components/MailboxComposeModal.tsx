@@ -140,6 +140,30 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     padding: "14px 14px",
   };
 
+  const handleAttachmentInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const next = Array.from<File>(input.files || []);
+    setFiles(next);
+    if (!next.length) return;
+    try {
+      const uploaded = await uploadComposeFiles(next);
+      setComposeAttachments((prev) => {
+        const merged = [...prev];
+        for (const item of uploaded) {
+          const exists = merged.some((x) => x.bucket === item.bucket && x.path === item.path);
+          if (!exists) merged.push(item);
+        }
+        return merged;
+      });
+    } catch (err) {
+      console.error("Attachment upload failed", err);
+      setToast("Impossible de préparer cette pièce jointe. Veuillez vérifier son format ou sa taille.");
+    } finally {
+      input.value = "";
+      setFiles([]);
+    }
+  };
+
   return (
           <div className={styles.modalOverlay} onClick={() => onClose()}>
             <div className={`${styles.modalCard} ${styles.composeModalCard}`} onClick={(e) => e.stopPropagation()}>
@@ -165,7 +189,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                   <section className={styles.composeSection}>
                     <div className={styles.composeSectionHeader}>
                       <div>
-                        <div className={styles.composeSectionTitle}>Boîte d’envoi</div>
+                        <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>➜</span>Boîte d’envoi</div>
                         <div className={styles.composeSectionHint}>Compte utilisé pour envoyer le message.</div>
                       </div>
                       {selectedAccount ? (
@@ -193,7 +217,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                   <section className={styles.composeSection}>
                     <div className={styles.composeSectionHeader}>
                       <div>
-                        <div className={styles.composeSectionTitle}>Destinataires</div>
+                        <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>👥</span>Destinataires</div>
                         <div className={styles.composeSectionHint}>Saisissez une adresse ou sélectionnez des contacts CRM.</div>
                       </div>
                       {selectedCrmCount > 0 ? (
@@ -487,7 +511,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                   <section className={styles.composeSection}>
                     <div className={styles.composeSectionHeader}>
                       <div>
-                        <div className={styles.composeSectionTitle}>Objet</div>
+                        <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>🏷️</span>Objet</div>
                         <div className={styles.composeSectionHint}>Titre visible dans la boîte mail du destinataire.</div>
                       </div>
                     </div>
@@ -500,7 +524,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                   <section className={`${styles.composeSection} ${styles.composeMessageSection}`}>
                     <div className={styles.composeSectionHeader}>
                       <div>
-                        <div className={styles.composeSectionTitle}>Message</div>
+                        <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>✍️</span>Message</div>
                         <div className={styles.composeSectionHint}>Ajoutez la touche finale avant l’envoi.</div>
                       </div>
                     </div>
@@ -518,7 +542,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                     <div className={styles.composeSignaturePreview}>
                       <div className={styles.composeSignaturePreviewHeader}>
                         <div>
-                          <div className={styles.composeSignaturePreviewTitle}>Signature automatique</div>
+                          <div className={styles.composeSignaturePreviewTitle}><span className={styles.composeSectionIcon}>✅</span>Signature automatique</div>
                           <div className={styles.composeSignaturePreviewHint}>Elle sera ajoutée automatiquement en bas du mail à l’envoi.</div>
                         </div>
                         <span className={`${styles.badge} ${signatureEnabled ? styles.composeSignatureOn : styles.composeSignatureOff}`}>
@@ -544,81 +568,56 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                       )}
                     </div>
                   </section>
-
-                  <section className={styles.composeSection}>
-                    <div className={styles.composeSectionHeader}>
-                      <div>
-                        <div className={styles.composeSectionTitle}>Pièces jointes</div>
-                        <div className={styles.composeSectionHint}>Ajoutez des fichiers si nécessaire.</div>
-                      </div>
-                    </div>
-                    <input
-                      id={fileInputId}
-                      type="file"
-                      multiple
-                      onChange={async (e) => {
-                        const input = e.currentTarget;
-                        const next = Array.from<File>(input.files || []);
-                        setFiles(next);
-                        if (!next.length) return;
-                        try {
-                          const uploaded = await uploadComposeFiles(next);
-                          setComposeAttachments((prev) => {
-                            const merged = [...prev];
-                            for (const item of uploaded) {
-                              const exists = merged.some((x) => x.bucket === item.bucket && x.path === item.path);
-                              if (!exists) merged.push(item);
-                            }
-                            return merged;
-                          });
-                        } catch (err) {
-                          console.error("Attachment upload failed", err);
-                          setToast("Impossible de préparer cette pièce jointe. Veuillez vérifier son format ou sa taille.");
-                        } finally {
-                          input.value = "";
-                          setFiles([]);
-                        }
-                      }}
-                      className={styles.hiddenFileInput}
-                    />
-
-                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      <label htmlFor={fileInputId} className={styles.btnAttach}>
-                        📎 Joindre
-                      </label>
-                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                        {composeAttachments.length > 0 ? `${composeAttachments.length} fichier(s)` : attachBusy ? "Préparation des fichiers..." : "Aucun fichier"}
-                      </span>
-                    </div>
-
-                    {composeAttachments.length > 0 ? (
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {composeAttachments.map((f, idx) => (
-                          <span key={`${f.bucket}:${f.path}:${idx}`} className={styles.fileChip} title={f.name}>
-                            {f.name}
-                            <button
-                              type="button"
-                              className={styles.fileChipRemove}
-                              onClick={() => setComposeAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                              aria-label={`Retirer ${f.name}`}
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </section>
                 </div>
               </div>
 
+              <input
+                id={fileInputId}
+                type="file"
+                multiple
+                onChange={handleAttachmentInputChange}
+                className={styles.hiddenFileInput}
+              />
+
               <div className={`${styles.modalFooter} ${styles.composeModalFooter}`}>
-                <button className={`${styles.btnGhost} ${styles.composeDraftBtn}`} onClick={saveDraft} type="button" disabled={sendBusy}>
-                  💾 Sauvegarder brouillon
-                </button>
-                <button className={`${styles.btnPrimary} ${styles.composeSendBtn}`} onClick={doSend} type="button" disabled={sendBusy}>
-                  {sendBusy ? "Envoi…" : "Envoyer"}
-                </button>
+                <div className={styles.composeAttachmentDock}>
+                  <div className={styles.composeAttachmentTitle}>
+                    <span className={styles.composeSectionIcon}>📎</span>
+                    <span>Pièces jointes</span>
+                  </div>
+                  <label htmlFor={fileInputId} className={styles.btnAttach}>
+                    Joindre
+                  </label>
+                  <span className={styles.composeAttachmentStatus}>
+                    {composeAttachments.length > 0 ? `${composeAttachments.length} fichier${composeAttachments.length > 1 ? "s" : ""}` : attachBusy ? "Préparation…" : "Aucun fichier"}
+                  </span>
+                  {composeAttachments.length > 0 ? (
+                    <div className={styles.composeAttachmentChips} aria-label="Pièces jointes ajoutées">
+                      {composeAttachments.map((f, idx) => (
+                        <span key={`${f.bucket}:${f.path}:${idx}`} className={styles.fileChip} title={f.name}>
+                          {f.name}
+                          <button
+                            type="button"
+                            className={styles.fileChipRemove}
+                            onClick={() => setComposeAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                            aria-label={`Retirer ${f.name}`}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className={styles.composeFooterActions}>
+                  <button className={`${styles.btnGhost} ${styles.composeDraftBtn}`} onClick={saveDraft} type="button" disabled={sendBusy}>
+                    💾 Sauvegarder brouillon
+                  </button>
+                  <button className={`${styles.btnPrimary} ${styles.composeSendBtn}`} onClick={doSend} type="button" disabled={sendBusy}>
+                    {sendBusy ? "Envoi…" : "Envoyer"}
+                  </button>
+                </div>
               </div>
 
               {toast ? (

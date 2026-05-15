@@ -221,6 +221,10 @@
   color: rgba(255,255,255,0.85);
   font-size: 12px;
   max-width: 100%;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fileChipRemove {
@@ -3465,11 +3469,30 @@
   min-width: 0;
 }
 
-.composeSectionTitle {
+.composeSectionTitle,
+.composeSignaturePreviewTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   color: rgba(255,255,255,0.94);
   font-size: 13px;
   font-weight: 950;
   line-height: 1.2;
+}
+
+.composeSectionIcon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 9px;
+  background: linear-gradient(135deg, rgba(56,189,248,0.16), rgba(167,139,250,0.14), rgba(244,114,182,0.10));
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  font-size: 12px;
+  line-height: 1;
 }
 
 .composeSectionHint {
@@ -3509,13 +3532,6 @@
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
-}
-
-.composeSignaturePreviewTitle {
-  color: rgba(255,255,255,0.94);
-  font-size: 13px;
-  font-weight: 950;
-  line-height: 1.2;
 }
 
 .composeSignaturePreviewHint {
@@ -3571,11 +3587,70 @@
 }
 
 .composeModalFooter {
-  padding: 14px 20px;
-  background: rgba(4,7,18,0.72);
+  padding: 12px 20px;
+  background: rgba(4,7,18,0.82);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid rgba(255,255,255,0.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 78px;
+}
+
+.composeAttachmentDock {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.composeAttachmentTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255,255,255,0.92);
+  font-size: 13px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.composeAttachmentStatus {
+  color: rgba(255,255,255,0.62);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.composeAttachmentChips {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  padding: 3px 2px;
+}
+
+.composeAttachmentChips .fileChip {
+  flex: 0 0 auto;
+  max-width: min(260px, 38vw);
+  overflow: hidden;
+}
+
+.composeAttachmentChips .fileChip > :first-child {
+  min-width: 0;
+}
+
+.composeFooterActions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .composeDraftBtn {
@@ -3668,6 +3743,32 @@
 
   .composeModalFooter {
     padding: 10px 12px;
+    gap: 10px;
+    align-items: stretch;
+    flex-direction: column;
+    min-height: 132px;
+  }
+
+  .composeAttachmentDock {
+    grid-template-columns: auto auto minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .composeAttachmentTitle {
+    grid-column: 1 / -1;
+  }
+
+  .composeAttachmentChips {
+    grid-column: 1 / -1;
+    max-width: 100%;
+  }
+
+  .composeAttachmentChips .fileChip {
+    max-width: 78vw;
+  }
+
+  .composeFooterActions {
+    width: 100%;
     gap: 8px;
   }
 
