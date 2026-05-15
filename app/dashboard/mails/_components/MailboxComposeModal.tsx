@@ -151,6 +151,19 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     if (confirmed) onClose();
   }, [hasComposeWork, onClose]);
 
+  const [crmFiltersOpen, setCrmFiltersOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!crmPickerOpen) setCrmFiltersOpen(false);
+  }, [crmPickerOpen]);
+
+  const activeCrmFiltersCount = React.useMemo(() => {
+    let count = 0;
+    if ((crmCategory ?? "all") !== "all") count += 1;
+    if ((crmContactType ?? "all") !== "all") count += 1;
+    if (crmImportantOnly) count += 1;
+    return count;
+  }, [crmCategory, crmContactType, crmImportantOnly]);
 
   if (!open) return null;
 
@@ -332,120 +345,56 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                         <span className={styles.badge} style={{ opacity: 0.9 }}>
                           {selectedCrmCount} sélectionné{selectedCrmCount > 1 ? "s" : ""}
                         </span>
+                        <span className={`${styles.badge} ${styles.crmPickerCountBadge}`}>
+                          {filteredContacts.length} contact{filteredContacts.length > 1 ? "s" : ""}
+                        </span>
                       </span>
                       <span style={{ opacity: 0.85 }}>{crmPickerOpen ? "▴" : "▾"}</span>
                     </button>
 
                     {crmPickerOpen ? (
-                      <div
-                        style={{
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          borderRadius: 14,
-                          padding: 10,
-                          background: "rgba(0,0,0,0.16)",
-                        }}
-                      >
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
-                          
-                          <div className={styles.crmFilterRow}>
-                            <select
-                              value={crmCategory ?? "all"}
-                              onChange={(e) => setCrmCategory(e.target.value as any)}
-                              className={styles.crmSelect}
-                              title="Filtrer par catégorie"
-                            >
-                              <option value="all">Catégories</option>
-                              <option value="particulier">Particuliers</option>
-                              <option value="professionnel">Professionnels</option>
-                              <option value="collectivite_publique">Collectivités</option>
-                            </select>
-
-                            <select
-                              value={crmContactType ?? "all"}
-                              onChange={(e) => setCrmContactType(e.target.value as any)}
-                              className={styles.crmSelect}
-                              title="Filtrer par type"
-                            >
-                              <option value="all">Types</option>
-                              <option value="client">Clients</option>
-                              <option value="prospect">Prospects</option>
-                              <option value="fournisseur">Fournisseurs</option>
-                              <option value="partenaire">Partenaires</option>
-                              <option value="autre">Autres</option>
-                            </select>
-
-                            <button
-                              type="button"
-                              className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.crmIconBtn}`}
-                              onClick={() => {
-                                setCrmSearchOpen((v) => !v);
-                                // focus next tick (after render)
-                                setTimeout(() => crmSearchRef.current?.focus(), 0);
-                              }}
-                              title="Rechercher"
-                              aria-label="Rechercher"
-                            >
-                              <span className={styles.iconWrap}>
-                                🔎
-                                {!crmSearchOpen && crmFilter.trim() ? <span className={styles.searchDot} /> : null}
-                              </span>
-                            </button>
-
-                            <button
-                              type="button"
-                              className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.crmIconBtn} ${styles.starToggleBtn} ${
-                                crmImportantOnly ? styles.starActive : styles.starInactive
-                              }`}
-                              onClick={() => setCrmImportantOnly((v) => !v)}
-                              title={crmImportantOnly ? "Important uniquement" : "Tous les contacts"}
-                              aria-label="Important"
-                            >
-                              {crmImportantOnly ? "★" : "☆"}
-                            </button>
-                          </div>
-
-                          {crmSearchOpen ? (
-                            <div className={styles.crmSearchRow}>
-                              <input
-                                ref={crmSearchRef}
-                                value={crmFilter}
-                                onChange={(e) => setCrmFilter(e.target.value)}
-                                placeholder="Rechercher…"
-                                className={styles.crmSearchInput}
-                              />
-                              {crmFilter.trim() ? (
-                                <button
-                                  type="button"
-                                  className={styles.searchClearBtn}
-                                  onClick={() => {
-                                    setCrmFilter("");
-                                    setTimeout(() => crmSearchRef.current?.focus(), 0);
-                                  }}
-                                  aria-label="Effacer la recherche"
-                                  title="Effacer"
-                                >
-                                  ×
-                                </button>
-                              ) : null}
+                      <div className={styles.crmPickerPanel}>
+                        <div className={styles.crmCompactToolbar}>
+                          <div className={styles.crmSearchBox}>
+                            <span className={styles.crmSearchPrefix} aria-hidden>🔎</span>
+                            <input
+                              ref={crmSearchRef}
+                              value={crmFilter}
+                              onChange={(e) => setCrmFilter(e.target.value)}
+                              onFocus={() => setCrmSearchOpen(true)}
+                              placeholder="Rechercher un contact…"
+                              className={styles.crmSearchInlineInput}
+                            />
+                            {crmFilter.trim() ? (
                               <button
                                 type="button"
-                                className={styles.btnGhost}
-                                onClick={() => setCrmSearchOpen(false)}
-                                style={{ padding: "8px 10px" }}
-                                aria-label="Fermer la recherche"
-                                title="Fermer"
+                                className={styles.crmSearchClearInline}
+                                onClick={() => {
+                                  setCrmFilter("");
+                                  setTimeout(() => crmSearchRef.current?.focus(), 0);
+                                }}
+                                aria-label="Effacer la recherche"
+                                title="Effacer"
                               >
-                                ✕
+                                ×
                               </button>
-                            </div>
-                          ) : null}
+                            ) : null}
+                          </div>
 
-                        </div>
-
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
                           <button
                             type="button"
-                            className={styles.btnGhost}
+                            className={`${styles.btnGhost} ${styles.crmToolbarBtn} ${activeCrmFiltersCount > 0 ? styles.crmToolbarBtnActive : ""}`}
+                            onClick={() => setCrmFiltersOpen((v) => !v)}
+                            aria-expanded={crmFiltersOpen}
+                            title="Afficher les filtres"
+                          >
+                            <span aria-hidden>⚙️</span>
+                            <span>Filtres{activeCrmFiltersCount > 0 ? ` (${activeCrmFiltersCount})` : ""}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className={`${styles.btnGhost} ${styles.crmToolbarBtn}`}
                             onClick={() => {
                               const current = normalizeEmails(to);
                               const setLower = new Set(current.map((e) => e.toLowerCase()));
@@ -463,12 +412,14 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                               setTo(next.join(", "));
                             }}
                             disabled={crmLoading || filteredContacts.length === 0}
+                            title="Sélectionner tous les contacts affichés"
                           >
-                            Tout sélectionner
+                            Tout
                           </button>
+
                           <button
                             type="button"
-                            className={styles.btnGhost}
+                            className={`${styles.btnGhost} ${styles.crmToolbarBtn}`}
                             onClick={() => {
                               const removeSet = new Set(
                                 filteredContacts
@@ -481,29 +432,66 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                               setTo(next.join(", "));
                             }}
                             disabled={crmLoading || filteredContacts.length === 0}
+                            title="Désélectionner tous les contacts affichés"
                           >
-                            Tout désélectionner
+                            Aucun
                           </button>
-                          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
-                            {filteredContacts.length} contact{filteredContacts.length > 1 ? "s" : ""} (filtrés)
+
+                          <div className={styles.crmToolbarCount}>
+                            {filteredContacts.length} contact{filteredContacts.length > 1 ? "s" : ""}
                           </div>
                         </div>
 
-                        <div
-                          style={{
-                            marginTop: 10,
-                            border: "1px solid rgba(255,255,255,0.10)",
-                            borderRadius: 12,
-                            padding: 8,
-                            maxHeight: 190,
-                            overflow: "auto",
-                          }}
-                        >
+                        {crmFiltersOpen ? (
+                          <div className={styles.crmFiltersPanel}>
+                            <label className={styles.crmFilterField}>
+                              <span>Catégorie</span>
+                              <select
+                                value={crmCategory ?? "all"}
+                                onChange={(e) => setCrmCategory(e.target.value as any)}
+                                className={styles.crmSelect}
+                              >
+                                <option value="all">Toutes</option>
+                                <option value="particulier">Particuliers</option>
+                                <option value="professionnel">Professionnels</option>
+                                <option value="collectivite_publique">Collectivités</option>
+                              </select>
+                            </label>
+
+                            <label className={styles.crmFilterField}>
+                              <span>Type</span>
+                              <select
+                                value={crmContactType ?? "all"}
+                                onChange={(e) => setCrmContactType(e.target.value as any)}
+                                className={styles.crmSelect}
+                              >
+                                <option value="all">Tous</option>
+                                <option value="client">Clients</option>
+                                <option value="prospect">Prospects</option>
+                                <option value="fournisseur">Fournisseurs</option>
+                                <option value="partenaire">Partenaires</option>
+                                <option value="autre">Autres</option>
+                              </select>
+                            </label>
+
+                            <button
+                              type="button"
+                              className={`${styles.crmImportantToggle} ${crmImportantOnly ? styles.crmImportantToggleActive : ""}`}
+                              onClick={() => setCrmImportantOnly((v) => !v)}
+                              aria-pressed={crmImportantOnly}
+                            >
+                              <span aria-hidden>{crmImportantOnly ? "★" : "☆"}</span>
+                              <span>Important uniquement</span>
+                            </button>
+                          </div>
+                        ) : null}
+
+                        <div className={styles.crmContactsList}>
                           {crmLoading ? (
-                            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)" }}>Chargement des contacts…</div>
+                            <div className={styles.crmStateText}>Chargement des contacts…</div>
                           ) : crmError ? (
                             <div style={{ display: "grid", gap: 8 }}>
-                              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)" }}>{crmError}</div>
+                              <div className={styles.crmStateText}>{crmError}</div>
                               <button
                                 className={styles.btnPrimary}
                                 type="button"
@@ -514,26 +502,16 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                               </button>
                             </div>
                           ) : filteredContacts.length === 0 ? (
-                            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)" }}>Aucun contact.</div>
+                            <div className={styles.crmStateText}>Aucun contact.</div>
                           ) : (
-                            <div style={{ display: "grid", gap: 6 }}>
+                            <div className={styles.crmContactsGrid}>
                               {filteredContacts.slice(0, 200).map((c) => {
                                 const email = c.email ? String(c.email) : "";
                                 const checked = email ? selectedToSet.has(email.toLowerCase()) : false;
                                 return (
                                   <label
                                     key={c.id}
-                                    style={{
-                                      display: "flex",
-                                      gap: 10,
-                                      alignItems: "center",
-                                      padding: "8px 10px",
-                                      borderRadius: 12,
-                                      border: "1px solid rgba(255,255,255,0.10)",
-                                      background: checked ? "rgba(56,189,248,0.10)" : "rgba(0,0,0,0.10)",
-                                      cursor: email ? "pointer" : "not-allowed",
-                                      opacity: email ? 1 : 0.6,
-                                    }}
+                                    className={`${styles.crmContactRow} ${checked ? styles.crmContactRowChecked : ""}`}
                                   >
                                     <input
                                       type="checkbox"
@@ -544,12 +522,12 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                                         toggleEmailInTo(email);
                                       }}
                                     />
-                                    <div style={{ display: "grid", lineHeight: 1.15 }}>
-                                      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.92)", fontWeight: 700 }}>
+                                    <div className={styles.crmContactText}>
+                                      <div className={styles.crmContactName}>
                                         {c.full_name || "(Sans nom)"}
-                                        {c.important ? <span style={{ marginLeft: 8, opacity: 0.75 }}>★</span> : null}
+                                        {c.important ? <span className={styles.crmImportantMark}>★</span> : null}
                                       </div>
-                                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.70)" }}>{email}</div>
+                                      <div className={styles.crmContactEmail}>{email}</div>
                                     </div>
                                   </label>
                                 );
