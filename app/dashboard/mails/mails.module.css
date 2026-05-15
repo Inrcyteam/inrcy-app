@@ -3956,7 +3956,7 @@
 
 .crmFiltersPanel{
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(92px, 0.55fr) auto;
   align-items: end;
   gap: 8px;
   padding: 8px;
@@ -3974,11 +3974,25 @@
   color: rgba(255,255,255,0.70);
 }
 
-.crmFilterField .crmSelect{
+.crmFilterField .crmSelect,
+.crmFilterField .crmInput{
   width: 100%;
   max-width: none;
   height: 38px;
   font-size: 13px;
+}
+
+.crmFilterField .crmInput{
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 12px;
+  background: rgba(0,0,0,0.18);
+  color: rgba(255,255,255,0.92);
+  padding: 0 12px;
+  outline: none;
+}
+
+.crmFilterField .crmInput::placeholder{
+  color: rgba(255,255,255,0.42);
 }
 
 .crmImportantToggle{
@@ -4103,6 +4117,7 @@
     gap: 7px;
   }
   .crmFilterField .crmSelect,
+  .crmFilterField .crmInput,
   .crmImportantToggle{
     height: 36px;
   }

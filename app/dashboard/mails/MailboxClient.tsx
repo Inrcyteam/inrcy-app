@@ -294,6 +294,8 @@ export default function MailboxClient() {
     email: string | null;
     category: "particulier" | "professionnel" | "collectivite_publique" | null;
     contact_type: "client" | "prospect" | "fournisseur" | "partenaire" | "autre" | null;
+    postal_code: string | null;
+    city: string | null;
     important: boolean;
   };
 
@@ -306,6 +308,7 @@ export default function MailboxClient() {
   const [crmPickerOpen, setCrmPickerOpen] = useState(false);
   const [crmCategory, setCrmCategory] = useState<"all" | CrmContact["category"]>("all");
   const [crmContactType, setCrmContactType] = useState<"all" | CrmContact["contact_type"]>("all");
+  const [crmDepartment, setCrmDepartment] = useState("");
   const [crmImportantOnly, setCrmImportantOnly] = useState(false);
 
   // Used to trigger the hidden file input with a nice button
@@ -354,6 +357,21 @@ export default function MailboxClient() {
   }
 
 
+  function sanitizeCrmDepartmentFilter(value: string) {
+    return String(value || "")
+      .trim()
+      .replace(/\s+/g, "")
+      .toUpperCase()
+      .replace(/[^0-9AB]/g, "")
+      .slice(0, 3);
+  }
+
+  function contactDepartment(postalCode: string | null) {
+    const cleaned = sanitizeCrmDepartmentFilter(postalCode || "");
+    if (/^(97|98)\d/.test(cleaned)) return cleaned.slice(0, 3);
+    return cleaned.slice(0, 2);
+  }
+
   // Recherche dans l'historique iNr'Send
   const [historyQuery, setHistoryQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -361,15 +379,17 @@ export default function MailboxClient() {
 
   const filteredContacts = useMemo(() => {
     const q = crmFilter.trim().toLowerCase();
+    const department = sanitizeCrmDepartmentFilter(crmDepartment);
     return crmContacts.filter((c) => {
       if (crmImportantOnly && !c.important) return false;
       if (crmCategory !== "all" && c.category !== crmCategory) return false;
       if (crmContactType !== "all" && c.contact_type !== crmContactType) return false;
+      if (department && !contactDepartment(c.postal_code).startsWith(department)) return false;
       if (!q) return true;
-      const hay = `${c.full_name || ""} ${c.email || ""}`.toLowerCase();
+      const hay = `${c.full_name || ""} ${c.email || ""} ${c.postal_code || ""} ${c.city || ""}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [crmContacts, crmFilter, crmImportantOnly, crmCategory, crmContactType]);
+  }, [crmContacts, crmFilter, crmImportantOnly, crmCategory, crmContactType, crmDepartment]);
 
   const selectedToSet = useMemo(() => {
     return new Set(normalizeEmails(to).map((e) => e.toLowerCase()));
@@ -1391,6 +1411,8 @@ export default function MailboxClient() {
           email: c.email || null,
           category: (c.category as any) ?? null,
           contact_type: (c.contact_type as any) ?? null,
+          postal_code: c.postal_code || null,
+          city: c.city || null,
           important: Boolean(c.important),
         };
       });
@@ -2287,6 +2309,8 @@ async function deleteDraftPermanently(id: string) {
           setCrmCategory={setCrmCategory}
           crmContactType={crmContactType}
           setCrmContactType={setCrmContactType}
+          crmDepartment={crmDepartment}
+          setCrmDepartment={(value) => setCrmDepartment(sanitizeCrmDepartmentFilter(typeof value === "function" ? value(crmDepartment) : value))}
           crmImportantOnly={crmImportantOnly}
           setCrmImportantOnly={setCrmImportantOnly}
           selectedCrmCount={selectedCrmCount}

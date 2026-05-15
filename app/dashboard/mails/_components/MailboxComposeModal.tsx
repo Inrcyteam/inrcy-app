@@ -38,6 +38,8 @@ type MailboxComposeModalProps = {
   setCrmCategory: React.Dispatch<React.SetStateAction<any>>;
   crmContactType: any;
   setCrmContactType: React.Dispatch<React.SetStateAction<any>>;
+  crmDepartment: string;
+  setCrmDepartment: React.Dispatch<React.SetStateAction<string>>;
   crmImportantOnly: boolean;
   setCrmImportantOnly: React.Dispatch<React.SetStateAction<boolean>>;
   selectedCrmCount: number;
@@ -96,6 +98,8 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     setCrmCategory,
     crmContactType,
     setCrmContactType,
+    crmDepartment,
+    setCrmDepartment,
     crmImportantOnly,
     setCrmImportantOnly,
     selectedCrmCount,
@@ -161,9 +165,10 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     let count = 0;
     if ((crmCategory ?? "all") !== "all") count += 1;
     if ((crmContactType ?? "all") !== "all") count += 1;
+    if (crmDepartment.trim()) count += 1;
     if (crmImportantOnly) count += 1;
     return count;
-  }, [crmCategory, crmContactType, crmImportantOnly]);
+  }, [crmCategory, crmContactType, crmDepartment, crmImportantOnly]);
 
   if (!open) return null;
 
@@ -472,6 +477,19 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                                 <option value="partenaire">Partenaires</option>
                                 <option value="autre">Autres</option>
                               </select>
+                            </label>
+
+                            <label className={styles.crmFilterField}>
+                              <span>Département</span>
+                              <input
+                                value={crmDepartment}
+                                onChange={(e) => setCrmDepartment(e.target.value)}
+                                className={styles.crmInput}
+                                inputMode="text"
+                                maxLength={3}
+                                placeholder="62"
+                                aria-label="Filtrer par département"
+                              />
                             </label>
 
                             <button
