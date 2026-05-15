@@ -220,7 +220,7 @@ export function useSiteWebChannel({
     try {
       parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
     } catch {
-      setSiteWebSettingsError("JSON invalide. Vérifie la syntaxe (guillemets, virgules, accolades…).");
+      setSiteWebSettingsError("JSON invalide. Vérifiez la syntaxe (guillemets, virgules, accolades…).");
       return;
     }
 
@@ -338,7 +338,7 @@ export function useSiteWebChannel({
     try {
       parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
     } catch {
-      setSiteWebSettingsError("JSON invalide. Vérifie la syntaxe (guillemets, virgules, accolades…).");
+      setSiteWebSettingsError("JSON invalide. Vérifiez la syntaxe (guillemets, virgules, accolades…).");
       return;
     }
 

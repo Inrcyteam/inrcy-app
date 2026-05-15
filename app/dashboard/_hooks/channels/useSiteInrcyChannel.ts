@@ -128,7 +128,7 @@ export function useSiteInrcyChannel({
     try {
       parsed = siteInrcySettingsText?.trim() ? JSON.parse(siteInrcySettingsText) : {};
     } catch {
-      setSiteInrcySettingsError("JSON invalide. Vérifie la syntaxe (guillemets, virgules, accolades…)." );
+      setSiteInrcySettingsError("JSON invalide. Vérifiez la syntaxe (guillemets, virgules, accolades…)." );
       return;
     }
 

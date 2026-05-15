@@ -184,7 +184,7 @@ function pickGa4Match(domain: string, candidates: Array<{ propertyId: string; me
     return {
       ok: false as const,
       reason:
-        "Plusieurs propriétés GA4 correspondent à ce domaine. Pour éviter une incohérence, l'application bloque la connexion. (Nettoie / unifie les propriétés GA4 ou contacte le support.)",
+        "Plusieurs propriétés GA4 correspondent à ce domaine. Pour éviter une incohérence, l'application bloque la connexion. (Nettoyez / unifiez les propriétés GA4 ou contactez le support.)",
     };
   }
   const c = uniqueCandidates[0]!;

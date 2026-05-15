@@ -218,7 +218,7 @@ export function useLinkedinChannel({
       if (!cleanOrgs.length) {
         setLinkedinOrganizationPickerOpen(false);
         setPanelError(
-          "Aucune page LinkedIn administrée trouvée. Vérifie les droits OAuth puis reconnecte LinkedIn.",
+          "Aucune page LinkedIn administrée trouvée. Vérifiez les droits OAuth puis reconnectez LinkedIn.",
           "Aucune page LinkedIn administrée trouvée.",
           4200,
         );
@@ -316,7 +316,7 @@ export function useLinkedinChannel({
         raw.startsWith("https://www.linkedin.com/company/") ||
         raw.startsWith("https://linkedin.com/company/");
       if (!ok) {
-        setPanelError("Lien LinkedIn invalide.", "Lien LinkedIn invalide. Exemple : https://www.linkedin.com/in/ton-profil ou https://www.linkedin.com/company/ta-page", 3600);
+        setPanelError("Lien LinkedIn invalide.", "Lien LinkedIn invalide. Exemple : https://www.linkedin.com/in/votre-profil ou https://www.linkedin.com/company/votre-page", 3600);
         return;
       }
     }

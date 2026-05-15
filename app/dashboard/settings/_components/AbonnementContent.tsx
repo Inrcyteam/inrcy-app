@@ -503,7 +503,7 @@ useEffect(() => {
       <div style={card}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Mon abonnement</h2>
         <p style={{ margin: "8px 0 0", opacity: 0.8 }}>
-          Ton abonnement n’est pas encore renseigné. Contacte iNrCy si besoin.
+          Votre abonnement n’est pas encore renseigné. Contactez iNrCy si besoin.
         </p>
       </div>
     );
@@ -834,7 +834,7 @@ useEffect(() => {
           </>
         ) : (
           <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
-            Ton abonnement est actuellement {computed.statusText.toLowerCase()}.
+            Votre abonnement est actuellement {computed.statusText.toLowerCase()}.
           </p>
         )}
 

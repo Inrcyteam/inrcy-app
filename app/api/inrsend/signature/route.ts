@@ -4,12 +4,27 @@ import { asRecord, asString } from "@/lib/tsSafe";
 import { DEFAULT_INRSEND_SIGNATURE_TEMPLATE, buildInrSendSignature, getInrSendSignatureSettings, type SupabaseLike } from "@/lib/inrsendSignature";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
-export async function GET() {
+export async function GET(req: Request) {
   const { supabase, user, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const settings = await getInrSendSignatureSettings(supabase as SupabaseLike, user.id);
-  const rendered = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId: user.id });
+
+  const url = new URL(req.url);
+  const accountId = url.searchParams.get("accountId")?.trim() || "";
+  let account: unknown = undefined;
+  if (accountId) {
+    const { data: accountRow } = await (supabase as any)
+      .from("integrations")
+      .select("id,provider,account_email,settings,status")
+      .eq("user_id", user.id)
+      .eq("category", "mail")
+      .eq("id", accountId)
+      .maybeSingle();
+    account = accountRow || undefined;
+  }
+
+  const rendered = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId: user.id, account });
 
   return NextResponse.json({
     enabled: settings.enabled,

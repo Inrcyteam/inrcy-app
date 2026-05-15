@@ -569,7 +569,7 @@ export default function MailboxClient() {
       lastAttachKeyRef.current = "";
       setDetailsOpen(false);
       setComposeOpen(true);
-      setToast(mode === "resend" ? "Campagne prête à renvoyer : vérifie puis envoie." : "Campagne prête à réutiliser : choisis les nouveaux destinataires.");
+      setToast(mode === "resend" ? "Campagne prête à renvoyer : vérifiez puis envoyez." : "Campagne prête à réutiliser : choisissez les nouveaux destinataires.");
     } catch (error) {
       console.error(error);
       setToast("Impossible de préparer cette campagne pour le moment.");
@@ -603,9 +603,12 @@ export default function MailboxClient() {
     setFilterAccountId((prev) => (prev && accountIds.has(prev) ? prev : ""));
   }
 
-  async function loadSignature() {
+  async function loadSignature(accountId?: string) {
     try {
-      const res = await fetch("/api/inrsend/signature", { cache: "no-store" });
+      const params = new URLSearchParams();
+      if (accountId) params.set("accountId", accountId);
+      const url = params.toString() ? `/api/inrsend/signature?${params.toString()}` : "/api/inrsend/signature";
+      const res = await fetch(url, { cache: "no-store" });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) return;
       setSignatureEnabled(j?.enabled !== false);
@@ -986,7 +989,7 @@ export default function MailboxClient() {
       return {
         tone: "warning" as const,
         title: `Campagne multi-destinataires : ${count} destinataires`,
-        text: "Vérifie l’objet, la boîte d’envoi et le segment sélectionné avant de lancer la campagne.",
+        text: "Vérifiez l’objet, la boîte d’envoi et le segment sélectionné avant de lancer la campagne.",
       };
     }
     if (count > 1) {
@@ -1039,7 +1042,13 @@ export default function MailboxClient() {
   // initial
   useEffect(() => {
     void loadAccounts();
+    void loadSignature();
   }, []);
+
+  useEffect(() => {
+    if (!composeOpen) return;
+    void loadSignature(selectedAccountId || undefined);
+  }, [composeOpen, selectedAccountId]);
 
   // refresh des changements de filtres / recherche
   useEffect(() => {
@@ -2281,6 +2290,7 @@ async function deleteDraftPermanently(id: string) {
           setFiles={setFiles}
           uploadComposeFiles={uploadComposeFiles}
           signatureEnabled={signatureEnabled}
+          signaturePreview={signaturePreview}
           signatureImageUrl={signatureImageUrl}
           signatureImageWidth={signatureImageWidth}
           saveDraft={saveDraft}

@@ -3340,3 +3340,348 @@
     justify-content: center;
   }
 }
+
+/* =========================
+   COMPOSE PREMIUM REDESIGN
+   ========================= */
+.composeModalCard {
+  width: min(1080px, calc(100vw - 32px));
+  height: min(860px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px);
+  border-radius: 24px;
+  border-color: rgba(255,255,255,0.18);
+  background:
+    radial-gradient(720px 360px at 12% 0%, rgba(56,189,248,0.13), transparent 62%),
+    radial-gradient(620px 320px at 96% 4%, rgba(167,139,250,0.16), transparent 64%),
+    radial-gradient(560px 300px at 50% 100%, rgba(244,114,182,0.10), transparent 64%),
+    rgba(8, 10, 24, 0.96);
+  box-shadow: 0 30px 90px rgba(0,0,0,0.56), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.composeModalHeader {
+  padding: 18px 20px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025));
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+
+.composeHeaderTitleWrap {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.composeTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.composeTitleIcon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
+  background: linear-gradient(135deg, rgba(56,189,248,0.20), rgba(167,139,250,0.20), rgba(244,114,182,0.14));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+  flex: 0 0 auto;
+}
+
+.composeTitleText {
+  font-size: clamp(18px, 2vw, 22px);
+  line-height: 1.1;
+  font-weight: 950;
+  letter-spacing: -0.25px;
+  color: rgba(255,255,255,0.98);
+  min-width: 0;
+}
+
+.composeTypeBadge,
+.composeProviderBadge,
+.composeCountBadge {
+  border-color: rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.07);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+  white-space: nowrap;
+}
+
+.composeSubtitle {
+  color: rgba(255,255,255,0.62);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.composeCloseBtn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 16px;
+  justify-content: center;
+  font-size: 18px;
+  flex: 0 0 auto;
+}
+
+.composeModalBody {
+  padding: 18px 20px 20px;
+  scrollbar-gutter: stable;
+}
+
+.composeFormStack {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.composeSection {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 20px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.052), rgba(255,255,255,0.028)),
+    rgba(4,7,18,0.32);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
+}
+
+.composeMessageSection {
+  background:
+    radial-gradient(520px 220px at 0% 0%, rgba(56,189,248,0.08), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.026)),
+    rgba(4,7,18,0.38);
+}
+
+.composeSectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.composeSectionTitle {
+  color: rgba(255,255,255,0.94);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.composeSectionHint {
+  margin-top: 3px;
+  color: rgba(255,255,255,0.55);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.composeSelect {
+  min-width: 0;
+  padding-right: 38px !important;
+}
+
+.composeWarning {
+  color: rgba(251,191,36,0.96);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+
+.composeSignaturePreview {
+  display: grid;
+  gap: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  background:
+    radial-gradient(420px 180px at 0% 0%, rgba(56,189,248,0.10), transparent 64%),
+    linear-gradient(180deg, rgba(255,255,255,0.052), rgba(255,255,255,0.026)),
+    rgba(6, 11, 28, 0.56);
+  padding: 12px;
+}
+
+.composeSignaturePreviewHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.composeSignaturePreviewTitle {
+  color: rgba(255,255,255,0.94);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.composeSignaturePreviewHint {
+  margin-top: 3px;
+  color: rgba(255,255,255,0.58);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.composeSignatureOn {
+  border-color: rgba(52,211,153,0.30);
+  background: rgba(16,185,129,0.13);
+  color: rgba(209,250,229,0.96);
+}
+
+.composeSignatureOff {
+  border-color: rgba(251,113,133,0.24);
+  background: rgba(244,63,94,0.11);
+  color: rgba(255,228,230,0.92);
+}
+
+.composeSignaturePreviewBox {
+  border-radius: 15px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(2, 6, 23, 0.42);
+  padding: 12px;
+  min-width: 0;
+}
+
+.composeSignaturePreviewText {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: rgba(255,255,255,0.86);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.composeSignatureImageWrap {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.composeSignaturePreviewEmpty {
+  border-radius: 15px;
+  border: 1px dashed rgba(255,255,255,0.12);
+  background: rgba(2, 6, 23, 0.26);
+  padding: 12px;
+  color: rgba(255,255,255,0.62);
+  font-size: 13px;
+}
+
+.composeModalFooter {
+  padding: 14px 20px;
+  background: rgba(4,7,18,0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255,255,255,0.12);
+}
+
+.composeDraftBtn {
+  border-radius: 16px;
+  padding: 12px 16px;
+  font-weight: 850;
+}
+
+.composeSendBtn {
+  border-radius: 16px;
+  padding: 12px 18px;
+  font-weight: 950;
+  background: linear-gradient(135deg, #ffffff, rgba(255,255,255,0.86));
+}
+
+.composeToast {
+  padding: 10px 20px;
+  color: rgba(255,255,255,0.76);
+  font-size: 12px;
+  background: rgba(4,7,18,0.72);
+}
+
+@media (max-width: 640px) {
+  .composeModalCard {
+    width: calc(100vw - 16px);
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: 22px;
+  }
+
+  .composeModalHeader {
+    padding: 12px 12px;
+  }
+
+  .composeTitleIcon {
+    width: 30px;
+    height: 30px;
+    border-radius: 12px;
+  }
+
+  .composeTitleText {
+    font-size: 18px;
+  }
+
+  .composeSubtitle {
+    display: none;
+  }
+
+  .composeCloseBtn {
+    width: 40px;
+    height: 40px;
+    border-radius: 14px;
+  }
+
+  .composeModalBody {
+    padding: 12px;
+  }
+
+  .composeFormStack {
+    gap: 11px;
+  }
+
+  .composeSection {
+    border-radius: 18px;
+    padding: 11px;
+    gap: 9px;
+  }
+
+  .composeSectionHeader {
+    gap: 8px;
+  }
+
+  .composeSectionHint {
+    display: none;
+  }
+
+  .composeSignaturePreview {
+    border-radius: 16px;
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .composeSignaturePreviewHint {
+    display: none;
+  }
+
+  .composeSignaturePreviewHeader {
+    align-items: center;
+  }
+
+  .composeModalFooter {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .composeDraftBtn,
+  .composeSendBtn {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  .composeDraftBtn {
+    flex: 1 1 auto;
+  }
+
+  .composeSendBtn {
+    flex: 0 0 auto;
+  }
+}

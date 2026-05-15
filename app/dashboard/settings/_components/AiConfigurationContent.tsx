@@ -69,6 +69,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
     width: "100%",
     maxWidth: "100%",
     minWidth: 0,
+    minHeight: 44,
     boxSizing: "border-box",
     fontSize: 16,
     lineHeight: 1.35,
@@ -299,7 +300,6 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
                   <option value="appeler" style={selectOption}>Appeler</option>
                   <option value="message" style={selectOption}>Envoyer un message</option>
                 </select>
-                <span style={hint}>Utilisé comme CTA par défaut lorsque le canal le permet.</span>
               </label>
             </div>
 

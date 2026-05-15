@@ -369,7 +369,7 @@ export function AgendaCalendarCard({
         </div>
 
         <div className={styles.rangeHint}>
-          Vue mensuelle — clique un jour pour voir les détails.
+          Vue mensuelle — cliquez sur un jour pour voir les détails.
         </div>
 
         <div className={styles.headerControls}>

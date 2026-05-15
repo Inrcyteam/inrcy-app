@@ -966,7 +966,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
                       {detailsItem.source === "send_items" && (detailsItem as any).raw?.status === "draft" ? (
                         <div style={{ marginTop: 14, color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
-                          Astuce : clique sur ce brouillon dans la liste pour l’ouvrir en édition.
+                          Astuce : cliquez sur ce brouillon dans la liste pour l’ouvrir en édition.
                         </div>
                       ) : null}
                     </>

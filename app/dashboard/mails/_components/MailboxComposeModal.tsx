@@ -52,6 +52,7 @@ type MailboxComposeModalProps = {
   setFiles: React.Dispatch<React.SetStateAction<File[]>>;
   uploadComposeFiles: (files: File[]) => Promise<any[]>;
   signatureEnabled: boolean;
+  signaturePreview: string;
   signatureImageUrl: string;
   signatureImageWidth: number;
   saveDraft: () => Promise<void>;
@@ -108,6 +109,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     setFiles,
     uploadComposeFiles,
     signatureEnabled,
+    signaturePreview,
     signatureImageUrl,
     signatureImageWidth,
     saveDraft,
@@ -119,37 +121,63 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
 
   if (!open) return null;
 
+  const composeInputStyle: React.CSSProperties = {
+    ...inputStyle,
+    minHeight: 46,
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(7,10,24,0.62)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+    fontSize: 15,
+  };
+
+  const composeEditorStyle: React.CSSProperties = {
+    ...textareaStyle,
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(7,10,24,0.72)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+    padding: "14px 14px",
+  };
+
   return (
           <div className={styles.modalOverlay} onClick={() => onClose()}>
-            <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-              <div className={styles.modalHeader}>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: "rgba(255,255,255,0.95)" }}>
-                    {draftId ? "Éditer le brouillon" : "Nouveau message"}
+            <div className={`${styles.modalCard} ${styles.composeModalCard}`} onClick={(e) => e.stopPropagation()}>
+              <div className={`${styles.modalHeader} ${styles.composeModalHeader}`}>
+                <div className={styles.composeHeaderTitleWrap}>
+                  <div className={styles.composeTitleRow}>
+                    <div className={styles.composeTitleIcon}>✉️</div>
+                    <div className={styles.composeTitleText}>
+                      {draftId ? "Éditer le brouillon" : "Nouveau message"}
+                    </div>
+                    <span className={`${styles.badge} ${styles.composeTypeBadge}`}>Mail</span>
                   </div>
-                  <span className={styles.badge} style={{ opacity: 0.9 }}>Mail</span>
+                  <div className={styles.composeSubtitle}>Préparez un message clair, choisissez vos contacts CRM et envoyez depuis votre boîte connectée.</div>
                 </div>
 
-                <button className={styles.btnGhost} onClick={() => onClose()} type="button">
+                <button className={`${styles.btnGhost} ${styles.composeCloseBtn}`} onClick={() => onClose()} type="button" aria-label="Fermer">
                   ✕
                 </button>
               </div>
 
-              <div className={styles.modalBody}>
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)" }}>Boîte d’envoi :</div>
+              <div className={`${styles.modalBody} ${styles.composeModalBody}`}>
+                <div className={styles.composeFormStack}>
+                  <section className={styles.composeSection}>
+                    <div className={styles.composeSectionHeader}>
+                      <div>
+                        <div className={styles.composeSectionTitle}>Boîte d’envoi</div>
+                        <div className={styles.composeSectionHint}>Compte utilisé pour envoyer le message.</div>
+                      </div>
+                      {selectedAccount ? (
+                        <span className={`${styles.badge} ${styles.composeProviderBadge} ${pill(selectedAccount.provider).cls}`}>{pill(selectedAccount.provider).label}</span>
+                      ) : null}
+                    </div>
+
                     <select
-                      className={styles.selectDark}
+                      className={`${styles.selectDark} ${styles.composeSelect}`}
                       value={selectedAccountId}
                       onChange={(e) => setSelectedAccountId(e.target.value)}
-                      style={{
-                        width: "min(520px, 100%)",
-                        flex: "1 1 280px",
-                        minWidth: 0,
-                        paddingRight: 36,
-                        boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
-                      }}
+                      style={composeInputStyle}
                     >
                       {mailAccounts.map((a) => {
                         const needsUpdate = a.connection_status === "needs_update" || a.requires_update;
@@ -160,18 +188,23 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                         );
                       })}
                     </select>
-                    {selectedAccount ? (
-                      <span className={`${styles.badge} ${pill(selectedAccount.provider).cls}`}>{pill(selectedAccount.provider).label}</span>
-                    ) : null}
-                  </div>
+                  </section>
 
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>À</span>
+                  <section className={styles.composeSection}>
+                    <div className={styles.composeSectionHeader}>
+                      <div>
+                        <div className={styles.composeSectionTitle}>Destinataires</div>
+                        <div className={styles.composeSectionHint}>Saisissez une adresse ou sélectionnez des contacts CRM.</div>
+                      </div>
+                      {selectedCrmCount > 0 ? (
+                        <span className={`${styles.badge} ${styles.composeCountBadge}`}>{selectedCrmCount} sélectionné{selectedCrmCount > 1 ? "s" : ""}</span>
+                      ) : null}
+                    </div>
                     <input
                       value={to}
                       onChange={(e) => setTo(e.target.value)}
                       placeholder="email@exemple.com, autre@exemple.com"
-                      style={inputStyle}
+                      style={composeInputStyle}
                     />
                     {isBulkCampaignCompose ? (
                       <span style={{ fontSize: 12, color: "rgba(125,211,252,0.95)" }}>
@@ -200,7 +233,6 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)", marginTop: 4 }}>{bulkCampaignNotice.text}</div>
                       </div>
                     ) : null}
-                  </label>
 
                   {/* CRM picker (dropdown + checkboxes) */}
                   <div style={{ display: "grid", gap: 8 }}>
@@ -450,17 +482,28 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                       </div>
                     ) : null}
                   </div>
+                  </section>
 
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Objet</span>
-                    <input value={subject} onChange={(e) => setSubject(normalizeMailSubject(e.target.value))} placeholder="Objet" style={inputStyle} />
+                  <section className={styles.composeSection}>
+                    <div className={styles.composeSectionHeader}>
+                      <div>
+                        <div className={styles.composeSectionTitle}>Objet</div>
+                        <div className={styles.composeSectionHint}>Titre visible dans la boîte mail du destinataire.</div>
+                      </div>
+                    </div>
+                    <input value={subject} onChange={(e) => setSubject(normalizeMailSubject(e.target.value))} placeholder="Objet" style={composeInputStyle} />
                     {!subject.trim() ? (
-                      <span style={{ fontSize: 12, color: "rgba(251,191,36,0.92)" }}>Le message partira avec “(sans objet)” si tu laisses ce champ vide.</span>
+                      <span className={styles.composeWarning}>Le message partira avec “(sans objet)” si vous laissez ce champ vide.</span>
                     ) : null}
-                  </label>
+                  </section>
 
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Message</span>
+                  <section className={`${styles.composeSection} ${styles.composeMessageSection}`}>
+                    <div className={styles.composeSectionHeader}>
+                      <div>
+                        <div className={styles.composeSectionTitle}>Message</div>
+                        <div className={styles.composeSectionHint}>Ajoutez la touche finale avant l’envoi.</div>
+                      </div>
+                    </div>
                     <RichMailEditor
                       text={text}
                       html={html}
@@ -469,32 +512,46 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                         setHtml(nextHtml);
                       }}
                       placeholder="Votre message…"
-                      minHeight={"clamp(170px, 28vh, 260px)"}
-                      editorStyle={textareaStyle}
+                      minHeight={"clamp(260px, 38vh, 430px)"}
+                      editorStyle={composeEditorStyle}
                     />
-                    {signatureEnabled && signatureImageUrl ? (
-                      <div
-                        style={{
-                          borderRadius: 12,
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          background: "rgba(255,255,255,0.04)",
-                          padding: 10,
-                        }}
-                      >
-                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)", marginBottom: 8 }}>
-                          Image de signature ajoutée automatiquement au mail :
+                    <div className={styles.composeSignaturePreview}>
+                      <div className={styles.composeSignaturePreviewHeader}>
+                        <div>
+                          <div className={styles.composeSignaturePreviewTitle}>Signature automatique</div>
+                          <div className={styles.composeSignaturePreviewHint}>Elle sera ajoutée automatiquement en bas du mail à l’envoi.</div>
                         </div>
-                        <img
-                          src={signatureImageUrl}
-                          alt="Signature automatique"
-                          style={{ width: `${signatureImageWidth}px`, maxWidth: "100%", maxHeight: 220, objectFit: "contain", borderRadius: 10, display: "block" }}
-                        />
+                        <span className={`${styles.badge} ${signatureEnabled ? styles.composeSignatureOn : styles.composeSignatureOff}`}>
+                          {signatureEnabled ? "Activée" : "Désactivée"}
+                        </span>
                       </div>
-                    ) : null}
-                  </label>
 
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>Pièces jointes</span>
+                      {signatureEnabled ? (
+                        <div className={styles.composeSignaturePreviewBox}>
+                          <pre className={styles.composeSignaturePreviewText}>{signaturePreview?.trim() || "Aperçu indisponible pour le moment."}</pre>
+                          {signatureImageUrl ? (
+                            <div className={styles.composeSignatureImageWrap}>
+                              <img
+                                src={signatureImageUrl}
+                                alt="Signature automatique"
+                                style={{ width: `${signatureImageWidth}px`, maxWidth: "100%", maxHeight: 220, objectFit: "contain", borderRadius: 10, display: "block" }}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className={styles.composeSignaturePreviewEmpty}>Aucune signature ne sera ajoutée à cet envoi.</div>
+                      )}
+                    </div>
+                  </section>
+
+                  <section className={styles.composeSection}>
+                    <div className={styles.composeSectionHeader}>
+                      <div>
+                        <div className={styles.composeSectionTitle}>Pièces jointes</div>
+                        <div className={styles.composeSectionHint}>Ajoutez des fichiers si nécessaire.</div>
+                      </div>
+                    </div>
                     <input
                       id={fileInputId}
                       type="file"
@@ -551,21 +608,21 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                         ))}
                       </div>
                     ) : null}
-                  </label>
+                  </section>
                 </div>
               </div>
 
-              <div className={styles.modalFooter}>
-                <button className={styles.btnGhost} onClick={saveDraft} type="button" disabled={sendBusy}>
+              <div className={`${styles.modalFooter} ${styles.composeModalFooter}`}>
+                <button className={`${styles.btnGhost} ${styles.composeDraftBtn}`} onClick={saveDraft} type="button" disabled={sendBusy}>
                   💾 Sauvegarder brouillon
                 </button>
-                <button className={styles.btnPrimary} onClick={doSend} type="button" disabled={sendBusy}>
+                <button className={`${styles.btnPrimary} ${styles.composeSendBtn}`} onClick={doSend} type="button" disabled={sendBusy}>
                   {sendBusy ? "Envoi…" : "Envoyer"}
                 </button>
               </div>
 
               {toast ? (
-                <div style={{ padding: "10px 14px", color: "rgba(255,255,255,0.75)", fontSize: 12 }}>
+                <div className={styles.composeToast}>
                   {toast}{" "}
                   <button className={styles.btnGhost} onClick={() => setToast(null)} type="button">
                     OK

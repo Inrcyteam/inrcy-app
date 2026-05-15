@@ -303,7 +303,7 @@ let adminRefreshToken = "";
       return NextResponse.json(
         {
           error:
-            "Aucun token Google admin iNrCy n'est configuré. Connecte d'abord le compte contact@admin-inrcy.com (OAuth offline) pour générer un refresh_token.",
+            "Aucun token Google admin iNrCy n'est configuré. Connectez d'abord le compte contact@admin-inrcy.com (OAuth offline) pour générer un refresh_token.",
         },
         { status: 500 }
       );
