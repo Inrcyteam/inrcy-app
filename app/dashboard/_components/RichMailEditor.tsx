@@ -81,7 +81,16 @@ export default function RichMailEditor({
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: compactToolbar ? 6 : 8, flex: 1, minHeight: 0 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: compactToolbar ? 6 : 8,
+        flex: "1 1 auto",
+        minHeight: 0,
+        overflow: "hidden",
+      }}
+    >
       <div
         style={{
           display: "flex",
@@ -102,7 +111,15 @@ export default function RichMailEditor({
         {toolbar}
       </div>
 
-      <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex" }}>
+      <div
+        style={{
+          position: "relative",
+          flex: "1 1 0",
+          minHeight: 0,
+          display: "flex",
+          overflow: "hidden",
+        }}
+      >
         {isEmpty ? (
           <span
             style={{
@@ -135,12 +152,17 @@ export default function RichMailEditor({
           }}
           style={{
             width: "100%",
-            flex: 1,
+            flex: "1 1 0",
             minHeight,
-            height: "100%",
-            maxHeight: "100%",
+            height: "auto",
+            maxHeight: "none",
             overflowY: "auto",
+            overflowX: "hidden",
             WebkitOverflowScrolling: "touch",
+            overscrollBehavior: "contain",
+            scrollbarGutter: "stable",
+            scrollPaddingTop: 12,
+            scrollPaddingBottom: 24,
             fontSize: 16,
             lineHeight: 1.55,
             boxSizing: "border-box",

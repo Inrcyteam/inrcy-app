@@ -49,6 +49,8 @@ export default function BaseModal({
       style={{
         position: "fixed",
         inset: 0,
+        height: "100dvh",
+        maxHeight: "100dvh",
         zIndex: 90,
         background: "rgba(0,0,0,0.55)",
         backdropFilter: "blur(14px)",

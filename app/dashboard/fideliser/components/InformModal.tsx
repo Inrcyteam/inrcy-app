@@ -170,10 +170,13 @@ export default function InformModal({
               placeholder="Votre message…"
               toolbarTitle={<span style={{ ...sectionHeaderStyle, marginBottom: 0 }}>Message</span>}
               compactToolbar
+              minHeight={isMobile ? 0 : messageTextareaStyle.minHeight}
               className={styles.textarea}
               editorStyle={{
                 ...messageTextareaStyle,
-                minHeight: isMobile ? "clamp(260px, 46vh, 520px)" : messageTextareaStyle.minHeight,
+                minHeight: isMobile ? 0 : messageTextareaStyle.minHeight,
+                height: "auto",
+                maxHeight: "none",
               }}
             />
           </div>
@@ -211,7 +214,7 @@ const sectionHeaderStyle: CSSProperties = {
 
 const messageSectionStyle: CSSProperties = {
   ...sectionStyle,
-  flex: 1,
+  flex: "1 1 0",
   minHeight: 0,
   display: "flex",
   flexDirection: "column",
@@ -220,13 +223,15 @@ const messageSectionStyle: CSSProperties = {
 
 const messageTextareaStyle: CSSProperties = {
   width: "100%",
-  flex: 1,
+  flex: "1 1 auto",
   minHeight: "clamp(180px, 30vh, 260px)",
   height: "100%",
   maxHeight: "100%",
   resize: "none",
   overflowY: "auto",
   WebkitOverflowScrolling: "touch",
+  overscrollBehavior: "contain",
+  scrollbarGutter: "stable",
   fontSize: 16,
   boxSizing: "border-box",
   display: "block",
