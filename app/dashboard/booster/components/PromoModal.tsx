@@ -8,7 +8,7 @@ import TemplateSubjectInlineEditor from "@/app/dashboard/_components/TemplateSub
 import { extractTemplatePlaceholders, textToRichMailHtml } from "@/lib/mailRichText";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 
-export default function PromoModal({ styles, onClose }: { styles: typeof stylesDash; onClose: () => void }) {
+export default function PromoModal({ styles, onClose, onDone = onClose }: { styles: typeof stylesDash; onClose: () => void | Promise<void>; onDone?: () => void | Promise<void> }) {
   const router = useRouter();
   const { sectorCategory, profession } = useBusinessTemplateContext();
   const templates = useMemo(() => getTemplates("offres", undefined, sectorCategory, profession), [sectorCategory, profession]);
@@ -103,7 +103,7 @@ export default function PromoModal({ styles, onClose }: { styles: typeof stylesD
     );
 
     router.push(`/dashboard/mails?${q.toString()}`);
-    onClose();
+    void onDone();
   };
 
   return (
@@ -189,7 +189,7 @@ export default function PromoModal({ styles, onClose }: { styles: typeof stylesD
           </div>
 
           <div style={footerStyle}>
-            <button type="button" onClick={onClose} className={styles.secondaryBtn}>
+            <button type="button" onClick={() => void onClose()} className={styles.secondaryBtn}>
               Annuler
             </button>
             <button type="button" onClick={onNext} className={styles.primaryBtn}>

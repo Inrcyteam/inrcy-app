@@ -11,12 +11,12 @@ export default function BaseModal({
 }: {
   title: string;
   moduleLabel?: string;
-  onClose: () => void;
+  onClose: () => void | Promise<void>;
   children: React.ReactNode;
 }) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") void onClose();
     };
     window.addEventListener("keydown", onKeyDown);
 
@@ -45,7 +45,7 @@ export default function BaseModal({
     <div
       role="dialog"
       aria-modal="true"
-      onMouseDown={onClose}
+      onMouseDown={() => void onClose()}
       style={{
         position: "fixed",
         inset: 0,
@@ -120,7 +120,7 @@ export default function BaseModal({
               <button
                 type="button"
                 className={styles.ghostBtn}
-                onClick={onClose}
+                onClick={() => void onClose()}
                 style={closeBtnStyle}
               >
                 Fermer

@@ -7,6 +7,7 @@ import { inputStyle, textareaStyle } from "./mailboxInlineStyles";
 import RichMailEditor from "@/app/dashboard/_components/RichMailEditor";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { extractTemplatePlaceholders } from "@/lib/mailRichText";
+import { useUnsavedExitGuard } from "@/app/dashboard/_hooks/useUnsavedExitGuard";
 
 type MailboxComposeModalProps = {
   open: boolean;
@@ -155,6 +156,26 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
 
     if (confirmed) onClose();
   }, [hasComposeWork, onClose]);
+
+  useUnsavedExitGuard({
+    active: open,
+    shouldBlock: hasComposeWork,
+    onConfirmExit: onClose,
+    title: "Fermer le message ?",
+    message: "Vous avez un message en cours. Voulez-vous vraiment fermer cette fenêtre sans l’envoyer ni sauvegarder le brouillon ?",
+    confirmLabel: "Fermer sans sauvegarder",
+    cancelLabel: "Continuer l’édition",
+    variant: "warning",
+  });
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") void requestClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, requestClose]);
 
   const [crmFiltersOpen, setCrmFiltersOpen] = React.useState(false);
 

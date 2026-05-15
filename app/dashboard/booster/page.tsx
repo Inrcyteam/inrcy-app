@@ -22,6 +22,7 @@ import {
   type ProfileVersionChangeDetail,
 } from "@/lib/profileVersioning";
 import { confirmInrcy } from "@/lib/inrcyDialog";
+import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 
 type ActiveModal = null | "publish" | "reviews" | "promo";
 
@@ -56,13 +57,17 @@ export default function BoosterPage() {
     setActive(null);
   }, []);
 
+  const activeHasUnsavedWork = active === "publish" ? publishHasUnsavedChanges : active === "reviews" || active === "promo";
+
   const requestCloseActiveModal = useCallback(async () => {
-    if (active === "publish" && publishHasUnsavedChanges) {
+    if (activeHasUnsavedWork) {
       const ok = await confirmInrcy({
-        eyebrow: "Publication en cours",
-        title: "Quitter la publication ?",
+        eyebrow: active === "publish" ? "Publication en cours" : "Modèle en cours",
+        title: active === "publish" ? "Quitter la publication ?" : "Quitter ce modèle ?",
         message:
-          "Du contenu a déjà été saisi, généré ou retouché. Si vous quittez maintenant, il sera perdu.",
+          active === "publish"
+            ? "Du contenu a déjà été saisi, généré ou retouché. Si vous quittez maintenant, il sera perdu."
+            : "Vous avez un modèle en cours de préparation. Si vous quittez maintenant, vos modifications seront perdues.",
         cancelLabel: "Continuer l’édition",
         confirmLabel: "Quitter",
         variant: "danger",
@@ -70,7 +75,22 @@ export default function BoosterPage() {
       if (!ok) return;
     }
     closeActiveModal();
-  }, [active, publishHasUnsavedChanges, closeActiveModal]);
+  }, [active, activeHasUnsavedWork, closeActiveModal]);
+
+  useUnsavedExitGuard({
+    active: Boolean(active),
+    shouldBlock: Boolean(activeHasUnsavedWork),
+    onConfirmExit: closeActiveModal,
+    eyebrow: active === "publish" ? "Publication en cours" : "Modèle en cours",
+    title: active === "publish" ? "Quitter la publication ?" : "Quitter ce modèle ?",
+    message:
+      active === "publish"
+        ? "Du contenu a déjà été saisi, généré ou retouché. Si vous quittez maintenant, il sera perdu."
+        : "Vous avez un modèle en cours de préparation. Si vous quittez maintenant, vos modifications seront perdues.",
+    cancelLabel: "Continuer l’édition",
+    confirmLabel: "Quitter",
+    variant: "danger",
+  });
 
   useEffect(() => {
     const a = (searchParams?.get("action") || "").toLowerCase();
@@ -862,10 +882,10 @@ export default function BoosterPage() {
             />
           )}
           {active === "reviews" && (
-            <ReviewModal styles={styles} onClose={() => setActive(null)} />
+            <ReviewModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />
           )}
           {active === "promo" && (
-            <PromoModal styles={styles} onClose={() => setActive(null)} />
+            <PromoModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />
           )}
         </BaseModal>
       )}

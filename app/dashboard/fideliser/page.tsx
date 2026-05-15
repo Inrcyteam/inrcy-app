@@ -13,6 +13,8 @@ import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
 import { WEEKLY_GOALS, clampProgress, getGoalCopy } from "@/lib/weeklyGoals";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
+import { confirmInrcy } from "@/lib/inrcyDialog";
+import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 
 type ActiveModal = null | "inform" | "thanks" | "satisfaction";
 
@@ -30,6 +32,35 @@ export default function FideliserPage() {
   const [metrics, setMetrics] = useState<any>(null);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
   const searchParams = useSearchParams();
+
+  const closeActiveModal = useCallback(() => setActive(null), []);
+
+  const requestCloseActiveModal = useCallback(async () => {
+    if (active) {
+      const ok = await confirmInrcy({
+        eyebrow: "Modèle en cours",
+        title: "Quitter ce modèle ?",
+        message: "Vous avez un modèle en cours de préparation. Si vous quittez maintenant, vos modifications seront perdues.",
+        cancelLabel: "Continuer l’édition",
+        confirmLabel: "Quitter",
+        variant: "danger",
+      });
+      if (!ok) return;
+    }
+    closeActiveModal();
+  }, [active, closeActiveModal]);
+
+  useUnsavedExitGuard({
+    active: Boolean(active),
+    shouldBlock: Boolean(active),
+    onConfirmExit: closeActiveModal,
+    eyebrow: "Modèle en cours",
+    title: "Quitter ce modèle ?",
+    message: "Vous avez un modèle en cours de préparation. Si vous quittez maintenant, vos modifications seront perdues.",
+    cancelLabel: "Continuer l’édition",
+    confirmLabel: "Quitter",
+    variant: "danger",
+  });
 
   useEffect(() => {
     const a = (searchParams?.get("action") || "").toLowerCase();
@@ -293,10 +324,10 @@ export default function FideliserPage() {
       </div>
 
       {active && (
-        <BaseModal title={active === "inform" ? "Informer" : active === "thanks" ? "Suivre" : "Enquêter"} moduleLabel="Module Fidéliser" onClose={() => setActive(null)}>
-          {active === "inform" && <InformModal styles={styles} onClose={() => setActive(null)} />}
-          {active === "thanks" && <ThanksModal styles={styles} onClose={() => setActive(null)} />}
-          {active === "satisfaction" && <SatisfactionModal styles={styles} onClose={() => setActive(null)} />}
+        <BaseModal title={active === "inform" ? "Informer" : active === "thanks" ? "Suivre" : "Enquêter"} moduleLabel="Module Fidéliser" onClose={requestCloseActiveModal}>
+          {active === "inform" && <InformModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />}
+          {active === "thanks" && <ThanksModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />}
+          {active === "satisfaction" && <SatisfactionModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />}
         </BaseModal>
       )}
     </main>

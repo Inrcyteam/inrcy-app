@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./agenda.module.css";
 import { confirmInrcy } from "@/lib/inrcyDialog";
+import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
   addDays,
@@ -188,6 +189,37 @@ export default function AgendaClient() {
   const [agendaMailLoading, setAgendaMailLoading] = useState(false);
   const [agendaMailSaving, setAgendaMailSaving] = useState(false);
   const [agendaMailError, setAgendaMailError] = useState<string | null>(null);
+
+  const closeRdvModal = useCallback(() => {
+    setRdvOpen(false);
+    setRdvError(null);
+  }, []);
+
+  const requestCloseRdvModal = useCallback(async () => {
+    if (!rdvOpen) return;
+    const ok = await confirmInrcy({
+      eyebrow: "Agenda",
+      title: "Fermer l’évènement ?",
+      message: "Vous avez un évènement en cours. Si vous fermez maintenant, les informations saisies seront perdues.",
+      confirmLabel: "Fermer sans enregistrer",
+      cancelLabel: "Continuer l’édition",
+      variant: "warning",
+    });
+    if (!ok) return;
+    closeRdvModal();
+  }, [closeRdvModal, rdvOpen]);
+
+  useUnsavedExitGuard({
+    active: rdvOpen,
+    shouldBlock: rdvOpen && !rdvSaving,
+    onConfirmExit: closeRdvModal,
+    eyebrow: "Agenda",
+    title: "Fermer l’évènement ?",
+    message: "Vous avez un évènement en cours. Si vous fermez maintenant, les informations saisies seront perdues.",
+    confirmLabel: "Fermer sans enregistrer",
+    cancelLabel: "Continuer l’édition",
+    variant: "warning",
+  });
 
   const quarterHourOptions = useMemo(() => buildQuarterHourOptions(), []);
   const startTimeOptions = useMemo(
@@ -1066,7 +1098,7 @@ export default function AgendaClient() {
         contactsLoading={contactsLoading}
         startTimeOptions={startTimeOptions}
         endTimeOptions={endTimeOptions}
-        onClose={() => setRdvOpen(false)}
+        onClose={requestCloseRdvModal}
         onDelete={deleteRdv}
         onSubmit={submitRdv}
         onAddContactToCrm={addContactToCrmFromCoords}

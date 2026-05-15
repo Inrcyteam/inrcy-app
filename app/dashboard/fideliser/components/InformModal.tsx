@@ -11,9 +11,11 @@ import { confirmInrcy } from "@/lib/inrcyDialog";
 export default function InformModal({
   styles,
   onClose,
+  onDone = onClose,
 }: {
   styles: typeof stylesDash;
-  onClose: () => void;
+  onClose: () => void | Promise<void>;
+  onDone?: () => void | Promise<void>;
 }) {
   const router = useRouter();
   const { sectorCategory, profession } = useBusinessTemplateContext();
@@ -116,7 +118,7 @@ export default function InformModal({
     );
 
     router.push(`/dashboard/mails?${q.toString()}`);
-    onClose();
+    void onDone();
   };
 
   return (
@@ -203,7 +205,7 @@ export default function InformModal({
           </div>
 
           <div style={footerStyle}>
-            <button type="button" onClick={onClose} className={styles.secondaryBtn}>
+            <button type="button" onClick={() => void onClose()} className={styles.secondaryBtn}>
               Annuler
             </button>
             <button type="button" onClick={onNext} className={styles.primaryBtn}>

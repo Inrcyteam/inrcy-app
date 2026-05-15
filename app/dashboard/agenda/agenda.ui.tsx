@@ -634,7 +634,7 @@ type AgendaEventModalProps = {
   contactsLoading: boolean;
   startTimeOptions: string[];
   endTimeOptions: string[];
-  onClose: () => void;
+  onClose: () => void | Promise<void>;
   onDelete: () => void;
   onSubmit: () => void;
   onAddContactToCrm: () => void;
@@ -700,7 +700,7 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
             {props.rdvMode === "create" ? "Nouvel évènement" : "Modifier l’évènement"}
             <p className="text-xs text-white/60 mt-1">Les rappels suivent les réglages iNr’Calendar et partent aussi aux invités renseignés.</p>
           </div>
-          <button className={styles.btnGhost} onClick={props.onClose} aria-label="Fermer">
+          <button className={styles.btnGhost} onClick={() => void props.onClose()} aria-label="Fermer">
             ✕
           </button>
         </div>
@@ -937,7 +937,7 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
                 Supprimer
               </button>
             )}
-            <button className={`${styles.btnGhost} ${styles.modalFooterBtn}`} onClick={props.onClose} disabled={props.rdvSaving}>
+            <button className={`${styles.btnGhost} ${styles.modalFooterBtn}`} onClick={() => void props.onClose()} disabled={props.rdvSaving}>
               Annuler
             </button>
             <button className={`${styles.btnPrimary} ${styles.modalFooterBtn}`} onClick={props.onSubmit} disabled={props.rdvSaving}>
