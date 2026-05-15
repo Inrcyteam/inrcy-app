@@ -191,11 +191,11 @@ export default function InformModal({
               placeholder="Votre message…"
               toolbarTitle={<span style={{ ...sectionHeaderStyle, marginBottom: 0 }}>Message</span>}
               compactToolbar
-              minHeight={isMobile ? 0 : messageTextareaStyle.minHeight}
+              minHeight={0}
               className={styles.textarea}
               editorStyle={{
                 ...messageTextareaStyle,
-                minHeight: isMobile ? 0 : messageTextareaStyle.minHeight,
+                minHeight: 0,
                 height: "100%",
                 maxHeight: "100%",
               }}

@@ -171,6 +171,23 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     return count;
   }, [crmCategory, crmContactType, crmDepartment, crmImportantOnly]);
 
+  const requestSend = React.useCallback(async () => {
+    const placeholders = extractTemplatePlaceholders(`${subject}\n${text}`);
+    if (placeholders.length > 0) {
+      const preview = placeholders.slice(0, 6).join(", ");
+      const more = placeholders.length > 6 ? ` et ${placeholders.length - 6} autre(s)` : "";
+      const confirmed = await confirmInrcy({
+        title: "Éléments à compléter",
+        message: `Votre message contient encore des éléments entre crochets : ${preview}${more}. Voulez-vous quand même l’envoyer ?`,
+        confirmLabel: "Envoyer quand même",
+        cancelLabel: "Corriger le message",
+        variant: "warning",
+      });
+      if (!confirmed) return;
+    }
+    await doSend();
+  }, [doSend, subject, text]);
+
   if (!open) return null;
 
   const composeInputStyle: React.CSSProperties = {
@@ -192,22 +209,6 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     padding: "14px 14px",
   };
 
-  const requestSend = React.useCallback(async () => {
-    const placeholders = extractTemplatePlaceholders(`${subject}\n${text}`);
-    if (placeholders.length > 0) {
-      const preview = placeholders.slice(0, 6).join(", ");
-      const more = placeholders.length > 6 ? ` et ${placeholders.length - 6} autre(s)` : "";
-      const confirmed = await confirmInrcy({
-        title: "Éléments à compléter",
-        message: `Votre message contient encore des éléments entre crochets : ${preview}${more}. Voulez-vous quand même l’envoyer ?`,
-        confirmLabel: "Envoyer quand même",
-        cancelLabel: "Corriger le message",
-        variant: "warning",
-      });
-      if (!confirmed) return;
-    }
-    await doSend();
-  }, [doSend, subject, text]);
 
   const handleAttachmentInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.currentTarget;
