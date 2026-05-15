@@ -114,8 +114,8 @@ export default function RichMailEditor({
       <div
         style={{
           position: "relative",
-          flex: "1 1 0",
-          minHeight: 0,
+          flex: "0 0 auto",
+          minHeight,
           display: "flex",
           overflow: "hidden",
         }}
@@ -152,9 +152,9 @@ export default function RichMailEditor({
           }}
           style={{
             width: "100%",
-            flex: "1 1 0",
-            minHeight,
-            height: "auto",
+            flex: "1 1 auto",
+            minHeight: "100%",
+            height: "100%",
             maxHeight: "none",
             overflowY: "auto",
             overflowX: "hidden",
