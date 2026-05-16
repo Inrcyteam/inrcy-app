@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { getMaintenanceState, isAdminUser } from "@/lib/maintenance";
 import ProfileRealtimeBridge from "./_components/ProfileRealtimeBridge";
+import LastActiveTracker from "./_components/LastActiveTracker";
 import { ensureProfileRow } from "@/lib/ensureProfileRow";
 
 export default async function DashboardLayout({
@@ -46,6 +47,7 @@ export default async function DashboardLayout({
       <div className={styles.bg} />
       <div className={styles.noise} />
       <ProfileRealtimeBridge />
+      <LastActiveTracker />
 
       {children}
     </div>
