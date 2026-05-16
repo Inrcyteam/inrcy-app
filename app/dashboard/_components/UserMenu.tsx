@@ -32,7 +32,6 @@ export default function UserMenu(props: {
   userMenuOpen: boolean;
   setUserMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
   openPanel: (name: OpenPanelName) => void;
-  goToGps: () => void;
   handleLogout: () => void | Promise<void>;
 }) {
   const {
@@ -43,7 +42,6 @@ export default function UserMenu(props: {
     userMenuOpen,
     setUserMenuOpen,
     openPanel,
-    goToGps,
     handleLogout,
   } = props;
 
@@ -166,7 +164,6 @@ export default function UserMenu(props: {
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("inertie")}>Mon inertie</button>
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("boutique")}>Boutique</button>
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("parrainage")}>Parrainer avec iNrCy</button>
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => { setUserMenuOpen(false); goToGps(); }}>GPS d’utilisation</button>
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("legal")}>Informations légales</button>
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("rgpd")}>Mes données (RGPD)</button>
 

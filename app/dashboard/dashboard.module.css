@@ -1332,6 +1332,19 @@
   transform: none;
 }
 
+.gpsTopbarBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-color: rgba(57, 213, 255, 0.34);
+  background: linear-gradient(135deg, rgba(57, 213, 255, 0.13), rgba(139, 92, 246, 0.11));
+}
+
+.gpsTopbarBtn:hover {
+  border-color: rgba(57, 213, 255, 0.52);
+  background: linear-gradient(135deg, rgba(57, 213, 255, 0.20), rgba(139, 92, 246, 0.16));
+}
+
 /* Connecter = gradient iNrCy */
 .connectBtn {
   border-color: rgba(56, 189, 248, 0.38) !important;
@@ -4118,4 +4131,21 @@ transform: scale(1.50);
 .gearSettingsIcon::after{
   inset:3px;
   background:rgba(255,255,255,0.82);
+}
+
+.mobileMenuFeatured,
+.userMenuFeatured {
+  border-color: rgba(57, 213, 255, 0.34) !important;
+  background:
+    linear-gradient(135deg, rgba(57, 213, 255, 0.16), rgba(139, 92, 246, 0.14)),
+    rgba(255, 255, 255, 0.06) !important;
+  color: rgba(255, 255, 255, 0.96) !important;
+}
+
+.mobileMenuFeatured:hover,
+.userMenuFeatured:hover {
+  border-color: rgba(57, 213, 255, 0.52) !important;
+  background:
+    linear-gradient(135deg, rgba(57, 213, 255, 0.22), rgba(139, 92, 246, 0.18)),
+    rgba(255, 255, 255, 0.08) !important;
 }

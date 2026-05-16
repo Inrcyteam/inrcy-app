@@ -114,6 +114,11 @@ export default function DashboardTopbar({
           />
         </div>
 
+        <button type="button" className={`${styles.ghostBtn} ${styles.gpsTopbarBtn}`} onClick={goToGps}>
+          <span aria-hidden="true">🧭</span>
+          GPS d’utilisation
+        </button>
+
         <button type="button" className={styles.ghostBtn} onClick={() => openPanel("contact")}>
           Nous contacter
         </button>
@@ -127,7 +132,6 @@ export default function DashboardTopbar({
             userMenuOpen={userMenuOpen}
             setUserMenuOpen={setUserMenuOpen}
             openPanel={openPanel}
-            goToGps={goToGps}
             handleLogout={handleLogout}
           />
         </div>
@@ -208,6 +212,18 @@ export default function DashboardTopbar({
               }}
             >
               Nous contacter
+            </button>
+
+            <button
+              className={styles.mobileMenuItem}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                goToGps();
+              }}
+            >
+              GPS d’utilisation
             </button>
 
             <button
@@ -316,18 +332,6 @@ export default function DashboardTopbar({
               }}
             >
               Parrainer avec iNrCy
-            </button>
-
-            <button
-              className={styles.mobileMenuItem}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                goToGps();
-              }}
-            >
-              GPS d’utilisation
             </button>
 
             <button

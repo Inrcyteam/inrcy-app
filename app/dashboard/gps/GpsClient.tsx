@@ -16,7 +16,6 @@ function normalizeText(input: string) {
     .trim();
 }
 
-
 function renderStrongParts(input: string) {
   return input.split(/(\*\*.*?\*\*)/g).map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**")) {
@@ -30,25 +29,57 @@ type SearchHit = {
   article: GpsArticle;
   sectionId: string;
   sectionTitle: string;
+  sectionEmoji: string;
   score: number;
 };
 
 export default function GpsClient() {
+  const [query, setQuery] = useState("");
+  const [activeSection, setActiveSection] = useState<string>(GPS_SECTIONS[0]?.id ?? "");
+  const searchWrapRef = useRef<HTMLDivElement | null>(null);
+  const sectionPickerRef = useRef<HTMLDivElement | null>(null);
+  const [sectionMenuOpen, setSectionMenuOpen] = useState(false);
+
+  const selectedSection = useMemo(
+    () => GPS_SECTIONS.find((section) => section.id === activeSection) ?? GPS_SECTIONS[0],
+    [activeSection]
+  );
+
+  const selectedArticle = selectedSection?.articles[0];
+  const focusItems = selectedArticle
+    ? [
+        selectedArticle.goal ? `Objectif : **${selectedArticle.goal}**.` : "",
+        ...(selectedArticle.pitfalls ?? []),
+      ].filter(Boolean).slice(0, 3)
+    : [];
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }
   }, []);
 
-  const [query, setQuery] = useState("");
-    // ✅ No auto-selected section on first load (prevents jumping / being mid-page on refresh)
-  const [activeSection, setActiveSection] = useState<string>("");
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (sectionPickerRef.current && !sectionPickerRef.current.contains(target)) {
+        setSectionMenuOpen(false);
+      }
+    };
 
-  // ✅ IMPORTANT: no auto-selected article on first load
-  const [activeArticleId, setActiveArticleId] = useState<string>("");
-  const hasMountedRef = useRef(false);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSectionMenuOpen(false);
+      }
+    };
 
-  const contentRef = useRef<HTMLDivElement | null>(null);
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
 
   const hits = useMemo((): SearchHit[] => {
     const q = normalizeText(query);
@@ -61,7 +92,11 @@ export default function GpsClient() {
         const keywords = normalizeText(article.keywords.join(" "));
         const body = normalizeText(
           [
+            section.title,
+            section.description,
             article.intro,
+            article.goal ?? "",
+            article.duration ?? "",
             ...(article.steps ?? []),
             ...(article.checks ?? []),
             ...(article.pitfalls ?? []),
@@ -70,223 +105,217 @@ export default function GpsClient() {
         );
 
         let score = 0;
-        if (title.includes(q)) score += 60;
-        if (keywords.includes(q)) score += 30;
-        if (body.includes(q)) score += 10;
+        if (normalizeText(section.title).includes(q)) score += 80;
+        if (title.includes(q)) score += 70;
+        if (keywords.includes(q)) score += 35;
+        if (body.includes(q)) score += 12;
 
-        // petit bonus si match exact sur mot
-        if (new RegExp(`\\b${q}\\b`, "i").test(title)) score += 10;
         if (score > 0) {
-          results.push({ article, sectionId: section.id, sectionTitle: section.title, score });
+          results.push({
+            article,
+            sectionId: section.id,
+            sectionTitle: section.title,
+            sectionEmoji: section.emoji,
+            score,
+          });
         }
       }
     }
 
-    return results.sort((a, b) => b.score - a.score).slice(0, 20);
+    return results.sort((a, b) => b.score - a.score).slice(0, 10);
   }, [query]);
 
-  const scrollToArticle = (id: string) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "start" });
-    setActiveArticleId(id);
-    // highlight flash
-    el.classList.remove(styles.flash);
-    // force reflow
-    void el.offsetWidth;
-    el.classList.add(styles.flash);
+  const openSection = (sectionId: string) => {
+    setActiveSection(sectionId);
+    setQuery("");
+    setSectionMenuOpen(false);
   };
-
-  useEffect(() => {
-    // When section changes, jump to first article
-    // ✅ BUT: do nothing on first mount (prevents auto-selection on page load)
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true;
-      return;
-    }
-
-
-    // If no section selected, do nothing.
-    if (!activeSection) return;
-
-    const section = GPS_SECTIONS.find((s) => s.id === activeSection);
-    const first = section?.articles?.[0]?.id;
-    if (first) {
-      setActiveArticleId(first);
-      setTimeout(() => scrollToArticle(first), 0);
-    }
-  }, [activeSection]);
 
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <div className={styles.gpsClose}>
+        <div className={styles.brand}>
+          <div className={styles.logo} aria-hidden="true">
+            🧭
+          </div>
+          <div className={styles.brandText}>
+            <h1 className={styles.title}>GPS d’utilisation</h1>
+            <p className={styles.subtitle}>Le guide express pour utiliser iNrCy simplement.</p>
+          </div>
+        </div>
+
+        <div className={styles.headerActions}>
+          <div className={styles.searchWrap} ref={searchWrapRef}>
+            <label className={styles.searchLabel} htmlFor="gps-search">
+              Rechercher dans le GPS
+            </label>
+            <span className={styles.searchIcon}>🔎</span>
+            <input
+              id="gps-search"
+              className={styles.search}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher..."
+              autoComplete="off"
+            />
+
+            {hits.length > 0 && (
+              <div className={styles.searchResults} role="listbox" aria-label="Résultats de recherche">
+                {hits.map((hit) => (
+                  <button
+                    key={`${hit.sectionId}:${hit.article.id}`}
+                    type="button"
+                    className={styles.searchResult}
+                    onClick={() => openSection(hit.sectionId)}
+                  >
+                    <span className={styles.searchResultTitle}>{hit.sectionEmoji} {hit.sectionTitle}</span>
+                    <span className={styles.searchResultMeta}>{hit.article.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {query && hits.length === 0 && (
+              <div className={styles.searchResults} role="status" aria-label="Aucun résultat">
+                <div className={styles.noResult}>Aucun résultat. Essayez “Google”, “devis”, “mail” ou “stats”.</div>
+              </div>
+            )}
+          </div>
+
           <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" />
-        </div>
-        <div>
-          <div className={styles.kicker}>Votre cockpit iNrCy</div>
-          <h1 className={styles.title}>GPS d’utilisation</h1>
-          <p className={styles.subtitle}>
-            Un guide rapide, clair et pratique — pour éviter les questions bidons et vous débloquer en 2 minutes.
-          </p>
-        </div>
-
-        <div className={styles.searchWrap}>
-          <label className={styles.searchLabel} htmlFor="gps-search">
-            Rechercher
-          </label>
-          <input
-            id="gps-search"
-            className={styles.search}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ex : suivi, devis, publier, Google…"
-            autoComplete="off"
-          />
-
-          {hits.length > 0 && (
-            <div className={styles.searchResults} role="listbox" aria-label="Résultats de recherche">
-              {hits.map((hit) => (
-                <button
-                  key={`${hit.sectionId}:${hit.article.id}`}
-                  type="button"
-                  className={styles.searchResult}
-                  onClick={() => {
-                    setQuery("");
-                    setActiveSection(hit.sectionId);
-                    setTimeout(() => scrollToArticle(hit.article.id), 0);
-                  }}
-                >
-                  <span className={styles.searchResultTitle}>{hit.article.title}</span>
-                  <span className={styles.searchResultMeta}>{hit.sectionTitle}</span>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </header>
 
       <main className={styles.main}>
+        {selectedSection && (
+          <div className={styles.mobileSectionPicker} ref={sectionPickerRef}>
+            <div className={styles.mobilePickerLabel}>Rubrique active</div>
+            <button
+              type="button"
+              className={styles.mobilePickerButton}
+              onClick={() => setSectionMenuOpen((value) => !value)}
+              aria-haspopup="menu"
+              aria-expanded={sectionMenuOpen}
+            >
+              <span className={styles.mobilePickerCurrent}>
+                <span aria-hidden="true">{selectedSection.emoji}</span>
+                <span>{selectedSection.title}</span>
+              </span>
+              <span className={styles.mobilePickerArrow} aria-hidden="true">▾</span>
+            </button>
+
+            {sectionMenuOpen && (
+              <div className={styles.mobilePickerMenu} role="menu" aria-label="Choisir une rubrique GPS">
+                {GPS_SECTIONS.map((section) => {
+                  const isActive = selectedSection.id === section.id;
+                  return (
+                    <button
+                      key={section.id}
+                      type="button"
+                      role="menuitem"
+                      className={`${styles.mobilePickerItem} ${isActive ? styles.mobilePickerItemActive : ""}`}
+                      onClick={() => openSection(section.id)}
+                    >
+                      <span aria-hidden="true">{section.emoji}</span>
+                      <span>{section.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <aside className={styles.sidebar}>
-          <div className={styles.sidebarTitle}>Rubriques</div>
+          <div className={styles.sidebarHeader}>
+            <div>
+              <div className={styles.sidebarTitle}>Rubriques</div>
+              <div className={styles.sidebarHint}>Une seule ouverte à droite</div>
+            </div>
+            <span className={styles.sidebarBadge}>{GPS_SECTIONS.length}</span>
+          </div>
 
           <nav className={styles.nav} aria-label="Navigation GPS">
-            {GPS_SECTIONS.map((section) => (
-              <div key={section.id} className={styles.navGroup}>
+            {GPS_SECTIONS.map((section) => {
+              const isActive = selectedSection?.id === section.id;
+              return (
                 <button
+                  key={section.id}
                   type="button"
-                  className={`${styles.navSection} ${activeSection === section.id ? styles.navSectionActive : ""}`}
-                  onClick={() => setActiveSection(section.id)}
+                  className={`${styles.navSection} ${isActive ? styles.navSectionActive : ""}`}
+                  onClick={() => openSection(section.id)}
+                  aria-current={isActive ? "page" : undefined}
                 >
-                  {section.title}
+                  <span className={styles.navEmoji}>{section.emoji}</span>
+                  <span className={styles.navLabel}>{section.title}</span>
                 </button>
-
-                {activeSection === section.id && (
-                  <div className={styles.navArticles}>
-                    {section.articles.map((a) => (
-                      <button
-                        key={a.id}
-                        type="button"
-                        className={`${styles.navArticle} ${activeArticleId === a.id ? styles.navArticleActive : ""}`}
-                        onClick={() => scrollToArticle(a.id)}
-                      >
-                        {a.title}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </nav>
         </aside>
 
-        <section className={styles.content} ref={contentRef}>
-          {GPS_SECTIONS.map((section) => (
-            <div key={section.id} className={styles.section}>
-              <div className={styles.sectionHeader}>
-                <h2 className={styles.sectionTitle}>{section.title}</h2>
-                {section.description && <p className={styles.sectionDesc}>{section.description}</p>}
+        <section className={styles.content} aria-live="polite">
+          {selectedSection && selectedArticle && (
+            <div className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div className={styles.panelIcon} aria-hidden="true">
+                  {selectedSection.emoji}
+                </div>
+                <div className={styles.panelTitleWrap}>
+                  <span className={styles.panelKicker}>Rubrique active</span>
+                  <h2 className={styles.panelTitle}>{selectedSection.title}</h2>
+                  <p className={styles.panelDesc}>{selectedSection.description}</p>
+                </div>
+                {selectedArticle.duration && <span className={styles.timeBadge}>⏱ {selectedArticle.duration}</span>}
               </div>
 
-              <div className={styles.cards}>
-                {section.articles.map((article) => (
-                  <article key={article.id} id={article.id} className={styles.card}>
-                    <div className={styles.cardHeader}>
-                      <h3 className={styles.cardTitle}>{article.title}</h3>
-                      {article.links && article.links.length > 0 && (
-                        <div className={styles.cardLinks}>
-                          {article.links.map((l) => (
-                            <Link key={l.href} href={l.href} className={styles.cardLink}>
-                              {l.label}
-                            </Link>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+              <div className={styles.grid}>
+                <article className={styles.infoCard}>
+                  <h3>🎯 À quoi ça sert ?</h3>
+                  <p>{selectedArticle.intro}</p>
+                </article>
 
-                    <p className={styles.cardIntro}>{article.intro}</p>
+                <article className={styles.infoCard}>
+                  <h3>🪜 Comment l’utiliser ?</h3>
+                  <ol className={styles.steps}>
+                    {selectedArticle.steps.slice(0, 4).map((step, idx) => (
+                      <li key={idx}>{renderStrongParts(step)}</li>
+                    ))}
+                  </ol>
+                </article>
 
-                    <div className={styles.block}>
-                      <div className={styles.blockTitle}>Guide pas à pas</div>
-                      <ol className={styles.steps}>
-                        {article.steps.map((s, idx) => (
-                          <li key={idx} className={styles.step}>
-                            <span>{renderStrongParts(s)}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
+                <article className={`${styles.infoCard} ${styles.checkCard}`}>
+                  <h3>✅ À vérifier</h3>
+                  <ul className={styles.list}>
+                    {(selectedArticle.checks?.length ? selectedArticle.checks : selectedArticle.pitfalls ?? [])
+                      .slice(0, 4)
+                      .map((item, idx) => (
+                        <li key={idx}>{renderStrongParts(item)}</li>
+                      ))}
+                  </ul>
+                </article>
 
-                    {article.checks && article.checks.length > 0 && (
-                      <div className={styles.block}>
-                        <div className={styles.blockTitle}>À vérifier</div>
-                        <ul className={styles.list}>
-                          {article.checks.map((c, idx) => (
-                            <li key={idx}>{c}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {article.pitfalls && article.pitfalls.length > 0 && (
-                      <div className={styles.block}>
-                        <div className={styles.blockTitle}>Problèmes fréquents</div>
-                        <ul className={styles.list}>
-                          {article.pitfalls.map((c, idx) => (
-                            <li key={idx}>{c}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {article.faq && article.faq.length > 0 && (
-                      <div className={styles.block}>
-                        <div className={styles.blockTitle}>FAQ</div>
-                        <div className={styles.faq}>
-                          {article.faq.map((f, idx) => (
-                            <details key={idx} className={styles.faqItem}>
-                              <summary className={styles.faqQ}>{f.q}</summary>
-                              <div className={styles.faqA}>{f.a}</div>
-                            </details>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </article>
-                ))}
+                <article className={`${styles.infoCard} ${styles.focusCard}`}>
+                  <h3>🚦 Le bon réflexe</h3>
+                  <ul className={styles.list}>
+                    {focusItems.map((item, idx) => (
+                      <li key={idx}>{renderStrongParts(item)}</li>
+                    ))}
+                  </ul>
+                </article>
               </div>
-            </div>
-          ))}
 
-          <footer className={styles.footer}>
-            <div className={styles.footerCard}>
-              <div className={styles.footerTitle}>Encore bloqué ?</div>
-              <p className={styles.footerText}>
-                Regardez d’abord <strong>Le générateur → Vérifier que tout tourne</strong>. Si tout est OK et que le souci
-                persiste, contactez-nous depuis le menu (Nous contacter).
-              </p>
+              {selectedArticle.links && selectedArticle.links.length > 0 && (
+                <div className={styles.linksRow}>
+                  {selectedArticle.links.slice(0, 4).map((link) => (
+                    <Link key={link.href + link.label} href={link.href} className={styles.primaryLink}>
+                      {link.label} <span aria-hidden="true">→</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
-          </footer>
+          )}
         </section>
       </main>
     </div>
