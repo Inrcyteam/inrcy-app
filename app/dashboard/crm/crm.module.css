@@ -3130,3 +3130,89 @@
 .actionsSep {
   background: rgba(255,255,255,.14);
 }
+
+/* =====================================================================
+   iNr'CRM — correctif responsive dropdowns (Mai 2026)
+   Objectif :
+   - le menu Actions reste centré sous le bouton Actions sur mobile ;
+   - les menus Recherche et Hamburger sont centrés dans l'écran mobile ;
+   - les anciennes règles right:-40px / right:-42px ne décalent plus les blocs.
+   ===================================================================== */
+@media (max-width: 760px){
+  .secondaryToolbar,
+  .bulkActions,
+  .mobileBulkActions,
+  .actionsWrap,
+  .headerSearchWrap,
+  .statsWrap{
+    overflow: visible !important;
+  }
+
+  .mobileBulkActions{
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: 42px 42px minmax(0, 1fr) auto 42px !important;
+    gap: 8px !important;
+    align-items: center !important;
+  }
+
+  .mobileBulkActions > *{
+    min-width: 0 !important;
+  }
+
+  .actionsWrap{
+    position: relative !important;
+    display: inline-flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .mobileActionsBtn{
+    width: 100% !important;
+    min-width: 0 !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+  }
+
+  .actionsMenu{
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: min(280px, calc(100vw - 32px)) !important;
+    max-width: calc(100vw - 32px) !important;
+    z-index: 2200 !important;
+  }
+
+  .headerSearchDropdown,
+  .mobileMenuDropdown{
+    position: fixed !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: min(360px, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px) !important;
+    z-index: 2300 !important;
+  }
+
+  .headerSearchDropdown{
+    top: 96px !important;
+  }
+
+  .mobileMenuDropdown{
+    top: 96px !important;
+    max-height: calc(100dvh - 112px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+}
+
+@media (max-width: 380px){
+  .mobileBulkActions{
+    grid-template-columns: 40px 40px minmax(0, 1fr) auto 40px !important;
+    gap: 6px !important;
+  }
+
+  .mobileFilterActionBtn{
+    padding-inline: 10px !important;
+  }
+}
