@@ -483,6 +483,42 @@
   font-weight: 1000;
 }
 
+.cardTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-weight: 1000;
+}
+
+.titleDot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  box-shadow: 0 0 16px currentColor;
+}
+
+.titleDotPurpose {
+  color: #fb7185;
+  background: currentColor;
+}
+
+.titleDotHow {
+  color: #f59e0b;
+  background: currentColor;
+}
+
+.titleDotCheck {
+  color: #22c55e;
+  background: currentColor;
+}
+
+.titleDotReflex {
+  color: #38bdf8;
+  background: currentColor;
+}
+
 .infoCard p {
   margin: 0;
   color: var(--muted);

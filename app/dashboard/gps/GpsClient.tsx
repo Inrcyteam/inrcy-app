@@ -271,12 +271,18 @@ export default function GpsClient() {
 
               <div className={styles.grid}>
                 <article className={styles.infoCard}>
-                  <h3>🎯 À quoi ça sert ?</h3>
+                  <h3 className={styles.cardTitle}>
+                    <span className={`${styles.titleDot} ${styles.titleDotPurpose}`} aria-hidden="true" />
+                    À quoi ça sert ?
+                  </h3>
                   <p>{selectedArticle.intro}</p>
                 </article>
 
                 <article className={styles.infoCard}>
-                  <h3>🪜 Comment l’utiliser ?</h3>
+                  <h3 className={styles.cardTitle}>
+                    <span className={`${styles.titleDot} ${styles.titleDotHow}`} aria-hidden="true" />
+                    Comment l’utiliser ?
+                  </h3>
                   <ol className={styles.steps}>
                     {selectedArticle.steps.slice(0, 4).map((step, idx) => (
                       <li key={idx}>{renderStrongParts(step)}</li>
@@ -285,7 +291,10 @@ export default function GpsClient() {
                 </article>
 
                 <article className={`${styles.infoCard} ${styles.checkCard}`}>
-                  <h3>✅ À vérifier</h3>
+                  <h3 className={styles.cardTitle}>
+                    <span className={`${styles.titleDot} ${styles.titleDotCheck}`} aria-hidden="true" />
+                    À vérifier
+                  </h3>
                   <ul className={styles.list}>
                     {(selectedArticle.checks?.length ? selectedArticle.checks : selectedArticle.pitfalls ?? [])
                       .slice(0, 4)
@@ -296,7 +305,10 @@ export default function GpsClient() {
                 </article>
 
                 <article className={`${styles.infoCard} ${styles.focusCard}`}>
-                  <h3>🚦 Le bon réflexe</h3>
+                  <h3 className={styles.cardTitle}>
+                    <span className={`${styles.titleDot} ${styles.titleDotReflex}`} aria-hidden="true" />
+                    Le bon réflexe
+                  </h3>
                   <ul className={styles.list}>
                     {focusItems.map((item, idx) => (
                       <li key={idx}>{renderStrongParts(item)}</li>
