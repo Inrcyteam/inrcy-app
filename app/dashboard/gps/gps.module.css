@@ -950,3 +950,46 @@
     display: none;
   }
 }
+
+/* Mobile : la page doit scroller naturellement.
+   Les scrolls internes sont réservés au desktop pour éviter les débordements au zoom. */
+@media (max-width: 760px) {
+  .page {
+    height: auto;
+    max-height: none;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: visible;
+    touch-action: pan-y;
+  }
+
+  .main,
+  .content,
+  .panel,
+  .grid,
+  .panelHeader,
+  .infoCard {
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+    overscroll-behavior: auto;
+    touch-action: pan-y;
+  }
+
+  .panel {
+    display: grid;
+    grid-template-rows: auto;
+  }
+
+  .infoCard {
+    -webkit-overflow-scrolling: auto;
+  }
+
+  .mobilePickerMenu,
+  .searchResults {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+}
