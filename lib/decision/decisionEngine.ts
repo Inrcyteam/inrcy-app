@@ -1,3 +1,4 @@
+import { buildBusinessReading } from "./businessReadingBank";
 export type ActionType =
   | "publier"
   | "offrir"
@@ -16,6 +17,7 @@ export type DecisionInput = {
   connected?: boolean;
   opportunities?: number;
   quality?: number;
+  capturedLeads?: { week?: number; month?: number };
   metrics?: {
     audience?: number;
     engagement?: number;
@@ -344,6 +346,9 @@ function buildBusinessLecture(input: DecisionInput, action: ActionType, mode: Mo
   const traffic = n(input.metrics?.traffic);
   const intent = n(input.metrics?.intent);
 
+  const bankLines = buildBusinessReading({ input, action, mode, provenance: p });
+  if (bankLines.length) return bankLines;
+
   const lines: string[] = [];
   const label = channelLabel(input.channelType);
   const dominant = p.dominantLabel ? `La provenance dominante est « ${p.dominantLabel} » (${formatPct(p.dominantShare)}).` : "";
@@ -585,11 +590,14 @@ export function decideAction(input: DecisionInput): DecisionResult {
       : ["informer", "suivre", "enqueter"].includes(entry.action),
   );
 
+  const businessLecture = buildBusinessLecture(input, action, mode, p);
+  const reason = businessLecture[0] || makeReason(action, input.channelType, p, n(input.opportunities), n(input.quality));
+
   return {
     mode,
     action,
-    reason: makeReason(action, input.channelType, p, n(input.opportunities), n(input.quality)),
-    businessLecture: buildBusinessLecture(input, action, mode, p),
+    reason,
+    businessLecture,
     confidence: confidenceFromRanking(ranking),
     ranking,
   };

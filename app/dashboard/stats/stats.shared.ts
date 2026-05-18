@@ -854,6 +854,7 @@ function getDecisionInput(
   qualityScore: number,
   opp30: number,
   provenance: Array<{ label: string; value: number; colorVar: string }>,
+  capturedLeads: CapturedLeads,
 ) {
   if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin") {
     const metrics = getSocialMetrics(cubeKey, ov);
@@ -870,6 +871,7 @@ function getDecisionInput(
       connected,
       opportunities: opp30,
       quality: qualityScore,
+      capturedLeads,
       metrics: {
         audience: metrics.audience,
         engagement: metrics.engagement,
@@ -892,6 +894,7 @@ function getDecisionInput(
       connected: !!ov?.sources?.gmb?.connected,
       opportunities: opp30,
       quality: qualityScore,
+      capturedLeads,
       metrics: {
         traffic: conversions,
         conversions,
@@ -917,6 +920,7 @@ function getDecisionInput(
       : !!ov?.sources?.site_web?.connected?.ga4 || !!ov?.sources?.site_web?.connected?.gsc,
     opportunities: opp30,
     quality: qualityScore,
+    capturedLeads,
     metrics: {
       traffic,
       intent: intentClicks,
@@ -1268,11 +1272,15 @@ export function buildCubeModel(
   const opp30 = summaryOppByCube[key] ?? computeOpportunity30(key, ov);
 
   const q = computeQuality(key, ov);
+  const capturedLeads: CapturedLeads = {
+    week: Math.max(0, Math.round(safeNum(state.capturedLeads?.week))),
+    month: Math.max(0, Math.round(safeNum(state.capturedLeads?.month))),
+  };
   let action = recommendAction(key, ov, q.score);
   let decision: DecisionResult | undefined;
 
   if (action.key !== "connect" && action.key !== "loading") {
-    decision = decideAction(getDecisionInput(key, ov, q.score, opp30, provenance));
+    decision = decideAction(getDecisionInput(key, ov, q.score, opp30, provenance, capturedLeads));
     action = actionFromDecision(action, decision);
   }
 
@@ -1290,11 +1298,6 @@ export function buildCubeModel(
 
   const opportunityLabel =
     opp30 >= 14 ? "Fort potentiel" : opp30 >= 7 ? "Potentiel réel" : opp30 >= 3 ? "Potentiel modéré" : "À activer";
-
-  const capturedLeads: CapturedLeads = {
-    week: Math.max(0, Math.round(safeNum(state.capturedLeads?.week))),
-    month: Math.max(0, Math.round(safeNum(state.capturedLeads?.month))),
-  };
 
   return {
     key,
