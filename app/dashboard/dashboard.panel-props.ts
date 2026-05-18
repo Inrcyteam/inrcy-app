@@ -75,6 +75,8 @@ export function buildDashboardPanelProps(a: any) {
     connectLinkedinBusinessAccount: a.connectLinkedinBusinessAccount,
     disconnectLinkedinAccount: a.disconnectLinkedinAccountFromDrawer,
     linkedinAccountBusy: a.isDrawerMutationPending("linkedin:account:disconnect"),
+    linkedinOrganizationBusy: a.isDrawerMutationPending("linkedin:organization:disconnect"),
+    linkedinOrganizationAction: a.isDrawerMutationPending("linkedin:organization:disconnect") ? "disconnect" : null,
     linkedinUrl: a.linkedinUrl,
     setLinkedinUrl: a.setLinkedinUrl,
     saveLinkedinProfileUrl: a.saveLinkedinProfileUrlFromDrawer,
@@ -89,6 +91,7 @@ export function buildDashboardPanelProps(a: any) {
     linkedinSelectedOrganizationName: a.linkedinSelectedOrganizationName,
     loadLinkedinOrganizations: a.loadLinkedinOrganizations,
     selectLinkedinOrganization: a.selectLinkedinOrganization,
+    disconnectLinkedinOrganization: a.disconnectLinkedinOrganizationFromDrawer,
     useLinkedinPersonalProfile: a.useLinkedinPersonalProfile,
   };
 

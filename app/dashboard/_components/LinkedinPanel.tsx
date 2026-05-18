@@ -33,6 +33,7 @@ export default function LinkedinPanel(props: any) {
     connectLinkedinAccount,
     connectLinkedinBusinessAccount,
     disconnectLinkedinAccount,
+    disconnectLinkedinOrganization,
     linkedinUrl,
     setLinkedinUrl,
     saveLinkedinProfileUrl,
@@ -43,6 +44,8 @@ export default function LinkedinPanel(props: any) {
     linkedinUrlBusy,
     linkedinOrganizations = [],
     linkedinOrganizationsLoading,
+    linkedinOrganizationBusy,
+    linkedinOrganizationAction,
     linkedinSelectedOrganizationId,
     linkedinSelectedOrganizationName,
     linkedinOrganizationPickerOpen,
@@ -168,10 +171,21 @@ export default function LinkedinPanel(props: any) {
                 type="button"
                 className={`${styles.actionBtn} ${styles.connectBtn}`}
                 onClick={() => void loadLinkedinOrganizations?.({ resetSelection: true })}
-                disabled={linkedinOrganizationsLoading}
+                disabled={linkedinOrganizationsLoading || linkedinOrganizationBusy}
               >
-                {linkedinOrganizationsLoading ? "Chargement..." : hasCompanyPage ? "Charger les pages" : "Connecter une page"}
+                {linkedinOrganizationsLoading ? "Chargement..." : hasCompanyPage ? "Changer de page" : "Connecter une page"}
               </button>
+
+              {hasCompanyPage ? (
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                  onClick={() => void disconnectLinkedinOrganization?.()}
+                  disabled={linkedinOrganizationsLoading || linkedinOrganizationBusy}
+                >
+                  {linkedinOrganizationAction === "disconnect" ? "Déconnexion..." : "Déconnecter la page"}
+                </button>
+              ) : null}
             </div>
 
             {linkedinOrganizationPickerOpen && linkedinOrganizations.length > 1 ? (

@@ -68,6 +68,24 @@ export async function POST(req: Request) {
   const profileUrl = asString(currentMeta["profile_url"]) || null;
 
   if (mode === "profile") {
+    let currentLinkedinSettings: unknown = null;
+    try {
+      const { data } = await supabaseAdmin
+        .from("pro_tools_configs")
+        .select("settings")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      currentLinkedinSettings = asRecord(asRecord(data)["settings"])["linkedin"];
+    } catch {
+      currentLinkedinSettings = null;
+    }
+    const currentLinkedinRec = asRecord(currentLinkedinSettings);
+    const resolvedProfileUrl =
+      profileUrl ||
+      asString(currentLinkedinRec["profileUrl"]) ||
+      asString(currentLinkedinRec["profile_url"]) ||
+      "";
+
     await supabaseAdmin
       .from("integrations")
       .update({
@@ -76,7 +94,7 @@ export async function POST(req: Request) {
         meta: withCurrentConnectionVersion("channel:linkedin", {
           ...currentMeta,
           profile_display_name: displayName,
-          profile_url: profileUrl,
+          profile_url: resolvedProfileUrl || null,
           profile_urn: profileUrn,
           org_urn: null,
           org_id: null,
@@ -104,15 +122,8 @@ export async function POST(req: Request) {
           accountConnected: true,
           connected: true,
           displayName,
-          url:
-            profileUrl ||
-            asString(asRecord(current["linkedin"])["profileUrl"]) ||
-            asString(asRecord(current["linkedin"])["url"]) ||
-            "",
-          profileUrl:
-            profileUrl ||
-            asString(asRecord(current["linkedin"])["profileUrl"]) ||
-            "",
+          url: resolvedProfileUrl,
+          profileUrl: resolvedProfileUrl,
           orgId: "",
           orgName: "",
           orgUrl: "",
@@ -128,7 +139,7 @@ export async function POST(req: Request) {
 
     await invalidateUserStatsCache(supabase, user.id);
 
-    return NextResponse.json({ ok: true, mode: "profile", profileUrl });
+    return NextResponse.json({ ok: true, mode: "profile", profileUrl: resolvedProfileUrl });
   }
 
   if (!orgId)
