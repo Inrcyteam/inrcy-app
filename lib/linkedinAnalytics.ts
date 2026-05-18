@@ -8,6 +8,33 @@ type LinkedInFetchOptions = {
   useRestHeaders?: boolean;
 };
 
+export function isLinkedInRateLimitMessage(message: unknown): boolean {
+  const text = String(message || "").toLowerCase();
+  return (
+    text.includes("throttle") ||
+    text.includes("rate limit") ||
+    text.includes("resource level") ||
+    text.includes("application day limit") ||
+    text.includes("utilisation maximale") ||
+    text.includes("étranglé") ||
+    text.includes("etrangle")
+  );
+}
+
+export function getLinkedInNextUtcResetIso(now = new Date()): string {
+  return new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + 1,
+      0,
+      15,
+      0,
+      0,
+    ),
+  ).toISOString();
+}
+
 async function fetchLinkedInJson(
   url: string,
   accessToken: string,
@@ -29,13 +56,17 @@ async function fetchLinkedInJson(
     cache: "no-store",
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok)
-    throw new Error(
+  if (!res.ok) {
+    const err = new Error(
       data?.message ||
         data?.error_description ||
         data?.error ||
         `HTTP ${res.status}`,
-    );
+    ) as Error & { status?: number; details?: unknown };
+    err.status = res.status;
+    err.details = data;
+    throw err;
+  }
   return data;
 }
 
@@ -88,12 +119,17 @@ function toRestTimeIntervalValue(start: Date, end: Date): string {
 }
 
 function buildLinkedInTimeBoundUrls(baseUrl: string, start: Date, end: Date) {
-  // LinkedIn accepte les deux formes Rest.li. On essaie la forme 2.0 en premier,
-  // puis la forme pointée pour garder la compatibilité avec les anciennes versions.
+  // LinkedIn est strict sur les paramètres Rest.li et certaines versions REST/v2
+  // n'acceptent pas exactement la même écriture. On tente plusieurs formes,
+  // puis le caller peut ajouter un fallback sans borne de temps si besoin.
   const sep = baseUrl.includes("?") ? "&" : "?";
-  const restli2 = `${baseUrl}${sep}timeIntervals=${encodeURIComponent(toRestTimeIntervalValue(start, end))}`;
+  const interval = toRestTimeIntervalValue(start, end);
+  const intervalAlt = `(timeGranularityType:DAY,timeRange:(start:${toMs(start)},end:${toMs(end)}))`;
+  const restli2 = `${baseUrl}${sep}timeIntervals=${encodeURIComponent(interval)}`;
+  const restli2Alt = `${baseUrl}${sep}timeIntervals=${encodeURIComponent(intervalAlt)}`;
+  const restli2Raw = `${baseUrl}${sep}timeIntervals=${interval}`;
   const dotted = `${baseUrl}${sep}${new URLSearchParams(toRestTimeParams(start, end)).toString()}`;
-  return [restli2, dotted];
+  return [restli2, restli2Alt, restli2Raw, dotted];
 }
 
 function sumFollowerFacetRows(rows: unknown, key: string): number {
@@ -407,17 +443,15 @@ async function liFetchMemberPostAnalytics(
   start: Date,
   end: Date,
 ): Promise<Record<string, number>> {
+  // Quota protection: LinkedIn compte chaque queryType comme un appel.
+  // On garde les signaux business essentiels et on évite les métriques de confort
+  // qui faisaient exploser les quotas journaliers de l'application.
   const queryTypes = [
     "IMPRESSION",
-    "MEMBERS_REACHED",
     "REACTION",
     "COMMENT",
     "RESHARE",
     "LINK_CLICKS",
-    "PREMIUM_CTA_CLICKS",
-    "POST_SAVE",
-    "POST_SEND",
-    "FOLLOWER_GAINED_FROM_CONTENT",
     "PROFILE_VIEW_FROM_CONTENT",
   ];
   const settled = await Promise.allSettled(
@@ -433,11 +467,22 @@ async function liFetchMemberPostAnalytics(
     ),
   );
 
+  const errors: string[] = [];
+  let fulfilled = 0;
   const totals = settled.reduce<Record<string, number>>((acc, result) => {
-    if (result.status !== "fulfilled") return acc;
+    if (result.status !== "fulfilled") {
+      errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
+      return acc;
+    }
+    fulfilled += 1;
     mergeTotals(acc, aggregatePostAnalyticsElements(result.value?.elements));
     return acc;
   }, {});
+
+  if (fulfilled === 0) {
+    throw new Error(errors[0] || "Aucune statistique de publication LinkedIn exploitable.");
+  }
+
   return normalizeTotals(totals);
 }
 
@@ -520,6 +565,11 @@ async function liFetchOrgShareStats(
     [
       ...buildLinkedInTimeBoundUrls(restBase, start, end),
       ...buildLinkedInTimeBoundUrls(v2Base, start, end),
+      // Fallback sécurité : certaines apps LinkedIn refusent la fenêtre de temps
+      // sur cet endpoint selon les permissions/version. Mieux vaut un total global
+      // qu'une erreur qui retombe visuellement à zéro.
+      restBase,
+      v2Base,
     ],
     accessToken,
     { extraHeaders: { "X-RestLi-Method": "FINDER" } },
@@ -665,13 +715,14 @@ export async function liFetchOrgAnalytics(
     liFetchOrgShareStats(accessToken, orgUrn, start, end),
     liFetchOrgPageStats(accessToken, orgUrn, start, end),
     liFetchOrgFollowerStats(accessToken, orgUrn, start, end),
-    liFetchPosts(accessToken, orgUrn, start),
   ]);
 
   const totals: Record<string, number> = {};
-  const raw: Record<string, unknown> = {};
+  const raw: Record<string, unknown> = {
+    posts: { skipped: "quota_protection" },
+  };
   const errors: string[] = [];
-  const labels = ["shareStats", "pageStats", "followerStats", "posts"];
+  const labels = ["shareStats", "pageStats", "followerStats"];
 
   settled.forEach((result, idx) => {
     const label = labels[idx];
@@ -712,13 +763,14 @@ export async function liFetchMemberAnalytics(
   const settled = await Promise.allSettled([
     liFetchMemberFollowers(accessToken, start, end),
     liFetchMemberPostAnalytics(accessToken, start, end),
-    liFetchPosts(accessToken, authorUrn, start),
   ]);
 
   const totals: Record<string, number> = {};
-  const raw: Record<string, unknown> = {};
+  const raw: Record<string, unknown> = {
+    memberPosts: { skipped: "quota_protection" },
+  };
   const errors: string[] = [];
-  const labels = ["memberFollowers", "memberPostAnalytics", "memberPosts"];
+  const labels = ["memberFollowers", "memberPostAnalytics"];
 
   settled.forEach((result, idx) => {
     const label = labels[idx];

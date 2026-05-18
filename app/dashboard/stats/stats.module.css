@@ -741,6 +741,13 @@
   line-height: 1.35;
 }
 
+.provenanceHint {
+  margin-top: 6px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .provenanceCompactBlock {
   min-height: 100%;
 }

@@ -50,13 +50,6 @@ const LINKEDIN_SIGNAL_KEYS = [
   "profileViews",
   "profileViewFromContentCount",
   "pageViews",
-  "followers",
-  "followerCount",
-  "memberFollowersCount",
-  "newFollowers",
-  "followerGainedFromContentCount",
-  "organicFollowerCount",
-  "paidFollowerCount",
   "postsPublished",
   "postSaveCount",
   "postSendCount",
@@ -75,11 +68,24 @@ function sumLinkedInMetricSignals(metrics: unknown) {
   return total;
 }
 
+function linkedInRawHasError(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((entry) => String(entry || "").trim().length > 0);
+  const rec = value as AnyRec;
+  if (typeof rec.error === "string" && rec.error.trim()) return true;
+  if (Array.isArray(rec.errors) && rec.errors.some((entry) => String(entry || "").trim())) return true;
+  return Object.values(rec).some((entry) => linkedInRawHasError(entry));
+}
+
 export function hasUsableLinkedInMetrics(metrics: unknown) {
   const m = asRecord(metrics);
   if (!Object.keys(m).length) return false;
   if (typeof m.error === "string" && m.error.trim()) return false;
-  return sumLinkedInMetricSignals(m) > 0;
+  if (sumLinkedInMetricSignals(m) > 0) return true;
+
+  // Followers seuls + erreurs API = stats partielles, pas un vrai snapshot à 0.
+  // Followers seuls sans erreur peuvent seulement servir de potentiel, pas de demandes captées.
+  return false;
 }
 
 function normalizeGeneratorBlock(raw: unknown): GeneratorChannelBlock | null {

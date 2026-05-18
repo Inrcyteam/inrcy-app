@@ -124,6 +124,9 @@ export type CubeModel = {
   opportunity30: number;
   opportunityLabel: string;
   capturedLeads: CapturedLeads;
+  capturedLeadsUnavailable?: boolean;
+  capturedLeadsHint?: string;
+  provenanceHint?: string;
   qualityScore: number;
   qualityLabel: string;
   qualityTone: "low" | "ok" | "solid" | "excellent";
@@ -665,6 +668,61 @@ export function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
   return Math.max(0, Math.round(perDay * 30));
 }
 
+const LINKEDIN_DETAIL_SIGNAL_KEYS = [
+  "messages",
+  "conversations",
+  "impressions",
+  "impressionCount",
+  "uniqueImpressionsCount",
+  "viewerImpressions",
+  "engagements",
+  "likes",
+  "likeCount",
+  "comments",
+  "commentCount",
+  "shares",
+  "shareCount",
+  "clicks",
+  "clickCount",
+  "linkClickCount",
+  "premiumCtaClickCount",
+  "pageClicks",
+  "profileViews",
+  "profileViewFromContentCount",
+  "pageViews",
+  "postsPublished",
+  "postSaveCount",
+  "postSendCount",
+] as const;
+
+function deepHasLinkedInError(value: any): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((entry) => String(entry || "").trim().length > 0);
+  if (typeof value.error === "string" && value.error.trim()) return true;
+  if (Array.isArray(value.errors) && value.errors.some((entry: any) => String(entry || "").trim())) return true;
+  return Object.values(value).some((entry) => deepHasLinkedInError(entry));
+}
+
+function linkedInMetricValue(metrics: any, key: string) {
+  return safeNum(metrics?.totals?.[key]) + safeNum(metrics?.[key]);
+}
+
+export function hasLinkedInDetailedStats(ov: Overview | null | undefined) {
+  const m = ov?.sources?.linkedin?.metrics;
+  if (!m || m?.error) return false;
+  return LINKEDIN_DETAIL_SIGNAL_KEYS.some((key) => linkedInMetricValue(m, key) > 0);
+}
+
+export function isLinkedInStatsPartial(ov: Overview | null | undefined) {
+  const node = ov?.sources?.linkedin;
+  if (!node?.connected) return false;
+  const m = node.metrics;
+  if (!m) return true;
+  if (m?.error) return true;
+  if (deepHasLinkedInError(m?.raw)) return true;
+  return !hasLinkedInDetailedStats(ov);
+}
+
 export function buildProvenance(cubeKey: CubeKey, ov: Overview) {
   if (cubeKey === "gmb") {
     const m = ov?.sources?.gmb?.metrics;
@@ -721,14 +779,17 @@ export function buildProvenance(cubeKey: CubeKey, ov: Overview) {
     const impressions =
       safeNum(m?.totals?.impressionCount) +
       safeNum(m?.totals?.uniqueImpressionsCount) +
+      safeNum(m?.totals?.impressions) +
       safeNum(m?.totals?.pageViews);
     const clicks =
       safeNum(m?.totals?.clickCount) +
+      safeNum(m?.totals?.clicks) +
+      safeNum(m?.totals?.linkClickCount) +
+      safeNum(m?.totals?.premiumCtaClickCount) +
       safeNum(m?.totals?.pageClicks);
-    const total = impressions + clicks;
     return [
-      { label: "Impressions", value: total > 0 ? impressions : 1, colorVar: "--cSocial" },
-      { label: "Clics", value: total > 0 ? clicks : 1, colorVar: "--cGoogle" },
+      { label: "Impressions", value: impressions, colorVar: "--cSocial" },
+      { label: "Clics", value: clicks, colorVar: "--cGoogle" },
     ];
   }
 
@@ -1183,6 +1244,14 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
 export function buildInsights(cubeKey: CubeKey, ov: Overview, qualityScore: number, decision?: DecisionResult) {
   const insights: string[] = [];
 
+  if (cubeKey === "linkedin" && isLinkedInStatsPartial(ov)) {
+    return [
+      "LinkedIn est connecté, mais les statistiques détaillées sont temporairement indisponibles.",
+      "Le canal n'est pas à zéro : iNrCy conserve le potentiel détecté sans inventer de demandes captées.",
+      "Priorité : publier régulièrement pendant que l'API LinkedIn se débloque.",
+    ];
+  }
+
   if (decision?.businessLecture?.length) {
     return decision.businessLecture.slice(0, 4);
   }
@@ -1272,6 +1341,7 @@ export function buildCubeModel(
   const opp30 = summaryOppByCube[key] ?? computeOpportunity30(key, ov);
 
   const q = computeQuality(key, ov);
+  const linkedInPartial = key === "linkedin" && isLinkedInStatsPartial(ov);
   const capturedLeads: CapturedLeads = {
     week: Math.max(0, Math.round(safeNum(state.capturedLeads?.week))),
     month: Math.max(0, Math.round(safeNum(state.capturedLeads?.month))),
@@ -1313,6 +1383,13 @@ export function buildCubeModel(
     opportunity30: opp30,
     opportunityLabel,
     capturedLeads,
+    capturedLeadsUnavailable: linkedInPartial,
+    capturedLeadsHint: linkedInPartial
+      ? "Stats détaillées LinkedIn indisponibles : aucun vrai zéro n'est affiché."
+      : "Demandes réelles mesurées sur ce canal.",
+    provenanceHint: key === "linkedin" && (linkedInPartial || provenance.every((entry) => safeNum(entry.value) <= 0))
+      ? "Aucune donnée exploitable pour le moment."
+      : undefined,
     qualityScore: q.score,
     qualityLabel: q.label,
     qualityTone: q.tone,
