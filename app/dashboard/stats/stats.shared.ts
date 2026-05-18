@@ -550,8 +550,26 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
 
   if (!connected) return 0;
 
-  const coldStartBaseline = cubeKey === "instagram" ? 0.18 : cubeKey === "linkedin" ? 0.12 : 0.2;
-  if (!m || safeObj(m).error) return coldStartBaseline;
+  const coldStartBaseline = cubeKey === "instagram" ? 0.18 : cubeKey === "linkedin" ? 0 : 0.2;
+  if (!m) return coldStartBaseline;
+
+  const audienceTotal =
+    getTotalMetric(m, [
+      "followers",
+      "followerCount",
+      "memberFollowersCount",
+      "organicFollowerCount",
+      "paidFollowerCount",
+      "follower_count",
+      "followers_count",
+      "fan_count",
+      "fans",
+      "fanCount",
+      "audience",
+      "subscribers",
+    ]) || 0;
+
+  if (safeObj(m).error && !(cubeKey === "linkedin" && audienceTotal > 0)) return coldStartBaseline;
 
   const impressionsTotal =
     getTotalMetric(m, [
@@ -561,6 +579,7 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
       "post_impressions_sum",
       "IMPRESSIONS",
       "impressionCount",
+      "uniqueImpressionsCount",
       "viewerImpressions",
       "reach",
       "REACH",
@@ -569,6 +588,7 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
   const engagementsTotal =
     getTotalMetric(m, [
       "engagements",
+      "engagementCount",
       "post_engagements",
       "postEngagements",
       "ENGAGEMENTS",
@@ -576,9 +596,13 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
       "page_engaged_users",
       "post_engaged_users_sum",
       "reactions",
+      "reactionCount",
       "comments",
+      "commentCount",
       "shares",
+      "shareCount",
       "likes",
+      "likeCount",
       "saves",
       "replies",
       "video_views",
@@ -601,28 +625,76 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
       "outboundClicks",
     ]) || 0;
 
-  const audienceTotal =
-    getTotalMetric(m, [
-      "followers",
-      "follower_count",
-      "followers_count",
-      "fan_count",
-      "fans",
-      "fanCount",
-      "audience",
-      "subscribers",
-    ]) || 0;
-
   const impressionsPerDay = impressionsTotal / baseDays;
   const engagementsPerDay = engagementsTotal / baseDays;
   const ctaClicksPerDay = ctaClicksTotal / baseDays;
 
+  if (cubeKey === "linkedin") {
+    const commentsTotal = getTotalMetric(m, ["commentCount", "comments"]);
+    const sharesTotal = getTotalMetric(m, ["shareCount", "shares"]);
+    const likesTotal = getTotalMetric(m, ["likeCount", "likes", "reactions", "reactionCount"]);
+    const newFollowersTotal = getTotalMetric(m, ["newFollowers", "followerGainedFromContentCount"]);
+    const postsPublishedTotal = getTotalMetric(m, ["postsPublished"]);
+    const uniqueImpressionsTotal = getTotalMetric(m, ["uniqueImpressionsCount"]);
+    const contentClicksTotal = getTotalMetric(m, ["linkClickCount", "premiumCtaClickCount", "clickCount", "clicks", "pageClicks"]);
+    const contentSavesTotal = getTotalMetric(m, ["postSaveCount"]);
+    const contentSendsTotal = getTotalMetric(m, ["postSendCount"]);
+    const contentProfileViewsTotal = getTotalMetric(m, ["profileViewFromContentCount", "profileViews"]);
+
+    const hasRealLinkedInSignal =
+      impressionsTotal > 0 ||
+      uniqueImpressionsTotal > 0 ||
+      engagementsTotal > 0 ||
+      commentsTotal > 0 ||
+      sharesTotal > 0 ||
+      likesTotal > 0 ||
+      newFollowersTotal > 0 ||
+      postsPublishedTotal > 0 ||
+      contentClicksTotal > 0 ||
+      contentSavesTotal > 0 ||
+      contentSendsTotal > 0 ||
+      contentProfileViewsTotal > 0 ||
+      audienceTotal > 0;
+
+    if (!hasRealLinkedInSignal) return 0;
+
+    const currentPerDay = clamp(
+      0.03 +
+        (commentsTotal / baseDays) * 0.22 +
+        (sharesTotal / baseDays) * 0.18 +
+        (newFollowersTotal / baseDays) * 0.14 +
+        (likesTotal / baseDays) * 0.05 +
+        (contentClicksTotal / baseDays) * 0.20 +
+        (contentSavesTotal / baseDays) * 0.12 +
+        (contentSendsTotal / baseDays) * 0.10 +
+        (contentProfileViewsTotal / baseDays) * 0.16 +
+        (postsPublishedTotal / baseDays) * 0.08 +
+        (uniqueImpressionsTotal / baseDays) * 0.004 +
+        (impressionsTotal / baseDays) * 0.0015,
+      0,
+      1.4,
+    );
+
+    const publishTarget = Math.max(2, Math.round(baseDays / 10));
+    const publishDeficit = clamp(1 - postsPublishedTotal / publishTarget, 0, 1);
+    const exposureN = logNorm(impressionsPerDay, 1200);
+    const engagementN = logNorm(engagementsPerDay, 45);
+    const audienceN = logNorm(audienceTotal, 2000);
+    const audienceHeadroom = clamp(0.5 * (1 - engagementN) + 0.5 * (1 - exposureN), 0, 1);
+
+    const potentialPerDay = clamp(
+      currentPerDay + 0.08 + 0.18 * publishDeficit + 0.22 * audienceHeadroom + 0.12 * audienceN,
+      coldStartBaseline,
+      2.2,
+    );
+    const additionalPerDay = Math.max(0, potentialPerDay - currentPerDay);
+    return clamp(additionalPerDay, 0, 2.2);
+  }
+
   const refs =
     cubeKey === "instagram"
       ? { imp: 2500, eng: 120, cta: 6, aud: 3000 }
-      : cubeKey === "linkedin"
-        ? { imp: 1200, eng: 45, cta: 3, aud: 2000 }
-        : { imp: 3000, eng: 90, cta: 5, aud: 5000 };
+      : { imp: 3000, eng: 90, cta: 5, aud: 5000 };
 
   const exposureN = logNorm(impressionsPerDay, refs.imp);
   const engagementN = logNorm(engagementsPerDay, refs.eng);
@@ -858,7 +930,13 @@ function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin", ov: Ov
       ? safeNum(m?.totals?.fan_count) + safeNum(m?.totals?.followers_count) + safeNum(m?.totals?.post_impressions_sum)
       : cubeKey === "instagram"
         ? safeNum(m?.totals?.follower_count) + safeNum(m?.totals?.reach) + safeNum(m?.totals?.profile_views)
-        : safeNum(m?.totals?.followerCount) + safeNum(m?.totals?.pageViews) + safeNum(m?.totals?.uniqueImpressionsCount);
+        : safeNum(m?.totals?.followers) +
+          safeNum(m?.totals?.followerCount) +
+          safeNum(m?.totals?.memberFollowersCount) +
+          safeNum(m?.totals?.organicFollowerCount) +
+          safeNum(m?.totals?.paidFollowerCount) +
+          safeNum(m?.totals?.pageViews) +
+          safeNum(m?.totals?.uniqueImpressionsCount);
 
   const engagement =
     cubeKey === "facebook"
@@ -1246,9 +1324,9 @@ export function buildInsights(cubeKey: CubeKey, ov: Overview, qualityScore: numb
 
   if (cubeKey === "linkedin" && isLinkedInStatsPartial(ov)) {
     return [
-      "LinkedIn est connecté, mais les statistiques détaillées sont temporairement indisponibles.",
-      "Le canal n'est pas à zéro : iNrCy conserve le potentiel détecté sans inventer de demandes captées.",
-      "Priorité : publier régulièrement pendant que l'API LinkedIn se débloque.",
+      "Les données LinkedIn ne sont pas exploitables actuellement.",
+      "Réessayez demain pour actualiser les statistiques détaillées.",
+      "En attendant, publiez régulièrement pour entretenir votre visibilité professionnelle.",
     ];
   }
 
@@ -1338,10 +1416,14 @@ export function buildCubeModel(
               : { main: !!ov.sources?.linkedin?.connected };
 
   const provenance = buildProvenance(key, ov);
-  const opp30 = summaryOppByCube[key] ?? computeOpportunity30(key, ov);
+  const computedOpp30 = computeOpportunity30(key, ov);
+  const linkedInPartial = key === "linkedin" && isLinkedInStatsPartial(ov);
+  const summaryOpp30 = summaryOppByCube[key];
+  const opp30 = linkedInPartial && computedOpp30 > safeNum(summaryOpp30)
+    ? computedOpp30
+    : summaryOpp30 ?? computedOpp30;
 
   const q = computeQuality(key, ov);
-  const linkedInPartial = key === "linkedin" && isLinkedInStatsPartial(ov);
   const capturedLeads: CapturedLeads = {
     week: Math.max(0, Math.round(safeNum(state.capturedLeads?.week))),
     month: Math.max(0, Math.round(safeNum(state.capturedLeads?.month))),
@@ -1352,6 +1434,17 @@ export function buildCubeModel(
   if (action.key !== "connect" && action.key !== "loading") {
     decision = decideAction(getDecisionInput(key, ov, q.score, opp30, provenance, capturedLeads));
     action = actionFromDecision(action, decision);
+  }
+
+  if (linkedInPartial && action.key !== "connect" && action.key !== "loading") {
+    action = {
+      ...action,
+      key: "booster_publier",
+      title: "Publier",
+      detail: "Données LinkedIn non exploitables actuellement. Réessayez demain.",
+      href: "/dashboard/booster?action=publish",
+      pill: "Booster",
+    };
   }
 
   const insights = buildInsights(key, ov, q.score, decision);
@@ -1385,10 +1478,10 @@ export function buildCubeModel(
     capturedLeads,
     capturedLeadsUnavailable: linkedInPartial,
     capturedLeadsHint: linkedInPartial
-      ? "Stats détaillées LinkedIn indisponibles : aucun vrai zéro n'est affiché."
+      ? "Données LinkedIn non exploitables actuellement. Réessayez demain."
       : "Demandes réelles mesurées sur ce canal.",
     provenanceHint: key === "linkedin" && (linkedInPartial || provenance.every((entry) => safeNum(entry.value) <= 0))
-      ? "Aucune donnée exploitable pour le moment."
+      ? "Données non exploitables actuellement."
       : undefined,
     qualityScore: q.score,
     qualityLabel: q.label,

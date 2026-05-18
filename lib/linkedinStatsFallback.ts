@@ -201,10 +201,14 @@ export function shouldUseLinkedInStatsFallback(params: {
   if (!hasUsableLinkedInFallbackBlock(params.fallback?.block)) return false;
   if (!isLinkedInOverviewTemporarilyUnavailable(params.overview)) return false;
 
-  // Une panne LinkedIn peut laisser l'opportunité à 0 alors que certains champs
-  // ont déjà été réhydratés ailleurs. Le signal fiable ici : canal connecté +
-  // overview LinkedIn indisponible + opportunité courante vidée.
-  return toNonNegativeInt(params.currentOpportunity) === 0;
+  // Une panne LinkedIn peut vider les opportunités OU les demandes captées.
+  // Si un ancien bloc exploitable existe, on le reprend tant que l'overview LinkedIn
+  // courante est temporairement indisponible.
+  return (
+    toNonNegativeInt(params.currentOpportunity) === 0 ||
+    toNonNegativeInt(params.currentWeekLeads) === 0 ||
+    toNonNegativeInt(params.currentMonthLeads) === 0
+  );
 }
 
 function recomputeOpportunityTotals(opportunities: AnyRec) {
