@@ -124,12 +124,12 @@ function buildProvenanceSummary(entries?: DecisionInput["provenance"]): Provenan
 }
 
 const ACTION_PRIORITY: Record<ActionType, number> = {
-  enqueter: 6,
-  suivre: 5,
+  suivre: 6,
+  publier: 5,
   offrir: 4,
   recolter: 3,
   informer: 2,
-  publier: 1,
+  enqueter: 1,
 };
 
 function sortRanking(scores: ScoreCard): RankedAction[] {
@@ -149,9 +149,13 @@ function confidenceFromRanking(ranking: RankedAction[]): number {
 
 function selectAction(mode: ModeType, scores: ScoreCard): ActionType {
   const allowed: ActionType[] = mode === "booster" ? ["publier", "recolter", "offrir"] : ["informer", "suivre", "enqueter"];
+  const tiePriority: Partial<Record<ActionType, number>> = mode === "booster"
+    ? { publier: 3, recolter: 2, offrir: 1 }
+    : { suivre: 3, informer: 2, enqueter: 1 };
+
   return allowed.sort((a, b) => {
     if (scores[b] !== scores[a]) return scores[b] - scores[a];
-    return ACTION_PRIORITY[b] - ACTION_PRIORITY[a];
+    return (tiePriority[b] || 0) - (tiePriority[a] || 0);
   })[0];
 }
 
@@ -184,31 +188,41 @@ function detectMode(input: DecisionInput, p: ProvenanceSummary): ModeType {
   const audience = n(input.metrics?.audience);
   const conversions = n(input.metrics?.conversions);
   const visibility = n(input.metrics?.visibility);
+  const weekLeads = n(input.capturedLeads?.week);
+  const monthLeads = n(input.capturedLeads?.month);
+
+  // Règle business : on part de Booster / Publier par défaut.
+  // On ne bascule vers Fidéliser que si le canal prouve déjà qu'il capte des demandes réelles.
+  const weakQuality = quality > 0 && quality < 60;
+  const weakDemand = monthLeads < 10 && weekLeads < 3 && conversions < 4;
+  const highPotentialButNotEnoughDemand = opp >= 7 && (monthLeads < 12 || weekLeads < 3);
+
+  if (weakQuality || (highPotentialButNotEnoughDemand && weakDemand)) {
+    return "booster";
+  }
 
   if (input.channelType === "website") {
-    return opp >= 5 ? "fideliser" : "booster";
+    const isInrcySite = input.channelKey === "site_inrcy";
+    const matureDemand = isInrcySite
+      ? monthLeads >= 18 || weekLeads >= 4 || conversions >= 10
+      : monthLeads >= 14 || weekLeads >= 4 || conversions >= 8;
+    const strongStructure = quality >= (isInrcySite ? 62 : 65);
+
+    return matureDemand && strongStructure ? "fideliser" : "booster";
   }
 
   if (input.channelType === "gmb") {
-    const localDemand = visibility >= 250 || conversions >= 3 || p.mapsShare >= 0.4 || p.googleShare >= 0.5;
-    const localHealthy = opp >= 4 && localDemand && quality >= 50;
-    return localHealthy ? "fideliser" : "booster";
+    const localDemand = monthLeads >= 18 || weekLeads >= 5 || conversions >= 8;
+    const localSignal = visibility >= 250 || p.mapsShare >= 0.35 || p.searchShare >= 0.35 || p.googleShare >= 0.45;
+
+    return quality >= 58 && localDemand && localSignal ? "fideliser" : "booster";
   }
 
-  const socialHealthy =
-    opp >= 6 &&
-    (
-      engagement >= 20 ||
-      audience >= 150 ||
-      conversions >= 2 ||
-      visibility >= 300 ||
-      p.interactionShare >= 0.35
-    );
+  const socialDemand = monthLeads >= 16 || weekLeads >= 5 || conversions >= 4;
+  const socialActivity = engagement >= 20 || audience >= 300 || visibility >= 500 || p.interactionShare >= 0.35;
+  const socialMature = quality >= 62 && socialDemand && socialActivity;
 
-  if (socialHealthy) return "fideliser";
-
-  const hasSocialMotion = engagement >= 10 || audience >= 100 || visibility >= 200 || p.audienceShare >= 0.4;
-  return hasSocialMotion && opp >= 8 && quality >= 55 ? "fideliser" : "booster";
+  return socialMature ? "fideliser" : "booster";
 }
 
 function scoreBooster(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
@@ -221,8 +235,15 @@ function scoreBooster(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
   const intent = n(input.metrics?.intent);
   const conversions = n(input.metrics?.conversions);
   const visibility = n(input.metrics?.visibility);
+  const weekLeads = n(input.capturedLeads?.week);
+  const monthLeads = n(input.capturedLeads?.month);
 
   addMany(scores, ["publier", "recolter", "offrir"], 1);
+
+  // Recalibrage iNrCy : quand un canal est faible/moyen, Booster / Publier doit rester le réflexe.
+  if (quality > 0 && quality < 60) add(scores, "publier", 5);
+  if (monthLeads < 10 && weekLeads < 3) add(scores, "publier", 3);
+  if (opp >= 7 && monthLeads < 12) add(scores, "publier", 3);
 
   if (input.channelType === "website") {
     if (opp <= 2) add(scores, "publier", 4);
@@ -280,8 +301,15 @@ function scoreFideliser(input: DecisionInput, p: ProvenanceSummary): ScoreCard {
   const visibility = n(input.metrics?.visibility);
   const traffic = n(input.metrics?.traffic);
   const intent = n(input.metrics?.intent);
+  const weekLeads = n(input.capturedLeads?.week);
+  const monthLeads = n(input.capturedLeads?.month);
 
   addMany(scores, ["informer", "suivre", "enqueter"], 1);
+
+  // En fidélisation, le suivi doit dominer dès qu'il y a déjà de vraies demandes à transformer.
+  if (monthLeads >= 18 || weekLeads >= 5) add(scores, "suivre", 5);
+  else if (monthLeads >= 10 || weekLeads >= 3) add(scores, "suivre", 3);
+  if (monthLeads < 10 && weekLeads < 3) add(scores, "informer", 1);
 
   if (input.channelType === "website") {
     if (opp >= 10) add(scores, "suivre", 2);
