@@ -169,6 +169,8 @@ export function stripSiteTextFormatting(input: unknown) {
     .replace(new RegExp(`&lt;\\/?\\s*(${ALLOWED_INLINE_TAGS})[^&]*?&gt;`, "gi"), "")
     .replace(/\*\*([^*\n]+?)\*\*/g, "$1")
     .replace(/(^|[^*])\*([^*\n]+?)\*/g, "$1$2")
-    .replace(/\s+\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

@@ -126,10 +126,9 @@ function buildPrimaryBoosterText(channel: BoosterChannelKey, post: Partial<Boost
   const title = collapseWhitespace(isSiteChannel ? sanitizeBoosterSiteText(post?.title || "") : stripSiteTextFormatting(post?.title || ""));
   const content = collapseWhitespace(isSiteChannel ? sanitizeBoosterSiteText(post?.content || "") : stripSiteTextFormatting(post?.content || ""));
 
-  if ((channel === "facebook" || channel === "linkedin") && title && content) {
-    return collapseWhitespace(`${title} — ${content}`);
-  }
-
+  // Preserve the professional's paragraph breaks on every channel.
+  // Facebook and LinkedIn used to join title + content with an em dash,
+  // which made airy texts look like one compact block after publishing.
   return [title, content].filter(Boolean).join("\n\n").trim();
 }
 

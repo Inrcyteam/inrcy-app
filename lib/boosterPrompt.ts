@@ -307,6 +307,13 @@ Règles par canal :
 - LinkedIn : texte plus professionnel, crédible, utile et structuré, environ 100 à 220 mots. Mettre en avant expertise, méthode, recul métier ou conseil pro. Éviter le ton vendeur, les slogans et les emojis excessifs.
 - Facebook / Instagram / LinkedIn / Google Business : ne jamais utiliser de Markdown ni de balises HTML de formatage. Ces canaux doivent rester en texte brut.
 
+Aération et retours à la ligne :
+- Aérer naturellement les contenus avec des paragraphes courts quand le canal s'y prête.
+- Facebook, Instagram, LinkedIn et Google Business : viser 2 à 4 courts paragraphes maximum, selon la longueur du texte.
+- Site iNrCy / Site web : structurer en paragraphes lisibles, sans créer de liste froide ni de découpage excessif.
+- Ne pas ajouter de retours à la ligne excessifs, de lignes isolées inutiles ou d'effet "post LinkedIn influenceur".
+- Ne jamais rendre un gros bloc de texte compact quand le contenu dépasse quelques phrases.
+
 Différences de styles à respecter impérativement :
 - Style SOBRE : ton rassurant, posé, sobre et crédible. Accroche simple et informative. Phrases plus complètes et fluides. Très peu d'effet marketing. Pas de surjeu. Pas d'abus de points d'exclamation. Emojis absents ou presque absents.
 - Style ÉQUILIBRÉ : ton pro, humain, chaleureux et engageant. Accroche plus vivante mais naturelle. Phrases fluides avec un peu plus de relief. Le texte doit être plus chaleureux que le style sobre, sans devenir trop commercial. Emojis modérés.
@@ -552,6 +559,8 @@ Consignes supplémentaires :
 - Respecter le tutoiement/vouvoiement configuré. En mode automatique, privilégier le vouvoiement pour LinkedIn, Google Business et les métiers sérieux/réglementés.
 - Respecter la voix de l'entreprise configurée : "Je" = parler au nom d'une personne seule, "Nous" = parler au nom de l'entreprise/l'équipe, "Neutre" = éviter autant que possible je et nous, "Automatique" = choisir naturellement selon le profil et le contexte. Ne pas mélanger je et nous dans un même contenu sauf nécessité grammaticale.
 - Respecter le CTA préféré lorsque le canal le permet, sauf Google Business qui doit rester neutre.
+- Aérer le contenu avec des retours à la ligne naturels : 2 à 4 courts paragraphes maximum pour les réseaux sociaux et Google Business, davantage seulement pour les contenus site si nécessaire.
+- Ne pas abuser des retours à la ligne : éviter les phrases isolées artificielles, les sauts de ligne après chaque phrase et les contenus éclatés.
 - Pour Site iNrCy / Site web uniquement : renforcer le référencement naturel en répétant naturellement le couple métier + ville et les prestations principales, sans dépasser la longueur demandée et sans enchaîner des mots-clés artificiels.
 - Pour Site iNrCy / Site web uniquement : utiliser uniquement le gras Markdown **...** avec modération sur les expressions SEO principales. Pour tous les autres canaux, ne jamais mettre de gras, d’italique, de souligné ou de balise HTML.
 
