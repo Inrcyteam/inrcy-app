@@ -364,13 +364,16 @@ export async function buildMetricsSummary(args: {
     // so another device catches up quickly without waiting for hours.
     const rangeKey = cacheRangeKey ?? `month=${monthDays}|week=${weekDays}|today=${todayDays}|snapshot=${dateWindow.snapshotDate || 'live'}|conn=${connectionSignature}`;
     const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
-    await supabase.from('stats_cache').insert({
-      user_id: userId,
-      source: 'metrics_summary',
-      range_key: rangeKey,
-      payload,
-      expires_at: expiresAt,
-    });
+    await supabase.from('stats_cache').upsert(
+      {
+        user_id: userId,
+        source: 'metrics_summary',
+        range_key: rangeKey,
+        payload,
+        expires_at: expiresAt,
+      },
+      { onConflict: 'user_id,source,range_key' },
+    );
   } catch {}
 
   return payload;

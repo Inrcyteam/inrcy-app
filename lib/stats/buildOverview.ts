@@ -1125,39 +1125,48 @@ export async function buildStatsOverview(args: {
 
   async function writeLinkedInMetricsCache(cacheKey: string, payload: unknown) {
     try {
-      await supabase.from("stats_cache").insert({
-        user_id: userId,
-        source: LINKEDIN_METRICS_SOURCE,
-        range_key: cacheKey,
-        payload,
-        expires_at: new Date(Date.now() + LINKEDIN_METRICS_CACHE_TTL_MS).toISOString(),
-      });
+      await supabase.from("stats_cache").upsert(
+        {
+          user_id: userId,
+          source: LINKEDIN_METRICS_SOURCE,
+          range_key: cacheKey,
+          payload,
+          expires_at: new Date(Date.now() + LINKEDIN_METRICS_CACHE_TTL_MS).toISOString(),
+        },
+        { onConflict: "user_id,source,range_key" },
+      );
     } catch {}
   }
 
   async function writeLastGoodLinkedInMetricsCache(cacheKey: string, payload: unknown) {
     if (!isLastGoodLinkedInMetrics(payload)) return;
     try {
-      await supabase.from("stats_cache").insert({
-        user_id: userId,
-        source: LINKEDIN_LAST_GOOD_METRICS_SOURCE,
-        range_key: cacheKey,
-        payload,
-        expires_at: new Date(Date.now() + LINKEDIN_LAST_GOOD_CACHE_TTL_MS).toISOString(),
-      });
+      await supabase.from("stats_cache").upsert(
+        {
+          user_id: userId,
+          source: LINKEDIN_LAST_GOOD_METRICS_SOURCE,
+          range_key: cacheKey,
+          payload,
+          expires_at: new Date(Date.now() + LINKEDIN_LAST_GOOD_CACHE_TTL_MS).toISOString(),
+        },
+        { onConflict: "user_id,source,range_key" },
+      );
     } catch {}
   }
 
   async function writeLastGoodLinkedInOpportunityCache(cacheKey: string, payload: unknown) {
     if (!hasLinkedInOpportunityMetrics(payload)) return;
     try {
-      await supabase.from("stats_cache").insert({
-        user_id: userId,
-        source: LINKEDIN_OPPORTUNITY_LAST_GOOD_SOURCE,
-        range_key: cacheKey,
-        payload,
-        expires_at: new Date(Date.now() + LINKEDIN_LAST_GOOD_CACHE_TTL_MS).toISOString(),
-      });
+      await supabase.from("stats_cache").upsert(
+        {
+          user_id: userId,
+          source: LINKEDIN_OPPORTUNITY_LAST_GOOD_SOURCE,
+          range_key: cacheKey,
+          payload,
+          expires_at: new Date(Date.now() + LINKEDIN_LAST_GOOD_CACHE_TTL_MS).toISOString(),
+        },
+        { onConflict: "user_id,source,range_key" },
+      );
     } catch {}
   }
 
@@ -1179,17 +1188,13 @@ export async function buildStatsOverview(args: {
       };
     }
 
-    const lastOpportunity = await readLastGoodLinkedInOpportunityMetrics(authorUrn, orgUrn, cacheKey);
-    if (lastOpportunity) {
-      return {
-        metrics: lastOpportunity,
-        mode: cached ? "last_opportunity_over_partial_cache" : "last_opportunity_cache",
-      };
+    // Important : un cache d'opportunité seul ne doit PAS bloquer une nouvelle
+    // synchro LinkedIn. Il sert uniquement de secours en cas de quota/erreur.
+    // Sinon, après le reset LinkedIn, l'app peut rester bloquée sur "+18 / demandes —"
+    // pendant 30 jours au lieu de retenter les stats détaillées.
+    if (cached && !hasLinkedInMetricErrors(cached)) {
+      return { metrics: cached, mode: "valid_partial_linkedin_cache" };
     }
-
-    // Aucun snapshot exploitable disponible : on peut garder une réponse partielle
-    // pour le potentiel, mais elle ne doit jamais écraser le dernier bon cache.
-    if (cached) return { metrics: cached, mode: "partial_linkedin_cache" };
 
     return null;
   }
@@ -1217,17 +1222,20 @@ export async function buildStatsOverview(args: {
   async function writeLinkedInQuotaGuard(errorMessage: string) {
     const blockedUntil = getLinkedInNextUtcResetIso();
     try {
-      await supabase.from("stats_cache").insert({
-        user_id: userId,
-        source: LINKEDIN_QUOTA_GUARD_SOURCE,
-        range_key: "application",
-        payload: {
-          blockedUntil,
-          error: errorMessage,
-          reason: "linkedin_api_quota",
+      await supabase.from("stats_cache").upsert(
+        {
+          user_id: userId,
+          source: LINKEDIN_QUOTA_GUARD_SOURCE,
+          range_key: "application",
+          payload: {
+            blockedUntil,
+            error: errorMessage,
+            reason: "linkedin_api_quota",
+          },
+          expires_at: blockedUntil,
         },
-        expires_at: blockedUntil,
-      });
+        { onConflict: "user_id,source,range_key" },
+      );
     } catch {}
     return blockedUntil;
   }
@@ -2173,13 +2181,16 @@ export async function buildStatsOverview(args: {
   // cache write (best-effort)
   try {
     const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
-    await supabase.from("stats_cache").insert({
-      user_id: userId,
-      source: "overview",
-      range_key: rangeKey,
-      payload,
-      expires_at: expiresAt,
-    });
+    await supabase.from("stats_cache").upsert(
+      {
+        user_id: userId,
+        source: "overview",
+        range_key: rangeKey,
+        payload,
+        expires_at: expiresAt,
+      },
+      { onConflict: "user_id,source,range_key" },
+    );
   } catch {}
 
   // cache legacy write (best-effort)
