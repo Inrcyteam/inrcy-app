@@ -14,6 +14,7 @@ export type LinkedInIntegrationRecord = {
   meta?: unknown;
   resource_label?: string | null;
   display_name?: string | null;
+  provider_account_id?: string | null;
   email_address?: string | null;
   updated_at?: string | null;
   created_at?: string | null;
@@ -48,15 +49,21 @@ async function postTokenForm(form: Record<string, string>) {
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
-    throw new Error(String(data?.error_description || data?.error || `HTTP ${res.status}`));
+    throw new Error(
+      String(data?.error_description || data?.error || `HTTP ${res.status}`),
+    );
   }
   return data;
 }
 
-async function loadLatestLinkedInRow(userId: string): Promise<LinkedInIntegrationRecord | null> {
+async function loadLatestLinkedInRow(
+  userId: string,
+): Promise<LinkedInIntegrationRecord | null> {
   const { data } = await supabaseAdmin
     .from("integrations")
-    .select("id,status,resource_id,access_token_enc,refresh_token_enc,expires_at,meta,resource_label,display_name,email_address,updated_at,created_at")
+    .select(
+      "id,status,resource_id,provider_account_id,access_token_enc,refresh_token_enc,expires_at,meta,resource_label,display_name,email_address,updated_at,created_at",
+    )
     .eq("user_id", userId)
     .eq("provider", "linkedin")
     .eq("source", "linkedin")
@@ -65,7 +72,9 @@ async function loadLatestLinkedInRow(userId: string): Promise<LinkedInIntegratio
     .order("created_at", { ascending: false })
     .limit(1);
 
-  return (Array.isArray(data) && data[0] ? (data[0] as LinkedInIntegrationRecord) : null);
+  return Array.isArray(data) && data[0]
+    ? (data[0] as LinkedInIntegrationRecord)
+    : null;
 }
 
 export async function getLinkedInAccessToken(params: {
@@ -88,10 +97,20 @@ export async function getLinkedInAccessToken(params: {
   }
 
   const meta = asRecord(row.meta);
-  const accessToken = tryDecryptToken(asString(row.access_token_enc) || "") || null;
-  const refreshToken = tryDecryptToken(asString(row.refresh_token_enc) || "") || null;
+  const accessToken =
+    tryDecryptToken(asString(row.access_token_enc) || "") || null;
+  const refreshToken =
+    tryDecryptToken(asString(row.refresh_token_enc) || "") || null;
   const refreshTokenPresent = Boolean(refreshToken);
-  const authorUrn = asString(row.resource_id) || null;
+  const persistedResourceId = asString(row.resource_id) || "";
+  const providerAccountId = asString(row.provider_account_id);
+  const authorUrn =
+    asString(meta.profile_urn) ||
+    (persistedResourceId.startsWith("urn:li:person:")
+      ? persistedResourceId
+      : "") ||
+    (providerAccountId ? `urn:li:person:${providerAccountId}` : "") ||
+    null;
   const orgUrn = asString(meta.org_urn) || null;
   const expired = isExpired(row.expires_at);
 
@@ -118,7 +137,9 @@ export async function getLinkedInAccessToken(params: {
       refreshTokenPresent: false,
       refreshed: false,
       canReconnectSilently: false,
-      error: expired ? "Le jeton LinkedIn a expiré et aucun refresh token n'est disponible." : undefined,
+      error: expired
+        ? "Le jeton LinkedIn a expiré et aucun refresh token n'est disponible."
+        : undefined,
     };
   }
 
@@ -147,19 +168,23 @@ export async function getLinkedInAccessToken(params: {
     });
 
     const nextAccessToken = asString(tokenData.access_token);
-    if (!nextAccessToken) throw new Error("Réponse LinkedIn invalide: access_token manquant.");
+    if (!nextAccessToken)
+      throw new Error("Réponse LinkedIn invalide: access_token manquant.");
 
     const expiresIn = Number(tokenData.expires_in || 0);
-    const nextExpiresAt = Number.isFinite(expiresIn) && expiresIn > 0
-      ? new Date(Date.now() + expiresIn * 1000).toISOString()
-      : null;
+    const nextExpiresAt =
+      Number.isFinite(expiresIn) && expiresIn > 0
+        ? new Date(Date.now() + expiresIn * 1000).toISOString()
+        : null;
 
     const nextRefreshToken = asString(tokenData.refresh_token) || refreshToken;
     const nextMeta = {
       ...meta,
-      refresh_token_expires_in: Number.isFinite(Number(tokenData.refresh_token_expires_in))
+      refresh_token_expires_in: Number.isFinite(
+        Number(tokenData.refresh_token_expires_in),
+      )
         ? Number(tokenData.refresh_token_expires_in)
-        : meta.refresh_token_expires_in ?? null,
+        : (meta.refresh_token_expires_in ?? null),
       refreshed_at: new Date().toISOString(),
     };
 
@@ -167,7 +192,9 @@ export async function getLinkedInAccessToken(params: {
       .from("integrations")
       .update({
         access_token_enc: encryptToken(nextAccessToken),
-        refresh_token_enc: nextRefreshToken ? encryptToken(nextRefreshToken) : row.refresh_token_enc || null,
+        refresh_token_enc: nextRefreshToken
+          ? encryptToken(nextRefreshToken)
+          : row.refresh_token_enc || null,
         expires_at: nextExpiresAt,
         status: "connected",
         meta: nextMeta,
@@ -178,7 +205,9 @@ export async function getLinkedInAccessToken(params: {
     const nextRow: LinkedInIntegrationRecord = {
       ...row,
       access_token_enc: encryptToken(nextAccessToken),
-      refresh_token_enc: nextRefreshToken ? encryptToken(nextRefreshToken) : row.refresh_token_enc || null,
+      refresh_token_enc: nextRefreshToken
+        ? encryptToken(nextRefreshToken)
+        : row.refresh_token_enc || null,
       expires_at: nextExpiresAt,
       status: "connected",
       meta: nextMeta,
