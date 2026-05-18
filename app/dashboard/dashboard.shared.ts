@@ -20,6 +20,8 @@ export function hasMeaningfulChannelBlock(block: InrstatsChannelBlock | null | u
       block.syncAt ||
       block.snapshotDate ||
       block.opportunities > 0 ||
+      (block.capturedLeads?.week ?? 0) > 0 ||
+      (block.capturedLeads?.month ?? 0) > 0 ||
       block.estimatedValue > 0 ||
       block.error ||
       block.connection.resourceUrl ||

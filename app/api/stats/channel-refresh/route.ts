@@ -3,11 +3,14 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { DASHBOARD_CHANNEL_KEYS, isDashboardChannelKey, type DashboardChannelKey } from "@/lib/dashboardChannels";
 import { requireUser } from "@/lib/requireUser";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
+import { buildStatsConnectionSignature } from "@/lib/stats/connectionSignature";
+import { applyLinkedInFallbackToStatsRecords, readLastGoodLinkedInGeneratorBlock, type LinkedInStatsFallback } from "@/lib/linkedinStatsFallback";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { buildChannelBlocks, type InrstatsChannelBlock } from "@/lib/inrstats/channelBlocks";
 import {
   EMPTY_CUBE_RECORD,
   INCLUDE_BY_CUBE,
+  computeHistoryFromOverviews,
   computeOpportunitiesFromOverviews,
   toInrstatsSnapshot,
   type CubeKey,
@@ -65,8 +68,9 @@ async function buildChannelPeriodPayload(args: {
   snapshotDate: string;
   channelStates: Awaited<ReturnType<typeof getChannelConnectionStates>>;
   profile: ProfileMetrics;
+  linkedInFallback?: LinkedInStatsFallback | null;
 }): Promise<ChannelRefreshPeriodPayload> {
-  const { supabase, userId, channel, period, snapshotDate, channelStates, profile } = args;
+  const { supabase, userId, channel, period, snapshotDate, channelStates, profile, linkedInFallback } = args;
   const overview = await buildStatsOverview({
     supabase,
     userId,
@@ -78,17 +82,37 @@ async function buildChannelPeriodPayload(args: {
 
   const overviews: Partial<Record<CubeKey, Overview>> = { [channel]: overview };
   const opportunities = toInrstatsSnapshot(computeOpportunitiesFromOverviews(overviews, period));
+  const capturedForPeriod = computeHistoryFromOverviews(overviews, period).perTool || {};
+  const capturedLeadsByCube = {
+    week: { ...EMPTY_CUBE_RECORD, ...(period === 7 ? capturedForPeriod : {}) },
+    month: { ...EMPTY_CUBE_RECORD, ...(period === 30 ? capturedForPeriod : {}) },
+  };
   const estimatedByCube: Record<CubeKey, number> = {
     ...EMPTY_CUBE_RECORD,
     [channel]: Math.round((opportunities.byCube[channel] || 0) * (profile.lead_conversion_rate / 100) * profile.avg_basket),
   };
 
+  const linkedInPreserved = channel === "linkedin"
+    ? applyLinkedInFallbackToStatsRecords({
+        overviews,
+        opportunities,
+        capturedLeadsByCube,
+        estimatedByCube,
+        statsConnected: Boolean(channelStates.linkedin.connected && !channelStates.linkedin.requiresUpdate),
+        fallback: linkedInFallback,
+        leadConversionRate: profile.lead_conversion_rate,
+        avgBasket: profile.avg_basket,
+      })
+    : false;
+
   const block = buildChannelBlocks({
     periodDays: period,
     overviews,
     opportunitiesByCube: opportunities.byCube,
+    capturedLeadsByCube,
     estimatedByCube,
     channelStates,
+    preservedChannels: linkedInPreserved ? { linkedin: true } : undefined,
   })[channel];
 
   return {
@@ -114,15 +138,42 @@ export async function POST(req: Request) {
     }
 
     const snapshotDate = getDefaultSnapshotDate();
-    const [profile, channelStates] = await Promise.all([
+    const [profile, channelStates, connectionSignature] = await Promise.all([
       fetchProfileMetrics(supabase, user.id),
       getChannelConnectionStates(supabase, user.id),
+      buildStatsConnectionSignature(supabase, user.id),
+    ]);
+    const linkedInFallback = channel === "linkedin"
+      ? await readLastGoodLinkedInGeneratorBlock({
+          supabase,
+          userId: user.id,
+          connectionSignature,
+        })
+      : null;
+
+    const [rawPeriod7, rawPeriod30] = await Promise.all([
+      buildChannelPeriodPayload({ supabase, userId: user.id, channel, period: 7, snapshotDate, channelStates, profile, linkedInFallback }),
+      buildChannelPeriodPayload({ supabase, userId: user.id, channel, period: 30, snapshotDate, channelStates, profile, linkedInFallback }),
     ]);
 
-    const [period7, period30] = await Promise.all([
-      buildChannelPeriodPayload({ supabase, userId: user.id, channel, period: 7, snapshotDate, channelStates, profile }),
-      buildChannelPeriodPayload({ supabase, userId: user.id, channel, period: 30, snapshotDate, channelStates, profile }),
-    ]);
+    const capturedLeads = {
+      week: Math.max(0, Math.round(Number(rawPeriod7.block.capturedLeads?.week ?? 0))),
+      month: Math.max(0, Math.round(Number(rawPeriod30.block.capturedLeads?.month ?? 0))),
+    };
+    const period7: ChannelRefreshPeriodPayload = {
+      ...rawPeriod7,
+      block: {
+        ...rawPeriod7.block,
+        capturedLeads: rawPeriod7.block.connection.statsConnected ? capturedLeads : { week: 0, month: 0 },
+      },
+    };
+    const period30: ChannelRefreshPeriodPayload = {
+      ...rawPeriod30,
+      block: {
+        ...rawPeriod30.block,
+        capturedLeads: rawPeriod30.block.connection.statsConnected ? capturedLeads : { week: 0, month: 0 },
+      },
+    };
 
     const syncAt = Date.now();
     const payload: ChannelRefreshResponse = {

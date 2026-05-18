@@ -29,12 +29,23 @@ export type InrstatsChannelConnectionSummary = {
   resourceUrl: string | null;
 };
 
+export type InrstatsCapturedLeads = {
+  week: number;
+  month: number;
+};
+
+export type InrstatsCapturedLeadsByCube = {
+  week: Partial<Record<CubeKey, number>>;
+  month: Partial<Record<CubeKey, number>>;
+};
+
 export type InrstatsChannelBlock = {
   channel: DashboardChannelKey;
   periodDays: number | null;
   connection: InrstatsChannelConnectionSummary;
   overview: InrstatsOverviewLike;
   opportunities: number;
+  capturedLeads: InrstatsCapturedLeads;
   estimatedValue: number;
   syncAt: number | null;
   snapshotDate: string | null;
@@ -66,6 +77,7 @@ export function createEmptyChannelBlock(channel: DashboardChannelKey): InrstatsC
     connection: createEmptyChannelConnection(),
     overview: null,
     opportunities: 0,
+    capturedLeads: { week: 0, month: 0 },
     estimatedValue: 0,
     syncAt: null,
     snapshotDate: null,
@@ -215,27 +227,36 @@ export function buildChannelBlocks(params: {
   periodDays: number;
   overviews: Partial<Record<CubeKey, Overview>>;
   opportunitiesByCube: Record<CubeKey, number>;
+  capturedLeadsByCube?: InrstatsCapturedLeadsByCube;
   estimatedByCube: Record<CubeKey, number>;
   channelStates: ChannelStates;
+  preservedChannels?: Partial<Record<DashboardChannelKey, boolean>>;
 }): InrstatsChannelBlocksByChannel {
-  const { periodDays, overviews, opportunitiesByCube, estimatedByCube, channelStates } = params;
+  const { periodDays, overviews, opportunitiesByCube, capturedLeadsByCube, estimatedByCube, channelStates, preservedChannels } = params;
   const blocks = createEmptyChannelBlocks();
 
   for (const channel of DASHBOARD_CHANNEL_KEYS) {
     const overview = overviews[channel] ?? null;
     const connection = mapChannelConnection(channel, channelStates);
     const statsActive = connection.statsConnected;
+    const preserved = Boolean(preservedChannels?.[channel]);
     blocks[channel] = {
       channel,
       periodDays,
       connection,
       overview: statsActive ? overview : null,
       opportunities: statsActive ? Math.max(0, Math.round(opportunitiesByCube[channel] || 0)) : 0,
+      capturedLeads: statsActive
+        ? {
+            week: Math.max(0, Math.round(Number(capturedLeadsByCube?.week?.[channel] ?? 0))),
+            month: Math.max(0, Math.round(Number(capturedLeadsByCube?.month?.[channel] ?? 0))),
+          }
+        : { week: 0, month: 0 },
       estimatedValue: statsActive ? Math.max(0, Math.round(estimatedByCube[channel] || 0)) : 0,
       syncAt: statsActive ? toSyncAt(overview) : null,
       snapshotDate: statsActive ? overview?.meta?.snapshotDate ?? null : null,
       live: statsActive ? Boolean(overview?.meta?.live) : false,
-      error: statsActive ? getOverviewError(channel, overview) : null,
+      error: statsActive && !preserved ? getOverviewError(channel, overview) : null,
     };
   }
 

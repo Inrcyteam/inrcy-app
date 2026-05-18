@@ -1257,6 +1257,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     const currentBlock = currentBlocks[channel] ?? createEmptyChannelBlock(channel);
     const nextBlock = updater({
       ...currentBlock,
+      capturedLeads: (currentBlock as Partial<InrstatsChannelBlock>).capturedLeads ?? { week: 0, month: 0 },
       connection: { ...currentBlock.connection },
     });
     const nextSyncAt = Number.isFinite(Number(nextBlock.syncAt)) ? Number(nextBlock.syncAt) : Date.now();
@@ -1291,6 +1292,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     },
     overview: options?.clearData ? null : current.overview,
     opportunities: options?.clearData ? 0 : current.opportunities,
+    capturedLeads: options?.clearData ? { week: 0, month: 0 } : current.capturedLeads,
     estimatedValue: options?.clearData ? 0 : current.estimatedValue,
     live: options?.clearData ? false : current.live,
     error: options?.clearError === false ? current.error : null,

@@ -16,6 +16,10 @@ export type DailyRefreshBulkPayload = {
     avg_basket?: number;
   };
   estimatedByCube?: Partial<Record<CubeKey, number>>;
+  capturedLeadsByCube?: {
+    week?: Partial<Record<CubeKey, number>>;
+    month?: Partial<Record<CubeKey, number>>;
+  };
   blocks?: InrstatsChannelBlocksByChannel;
   meta?: {
     generatedAt?: string;

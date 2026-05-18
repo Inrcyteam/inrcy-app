@@ -36,6 +36,18 @@ export type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagra
 
 export type Period = 7 | 14 | 30 | 60;
 
+export type CapturedLeads = {
+  week: number;
+  month: number;
+};
+
+export type CubeState = {
+  ov: Overview | null;
+  loading: boolean;
+  error?: string;
+  capturedLeads?: CapturedLeads;
+};
+
 export type StatsBulkResponse = {
   overviews?: Partial<Record<CubeKey, Overview>>;
   opportunities?: {
@@ -47,6 +59,10 @@ export type StatsBulkResponse = {
     avg_basket?: number;
   };
   estimatedByCube?: Partial<Record<CubeKey, number>>;
+  capturedLeadsByCube?: {
+    week?: Partial<Record<CubeKey, number>>;
+    month?: Partial<Record<CubeKey, number>>;
+  };
   blocks?: Partial<Record<CubeKey, InrstatsChannelBlock>>;
   meta?: { snapshotDate?: string | null; live?: boolean };
 };
@@ -107,6 +123,7 @@ export type CubeModel = {
   provenance: Array<{ label: string; value: number; colorVar: string }>;
   opportunity30: number;
   opportunityLabel: string;
+  capturedLeads: CapturedLeads;
   qualityScore: number;
   qualityLabel: string;
   qualityTone: "low" | "ok" | "solid" | "excellent";
@@ -156,6 +173,16 @@ export function removeUiCacheValue(key: string) {
   removeAccountCacheValue(key);
 }
 
+const CUBE_KEYS: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"];
+
+export function hasCapturedLeadsBlocks(blocks: Partial<Record<CubeKey, InrstatsChannelBlock>> | undefined) {
+  if (!blocks || typeof blocks !== "object") return false;
+  return CUBE_KEYS.every((key) => {
+    const leads = blocks[key]?.capturedLeads;
+    return Number.isFinite(Number(leads?.week)) && Number.isFinite(Number(leads?.month));
+  });
+}
+
 export function expectedUiSnapshotDate() {
   return getDefaultSnapshotDate();
 }
@@ -177,7 +204,7 @@ export function getOverviewSnapshotDate(overviews: unknown): string | null {
   return null;
 }
 
-export function parseCachedCubeSnapshot(raw: string | null): { syncedAt: number; overviews: Record<CubeKey, Overview>; snapshotDate: string | null } | null {
+export function parseCachedCubeSnapshot(raw: string | null): { syncedAt: number; overviews: Record<CubeKey, Overview>; snapshotDate: string | null; blocks?: Partial<Record<CubeKey, InrstatsChannelBlock>> } | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as any;
@@ -186,6 +213,7 @@ export function parseCachedCubeSnapshot(raw: string | null): { syncedAt: number;
         syncedAt: safeNum(parsed.syncedAt),
         overviews: parsed.overviews as Record<CubeKey, Overview>,
         snapshotDate: typeof parsed.snapshotDate === "string" ? parsed.snapshotDate : getOverviewSnapshotDate(parsed.overviews),
+        blocks: parsed.blocks && typeof parsed.blocks === "object" ? (parsed.blocks as Partial<Record<CubeKey, InrstatsChannelBlock>>) : undefined,
       };
     }
     if (parsed && typeof parsed === "object") {
@@ -193,6 +221,7 @@ export function parseCachedCubeSnapshot(raw: string | null): { syncedAt: number;
         syncedAt: 0,
         overviews: parsed as Record<CubeKey, Overview>,
         snapshotDate: getOverviewSnapshotDate(parsed),
+        blocks: parsed.blocks && typeof parsed.blocks === "object" ? (parsed.blocks as Partial<Record<CubeKey, InrstatsChannelBlock>>) : undefined,
       };
     }
   } catch {
@@ -241,6 +270,7 @@ export function hasFreshLocalPeriodSnapshot(period: Period) {
   const snapshotDate = expectedUiSnapshotDate();
   return Boolean(
     cachedCube?.overviews &&
+    hasCapturedLeadsBlocks(cachedCube.blocks) &&
     cachedSummary &&
     cachedCube.syncedAt >= lastChannelSyncAt &&
     cachedSummary.syncedAt >= lastChannelSyncAt &&
@@ -249,14 +279,14 @@ export function hasFreshLocalPeriodSnapshot(period: Period) {
   );
 }
 
-export function emptyCubeState(): Record<CubeKey, { ov: Overview | null; loading: boolean; error?: string }> {
+export function emptyCubeState(): Record<CubeKey, CubeState> {
   return {
-    site_inrcy: { ov: null, loading: true },
-    site_web: { ov: null, loading: true },
-    gmb: { ov: null, loading: true },
-    facebook: { ov: null, loading: true },
-    instagram: { ov: null, loading: true },
-    linkedin: { ov: null, loading: true },
+    site_inrcy: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
+    site_web: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
+    gmb: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
+    facebook: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
+    instagram: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
+    linkedin: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
   };
 }
 
@@ -1194,7 +1224,7 @@ export function buildCubeModel(
   title: string,
   subtitle: string,
   period: Period,
-  state: { ov: Overview | null; loading: boolean; error?: string },
+  state: CubeState,
   summaryOppByCube: Record<CubeKey, number>,
 ): CubeModel {
   const hasRealOverview = !!state.ov;
@@ -1261,6 +1291,11 @@ export function buildCubeModel(
   const opportunityLabel =
     opp30 >= 14 ? "Fort potentiel" : opp30 >= 7 ? "Potentiel réel" : opp30 >= 3 ? "Potentiel modéré" : "À activer";
 
+  const capturedLeads: CapturedLeads = {
+    week: Math.max(0, Math.round(safeNum(state.capturedLeads?.week))),
+    month: Math.max(0, Math.round(safeNum(state.capturedLeads?.month))),
+  };
+
   return {
     key,
     inrcyOwnership: key === "site_inrcy" ? (inrcyOwnership as any) : undefined,
@@ -1274,6 +1309,7 @@ export function buildCubeModel(
     provenance,
     opportunity30: opp30,
     opportunityLabel,
+    capturedLeads,
     qualityScore: q.score,
     qualityLabel: q.label,
     qualityTone: q.tone,

@@ -2,9 +2,13 @@ import { NextResponse } from 'next/server';
 import { jsonUserFacingError } from '@/lib/apiUserFacingErrors';
 import { createSupabaseServer } from '@/lib/supabaseServer';
 import { getChannelConnectionStates } from '@/lib/channelConnectionState';
+import { buildStatsConnectionSignature } from '@/lib/stats/connectionSignature';
+import { applyLinkedInFallbackToStatsRecords, readLastGoodLinkedInGeneratorBlock } from '@/lib/linkedinStatsFallback';
 import { buildChannelBlocks, type InrstatsChannelBlocksByChannel } from '@/lib/inrstats/channelBlocks';
 import {
+  EMPTY_CUBE_RECORD,
   fetchCubeOverviews,
+  computeHistoryFromOverviews,
   computeOpportunitiesFromOverviews,
   toInrstatsSnapshot,
   type CubeKey,
@@ -22,6 +26,10 @@ type BulkResponse = {
     avg_basket: number;
   };
   estimatedByCube: Record<CubeKey, number>;
+  capturedLeadsByCube: {
+    week: Record<CubeKey, number>;
+    month: Record<CubeKey, number>;
+  };
   blocks: InrstatsChannelBlocksByChannel;
   meta: {
     source: 'api/stats/dashboard-bulk';
@@ -64,13 +72,46 @@ export async function GET(req: Request) {
 
     const opportunities = toInrstatsSnapshot(computeOpportunitiesFromOverviews(overviews, period));
 
+    const [capturedWeekOverviews, capturedMonthOverviews] = await Promise.all([
+      period === 7
+        ? Promise.resolve(overviews)
+        : fetchCubeOverviews({
+            origin,
+            days: 7,
+            getHeaders: () => (cookie ? { cookie } : undefined),
+            bypassCache: fresh,
+            supabase,
+            userId: user.id,
+            snapshotDate,
+          }),
+      period === 30
+        ? Promise.resolve(overviews)
+        : fetchCubeOverviews({
+            origin,
+            days: 30,
+            getHeaders: () => (cookie ? { cookie } : undefined),
+            bypassCache: fresh,
+            supabase,
+            userId: user.id,
+            snapshotDate,
+          }),
+    ]);
+
+    const capturedLeadsByCube = {
+      week: { ...EMPTY_CUBE_RECORD, ...(computeHistoryFromOverviews(capturedWeekOverviews, 7).perTool || {}) },
+      month: { ...EMPTY_CUBE_RECORD, ...(computeHistoryFromOverviews(capturedMonthOverviews, 30).perTool || {}) },
+    };
+
     const { data: profileRow } = await supabase
       .from('profiles')
       .select('lead_conversion_rate, avg_basket')
       .eq('user_id', user.id)
       .maybeSingle();
 
-    const channelStates = await getChannelConnectionStates(supabase, user.id);
+    const [channelStates, connectionSignature] = await Promise.all([
+      getChannelConnectionStates(supabase, user.id),
+      buildStatsConnectionSignature(supabase, user.id),
+    ]);
 
     const leadConversionRate = Number(profileRow?.lead_conversion_rate ?? 0);
     const avgBasket = Number(profileRow?.avg_basket ?? 0);
@@ -83,12 +124,30 @@ export async function GET(req: Request) {
       linkedin: Math.round((opportunities.byCube.linkedin || 0) * (leadConversionRate / 100) * avgBasket),
     };
 
+    const linkedInFallback = await readLastGoodLinkedInGeneratorBlock({
+      supabase,
+      userId: user.id,
+      connectionSignature,
+    });
+    const linkedInPreserved = applyLinkedInFallbackToStatsRecords({
+      overviews,
+      opportunities,
+      capturedLeadsByCube,
+      estimatedByCube,
+      statsConnected: Boolean(channelStates.linkedin.connected && !channelStates.linkedin.requiresUpdate),
+      fallback: linkedInFallback,
+      leadConversionRate,
+      avgBasket,
+    });
+
     const blocks = buildChannelBlocks({
       periodDays: period,
       overviews,
       opportunitiesByCube: opportunities.byCube,
+      capturedLeadsByCube,
       estimatedByCube,
       channelStates,
+      preservedChannels: linkedInPreserved ? { linkedin: true } : undefined,
     });
 
     const payload: BulkResponse = {
@@ -100,6 +159,7 @@ export async function GET(req: Request) {
         avg_basket: Number.isFinite(avgBasket) ? avgBasket : 0,
       },
       estimatedByCube,
+      capturedLeadsByCube,
       blocks,
       meta: {
         source: 'api/stats/dashboard-bulk',

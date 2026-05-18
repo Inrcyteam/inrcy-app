@@ -5,10 +5,13 @@ import { requireUser } from "@/lib/requireUser";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { buildMetricsSummary } from "@/lib/metrics/summary";
 import { buildStatsConnectionSignature } from "@/lib/stats/connectionSignature";
+import { applyLinkedInFallbackToStatsRecords, readLastGoodLinkedInGeneratorBlock, type LinkedInStatsFallback } from "@/lib/linkedinStatsFallback";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { buildChannelBlocks, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
 import {
+  EMPTY_CUBE_RECORD,
   fetchCubeOverviews,
+  computeHistoryFromOverviews,
   computeOpportunitiesFromOverviews,
   toInrstatsSnapshot,
   type CubeKey,
@@ -28,6 +31,10 @@ type BulkResponse = {
   opportunities: ReturnType<typeof toInrstatsSnapshot>;
   profile: ProfileMetrics;
   estimatedByCube: Record<CubeKey, number>;
+  capturedLeadsByCube: {
+    week: Record<CubeKey, number>;
+    month: Record<CubeKey, number>;
+  };
   blocks: InrstatsChannelBlocksByChannel;
   meta: {
     source: "api/stats/daily-refresh";
@@ -63,10 +70,19 @@ function buildBulkPayloadFromOverviews(args: {
   profile: ProfileMetrics;
   snapshotDate: string;
   channelStates: Awaited<ReturnType<typeof getChannelConnectionStates>>;
+  capturedLeadsByCube: {
+    week: Record<CubeKey, number>;
+    month: Record<CubeKey, number>;
+  };
   connectionSignature?: string;
+  linkedInFallback?: LinkedInStatsFallback | null;
 }): BulkResponse {
-  const { period, overviews, profile, snapshotDate, channelStates, connectionSignature } = args;
+  const { period, overviews, profile, snapshotDate, channelStates, capturedLeadsByCube, connectionSignature, linkedInFallback } = args;
   const opportunities = toInrstatsSnapshot(computeOpportunitiesFromOverviews(overviews, period));
+  const scopedCapturedLeadsByCube = {
+    week: { ...capturedLeadsByCube.week },
+    month: { ...capturedLeadsByCube.month },
+  };
   const leadConversionRate = Number(profile?.lead_conversion_rate ?? 0);
   const avgBasket = Number(profile?.avg_basket ?? 0);
   const estimatedByCube: Record<CubeKey, number> = {
@@ -78,12 +94,25 @@ function buildBulkPayloadFromOverviews(args: {
     linkedin: Math.round((opportunities.byCube.linkedin || 0) * (leadConversionRate / 100) * avgBasket),
   };
 
+  const linkedInPreserved = applyLinkedInFallbackToStatsRecords({
+    overviews,
+    opportunities,
+    capturedLeadsByCube: scopedCapturedLeadsByCube,
+    estimatedByCube,
+    statsConnected: Boolean(channelStates.linkedin.connected && !channelStates.linkedin.requiresUpdate),
+    fallback: linkedInFallback,
+    leadConversionRate,
+    avgBasket,
+  });
+
   const blocks = buildChannelBlocks({
     periodDays: period,
     overviews,
     opportunitiesByCube: opportunities.byCube,
+    capturedLeadsByCube: scopedCapturedLeadsByCube,
     estimatedByCube,
     channelStates,
+    preservedChannels: linkedInPreserved ? { linkedin: true } : undefined,
   });
 
   return {
@@ -92,6 +121,7 @@ function buildBulkPayloadFromOverviews(args: {
     opportunities,
     profile,
     estimatedByCube,
+    capturedLeadsByCube: scopedCapturedLeadsByCube,
     blocks,
     meta: {
       source: "api/stats/daily-refresh",
@@ -238,6 +268,11 @@ async function handler(req: Request) {
         buildStatsConnectionSignature(supabase, user.id),
       ]);
       const channelStates = await getChannelConnectionStates(supabase, user.id);
+      const linkedInFallback = await readLastGoodLinkedInGeneratorBlock({
+        supabase,
+        userId: user.id,
+        connectionSignature,
+      });
 
       const generatorStarted = nowMs();
       const generator = await buildMetricsSummary({
@@ -261,9 +296,14 @@ async function handler(req: Request) {
       const monthDuration = Math.round(nowMs() - monthStarted);
       const weekDuration = Math.round(nowMs() - weekStarted);
 
+      const capturedLeadsByCube = {
+        week: { ...EMPTY_CUBE_RECORD, ...(computeHistoryFromOverviews(weekOverviews, 7).perTool || {}) },
+        month: { ...EMPTY_CUBE_RECORD, ...(computeHistoryFromOverviews(monthOverviews, 30).perTool || {}) },
+      };
+
       const inrstatsEntries = [
-        ["7", buildBulkPayloadFromOverviews({ period: 7, overviews: weekOverviews, profile, snapshotDate, channelStates, connectionSignature })],
-        ["30", buildBulkPayloadFromOverviews({ period: 30, overviews: monthOverviews, profile, snapshotDate, channelStates, connectionSignature })],
+        ["7", buildBulkPayloadFromOverviews({ period: 7, overviews: weekOverviews, profile, snapshotDate, channelStates, capturedLeadsByCube, connectionSignature, linkedInFallback })],
+        ["30", buildBulkPayloadFromOverviews({ period: 30, overviews: monthOverviews, profile, snapshotDate, channelStates, capturedLeadsByCube, connectionSignature, linkedInFallback })],
       ] as const;
 
       const { error: completeError } = await supabase.rpc("complete_daily_stats_refresh", {

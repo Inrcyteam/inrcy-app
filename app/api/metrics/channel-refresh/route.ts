@@ -3,6 +3,8 @@ import { jsonUserFacingError } from '@/lib/apiUserFacingErrors';
 import { DASHBOARD_CHANNEL_KEYS, isDashboardChannelKey, type DashboardChannelKey } from '@/lib/dashboardChannels';
 import { requireUser } from '@/lib/requireUser';
 import { getDefaultSnapshotDate } from '@/lib/stats/snapshotWindow';
+import { buildStatsConnectionSignature } from '@/lib/stats/connectionSignature';
+import { readLastGoodLinkedInGeneratorBlock, shouldUseLinkedInStatsFallback } from '@/lib/linkedinStatsFallback';
 import { buildGeneratorChannelBlocks, summarizeGeneratorChannelBlocks, type GeneratorChannelBlock, type GeneratorChannelBlocksByChannel } from '@/lib/generator/channelBlocks';
 import {
   EMPTY_CUBE_RECORD,
@@ -98,10 +100,11 @@ export async function POST(req: Request) {
     }
 
     const snapshotDate = getDefaultSnapshotDate();
-    const [profile, monthOverview, weekOverview] = await Promise.all([
+    const [profile, monthOverview, weekOverview, connectionSignature] = await Promise.all([
       fetchProfileMetrics(supabase, user.id),
       fetchChannelOverview({ supabase, userId: user.id, channel, days: 30, snapshotDate }),
       fetchChannelOverview({ supabase, userId: user.id, channel, days: 7, snapshotDate }),
+      buildStatsConnectionSignature(supabase, user.id),
     ]);
 
     const monthOverviews: Partial<Record<CubeKey, Overview>> = { [channel]: monthOverview };
@@ -135,6 +138,33 @@ export async function POST(req: Request) {
       snapshotDate: resolvedSnapshotDate,
       live,
     });
+
+    const linkedInFallback = channel === 'linkedin'
+      ? await readLastGoodLinkedInGeneratorBlock({
+          supabase,
+          userId: user.id,
+          connectionSignature,
+        })
+      : null;
+    if (channel === 'linkedin' && shouldUseLinkedInStatsFallback({
+      overview: monthOverview,
+      statsConnected: Boolean(monthOverview?.sources?.linkedin?.connected || weekOverview?.sources?.linkedin?.connected),
+      currentOpportunity: opportunities.byCube?.linkedin,
+      currentWeekLeads: history7?.perTool?.linkedin,
+      currentMonthLeads: history30?.perTool?.linkedin,
+      fallback: linkedInFallback,
+    }) && linkedInFallback?.block) {
+      generatorBlocks.linkedin = {
+        ...generatorBlocks.linkedin,
+        leads: { ...linkedInFallback.block.leads },
+        opportunities: { month: Math.max(0, Math.round(Number(linkedInFallback.block.opportunities.month || 0))) },
+        estimatedValue: Math.max(0, Math.round(Number(linkedInFallback.block.estimatedValue || 0))),
+        syncAt,
+        snapshotDate: resolvedSnapshotDate,
+        live,
+        error: null,
+      };
+    }
 
     const block = generatorBlocks[channel];
     const generatorTotals = summarizeGeneratorChannelBlocks({

@@ -1,6 +1,6 @@
 import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
-import { createEmptyChannelBlocks, type InrstatsChannelBlock, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
+import { createEmptyChannelBlock, createEmptyChannelBlocks, type InrstatsChannelBlock, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
 import { createEmptyGeneratorChannelBlocks, summarizeGeneratorChannelBlocks, type GeneratorChannelBlock, type GeneratorChannelBlocksByChannel } from "@/lib/generator/channelBlocks";
 
@@ -187,7 +187,7 @@ export function readCachedChannelBlocks(periods: StatsWarmPeriod[] = [30, 7]): I
       const parsed = JSON.parse(raw) as { blocks?: unknown } | null;
       const blocks = parsed?.blocks;
       if (blocks && typeof blocks === "object" && !Array.isArray(blocks)) {
-        return blocks as InrstatsChannelBlocksByChannel;
+        return normalizeCachedChannelBlocks(blocks);
       }
     } catch {
       // ignore malformed cache entries
@@ -231,6 +231,49 @@ export function hasFreshLocalGeneratorSnapshot() {
   );
 }
 
+
+function toNonNegativeInt(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+}
+
+function normalizeCachedChannelBlock(channel: DashboardChannelKey, raw: unknown): InrstatsChannelBlock {
+  const empty = createEmptyChannelBlock(channel);
+  const block = raw && typeof raw === "object" && !Array.isArray(raw)
+    ? raw as Partial<InrstatsChannelBlock>
+    : {};
+  const connection = block.connection && typeof block.connection === "object"
+    ? { ...empty.connection, ...block.connection }
+    : empty.connection;
+  return {
+    ...empty,
+    ...block,
+    channel,
+    periodDays: Number.isFinite(Number(block.periodDays)) ? Number(block.periodDays) : empty.periodDays,
+    connection,
+    overview: block.overview ?? empty.overview,
+    opportunities: toNonNegativeInt(block.opportunities),
+    capturedLeads: {
+      week: toNonNegativeInt(block.capturedLeads?.week),
+      month: toNonNegativeInt(block.capturedLeads?.month),
+    },
+    estimatedValue: toNonNegativeInt(block.estimatedValue),
+    syncAt: Number.isFinite(Number(block.syncAt)) ? Number(block.syncAt) : null,
+    snapshotDate: typeof block.snapshotDate === "string" ? block.snapshotDate : null,
+    live: Boolean(block.live),
+    error: typeof block.error === "string" && block.error.trim() ? block.error : null,
+  };
+}
+
+function normalizeCachedChannelBlocks(raw: unknown): InrstatsChannelBlocksByChannel {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw)
+    ? raw as Partial<Record<DashboardChannelKey, unknown>>
+    : {};
+  return DASHBOARD_CHANNEL_KEYS.reduce((acc, channel) => {
+    acc[channel] = normalizeCachedChannelBlock(channel, source[channel]);
+    return acc;
+  }, {} as InrstatsChannelBlocksByChannel);
+}
 
 function sumGeneratorOpportunitiesByCube(byCube: Partial<Record<DashboardChannelKey, unknown>>) {
   return DASHBOARD_CHANNEL_KEYS.reduce((sum, channel) => {
@@ -431,7 +474,7 @@ export function mergeChannelBlockIntoCachedSnapshots(params: {
     }
 
     const existingBlocks = parsed?.blocks && typeof parsed.blocks === "object" && !Array.isArray(parsed.blocks)
-      ? parsed.blocks as InrstatsChannelBlocksByChannel
+      ? normalizeCachedChannelBlocks(parsed.blocks)
       : createEmptyChannelBlocks();
 
     writeUiCacheValue(

@@ -22,6 +22,7 @@ import {
   getLocalPeriodSyncAt,
   getOverviewSnapshotDate,
   getStatsLastChannelSyncAt,
+  hasCapturedLeadsBlocks,
   hasFreshLocalPeriodSnapshot,
   parseCachedCubeSnapshot,
   parseCachedSummarySnapshot,
@@ -31,9 +32,11 @@ import {
   summarySessionKey,
   writeUiCacheValue,
   type BulkFetchResult,
+  type CapturedLeads,
   type ChannelRefreshResponse,
   type CubeKey,
   type CubeModel,
+  type CubeState,
   type Overview,
   type Period,
   type StatsBulkResponse,
@@ -41,6 +44,14 @@ import {
 import { Cube, SummaryBar } from "./stats.ui";
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+function normalizeCapturedLeads(raw: unknown, fallback?: CapturedLeads): CapturedLeads {
+  const value = raw && typeof raw === "object" ? raw as Partial<CapturedLeads> : {};
+  return {
+    week: Math.max(0, Math.round(safeNum(value.week, fallback?.week ?? 0))),
+    month: Math.max(0, Math.round(safeNum(value.month, fallback?.month ?? 0))),
+  };
+}
 
 export default function StatsClient() {
   const router = useRouter();
@@ -71,7 +82,7 @@ export default function StatsClient() {
   // ✅ Période globale (7j / 30j) pour éviter un mix incohérent entre blocs.
   const period: Period = 30;
 
-  const [dataByCube, setDataByCube] = useState<Record<CubeKey, { ov: Overview | null; loading: boolean; error?: string }>>(emptyCubeState);
+  const [dataByCube, setDataByCube] = useState<Record<CubeKey, CubeState>>(emptyCubeState);
 
   const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>({
     loading: true,
@@ -104,12 +115,17 @@ export default function StatsClient() {
     const cachedCube = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(period)));
     const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
 
-    if (cachedCube?.overviews) {
+    if (cachedCube?.overviews && hasCapturedLeadsBlocks(cachedCube.blocks)) {
       periodCacheRef.current.set(period, cachedCube.overviews);
       setDataByCube((prev) => {
         const next: typeof prev = { ...prev };
         for (const k of Object.keys(cachedCube.overviews) as CubeKey[]) {
-          next[k] = { ov: cachedCube.overviews[k] ?? null, loading: false, error: undefined };
+          next[k] = {
+            ov: cachedCube.overviews[k] ?? null,
+            loading: false,
+            error: undefined,
+            capturedLeads: normalizeCapturedLeads(cachedCube.blocks?.[k]?.capturedLeads, prev[k]?.capturedLeads),
+          };
         }
         return next;
       });
@@ -199,7 +215,12 @@ export default function StatsClient() {
     setDataByCube((prev) => {
       const updated: any = { ...prev };
       for (const k of Object.keys(snap) as CubeKey[]) {
-        updated[k] = { ov: snap[k] ?? null, loading: false, error: undefined };
+        updated[k] = {
+          ov: snap[k] ?? null,
+          loading: false,
+          error: undefined,
+          capturedLeads: normalizeCapturedLeads(next.blocks?.[k]?.capturedLeads, prev[k]?.capturedLeads),
+        };
       }
       return updated;
     });
@@ -240,6 +261,7 @@ export default function StatsClient() {
           ov: ((periodPayload?.overview as Overview | undefined) ?? (block.overview as Overview | null | undefined) ?? prev[channel]?.ov ?? null),
           loading: false,
           error: block.error ?? undefined,
+          capturedLeads: normalizeCapturedLeads(block.capturedLeads, prev[channel]?.capturedLeads),
         },
       }));
 
@@ -495,14 +517,20 @@ export default function StatsClient() {
     const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(targetPeriod)));
     const expectedSnapshotDate = expectedUiSnapshotDate();
     const cubeFresh = !!cachedCube?.overviews && cachedCube.syncedAt >= lastChannelSyncAt && cachedCube.snapshotDate === expectedSnapshotDate;
+    const cubeBlocksFresh = hasCapturedLeadsBlocks(cachedCube?.blocks);
     const summaryFresh = !!cachedSummary && cachedSummary.syncedAt >= lastChannelSyncAt && cachedSummary.snapshotDate === expectedSnapshotDate;
-    if (!cubeFresh || !summaryFresh) return false;
+    if (!cubeFresh || !cubeBlocksFresh || !summaryFresh) return false;
 
     periodCacheRef.current.set(targetPeriod, cachedCube.overviews);
     setDataByCube((prev) => {
       const next: any = { ...prev };
       for (const k of Object.keys(cachedCube.overviews) as CubeKey[]) {
-        next[k] = { ov: (cachedCube.overviews as any)[k], loading: false, error: undefined };
+        next[k] = {
+          ov: (cachedCube.overviews as any)[k],
+          loading: false,
+          error: undefined,
+          capturedLeads: normalizeCapturedLeads(cachedCube.blocks?.[k]?.capturedLeads, prev[k]?.capturedLeads),
+        };
       }
       return next;
     });
@@ -642,14 +670,21 @@ useEffect(() => {
   (async () => {
     // Fast path: cached data for this period
     const cached = periodCacheRef.current.get(period);
+    const cachedCubeSnapshot = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(period)));
     const lastChannelSyncAt = getStatsLastChannelSyncAt();
     const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
     const hasFreshCachedSummary = !!cachedSummary && cachedSummary.syncedAt >= lastChannelSyncAt && cachedSummary.snapshotDate === expectedUiSnapshotDate();
-    if (cached && hasFreshCachedSummary) {
+    const hasFreshCapturedLeads = hasCapturedLeadsBlocks(cachedCubeSnapshot?.blocks);
+    if (cached && hasFreshCachedSummary && hasFreshCapturedLeads) {
       setDataByCube((prev) => {
         const next: any = { ...prev };
         for (const k of Object.keys(cached) as CubeKey[]) {
-          next[k] = { ov: (cached as any)[k], loading: false, error: undefined };
+          next[k] = {
+            ov: (cached as any)[k],
+            loading: false,
+            error: undefined,
+            capturedLeads: normalizeCapturedLeads(cachedCubeSnapshot?.blocks?.[k]?.capturedLeads, prev[k]?.capturedLeads),
+          };
         }
         return next;
       });
@@ -658,11 +693,16 @@ useEffect(() => {
     if (hydrateFromSessionCache(period)) {
       return;
     }
-    if (cached && cachedSummary) {
+    if (cached && cachedSummary && hasFreshCapturedLeads) {
       setDataByCube((prev) => {
         const next: any = { ...prev };
         for (const k of Object.keys(cached) as CubeKey[]) {
-          next[k] = { ov: (cached as any)[k], loading: false, error: undefined };
+          next[k] = {
+            ov: (cached as any)[k],
+            loading: false,
+            error: undefined,
+            capturedLeads: normalizeCapturedLeads(cachedCubeSnapshot?.blocks?.[k]?.capturedLeads, prev[k]?.capturedLeads),
+          };
         }
         return next;
       });

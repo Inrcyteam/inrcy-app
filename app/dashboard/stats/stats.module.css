@@ -681,6 +681,123 @@
   }
 }
 
+.detailTopRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .detailTopRow {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: stretch;
+  }
+}
+
+.capturedLeadsBlock {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(56, 189, 248, 0.13), transparent 48%),
+    rgba(255, 255, 255, 0.05);
+}
+
+.capturedLeadsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.capturedLeadStat {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.16);
+  padding: 10px;
+  min-width: 0;
+}
+
+.capturedLeadStat span {
+  display: block;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+.capturedLeadStat b {
+  display: block;
+  margin-top: 4px;
+  color: rgba(239, 246, 255, 0.96);
+  font-size: 26px;
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.capturedLeadsHint {
+  margin-top: 10px;
+  color: rgba(255, 255, 255, 0.60);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.provenanceCompactBlock {
+  min-height: 100%;
+}
+
+.provenanceCompactBlock .donutWrap {
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.provenanceCompactBlock .donut {
+  width: 82px;
+  height: 82px;
+}
+
+.provenanceCompactBlock .donutHole {
+  width: 50px;
+  height: 50px;
+}
+
+.provenanceCompactBlock .legend {
+  gap: 5px;
+}
+
+.provenanceCompactBlock .legendRow {
+  font-size: 11.5px;
+  gap: 7px;
+}
+
+@media (max-width: 420px) {
+  .capturedLeadsGrid {
+    gap: 8px;
+  }
+
+  .capturedLeadStat {
+    padding: 9px;
+  }
+
+  .capturedLeadStat b {
+    font-size: 23px;
+  }
+
+  .provenanceCompactBlock .donutWrap {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .provenanceCompactBlock .donut {
+    width: 76px;
+    height: 76px;
+  }
+
+  .provenanceCompactBlock .donutHole {
+    width: 46px;
+    height: 46px;
+  }
+}
+
 .donutWrap {
   display: grid;
   grid-template-columns: 120px 1fr;

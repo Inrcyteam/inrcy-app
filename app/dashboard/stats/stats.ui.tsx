@@ -258,9 +258,26 @@ export function Cube({
 
       {open ? (
         <div className={styles.cubeBody}>
-          <div className={styles.block}>
-            <div className={styles.blockTitle}>Provenance</div>
-            <Donut segments={model.provenance} />
+          <div className={styles.detailTopRow}>
+            <div className={`${styles.block} ${styles.capturedLeadsBlock}`}>
+              <div className={styles.blockTitle}>Demandes captées</div>
+              <div className={styles.capturedLeadsGrid}>
+                <div className={styles.capturedLeadStat}>
+                  <span>7 jours</span>
+                  <b>{fmtInt(model.capturedLeads.week)}</b>
+                </div>
+                <div className={styles.capturedLeadStat}>
+                  <span>30 jours</span>
+                  <b>{fmtInt(model.capturedLeads.month)}</b>
+                </div>
+              </div>
+              <div className={styles.capturedLeadsHint}>Demandes réelles mesurées sur ce canal.</div>
+            </div>
+
+            <div className={`${styles.block} ${styles.provenanceCompactBlock}`}>
+              <div className={styles.blockTitle}>Provenance</div>
+              <Donut segments={model.provenance} />
+            </div>
           </div>
 
           <div className={styles.blockRow}>

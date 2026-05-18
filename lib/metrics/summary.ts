@@ -3,6 +3,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildSnapshotWindow } from '@/lib/stats/snapshotWindow';
 import { buildStatsConnectionSignature } from '@/lib/stats/connectionSignature';
+import { readLastGoodLinkedInGeneratorBlock, shouldUseLinkedInStatsFallback } from '@/lib/linkedinStatsFallback';
 import { buildGeneratorChannelBlocks, summarizeGeneratorChannelBlocks, type GeneratorChannelBlocksByChannel } from '@/lib/generator/channelBlocks';
 import {
   EMPTY_CUBE_RECORD,
@@ -243,6 +244,36 @@ export async function buildMetricsSummary(args: {
     snapshotDate: dateWindow.snapshotDate,
     live: dateWindow.live,
   });
+
+  const linkedInFallback = await readLastGoodLinkedInGeneratorBlock({
+    supabase,
+    userId,
+    connectionSignature,
+  });
+  const linkedInConnected = Boolean(
+    (monthOverviews.linkedin as Overview | undefined)?.sources?.linkedin?.connected ||
+      (weekOverviews.linkedin as Overview | undefined)?.sources?.linkedin?.connected
+  );
+  if (shouldUseLinkedInStatsFallback({
+    overview: (monthOverviews.linkedin as Overview | undefined) ?? null,
+    statsConnected: linkedInConnected,
+    currentOpportunity: oppResolved.byCube?.linkedin,
+    currentWeekLeads: history7Resolved.perTool?.linkedin,
+    currentMonthLeads: history30Resolved.perTool?.linkedin,
+    fallback: linkedInFallback,
+  }) && linkedInFallback?.block) {
+    const syncAt = Date.parse(generatedAt);
+    generatorBlocks.linkedin = {
+      ...generatorBlocks.linkedin,
+      leads: { ...linkedInFallback.block.leads },
+      opportunities: { month: Math.max(0, Math.round(Number(linkedInFallback.block.opportunities.month || 0))) },
+      estimatedValue: Math.max(0, Math.round(Number(linkedInFallback.block.estimatedValue || 0))),
+      syncAt: Number.isFinite(syncAt) ? syncAt : generatorBlocks.linkedin.syncAt,
+      snapshotDate: dateWindow.snapshotDate ?? linkedInFallback.block.snapshotDate ?? null,
+      live: Boolean(dateWindow.live),
+      error: null,
+    };
+  }
 
   const generatorTotals = summarizeGeneratorChannelBlocks({
     blocks: generatorBlocks,
