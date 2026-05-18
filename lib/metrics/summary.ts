@@ -3,7 +3,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildSnapshotWindow } from '@/lib/stats/snapshotWindow';
 import { buildStatsConnectionSignature } from '@/lib/stats/connectionSignature';
-import { readLastGoodLinkedInGeneratorBlock, shouldUseLinkedInStatsFallback } from '@/lib/linkedinStatsFallback';
+import { hasUsableLinkedInFallbackBlock, readLastGoodLinkedInGeneratorBlock, shouldUseLinkedInStatsFallback } from '@/lib/linkedinStatsFallback';
 import { buildGeneratorChannelBlocks, summarizeGeneratorChannelBlocks, type GeneratorChannelBlocksByChannel } from '@/lib/generator/channelBlocks';
 import {
   EMPTY_CUBE_RECORD,
@@ -61,6 +61,56 @@ function toNumber(v: unknown, fallback = 0): number {
 
 function safeJsonValue<T>(v: unknown, fallback: T): T {
   return v !== null && v !== undefined ? (v as T) : fallback;
+}
+
+async function repairLinkedInCachedSummary(args: {
+  supabase: SupabaseClient;
+  userId: string;
+  payload: MetricsSummary;
+  connectionSignature: string;
+  monthDays: number;
+  weekDays: number;
+  todayDays: number;
+}): Promise<MetricsSummary> {
+  const blocks = args.payload.generatorBlocks;
+  if (hasUsableLinkedInFallbackBlock(blocks?.linkedin)) return args.payload;
+
+  const fallback = await readLastGoodLinkedInGeneratorBlock({
+    supabase: args.supabase,
+    userId: args.userId,
+    connectionSignature: args.connectionSignature,
+  });
+
+  if (!hasUsableLinkedInFallbackBlock(fallback?.block)) return args.payload;
+
+  const generatorBlocks: GeneratorChannelBlocksByChannel = {
+    ...blocks,
+    linkedin: {
+      ...fallback!.block,
+      error: null,
+    },
+  };
+  const totals = summarizeGeneratorChannelBlocks({
+    blocks: generatorBlocks,
+    monthDays: args.monthDays,
+    weekDays: args.weekDays,
+    todayDays: args.todayDays,
+  });
+
+  return {
+    ...args.payload,
+    leads: totals.leads,
+    estimatedValue: totals.estimatedValue,
+    generatorBlocks,
+    details: {
+      ...args.payload.details,
+      opportunities: totals.opportunities,
+    },
+    meta: {
+      ...args.payload.meta,
+      connectionSignature: args.connectionSignature,
+    },
+  };
 }
 
 async function buildSummaryConnectionsKey(supabase: SupabaseClient, userId: string): Promise<string> {
@@ -170,7 +220,17 @@ export async function buildMetricsSummary(args: {
         .limit(1)
         .maybeSingle();
       const payload = safeJsonValue<MetricsSummary | null>(asRecord(cacheHit)['payload'], null);
-      if (payload) return payload;
+      if (payload) {
+        return await repairLinkedInCachedSummary({
+          supabase,
+          userId,
+          payload,
+          connectionSignature,
+          monthDays,
+          weekDays,
+          todayDays,
+        });
+      }
     } catch {}
   }
 

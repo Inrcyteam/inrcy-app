@@ -120,6 +120,52 @@ function isCubeConnectedInPayload(payload: Record<string, unknown>, cube: Overvi
   return Boolean(asRecord(sources[cube])["connected"]);
 }
 
+const LINKEDIN_SIGNAL_KEYS = [
+  "messages",
+  "conversations",
+  "impressions",
+  "impressionCount",
+  "uniqueImpressionsCount",
+  "viewerImpressions",
+  "engagements",
+  "likes",
+  "likeCount",
+  "comments",
+  "commentCount",
+  "shares",
+  "shareCount",
+  "clicks",
+  "clickCount",
+  "linkClickCount",
+  "premiumCtaClickCount",
+  "pageClicks",
+  "profileViews",
+  "profileViewFromContentCount",
+  "pageViews",
+  "followers",
+  "followerCount",
+  "memberFollowersCount",
+  "newFollowers",
+  "followerGainedFromContentCount",
+  "organicFollowerCount",
+  "paidFollowerCount",
+  "postsPublished",
+  "postSaveCount",
+  "postSendCount",
+] as const;
+
+function hasUsableLinkedInMetrics(metrics: unknown) {
+  const metricsRec = asRecord(metrics);
+  if (!Object.keys(metricsRec).length) return false;
+  if (String(metricsRec["error"] || "").trim()) return false;
+
+  const totals = asRecord(metricsRec["totals"]);
+  for (const key of LINKEDIN_SIGNAL_KEYS) {
+    if (Number(totals[key] || 0) > 0 || Number(metricsRec[key] || 0) > 0) return true;
+  }
+  return false;
+}
+
 function cubeHasUsableData(payload: Record<string, unknown>, cube: OverviewCubeKey) {
   if (!isCubeConnectedInPayload(payload, cube)) return false;
   if (cube === "site_inrcy" || cube === "site_web") {
@@ -140,6 +186,7 @@ function cubeHasUsableData(payload: Record<string, unknown>, cube: OverviewCubeK
   const metrics = asRecord(asRecord(payload["sources"])[cube])["metrics"];
   if (metrics === null || metrics === undefined) return false;
   const metricsRec = asRecord(metrics);
+  if (cube === "linkedin") return hasUsableLinkedInMetrics(metricsRec);
   return !String(metricsRec["error"] || "").trim();
 }
 
@@ -638,7 +685,15 @@ if (!fresh) try {
         const liveSources = await fetchLiveSourcesStatus();
         payload["sources"] = mergeCachedSourcesWithLiveState(payload["sources"], liveSources);
       } catch {}
-      return payload as OverviewPayload;
+      const stabilizedPayload = await stabilizeOverviewPayload({
+        supabase,
+        userId,
+        days,
+        includeRaw,
+        includeAll,
+        payload,
+      });
+      return stabilizedPayload as OverviewPayload;
   }
 } catch {
   // Table stats_cache non présente ou non accessible : on ignore.
@@ -663,7 +718,15 @@ if (!fresh) try {
       const liveSources = await fetchLiveSourcesStatus();
       payload["sources"] = mergeCachedSourcesWithLiveState(payload["sources"], liveSources);
     } catch {}
-    return payload as OverviewPayload;
+    const stabilizedPayload = await stabilizeOverviewPayload({
+      supabase,
+      userId,
+      days,
+      includeRaw,
+      includeAll,
+      payload,
+    });
+    return stabilizedPayload as OverviewPayload;
   }
 } catch {
   // ignore

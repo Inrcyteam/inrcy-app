@@ -28,6 +28,60 @@ function toOptionalSyncAt(value: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+const LINKEDIN_SIGNAL_KEYS = [
+  "messages",
+  "conversations",
+  "impressions",
+  "impressionCount",
+  "uniqueImpressionsCount",
+  "viewerImpressions",
+  "engagements",
+  "likes",
+  "likeCount",
+  "comments",
+  "commentCount",
+  "shares",
+  "shareCount",
+  "clicks",
+  "clickCount",
+  "linkClickCount",
+  "premiumCtaClickCount",
+  "pageClicks",
+  "profileViews",
+  "profileViewFromContentCount",
+  "pageViews",
+  "followers",
+  "followerCount",
+  "memberFollowersCount",
+  "newFollowers",
+  "followerGainedFromContentCount",
+  "organicFollowerCount",
+  "paidFollowerCount",
+  "postsPublished",
+  "postSaveCount",
+  "postSendCount",
+] as const;
+
+function sumLinkedInMetricSignals(metrics: unknown) {
+  const m = asRecord(metrics);
+  const totals = asRecord(m.totals);
+  let total = 0;
+
+  for (const key of LINKEDIN_SIGNAL_KEYS) {
+    total += toNonNegativeInt(totals[key]);
+    total += toNonNegativeInt(m[key]);
+  }
+
+  return total;
+}
+
+export function hasUsableLinkedInMetrics(metrics: unknown) {
+  const m = asRecord(metrics);
+  if (!Object.keys(m).length) return false;
+  if (typeof m.error === "string" && m.error.trim()) return false;
+  return sumLinkedInMetricSignals(m) > 0;
+}
+
 function normalizeGeneratorBlock(raw: unknown): GeneratorChannelBlock | null {
   const block = asRecord(raw);
   if (!Object.keys(block).length) return null;
@@ -120,8 +174,13 @@ export function isLinkedInOverviewTemporarilyUnavailable(overview: Overview | nu
   if (node.connected === false) return false;
   const metrics = node.metrics;
   if (metrics === null || metrics === undefined) return true;
-  const error = String(asRecord(metrics).error || "").trim();
-  return Boolean(error);
+
+  // LinkedIn renvoie parfois une réponse techniquement OK, mais avec uniquement
+  // des compteurs à zéro ou des sous-appels vides. Dans ce cas les calculs
+  // retombent à 0 et peuvent écraser un bon snapshot quelques secondes après
+  // une reconnexion. On considère donc cette réponse comme temporairement
+  // indisponible quand aucun signal métier exploitable n'est présent.
+  return !hasUsableLinkedInMetrics(metrics);
 }
 
 export function shouldUseLinkedInStatsFallback(params: {
