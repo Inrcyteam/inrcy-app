@@ -299,7 +299,11 @@ function cubeHasUsableData(
   const metrics = asRecord(asRecord(payload["sources"])[cube])["metrics"];
   if (metrics === null || metrics === undefined) return false;
   const metricsRec = asRecord(metrics);
-  if (cube === "linkedin") return hasUsableLinkedInMetrics(metricsRec);
+  if (cube === "linkedin") {
+    // LinkedIn peut être partiellement indisponible côté stats détaillées,
+    // mais un cache avec audience/followers reste exploitable pour le potentiel.
+    return hasUsableLinkedInMetrics(metricsRec) || hasLinkedInOpportunityMetrics(metricsRec);
+  }
   return !String(metricsRec["error"] || "").trim();
 }
 
@@ -353,7 +357,7 @@ function mergePreservedSources(
     const shouldPreserveLinkedInMetrics =
       key === "linkedin" &&
       prevNode["metrics"] !== undefined &&
-      !hasUsableLinkedInMetrics(currMetrics);
+      !hasLinkedInOpportunityMetrics(currMetrics);
 
     if (
       ((currMetrics === null || currMetrics === undefined || currMetricsError) &&
@@ -376,45 +380,53 @@ async function loadPreviousOverviewCandidate(args: {
   currentPayload: Record<string, unknown>;
 }) {
   const { supabase, userId, days, includeRaw, cube, currentPayload } = args;
-  const prefix = `days=${days}|include=${includeRaw || "all"}|`;
+  const primaryPrefix = `days=${days}|include=${includeRaw || "all"}|`;
+  const prefixes = Array.from(new Set([
+    primaryPrefix,
+    `days=${days}|include=all|`,
+  ]));
 
-  try {
-    const { data: rows = [] } = await supabase
-      .from("stats_cache")
-      .select("payload, expires_at")
-      .eq("user_id", userId)
-      .eq("source", "overview")
-      .like("range_key", `${prefix}%`)
-      .order("expires_at", { ascending: false })
-      .limit(12);
+  for (const prefix of prefixes) {
+    try {
+      const { data: rows = [] } = await supabase
+        .from("stats_cache")
+        .select("payload, expires_at")
+        .eq("user_id", userId)
+        .eq("source", "overview")
+        .like("range_key", `${prefix}%`)
+        .order("expires_at", { ascending: false })
+        .limit(12);
 
-    for (const row of Array.isArray(rows) ? rows : []) {
-      const candidate = asRecord(asRecord(row)["payload"]);
-      if (!candidate || Object.keys(candidate).length === 0) continue;
-      if (!identitiesCompatible(currentPayload, candidate, cube)) continue;
-      if (!cubeHasUsableData(candidate, cube)) continue;
-      return candidate;
-    }
-  } catch {}
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const candidate = asRecord(asRecord(row)["payload"]);
+        if (!candidate || Object.keys(candidate).length === 0) continue;
+        if (!identitiesCompatible(currentPayload, candidate, cube)) continue;
+        if (!cubeHasUsableData(candidate, cube)) continue;
+        return candidate;
+      }
+    } catch {}
+  }
 
-  try {
-    const { data: rows = [] } = await supabase
-      .from("cache_statistiques")
-      .select("charge_utile, cree_a")
-      .eq("id_utilisateur", userId)
-      .eq("source", "apercu")
-      .like("plage_cle", `${prefix}%`)
-      .order("cree_a", { ascending: false })
-      .limit(12);
+  for (const prefix of prefixes) {
+    try {
+      const { data: rows = [] } = await supabase
+        .from("cache_statistiques")
+        .select("charge_utile, cree_a")
+        .eq("id_utilisateur", userId)
+        .eq("source", "apercu")
+        .like("plage_cle", `${prefix}%`)
+        .order("cree_a", { ascending: false })
+        .limit(12);
 
-    for (const row of Array.isArray(rows) ? rows : []) {
-      const candidate = asRecord(asRecord(row)["charge_utile"]);
-      if (!candidate || Object.keys(candidate).length === 0) continue;
-      if (!identitiesCompatible(currentPayload, candidate, cube)) continue;
-      if (!cubeHasUsableData(candidate, cube)) continue;
-      return candidate;
-    }
-  } catch {}
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const candidate = asRecord(asRecord(row)["charge_utile"]);
+        if (!candidate || Object.keys(candidate).length === 0) continue;
+        if (!identitiesCompatible(currentPayload, candidate, cube)) continue;
+        if (!cubeHasUsableData(candidate, cube)) continue;
+        return candidate;
+      }
+    } catch {}
+  }
 
   return null;
 }
@@ -926,6 +938,7 @@ export async function buildStatsOverview(args: {
   const LINKEDIN_LAST_GOOD_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
   const LINKEDIN_METRICS_SOURCE = "linkedin_metrics";
   const LINKEDIN_LAST_GOOD_METRICS_SOURCE = "linkedin_metrics_last_good";
+  const LINKEDIN_OPPORTUNITY_LAST_GOOD_SOURCE = "linkedin_opportunity_last_good";
   const LINKEDIN_QUOTA_GUARD_SOURCE = "linkedin_quota_guard";
 
   function normalizeLinkedInCachePart(value: unknown) {
@@ -1052,6 +1065,64 @@ export async function buildStatsOverview(args: {
     return firstUsableFrom(LINKEDIN_METRICS_SOURCE, "identity");
   }
 
+  async function readLastGoodLinkedInOpportunityMetrics(
+    authorUrn: string,
+    orgUrn: string,
+    cacheKey?: string,
+  ) {
+    const identityPrefix = [
+      `days=${days}`,
+      `snapshot=`,
+    ].join("|");
+    const person = normalizeLinkedInCachePart(authorUrn);
+    const org = normalizeLinkedInCachePart(orgUrn);
+    const orgPattern = orgUrn ? org : "%";
+
+    async function firstOpportunityFrom(source: string, query: "exact" | "identity") {
+      try {
+        let request = supabase
+          .from("stats_cache")
+          .select("payload, expires_at, range_key")
+          .eq("user_id", userId)
+          .eq("source", source);
+
+        if (query === "exact" && cacheKey) {
+          request = request.eq("range_key", cacheKey);
+        } else {
+          request = request.like(
+            "range_key",
+            `${identityPrefix}%person=${person}|org=${orgPattern}`,
+          );
+        }
+
+        const { data: rows = [] } = await request
+          .order("expires_at", { ascending: false })
+          .limit(12);
+
+        for (const row of Array.isArray(rows) ? rows : []) {
+          const payload = asRecord(asRecord(row)["payload"]);
+          if (hasLinkedInOpportunityMetrics(payload)) return payload;
+        }
+      } catch {}
+      return null;
+    }
+
+    for (const source of [
+      LINKEDIN_OPPORTUNITY_LAST_GOOD_SOURCE,
+      LINKEDIN_LAST_GOOD_METRICS_SOURCE,
+      LINKEDIN_METRICS_SOURCE,
+    ]) {
+      if (cacheKey) {
+        const exact = await firstOpportunityFrom(source, "exact");
+        if (exact) return exact;
+      }
+      const identity = await firstOpportunityFrom(source, "identity");
+      if (identity) return identity;
+    }
+
+    return null;
+  }
+
   async function writeLinkedInMetricsCache(cacheKey: string, payload: unknown) {
     try {
       await supabase.from("stats_cache").insert({
@@ -1077,6 +1148,19 @@ export async function buildStatsOverview(args: {
     } catch {}
   }
 
+  async function writeLastGoodLinkedInOpportunityCache(cacheKey: string, payload: unknown) {
+    if (!hasLinkedInOpportunityMetrics(payload)) return;
+    try {
+      await supabase.from("stats_cache").insert({
+        user_id: userId,
+        source: LINKEDIN_OPPORTUNITY_LAST_GOOD_SOURCE,
+        range_key: cacheKey,
+        payload,
+        expires_at: new Date(Date.now() + LINKEDIN_LAST_GOOD_CACHE_TTL_MS).toISOString(),
+      });
+    } catch {}
+  }
+
   async function resolveLinkedInCachedMetrics(
     cacheKey: string,
     authorUrn: string,
@@ -1092,6 +1176,14 @@ export async function buildStatsOverview(args: {
       return {
         metrics: lastGood,
         mode: cached ? "last_good_over_partial_cache" : "last_good_cache",
+      };
+    }
+
+    const lastOpportunity = await readLastGoodLinkedInOpportunityMetrics(authorUrn, orgUrn, cacheKey);
+    if (lastOpportunity) {
+      return {
+        metrics: lastOpportunity,
+        mode: cached ? "last_opportunity_over_partial_cache" : "last_opportunity_cache",
       };
     }
 
@@ -1703,17 +1795,28 @@ export async function buildStatsOverview(args: {
             orgUrn,
             preliminaryCacheKey,
           );
+          const lastOpportunity = lastGood
+            ? null
+            : await readLastGoodLinkedInOpportunityMetrics(
+                authorUrn,
+                orgUrn,
+                preliminaryCacheKey,
+              );
           sourcesStatus.linkedin.metrics = lastGood
             ? annotateLinkedInMetrics(lastGood, "last_good_quota_guard", {
                 blockedUntil: quotaGuard.expiresAt,
               })
-            : {
-                error: "Stats LinkedIn temporairement indisponibles : quota API atteint.",
-                raw: {
-                  errors: [String(asRecord(quotaGuard.payload)["error"] || "linkedin_api_quota")],
-                  quotaGuard: { blockedUntil: quotaGuard.expiresAt },
-                },
-              };
+            : lastOpportunity
+              ? annotateLinkedInMetrics(lastOpportunity, "last_opportunity_quota_guard", {
+                  blockedUntil: quotaGuard.expiresAt,
+                })
+              : {
+                  error: "Stats LinkedIn temporairement indisponibles : quota API atteint.",
+                  raw: {
+                    errors: [String(asRecord(quotaGuard.payload)["error"] || "linkedin_api_quota")],
+                    quotaGuard: { blockedUntil: quotaGuard.expiresAt },
+                  },
+                };
         } else {
           if (!authorUrn.startsWith("urn:li:person:") && !orgUrn) {
             orgUrn = await liResolveFirstAdminOrgUrn(token);
@@ -1752,6 +1855,7 @@ export async function buildStatsOverview(args: {
               if (shouldCacheLinkedInMetrics(metrics)) {
                 await writeLinkedInMetricsCache(cacheKey, metrics);
               }
+              await writeLastGoodLinkedInOpportunityCache(cacheKey, metrics);
               if (isLastGoodLinkedInMetrics(metrics)) {
                 await writeLastGoodLinkedInMetricsCache(cacheKey, metrics);
                 sourcesStatus.linkedin.metrics = annotateLinkedInMetrics(metrics, "live");
@@ -1761,11 +1865,18 @@ export async function buildStatsOverview(args: {
                   orgUrn,
                   cacheKey,
                 );
+                const lastOpportunity = lastGood
+                  ? null
+                  : await readLastGoodLinkedInOpportunityMetrics(authorUrn, orgUrn, cacheKey);
                 sourcesStatus.linkedin.metrics = lastGood
                   ? annotateLinkedInMetrics(lastGood, "last_good_after_partial_refresh", {
                       refreshIssue: collectLinkedInMetricErrors(metrics)[0] || null,
                     })
-                  : annotateLinkedInMetrics(metrics, "live_partial");
+                  : lastOpportunity
+                    ? annotateLinkedInMetrics(lastOpportunity, "last_opportunity_after_partial_refresh", {
+                        refreshIssue: collectLinkedInMetricErrors(metrics)[0] || null,
+                      })
+                    : annotateLinkedInMetrics(metrics, "live_partial");
               }
             } catch (e) {
               const rawMessage = e instanceof Error ? e.message : String(e);
@@ -1778,21 +1889,34 @@ export async function buildStatsOverview(args: {
                 cacheKey,
               );
 
+              const lastOpportunity = lastGood
+                ? null
+                : await readLastGoodLinkedInOpportunityMetrics(
+                    authorUrn,
+                    orgUrn,
+                    cacheKey,
+                  );
+
               sourcesStatus.linkedin.metrics = lastGood
                 ? annotateLinkedInMetrics(lastGood, "last_good_after_error", {
                     refreshIssue: rawMessage,
                     blockedUntil,
                   })
-                : {
-                    error: getSimpleFrenchErrorMessage(
-                      e,
-                      "Impossible de récupérer les statistiques LinkedIn pour le moment.",
-                    ),
-                    raw: {
-                      errors: [rawMessage],
-                      quotaGuard: blockedUntil ? { blockedUntil } : undefined,
-                    },
-                  };
+                : lastOpportunity
+                  ? annotateLinkedInMetrics(lastOpportunity, "last_opportunity_after_error", {
+                      refreshIssue: rawMessage,
+                      blockedUntil,
+                    })
+                  : {
+                      error: getSimpleFrenchErrorMessage(
+                        e,
+                        "Impossible de récupérer les statistiques LinkedIn pour le moment.",
+                      ),
+                      raw: {
+                        errors: [rawMessage],
+                        quotaGuard: blockedUntil ? { blockedUntil } : undefined,
+                      },
+                    };
             }
           }
         }
