@@ -3,7 +3,7 @@ import { buildBoosterGmbSummary, buildBoosterInstagramCaption, getCtaMode, type 
 export type { BoosterCtaMode } from "@/lib/boosterCta";
 
 export type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
-export type DisplayKey = "site" | "gmb" | "facebook" | "instagram" | "linkedin";
+export type DisplayKey = ChannelKey;
 export type ThemeKey = "" | "promotion" | "information" | "conseil" | "avis_client" | "realisation" | "actualite" | "autre";
 export type StyleKey = "sobre" | "equilibre" | "dynamique";
 export type FitMode = "contain" | "cover";
@@ -86,7 +86,8 @@ export const DEFAULT_TRANSFORM: ImageTransform = {
 };
 
 export const DISPLAY_LABELS: Record<DisplayKey, string> = {
-  site: "Site internet",
+  inrcy_site: "Site iNrCy",
+  site_web: "Site web",
   gmb: "Google Business",
   facebook: "Facebook",
   instagram: "Instagram",
@@ -128,7 +129,12 @@ export type ChannelTextGuidelines = {
 };
 
 export const CHANNEL_TEXT_GUIDELINES: Record<DisplayKey, ChannelTextGuidelines> = {
-  site: {
+  inrcy_site: {
+    title: 90,
+    content: 6000,
+    cta: 180,
+  },
+  site_web: {
     title: 90,
     content: 6000,
     cta: 180,
@@ -163,7 +169,14 @@ export const CHANNEL_TEXT_GUIDELINES: Record<DisplayKey, ChannelTextGuidelines> 
 };
 
 export const CTA_MODE_OPTIONS: Record<DisplayKey, Array<{ value: BoosterCtaMode; label: string }>> = {
-  site: [
+  inrcy_site: [
+    { value: "none", label: "Aucun CTA" },
+    { value: "website", label: "Lien site / devis" },
+    { value: "call", label: "Appel" },
+    { value: "message", label: "Message privé" },
+    { value: "custom", label: "Texte libre" },
+  ],
+  site_web: [
     { value: "none", label: "Aucun CTA" },
     { value: "website", label: "Lien site / devis" },
     { value: "call", label: "Appel" },
@@ -219,7 +232,7 @@ export function getDefaultPost(): ChannelPost {
 
 export function getChannelDefaultCtaLabel(channel: DisplayKey, mode: BoosterCtaMode) {
   if (mode === "website") {
-    if (channel === "site") return "Demander un devis";
+    if (channel === "inrcy_site" || channel === "site_web") return "Demander un devis";
     if (channel === "gmb") return "Voir le site";
     if (channel === "instagram") return "Lien du site";
     return "Voir le site";
@@ -230,13 +243,39 @@ export function getChannelDefaultCtaLabel(channel: DisplayKey, mode: BoosterCtaM
   return "";
 }
 
+export function isSiteDisplayKey(channel: DisplayKey) {
+  return channel === "inrcy_site" || channel === "site_web";
+}
+
+export function getWebsiteUrlForChannel(channel: DisplayKey, defaults: BoosterCtaDefaults | null) {
+  if (!defaults) return "";
+  const siteWebUrl = String(defaults.siteWebUrl || "").trim();
+  const inrcySiteUrl = String(defaults.inrcySiteUrl || "").trim();
+
+  if (channel === "inrcy_site") return inrcySiteUrl || siteWebUrl || "";
+  if (channel === "site_web") return siteWebUrl || inrcySiteUrl || "";
+
+  if (siteWebUrl && !inrcySiteUrl) return siteWebUrl;
+  if (inrcySiteUrl && !siteWebUrl) return inrcySiteUrl;
+  return "";
+}
+
+export function getWebsiteSourceLabelForChannel(channel: DisplayKey, defaults: BoosterCtaDefaults | null) {
+  const url = getWebsiteUrlForChannel(channel, defaults);
+  if (!url || !defaults) return "";
+  if (defaults.siteWebUrl && url === defaults.siteWebUrl) return "Site web connecté";
+  if (defaults.inrcySiteUrl && url === defaults.inrcySiteUrl) return "Site iNrCy";
+  return defaults.preferredWebsiteLabel || "Site connecté";
+}
+
 export function buildAutoPrefillPatch(channel: DisplayKey, mode: BoosterCtaMode, post: ChannelPost, defaults: BoosterCtaDefaults | null): Partial<ChannelPost> {
   const patch: Partial<ChannelPost> = { ctaMode: mode };
   if (!defaults) return patch;
 
   if (mode === "website") {
+    const channelWebsiteUrl = getWebsiteUrlForChannel(channel, defaults);
     if (!String(post.cta || "").trim()) patch.cta = getChannelDefaultCtaLabel(channel, mode);
-    if (!String(post.ctaUrl || "").trim() && defaults.preferredWebsiteUrl) patch.ctaUrl = defaults.preferredWebsiteUrl;
+    if (!String(post.ctaUrl || "").trim() && channelWebsiteUrl) patch.ctaUrl = channelWebsiteUrl;
   }
 
   if (mode === "call") {

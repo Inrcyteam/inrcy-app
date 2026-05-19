@@ -45,7 +45,9 @@ import {
   getDefaultTransform,
   getEffectiveTransformZoom,
   getOptimizedTransform,
-  getWebsiteSourceLabel,
+  getWebsiteSourceLabelForChannel,
+  getWebsiteUrlForChannel,
+  isSiteDisplayKey,
   makeImageKey,
   normalizePost,
   offsetFromDrawPosition,
@@ -226,7 +228,7 @@ export default function PublishModal({
   const [postsByChannel, setPostsByChannel] = useState<
     Partial<Record<ChannelKey, ChannelPost>>
   >({});
-  const [activeCard, setActiveCard] = useState<DisplayKey>("site");
+  const [activeCard, setActiveCard] = useState<DisplayKey>("inrcy_site");
   const [isMobile, setIsMobile] = useState(false);
   const [drawerViewportHeight, setDrawerViewportHeight] = useState<number | null>(null);
   const [duplicateFeedback, setDuplicateFeedback] = useState<{
@@ -443,7 +445,7 @@ export default function PublishModal({
         const mode = current.ctaMode || "none";
         if (mode !== "website" && mode !== "call") continue;
         const patch = buildAutoPrefillPatch(
-          key === "site_web" || key === "inrcy_site" ? "site" : key,
+          key,
           mode,
           current,
           ctaDefaults,
@@ -462,7 +464,7 @@ export default function PublishModal({
       }
       return changed ? next : prev;
     });
-  }, [ctaDefaults]);
+  }, [ctaDefaults, postsByChannel]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -539,21 +541,28 @@ export default function PublishModal({
   ]);
 
   const displayCards = useMemo(() => {
-    const cards: DisplayKey[] = [];
-    if (channels.inrcy_site || channels.site_web) cards.push("site");
-    if (channels.gmb) cards.push("gmb");
-    if (channels.facebook) cards.push("facebook");
-    if (channels.instagram) cards.push("instagram");
-    if (channels.linkedin) cards.push("linkedin");
-    return cards;
-  }, [channels]);
+    const ordered: DisplayKey[] = [
+      "inrcy_site",
+      "site_web",
+      "gmb",
+      "facebook",
+      "instagram",
+      "linkedin",
+    ];
+    return ordered.filter((key) => channels[key] && connected[key]);
+  }, [channels, connected]);
 
   useEffect(() => {
     if (!displayCards.length) {
-      setActiveCard("site");
+      setActiveCard("inrcy_site");
+      setActiveImageChannel("inrcy_site");
       return;
     }
-    if (!displayCards.includes(activeCard)) setActiveCard(displayCards[0]);
+    if (!displayCards.includes(activeCard)) {
+      const fallback = displayCards[0];
+      setActiveCard(fallback);
+      setActiveImageChannel(fallback);
+    }
   }, [displayCards, activeCard]);
 
   const selectedChannels = useMemo(
@@ -583,17 +592,19 @@ export default function PublishModal({
 
   const selectedForGeneration = useMemo(() => {
     const out = new Set<ChannelKey>();
-    if (
-      (channels.inrcy_site && connected.inrcy_site) ||
-      (channels.site_web && connected.site_web)
-    )
-      out.add("site_web");
+    if (channels.inrcy_site && connected.inrcy_site) out.add("inrcy_site");
+    if (channels.site_web && connected.site_web) out.add("site_web");
     if (channels.gmb && connected.gmb) out.add("gmb");
     if (channels.facebook && connected.facebook) out.add("facebook");
     if (channels.instagram && connected.instagram) out.add("instagram");
     if (channels.linkedin && connected.linkedin) out.add("linkedin");
     return Array.from(out);
   }, [channels, connected]);
+
+  const setSynchronizedActiveChannel = (channel: ChannelKey) => {
+    setActiveCard(channel);
+    setActiveImageChannel(channel);
+  };
 
   const imageKeys = useMemo(
     () => images.map((file) => makeImageKey(file)),
@@ -635,10 +646,13 @@ export default function PublishModal({
   useEffect(() => {
     if (!imageAdapterChannels.length) {
       setActiveImageChannel("inrcy_site");
+      setActiveCard("inrcy_site");
       return;
     }
     if (!imageAdapterChannels.includes(activeImageChannel)) {
-      setActiveImageChannel(imageAdapterChannels[0]);
+      const fallback = imageAdapterChannels[0];
+      setActiveImageChannel(fallback);
+      setActiveCard(fallback);
     }
   }, [imageAdapterChannels, activeImageChannel]);
 
@@ -851,18 +865,9 @@ export default function PublishModal({
       }
 
       const versions = json?.versions || {};
-      const sitePost = versions.site_web?.content?.trim()
-        ? versions.site_web
-        : versions.inrcy_site?.content?.trim()
-          ? versions.inrcy_site
-          : undefined;
-
       setPostsByChannel(
         Object.fromEntries(
-          Object.entries({
-            ...versions,
-            ...(sitePost ? { inrcy_site: sitePost, site_web: sitePost } : {}),
-          }).map(([key, value]) => [
+          Object.entries(versions).map(([key, value]) => [
             key,
             normalizePost(value as Partial<ChannelPost>),
           ]),
@@ -931,19 +936,9 @@ export default function PublishModal({
     setPostsByChannel((prev) => {
       const next: Partial<Record<ChannelKey, ChannelPost>> = { ...prev };
       for (const key of displayCards) {
-        if (key === "site") {
-          const sitePost = {
-            ...normalizePost(prev.site_web || prev.inrcy_site),
-            ...patch,
-          };
-          next.inrcy_site = sitePost;
-          next.site_web = sitePost;
-          continue;
-        }
-
         next[key] = {
           ...normalizePost(prev[key]),
-          ...plainPatch,
+          ...(isSiteDisplayKey(key) ? patch : plainPatch),
         };
       }
       return next;
@@ -1059,7 +1054,7 @@ export default function PublishModal({
         };
         return next;
       });
-      setActiveImageChannel(targetChannel);
+      setSynchronizedActiveChannel(targetChannel);
       setActiveImageKeyByChannel((prev) => ({
         ...prev,
         [targetChannel]: newKeys[0] || prev[targetChannel] || "",
@@ -1111,18 +1106,6 @@ export default function PublishModal({
   };
 
   const updatePost = (channel: ChannelKey, patch: Partial<ChannelPost>) => {
-    if (channel === "inrcy_site" || channel === "site_web") {
-      const next = {
-        ...normalizePost(postsByChannel.site_web || postsByChannel.inrcy_site),
-        ...patch,
-      };
-      setPostsByChannel((prev) => ({
-        ...prev,
-        inrcy_site: next,
-        site_web: next,
-      }));
-      return;
-    }
     setPostsByChannel((prev) => ({
       ...prev,
       [channel]: {
@@ -1133,10 +1116,6 @@ export default function PublishModal({
   };
 
   const getDisplayPost = (key: DisplayKey): ChannelPost => {
-    if (key === "site")
-      return normalizePost(
-        postsByChannel.site_web || postsByChannel.inrcy_site,
-      );
     return normalizePost(postsByChannel[key]);
   };
 
@@ -1170,10 +1149,6 @@ export default function PublishModal({
         hashtags: getLiveInstagramHashtags(),
       }),
     };
-    const sitePost = normalizePost(prepared.site_web || prepared.inrcy_site);
-    prepared.inrcy_site = sitePost;
-    prepared.site_web = sitePost;
-
     for (const key of ["gmb", "facebook", "instagram", "linkedin"] as const) {
       if (!prepared[key]) continue;
       prepared[key] = normalizePost({
@@ -1191,13 +1166,10 @@ export default function PublishModal({
     key: DisplayKey,
     preparedPosts: Partial<Record<ChannelKey, ChannelPost>>,
   ): ChannelPost => {
-    if (key === "site")
-      return normalizePost(preparedPosts.site_web || preparedPosts.inrcy_site);
     return normalizePost(preparedPosts[key]);
   };
 
-  const displayKeyForImageChannel = (channel: ChannelKey): DisplayKey =>
-    channel === "inrcy_site" || channel === "site_web" ? "site" : channel;
+  const displayKeyForImageChannel = (channel: ChannelKey): DisplayKey => channel;
 
   const getPublicationPreviewForChannel = (channel: ChannelKey) => {
     const editor = channelImageEditors[channel] || {
@@ -1266,11 +1238,11 @@ export default function PublishModal({
   ) => {
     const current = getDisplayPost(displayKey);
     const patch = buildAutoPrefillPatch(displayKey, mode, current, ctaDefaults);
-    updatePost(displayKey === "site" ? "site_web" : displayKey, patch);
+    updatePost(displayKey, patch);
   };
 
   const applySiteContentFormat = (kind: "bold" | "italic" | "underline") => {
-    if (activeCard !== "site" || typeof document === "undefined") return;
+    if (!isSiteDisplayKey(activeCard) || typeof document === "undefined") return;
     const editor = siteContentEditorRef.current;
     if (!editor) return;
 
@@ -1278,7 +1250,7 @@ export default function PublishModal({
     const command =
       kind === "bold" ? "bold" : kind === "italic" ? "italic" : "underline";
     document.execCommand(command, false);
-    updatePost("site_web", {
+    updatePost(activeCard, {
       content: editableHtmlToSiteText(readSanitizedElementHtml(editor)),
     });
   };
@@ -1650,7 +1622,7 @@ export default function PublishModal({
   };
 
   const openImageEditor = (channel: ChannelKey, imageKey: string) => {
-    setActiveImageChannel(channel);
+    setSynchronizedActiveChannel(channel);
     setActiveImageKeyByChannel((prev) => ({ ...prev, [channel]: imageKey }));
     setIsImageEditorOpen(true);
   };
@@ -1726,7 +1698,6 @@ export default function PublishModal({
     if (saving) return;
     const preparedPostsByChannel =
       options?.preparedPostsByChannel || buildPreparedPostsByChannel();
-    const sitePost = getPreparedDisplayPost("site", preparedPostsByChannel);
 
     setPublishError("");
     setImgError("");
@@ -1740,13 +1711,7 @@ export default function PublishModal({
     }
 
     const missingContentChannels = selectedChannels.filter(
-      (ch) =>
-        !String(
-          (ch === "inrcy_site" || ch === "site_web"
-            ? sitePost
-            : preparedPostsByChannel[ch]
-          )?.content || "",
-        ).trim(),
+      (ch) => !String(preparedPostsByChannel[ch]?.content || "").trim(),
     );
     if (missingContentChannels.length && !options?.skipEmptyContentWarnings) {
       setPostsByChannel(preparedPostsByChannel);
@@ -1842,11 +1807,7 @@ export default function PublishModal({
         idea: idea.trim(),
         theme,
         channels: selectedChannels,
-        postByChannel: {
-          ...preparedPostsByChannel,
-          ...(channels.inrcy_site ? { inrcy_site: sitePost } : {}),
-          ...(channels.site_web ? { site_web: sitePost } : {}),
-        },
+        postByChannel: preparedPostsByChannel,
         // Avoid sending the same images twice (base images + channel images),
         // which can make the JSON body too large and trigger HTTP 413.
         // The API now rebuilds the fallback/base image set from channel images.
@@ -1938,7 +1899,7 @@ export default function PublishModal({
 
   const onChooseGmbImage = () => {
     closeGmbNoImageWarning();
-    setActiveImageChannel("gmb");
+    setSynchronizedActiveChannel("gmb");
     setPendingPublishPosts(null);
   };
 
@@ -1951,9 +1912,7 @@ export default function PublishModal({
     channel: ChannelKey,
     preparedPostsByChannel: Partial<Record<ChannelKey, ChannelPost>>,
   ) => {
-    return channel === "inrcy_site" || channel === "site_web"
-      ? getPreparedDisplayPost("site", preparedPostsByChannel)
-      : normalizePost(preparedPostsByChannel[channel]);
+    return normalizePost(preparedPostsByChannel[channel]);
   };
 
   const buildFinalReviewItems = (
@@ -2823,7 +2782,7 @@ export default function PublishModal({
           className={styles.subtitle}
           style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}
         >
-Écrivez simplement votre idée. iNrCy comprend le contexte et adapte automatiquement le contenu à chaque canal.
+Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à chaque canal. Plus votre phrase est détaillée, meilleur sera le résultat.
         </div>
         <div style={{ display: "grid", gap: 10 }}>
           <div>
@@ -2897,7 +2856,7 @@ export default function PublishModal({
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setActiveCard(key)}
+                  onClick={() => setSynchronizedActiveChannel(key)}
                   style={{
                     ...pillBtn,
                     ...(activeCard === key ? pillBtnActive : {}),
@@ -2926,10 +2885,7 @@ export default function PublishModal({
                   <input
                     value={getDisplayPost(activeCard).title}
                     onChange={(e) =>
-                      updatePost(
-                        activeCard === "site" ? "site_web" : activeCard,
-                        { title: e.target.value },
-                      )
+                      updatePost(activeCard, { title: e.target.value })
                     }
                     style={inputStyle}
                     placeholder="Titre"
@@ -2960,7 +2916,7 @@ export default function PublishModal({
                         flexWrap: "wrap",
                       }}
                     >
-                      {activeCard !== "site" ? (
+                      {!isSiteDisplayKey(activeCard) ? (
                         <span
                           style={{
                             fontSize: 11,
@@ -2982,12 +2938,12 @@ export default function PublishModal({
                           key={kind}
                           type="button"
                           title={
-                            activeCard === "site"
+                            isSiteDisplayKey(activeCard)
                               ? title
                               : "Disponible uniquement pour Site internet"
                           }
                           aria-label={title}
-                          disabled={activeCard !== "site"}
+                          disabled={!isSiteDisplayKey(activeCard)}
                           onMouseDown={(event) => {
                             if (event.cancelable) event.preventDefault();
                             applySiteContentFormat(kind);
@@ -2997,15 +2953,15 @@ export default function PublishModal({
                             height: 30,
                             borderRadius: 9,
                             border:
-                              activeCard === "site"
+                              isSiteDisplayKey(activeCard)
                                 ? "1px solid rgba(76,195,255,0.35)"
                                 : "1px solid rgba(255,255,255,0.10)",
                             background:
-                              activeCard === "site"
+                              isSiteDisplayKey(activeCard)
                                 ? "rgba(76,195,255,0.12)"
                                 : "rgba(255,255,255,0.04)",
                             color:
-                              activeCard === "site"
+                              isSiteDisplayKey(activeCard)
                                 ? "#eaf7ff"
                                 : "rgba(255,255,255,0.32)",
                             fontWeight: 900,
@@ -3013,7 +2969,7 @@ export default function PublishModal({
                             textDecoration:
                               kind === "underline" ? "underline" : "none",
                             cursor:
-                              activeCard === "site" ? "pointer" : "not-allowed",
+                              isSiteDisplayKey(activeCard) ? "pointer" : "not-allowed",
                           }}
                         >
                           {label}
@@ -3021,11 +2977,11 @@ export default function PublishModal({
                       ))}
                     </div>
                   </div>
-                  {activeCard === "site" ? (
+                  {isSiteDisplayKey(activeCard) ? (
                     <RichSiteContentEditor
-                      value={getDisplayPost("site").content}
+                      value={getDisplayPost(activeCard).content}
                       onChange={(content) =>
-                        updatePost("site_web", { content })
+                        updatePost(activeCard, { content })
                       }
                       minHeight={280}
                       editorRef={siteContentEditorRef}
@@ -3044,7 +3000,7 @@ export default function PublishModal({
                   )}
                   {renderLimitCounter(
                     "Contenu",
-                    activeCard === "site"
+                    isSiteDisplayKey(activeCard)
                       ? stripSiteTextFormatting(
                           getDisplayPost(activeCard).content,
                         ).length
@@ -3056,8 +3012,17 @@ export default function PublishModal({
                   {(() => {
                     const currentPost = getDisplayPost(activeCard);
                     const ctaMode = currentPost.ctaMode || "none";
-                    const updateTarget =
-                      activeCard === "site" ? "site_web" : activeCard;
+                    const updateTarget = activeCard;
+                    const activeWebsiteUrl = getWebsiteUrlForChannel(activeCard, ctaDefaults);
+                    const activeWebsiteSourceLabel = getWebsiteSourceLabelForChannel(activeCard, ctaDefaults);
+                    const websiteChoices = [
+                      ctaDefaults?.inrcySiteUrl
+                        ? { label: "Site iNrCy", url: ctaDefaults.inrcySiteUrl }
+                        : null,
+                      ctaDefaults?.siteWebUrl
+                        ? { label: "Site web", url: ctaDefaults.siteWebUrl }
+                        : null,
+                    ].filter(Boolean) as Array<{ label: string; url: string }>;
                     const ctaGridColumns = isMobile
                       ? "1fr"
                       : ctaMode === "website"
@@ -3128,11 +3093,51 @@ export default function PublishModal({
                                   }
                                   style={lightFieldStyle}
                                   placeholder={
-                                    ctaDefaults?.preferredWebsiteUrl
-                                      ? `URL du site préremplie (${getWebsiteSourceLabel(ctaDefaults)})`
-                                      : "URL du site (optionnel)"
+                                    activeWebsiteUrl
+                                      ? `URL du site préremplie (${activeWebsiteSourceLabel})`
+                                      : websiteChoices.length > 1
+                                        ? "Choisissez Site iNrCy ou Site web"
+                                        : "URL du site (optionnel)"
                                   }
                                 />
+                                {websiteChoices.length ? (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      gap: 6,
+                                      flexWrap: "wrap",
+                                      marginTop: 7,
+                                    }}
+                                  >
+                                    {websiteChoices.map((choice) => (
+                                      <button
+                                        key={choice.label}
+                                        type="button"
+                                        onClick={() =>
+                                          updatePost(updateTarget, {
+                                            ctaUrl: choice.url,
+                                          })
+                                        }
+                                        style={{
+                                          border: currentPost.ctaUrl === choice.url
+                                            ? "1px solid rgba(76,195,255,0.55)"
+                                            : "1px solid rgba(255,255,255,0.14)",
+                                          background: currentPost.ctaUrl === choice.url
+                                            ? "rgba(76,195,255,0.14)"
+                                            : "rgba(255,255,255,0.06)",
+                                          color: "rgba(255,255,255,0.86)",
+                                          borderRadius: 999,
+                                          padding: "5px 9px",
+                                          fontSize: 11,
+                                          fontWeight: 800,
+                                          cursor: "pointer",
+                                        }}
+                                      >
+                                        {choice.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null}
                               </div>
                               <div>
                                 <div
@@ -3222,8 +3227,7 @@ export default function PublishModal({
                         >
                           {getCtaModeHelp(activeCard, ctaMode)}
                         </div>
-                        {ctaMode === "website" &&
-                        ctaDefaults?.preferredWebsiteUrl ? (
+                        {ctaMode === "website" && activeWebsiteUrl ? (
                           <div
                             style={{
                               fontSize: 11,
@@ -3233,8 +3237,18 @@ export default function PublishModal({
                             }}
                           >
                             Valeur par défaut disponible depuis{" "}
-                            {getWebsiteSourceLabel(ctaDefaults).toLowerCase()} :{" "}
-                            {ctaDefaults.preferredWebsiteUrl}
+                            {activeWebsiteSourceLabel.toLowerCase()} : {activeWebsiteUrl}
+                          </div>
+                        ) : ctaMode === "website" && websiteChoices.length > 1 ? (
+                          <div
+                            style={{
+                              fontSize: 11,
+                              marginTop: 8,
+                              color: "rgba(255,255,255,0.62)",
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            Deux sites sont connectés : choisissez le lien à utiliser avec les boutons ci-dessus.
                           </div>
                         ) : null}
                         {ctaMode === "call" && ctaDefaults?.phone ? (
@@ -3462,7 +3476,7 @@ export default function PublishModal({
               tabs={imageAdapterTabs}
               activeChannel={activeImageChannel}
               onActiveChannelChange={(key) =>
-                setActiveImageChannel(key as ChannelKey)
+                setSynchronizedActiveChannel(key as ChannelKey)
               }
               channelTitle={getImageAdapterLabel(activeImageChannel)}
               formatLabel={
@@ -3561,9 +3575,33 @@ export default function PublishModal({
               </div>
               <div
                 className={styles.subtitle}
-                style={{ fontSize: 12, marginBottom: 0 }}
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  flexWrap: "nowrap",
+                  overflowX: "auto",
+                  maxWidth: isMobile ? "calc(100vw - 128px)" : "100%",
+                  paddingBottom: 2,
+                  marginBottom: 0,
+                }}
               >
-                Canal sélectionné : {getImageAdapterLabel(activeImageChannel)}
+                {imageAdapterTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setSynchronizedActiveChannel(tab.key as ChannelKey)}
+                    style={{
+                      ...pillBtn,
+                      ...(activeImageChannel === tab.key ? pillBtnActive : {}),
+                      padding: "6px 10px",
+                      fontSize: 11,
+                      whiteSpace: "nowrap",
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             </div>
             <button
