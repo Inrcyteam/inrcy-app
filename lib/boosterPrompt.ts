@@ -282,10 +282,13 @@ export function boosterSystemPrompt() {
 Ta mission : à partir d'une même intention du pro, générer EN UNE FOIS des contenus différents selon les canaux demandés.
 
 Important :
+- L'intention libre saisie par le pro est le sujet principal obligatoire. Tous les contenus doivent rester clairement centrés dessus.
+- Le contexte métier, l'activité, les prestations, la ville, le thème, le style, l'historique et l'angle éditorial servent uniquement à contextualiser cette intention : ils ne doivent jamais la remplacer.
+- Si l'intention du pro est précise, ne pars pas sur un sujet général de l'activité et n'invente pas un autre angle plus commode.
 - Tu dois adapter le ton, la longueur, le rythme, l'accroche et l'ambiance au canal ET au style demandé.
 - Tu ne dois pas inventer de faits précis si l'information n'est pas fournie.
 - Tu peux reformuler, structurer et enrichir légèrement, mais sans mentir.
-- Tu dois tenir compte du secteur, du métier, des prestations, de la ville et du thème choisi.
+- Tu dois tenir compte du secteur, du métier, des prestations, de la ville et du thème choisi seulement quand cela aide à traiter l'intention du pro.
 - Les trois styles (sobre, équilibré, dynamique) doivent produire des textes VISIBLEMENT différents. Pas de simples nuances.
 - Les contenus doivent sembler écrits par un vrai professionnel local, pas par une IA marketing.
 - Éviter les formulations trop parfaites, trop génériques ou trop publicitaires.
@@ -503,8 +506,10 @@ export function boosterUserPrompt(args: {
       : "",
   ]);
 
-  return `Intention du pro :
+  return `Intention du pro — SUJET PRINCIPAL OBLIGATOIRE :
 ${args.idea}
+
+Règle de priorité : cette intention libre doit guider le titre, l'accroche, le contenu et le CTA de chaque canal. Les informations de l'entreprise servent seulement à rendre le contenu crédible, local et adapté au métier. Si une consigne secondaire contredit ou éloigne le contenu de cette intention, ignorer la consigne secondaire et rester sur l'intention.
 
 Thème choisi : ${THEME_LABELS[args.theme]}
 Style souhaité : ${STYLE_LABELS[args.style]}
@@ -528,17 +533,18 @@ ${aiConfiguration}
 Angle éditorial invisible choisi par iNrCy :
 - Type : ${hiddenAngleLabel}
 - Consigne : ${hiddenAngleInstruction}
-- Important : utiliser cet angle comme inspiration discrète. Ne jamais nommer l'angle dans le texte et ne pas le forcer si ce n'est pas pertinent pour un canal.
+- Important : utiliser cet angle comme inspiration discrète uniquement s'il renforce l'intention du pro. Ne jamais nommer l'angle dans le texte, ne pas le forcer et ne jamais l'utiliser pour changer de sujet.
 
 Historique récent des publications à ne pas répéter :
 ${recentPublicationMemory || "- Aucun historique récent disponible."}
 
 Consignes supplémentaires :
-- Adapter clairement le contenu à chaque canal demandé.
-- Utiliser en priorité le contexte Mon activité quand il est renseigné : métier exact, prestations/spécialités, zones, forces, horaires et typologie de clientèle.
+- Avant d'écrire, identifier mentalement le sujet exact demandé dans l'intention du pro, puis produire chaque canal autour de ce sujet.
+- Adapter clairement le contenu à chaque canal demandé sans changer le sujet de départ.
+- Utiliser le contexte Mon activité seulement pour contextualiser l'intention : métier exact, prestations/spécialités, zones, forces, horaires et typologie de clientèle. Ne pas remplacer l'intention par une présentation générale de l'activité.
 - Ne jamais afficher les champs absents et ne jamais inventer de prestation, de zone, de client, d'avis, de prix ou de résultat précis.
-- Utiliser l'angle éditorial invisible pour varier les générations et éviter les textes répétitifs.
-- Utiliser l'historique récent uniquement comme garde-fou anti-répétition : ne pas copier, paraphraser ou reprendre les mêmes accroches, idées, CTA, structures ou tournures.
+- Utiliser l'angle éditorial invisible pour varier les générations et éviter les textes répétitifs, uniquement s'il reste cohérent avec l'intention du pro.
+- Utiliser l'historique récent uniquement comme garde-fou anti-répétition : ne pas copier, paraphraser ou reprendre les mêmes accroches, idées, CTA, structures ou tournures. L'historique ne doit jamais influencer le sujet du jour.
 - Si l'intention actuelle ressemble à une ancienne publication, choisir un angle différent et une accroche différente, sans mentionner l'historique.
 - Ne jamais considérer une ancienne publication comme une information actuelle certaine si elle contredit l'intention du jour.
 - Le style demandé doit changer visiblement le ton, les accroches, le rythme des phrases et la présence d'emojis. Ne fais pas seulement une variation légère.
@@ -569,5 +575,5 @@ Exigences précises par style :
 - Si le style demandé est "Équilibré" : produire un texte humain, chaleureux, engageant et naturel. Accroche plus vivante. Phrases fluides avec du relief. Emojis modérés selon le canal.
 - Si le style demandé est "Dynamique" : produire un texte visiblement plus punchy et entraînant. Commencer par une accroche plus forte. Utiliser des phrases plus rythmées et plus courtes quand c'est pertinent. Sur Facebook et Instagram, autoriser une présence d'emojis plus marquée que dans les autres styles, tout en restant lisible et professionnel.
 
-Rappel important : les contenus doivent être à l'image de l'entreprise, mais rester vrais. Les contenus doivent aussi varier naturellement d'une génération à l'autre pour éviter l'effet robotique.`;
+Rappel important : les contenus doivent être à l'image de l'entreprise, mais rester vrais. Ils doivent surtout répondre au sujet libre saisi par le pro. Les contenus doivent aussi varier naturellement d'une génération à l'autre pour éviter l'effet robotique.`;
 }

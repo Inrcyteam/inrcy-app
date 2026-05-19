@@ -578,7 +578,9 @@ export async function buildStatsOverview(args: {
   const { extractFacebookUserTokens } =
     await import("@/lib/metaBusinessAssets");
   const {
+    liAggregateAnalytics,
     liFetchCombinedAnalytics,
+    liFetchMemberAnalytics,
     liFetchOrgAnalytics,
     liResolveFirstAdminOrgUrn,
     isLinkedInRateLimitMessage,
@@ -954,6 +956,20 @@ export async function buildStatsOverview(args: {
       `snapshot=${dateWindow.snapshotDate || "live"}`,
       `person=${normalizeLinkedInCachePart(authorUrn)}`,
       `org=${normalizeLinkedInCachePart(orgUrn)}`,
+    ].join("|");
+  }
+
+  function buildLinkedInSourceMetricsCacheKey(
+    source: "member" | "organization",
+    urn: string,
+  ) {
+    return [
+      `days=${days}`,
+      `snapshot=${dateWindow.snapshotDate || "live"}`,
+      `linkedin_source=${source}`,
+      source === "member"
+        ? `person=${normalizeLinkedInCachePart(urn)}`
+        : `org=${normalizeLinkedInCachePart(urn)}`,
     ].join("|");
   }
 
@@ -1848,23 +1864,156 @@ export async function buildStatsOverview(args: {
             );
           } else {
             try {
-              let metrics: unknown;
-              // Stats LinkedIn = profil personnel + page entreprise quand les deux existent.
-              // La page est un bonus : elle ne doit jamais remplacer le profil et écraser les chiffres à 0.
+              type LinkedInSourceFetch = {
+                label: "member" | "organization";
+                cacheKey: string;
+                authorForCache: string;
+                orgForCache: string;
+                run: () => Promise<unknown>;
+              };
+
+              const sourceFetches: LinkedInSourceFetch[] = [];
               if (authorUrn.startsWith("urn:li:person:")) {
-                metrics = await liFetchCombinedAnalytics(
-                  token,
-                  authorUrn,
-                  orgUrn || null,
-                  start,
-                  end,
-                );
-              } else if (orgUrn) {
-                metrics = await liFetchOrgAnalytics(token, orgUrn, start, end);
-              } else {
+                sourceFetches.push({
+                  label: "member",
+                  cacheKey: buildLinkedInSourceMetricsCacheKey("member", authorUrn),
+                  authorForCache: authorUrn,
+                  orgForCache: "",
+                  run: () => liFetchMemberAnalytics(token, authorUrn, start, end),
+                });
+              }
+              if (orgUrn.startsWith("urn:li:organization:")) {
+                sourceFetches.push({
+                  label: "organization",
+                  cacheKey: buildLinkedInSourceMetricsCacheKey("organization", orgUrn),
+                  authorForCache: "",
+                  orgForCache: orgUrn,
+                  run: () => liFetchOrgAnalytics(token, orgUrn, start, end),
+                });
+              }
+              if (!sourceFetches.length) {
                 throw new Error("Le compte LinkedIn n’est pas correctement configuré.");
               }
 
+              const sourceResults: Array<{
+                label: "member" | "organization";
+                metrics?: unknown | null;
+                error?: string | null;
+                mode?: string | null;
+              }> = [];
+
+              for (const sourceFetch of sourceFetches) {
+                const sourceCached = await resolveLinkedInCachedMetrics(
+                  sourceFetch.cacheKey,
+                  sourceFetch.authorForCache,
+                  sourceFetch.orgForCache,
+                );
+                if (sourceCached) {
+                  sourceResults.push({
+                    label: sourceFetch.label,
+                    metrics: sourceCached.metrics,
+                    mode: sourceCached.mode,
+                  });
+                  continue;
+                }
+
+                try {
+                  const sourceMetrics = await sourceFetch.run();
+                  const sourceQuotaError = getLinkedInRateLimitErrorFromMetrics(sourceMetrics);
+                  if (sourceQuotaError) await writeLinkedInQuotaGuard(sourceQuotaError);
+                  if (shouldCacheLinkedInMetrics(sourceMetrics)) {
+                    await writeLinkedInMetricsCache(sourceFetch.cacheKey, sourceMetrics);
+                  }
+                  await writeLastGoodLinkedInOpportunityCache(
+                    sourceFetch.cacheKey,
+                    sourceMetrics,
+                  );
+
+                  if (isLastGoodLinkedInMetrics(sourceMetrics)) {
+                    await writeLastGoodLinkedInMetricsCache(
+                      sourceFetch.cacheKey,
+                      sourceMetrics,
+                    );
+                    sourceResults.push({
+                      label: sourceFetch.label,
+                      metrics: sourceMetrics,
+                      mode: "live",
+                    });
+                  } else if (hasUsableLinkedInMetrics(sourceMetrics)) {
+                    // Réponse partielle mais exploitable : on la garde pour éviter
+                    // de rappeler LinkedIn à chaque ouverture.
+                    sourceResults.push({
+                      label: sourceFetch.label,
+                      metrics: sourceMetrics,
+                      mode: "live_partial",
+                    });
+                  } else {
+                    const sourceLastGood = await readLastGoodLinkedInMetrics(
+                      sourceFetch.authorForCache,
+                      sourceFetch.orgForCache,
+                      sourceFetch.cacheKey,
+                    );
+                    const sourceLastOpportunity = sourceLastGood
+                      ? null
+                      : await readLastGoodLinkedInOpportunityMetrics(
+                          sourceFetch.authorForCache,
+                          sourceFetch.orgForCache,
+                          sourceFetch.cacheKey,
+                        );
+                    sourceResults.push({
+                      label: sourceFetch.label,
+                      metrics: sourceLastGood || sourceLastOpportunity || sourceMetrics,
+                      mode: sourceLastGood
+                        ? "last_good_after_partial_refresh"
+                        : sourceLastOpportunity
+                          ? "last_opportunity_after_partial_refresh"
+                          : "live_partial",
+                    });
+                  }
+                } catch (sourceError) {
+                  const rawSourceMessage = sourceError instanceof Error
+                    ? sourceError.message
+                    : String(sourceError);
+                  if (isLinkedInRateLimitMessage(rawSourceMessage)) {
+                    await writeLinkedInQuotaGuard(rawSourceMessage);
+                  }
+                  const sourceLastGood = await readLastGoodLinkedInMetrics(
+                    sourceFetch.authorForCache,
+                    sourceFetch.orgForCache,
+                    sourceFetch.cacheKey,
+                  );
+                  const sourceLastOpportunity = sourceLastGood
+                    ? null
+                    : await readLastGoodLinkedInOpportunityMetrics(
+                        sourceFetch.authorForCache,
+                        sourceFetch.orgForCache,
+                        sourceFetch.cacheKey,
+                      );
+
+                  if (sourceLastGood || sourceLastOpportunity) {
+                    sourceResults.push({
+                      label: sourceFetch.label,
+                      metrics: annotateLinkedInMetrics(
+                        sourceLastGood || sourceLastOpportunity,
+                        sourceLastGood
+                          ? "last_good_source_after_error"
+                          : "last_opportunity_source_after_error",
+                        { refreshIssue: rawSourceMessage },
+                      ),
+                      mode: sourceLastGood
+                        ? "last_good_source_after_error"
+                        : "last_opportunity_source_after_error",
+                    });
+                  } else {
+                    sourceResults.push({
+                      label: sourceFetch.label,
+                      error: rawSourceMessage,
+                    });
+                  }
+                }
+              }
+
+              const metrics = liAggregateAnalytics(sourceResults, start, end);
               const quotaMetricError = getLinkedInRateLimitErrorFromMetrics(metrics);
               if (quotaMetricError) {
                 await writeLinkedInQuotaGuard(quotaMetricError);
@@ -1873,9 +2022,19 @@ export async function buildStatsOverview(args: {
                 await writeLinkedInMetricsCache(cacheKey, metrics);
               }
               await writeLastGoodLinkedInOpportunityCache(cacheKey, metrics);
+
               if (isLastGoodLinkedInMetrics(metrics)) {
                 await writeLastGoodLinkedInMetricsCache(cacheKey, metrics);
-                sourcesStatus.linkedin.metrics = annotateLinkedInMetrics(metrics, "live");
+                sourcesStatus.linkedin.metrics = annotateLinkedInMetrics(
+                  metrics,
+                  "live_sources_aggregate",
+                );
+              } else if (hasUsableLinkedInMetrics(metrics)) {
+                sourcesStatus.linkedin.metrics = annotateLinkedInMetrics(
+                  metrics,
+                  "partial_sources_aggregate",
+                  { refreshIssue: collectLinkedInMetricErrors(metrics)[0] || null },
+                );
               } else {
                 const lastGood = await readLastGoodLinkedInMetrics(
                   authorUrn,

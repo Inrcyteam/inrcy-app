@@ -89,6 +89,93 @@ function hasRequiredContent(channel: BoosterChannels, post: ChannelPost | undefi
   return post.content.trim().length >= minContentLength;
 }
 
+
+const ideaStopWords = new Set([
+  "avec",
+  "afin",
+  "alors",
+  "apres",
+  "avant",
+  "avoir",
+  "cette",
+  "celui",
+  "celle",
+  "chez",
+  "comme",
+  "dans",
+  "dire",
+  "donc",
+  "elle",
+  "elles",
+  "faire",
+  "fais",
+  "fait",
+  "faut",
+  "leur",
+  "leurs",
+  "mais",
+  "meme",
+  "nous",
+  "pour",
+  "post",
+  "publication",
+  "publier",
+  "quand",
+  "quel",
+  "quelle",
+  "sans",
+  "sont",
+  "sujet",
+  "tous",
+  "toute",
+  "tres",
+  "vous",
+  "votre",
+  "veux",
+  "veut",
+]);
+
+function normalizeIdeaToken(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+}
+
+function stemIdeaToken(token: string) {
+  if (token.length > 5 && token.endsWith("es")) return token.slice(0, -2);
+  if (token.length > 4 && token.endsWith("s")) return token.slice(0, -1);
+  return token;
+}
+
+function extractIdeaKeywords(idea: string) {
+  const tokens = (idea.match(/[A-Za-zÀ-ÖØ-öø-ÿ0-9']+/g) || [])
+    .map(normalizeIdeaToken)
+    .map(stemIdeaToken)
+    .filter((token) => token.length >= 4 && !ideaStopWords.has(token));
+
+  return Array.from(new Set(tokens)).slice(0, 8);
+}
+
+function getSearchablePostText(post: ChannelPost | undefined) {
+  if (!post) return "";
+  return normalizeIdeaToken(
+    [post.title, post.content, post.cta, ...(Array.isArray(post.hashtags) ? post.hashtags : [])].join(" "),
+  );
+}
+
+function isPostAnchoredToIdea(ideaKeywords: string[], post: ChannelPost | undefined) {
+  if (!ideaKeywords.length) return true;
+  const text = getSearchablePostText(post);
+  if (!text) return false;
+
+  const matches = ideaKeywords.filter((keyword) => text.includes(keyword));
+  const requiredMatches = ideaKeywords.length <= 2 ? 1 : 2;
+  return matches.length >= requiredMatches;
+}
+
 function getCreativityTemperature(business: JsonRecord | null) {
   const creativity = String(business?.ai_creativity || "balanced");
   if (creativity === "stable") return 0.55;
@@ -216,6 +303,7 @@ const handler = async (req: Request) => {
 
     const recentPublications = await fetchRecentPublicationMemory(supabase, userId);
     const hiddenAngle = pickBoosterHiddenAngle();
+    const ideaKeywords = extractIdeaKeywords(idea);
 
     const out = await generateVersions({
       idea,
@@ -239,19 +327,29 @@ const handler = async (req: Request) => {
     }
 
     const missingChannels = channels.filter((ch) => !hasRequiredContent(ch, safeVersions[ch]));
+    const offTopicChannels = channels.filter(
+      (ch) => hasRequiredContent(ch, safeVersions[ch]) && !isPostAnchoredToIdea(ideaKeywords, safeVersions[ch]),
+    );
+    const retryChannels = Array.from(new Set([...missingChannels, ...offTopicChannels]));
 
-    if (missingChannels.length) {
+    if (retryChannels.length) {
       const retryOut = await generateVersions({
         idea,
         theme,
         style,
-        channels: missingChannels,
+        channels: retryChannels,
         profile: (profile ?? null) as JsonRecord | null,
         business,
         recentPublications,
         hiddenAngle,
-        extraInstructions:
-          "IMPORTANT : certains canaux précédents étaient vides ou trop courts. Regénère uniquement les canaux demandés ci-dessus. Pour chaque canal, title, content et cta doivent être non vides. Pour un canal site, le content doit être complet, naturel et utile, jamais vide ni résumé en une ligne.",
+        extraInstructions: `IMPORTANT : regénère uniquement les canaux demandés ci-dessus.
+- Le contenu précédent était soit vide/trop court, soit trop éloigné de l'intention libre du pro.
+- Sujet libre obligatoire à respecter mot pour mot dans le fond : "${idea}".
+- Le titre, l'accroche, le corps du texte et le CTA doivent rester reliés à cette intention.
+- Ne fais pas une présentation générale de l'activité si le pro a demandé un sujet précis.
+- Le contexte Mon activité, l'historique et l'angle éditorial servent uniquement à contextualiser, jamais à changer de sujet.
+- Pour chaque canal, title, content et cta doivent être non vides.
+- Pour un canal site, le content doit être complet, naturel et utile, jamais vide ni résumé en une ligne.`,
       });
 
       const retryVersions =
@@ -259,15 +357,25 @@ const handler = async (req: Request) => {
           ? (retryOut.versions as Partial<Record<BoosterChannels, Partial<ChannelPost>>>)
           : {};
 
-      for (const ch of missingChannels) {
+      for (const ch of retryChannels) {
         const retriedPost = normalizePost(ch, retryVersions[ch]);
-        if (hasRequiredContent(ch, retriedPost)) {
+        if (hasRequiredContent(ch, retriedPost) && isPostAnchoredToIdea(ideaKeywords, retriedPost)) {
           safeVersions[ch] = retriedPost;
         }
       }
     }
 
     const stillMissingChannels = channels.filter((ch) => !hasRequiredContent(ch, safeVersions[ch]));
+    const stillOffTopicChannels = channels.filter((ch) => !isPostAnchoredToIdea(ideaKeywords, safeVersions[ch]));
+    if (stillOffTopicChannels.length) {
+      return NextResponse.json(
+        {
+          error: "La génération IA n'a pas assez respecté le sujet demandé. Merci de relancer la génération ou de préciser un peu plus la phrase libre.",
+        },
+        { status: 502 },
+      );
+    }
+
     if (stillMissingChannels.length) {
       return NextResponse.json(
         {

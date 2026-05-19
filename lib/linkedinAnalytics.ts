@@ -3,6 +3,12 @@ const LI_VERSION = process.env.LINKEDIN_API_VERSION || "202604";
 
 type Dict = Record<string, unknown>;
 
+function asRecord(value: unknown): Dict {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Dict)
+    : {};
+}
+
 type LinkedInFetchOptions = {
   extraHeaders?: Record<string, string>;
   useRestHeaders?: boolean;
@@ -100,6 +106,13 @@ function safeNum(v: unknown): number {
   const n =
     typeof v === "number" ? v : typeof v === "string" ? Number(v) : Number.NaN;
   return Number.isFinite(n) ? n : 0;
+}
+
+function toNumberRecord(value: unknown): Record<string, number> {
+  const rec = value && typeof value === "object" ? (value as Dict) : {};
+  const out: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(rec)) out[key] = safeNum(raw);
+  return out;
 }
 
 function toDateRangeParam(start: Date, end: Date): string {
@@ -804,6 +817,66 @@ export async function liFetchMemberAnalytics(
   };
 }
 
+export function liAggregateAnalytics(
+  parts: Array<{
+    label: "member" | "organization" | string;
+    metrics?: unknown | null;
+    error?: string | null;
+    mode?: string | null;
+  }>,
+  start: Date,
+  end: Date,
+): LinkedInMetrics {
+  const totals: Record<string, number> = {};
+  const raw: Record<string, unknown> = {};
+  const errors: string[] = [];
+  const activeLabels: string[] = [];
+  const cacheModes: Record<string, string> = {};
+
+  for (const part of parts) {
+    const label = String(part.label || `source_${activeLabels.length}`);
+    if (part.metrics) {
+      const metricsRec = part.metrics && typeof part.metrics === "object"
+        ? (part.metrics as Dict)
+        : {};
+      const totalsRec = asRecord(metricsRec.totals);
+      mergeTotals(
+        totals,
+        Object.keys(totalsRec).length ? toNumberRecord(totalsRec) : toNumberRecord(metricsRec),
+      );
+      raw[label] = metricsRec.raw || metricsRec;
+      activeLabels.push(label);
+      if (part.mode) cacheModes[label] = part.mode;
+      continue;
+    }
+
+    if (part.error) {
+      const message = String(part.error);
+      raw[label] = { error: message };
+      errors.push(`${label}:${message}`);
+    }
+  }
+
+  const normalizedTotals = normalizeTotals(totals);
+  if (!hasLinkedInSignal(normalizedTotals)) {
+    throw new Error(errors[0] || "Aucune métrique LinkedIn exploitable.");
+  }
+
+  return {
+    range: { since: start.toISOString(), until: end.toISOString() },
+    totals: normalizedTotals,
+    raw: {
+      ...raw,
+      errors,
+      mode: activeLabels.includes("organization") && activeLabels.includes("member")
+        ? "member_plus_organization"
+        : activeLabels[0] || "unknown",
+      sources: activeLabels,
+      cacheModes,
+    },
+  };
+}
+
 export async function liFetchCombinedAnalytics(
   accessToken: string,
   authorUrn: string | null | undefined,
@@ -834,37 +907,16 @@ export async function liFetchCombinedAnalytics(
     throw new Error("Le compte LinkedIn n’est pas correctement configuré.");
 
   const settled = await Promise.allSettled(tasks.map((task) => task.run()));
-  const totals: Record<string, number> = {};
-  const raw: Record<string, unknown> = {};
-  const errors: string[] = [];
-
-  settled.forEach((result, idx) => {
-    const label = tasks[idx]?.label || `source_${idx}`;
-    if (result.status === "fulfilled") {
-      mergeTotals(totals, result.value.totals || {});
-      raw[label] = result.value.raw || result.value;
-    } else {
-      const message =
-        result.reason instanceof Error
-          ? result.reason.message
-          : String(result.reason);
-      raw[label] = { error: message };
-      errors.push(`${label}:${message}`);
-    }
-  });
-
-  const normalizedTotals = normalizeTotals(totals);
-  if (!hasLinkedInSignal(normalizedTotals)) {
-    throw new Error(errors[0] || "Aucune métrique LinkedIn exploitable.");
-  }
-
-  return {
-    range: { since: start.toISOString(), until: end.toISOString() },
-    totals: normalizedTotals,
-    raw: {
-      ...raw,
-      errors,
-      mode: orgUrn ? "member_plus_organization" : "member",
-    },
-  };
+  return liAggregateAnalytics(
+    settled.map((result, idx) => {
+      const label = tasks[idx]?.label || `source_${idx}`;
+      if (result.status === "fulfilled") return { label, metrics: result.value, mode: "live" };
+      return {
+        label,
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      };
+    }),
+    start,
+    end,
+  );
 }
