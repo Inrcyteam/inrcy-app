@@ -4149,3 +4149,66 @@ transform: scale(1.50);
     linear-gradient(135deg, rgba(57, 213, 255, 0.22), rgba(139, 92, 246, 0.18)),
     rgba(255, 255, 255, 0.08) !important;
 }
+
+/* =========================================================
+   Mobile modal width boost (Booster / Fidéliser)
+   Objectif : moins de cadres dans les cadres sur téléphone,
+   plus de largeur utile, sans modifier le rendu desktop.
+========================================================= */
+.fullscreenModalOverlay{
+  --inrcy-modal-overlay-padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  --inrcy-modal-header-padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  --inrcy-modal-content-padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  --inrcy-modal-card-radius: 22px;
+  --inrcy-modal-inner-max-width: min(1400px, 100%);
+}
+
+@media (max-width: 700px), (any-hover: none) and (any-pointer: coarse){
+  .fullscreenModalOverlay{
+    --inrcy-modal-overlay-padding: max(2px, env(safe-area-inset-top)) max(2px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(2px, env(safe-area-inset-left));
+    --inrcy-modal-header-padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left));
+    --inrcy-modal-content-padding: 8px max(5px, env(safe-area-inset-right)) 8px max(5px, env(safe-area-inset-left));
+    --inrcy-modal-card-radius: 18px;
+    --inrcy-modal-inner-max-width: 100%;
+  }
+
+  .fullscreenModalCard{
+    padding: 0 !important;
+    border-radius: var(--inrcy-modal-card-radius) !important;
+  }
+
+  .fullscreenModalHeader{
+    gap: 8px;
+  }
+
+  .fullscreenModalScroll{
+    scrollbar-gutter: auto;
+  }
+
+  .fullscreenModalInner{
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .fullscreenModalInner .blockCard,
+  .fullscreenModalInner .moduleCard{
+    padding: 10px !important;
+    border-radius: 16px !important;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
+  }
+
+  .fullscreenModalInner .blockHeaderRow{
+    gap: 8px;
+  }
+
+  .fullscreenModalInner .subtitle{
+    font-size: 14px;
+    line-height: 1.38;
+  }
+
+  .fullscreenModalInner .primaryBtn,
+  .fullscreenModalInner .secondaryBtn,
+  .fullscreenModalInner .ghostBtn{
+    padding: 8px 10px;
+  }
+}

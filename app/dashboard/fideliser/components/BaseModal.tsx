@@ -45,6 +45,7 @@ export default function BaseModal({
     <div
       role="dialog"
       aria-modal="true"
+      className={styles.fullscreenModalOverlay}
       onMouseDown={() => void onClose()}
       style={{
         position: "fixed",
@@ -58,14 +59,14 @@ export default function BaseModal({
         display: "flex",
         alignItems: "stretch",
         justifyContent: "stretch",
-        padding: `max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left))`,
+        padding: "var(--inrcy-modal-overlay-padding, max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)))",
         boxSizing: "border-box",
         overflow: "hidden",
       }}
     >
       <div
         onMouseDown={(e) => e.stopPropagation()}
-        className={styles.blockCard}
+        className={[styles.blockCard, styles.fullscreenModalCard].join(" ")}
         style={{
           width: "100%",
           maxWidth: "100%",
@@ -73,7 +74,7 @@ export default function BaseModal({
           maxHeight: "100%",
           boxSizing: "border-box",
           minWidth: 0,
-          borderRadius: 22,
+          borderRadius: "var(--inrcy-modal-card-radius, 22px)",
           overflow: "hidden",
           minHeight: 0,
           display: "flex",
@@ -82,10 +83,10 @@ export default function BaseModal({
       >
         {/* Header sticky */}
         <div
-          className={styles.blockHeaderRow}
+          className={[styles.blockHeaderRow, styles.fullscreenModalHeader].join(" ")}
           style={{
             alignItems: "center",
-            padding: `max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))`,
+            padding: "var(--inrcy-modal-header-padding, max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)))",
             borderBottom: "1px solid rgba(255,255,255,0.08)",
             position: "sticky",
             top: 0,
@@ -131,8 +132,9 @@ export default function BaseModal({
 
         {/* Content scroll */}
         <div
+          className={styles.fullscreenModalScroll}
           style={{
-            padding: `max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))`,
+            padding: "var(--inrcy-modal-content-padding, max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)))",
             overflowY: "auto",
             overflowX: "hidden",
             flex: 1,
@@ -147,8 +149,9 @@ export default function BaseModal({
           }}
         >
           <div
+            className={styles.fullscreenModalInner}
             style={{
-              maxWidth: "min(1400px, 100%)",
+              maxWidth: "var(--inrcy-modal-inner-max-width, min(1400px, 100%))",
               margin: "0 auto",
               minWidth: 0,
               boxSizing: "border-box",
