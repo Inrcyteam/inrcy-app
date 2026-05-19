@@ -4,7 +4,7 @@ import { makeOAuthState, safeInternalPath } from "@/lib/security";
 export async function GET(request: Request) {
   const appId = process.env.FACEBOOK_APP_ID;
   const redirectFromEnv = process.env.INSTAGRAM_REDIRECT_URI;
-  const configId = process.env.FACEBOOK_LOGIN_FOR_BUSINESS_CONFIG_ID || process.env.INSTAGRAM_LOGIN_FOR_BUSINESS_CONFIG_ID;
+  const configId = process.env.INSTAGRAM_LOGIN_FOR_BUSINESS_CONFIG_ID;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
   const redirectUri = redirectFromEnv || `${siteUrl}/api/integrations/instagram/callback`;
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       "instagram_basic",
       "instagram_manage_insights",
       "instagram_content_publish",
-      "instagram_manage_contents",      
+      "instagram_manage_contents",
     ].join(","),
   });
 
