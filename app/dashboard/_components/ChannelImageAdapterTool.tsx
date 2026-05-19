@@ -409,6 +409,7 @@ function PreviewBlockShell({
 }) {
   const viewportWidth = useViewportWidth();
   const isMobile = viewportWidth <= 640;
+  const technicalInfo = [eyebrow, formatLabel].filter(Boolean).join(" · ");
 
   return (
     <section
@@ -424,12 +425,40 @@ function PreviewBlockShell({
         overflow: "hidden",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, opacity: 0.68 }}>{eyebrow}</div>
-          <div style={{ fontWeight: 950, fontSize: isMobile ? 15 : 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "baseline",
+          flexWrap: "wrap",
+          minWidth: 0,
+        }}
+      >
+        <div
+          style={{
+            color: "#ffffff",
+            fontWeight: 950,
+            fontSize: isMobile ? 15 : 16,
+            lineHeight: 1.2,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {title}
         </div>
-        <div style={{ fontSize: 11, opacity: 0.72, padding: "5px 8px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.045)" }}>{formatLabel || "Rendu final"}</div>
+        {technicalInfo ? (
+          <div
+            style={{
+              color: "rgba(226,232,240,0.76)",
+              fontSize: isMobile ? 11 : 12,
+              lineHeight: 1.25,
+            }}
+          >
+            — {technicalInfo}
+          </div>
+        ) : null}
       </div>
       {children}
       {note && !isMobile ? <div style={{ fontSize: 11, opacity: 0.62 }}>{note}</div> : null}
@@ -831,7 +860,7 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
     const isInrcySite = key === "inrcy_site";
     return (
       <>
-        <PreviewBlockShell eyebrow={isInrcySite ? "Site iNrCy — rendu iframe intégré" : "Site web — rendu iframe intégré"} title={preview.channelLabel} formatLabel={preview.formatLabel || "Rendu iframe"} note="Aperçu séparé desktop/mobile. Dès qu’il y a 2 images ou plus, le site passe en carousel. Cliquez sur une image pour l’ouvrir en grand.">
+        <PreviewBlockShell eyebrow="rendu iframe intégré" title={preview.channelLabel} note="Aperçu séparé desktop/mobile. Dès qu’il y a 2 images ou plus, le site passe en carousel. Cliquez sur une image pour l’ouvrir en grand.">
           <DevicePreviewSwitcher
             desktop={<SitePreviewCard mode="desktop" title={title} content={content} cta={cta} images={images} isInrcySite={isInrcySite} onOpen={openLightbox} />}
             mobile={<SitePreviewCard mode="mobile" title={title} content={content} cta={cta} images={images} isInrcySite={isInrcySite} onOpen={openLightbox} />}
@@ -845,7 +874,7 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   if (isInstagram) {
     return (
       <>
-        <PreviewBlockShell eyebrow="Aperçu Instagram" title={preview.channelLabel} formatLabel={preview.formatLabel || "Rendu final"} note="Instagram : desktop avec média à gauche et légende à droite. Mobile : image puis contenu en dessous. Carousel simulé si plusieurs photos.">
+        <PreviewBlockShell eyebrow={preview.formatLabel || "image finale"} title={preview.channelLabel} note="Instagram : desktop avec média à gauche et légende à droite. Mobile : image puis contenu en dessous. Carousel simulé si plusieurs photos.">
           <DevicePreviewSwitcher
             desktop={<InstagramPreviewCard mode="desktop" titleValue={titleValue} title={title} content={content} cta={cta} hashtags={hashtags} images={images} onOpen={openLightbox} />}
             mobile={<InstagramPreviewCard mode="mobile" titleValue={titleValue} title={title} content={content} cta={cta} hashtags={hashtags} images={images} onOpen={openLightbox} />}
@@ -859,7 +888,7 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   if (isGmb) {
     return (
       <>
-        <PreviewBlockShell eyebrow="Aperçu Google Business" title={preview.channelLabel} formatLabel={preview.formatLabel || "Rendu final"} note="Google Business : photo en haut, contenu en dessous, en desktop comme en mobile.">
+        <PreviewBlockShell eyebrow={preview.formatLabel || "image finale"} title={preview.channelLabel} note="Google Business : photo en haut, contenu en dessous, en desktop comme en mobile.">
           <DevicePreviewSwitcher
             desktop={<GoogleBusinessPreviewCard mode="desktop" title={title} content={content} cta={cta} image={firstImage} onOpen={() => openLightbox(0)} />}
             mobile={<GoogleBusinessPreviewCard mode="mobile" title={title} content={content} cta={cta} image={firstImage} onOpen={() => openLightbox(0)} />}
@@ -873,7 +902,7 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   const networkLabel = isLinkedin ? "LinkedIn" : "Facebook";
   return (
     <>
-      <PreviewBlockShell eyebrow={`Aperçu ${networkLabel}`} title={preview.channelLabel} formatLabel={preview.formatLabel || "Rendu final"} note={`${networkLabel} : texte au-dessus, photos empilées en dessous. Clic sur les photos = carousel.`}>
+      <PreviewBlockShell eyebrow={preview.formatLabel || "image finale"} title={preview.channelLabel} note={`${networkLabel} : texte au-dessus, photos empilées en dessous. Clic sur les photos = carousel.`}>
         <DevicePreviewSwitcher
           desktop={<FeedPreviewCard mode="desktop" channel={isLinkedin ? "linkedin" : "facebook"} title={title} content={content} cta={cta} images={images} onOpen={openLightbox} />}
           mobile={<FeedPreviewCard mode="mobile" channel={isLinkedin ? "linkedin" : "facebook"} title={title} content={content} cta={cta} images={images} onOpen={openLightbox} />}
@@ -922,7 +951,17 @@ export function ChannelImageAdapterCardsPanel({
   return (
     <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
       {showTabs ? (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", overflowX: "auto" }}>
+        <div
+          style={{
+            display: isNarrow ? "grid" : "flex",
+            gridTemplateColumns: isNarrow
+              ? "repeat(2, minmax(0, 1fr))"
+              : undefined,
+            gap: 8,
+            flexWrap: isNarrow ? undefined : "wrap",
+            overflowX: "hidden",
+          }}
+        >
           {tabs.map((tab) => {
             const statusStyle = tab.tone ? statusStyles[tab.tone] : undefined;
             const isActive = activeChannel === tab.key;
@@ -938,8 +977,13 @@ export function ChannelImageAdapterCardsPanel({
                   ...(isActive ? pillButtonActiveStyle : {}),
                   display: "inline-flex",
                   alignItems: "center",
+                  justifyContent: isNarrow ? "center" : undefined,
                   gap: 7,
                   whiteSpace: "nowrap",
+                  width: isNarrow ? "100%" : undefined,
+                  minWidth: 0,
+                  minHeight: isNarrow ? 36 : undefined,
+                  padding: isNarrow ? "0 8px" : pillButtonStyle?.padding,
                 }}
               >
                 <span>{tab.label}</span>

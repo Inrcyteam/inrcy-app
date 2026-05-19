@@ -17,6 +17,8 @@ import {
 import { sanitizeGmbGeneratedPost } from "@/lib/googleBusinessCompliance";
 import { sanitizeBoosterSiteText, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 
+export const maxDuration = 120;
+
 type Payload = {
   idea?: string;
   theme?: BoosterTheme;
@@ -184,13 +186,82 @@ function getCreativityTemperature(business: JsonRecord | null) {
 }
 
 function computeMaxOutputTokens(channels: BoosterChannels[]) {
-  const uniqueChannels = new Set(channels);
-  const hasSite = channels.some((channel) => siteChannels.has(channel));
-  let budget = 800 + uniqueChannels.size * 260;
-  if (hasSite) budget += 450;
-  if (uniqueChannels.size >= 4) budget += 250;
-  if (uniqueChannels.size >= 5) budget += 150;
-  return Math.min(2800, Math.max(1000, budget));
+  const uniqueChannels = Array.from(new Set(channels));
+  const siteCount = uniqueChannels.filter((channel) => siteChannels.has(channel)).length;
+  const socialCount = uniqueChannels.length - siteCount;
+
+  // Les contenus site sont beaucoup plus longs. Depuis que Site iNrCy et Site web
+  // sont séparés, le budget doit suivre les canaux réellement demandés, sans
+  // rogner la qualité quand un seul site est sélectionné.
+  let budget = 900;
+  budget += siteCount * 1300;
+  budget += socialCount * 520;
+  if (siteCount >= 2) budget += 650;
+  if (uniqueChannels.includes("gmb")) budget += 120;
+
+  return Math.min(5200, Math.max(1400, budget));
+}
+
+function buildGenerationBatches(channels: BoosterChannels[]) {
+  const uniqueChannels = allowedChannels.filter((channel) => channels.includes(channel));
+  const sites = uniqueChannels.filter((channel) => siteChannels.has(channel));
+  const socials = uniqueChannels.filter((channel) => !siteChannels.has(channel));
+  const batches: Array<{ channels: BoosterChannels[]; extraInstructions?: string }> = [];
+
+  if (sites.length) {
+    batches.push({
+      channels: sites,
+      extraInstructions:
+        sites.length === 2
+          ? `Les deux canaux site sont demandés. Produis deux contenus complets, propres et distincts :
+- Site iNrCy : variante plus vitrine/conversion, claire et rassurante.
+- Site web : variante plus SEO durable, crédible et fluide.
+Ne copie-colle jamais le même texte. Varie titre, accroche, ordre des idées et formulations, sans inventer de ville, zone ou prestation.`
+          : `Un seul canal site est demandé. Produis un contenu site complet et qualitatif, avec une vraie valeur SEO locale, sans l'écourter parce qu'il n'y a qu'un canal.`,
+    });
+  }
+
+  // Les réseaux sont gardés dans un second lot pour éviter qu'une réponse trop
+  // longue coupe le JSON quand deux contenus site existent.
+  for (let index = 0; index < socials.length; index += 3) {
+    batches.push({ channels: socials.slice(index, index + 3) });
+  }
+
+  return batches;
+}
+
+async function generateVersionsForChannels(args: {
+  idea: string;
+  theme: BoosterTheme;
+  style: BoosterStyle;
+  channels: BoosterChannels[];
+  profile: JsonRecord | null;
+  business: JsonRecord | null;
+  recentPublications?: BoosterRecentPublication[];
+  extraInstructions?: string;
+  hiddenAngle?: BoosterHiddenAngle;
+}) {
+  const versions: Partial<Record<BoosterChannels, Partial<ChannelPost>>> = {};
+  const batches = buildGenerationBatches(args.channels);
+
+  for (const batch of batches) {
+    const out = await generateVersions({
+      ...args,
+      channels: batch.channels,
+      extraInstructions: [batch.extraInstructions, args.extraInstructions].filter(Boolean).join("\n\n"),
+    });
+
+    const rawVersions =
+      out?.versions && typeof out.versions === "object"
+        ? (out.versions as Partial<Record<BoosterChannels, Partial<ChannelPost>>>)
+        : {};
+
+    for (const channel of batch.channels) {
+      if (rawVersions[channel]) versions[channel] = rawVersions[channel];
+    }
+  }
+
+  return { versions };
 }
 
 function cleanRecentPublicationField(value: unknown, maxLength: number) {
@@ -305,7 +376,7 @@ const handler = async (req: Request) => {
     const hiddenAngle = pickBoosterHiddenAngle();
     const ideaKeywords = extractIdeaKeywords(idea);
 
-    const out = await generateVersions({
+    const out = await generateVersionsForChannels({
       idea,
       theme,
       style,
@@ -333,7 +404,7 @@ const handler = async (req: Request) => {
     const retryChannels = Array.from(new Set([...missingChannels, ...offTopicChannels]));
 
     if (retryChannels.length) {
-      const retryOut = await generateVersions({
+      const retryOut = await generateVersionsForChannels({
         idea,
         theme,
         style,
@@ -349,7 +420,8 @@ const handler = async (req: Request) => {
 - Ne fais pas une présentation générale de l'activité si le pro a demandé un sujet précis.
 - Le contexte Mon activité, l'historique et l'angle éditorial servent uniquement à contextualiser, jamais à changer de sujet.
 - Pour chaque canal, title, content et cta doivent être non vides.
-- Pour un canal site, le content doit être complet, naturel et utile, jamais vide ni résumé en une ligne.`,
+- Pour un canal site, le content doit être complet, naturel et utile, jamais vide ni résumé en une ligne.
+- Si Site iNrCy et Site web sont présents dans ce lot, ils doivent rester deux variantes distinctes et non deux copies.`,
       });
 
       const retryVersions =
@@ -366,7 +438,9 @@ const handler = async (req: Request) => {
     }
 
     const stillMissingChannels = channels.filter((ch) => !hasRequiredContent(ch, safeVersions[ch]));
-    const stillOffTopicChannels = channels.filter((ch) => !isPostAnchoredToIdea(ideaKeywords, safeVersions[ch]));
+    const stillOffTopicChannels = channels.filter(
+      (ch) => hasRequiredContent(ch, safeVersions[ch]) && !isPostAnchoredToIdea(ideaKeywords, safeVersions[ch]),
+    );
     if (stillOffTopicChannels.length) {
       return NextResponse.json(
         {
@@ -390,7 +464,10 @@ const handler = async (req: Request) => {
 
     return NextResponse.json({ versions: safeVersions });
   } catch (e: unknown) {
-    return jsonUserFacingError(e, { status: 500 });
+    return jsonUserFacingError(e, {
+      status: 502,
+      fallback: "La génération IA n'a pas pu aboutir. Merci de réessayer.",
+    });
   }
 };
 

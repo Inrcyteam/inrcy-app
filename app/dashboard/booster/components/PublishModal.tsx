@@ -860,7 +860,12 @@ export default function PublishModal({
 
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setGenError("La génération n'a pas pu aboutir. Merci de réessayer.");
+        setGenError(
+          getSimpleFrenchErrorMessage(
+            json?.user_message || json?.error,
+            "La génération n'a pas pu aboutir. Merci de réessayer.",
+          ),
+        );
         return;
       }
 
@@ -2845,11 +2850,14 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
           <>
             <div
               style={{
-                display: "flex",
+                display: isMobile ? "grid" : "flex",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : undefined,
                 gap: 8,
-                flexWrap: "wrap",
+                flexWrap: isMobile ? undefined : "wrap",
                 marginBottom: 12,
-                overflowX: "auto",
+                overflowX: "hidden",
               }}
             >
               {displayCards.map((key) => (
@@ -2860,6 +2868,18 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
                   style={{
                     ...pillBtn,
                     ...(activeCard === key ? pillBtnActive : {}),
+                    ...(isMobile
+                      ? {
+                          width: "100%",
+                          minWidth: 0,
+                          minHeight: 36,
+                          padding: "0 8px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 13,
+                        }
+                      : {}),
                   }}
                 >
                   {DISPLAY_LABELS[key]}
@@ -3562,25 +3582,30 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
         >
           <div
             style={{
-              display: "flex",
+              display: isMobile ? "grid" : "flex",
+              gridTemplateColumns: isMobile ? "1fr" : undefined,
               alignItems: "center",
               justifyContent: "space-between",
               gap: 12,
-              flexWrap: "wrap",
+              flexWrap: isMobile ? undefined : "wrap",
             }}
           >
-            <div>
+            <div style={{ minWidth: 0, width: isMobile ? "100%" : undefined }}>
               <div className={styles.blockTitle} style={{ marginBottom: 4 }}>
                 Aperçu
               </div>
               <div
                 className={styles.subtitle}
                 style={{
-                  display: "flex",
+                  display: isMobile ? "grid" : "flex",
+                  gridTemplateColumns: isMobile
+                    ? "repeat(2, minmax(0, 1fr))"
+                    : undefined,
                   gap: 6,
-                  flexWrap: "nowrap",
-                  overflowX: "auto",
-                  maxWidth: isMobile ? "calc(100vw - 128px)" : "100%",
+                  flexWrap: isMobile ? undefined : "wrap",
+                  overflowX: "hidden",
+                  width: "100%",
+                  maxWidth: "100%",
                   paddingBottom: 2,
                   marginBottom: 0,
                 }}
@@ -3596,7 +3621,13 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
                       padding: "6px 10px",
                       fontSize: 11,
                       whiteSpace: "nowrap",
-                      flex: "0 0 auto",
+                      flex: isMobile ? undefined : "0 0 auto",
+                      width: isMobile ? "100%" : undefined,
+                      minWidth: 0,
+                      minHeight: isMobile ? 32 : undefined,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
                     }}
                   >
                     {tab.label}
@@ -3609,6 +3640,7 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
               className={styles.secondaryBtn}
               onClick={() => setShowPublicationPreview((visible) => !visible)}
               aria-expanded={showPublicationPreview}
+              style={isMobile ? { width: "100%", justifyContent: "center" } : undefined}
             >
               {showPublicationPreview ? "Masquer" : "Afficher"}
             </button>

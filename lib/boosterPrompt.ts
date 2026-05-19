@@ -356,17 +356,14 @@ Contraintes :
 Tu dois répondre en JSON strict, avec exactement cette structure :
 {
   "versions": {
-    "inrcy_site": { "title": string, "content": string, "cta": string, "hashtags": string[] },
-    "site_web": { "title": string, "content": string, "cta": string, "hashtags": string[] },
-    "gmb": { "title": string, "content": string, "cta": string, "hashtags": string[] },
-    "facebook": { "title": string, "content": string, "cta": string, "hashtags": string[] },
-    "instagram": { "title": string, "content": string, "cta": string, "hashtags": string[] },
-    "linkedin": { "title": string, "content": string, "cta": string, "hashtags": string[] }
+    "<clé_canal_demandé>": { "title": string, "content": string, "cta": string, "hashtags": string[] }
   }
 }
 
+Clés de canaux autorisées : inrcy_site, site_web, gmb, facebook, instagram, linkedin.
+
 Règles JSON :
-- Ne renvoyer que les canaux demandés.
+- Ne renvoyer que les canaux explicitement demandés dans la requête utilisateur.
 - Chaque version doit contenir les 4 clés title/content/cta/hashtags.
 - Pour chaque canal demandé, title, content et cta doivent être non vides.
 - Pour Google Business, le CTA doit rester neutre et non promotionnel.
