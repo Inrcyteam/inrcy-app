@@ -84,6 +84,47 @@ import {
   textAreaStyle,
 } from "./publishModal.styles";
 
+type InrcySpeechRecognitionResult = ArrayLike<{ transcript?: string }> & {
+  isFinal?: boolean;
+};
+
+type InrcySpeechRecognitionEvent = {
+  resultIndex?: number;
+  results: ArrayLike<InrcySpeechRecognitionResult>;
+};
+
+type InrcySpeechRecognitionErrorEvent = {
+  error?: string;
+};
+
+type InrcySpeechRecognition = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  maxAlternatives?: number;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onresult: ((event: InrcySpeechRecognitionEvent) => void) | null;
+  onerror: ((event: InrcySpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+};
+
+type InrcySpeechRecognitionConstructor = new () => InrcySpeechRecognition;
+
+type InrcySpeechWindow = Window & {
+  SpeechRecognition?: InrcySpeechRecognitionConstructor;
+  webkitSpeechRecognition?: InrcySpeechRecognitionConstructor;
+};
+
+function mergeDictationWithIdea(baseIdea: string, dictation: string) {
+  const cleanDictation = dictation.replace(/\s+/g, " ").trim();
+  if (!cleanDictation) return baseIdea;
+  const cleanBase = baseIdea.trimEnd();
+  if (!cleanBase) return cleanDictation;
+  return `${cleanBase} ${cleanDictation}`;
+}
+
 function RichSiteContentEditor({
   value,
   onChange,
@@ -249,8 +290,14 @@ export default function PublishModal({
   const [pendingPublishPosts, setPendingPublishPosts] = useState<Partial<
     Record<ChannelKey, ChannelPost>
   > | null>(null);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [speechListening, setSpeechListening] = useState(false);
+  const [speechError, setSpeechError] = useState("");
+  const speechRecognitionRef = useRef<InrcySpeechRecognition | null>(null);
+  const speechBaseIdeaRef = useRef("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const gmbFileInputRef = useRef<HTMLInputElement | null>(null);
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
@@ -487,6 +534,97 @@ export default function PublishModal({
       window.visualViewport?.removeEventListener("scroll", updateViewport);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const speechWindow = window as InrcySpeechWindow;
+    setSpeechSupported(
+      Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition),
+    );
+    return () => {
+      speechRecognitionRef.current?.abort();
+      speechRecognitionRef.current = null;
+    };
+  }, []);
+
+  const readSpeechTranscript = (event: InrcySpeechRecognitionEvent) => {
+    const parts: string[] = [];
+    for (let index = 0; index < event.results.length; index += 1) {
+      const result = event.results[index];
+      const transcript = result?.[0]?.transcript?.trim();
+      if (transcript) parts.push(transcript);
+    }
+    return parts.join(" ").trim();
+  };
+
+  const getSpeechErrorMessage = (error?: string) => {
+    if (error === "not-allowed" || error === "service-not-allowed") {
+      return "Autorisation micro refusée.";
+    }
+    if (error === "no-speech") return "Aucune parole détectée.";
+    if (error === "audio-capture") return "Aucun micro détecté.";
+    if (error === "network") return "Dictée momentanément indisponible.";
+    return "La dictée vocale n'a pas pu démarrer.";
+  };
+
+  const stopSpeechDictation = () => {
+    const recognition = speechRecognitionRef.current;
+    if (!recognition) {
+      setSpeechListening(false);
+      return;
+    }
+    try {
+      recognition.stop();
+    } catch {
+      recognition.abort();
+    }
+    setSpeechListening(false);
+  };
+
+  const startSpeechDictation = () => {
+    if (typeof window === "undefined") return;
+    const speechWindow = window as InrcySpeechWindow;
+    const SpeechRecognitionCtor =
+      speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!SpeechRecognitionCtor) {
+      setSpeechSupported(false);
+      setSpeechError("Dictée non disponible sur ce navigateur.");
+      return;
+    }
+
+    speechRecognitionRef.current?.abort();
+    speechBaseIdeaRef.current = idea;
+    setSpeechError("");
+
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = "fr-FR";
+    recognition.interimResults = true;
+    recognition.continuous = true;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => {
+      const transcript = readSpeechTranscript(event);
+      setIdea(mergeDictationWithIdea(speechBaseIdeaRef.current, transcript));
+    };
+    recognition.onerror = (event) => {
+      setSpeechError(getSpeechErrorMessage(event.error));
+      setSpeechListening(false);
+    };
+    recognition.onend = () => {
+      setSpeechListening(false);
+      speechRecognitionRef.current = null;
+    };
+
+    speechRecognitionRef.current = recognition;
+    try {
+      recognition.start();
+      setSpeechListening(true);
+    } catch {
+      recognition.abort();
+      speechRecognitionRef.current = null;
+      setSpeechListening(false);
+      setSpeechError("La dictée vocale n'a pas pu démarrer.");
+    }
+  };
 
   const scrollToPublishArea = (behavior: ScrollBehavior = "smooth") => {
     if (typeof window === "undefined") return;
@@ -785,7 +923,9 @@ export default function PublishModal({
   };
 
   const clearPublicationWork = () => {
+    stopSpeechDictation();
     setIdea("");
+    setSpeechError("");
     setTheme("");
     setContentStyle("equilibre");
     setPostsByChannel({});
@@ -958,6 +1098,11 @@ export default function PublishModal({
   const onPickImagesClick = () => {
     setImgError("");
     fileInputRef.current?.click();
+  };
+
+  const onTakePhotoClick = () => {
+    setImgError("");
+    cameraInputRef.current?.click();
   };
 
   const onImagesChange = async (
@@ -2791,15 +2936,58 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
         </div>
         <div style={{ display: "grid", gap: 10 }}>
           <div>
-            <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>
-              Phrase libre
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                flexWrap: "wrap",
+                marginBottom: 6,
+              }}
+            >
+              <div style={{ fontSize: 12, opacity: 0.85 }}>Phrase libre</div>
+              {speechSupported ? (
+                <button
+                  type="button"
+                  className={styles.secondaryBtn}
+                  onClick={speechListening ? stopSpeechDictation : startSpeechDictation}
+                  aria-pressed={speechListening}
+                  title={
+                    speechListening
+                      ? "Arrêter la dictée"
+                      : "Dicter la phrase libre au micro"
+                  }
+                  style={{
+                    minHeight: 30,
+                    padding: "6px 10px",
+                    fontSize: 12,
+                    fontWeight: 900,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {speechListening ? "⏹️ Arrêter" : "🎙️ Dicter"}
+                </button>
+              ) : null}
             </div>
             <textarea
               placeholder={THEME_PLACEHOLDERS[theme] || THEME_PLACEHOLDERS[""]}
               style={textAreaStyle}
               value={idea}
-              onChange={(e) => setIdea(e.target.value)}
+              onChange={(e) => {
+                setIdea(e.target.value);
+                if (speechError) setSpeechError("");
+              }}
             />
+            {speechListening ? (
+              <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                🎙️ Écoute en cours… parlez, le texte s’écrit automatiquement.
+              </div>
+            ) : speechError ? (
+              <div style={{ marginTop: 6, fontSize: 12, color: "#ffb4b4" }}>
+                {speechError}
+              </div>
+            ) : null}
           </div>
           {genError ? (
             <div style={{ fontSize: 13, color: "#ffb4b4" }}>{genError}</div>
@@ -3430,6 +3618,17 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
           }}
         />
         <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            onImagesChange(e.target.files);
+            e.currentTarget.value = "";
+          }}
+        />
+        <input
           ref={gmbFileInputRef}
           type="file"
           accept="image/*"
@@ -3456,6 +3655,15 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
           >
             + Ajouter des images
           </button>
+          {isMobile ? (
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              onClick={onTakePhotoClick}
+            >
+              📸 Prendre une photo
+            </button>
+          ) : null}
           {images.length ? (
             <div style={{ fontSize: 12, opacity: 0.85 }}>
               {images.length} image(s) ajoutée(s)
