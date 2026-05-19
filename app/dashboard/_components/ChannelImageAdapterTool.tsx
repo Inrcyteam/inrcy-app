@@ -977,18 +977,48 @@ export function ChannelImageAdapterCardsPanel({
                   ...(isActive ? pillButtonActiveStyle : {}),
                   display: "inline-flex",
                   alignItems: "center",
-                  justifyContent: isNarrow ? "center" : undefined,
-                  gap: 7,
+                  justifyContent: "center",
+                  gap: isNarrow ? 4 : 7,
                   whiteSpace: "nowrap",
                   width: isNarrow ? "100%" : undefined,
                   minWidth: 0,
-                  minHeight: isNarrow ? 36 : undefined,
-                  padding: isNarrow ? "0 8px" : pillButtonStyle?.padding,
+                  maxWidth: "100%",
+                  minHeight: isNarrow ? 34 : undefined,
+                  padding: isNarrow ? "0 6px" : pillButtonStyle?.padding,
+                  fontSize: isNarrow ? 12 : pillButtonStyle?.fontSize,
+                  lineHeight: isNarrow ? 1 : pillButtonStyle?.lineHeight,
+                  boxSizing: "border-box",
+                  overflow: "hidden",
                 }}
               >
-                <span>{tab.label}</span>
+                <span
+                  style={{
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "clip",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {tab.label}
+                </span>
                 {typeof tab.count === "number" ? (
-                  <span style={{ minWidth: 20, height: 20, padding: "0 6px", borderRadius: 999, display: "inline-grid", placeItems: "center", fontSize: 11, fontWeight: 900, background: "rgba(255,255,255,0.12)", color: "inherit" }}>{tab.count}</span>
+                  <span
+                    style={{
+                      flex: "0 0 auto",
+                      minWidth: isNarrow ? 18 : 20,
+                      height: isNarrow ? 18 : 20,
+                      padding: isNarrow ? "0 4px" : "0 6px",
+                      borderRadius: 999,
+                      display: "inline-grid",
+                      placeItems: "center",
+                      fontSize: isNarrow ? 10 : 11,
+                      fontWeight: 900,
+                      background: "rgba(255,255,255,0.12)",
+                      color: "inherit",
+                    }}
+                  >
+                    {tab.count}
+                  </span>
                 ) : null}
               </button>
             );
