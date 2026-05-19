@@ -308,8 +308,6 @@ export default function PublishModal({
   const [speechError, setSpeechError] = useState("");
   const speechRecognitionRef = useRef<InrcySpeechRecognition | null>(null);
   const speechBaseIdeaRef = useRef("");
-  const cameraPickerActiveRef = useRef(false);
-  const cameraPickerUnlockTimerRef = useRef<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -532,39 +530,19 @@ export default function PublishModal({
     if (typeof window === "undefined") return;
 
     const updateViewport = () => {
-      if (cameraPickerActiveRef.current) return;
       setIsMobile(window.innerWidth <= 768);
       setDrawerViewportHeight(Math.round(window.visualViewport?.height || window.innerHeight));
-    };
-
-    const releaseCameraPickerLock = () => {
-      if (cameraPickerUnlockTimerRef.current) {
-        window.clearTimeout(cameraPickerUnlockTimerRef.current);
-        cameraPickerUnlockTimerRef.current = null;
-      }
-      cameraPickerUnlockTimerRef.current = window.setTimeout(() => {
-        cameraPickerActiveRef.current = false;
-        updateViewport();
-      }, 450);
     };
 
     updateViewport();
     window.addEventListener("resize", updateViewport);
     window.addEventListener("orientationchange", updateViewport);
-    window.addEventListener("focus", releaseCameraPickerLock);
-    window.addEventListener("pageshow", releaseCameraPickerLock);
     window.visualViewport?.addEventListener("resize", updateViewport);
     window.visualViewport?.addEventListener("scroll", updateViewport);
 
     return () => {
-      if (cameraPickerUnlockTimerRef.current) {
-        window.clearTimeout(cameraPickerUnlockTimerRef.current);
-        cameraPickerUnlockTimerRef.current = null;
-      }
       window.removeEventListener("resize", updateViewport);
       window.removeEventListener("orientationchange", updateViewport);
-      window.removeEventListener("focus", releaseCameraPickerLock);
-      window.removeEventListener("pageshow", releaseCameraPickerLock);
       window.visualViewport?.removeEventListener("resize", updateViewport);
       window.visualViewport?.removeEventListener("scroll", updateViewport);
     };
@@ -602,20 +580,6 @@ export default function PublishModal({
     return "La dictée vocale n'a pas pu démarrer.";
   };
 
-  const getMicroAccessErrorMessage = (error: unknown) => {
-    const name = error instanceof DOMException ? error.name : "";
-    if (name === "NotAllowedError" || name === "PermissionDeniedError") {
-      return "Micro bloqué. Autorisez le micro dans les permissions du site, puis réessayez.";
-    }
-    if (name === "NotFoundError" || name === "DevicesNotFoundError") {
-      return "Aucun micro détecté.";
-    }
-    if (name === "NotReadableError" || name === "TrackStartError") {
-      return "Le micro est déjà utilisé par une autre application.";
-    }
-    return "La dictée vocale n'a pas pu accéder au micro.";
-  };
-
   const stopSpeechDictation = () => {
     const recognition = speechRecognitionRef.current;
     if (!recognition) {
@@ -630,7 +594,7 @@ export default function PublishModal({
     setSpeechListening(false);
   };
 
-  const startSpeechDictation = async () => {
+  const startSpeechDictation = () => {
     if (typeof window === "undefined") return;
     const speechWindow = window as InrcySpeechWindow;
     const SpeechRecognitionCtor =
@@ -645,16 +609,6 @@ export default function PublishModal({
     speechBaseIdeaRef.current = idea;
     setSpeechError("");
 
-    if (navigator.mediaDevices?.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((track) => track.stop());
-      } catch (error) {
-        setSpeechListening(false);
-        setSpeechError(getMicroAccessErrorMessage(error));
-        return;
-      }
-    }
 
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = "fr-FR";
@@ -1162,21 +1116,6 @@ export default function PublishModal({
 
   const onTakePhotoClick = () => {
     setImgError("");
-    cameraPickerActiveRef.current = true;
-  };
-
-  const onCameraInputSettled = () => {
-    if (typeof window === "undefined") {
-      cameraPickerActiveRef.current = false;
-      return;
-    }
-    if (cameraPickerUnlockTimerRef.current) {
-      window.clearTimeout(cameraPickerUnlockTimerRef.current);
-    }
-    cameraPickerUnlockTimerRef.current = window.setTimeout(() => {
-      cameraPickerActiveRef.current = false;
-      setDrawerViewportHeight(Math.round(window.visualViewport?.height || window.innerHeight));
-    }, 450);
   };
 
   const onImagesChange = async (
@@ -3697,12 +3636,10 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
           ref={cameraInputRef}
           type="file"
           accept="image/*"
-          capture="environment"
           style={hiddenNativeFileInputStyle}
           onChange={(e) => {
             onImagesChange(e.target.files);
             e.currentTarget.value = "";
-            onCameraInputSettled();
           }}
         />
         <input
@@ -3739,7 +3676,7 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
               onClick={onTakePhotoClick}
               style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
             >
-              📸 Prendre une photo
+              📸 Prendre / choisir une photo
             </label>
           ) : null}
           {images.length ? (
