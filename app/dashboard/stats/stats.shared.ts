@@ -781,7 +781,11 @@ function linkedInMetricValue(metrics: any, key: string) {
 
 export function hasLinkedInDetailedStats(ov: Overview | null | undefined) {
   const m = ov?.sources?.linkedin?.metrics;
-  if (!m || m?.error) return false;
+  if (!m) return false;
+
+  // LinkedIn peut remonter des stats exploitables tout en signalant
+  // une erreur sur un sous-appel API (ex : profil OK, page partielle, ou inversement).
+  // Dans ce cas on garde les chiffres au lieu de masquer tout le bloc.
   return LINKEDIN_DETAIL_SIGNAL_KEYS.some((key) => linkedInMetricValue(m, key) > 0);
 }
 
@@ -790,9 +794,13 @@ export function isLinkedInStatsPartial(ov: Overview | null | undefined) {
   if (!node?.connected) return false;
   const m = node.metrics;
   if (!m) return true;
+
+  const hasUsableSignals = hasLinkedInDetailedStats(ov);
+  if (hasUsableSignals) return false;
+
   if (m?.error) return true;
   if (deepHasLinkedInError(m?.raw)) return true;
-  return !hasLinkedInDetailedStats(ov);
+  return true;
 }
 
 export function buildProvenance(cubeKey: CubeKey, ov: Overview) {

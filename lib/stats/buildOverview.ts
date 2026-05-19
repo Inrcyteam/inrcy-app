@@ -1192,6 +1192,15 @@ export async function buildStatsOverview(args: {
     // synchro LinkedIn. Il sert uniquement de secours en cas de quota/erreur.
     // Sinon, après le reset LinkedIn, l'app peut rester bloquée sur "+18 / demandes —"
     // pendant 30 jours au lieu de retenter les stats détaillées.
+    if (cached && hasDetailedLinkedInMetrics(cached)) {
+      return {
+        metrics: cached,
+        mode: hasLinkedInMetricErrors(cached)
+          ? "usable_partial_linkedin_cache"
+          : "valid_partial_linkedin_cache",
+      };
+    }
+
     if (cached && !hasLinkedInMetricErrors(cached)) {
       return { metrics: cached, mode: "valid_partial_linkedin_cache" };
     }
