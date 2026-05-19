@@ -8,6 +8,7 @@ import RichMailEditor from "@/app/dashboard/_components/RichMailEditor";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { extractTemplatePlaceholders } from "@/lib/mailRichText";
 import { useUnsavedExitGuard } from "@/app/dashboard/_hooks/useUnsavedExitGuard";
+import TemplateSubjectInlineEditor from "@/app/dashboard/_components/TemplateSubjectInlineEditor";
 
 type MailboxComposeModalProps = {
   open: boolean;
@@ -208,6 +209,21 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     }
     await doSend();
   }, [doSend, subject, text]);
+
+  const [isMobileViewport, setIsMobileViewport] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 760px)");
+    const sync = () => setIsMobileViewport(media.matches);
+    sync();
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", sync);
+      return () => media.removeEventListener("change", sync);
+    }
+    media.addListener(sync);
+    return () => media.removeListener(sync);
+  }, []);
 
   if (!open) return null;
 
@@ -605,7 +621,15 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                         <div className={styles.composeSectionHint}>Titre visible dans la boîte mail du destinataire.</div>
                       </div>
                     </div>
-                    <input value={subject} onChange={(e) => setSubject(normalizeMailSubject(e.target.value))} placeholder="Objet" style={composeInputStyle} />
+                    {isMobileViewport ? (
+                      <TemplateSubjectInlineEditor
+                        value={subject}
+                        onChange={(next) => setSubject(normalizeMailSubject(next))}
+                        placeholder="Objet"
+                      />
+                    ) : (
+                      <input value={subject} onChange={(e) => setSubject(normalizeMailSubject(e.target.value))} placeholder="Objet" style={composeInputStyle} />
+                    )}
                     {!subject.trim() ? (
                       <span className={styles.composeWarning}>Le message partira avec “(sans objet)” si vous laissez ce champ vide.</span>
                     ) : null}

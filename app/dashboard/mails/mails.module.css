@@ -1265,6 +1265,17 @@
   box-shadow: 0 0 0 3px rgba(56,189,248,0.12);
 }
 
+.publicationFieldInputMultiline {
+  min-height: 64px;
+  height: 64px;
+  resize: none;
+  overflow-y: auto;
+  line-height: 1.35;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font: inherit;
+}
+
 .publicationFieldTextarea {
   width: 100%;
   min-height: 160px;

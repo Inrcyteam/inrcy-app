@@ -669,6 +669,20 @@ type AgendaEventModalProps = {
 
 export function AgendaEventModal(props: AgendaEventModalProps) {
   const dateInputRef = useRef<HTMLInputElement | null>(null);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 760px)");
+    const sync = () => setIsMobileViewport(media.matches);
+    sync();
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", sync);
+      return () => media.removeEventListener("change", sync);
+    }
+    media.addListener(sync);
+    return () => media.removeListener(sync);
+  }, []);
 
   if (!props.open) return null;
 
@@ -730,7 +744,17 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
 
               <div className={styles.field}>
                 <div className={styles.label}>Titre</div>
-                <input className={styles.input} value={props.rdvSummary} onChange={(e) => props.setRdvSummary(e.target.value)} placeholder="Ex: Rendez-vous client" />
+                {isMobileViewport ? (
+                  <textarea
+                    className={`${styles.input} ${styles.inputMultiline}`}
+                    value={props.rdvSummary}
+                    onChange={(e) => props.setRdvSummary(e.target.value)}
+                    placeholder="Ex: Rendez-vous client"
+                    rows={2}
+                  />
+                ) : (
+                  <input className={styles.input} value={props.rdvSummary} onChange={(e) => props.setRdvSummary(e.target.value)} placeholder="Ex: Rendez-vous client" />
+                )}
               </div>
             </div>
 

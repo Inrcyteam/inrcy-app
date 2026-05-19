@@ -135,6 +135,20 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   } = props;
   const router = useRouter();
   const [publicationPreviewOpen, setPublicationPreviewOpen] = React.useState(false);
+  const [isMobileViewport, setIsMobileViewport] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 760px)");
+    const sync = () => setIsMobileViewport(media.matches);
+    sync();
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", sync);
+      return () => media.removeEventListener("change", sync);
+    }
+    media.addListener(sync);
+    return () => media.removeListener(sync);
+  }, []);
 
   React.useEffect(() => {
     if (open) setPublicationPreviewOpen(false);
@@ -563,14 +577,25 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       <>
                                         <div>
                                           <div className={styles.publicationLabel}>Titre</div>
-                                          <input
-                                            type="text"
-                                            value={publicationEditForm.title}
-                                            onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, title: e.target.value }))}
-                                            className={styles.publicationFieldInput}
-                                            placeholder="Titre"
-                                            disabled={detailsActionBusy}
-                                          />
+                                          {isMobileViewport ? (
+                                            <textarea
+                                              value={publicationEditForm.title}
+                                              onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, title: e.target.value }))}
+                                              className={`${styles.publicationFieldInput} ${styles.publicationFieldInputMultiline}`}
+                                              placeholder="Titre"
+                                              rows={2}
+                                              disabled={detailsActionBusy}
+                                            />
+                                          ) : (
+                                            <input
+                                              type="text"
+                                              value={publicationEditForm.title}
+                                              onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, title: e.target.value }))}
+                                              className={styles.publicationFieldInput}
+                                              placeholder="Titre"
+                                              disabled={detailsActionBusy}
+                                            />
+                                          )}
                                         </div>
                                         <div>
                                           <div className={styles.publicationLabel}>Contenu</div>

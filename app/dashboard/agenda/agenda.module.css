@@ -490,6 +490,8 @@
 .input{width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.04);padding:10px 12px;color:white;outline:none;height:42px;line-height:20px}
 .textarea{width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.04);padding:10px 12px;color:white;outline:none;min-height:110px;resize:vertical}
 
+.inputMultiline{min-height:44px;height:auto;padding-top:10px;padding-bottom:10px;line-height:1.35;resize:none;overflow-y:auto;font:inherit}
+
 
 
 .dateTimeRow{

@@ -2902,14 +2902,35 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
                   <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>
                     Titre
                   </div>
-                  <input
-                    value={getDisplayPost(activeCard).title}
-                    onChange={(e) =>
-                      updatePost(activeCard, { title: e.target.value })
-                    }
-                    style={inputStyle}
-                    placeholder="Titre"
-                  />
+                  {isMobile ? (
+                    <textarea
+                      value={getDisplayPost(activeCard).title}
+                      onChange={(e) =>
+                        updatePost(activeCard, { title: e.target.value })
+                      }
+                      style={{
+                        ...inputStyle,
+                        minHeight: 64,
+                        height: 64,
+                        padding: "10px 14px",
+                        lineHeight: 1.35,
+                        resize: "none",
+                        overflowY: "auto",
+                        whiteSpace: "pre-wrap",
+                      }}
+                      rows={2}
+                      placeholder="Titre"
+                    />
+                  ) : (
+                    <input
+                      value={getDisplayPost(activeCard).title}
+                      onChange={(e) =>
+                        updatePost(activeCard, { title: e.target.value })
+                      }
+                      style={inputStyle}
+                      placeholder="Titre"
+                    />
+                  )}
                   {renderLimitCounter(
                     "Titre",
                     getDisplayPost(activeCard).title.length,
