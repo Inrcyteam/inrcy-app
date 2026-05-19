@@ -702,22 +702,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     if (input) input.value = "";
                                   }}
                                 />
-                                <input
-                                  id={`${publicationEditFileInputId}-camera`}
-                                  type="file"
-                                  accept="image/*"
-                                  capture="environment"
-                                  className={styles.hiddenFileInput}
-                                  onChange={(e) => {
-                                    const input = e.currentTarget;
-                                    const files = input?.files ?? null;
-                                    addPublicationFiles(files);
-                                    if (input) input.value = "";
-                                  }}
-                                />
                                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                                   <label htmlFor={publicationEditFileInputId} className={styles.btnAttach}>📎 Ajouter des images</label>
-                                  <label htmlFor={`${publicationEditFileInputId}-camera`} className={`${styles.btnAttach} ${styles.mobileOnlyBtn}`}>📸 Prendre une photo</label>
                                   <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
                                     {activePublicationEditAssets.length} image(s) pour {activePublicationEntry?.label || "ce canal"}
                                   </span>
