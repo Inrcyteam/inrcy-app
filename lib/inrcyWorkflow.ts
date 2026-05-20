@@ -81,8 +81,8 @@ export const INRCY_WORKFLOW_TOOLS = {
     label: "Propulser",
     path: "/dashboard/propulser",
     shortPurpose: "Développement commercial",
-    dashboardSubtitle: "Développe votre activité",
-    primaryCta: "Agir",
+    dashboardSubtitle: "Accélère votre activité",
+    primaryCta: "Développer",
   },
   fideliser: {
     key: "fideliser",

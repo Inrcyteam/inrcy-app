@@ -701,10 +701,49 @@
   align-items:flex-start;
 }
 @media (max-width:700px){
-  .statsRewardInline{
-    order:3;
-    flex-basis:100%;
-    margin:8px 0 0;
+  .metricCard .cardTopRow,
+  .boosterStatsCard .cardTopRow{
+    flex-wrap:wrap;
+    align-items:flex-start;
+    gap:8px;
   }
-  .statsRewardInline .statsRewardPrimary{width:auto;font-size:12px;}
+
+  .metricCard .cardTopRow > :first-child{
+    flex:1 1 100%;
+    min-width:0;
+  }
+
+  .statsRewardInline{
+    order:2;
+    flex:1 1 100%;
+    width:100%;
+    margin:4px 0 0;
+    justify-content:flex-start;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+
+  .statsRewardInline .statsRewardPrimary,
+  .statsRewardInline .statsRewardSecondary{
+    width:100%;
+    white-space:normal;
+    text-align:center;
+  }
+
+  .statsRewardInline .statsRewardPrimary{
+    font-size:12px;
+    line-height:1.25;
+    padding:7px 10px;
+  }
+
+  .statsRewardInline .statsRewardSecondary{
+    font-size:11px;
+  }
+
+  .pill{
+    order:3;
+    margin-left:auto;
+    font-size:11px;
+    padding:6px 9px;
+  }
 }
