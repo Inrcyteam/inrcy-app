@@ -972,25 +972,28 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 9px;
+  min-width: 96px;
+  padding: 8px 16px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 950;
+  letter-spacing: 0.01em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 10px 24px rgba(0, 0, 0, 0.24);
   border: 1px solid rgba(255, 255, 255, 0.14);
   white-space: nowrap;
 }
 
 .action_booster {
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.30);
-  color: rgba(224, 242, 254, 0.92);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.30), rgba(59, 130, 246, 0.18));
+  border-color: rgba(56, 189, 248, 0.42);
+  color: rgba(240, 249, 255, 0.96);
 }
 
 .action_fidéliser,
 .action_fideliser {
-  background: rgba(34, 197, 94, 0.12);
-  border-color: rgba(34, 197, 94, 0.30);
-  color: rgba(220, 252, 231, 0.92);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.30), rgba(20, 184, 166, 0.16));
+  border-color: rgba(34, 197, 94, 0.42);
+  color: rgba(240, 253, 244, 0.96);
 }
 
 .action_connexion {
@@ -1354,6 +1357,12 @@
     gap: 8px;
   }
 
+  .actionPill {
+    min-width: 88px;
+    padding: 7px 12px;
+    font-size: 12px;
+  }
+
   .actionBtn {
     flex-basis: 58px;
     width: 58px;
@@ -1387,7 +1396,7 @@
 
 /* Étape 6 — iNrStats : badge Propulser */
 .action_propulser {
-  background: rgba(168, 85, 247, 0.13);
-  border-color: rgba(168, 85, 247, 0.32);
-  color: rgba(243, 232, 255, 0.94);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.30), rgba(236, 72, 153, 0.16));
+  border-color: rgba(168, 85, 247, 0.44);
+  color: rgba(250, 245, 255, 0.96);
 }

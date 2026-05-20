@@ -226,16 +226,11 @@ export function Cube({
           <div className={styles.actionTopRow}>
             <span className={`${styles.actionPill} ${styles[`action_${pillKey}`]}`}>{pill}</span>
 
-            <div className={styles.actionTopText}>
-              {pill === "Connexion" ? (
+            {pill === "Connexion" ? (
+              <div className={styles.actionTopText}>
                 <span className={styles.actionTitle}>{action.title}</span>
-              ) : (
-                <>
-                  <span className={styles.actionArrow}>→</span>
-                  <span className={styles.actionTitle}>{action.title}</span>
-                </>
-              )}
-            </div>
+              </div>
+            ) : null}
 
             {action.effort ? (
               <span className={`${styles.effort} ${styles[`effort_${action.effort.level}`]}`}>{action.effort.label}</span>
