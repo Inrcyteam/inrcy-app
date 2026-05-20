@@ -439,15 +439,16 @@ function MetricCard({ styles, title, month, week, goal, channels, status, varian
   return (
     <div className={[styles.blockCard, b.metricCard].join(" ")}>
       <div className={b.cardTopRow}>
-        <div><div className={styles.blockTitle}>{title}</div><div className={b.progressLabel}>Progression hebdo</div></div>
-        {!isCampaign ? (
-          <div className={b.statsRewardInline} aria-label="Unités d’inr’çy à débloquer">
-            <span className={b.statsRewardPrimary}>{rewardMain}</span>
-            <span className={b.statsRewardSecondary}>{rewardSub}</span>
-          </div>
-        ) : null}
+        <div className={styles.blockTitle}>{title}</div>
         <div className={b.pill}>Ce mois : {month}</div>
       </div>
+      {!isCampaign ? (
+        <div className={b.statsRewardInline} aria-label="Unités d’inr’çy à débloquer">
+          <span className={b.statsRewardPrimary}>{rewardMain}</span>
+          <span className={b.statsRewardSecondary}>{rewardSub}</span>
+        </div>
+      ) : null}
+      <div className={b.progressLabel}>Progression hebdo</div>
       <div className={b.metricLine}><div className={[b.metricBubble, toneClass].join(" ")}>{week}/{goal}</div><div className={[b.progressState, toneClass].join(" ")}>{status.label}</div></div>
       <div className={b.progressBar}><div className={[b.progressFill, toneClass].join(" ")} style={{ width: `${progress * 100}%` }} /></div>
       <div className={b.progressHint}>{status.helper}</div>

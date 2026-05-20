@@ -335,16 +335,14 @@ function DashboardBoosterMetricCard({ data }: { data: any }) {
   return (
     <div className={[styles.blockCard, b.metricCard, b.boosterStatsCard].join(" ")}>
       <div className={b.cardTopRow}>
-        <div>
-          <div className={styles.blockTitle}>{data.title}</div>
-          <div className={b.progressLabel}>Progression hebdo</div>
-        </div>
-        <div className={b.statsRewardInline} aria-label="Unités d’inr’çy à débloquer">
-          <span className={b.statsRewardPrimary}>{rewardMain}</span>
-          <span className={b.statsRewardSecondary}>{rewardSub}</span>
-        </div>
+        <div className={styles.blockTitle}>{data.title}</div>
         <div className={b.pill}>Ce mois : {data.month}</div>
       </div>
+      <div className={b.statsRewardInline} aria-label="Unités d’inr’çy à débloquer">
+        <span className={b.statsRewardPrimary}>{rewardMain}</span>
+        <span className={b.statsRewardSecondary}>{rewardSub}</span>
+      </div>
+      <div className={b.progressLabel}>Progression hebdo</div>
       <div className={b.metricLine}>
         <div className={[b.metricBubble, toneClass].join(" ")}>{data.week}/{data.goal}</div>
         <div className={[b.progressState, toneClass].join(" ")}>{data.status.label}</div>

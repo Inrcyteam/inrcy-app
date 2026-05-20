@@ -703,31 +703,34 @@
 @media (max-width:700px){
   .metricCard .cardTopRow,
   .boosterStatsCard .cardTopRow{
-    flex-wrap:wrap;
-    align-items:flex-start;
-    gap:8px;
+    display:flex;
+    flex-wrap:nowrap;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    width:100%;
   }
 
   .metricCard .cardTopRow > :first-child{
-    flex:1 1 100%;
+    flex:1 1 auto;
     min-width:0;
   }
 
   .statsRewardInline{
-    order:2;
-    flex:1 1 100%;
+    display:grid;
+    grid-template-columns:1fr;
     width:100%;
-    margin:4px 0 0;
-    justify-content:flex-start;
-    flex-wrap:wrap;
-    gap:6px;
+    margin:10px 0 0;
+    gap:7px;
   }
 
   .statsRewardInline .statsRewardPrimary,
   .statsRewardInline .statsRewardSecondary{
     width:100%;
+    min-width:0;
     white-space:normal;
     text-align:center;
+    justify-content:center;
   }
 
   .statsRewardInline .statsRewardPrimary{
@@ -740,10 +743,23 @@
     font-size:11px;
   }
 
+  .progressLabel{
+    margin-top:10px;
+  }
+
+  .metricLine{
+    margin-top:8px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+  }
+
   .pill{
-    order:3;
+    flex:0 0 auto;
     margin-left:auto;
     font-size:11px;
     padding:6px 9px;
+    white-space:nowrap;
   }
 }
