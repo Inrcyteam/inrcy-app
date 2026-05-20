@@ -158,6 +158,9 @@ export default function DashboardBoosterModalLayer({
     const publish = metrics?.publish ?? {};
     const n = (v: any) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
     const publishWeek = n(publish.week);
+    const turbo = weeklySummary?.turbo?.multiplier ?? 1;
+    const rewardProjected = Number(weeklySummary?.missions?.createActu?.projected ?? Math.round(10 * turbo));
+    const rewardGained = Number(weeklySummary?.missions?.createActu?.gained ?? 0);
     const publishChannels = publish.channels ?? {};
     const pc = (k: string) => n(publishChannels?.[k]);
     const statusCopy = getGoalCopy(publishWeek, WEEKLY_GOALS.booster.publish);
@@ -172,6 +175,11 @@ export default function DashboardBoosterModalLayer({
         label: statusCopy.short,
         color: statusCopy.tone,
         helper: createActuDone && publishWeek <= 0 ? "Mission UI déjà sécurisée cette semaine." : statusCopy.hint,
+      },
+      reward: {
+        projected: rewardProjected,
+        gained: rewardGained,
+        done: createActuDone,
       },
       channels: [
         { name: "Site iNrCy", value: pc("inrcy_site") },
@@ -321,12 +329,19 @@ export default function DashboardBoosterModalLayer({
 function DashboardBoosterMetricCard({ data }: { data: any }) {
   const progress = clampProgress(data.week, data.goal);
   const toneClass = data.status.color === "green" ? b.toneGreen : data.status.color === "orange" ? b.toneOrange : b.toneRed;
+  const reward = data.reward ?? { projected: 0, gained: 0, done: false };
+  const rewardMain = reward.done ? `${reward.gained} UI débloqués cette semaine` : `Jusqu’à +${reward.projected} UI à débloquer`;
+  const rewardSub = reward.done ? "Mission Booster validée" : `${reward.gained} UI gagnés`;
   return (
     <div className={[styles.blockCard, b.metricCard, b.boosterStatsCard].join(" ")}>
       <div className={b.cardTopRow}>
         <div>
           <div className={styles.blockTitle}>{data.title}</div>
           <div className={b.progressLabel}>Progression hebdo</div>
+        </div>
+        <div className={b.statsRewardInline} aria-label="Unités d’inr’çy à débloquer">
+          <span className={b.statsRewardPrimary}>{rewardMain}</span>
+          <span className={b.statsRewardSecondary}>{rewardSub}</span>
         </div>
         <div className={b.pill}>Ce mois : {data.month}</div>
       </div>

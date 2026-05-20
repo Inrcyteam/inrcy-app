@@ -970,7 +970,29 @@ const body = await req.json().catch(() => null);
 
     const summary = buildResultsSummary(results, selected);
 
-    // 5) Log publication / valorisation event
+    // Sécurité compteur/stats : on ne valide l'action Booster que si au moins un canal a réellement publié.
+    // Ainsi, les compteurs, missions et UI ne montent pas quand tous les canaux échouent.
+    if (summary.successCount <= 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Aucun canal n'a pu publier. Les compteurs et les UI n'ont pas été mis à jour.",
+          publication_id: publicationId,
+          images: uploadedUrls,
+          publishableUrls,
+          instagramPublishableUrls,
+          socialFeedPublishableUrls,
+          siteCardPublishableUrls,
+          gmbPublishableUrls,
+          uploadErrors,
+          results,
+          summary,
+        },
+        { status: 502 }
+      );
+    }
+
+    // 5) Log publication / valorisation event uniquement après succès réel
     await supabaseAdmin.from("app_events").insert({
       id: randomUUID(),
       user_id: userId,
@@ -980,7 +1002,8 @@ const body = await req.json().catch(() => null);
         workflowTool: eventModule,
         workflowAction,
         idea,
-        channels: selected,
+        channels: summary.successChannels,
+        attemptedChannels: selected,
         post: firstPost,
         postByChannel: persistedPostByChannel,
         imageSettingsByChannel,

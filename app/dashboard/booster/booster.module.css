@@ -621,3 +621,90 @@
   border-color:rgba(46,229,157,.66)!important;
   box-shadow:0 0 0 1px rgba(46,229,157,.12),0 16px 36px rgba(46,229,157,.25),inset 0 1px 0 rgba(255,255,255,.15)!important;
 }
+
+
+/* Dernière modif — UI à débloquer visible dans Stats Booster */
+.statsRewardCenter{
+  position:relative;
+  z-index:1;
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin:12px 0 2px;
+  text-align:center;
+}
+.statsRewardPrimary{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:36px;
+  padding:8px 14px;
+  border-radius:999px;
+  border:1px solid rgba(76,195,255,.34);
+  background:
+    radial-gradient(circle at 25% 20%,rgba(255,255,255,.18),transparent 36%),
+    linear-gradient(135deg,rgba(56,189,248,.24),rgba(129,140,248,.18) 52%,rgba(168,85,247,.16));
+  box-shadow:0 14px 34px rgba(56,189,248,.14), inset 0 1px 0 rgba(255,255,255,.12);
+  color:#f8fbff;
+  font-size:14px;
+  font-weight:950;
+  letter-spacing:-.01em;
+}
+.statsRewardSecondary{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:32px;
+  padding:7px 11px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.055);
+  color:rgba(235,242,255,.84);
+  font-size:12px;
+  font-weight:850;
+}
+@media (max-width:700px){
+  .statsRewardCenter{margin:10px 0 2px;}
+  .statsRewardPrimary{width:100%;font-size:13px;}
+}
+
+/* Stats Booster — UI sur la ligne de titre, sans augmenter la hauteur */
+.statsRewardInline{
+  position:relative;
+  z-index:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  flex:1 1 auto;
+  min-width:0;
+  margin:0 8px;
+  text-align:center;
+}
+.statsRewardInline .statsRewardPrimary{
+  min-height:30px;
+  padding:6px 12px;
+  font-size:13px;
+  white-space:nowrap;
+}
+.statsRewardInline .statsRewardSecondary{
+  min-height:28px;
+  padding:6px 10px;
+  font-size:12px;
+  white-space:nowrap;
+}
+.boosterStatsCard .cardTopRow,
+.metricCard .cardTopRow{
+  align-items:flex-start;
+}
+@media (max-width:700px){
+  .statsRewardInline{
+    order:3;
+    flex-basis:100%;
+    margin:8px 0 0;
+  }
+  .statsRewardInline .statsRewardPrimary{width:auto;font-size:12px;}
+}

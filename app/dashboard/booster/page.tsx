@@ -234,6 +234,11 @@ export default function BoosterPage() {
         week: publishWeek,
         goal: WEEKLY_GOALS.booster.publish,
         status: publishStatus,
+        reward: {
+          projected: actuProjected,
+          gained: actuGained,
+          done: createActuDone,
+        },
         channels: [
           { name: "Site iNrCy", value: pc("inrcy_site") },
           { name: "Site web", value: pc("site_web") },
@@ -310,6 +315,7 @@ export default function BoosterPage() {
                   goal={data.metric.goal}
                   channels={data.metric.channels}
                   status={data.metric.status}
+                  reward={data.metric.reward}
                 />
                 <TipAccordion styles={styles} title={data.tip.title} lines={data.tip.lines} />
               </div>
@@ -342,7 +348,7 @@ export default function BoosterPage() {
 
             <section className={b.grid3} style={{ gridTemplateColumns: "minmax(0, 1fr)", maxWidth: 760, margin: "8px auto 0" }}>
               <div className={b.stackCard}>
-                <MetricCard styles={styles} title={data.metric.title} month={data.metric.month} week={data.metric.week} goal={data.metric.goal} channels={data.metric.channels} status={data.metric.status} />
+                <MetricCard styles={styles} title={data.metric.title} month={data.metric.month} week={data.metric.week} goal={data.metric.goal} channels={data.metric.channels} status={data.metric.status} reward={data.metric.reward} />
                 <TipAccordion styles={styles} title={data.tip.title} lines={data.tip.lines} />
               </div>
             </section>
@@ -354,7 +360,7 @@ export default function BoosterPage() {
               <details className={b.accordion}>
                 <summary className={b.accordionSummary}><span>📊 Progression</span><span className={b.chev}>▾</span></summary>
                 <div className={b.accordionBody}>
-                  <MetricCard styles={styles} title={data.metric.title} month={data.metric.month} week={data.metric.week} goal={data.metric.goal} channels={data.metric.channels} status={data.metric.status} />
+                  <MetricCard styles={styles} title={data.metric.title} month={data.metric.month} week={data.metric.week} goal={data.metric.goal} channels={data.metric.channels} status={data.metric.status} reward={data.metric.reward} />
                 </div>
               </details>
               <TipAccordion styles={styles} title={data.tip.title} lines={data.tip.lines} />
@@ -422,14 +428,26 @@ function ActionCard({ styles, accent, title, desc, cta, status, reward, onClick 
   );
 }
 
-function MetricCard({ styles, title, month, week, goal, channels, status, variant }: any) {
+function MetricCard({ styles, title, month, week, goal, channels, status, variant, reward }: any) {
   const isCampaign = variant === "campaign";
   const paddedChannels = isCampaign ? channels : [...channels, ...Array.from({ length: Math.max(0, 6 - channels.length) }, (_, idx) => ({ name: `__empty_${idx}`, value: "", empty: true }))];
   const progress = clampProgress(week, goal);
   const toneClass = status.color === "green" ? b.toneGreen : status.color === "orange" ? b.toneOrange : b.toneRed;
+  const rewardData = reward ?? { projected: 0, gained: 0, done: false };
+  const rewardMain = rewardData.done ? `${rewardData.gained} UI débloqués cette semaine` : `Jusqu’à +${rewardData.projected} UI à débloquer`;
+  const rewardSub = rewardData.done ? "Mission Booster validée" : `${rewardData.gained} UI gagnés`;
   return (
     <div className={[styles.blockCard, b.metricCard].join(" ")}>
-      <div className={b.cardTopRow}><div><div className={styles.blockTitle}>{title}</div><div className={b.progressLabel}>Progression hebdo</div></div><div className={b.pill}>Ce mois : {month}</div></div>
+      <div className={b.cardTopRow}>
+        <div><div className={styles.blockTitle}>{title}</div><div className={b.progressLabel}>Progression hebdo</div></div>
+        {!isCampaign ? (
+          <div className={b.statsRewardInline} aria-label="Unités d’inr’çy à débloquer">
+            <span className={b.statsRewardPrimary}>{rewardMain}</span>
+            <span className={b.statsRewardSecondary}>{rewardSub}</span>
+          </div>
+        ) : null}
+        <div className={b.pill}>Ce mois : {month}</div>
+      </div>
       <div className={b.metricLine}><div className={[b.metricBubble, toneClass].join(" ")}>{week}/{goal}</div><div className={[b.progressState, toneClass].join(" ")}>{status.label}</div></div>
       <div className={b.progressBar}><div className={[b.progressFill, toneClass].join(" ")} style={{ width: `${progress * 100}%` }} /></div>
       <div className={b.progressHint}>{status.helper}</div>
