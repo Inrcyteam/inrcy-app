@@ -3119,6 +3119,33 @@
   text-overflow: ellipsis;
 }
 
+.workflowActionCell{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none;
+}
+
+.workflowActionBadge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  max-width:100%;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.16);
+  background:linear-gradient(135deg, var(--folder-accent-start, rgba(56,189,248,0.20)), var(--folder-accent-end, rgba(167,139,250,0.16)));
+  color:rgba(255,255,255,0.96);
+  font-size:12px;
+  font-weight:900;
+  line-height:1;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  box-shadow:0 8px 18px rgba(0,0,0,0.16), 0 0 0 1px rgba(255,255,255,0.04) inset;
+}
+
 .itemDateCell {
   min-width: 0;
   justify-self: stretch;
@@ -3198,6 +3225,10 @@
     text-overflow: ellipsis;
     font-size: 12px;
     color: rgba(220,230,255,0.70);
+  }
+
+  .workflowActionCell {
+    display: none;
   }
 
   .itemDateCell {
@@ -4139,4 +4170,83 @@
   .crmContactRow{
     padding: 8px;
   }
+}
+
+/* Étape 4 ter — iNr'Send : 6 bulles propres, mêmes largeurs, sans scroll horizontal */
+@media (min-width: 821px){
+  .folderTabs{
+    display:grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap:10px;
+    width:100%;
+    padding:12px 12px 0;
+    overflow:hidden;
+  }
+
+  .folderTabBtn{
+    width:100%;
+    min-width:0;
+    min-height:44px;
+    justify-content:space-between;
+    padding:8px 12px;
+    border-radius:16px;
+  }
+
+  .folderTabLabel{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  .folderTabBtn .badgeCount{
+    flex:0 0 auto;
+  }
+}
+
+/* Étape 4 quater — iNr'Send : 6 bulles larges et premium, sans scroll horizontal */
+@media (min-width: 821px){
+  .folderTabs{
+    display:grid;
+    grid-template-columns:repeat(6, minmax(0, 1fr));
+    gap:6px;
+    padding:12px 12px 0;
+    overflow:hidden;
+  }
+
+  .folderTabBtn{
+    width:100%;
+    min-width:0;
+    min-height:48px;
+    justify-content:center;
+    gap:8px;
+    padding:9px 12px;
+    border-radius:16px;
+  }
+
+  .folderTabLabel{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  .folderTabBtn .badgeCount{
+    flex:0 0 auto;
+  }
+}
+
+
+/* Correctif Propulsions/Fidélisations — Objet plus large, Action centrée, Cible conservée */
+.workflowActionHeader{
+  text-align:center!important;
+  justify-self:stretch!important;
+}
+.workflowActionCell{
+  justify-content:center!important;
+}
+.workflowActionBadge{
+  padding:5px 10px;
+  font-size:11.5px;
+  margin-inline:auto;
 }

@@ -2,6 +2,7 @@ import type { TemplateAction, TemplateDef, TemplateModule } from '@/lib/messageT
 
 export type CommunicationObjective =
   | 'acquisition'
+  | 'valorisation'
   | 'fidelisation'
   | 'avis'
   | 'information'
@@ -58,6 +59,7 @@ export type IntelligentTemplateContext = {
 };
 
 const actionObjectiveMap: Record<TemplateAction, CommunicationObjective> = {
+  valoriser: 'valorisation',
   avis: 'avis',
   offres: 'acquisition',
   informations: 'information',
@@ -66,6 +68,7 @@ const actionObjectiveMap: Record<TemplateAction, CommunicationObjective> = {
 };
 
 const actionDefaultToneMap: Record<TemplateAction, CommunicationTone> = {
+  valoriser: 'rassurant',
   avis: 'chaleureux',
   offres: 'direct',
   informations: 'pedagogique',
@@ -79,6 +82,7 @@ const moduleChannels: Record<TemplateModule, CommunicationChannel[]> = {
 };
 
 const actionTones: Record<TemplateAction, CommunicationTone[]> = {
+  valoriser: ['rassurant', 'professionnel', 'local', 'premium'],
   avis: ['rassurant', 'chaleureux', 'local'],
   offres: ['direct', 'professionnel', 'local'],
   informations: ['professionnel', 'pedagogique', 'rassurant'],

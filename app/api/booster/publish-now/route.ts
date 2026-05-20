@@ -464,6 +464,15 @@ const body = await req.json().catch(() => null);
     const images = (Array.isArray(body.images) ? body.images : []) as ImagePayload[];
     const imagesByChannel = ((body.imagesByChannel || {}) as ImagesByChannel) || {};
     const imageSettingsByChannel = (body.imageSettingsByChannel || {}) as Record<string, unknown>;
+    const workflowToolRaw = String(body.workflowTool || "").trim().toLowerCase();
+    const workflowActionRaw = String(body.workflowAction || "").trim().toLowerCase();
+    const workflowTrackTypeRaw = String(body.workflowTrackType || "").trim().toLowerCase();
+    const isValorisation =
+      workflowToolRaw === "propulser" &&
+      (workflowActionRaw === "valoriser" || workflowTrackTypeRaw === "valorize");
+    const eventModule = isValorisation ? "propulser" : "booster";
+    const eventType = isValorisation ? "valorize" : "publish";
+    const workflowAction = isValorisation ? "valoriser" : "publier";
     const hadAnyImageInput = images.length > 0 || Object.values(imagesByChannel).some((value) => Array.isArray(value) && value.length > 0);
 
     const selected = Array.from(new Set(channels)).filter(Boolean);
@@ -961,13 +970,15 @@ const body = await req.json().catch(() => null);
 
     const summary = buildResultsSummary(results, selected);
 
-    // 5) Log booster event
+    // 5) Log publication / valorisation event
     await supabaseAdmin.from("app_events").insert({
       id: randomUUID(),
       user_id: userId,
-      module: "booster",
-      type: "publish",
+      module: eventModule,
+      type: eventType,
       payload: {
+        workflowTool: eventModule,
+        workflowAction,
         idea,
         channels: selected,
         post: firstPost,

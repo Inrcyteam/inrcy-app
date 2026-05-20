@@ -93,6 +93,8 @@ export type BulkFetchResult = {
 
 export type ActionKey =
   | "booster_publier"
+  | "propulser_action"
+  | "fideliser_action"
   | "booster_avis"
   | "booster_promotion"
   | "fideliser_informer"
@@ -136,7 +138,7 @@ export type CubeModel = {
     title: string;
     detail: string;
     href: string;
-    pill: "Booster" | "Fidéliser" | "Connexion";
+    pill: "Booster" | "Propulser" | "Fidéliser" | "Connexion";
     effort?: ActionEffort;
   };
 };
@@ -1079,56 +1081,49 @@ function getDecisionInput(
   };
 }
 
+
+function boosterToolAction(detail: string): CubeModel["action"] {
+  return {
+    key: "booster_publier",
+    title: "Booster",
+    detail,
+    href: "/dashboard/booster?action=publish",
+    pill: "Booster",
+    effort: { level: "faible", label: "Effort faible • 5 min" },
+  };
+}
+
+function propulserToolAction(detail: string): CubeModel["action"] {
+  return {
+    key: "propulser_action",
+    title: "Propulser",
+    detail,
+    href: "/dashboard/propulser",
+    pill: "Propulser",
+    effort: { level: "moyen", label: "Effort moyen • 10-15 min" },
+  };
+}
+
+function fideliserToolAction(detail: string): CubeModel["action"] {
+  return {
+    key: "fideliser_action",
+    title: "Fidéliser",
+    detail,
+    href: "/dashboard/fideliser",
+    pill: "Fidéliser",
+    effort: { level: "moyen", label: "Effort moyen • 10-15 min" },
+  };
+}
+
 function actionFromDecision(baseAction: CubeModel["action"], decision: DecisionResult): CubeModel["action"] {
+
   const map: Record<DecisionResult["action"], CubeModel["action"]> = {
-    publier: {
-      key: "booster_publier",
-      title: "Publier",
-      detail: decision.reason,
-      href: "/dashboard/booster?action=publish",
-      pill: "Booster",
-      effort: { level: "faible", label: "Effort faible • 5 min" },
-    },
-    offrir: {
-      key: "booster_promotion",
-      title: "Offrir",
-      detail: decision.reason,
-      href: "/dashboard/booster?action=promo",
-      pill: "Booster",
-      effort: { level: "moyen", label: "Effort moyen • 15 min" },
-    },
-    recolter: {
-      key: "booster_avis",
-      title: "Récolter",
-      detail: decision.reason,
-      href: "/dashboard/booster?action=reviews",
-      pill: "Booster",
-      effort: { level: "moyen", label: "Effort moyen • 10 min" },
-    },
-    informer: {
-      key: "fideliser_informer",
-      title: "Informer",
-      detail: decision.reason,
-      href: "/dashboard/fideliser?action=inform",
-      pill: "Fidéliser",
-      effort: { level: "moyen", label: "Effort moyen • 15 min" },
-    },
-    suivre: {
-      key: "fideliser_remercier",
-      title: "Suivre",
-      detail: decision.reason,
-      href: "/dashboard/fideliser?action=thanks",
-      pill: "Fidéliser",
-      effort: { level: "faible", label: "Effort faible • 2 min" },
-    },
-    enqueter: {
-      key: "fideliser_satisfaction",
-      title: "Enquêter",
-      detail: decision.reason,
-      href: "/dashboard/fideliser?action=satisfaction",
-      pill: "Fidéliser",
-      effort: { level: "faible", label: "Effort faible • 3 min" },
-    },
+    publier: boosterToolAction(decision.reason),
+    offrir: propulserToolAction(decision.reason),
+    recolter: propulserToolAction(decision.reason),
+    informer: fideliserToolAction(decision.reason),
+    suivre: fideliserToolAction(decision.reason),
+    enqueter: fideliserToolAction(decision.reason),
   };
 
   return { ...baseAction, ...map[decision.action] };
@@ -1233,6 +1228,8 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
 
   const effortMap: Partial<Record<ActionKey, CubeModel["action"]["effort"] | undefined>> = {
     booster_publier: { level: "faible", label: "Effort faible • 5 min" },
+    propulser_action: { level: "moyen", label: "Effort moyen • 10-15 min" },
+    fideliser_action: { level: "moyen", label: "Effort moyen • 10-15 min" },
     booster_avis: { level: "moyen", label: "Effort moyen • 10 min" },
     booster_promotion: { level: "moyen", label: "Effort moyen • 15 min" },
     fideliser_informer: { level: "moyen", label: "Effort moyen • 15 min" },
@@ -1251,80 +1248,32 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
 
   if (cubeKey === "site_inrcy") {
     if (qualityScore >= 70) {
-      return attachEffort({
-        key: "fideliser_remercier",
-        title: "Suivre",
-        detail: "Convertissez vos clients satisfaits en recommandations et avis.",
-        href: "/dashboard/fideliser?action=thanks",
-        pill: "Fidéliser",
-      });
+      return fideliserToolAction("Entretenez la relation avec vos clients satisfaits pour générer recommandations, avis et retours.");
     }
-    return attachEffort({
-      key: "booster_promotion",
-      title: "Offrir",
-      detail: "Mettez en avant une offre / un message clair pour déclencher le contact.",
-      href: "/dashboard/booster?action=promo",
-      pill: "Booster",
-    });
+    return propulserToolAction("Lancez une action guidée pour mettre en avant une offre, une preuve ou une demande claire.");
   }
 
   if (cubeKey === "site_web") {
     if (qualityScore < 60) {
-      return attachEffort({
-        key: "booster_promotion",
-        title: "Offrir",
-        detail: "Ajoutez/optimisez un déclencheur (devis, urgence, appel à l’action).",
-        href: "/dashboard/booster?action=promo",
-        pill: "Booster",
-      });
+      return propulserToolAction("Lancez une action guidée pour renforcer le déclencheur commercial : offre, preuve ou demande d’avis.");
     }
     if (qualityScore >= 75 && opp30 > 4) {
-      return attachEffort({
-        key: "fideliser_informer",
-        title: "Informer",
-        detail: "Créez un lien régulier (conseils, prévention, actu).",
-        href: "/dashboard/fideliser?action=inform",
-        pill: "Fidéliser",
-      });
+      return fideliserToolAction("Créez un lien régulier avec vos contacts : information, suivi ou enquête.");
     }
-    return attachEffort({
-      key: "booster_publier",
-      title: "Publier",
-      detail: "Ajoutez une actualité locale pour relancer la visibilité et le trafic.",
-      href: "/dashboard/booster?action=publish",
-      pill: "Booster",
-    });
+    return boosterToolAction("Publiez une actualité locale pour relancer la visibilité et le trafic.");
   }
 
   if (cubeKey === "gmb") {
     const m = ov?.sources?.gmb?.metrics;
     const hasError = !!m?.error;
     if (hasError) {
-      return attachEffort({
-        key: "booster_publier",
-        title: "Publier",
-        detail: "Publiez 1 post Google Business pour activer le canal (même sans métriques détaillées).",
-        href: "/dashboard/booster?action=publish",
-        pill: "Booster",
-      });
+      return boosterToolAction("Publiez 1 post Google Business pour activer le canal, même sans métriques détaillées.");
     }
-    return attachEffort({
-      key: "booster_avis",
-      title: "Récolter",
-      detail: "Les avis sont le levier n°1 pour gagner des appels locaux.",
-      href: "/dashboard/booster?action=reviews",
-      pill: "Booster",
-    });
+    return propulserToolAction("Lancez une action Propulser : les avis et preuves de confiance sont le levier n°1 pour gagner des appels locaux.");
   }
 
   const socialLabel = cubeKey === "linkedin" ? "votre audience pro" : "votre audience";
-  return attachEffort({
-    key: "booster_publier",
-    title: "Publier",
-    detail: `1 publication simple/semaine suffit pour capter ${socialLabel}.`,
-    href: "/dashboard/booster?action=publish",
-    pill: "Booster",
-  });
+  return boosterToolAction(`1 publication simple/semaine suffit pour capter ${socialLabel}.`);
 }
 
 export function buildInsights(cubeKey: CubeKey, ov: Overview, qualityScore: number, decision?: DecisionResult) {
@@ -1338,8 +1287,18 @@ export function buildInsights(cubeKey: CubeKey, ov: Overview, qualityScore: numb
     ];
   }
 
-  if (decision?.businessLecture?.length) {
-    return decision.businessLecture.slice(0, 4);
+  if (decision) {
+    const tool = decision.action === "publier"
+      ? "Booster"
+      : decision.action === "offrir" || decision.action === "recolter"
+        ? "Propulser"
+        : "Fidéliser";
+    const toolLine = tool === "Booster"
+      ? "Recommandation : utiliser Booster pour publier et activer le canal."
+      : tool === "Propulser"
+        ? "Recommandation : utiliser Propulser pour choisir une action business adaptée."
+        : "Recommandation : utiliser Fidéliser pour entretenir et convertir la relation client.";
+    return [toolLine, decision.reason].filter(Boolean).slice(0, 3);
   }
 
   if (cubeKey === "facebook") {
@@ -1448,8 +1407,8 @@ export function buildCubeModel(
     action = {
       ...action,
       key: "booster_publier",
-      title: "Publier",
-      detail: "Données LinkedIn non exploitables actuellement. Réessayez demain.",
+      title: "Booster",
+      detail: "Données LinkedIn non exploitables actuellement. Publiez depuis Booster puis réessayez demain.",
       href: "/dashboard/booster?action=publish",
       pill: "Booster",
     };
@@ -1521,40 +1480,40 @@ export function buildSummaryActionItems({
 
   const connectedCopy: Record<CubeKey, { label: string; kicker: string; motive: string; badge: string }> = {
     facebook: {
-      label: "Publier sur Facebook",
+      label: "Utiliser Booster",
       kicker: "Relancez votre visibilité locale",
-      motive: "Une publication ciblée peut remettre votre activité en mouvement et générer de nouvelles demandes rapidement.",
+      motive: "Booster permet de publier rapidement pour remettre votre activité en mouvement.",
       badge: "Booster",
     },
     instagram: {
-      label: "Publier sur Instagram",
+      label: "Utiliser Booster",
       kicker: "Réactivez votre visibilité de marque",
-      motive: "Du contenu récent et régulier peut transformer plus d’attention en prises de contact concrètes.",
+      motive: "Booster vous aide à publier régulièrement pour transformer l’attention en contacts.",
       badge: "Booster",
     },
     linkedin: {
-      label: "Publier sur LinkedIn",
+      label: "Utiliser Booster",
       kicker: "Renforcez votre crédibilité pro",
-      motive: "Une prise de parole visible peut faire émerger de nouvelles opportunités professionnelles.",
-      badge: "Publier",
+      motive: "Booster vous aide à prendre la parole simplement sur LinkedIn.",
+      badge: "Booster",
     },
     site_web: {
-      label: "Optimiser votre site",
+      label: "Utiliser Propulser",
       kicker: "Transformez plus de visiteurs en prospects",
-      motive: "Quelques ajustements ciblés peuvent augmenter le rendement commercial de votre site rapidement.",
-      badge: "Fidéliser",
+      motive: "Propulser vous propose une action business claire : valoriser, récolter ou offrir.",
+      badge: "Propulser",
     },
     site_inrcy: {
-      label: "Optimiser votre site iNrCy",
+      label: "Utiliser Propulser",
       kicker: "Accélérez une machine déjà lancée",
-      motive: "Votre générateur tourne déjà : quelques optimisations peuvent faire monter le chiffre plus vite.",
-      badge: "Fidéliser",
+      motive: "Propulser aide à transformer le potentiel visible en action commerciale concrète.",
+      badge: "Propulser",
     },
     gmb: {
-      label: "Optimiser Google Business",
+      label: "Utiliser Propulser",
       kicker: "Débloquez un potentiel local immédiat",
-      motive: "Votre fiche locale peut capter plus d’appels, de clics et d’itinéraires avec quelques actions ciblées.",
-      badge: "Booster",
+      motive: "Propulser permet de valoriser vos preuves, récolter des avis ou pousser une offre locale.",
+      badge: "Propulser",
     },
   };
 

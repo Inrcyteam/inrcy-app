@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import stylesDash from "../../dashboard/dashboard.module.css";
+import stylesDash from "../../../dashboard.module.css";
 import { getTemplates, type TemplateDef } from "@/lib/messageTemplates";
 import { useBusinessTemplateContext } from "@/app/dashboard/_hooks/useBusinessTemplateContext";
 import RichMailEditor from "@/app/dashboard/_components/RichMailEditor";
@@ -8,7 +8,7 @@ import TemplateSubjectInlineEditor from "@/app/dashboard/_components/TemplateSub
 import { extractTemplatePlaceholders, textToRichMailHtml } from "@/lib/mailRichText";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 
-export default function SatisfactionModal({
+export default function SuivreModal({
   styles,
   onClose,
   onDone = onClose,
@@ -20,7 +20,7 @@ export default function SatisfactionModal({
   const router = useRouter();
   const { sectorCategory, profession } = useBusinessTemplateContext();
 
-  const templates = useMemo(() => getTemplates("enquetes", undefined, sectorCategory, profession), [sectorCategory, profession]);
+  const templates = useMemo(() => getTemplates("suivis", undefined, sectorCategory, profession), [sectorCategory, profession]);
   const categories = useMemo(() => {
     const map = new Map<string, TemplateDef>();
     for (const t of templates) {
@@ -29,17 +29,20 @@ export default function SatisfactionModal({
     return Array.from(map.values());
   }, [templates]);
 
-  const [selectedKey, setSelectedKey] = useState<string>(() => templates[0]?.key ?? "");
+  const [selectedKey, setSelectedKey] = useState<string>("");
   const selected = useMemo(
-    () => templates.find((t) => t.key === selectedKey) ?? templates[0],
-    [templates, selectedKey]
+    () => templates.find((t) => t.key === selectedKey) ?? categories[0] ?? templates[0],
+    [templates, categories, selectedKey]
   );
 
   const [subject, setSubject] = useState("");
   useEffect(() => {
-    if (!templates.length) return;
-    setSelectedKey((current) => (templates.some((t) => t.key === current) ? current : templates[0]?.key ?? ""));
-  }, [templates]);
+    if (!categories.length) {
+      setSelectedKey("");
+      return;
+    }
+    setSelectedKey(categories[0]?.key ?? "");
+  }, [categories]);
 
   const [body, setBody] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
@@ -95,7 +98,7 @@ export default function SatisfactionModal({
       if (!shouldContinue) return;
     }
     const q = new URLSearchParams();
-    q.set("folder", "enquetes");
+    q.set("folder", "suivis");
     if (selected?.key) q.set("template_key", selected.key);
     // URLSearchParams encode déjà correctement : pas besoin de encodeURIComponent ici
     q.set("prefill_subject", subject);
@@ -103,10 +106,9 @@ export default function SatisfactionModal({
     q.set("prefill_html", bodyHtml || textToRichMailHtml(body));
     q.set("compose", "1");
 
-    // IMPORTANT: iNr'Send must only count items that are actually sent.
-    // We pass a tracking intent to the composer; it will log the event ONLY after a successful send.
+    // Track only after a real send (handled by iNr'Send).
     q.set("track_kind", "fideliser");
-    q.set("track_type", "satisfaction_mail");
+    q.set("track_type", "thanks_mail");
     q.set(
       "track_payload",
       JSON.stringify({
@@ -123,7 +125,7 @@ export default function SatisfactionModal({
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 }}>
       <div className={styles.blockCard} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, maxWidth: "100%", boxSizing: "border-box", height: "100%" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 10, fontSize: 20, display: isMobile ? "none" : "block" }}>
-          Modèle d’email — Enquêter
+          Modèle d’email — Suivre
         </div>
 
         <div className={styles.subtitle} style={{ marginBottom: isMobile ? 0 : 10, display: isMobile ? "none" : "block" }}>

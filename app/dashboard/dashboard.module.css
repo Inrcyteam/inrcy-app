@@ -2991,7 +2991,7 @@ transform: scale(1.50);
   z-index: 1;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: auto auto auto auto;
+  grid-template-rows: auto auto auto auto auto;
   gap: 20px 18px;
   /* Descend the capsules a bit inside the block */
   padding: 18px 6px 6px;
@@ -3002,6 +3002,7 @@ transform: scale(1.50);
 .gearGrid > :nth-child(2){ grid-column: 2; grid-row: 2; justify-self: end; }
 .gearGrid > :nth-child(3){ grid-column: 1; grid-row: 3; justify-self: start; }
 .gearGrid > :nth-child(4){ grid-column: 2; grid-row: 4; justify-self: end; }
+.gearGrid > :nth-child(5){ grid-column: 1 / span 2; grid-row: 5; justify-self: center; }
 
 /* Capsule */
 .gearCapsule{
@@ -3130,7 +3131,8 @@ transform: scale(1.50);
   .gearGrid > :nth-child(1),
   .gearGrid > :nth-child(2),
   .gearGrid > :nth-child(3),
-  .gearGrid > :nth-child(4){
+  .gearGrid > :nth-child(4),
+  .gearGrid > :nth-child(5){
     grid-column: auto;
     grid-row: auto;
     justify-self: center;
@@ -3218,7 +3220,8 @@ transform: scale(1.50);
   .gearGrid > :nth-child(1),
   .gearGrid > :nth-child(2),
   .gearGrid > :nth-child(3),
-  .gearGrid > :nth-child(4){
+  .gearGrid > :nth-child(4),
+  .gearGrid > :nth-child(5){
     grid-column: auto !important;
     grid-row: auto !important;
     justify-self: center !important;
@@ -3448,7 +3451,7 @@ transform: scale(1.50);
 }
 
 /* =========================
-   Hub pages (Booster / Fidéliser)
+   Hub pages (Booster / Propulser / Fidéliser)
 ========================= */
 
 .hubHero{
@@ -4085,7 +4088,7 @@ transform: scale(1.50);
 .gearSettingsBtn{
   position:absolute;
   top:14px;
-  right:18px;
+  right:24px;
   z-index:4;
   width:30px;
   height:30px;
@@ -4151,7 +4154,7 @@ transform: scale(1.50);
 }
 
 /* =========================================================
-   Mobile modal width boost (Booster / Fidéliser)
+   Mobile modal width boost (Booster / Propulser / Fidéliser)
    Objectif : moins de cadres dans les cadres sur téléphone,
    plus de largeur utile, sans modifier le rendu desktop.
 ========================================================= */
@@ -4210,5 +4213,688 @@ transform: scale(1.50);
   .fullscreenModalInner .secondaryBtn,
   .fullscreenModalInner .ghostBtn{
     padding: 8px 10px;
+  }
+}
+
+/* Étape 4 ter — Boîte de vitesse : 5 bulles compactes sans ajouter de hauteur */
+@media (min-width: 701px) and (hover: hover) and (pointer: fine){
+  .gearWrap{
+    padding:6px 6px 4px;
+  }
+
+  .gearRail{
+    inset:12px 18px 16px;
+  }
+
+  .gearGrid{
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:repeat(5, 78px);
+    align-items:center;
+    gap:6px 18px;
+    padding:8px 6px 4px;
+  }
+
+  .gearGrid > :nth-child(1){ grid-column:1; grid-row:1; justify-self:start; }
+  .gearGrid > :nth-child(2){ grid-column:2; grid-row:2; justify-self:end; }
+  .gearGrid > :nth-child(3){ grid-column:1; grid-row:3; justify-self:start; }
+  .gearGrid > :nth-child(4){ grid-column:2; grid-row:4; justify-self:end; }
+  .gearGrid > :nth-child(5){ grid-column:1; grid-row:5; justify-self:start; }
+
+  .gearCapsule{
+    width:252px;
+    height:82px;
+  }
+
+  .gearInner{
+    padding:8px 36px 8px 14px;
+    gap:3px;
+  }
+
+  .gearTitle{
+    font-size:17px;
+    line-height:1.05;
+  }
+
+  .gearSub{
+    font-size:12.5px;
+    line-height:1.2;
+    max-width:23ch;
+  }
+
+  .gearBtn{
+    margin-top:2px;
+    padding:5px 12px;
+    font-size:13px;
+  }
+
+  .gearSettingsBtn{
+    top:9px;
+    right:18px;
+    width:28px;
+    height:28px;
+  }
+}
+
+.gearStatsBtn:hover,
+.gearStatsBtn:focus-visible{
+  transform:translateY(-1px);
+}
+
+.gearStatsIcon{
+  position:relative;
+  display:block;
+  width:15px;
+  height:15px;
+}
+
+.gearStatsIcon::before{
+  content:"";
+  position:absolute;
+  left:1px;
+  right:1px;
+  bottom:1px;
+  height:12px;
+  border-radius:2px;
+  background:
+    linear-gradient(to top, rgba(255,255,255,.88) 0 100%) 0 100% / 3px 7px no-repeat,
+    linear-gradient(to top, rgba(255,255,255,.88) 0 100%) 6px 100% / 3px 12px no-repeat,
+    linear-gradient(to top, rgba(255,255,255,.88) 0 100%) 12px 100% / 3px 9px no-repeat;
+}
+
+.gearStatsIcon::after{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  height:1px;
+  border-radius:999px;
+  background:rgba(255,255,255,.55);
+}
+
+@media (min-width: 560px){
+  :global(html.isTouch) .gearCapsule{
+    min-height:118px !important;
+    padding:14px 20px !important;
+  }
+}
+
+/* Étape 4 quater — Boîte de vitesse : grandes capsules, sans page intermédiaire Booster */
+@media (min-width: 701px) and (hover: hover) and (pointer: fine){
+  .gearWrap{
+    padding:4px 8px 0;
+  }
+
+  .gearRail{
+    inset:10px 16px 14px;
+  }
+
+  .gearGrid{
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:repeat(5, 86px);
+    align-items:center;
+    gap:0 18px;
+    padding:8px 8px 0;
+  }
+
+  .gearGrid > :nth-child(1){ grid-column:1; grid-row:1; justify-self:start; }
+  .gearGrid > :nth-child(2){ grid-column:2; grid-row:2; justify-self:end; }
+  .gearGrid > :nth-child(3){ grid-column:1; grid-row:3; justify-self:start; }
+  .gearGrid > :nth-child(4){ grid-column:2; grid-row:4; justify-self:end; }
+  .gearGrid > :nth-child(5){ grid-column:1; grid-row:5; justify-self:start; }
+
+  .gearCapsule{
+    width:292px;
+    height:96px;
+  }
+
+  .gearInner{
+    padding:10px 40px 10px 16px;
+    gap:5px;
+  }
+
+  .gearTitle{
+    font-size:18px;
+    line-height:1.05;
+  }
+
+  .gearSub{
+    font-size:13px;
+    line-height:1.22;
+    max-width:24ch;
+  }
+
+  .gearBtn{
+    margin-top:3px;
+    padding:6px 14px;
+    font-size:13.5px;
+  }
+
+  .gearSettingsBtn{
+    top:10px;
+    right:19px;
+    width:31px;
+    height:31px;
+  }
+}
+
+/* Étape 4 quinquies — Design Boîte de vitesse : alignement bas sur Agenda, sans changer le métier */
+@media (min-width: 701px) and (hover: hover) and (pointer: fine){
+  .gearBlockCard{
+    display:flex;
+    flex-direction:column;
+  }
+
+  .gearBlockCard .blockHead{
+    flex:0 0 auto;
+  }
+
+  .gearBlockCard .gearWrap{
+    flex:1 1 auto;
+    min-height:0;
+    padding:14px 14px 12px;
+  }
+
+  .gearBlockCard .gearRail{
+    inset:16px 20px 22px;
+    border-radius:24px;
+  }
+
+  .gearBlockCard .gearRail::before{
+    background:
+      linear-gradient(90deg, rgba(56,189,248,0.0), rgba(56,189,248,0.38), rgba(56,189,248,0.0)) 18% 16% / 64% 3px no-repeat,
+      linear-gradient(180deg, rgba(56,189,248,0.0), rgba(56,189,248,0.36), rgba(56,189,248,0.0)) 78% 24% / 3px 66% no-repeat,
+      linear-gradient(90deg, rgba(56,189,248,0.0), rgba(56,189,248,0.38), rgba(56,189,248,0.0)) 18% 88% / 64% 3px no-repeat,
+      linear-gradient(180deg, rgba(56,189,248,0.0), rgba(56,189,248,0.36), rgba(56,189,248,0.0)) 22% 43% / 3px 48% no-repeat;
+  }
+
+  .gearBlockCard .gearGrid{
+    height:100%;
+    min-height:430px;
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:repeat(5, minmax(78px, 1fr));
+    align-items:center;
+    gap:0 18px;
+    padding:22px 10px 20px;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1){ grid-column:1; grid-row:1; justify-self:start; align-self:center; }
+  .gearBlockCard .gearGrid > :nth-child(2){ grid-column:2; grid-row:2; justify-self:end; align-self:center; }
+  .gearBlockCard .gearGrid > :nth-child(3){ grid-column:1; grid-row:3; justify-self:start; align-self:center; }
+  .gearBlockCard .gearGrid > :nth-child(4){ grid-column:2; grid-row:4; justify-self:end; align-self:center; }
+  .gearBlockCard .gearGrid > :nth-child(5){ grid-column:1; grid-row:5; justify-self:start; align-self:end; }
+
+  .gearBlockCard .gearCapsule{
+    width:292px;
+    height:92px;
+  }
+
+  .gearBlockCard .gearInner{
+    padding:10px 40px 10px 16px;
+    gap:4px;
+  }
+
+  .gearBlockCard .gearTitle{
+    font-size:18px;
+    line-height:1.05;
+  }
+
+  .gearBlockCard .gearSub{
+    font-size:13px;
+    line-height:1.22;
+    max-width:24ch;
+  }
+
+  .gearBlockCard .gearBtn{
+    margin-top:3px;
+    padding:6px 14px;
+    font-size:13.5px;
+  }
+
+  .gearBlockCard .gearSettingsBtn{
+    top:10px;
+    right:13px;
+    width:31px;
+    height:31px;
+  }
+}
+
+
+/* Étape 4 sexies — micro-polish Boîte de vitesse : capsules plus aérées, sans changer le métier */
+@media (min-width: 701px) and (hover: hover) and (pointer: fine){
+  .gearBlockCard .gearWrap{
+    padding:12px 14px 12px;
+  }
+
+  .gearBlockCard .gearRail{
+    inset:14px 18px 20px;
+  }
+
+  .gearBlockCard .gearGrid{
+    min-height:430px;
+    grid-template-rows:repeat(5, minmax(78px, 1fr));
+    gap:0 16px;
+    padding:16px 8px 18px;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1){
+    align-self:start;
+    margin-top:-4px;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(5){
+    align-self:end;
+  }
+
+  .gearBlockCard .gearCapsule{
+    width:306px;
+    height:98px;
+  }
+
+  .gearBlockCard .gearInner{
+    padding:11px 44px 11px 18px;
+    gap:5px;
+  }
+
+  .gearBlockCard .gearTitle{
+    font-size:18.5px;
+    line-height:1.05;
+  }
+
+  .gearBlockCard .gearSub{
+    font-size:13.5px;
+    line-height:1.2;
+    max-width:30ch;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  .gearBlockCard .gearBtn{
+    margin-top:3px;
+    padding:6px 15px;
+    font-size:13.5px;
+  }
+
+  .gearBlockCard .gearSettingsBtn{
+    top:11px;
+    right:14px;
+    width:31px;
+    height:31px;
+  }
+}
+
+
+/* Étape 4 septies — équilibre dashboard + Booster phare */
+@media (min-width: 1081px){
+  .lowerRow{
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    align-items: stretch;
+  }
+
+  .lowerRow > .blockCard{
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+@media (min-width: 701px) and (hover: hover) and (pointer: fine){
+  .gearBlockCard{
+    overflow: hidden;
+  }
+
+  .gearBlockCard .gearGrid{
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 0 16px;
+    padding: 16px 8px 18px;
+  }
+
+  .gearBlockCard .gearCapsule{
+    width: 286px;
+    height: 98px;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1){
+    margin-top: -2px;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1).gearCapsule{
+    border-color: rgba(125, 211, 252, 0.72);
+    background:
+      radial-gradient(120% 140% at 18% 12%, rgba(255,255,255,0.38), rgba(255,255,255,0.00) 44%),
+      linear-gradient(135deg, rgba(56,189,248,0.42), rgba(59,130,246,0.24) 44%, rgba(167,139,250,0.30) 100%);
+    box-shadow:
+      0 24px 70px rgba(0,0,0,0.42),
+      0 0 32px rgba(56,189,248,0.30),
+      0 0 58px rgba(167,139,250,0.16),
+      inset 0 0 0 1px rgba(255,255,255,0.24);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1).gearCapsule::before{
+    opacity: 0.48;
+    background:
+      radial-gradient(circle at 36% 36%, rgba(56,189,248,0.92), transparent 52%),
+      radial-gradient(circle at 68% 70%, rgba(167,139,250,0.62), transparent 56%);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1).gearCapsule::after{
+    background:
+      radial-gradient(95% 70% at 20% 10%, rgba(255,255,255,0.34), rgba(255,255,255,0.00) 56%),
+      linear-gradient(120deg, rgba(255,255,255,0.12), rgba(255,255,255,0.00) 46%);
+    opacity: 1;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearTitle{
+    text-shadow: 0 0 16px rgba(255,255,255,0.34), 0 0 24px rgba(56,189,248,0.24);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearBtn{
+    border-color: rgba(255,255,255,0.35);
+    background: linear-gradient(90deg, rgba(56,189,248,0.35), rgba(167,139,250,0.26));
+    box-shadow:
+      0 0 18px rgba(56,189,248,0.18),
+      inset 0 0 0 1px rgba(255,255,255,0.18);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearSettingsBtn{
+    border-color: rgba(255,255,255,0.32);
+    background: rgba(255,255,255,0.16);
+    box-shadow: 0 0 18px rgba(56,189,248,0.22), inset 0 0 0 1px rgba(255,255,255,0.16);
+  }
+}
+
+/* Étape 4 octies — espacement, hover adouci, Booster premium, icône stats colorée */
+@media (min-width: 701px) and (hover: hover) and (pointer: fine){
+  .gearBlockCard .gearWrap{
+    padding: 10px 14px 10px;
+  }
+
+  .gearBlockCard .gearRail{
+    inset: 12px 18px 14px;
+    border-radius: 26px;
+  }
+
+  .gearBlockCard .gearRail::before{
+    background:
+      linear-gradient(90deg, rgba(56,189,248,0.0), rgba(56,189,248,0.32), rgba(56,189,248,0.0)) 17% 14% / 66% 3px no-repeat,
+      linear-gradient(180deg, rgba(56,189,248,0.0), rgba(56,189,248,0.30), rgba(56,189,248,0.0)) 78% 23% / 3px 69% no-repeat,
+      linear-gradient(90deg, rgba(56,189,248,0.0), rgba(56,189,248,0.30), rgba(56,189,248,0.0)) 17% 91% / 66% 3px no-repeat,
+      linear-gradient(180deg, rgba(56,189,248,0.0), rgba(56,189,248,0.28), rgba(56,189,248,0.0)) 22% 44% / 3px 50% no-repeat;
+  }
+
+  .gearBlockCard .gearGrid{
+    min-height: 452px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    grid-template-rows: repeat(5, minmax(74px, 1fr));
+    align-items: center;
+    gap: 10px 20px;
+    padding: 10px 8px 8px;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1){
+    justify-self: start;
+    align-self: start;
+    margin-top: -2px;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(2),
+  .gearBlockCard .gearGrid > :nth-child(3),
+  .gearBlockCard .gearGrid > :nth-child(4){
+    align-self: center;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(5){
+    justify-self: start;
+    align-self: end;
+    margin-bottom: 2px;
+  }
+
+  .gearBlockCard .gearCapsule{
+    width: 290px;
+    height: 94px;
+    transition:
+      transform 220ms cubic-bezier(.2,.8,.2,1),
+      border-color .18s ease,
+      background .18s ease,
+      box-shadow .18s ease;
+  }
+
+  .gearBlockCard .gearCapsule:hover{
+    transform: translate3d(0,-5px,0) scale(1.018);
+  }
+
+  .gearBlockCard .gearCapsule:active{
+    transform: translate3d(0,-2px,0) scale(1.008);
+  }
+
+  .gearBlockCard .gearInner{
+    padding: 11px 44px 11px 18px;
+    gap: 4px;
+  }
+
+  .gearBlockCard .gearSub{
+    max-width: 26ch;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1).gearCapsule{
+    border-color: rgba(125, 211, 252, 0.56);
+    background:
+      radial-gradient(105% 85% at 18% 10%, rgba(255,255,255,0.20), rgba(255,255,255,0.00) 46%),
+      linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05)),
+      linear-gradient(135deg, rgba(17, 39, 74, 0.92) 4%, rgba(27, 62, 111, 0.84) 42%, rgba(57, 113, 189, 0.52) 70%, rgba(117, 93, 222, 0.42) 100%);
+    box-shadow:
+      0 24px 70px rgba(0,0,0,0.42),
+      0 0 26px rgba(56,189,248,0.18),
+      0 0 46px rgba(99,102,241,0.12),
+      inset 0 0 0 1px rgba(255,255,255,0.18);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1).gearCapsule::before{
+    opacity: 0.38;
+    background:
+      radial-gradient(circle at 24% 30%, rgba(56,189,248,0.82), transparent 42%),
+      radial-gradient(circle at 72% 66%, rgba(167,139,250,0.48), transparent 52%);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1).gearCapsule::after{
+    background:
+      radial-gradient(84% 64% at 20% 12%, rgba(255,255,255,0.24), rgba(255,255,255,0.00) 56%),
+      linear-gradient(120deg, rgba(255,255,255,0.08), rgba(255,255,255,0.00) 46%);
+    opacity: .92;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearTitle{
+    text-shadow: 0 0 14px rgba(255,255,255,0.24), 0 0 18px rgba(56,189,248,0.18);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearSub{
+    color: rgba(234, 244, 255, 0.84);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearBtn{
+    border-color: rgba(255,255,255,0.26);
+    background: linear-gradient(90deg, rgba(56,189,248,0.24), rgba(99,102,241,0.16));
+    box-shadow:
+      0 0 16px rgba(56,189,248,0.14),
+      inset 0 0 0 1px rgba(255,255,255,0.12);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearSettingsBtn{
+    border-color: rgba(255,255,255,0.24);
+    background: linear-gradient(135deg, rgba(17, 24, 39, 0.64), rgba(31, 41, 55, 0.42));
+    box-shadow:
+      0 0 16px rgba(56,189,248,0.14),
+      inset 0 0 0 1px rgba(255,255,255,0.08);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearSettingsBtn:hover,
+  .gearBlockCard .gearGrid > :nth-child(1) .gearSettingsBtn:focus-visible{
+    transform: translateY(-1px);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearStatsIcon{
+    width: 16px;
+    height: 16px;
+    filter: drop-shadow(0 0 8px rgba(56,189,248,0.26));
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearStatsIcon::before{
+    left: 1px;
+    right: 1px;
+    bottom: 1px;
+    height: 13px;
+    background:
+      linear-gradient(to top, rgba(34,211,238,0.98) 0 100%) 0 100% / 3px 8px no-repeat,
+      linear-gradient(to top, rgba(129,140,248,0.98) 0 100%) 6px 100% / 3px 12px no-repeat,
+      linear-gradient(to top, rgba(244,114,182,0.98) 0 100%) 12px 100% / 3px 10px no-repeat;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearStatsIcon::after{
+    background: rgba(255,255,255,.42);
+  }
+}
+
+/* Étape 4 nonies — micro-aération des textes + capsules légèrement moins larges */
+@media (min-width: 701px) and (hover: hover) and (pointer: fine){
+  .gearBlockCard .gearCapsule{
+    width: 282px;
+    height: 96px;
+  }
+
+  .gearBlockCard .gearInner{
+    padding: 11px 42px 11px 18px;
+    gap: 6px;
+  }
+
+  .gearBlockCard .gearTitle{
+    line-height: 1.08;
+  }
+
+  .gearBlockCard .gearSub{
+    line-height: 1.28;
+    max-width: 25ch;
+  }
+
+  .gearBlockCard .gearBtn{
+    margin-top: 4px;
+  }
+}
+
+/* Étape 4 duodecies — vraie respiration interne des bulles, sans toucher aux cadres */
+@media (min-width: 701px) and (hover: hover) and (pointer: fine){
+  /* on ne touche ni au rail, ni à la grille, ni aux cadres parents */
+  .gearBlockCard .gearCapsule{
+    width: 282px;
+    height: 100px;
+  }
+
+  .gearBlockCard .gearInner{
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    text-align: center;
+    padding: 10px 42px 10px 18px;
+    gap: 0;
+  }
+
+  .gearBlockCard .gearTitle{
+    line-height: 1.08;
+    margin: 0;
+  }
+
+  .gearBlockCard .gearSub{
+    line-height: 1.3;
+    max-width: 25ch;
+    margin: 0;
+  }
+
+  .gearBlockCard .gearBtn{
+    margin-top: 0;
+    align-self: center;
+  }
+}
+
+/* Étape 4 terdecies — léger renfort de contraste sur les boutons hors Booster */
+@media (min-width: 701px) and (hover: hover) and (pointer: fine){
+  .gearBlockCard .gearGrid > :not(:nth-child(1)) .gearBtn{
+    border-color: rgba(255,255,255,0.24);
+    background: linear-gradient(90deg, rgba(255,255,255,0.10), rgba(167,139,250,0.10));
+    box-shadow:
+      0 0 14px rgba(99,102,241,0.08),
+      inset 0 0 0 1px rgba(255,255,255,0.08);
+  }
+
+  .gearBlockCard .gearGrid > :not(:nth-child(1)) .gearBtn:hover,
+  .gearBlockCard .gearGrid > :not(:nth-child(1)) .gearBtn:focus-visible{
+    border-color: rgba(255,255,255,0.30);
+    background: linear-gradient(90deg, rgba(255,255,255,0.14), rgba(167,139,250,0.14));
+    box-shadow:
+      0 0 18px rgba(99,102,241,0.12),
+      inset 0 0 0 1px rgba(255,255,255,0.10);
+  }
+}
+
+
+/* Correctif dashboard mobile — Booster premium + icône stats colorée */
+@media (max-width:700px), (hover:none) and (pointer:coarse){
+  .gearBlockCard .gearGrid > :nth-child(1).gearCapsule{
+    border-color:rgba(125,211,252,.55);
+    background:
+      radial-gradient(105% 85% at 18% 10%, rgba(255,255,255,.18), rgba(255,255,255,0) 46%),
+      linear-gradient(135deg, rgba(17,39,74,.94) 4%, rgba(27,62,111,.84) 42%, rgba(57,113,189,.50) 70%, rgba(117,93,222,.40) 100%);
+    box-shadow:0 18px 46px rgba(0,0,0,.36),0 0 24px rgba(56,189,248,.14),inset 0 0 0 1px rgba(255,255,255,.16);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearSettingsBtn.gearStatsBtn,
+  .gearBlockCard .gearGrid > :nth-child(1) .gearStatsBtn{
+    top:14px;
+    right:22px;
+    width:32px;
+    height:32px;
+    border-color:rgba(255,255,255,.24);
+    background:linear-gradient(135deg,rgba(15,23,42,.72),rgba(30,41,59,.52));
+    box-shadow:0 0 16px rgba(56,189,248,.16),inset 0 0 0 1px rgba(255,255,255,.08);
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearStatsIcon{
+    width:16px;
+    height:16px;
+    filter:drop-shadow(0 0 8px rgba(56,189,248,.25));
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearStatsIcon::before{
+    left:1px;
+    right:1px;
+    bottom:1px;
+    height:13px;
+    background:
+      linear-gradient(to top, rgba(34,211,238,.98) 0 100%) 0 100% / 3px 8px no-repeat,
+      linear-gradient(to top, rgba(129,140,248,.98) 0 100%) 6px 100% / 3px 12px no-repeat,
+      linear-gradient(to top, rgba(244,114,182,.98) 0 100%) 12px 100% / 3px 10px no-repeat;
+  }
+
+  .gearBlockCard .gearGrid > :nth-child(1) .gearStatsIcon::after{
+    background:rgba(255,255,255,.46);
+  }
+}
+
+
+/* Correctif final — icônes Stats / Réglages plus à l’intérieur des bulles */
+.gearBlockCard .gearSettingsBtn{
+  right:28px !important;
+}
+.gearBlockCard .gearGrid > :nth-child(1) .gearSettingsBtn.gearStatsBtn,
+.gearBlockCard .gearGrid > :nth-child(1) .gearStatsBtn{
+  right:30px !important;
+}
+@media (max-width:700px), (hover:none) and (pointer:coarse){
+  .gearBlockCard .gearSettingsBtn{
+    right:26px !important;
+  }
+  .gearBlockCard .gearGrid > :nth-child(1) .gearSettingsBtn.gearStatsBtn,
+  .gearBlockCard .gearGrid > :nth-child(1) .gearStatsBtn{
+    right:28px !important;
   }
 }

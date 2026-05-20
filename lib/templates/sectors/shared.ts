@@ -27,7 +27,7 @@ export type VariantSeed = {
 export type SectorTemplateDefinition = {
   sector: ActivitySectorCategory;
   pack: SectorPack;
-  extraTemplates?: Partial<Record<Extract<TemplateAction, 'offres' | 'informations' | 'suivis' | 'enquetes'>, TemplateDef[]>>;
+  extraTemplates?: Partial<Record<Extract<TemplateAction, 'valoriser' | 'offres' | 'informations' | 'suivis' | 'enquetes'>, TemplateDef[]>>;
 };
 
 export type JobTemplateDefinition = {
@@ -35,8 +35,133 @@ export type JobTemplateDefinition = {
   professionKey: string;
   professionLabel: string;
   pack: SectorPack;
-  extraTemplates?: Partial<Record<Extract<TemplateAction, 'offres' | 'informations' | 'suivis' | 'enquetes'>, TemplateDef[]>>;
+  extraTemplates?: Partial<Record<Extract<TemplateAction, 'valoriser' | 'offres' | 'informations' | 'suivis' | 'enquetes'>, TemplateDef[]>>;
 };
+
+const boosterValoriserSeeds: VariantSeed[] = [
+  {
+    slug: 'realisation',
+    title: 'Réalisation récente',
+    subject: 'Une réalisation concrète signée {{nom_entreprise}}',
+    body: (pack) =>
+      'Bonjour,\n\n' +
+      `Nous mettons en avant une réalisation récente dans notre univers ${pack.label.toLowerCase()}.\n\n` +
+      '🏁 Contexte\n' +
+      `• besoin lié à ${pack.localHook}\n` +
+      '• intervention / prestation : {{services}}\n' +
+      `• objectif : ${pack.signature}\n\n` +
+      '📍 Zone : {{zones}}\n' +
+      '👉 Vous avez un besoin similaire ? {{cta_url}}\n\n' +
+      'À bientôt,\n{{prenom}} — {{nom_entreprise}}',
+    ctaLabel: '{{cta_label}}',
+  },
+  {
+    slug: 'savoir_faire',
+    title: 'Savoir-faire métier',
+    subject: 'Notre savoir-faire chez {{nom_entreprise}}',
+    body: (pack) =>
+      'Bonjour,\n\n' +
+      `Dans notre métier {{metier}}, notre valeur repose sur une approche claire : ${pack.signature}.\n\n` +
+      '🧠 Notre méthode\n' +
+      '• écoute du besoin\n' +
+      `• conseil adapté à ${pack.audience}\n` +
+      '• réalisation avec soin\n' +
+      '• suivi si nécessaire\n\n' +
+      'Nos prestations : {{services}}\n' +
+      '📍 Zone : {{zones}}\n\n' +
+      'Contact : {{telephone}} ou {{cta_url}}',
+    ctaLabel: '{{cta_label}}',
+  },
+  {
+    slug: 'pourquoi_nous',
+    title: 'Pourquoi nous choisir',
+    subject: 'Pourquoi choisir {{nom_entreprise}} ?',
+    body: (pack) =>
+      'Bonjour,\n\n' +
+      `Avant de choisir un professionnel, il faut être rassuré. Chez {{nom_entreprise}}, nous mettons l’accent sur ${pack.signature}.\n\n` +
+      '✅ Ce qui fait la différence\n' +
+      `• une réponse adaptée à ${pack.audience}\n` +
+      `• une présence locale : ${pack.localHook}\n` +
+      '• des prestations claires : {{services}}\n' +
+      '• nos points forts : {{forces}}\n\n' +
+      '👉 Discuter de votre besoin : {{cta_url}}',
+    ctaLabel: '{{cta_label}}',
+  },
+  {
+    slug: 'cas_client',
+    title: 'Cas client / problème résolu',
+    subject: 'Un problème résolu par {{nom_entreprise}}',
+    body: (pack) =>
+      'Bonjour,\n\n' +
+      `Voici un exemple de situation dans laquelle notre accompagnement peut faire la différence pour ${pack.audience}.\n\n` +
+      '🔎 Problème de départ : [situation]\n' +
+      '🛠️ Solution mise en place : [intervention]\n' +
+      '✅ Résultat : [bénéfice obtenu]\n\n' +
+      `Ce type d’action illustre notre engagement : ${pack.signature}.\n\n` +
+      'Contact : {{telephone}} ou {{cta_url}}',
+    ctaLabel: 'Parler de mon besoin',
+  },
+  {
+    slug: 'preuve_locale',
+    title: 'Preuve locale',
+    subject: '{{nom_entreprise}} intervient près de chez vous',
+    body: (pack) =>
+      'Bonjour,\n\n' +
+      `Nous accompagnons régulièrement nos clients sur {{zones}} pour ${pack.localHook}.\n\n` +
+      '📍 Exemple local\n' +
+      '• secteur : [ville / quartier]\n' +
+      '• besoin : [besoin traité]\n' +
+      '• solution : {{services}}\n\n' +
+      'Cette proximité nous permet de proposer une réponse plus réactive et adaptée.\n\n' +
+      '👉 Nous contacter : {{cta_url}}',
+    ctaLabel: '{{cta_label}}',
+  },
+  {
+    slug: 'coulisses',
+    title: 'Coulisses rassurantes',
+    subject: 'Dans les coulisses de {{nom_entreprise}}',
+    body: (pack) =>
+      'Bonjour,\n\n' +
+      `Aujourd’hui, nous partageons un aperçu de notre manière de travailler pour ${pack.signature}.\n\n` +
+      '🔍 En pratique\n' +
+      '• préparation sérieuse\n' +
+      `• attention portée à ${pack.localHook}\n` +
+      '• intervention claire et soignée\n' +
+      '• conseil après prestation si nécessaire\n\n' +
+      'Merci pour votre confiance,\n{{prenom}} — {{nom_entreprise}}',
+  },
+  {
+    slug: 'faq_rassurante',
+    title: 'FAQ rassurante',
+    subject: '3 réponses utiles avant de choisir {{nom_entreprise}}',
+    body: (pack) =>
+      'Bonjour,\n\n' +
+      'Voici 3 réponses aux questions fréquentes avant de faire appel à nous.\n\n' +
+      `1) Quand faut-il agir sur ${pack.localHook} ?\n` +
+      '2) Quelle prestation est la plus adaptée ?\n' +
+      '3) Comment se déroule la prise en charge ?\n\n' +
+      `Notre objectif : ${pack.signature}.\n\n` +
+      'Pour une réponse adaptée : {{telephone}} ou {{cta_url}}',
+    ctaLabel: 'Poser une question',
+  },
+  {
+    slug: 'engagements',
+    title: 'Méthode / engagements',
+    subject: 'Nos engagements chez {{nom_entreprise}}',
+    body: (pack) =>
+      'Bonjour,\n\n' +
+      `Dans notre activité {{metier}}, nos engagements sont simples : ${pack.signature}.\n\n` +
+      '✅ Notre cadre\n' +
+      '• écoute du besoin\n' +
+      '• explication claire\n' +
+      '• intervention adaptée\n' +
+      '• disponibilité après échange ou prestation\n\n' +
+      'Nos prestations : {{services}}\n' +
+      'Zone : {{zones}}\n\n' +
+      'Contact : {{cta_url}}',
+    ctaLabel: '{{cta_label}}',
+  },
+];
 
 const boosterOffresSeeds: VariantSeed[] = [
   {
@@ -225,20 +350,6 @@ const fideliserInformationsSeeds: VariantSeed[] = [
       'Bien à vous,\n{{prenom}} — {{nom_entreprise}}',
   },
   {
-    slug: 'conseil',
-    title: 'Conseil métier',
-    subject: 'Conseil utile de {{nom_entreprise}}',
-    body: (pack) =>
-      'Bonjour,\n\n' +
-      `Petit conseil autour de notre métier {{metier}}, lié à ${pack.localHook}.\n\n` +
-      '💡 Conseil du moment\n' +
-      `• anticipez les besoins liés à ${pack.localHook}\n` +
-      '• vérifiez les délais, contraintes ou préparatifs nécessaires\n' +
-      `• privilégiez une solution adaptée à ${pack.audience}\n\n` +
-      'Si besoin, nous restons disponibles sur {{zones}}.\n\n' +
-      'Cordialement,\n{{nom_entreprise}}',
-  },
-  {
     slug: 'actualite',
     title: 'Actualité entreprise',
     subject: 'Les dernières nouvelles de {{nom_entreprise}}',
@@ -279,19 +390,6 @@ const fideliserInformationsSeeds: VariantSeed[] = [
       'Bien à vous,\n{{nom_entreprise}}',
   },
   {
-    slug: 'coulisses',
-    title: 'Les coulisses de notre métier',
-    subject: 'Dans les coulisses de {{nom_entreprise}}',
-    body: (pack) =>
-      'Bonjour,\n\n' +
-      `Aujourd’hui, nous vous partageons un aperçu de notre métier {{metier}} et de notre manière de travailler pour ${pack.signature}.\n\n` +
-      '🔍 En pratique\n' +
-      '• écoute du besoin et du contexte\n' +
-      `• conseil adapté à ${pack.localHook}\n` +
-      '• réalisation, suivi ou recommandation claire\n\n' +
-      'Merci pour votre confiance,\n{{prenom}} — {{nom_entreprise}}',
-  },
-  {
     slug: 'disponibilites',
     title: 'Mise à jour des disponibilités',
     subject: 'Nos disponibilités et délais du moment',
@@ -304,33 +402,6 @@ const fideliserInformationsSeeds: VariantSeed[] = [
       '• secteurs couverts : {{zones}}\n\n' +
       'Pour vérifier un créneau, appelez-nous au {{telephone}}.\n\n' +
       'Bien à vous,\n{{nom_entreprise}}',
-  },
-  {
-    slug: 'faq',
-    title: 'Réponses aux questions fréquentes',
-    subject: '3 réponses utiles sur {{metier}}',
-    body: (pack) =>
-      'Bonjour,\n\n' +
-      'Voici 3 réponses rapides aux questions que l’on nous pose souvent.\n\n' +
-      `1) Quand faut-il anticiper une demande liée à ${pack.localHook} ?\n` +
-      '2) Quelles prestations sont les plus adaptées à votre situation ?\n' +
-      '3) Comment se déroule la prise en charge ou le suivi ?\n\n' +
-      'Si vous voulez un avis adapté à votre cas, répondez simplement à ce mail.\n\n' +
-      'Cordialement,\n{{prenom}} — {{nom_entreprise}}',
-  },
-  {
-    slug: 'engagement',
-    title: 'Notre méthode / engagement',
-    subject: 'Comment nous travaillons chez {{nom_entreprise}}',
-    body: (pack) =>
-      'Bonjour,\n\n' +
-      `Dans notre métier {{metier}}, notre engagement reste simple : ${pack.signature}.\n\n` +
-      '✅ Notre méthode\n' +
-      '• écoute du besoin\n' +
-      '• proposition claire\n' +
-      '• réalisation / suivi\n' +
-      '• disponibilité après intervention\n\n' +
-      'Merci pour votre confiance,\n{{nom_entreprise}}',
   },
 ];
 
@@ -608,11 +679,11 @@ const fideliserEnquetesSeeds: VariantSeed[] = [
 function buildTemplatesForAction(
   sector: ActivitySectorCategory,
   pack: SectorPack,
-  action: Extract<TemplateAction, 'offres' | 'informations' | 'suivis' | 'enquetes'>,
+  action: Extract<TemplateAction, 'valoriser' | 'offres' | 'informations' | 'suivis' | 'enquetes'>,
   seeds: VariantSeed[],
   professionKey?: string
 ): TemplateDef[] {
-  const moduleName = action === 'offres' ? 'booster' : 'fideliser';
+  const moduleName = action === 'valoriser' || action === 'offres' ? 'booster' : 'fideliser';
   return seeds.map((seed) => ({
     key: `${moduleName}_${action}_${sector}${professionKey ? `_${professionKey}` : ''}_${seed.slug}`,
     module: moduleName,
@@ -631,6 +702,8 @@ function buildTemplatesForAction(
 export function createSectorTemplates(definition: SectorTemplateDefinition): TemplateDef[] {
   const { sector, pack, extraTemplates } = definition;
   return [
+    ...buildTemplatesForAction(sector, pack, 'valoriser', boosterValoriserSeeds),
+    ...(extraTemplates?.valoriser ?? []),
     ...buildTemplatesForAction(sector, pack, 'offres', boosterOffresSeeds),
     ...(extraTemplates?.offres ?? []),
     ...buildTemplatesForAction(sector, pack, 'informations', fideliserInformationsSeeds),
@@ -645,6 +718,8 @@ export function createSectorTemplates(definition: SectorTemplateDefinition): Tem
 export function createJobTemplates(definition: JobTemplateDefinition): TemplateDef[] {
   const { sector, professionKey, pack, extraTemplates } = definition;
   return [
+    ...buildTemplatesForAction(sector, pack, 'valoriser', boosterValoriserSeeds, professionKey),
+    ...(extraTemplates?.valoriser ?? []),
     ...buildTemplatesForAction(sector, pack, 'offres', boosterOffresSeeds, professionKey),
     ...(extraTemplates?.offres ?? []),
     ...buildTemplatesForAction(sector, pack, 'informations', fideliserInformationsSeeds, professionKey),

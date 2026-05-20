@@ -3,17 +3,23 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { getInrSendRetentionCutoffIso, getOldestAutoRetentionCutoffIso, isInrSendItemRetained } from "@/lib/inrsendRetention";
 import { fetchInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
+import {
+  INRCY_WORKFLOW_ACTIONS,
+  INRSEND_GROUPED_FOLDERS,
+  INRSEND_LEGACY_FOLDERS,
+  getActionFromLegacyFolder,
+  getActionFromTrack,
+  getGroupedHistoryFolder,
+  getWorkflowActionLabel,
+  getWorkflowToolForAction,
+  isGroupedHistoryFolder,
+  type InrcyGroupedHistoryFolder,
+  type InrcyLegacyHistoryFolder,
+  type InrcyWorkflowAction,
+  type InrcyWorkflowTool,
+} from "@/lib/inrcyWorkflow";
 
-type Folder =
-  | "mails"
-  | "factures"
-  | "devis"
-  | "publications"
-  | "recoltes"
-  | "offres"
-  | "informations"
-  | "suivis"
-  | "enquetes";
+type Folder = InrcyLegacyHistoryFolder | InrcyGroupedHistoryFolder;
 
 type BoxView = "sent" | "drafts";
 type Status = "draft" | "sent" | "error" | "queued" | "processing" | "paused" | "partial" | "completed" | "failed";
@@ -21,8 +27,19 @@ type Status = "draft" | "sent" | "error" | "queued" | "processing" | "paused" | 
 type OutboxItem = {
   id: string;
   source: "send_items" | "app_events" | "mail_campaigns";
-  module?: "booster" | "fideliser";
+  module?: "booster" | "propulser" | "fideliser";
+  /**
+   * Dossier historique réel ou dossier groupé.
+   * Les anciennes valeurs restent supportées pour ne pas casser l'historique existant.
+   */
   folder: Folder;
+  /** Regroupement cible de la nouvelle navigation iNr'Send. */
+  groupedFolder?: InrcyGroupedHistoryFolder | null;
+  /** Action métier affichable dans la colonne Actions des futurs onglets groupés. */
+  workflowAction?: InrcyWorkflowAction | null;
+  workflowActionLabel?: string | null;
+  workflowTool?: InrcyWorkflowTool | null;
+  workflowToolLabel?: string | null;
   provider: string | null;
   status: Status;
   created_at: string;
@@ -71,30 +88,15 @@ type SendItemRow = {
 const MAILBOX_PAGE_SIZE = 20;
 const SOURCE_BATCH_SIZE = 60;
 const MAX_ITERATIONS = 5000;
-const ALL_FOLDERS: Folder[] = [
-  "mails",
-  "factures",
-  "devis",
-  "publications",
-  "recoltes",
-  "offres",
-  "informations",
-  "suivis",
-  "enquetes",
-];
+const ALL_FOLDERS: Folder[] = Array.from(
+  new Set<string>([...INRSEND_LEGACY_FOLDERS, ...INRSEND_GROUPED_FOLDERS]),
+) as Folder[];
 
 function emptyFolderCounts(): FolderCounts {
-  return {
-    mails: 0,
-    factures: 0,
-    devis: 0,
-    publications: 0,
-    recoltes: 0,
-    offres: 0,
-    informations: 0,
-    suivis: 0,
-    enquetes: 0,
-  };
+  return ALL_FOLDERS.reduce((acc, folder) => {
+    acc[folder] = 0;
+    return acc;
+  }, {} as FolderCounts);
 }
 
 function parsePositiveInt(value: string | null, fallback: number, max: number) {
@@ -166,6 +168,56 @@ function normalizeBoxView(value: string | null): BoxView {
   return String(value || "").toLowerCase() === "drafts" ? "drafts" : "sent";
 }
 
+function historyFolderForAction(action: InrcyWorkflowAction): Folder {
+  const definition = INRCY_WORKFLOW_ACTIONS[action] as { legacyFolder?: Folder; groupedFolder: Folder };
+  return definition.legacyFolder || definition.groupedFolder;
+}
+
+function workflowMetaFromAction(action: InrcyWorkflowAction | null | undefined) {
+  if (!action) {
+    return {
+      groupedFolder: null,
+      workflowAction: null,
+      workflowActionLabel: null,
+      workflowTool: null,
+      workflowToolLabel: null,
+    };
+  }
+
+  const tool = getWorkflowToolForAction(action);
+  return {
+    groupedFolder: INRCY_WORKFLOW_ACTIONS[action].groupedFolder,
+    workflowAction: action,
+    workflowActionLabel: getWorkflowActionLabel(action),
+    workflowTool: tool,
+    workflowToolLabel: tool === "booster" ? "Booster" : tool === "propulser" ? "Propulser" : "Fidéliser",
+  };
+}
+
+function workflowMetaFromFolder(folder: Folder) {
+  const action = getActionFromLegacyFolder(folder);
+  if (action) return workflowMetaFromAction(action);
+  return {
+    groupedFolder: getGroupedHistoryFolder(folder),
+    workflowAction: null,
+    workflowActionLabel: null,
+    workflowTool: null,
+    workflowToolLabel: null,
+  };
+}
+
+function groupedFolderForItem(item: Pick<OutboxItem, "folder" | "groupedFolder">): InrcyGroupedHistoryFolder | null {
+  return item.groupedFolder || getGroupedHistoryFolder(item.folder);
+}
+
+function countFolderItem(counts: FolderCounts, item: OutboxItem) {
+  counts[item.folder] = (counts[item.folder] || 0) + 1;
+  const groupedFolder = groupedFolderForItem(item);
+  if (groupedFolder && groupedFolder !== item.folder) {
+    counts[groupedFolder] = (counts[groupedFolder] || 0) + 1;
+  }
+}
+
 function defaultFolderFromSendType(type: SendType | string | null | undefined): Folder {
   if (type === "facture") return "factures";
   if (type === "devis") return "devis";
@@ -173,21 +225,8 @@ function defaultFolderFromSendType(type: SendType | string | null | undefined): 
 }
 
 function folderFromTrack(trackKind: string | null | undefined, trackType: string | null | undefined, fallback: Folder = "mails"): Folder {
-  const kind = String(trackKind || "").toLowerCase();
-  const type = String(trackType || "").toLowerCase();
-
-  if (kind === "booster") {
-    if (type === "review_mail") return "recoltes";
-    if (type === "promo_mail") return "offres";
-  }
-
-  if (kind === "fideliser") {
-    if (type === "newsletter_mail") return "informations";
-    if (type === "thanks_mail") return "suivis";
-    if (type === "satisfaction_mail") return "enquetes";
-  }
-
-  return fallback;
+  const action = getActionFromTrack(trackKind, trackType);
+  return action ? historyFolderForAction(action) : fallback;
 }
 
 function resolveCampaignFolder(raw: any): Folder {
@@ -197,6 +236,12 @@ function resolveCampaignFolder(raw: any): Folder {
   return tracked;
 }
 
+function stripWorkflowPrefix(value: string) {
+  return String(value || "")
+    .replace(/^(Valoriser|Récolter|Récolte|Offrir|Informer|Information|Suivre|Suivi|Enquêter|Enquête|Propulsion|Fidélisation)\s*[—–·-]\s*/i, "")
+    .trim();
+}
+
 function campaignTitleFromFolder(folder: Folder, subject: string) {
   const safeSubject = safeS(subject, "(sans objet)");
   if (folder === "offres") return `Offre — ${safeSubject}`;
@@ -204,6 +249,8 @@ function campaignTitleFromFolder(folder: Folder, subject: string) {
   if (folder === "informations") return `Information — ${safeSubject}`;
   if (folder === "suivis") return `Suivi — ${safeSubject}`;
   if (folder === "enquetes") return `Enquête — ${safeSubject}`;
+  if (folder === "propulsions") return safeSubject;
+  if (folder === "fidelisations") return safeSubject;
   if (folder === "factures") return `Envoi facture — ${safeSubject}`;
   if (folder === "devis") return `Envoi devis — ${safeSubject}`;
   return `Campagne — ${safeSubject}`;
@@ -344,7 +391,12 @@ function extractAttachmentsFromPayload(payload: any): { name: string; type?: str
 }
 
 function isVisibleInFolder(folder: Folder, item: OutboxItem, view: BoxView) {
-  if (item.folder !== folder) return false;
+  const itemGroupedFolder = groupedFolderForItem(item);
+  const folderMatches = isGroupedHistoryFolder(folder)
+    ? itemGroupedFolder === folder
+    : item.folder === folder;
+
+  if (!folderMatches) return false;
   if (view === "drafts") return item.source === "send_items" && item.status === "draft";
   return item.status !== "draft";
 }
@@ -370,7 +422,7 @@ function formatCampaignProgress(raw: any) {
 
 function matchesQuery(item: OutboxItem, query: string) {
   if (!query) return true;
-  const hay = `${item.title || ""} ${item.subTitle || ""} ${item.target || ""} ${item.preview || ""} ${item.provider || ""}`.toLowerCase();
+  const hay = `${item.title || ""} ${item.subTitle || ""} ${item.target || ""} ${item.preview || ""} ${item.provider || ""} ${item.workflowActionLabel || ""} ${item.workflowToolLabel || ""}`.toLowerCase();
   return hay.includes(query);
 }
 
@@ -384,7 +436,14 @@ function shouldQueryCampaigns(view: BoxView) {
 
 function shouldQueryEvents(folder: Folder, view: BoxView) {
   if (view === "drafts") return false;
-  return folder === "publications" || folder === "recoltes" || folder === "offres" || folder === "informations" || folder === "suivis" || folder === "enquetes";
+  return folder === "publications"
+    || folder === "recoltes"
+    || folder === "offres"
+    || folder === "propulsions"
+    || folder === "informations"
+    || folder === "suivis"
+    || folder === "enquetes"
+    || folder === "fidelisations";
 }
 
 function mapSendItems(rows: SendItemRow[]): OutboxItem[] {
@@ -394,11 +453,13 @@ function mapSendItems(rows: SendItemRow[]): OutboxItem[] {
       const folder: Folder = x.type === "facture" ? "factures" : x.type === "devis" ? "devis" : "mails";
       const title = safeS(x.subject, folder === "factures" ? "Facture" : folder === "devis" ? "Devis" : "(sans objet)");
       const preview = safeS(x.body_text || x.body_html, "").slice(0, 140);
+      const workflowMeta = workflowMetaFromFolder(folder);
       const status: Status = x.status === "sent" && x.error ? "error" : (x.status as Status);
       return {
         id: x.id,
         source: "send_items",
         folder,
+        ...workflowMeta,
         provider: x.provider || "Mail",
         status,
         created_at: x.created_at,
@@ -423,23 +484,25 @@ function mapSendItems(rows: SendItemRow[]): OutboxItem[] {
 function mapCampaignItems(rows: any[]): OutboxItem[] {
   return rows.map<OutboxItem>((x: any) => {
     const folder = resolveCampaignFolder(x);
+    const action = getActionFromTrack(x.track_kind, x.track_type) || getActionFromLegacyFolder(folder);
+    const workflowMeta = workflowMetaFromAction(action) || workflowMetaFromFolder(folder);
+    const rawModule = String(x.track_kind || "").toLowerCase();
     const counts = campaignCounts(x);
     const target = `${counts.total || 0} contact${counts.total > 1 ? "s" : ""}`;
     return {
       id: String(x.id || ""),
       source: "mail_campaigns",
-      module: String(x.track_kind || "").toLowerCase() === "booster"
-        ? "booster"
-        : String(x.track_kind || "").toLowerCase() === "fideliser"
-          ? "fideliser"
-          : undefined,
+      module: rawModule === "booster" || rawModule === "propulser" || rawModule === "fideliser"
+        ? rawModule as "booster" | "propulser" | "fideliser"
+        : undefined,
       folder,
+      ...workflowMeta,
       provider: x.provider || "Mail",
       status: String(x.status || "processing") as Status,
       created_at: String(x.created_at || new Date().toISOString()),
       sent_at: x.finished_at || null,
       error: x.last_error || null,
-      title: campaignTitleFromFolder(folder, x.subject),
+      title: stripWorkflowPrefix(safeS(x.subject, "(sans objet)")),
       target,
       preview: formatCampaignProgress(x),
       detailHtml: x.body_html,
@@ -455,27 +518,33 @@ function mapCampaignItems(rows: any[]): OutboxItem[] {
 }
 
 function mapEventItems(rows: any[]): OutboxItem[] {
-  const boosterItems = rows
-    .filter((e) => String(e.module) === "booster")
-    .map<OutboxItem>((e: any) => {
-      const t = String(e.type || "");
-      const folder: Folder = t === "publish" ? "publications" : t === "review_mail" ? "recoltes" : "offres";
-      const payload = (e.payload || {}) as any;
-      const title =
-        folder === "publications" ? "Publication" :
-        folder === "recoltes" ? "Récolte" :
-        folder === "offres" ? "Offre" :
-        folder === "informations" ? "Information" :
-        folder === "suivis" ? "Suivi" :
-        folder === "enquetes" ? "Enquête" :
-        "Message";
+  const supportedModules = new Set(["booster", "propulser", "fideliser"]);
 
+  return rows
+    .filter((e) => supportedModules.has(String(e.module)))
+    .map<OutboxItem>((e: any) => {
+      const module = String(e.module || "") as "booster" | "propulser" | "fideliser";
+      const t = String(e.type || "");
+      const action = getActionFromTrack(module, t);
+      const folder: Folder = action
+        ? historyFolderForAction(action)
+        : module === "fideliser"
+          ? "fidelisations"
+          : t === "publish"
+            ? "publications"
+            : "propulsions";
+      const workflowMeta = action ? workflowMetaFromAction(action) : workflowMetaFromFolder(folder);
+      const payload = (e.payload || {}) as any;
       const subTitle = firstNonEmpty(
         payload?.post?.title,
         payload?.title,
         payload?.subject,
         payload?.post?.subject,
       );
+
+      const title = folder === "publications"
+        ? "Publication"
+        : stripWorkflowPrefix(subTitle || safeS(payload?.preview || payload?.text || payload?.message || payload?.content, "Message"));
 
       const target =
         safeS(payload.channel) ||
@@ -488,9 +557,10 @@ function mapEventItems(rows: any[]): OutboxItem[] {
       return {
         id: e.id,
         source: "app_events",
-        module: "booster",
+        module,
         folder,
-        provider: "Booster",
+        ...workflowMeta,
+        provider: module === "fideliser" ? "Fidéliser" : module === "propulser" ? "Propulser" : "Booster",
         status: "sent",
         created_at: e.created_at,
         title,
@@ -504,44 +574,6 @@ function mapEventItems(rows: any[]): OutboxItem[] {
         raw: e,
       };
     });
-
-  const fideliserItems = rows
-    .filter((e) => String(e.module) === "fideliser")
-    .map<OutboxItem>((e: any) => {
-      const t = String(e.type || "");
-      const folder: Folder = t === "newsletter_mail" ? "informations" : t === "thanks_mail" ? "suivis" : "enquetes";
-      const payload = (e.payload || {}) as any;
-      const title = folder === "informations" ? "Informations" : folder === "suivis" ? "Suivis" : "Enquêtes";
-      const subTitle = firstNonEmpty(
-        payload?.post?.title,
-        payload?.title,
-        payload?.subject,
-        payload?.post?.subject,
-      );
-      const target = safeS(payload.to) || safeS(payload.recipients) || "Contacts";
-      const preview = safeS(payload.preview || payload.text || payload.message || payload.content, "").slice(0, 140);
-      const extracted = extractMessageFromPayload(payload);
-      return {
-        id: e.id,
-        source: "app_events",
-        module: "fideliser",
-        folder,
-        provider: "Fidéliser",
-        status: "sent",
-        created_at: e.created_at,
-        title,
-        subTitle: subTitle || undefined,
-        target,
-        preview,
-        detailHtml: extracted.html,
-        detailText: extracted.text,
-        channels: extractChannelsFromPayload(payload),
-        attachments: extractAttachmentsFromPayload(payload),
-        raw: e,
-      };
-    });
-
-  return [...boosterItems, ...fideliserItems];
 }
 
 async function fetchAllRows<T>(
@@ -570,7 +602,7 @@ async function computeFolderCounts(
   query: string,
 ): Promise<FolderCounts> {
   const counts = emptyFolderCounts();
-  const eventsCutoffIso = getOldestAutoRetentionCutoffIso(["publications", "recoltes", "offres", "informations", "suivis", "enquetes"]);
+  const eventsCutoffIso = getOldestAutoRetentionCutoffIso(["publications", "recoltes", "offres", "propulsions", "informations", "suivis", "enquetes", "fidelisations"]);
 
   const sendItemsPromise = fetchAllRows<SendItemRow>(async (from, to) => {
     let builder: any = supabase
@@ -608,7 +640,7 @@ async function computeFolderCounts(
           .from("app_events")
           .select("id, module, type, payload, created_at")
           .eq("user_id", userId)
-          .in("module", ["booster", "fideliser"])
+          .in("module", ["booster", "propulser", "fideliser"])
           .order("created_at", { ascending: false });
 
         if (eventsCutoffIso) builder = builder.gte("created_at", eventsCutoffIso);
@@ -628,7 +660,7 @@ async function computeFolderCounts(
     if (!isVisibleInFolder(item.folder, item, boxView)) continue;
     if (!isInrSendItemRetained(item.folder, item.created_at)) continue;
     if (!matchesQuery(item, query)) continue;
-    counts[item.folder] += 1;
+    countFolderItem(counts, item);
   }
 
   return counts;
@@ -651,7 +683,7 @@ export async function GET(req: Request) {
     const filterAccountId = cleanString(url.searchParams.get("filterAccountId"));
     const query = cleanString(url.searchParams.get("q")).toLowerCase();
     const folderCutoffIso = getInrSendRetentionCutoffIso(folder);
-    const eventSourceCutoffIso = getOldestAutoRetentionCutoffIso(["publications", "recoltes", "offres", "informations", "suivis", "enquetes"]);
+    const eventSourceCutoffIso = getOldestAutoRetentionCutoffIso(["publications", "recoltes", "offres", "propulsions", "informations", "suivis", "enquetes", "fidelisations"]);
     const targetVisibleCount = page * pageSize;
 
     const allItems: OutboxItem[] = [];
@@ -751,12 +783,14 @@ export async function GET(req: Request) {
           if (folderCutoffIso) builder = builder.gte("created_at", folderCutoffIso);
           else if (eventSourceCutoffIso) builder = builder.gte("created_at", eventSourceCutoffIso);
 
-          if (folder === "publications" || folder === "recoltes" || folder === "offres") {
+          if (folder === "publications") {
             builder = builder.eq("module", "booster");
-          } else if (folder === "informations" || folder === "suivis" || folder === "enquetes") {
+          } else if (folder === "recoltes" || folder === "offres" || folder === "propulsions") {
+            builder = builder.in("module", ["booster", "propulser"]);
+          } else if (folder === "informations" || folder === "suivis" || folder === "enquetes" || folder === "fidelisations") {
             builder = builder.eq("module", "fideliser");
           } else {
-            builder = builder.in("module", ["booster", "fideliser"]);
+            builder = builder.in("module", ["booster", "propulser", "fideliser"]);
           }
 
           const from = sourceState.app_events.offset;

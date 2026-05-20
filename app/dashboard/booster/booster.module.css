@@ -1,5 +1,5 @@
 
-.headerRow{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:8px}
+.headerRow{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:10px}
 .titleLine{display:flex;align-items:center;gap:10px}.titleIcon{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;font-size:24px;line-height:1;flex:0 0 28px}
 .closeWrap{display:flex;align-items:center;gap:10px}
 .tagline{flex:1;text-align:center;font-size:16px;font-weight:600;letter-spacing:-.01em;opacity:.92;padding:0 10px}
@@ -17,14 +17,14 @@
 .heroMeta{display:flex;gap:8px;flex-wrap:wrap;padding-top:8px}.heroMeta span{padding:5px 9px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);font-size:11px;color:rgba(255,255,255,.76)}.heroMissionGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:6px}
 .missionPill{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 11px;border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);min-height:54px}.missionDone{box-shadow:inset 0 0 0 1px rgba(34,197,94,.16)}.missionTodo{box-shadow:inset 0 0 0 1px rgba(249,115,22,.14)}.missionTitle{font-weight:800;font-size:14px}.missionSubtitle{margin-top:3px;font-size:11px;color:rgba(255,255,255,.63)}.missionState{padding:6px 10px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.10);background:rgba(15,23,42,.48)}.missionStateDone{color:#dcfce7;background:rgba(34,197,94,.16);border-color:rgba(34,197,94,.30);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}.missionStateTodo{color:#ffd9df;background:rgba(255,93,114,.14);border-color:rgba(255,93,114,.26);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
 .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:stretch}.stackCard{display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px;align-content:stretch;min-height:0}
-.triRow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:4px 0 6px;pointer-events:none}.triItem{height:68px;position:relative;clip-path:polygon(50% 0%,0% 100%,100% 100%);border:1px solid rgba(255,255,255,.12);box-shadow:0 14px 28px rgba(0,0,0,.22);background:radial-gradient(circle at 30% 20%,rgba(255,255,255,.14),rgba(255,255,255,.03))}.triLabel{position:absolute;left:50%;top:70%;transform:translate(-50%,-50%);font-size:18px;font-weight:800;letter-spacing:.16em;opacity:.92;width:92%;text-align:center;white-space:nowrap}.triCyan{box-shadow:0 14px 32px rgba(60,190,255,.10)}.triPurple{box-shadow:0 14px 32px rgba(150,110,255,.10)}.triPink{box-shadow:0 14px 32px rgba(255,110,190,.10)}
+.triRow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:6px 0 8px;pointer-events:none}.triItem{height:68px;position:relative;clip-path:polygon(50% 0%,0% 100%,100% 100%);border:1px solid rgba(255,255,255,.12);box-shadow:0 14px 28px rgba(0,0,0,.22);background:radial-gradient(circle at 30% 20%,rgba(255,255,255,.14),rgba(255,255,255,.03))}.triLabel{position:absolute;left:50%;top:70%;transform:translate(-50%,-50%);font-size:18px;font-weight:800;letter-spacing:.16em;opacity:.92;width:92%;text-align:center;white-space:nowrap}.triCyan{box-shadow:0 14px 32px rgba(60,190,255,.10)}.triPurple{box-shadow:0 14px 32px rgba(150,110,255,.10)}.triPink{box-shadow:0 14px 32px rgba(255,110,190,.10)}
 .actionCard{min-height:168px;padding:14px;display:grid;grid-template-rows:auto 1fr auto;transition:transform 180ms ease,box-shadow 180ms ease,border-color 180ms ease,background 180ms ease}.actionCard:hover{transform:translateY(-2px);box-shadow:0 18px 42px rgba(0,0,0,.30);border-color:rgba(255,255,255,.14);background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,.012))}.actionTop{display:flex;justify-content:space-between;align-items:center;gap:10px}.actionMiniTitle{display:block;font-size:16px;font-weight:900;letter-spacing:-.02em}.actionCenter{text-align:center;padding:6px 6px 0;display:grid;align-content:center;min-height:94px}.actionDesc{font-size:13px;line-height:1.3;max-width:40ch;margin:4px auto 0;opacity:.9}.actionReward{margin-top:10px;font-weight:800;font-size:12px;color:rgba(255,255,255,.88);min-height:18px}.actionHelper{margin-top:6px;font-size:12px;color:rgba(255,255,255,.66);min-height:16px}.actionBtnWrap{display:flex;justify-content:center;margin-top:8px}.actionBtn{padding:11px 16px;font-size:14px;transform:scale(1.02);transition:transform 160ms ease,box-shadow 160ms ease,filter 160ms ease}.actionBtn:hover{transform:translateY(-1px) scale(1.03);filter:brightness(1.03);box-shadow:0 10px 20px rgba(0,0,0,.22)}
 .status{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);font-size:12px;white-space:nowrap}.dot{width:10px;height:10px;border-radius:999px}.dotGreen{background:#2ee59d;box-shadow:0 0 0 6px rgba(46,229,157,.12)}.dotOrange{background:#ffb020;box-shadow:0 0 0 6px rgba(255,176,32,.12)}.dotRed{background:#ff5d72;box-shadow:0 0 0 6px rgba(255,93,114,.12)}.toneGreen{border-color:rgba(46,229,157,.22)!important;color:#d7fff0}.toneOrange{border-color:rgba(255,176,32,.22)!important;color:#fff2d3}.toneRed{border-color:rgba(255,93,114,.22)!important;color:#ffd9df}
 .metricCard{padding:13px;height:100%;min-height:318px;display:flex;flex-direction:column}.cardTopRow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.progressLabel{font-size:12px;color:rgba(255,255,255,.62);margin-top:5px}.metricLine{margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px}.metricBubble{min-width:82px;height:56px;border-radius:18px;display:grid;place-items:center;font-size:22px;font-weight:900;letter-spacing:-.03em;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.12),rgba(255,255,255,.04));border:1px solid rgba(255,255,255,.14);box-shadow:0 14px 32px rgba(0,0,0,.30);padding:0 12px}.pill{display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);font-size:12px}.progressState{padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);font-size:12px;font-weight:800}.progressBar{margin-top:12px;height:10px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}@keyframes progressReveal{from{transform:scaleX(.08);opacity:.55}to{transform:scaleX(1);opacity:1}}
 .progressFill{height:100%;border-radius:999px;background:linear-gradient(90deg,rgba(255,93,114,.85),rgba(255,176,32,.95),rgba(46,229,157,.95));transform-origin:left center;animation:progressReveal .8s cubic-bezier(.22,1,.36,1)}.progressHint{margin-top:8px;font-size:12px;color:rgba(255,255,255,.7);min-height:16px}.channelGridCompact{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}.channelGridCampaign{grid-template-columns:1fr;margin-top:auto;padding-top:10px}.channelItemCompact{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);font-size:13px;min-height:40px}.channelGridCampaign .channelItemCompact{min-height:34px;padding:7px 10px}.channelItemPlaceholder{visibility:hidden}.channelCount{font-weight:800;opacity:.95}
 .tipCard{padding:0;background:transparent!important;border:none!important;box-shadow:none!important}.tipListCompact{display:grid;gap:8px}.tipLineCompact{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);font-size:13px}.tipBadge{font-weight:800;opacity:.95}
 .desktopOnly{display:block}.mobileOnly{display:none}.mobileGroup{display:flex;flex-direction:column;gap:10px;margin-top:10px}.accordion{border:1px solid rgba(255,255,255,.10);border-radius:18px;background:rgba(0,0,0,.22);overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.25)}.accordionSummary{list-style:none;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;font-weight:800;letter-spacing:-.01em;cursor:pointer;user-select:none;transition:background 160ms ease}.accordionSummary:hover{background:rgba(255,255,255,.03)}.accordionSummary::-webkit-details-marker{display:none}.accordion[open] .chev{transform:rotate(180deg)}.chev{transition:transform 160ms ease;opacity:.9;font-size:16px}.accordionBody{padding:10px 10px 12px}
-@media (min-width:981px){.page{min-height:100vh;height:100vh;overflow-x:hidden;overflow-y:auto;padding-top:12px!important;padding-bottom:10px!important;box-sizing:border-box;scrollbar-gutter:stable}.container{height:100%;display:flex;flex-direction:column}.desktopOnly{flex:1 1 auto;min-height:0;display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:7px}.grid3{align-content:stretch}.actionCard,.metricCard{height:100%}.tipLineCompact{padding:7px 10px}.accordionSummary{padding:10px 14px}.tipCard{padding:0}}
+@media (min-width:981px){.page{min-height:100vh;height:100vh;overflow-x:hidden;overflow-y:auto;padding-top:12px!important;padding-bottom:10px!important;box-sizing:border-box;scrollbar-gutter:stable}.container{height:100%;display:flex;flex-direction:column}.desktopOnly{flex:1 1 auto;min-height:0;display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:9px}.grid3{align-content:stretch}.actionCard,.metricCard{height:100%}.tipLineCompact{padding:7px 10px}.accordionSummary{padding:10px 14px}.tipCard{padding:0}}
 @media (max-width:1160px){.missionSummary{grid-template-columns:1fr;align-items:flex-start}.missionSummaryLeft{width:100%}.missionSummaryCenter{position:static;transform:none;max-width:none;text-align:left;font-size:18px;white-space:normal;pointer-events:auto}.missionSummaryMeta{justify-content:flex-start;flex-wrap:wrap;margin-left:0}.missionToggle{margin-left:auto}}
 @media (max-width:980px){.grid3{grid-template-columns:1fr}.heroMissionGrid{grid-template-columns:1fr}.missionSummary{padding:10px 11px;gap:10px}.missionSummaryLeft{display:block}.missionSummaryTitle{margin-top:4px;font-size:12px}.missionSummaryCenter{font-size:16px}.heroScore{font-size:15px;padding:7px 10px}}
 @media (max-width:700px){.desktopOnly{display:none}.mobileOnly{display:block}.triRow{display:none}.triLabel{font-size:18px;letter-spacing:.08em}.missionSummaryCenter{font-size:15px}.missionToggle{font-size:12px!important;padding:7px 10px!important}.missionBody{padding:0 12px 10px}}
@@ -143,4 +143,481 @@
     0 16px 34px rgba(2,6,23,.30),
     0 10px 28px rgba(124,92,255,.18),
     0 0 0 1px rgba(255,255,255,.03)!important;
+}
+
+
+.statsBtn{
+  border:none;
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  border-radius:12px;
+  width:42px;
+  height:42px;
+  cursor:pointer;
+  font-size:18px;
+}
+.statsGrid{
+ display:grid;
+ grid-template-columns:repeat(3,minmax(0,1fr));
+ gap:12px;
+ margin-bottom:16px;
+}
+.statsCard{
+ background:rgba(255,255,255,.05);
+ border-radius:16px;
+ padding:14px;
+}
+.statsLabel{
+ opacity:.7;
+ font-size:13px;
+ margin-bottom:6px;
+}
+.statsValue{
+ font-size:24px;
+ font-weight:700;
+}
+.channelList{
+ display:flex;
+ flex-direction:column;
+ gap:10px;
+}
+.channelRow{
+ display:flex;
+ justify-content:space-between;
+ background:rgba(255,255,255,.04);
+ padding:10px 14px;
+ border-radius:12px;
+}
+
+/* Étape 4 ter — stats Booster en vraie fenêtre compacte, style cartes fusées */
+.statsModalBody{
+  display:grid;
+  gap:12px;
+}
+
+.statsModalBody .metricCard{
+  min-height:0;
+}
+
+
+/* Étape 8 — bande mission simplifiée, sans déroulant */
+.missionBanner{
+  margin-bottom:12px;
+  padding:13px 16px;
+  display:grid;
+  grid-template-columns:minmax(210px,1fr) minmax(220px,auto) minmax(210px,1fr);
+  align-items:center;
+  gap:16px;
+  background:linear-gradient(90deg,rgba(18,28,52,.82),rgba(31,21,58,.58) 48%,rgba(11,63,91,.46));
+  border:1px solid rgba(76,195,255,.16);
+  box-shadow:0 14px 32px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.04);
+  overflow:hidden;
+}
+.missionBannerLeft{min-width:0;display:grid;gap:4px;position:relative;z-index:1}.missionBannerTitle{font-size:18px;font-weight:950;letter-spacing:-.02em;color:#fff;line-height:1.08}.missionBannerCenter{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0}.missionBannerProgress{display:inline-flex;align-items:center;justify-content:center;min-width:74px;height:42px;padding:0 14px;border-radius:16px;border:1px solid rgba(255,255,255,.16);background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.14),rgba(255,255,255,.05));box-shadow:0 14px 28px rgba(0,0,0,.26);font-size:22px;font-weight:950;letter-spacing:-.04em;color:#fff}.missionBannerText{font-size:13px;font-weight:800;color:rgba(255,255,255,.78);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.missionBannerRight{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}.missionBannerUi,.missionBannerEarned{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;white-space:nowrap}.missionBannerUi{padding:8px 12px;border:1px solid rgba(76,195,255,.22);background:rgba(76,195,255,.10);font-weight:950;color:#fff}.missionBannerEarned{padding:7px 11px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.05);font-size:13px;font-weight:850;color:rgba(255,255,255,.82)}
+@media (max-width:980px){.missionBanner{grid-template-columns:1fr;align-items:center;text-align:center;justify-items:center}.missionBannerLeft{justify-items:center;text-align:center}.missionBannerCenter{justify-content:center;flex-wrap:wrap}.missionBannerRight{justify-content:center;flex-wrap:wrap}.missionBannerText{white-space:normal}.missionBannerTitle{font-size:16px}}
+
+/* Étape 9 — fusées Propulser / Fidéliser simplifiées : mission globale + blocs aérés */
+@media (min-width:981px){
+  .desktopOnly{
+    grid-template-rows:auto minmax(0,1fr);
+    gap:8px;
+  }
+}
+
+.rocketGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px;
+  min-height:0;
+  align-items:stretch;
+}
+
+.rocketColumn{
+  display:grid;
+  grid-template-rows:minmax(150px,auto) minmax(168px,auto) minmax(0,1fr);
+  gap:10px;
+  min-width:0;
+  min-height:0;
+}
+
+.actionCardSimple{
+  min-height:154px;
+  padding:18px 16px 16px;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;
+  gap:16px;
+}
+
+.actionCardSimple .actionMiniTitle{
+  font-size:17px;
+  line-height:1.08;
+}
+
+.actionCardSimple .actionDesc{
+  width:100%;
+  max-width:42ch;
+  margin:0 auto;
+  line-height:1.44;
+  text-align:center;
+}
+
+.actionCardSimple .actionBtnWrap{
+  width:100%;
+  justify-content:center;
+  margin-top:0;
+}
+
+.metricCardSimple{
+  min-height:0;
+  height:auto;
+  padding:14px;
+}
+
+.metricCardSimple .cardTopRow{
+  margin-bottom:10px;
+}
+
+.statsListSimple{
+  margin-top:0!important;
+  padding-top:6px!important;
+}
+
+.statsListSimple .channelItemCompact{
+  min-height:33px;
+  padding:7px 11px;
+  font-size:12.6px;
+}
+
+.tipPanel{
+  min-height:0;
+  padding:14px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.025));
+}
+
+.tipPanelTitle{
+  font-size:15px;
+  font-weight:900;
+  letter-spacing:-.01em;
+  color:rgba(255,255,255,.94);
+}
+
+.tipPanel .tipListCompact{
+  gap:8px;
+}
+
+.tipPanel .tipLineCompact{
+  min-height:32px;
+  padding:7px 11px;
+  font-size:12.6px;
+}
+
+.missionBannerTodo .missionBannerProgress,
+.missionBannerTodo .missionBannerState{
+  border-color:rgba(255,93,114,.28);
+  background:rgba(255,93,114,.12);
+  color:#ffd9df;
+  box-shadow:0 12px 28px rgba(255,93,114,.08), inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.missionBannerDone .missionBannerProgress,
+.missionBannerDone .missionBannerState{
+  border-color:rgba(46,229,157,.28);
+  background:rgba(46,229,157,.12);
+  color:#d7fff0;
+  box-shadow:0 12px 28px rgba(46,229,157,.08), inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.missionBannerState{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:36px;
+  padding:0 14px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.12);
+  font-size:13px;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+@media (max-width:980px){
+  .rocketGrid{grid-template-columns:1fr;}
+  .rocketColumn{grid-template-rows:auto;gap:12px;}
+  .actionCardSimple{min-height:142px;}
+  .tipPanel{margin-bottom:2px;}
+}
+
+
+/* Correctif mobile — titres d’action visibles + stats/conseils en accordéons premium */
+.actionCardSimple .actionMiniTitle{
+  display:none;
+}
+
+@media (max-width:700px){
+  .mobileGroup{
+    gap:10px;
+    margin-top:12px;
+  }
+
+  .actionCardSimple{
+    min-height:150px;
+    padding:18px 16px 16px;
+    align-items:center;
+    gap:12px;
+    background:linear-gradient(180deg,rgba(15,23,42,.82),rgba(12,17,31,.88))!important;
+    border-color:rgba(255,255,255,.11)!important;
+    box-shadow:0 18px 42px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04);
+  }
+
+  .actionCardSimple .actionMiniTitle{
+    display:block;
+    width:100%;
+    color:rgba(255,255,255,.96);
+    font-size:18px;
+    line-height:1.08;
+    font-weight:950;
+    letter-spacing:-.02em;
+    text-align:center;
+  }
+
+  .actionCardSimple .actionDesc{
+    line-height:1.42;
+    color:rgba(235,242,255,.80);
+    text-align:center;
+    max-width:35ch;
+  }
+
+  .actionCardSimple .actionBtnWrap{
+    margin-top:2px;
+  }
+
+  .mobileAccordion{
+    border-radius:18px;
+    border:1px solid rgba(255,255,255,.12);
+    background:
+      radial-gradient(120% 140% at 12% 0%, rgba(56,189,248,.10), transparent 44%),
+      linear-gradient(180deg, rgba(5,10,24,.92), rgba(8,10,20,.88));
+    box-shadow:0 18px 42px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.045);
+    overflow:hidden;
+  }
+
+  .mobileAccordion .accordionSummary{
+    min-height:48px;
+    padding:13px 14px;
+    color:rgba(255,255,255,.96);
+    font-size:15px;
+    font-weight:950;
+    background:
+      linear-gradient(90deg,rgba(255,255,255,.035),rgba(255,255,255,.015)),
+      rgba(0,0,0,.24);
+  }
+
+  .mobileAccordion .accordionBody{
+    padding:10px;
+    background:rgba(0,0,0,.12);
+    border-top:1px solid rgba(255,255,255,.07);
+  }
+
+  .mobileAccordion .metricCardSimple,
+  .mobileAccordion .tipPanel{
+    margin:0;
+    padding:0;
+    border:0!important;
+    background:transparent!important;
+    box-shadow:none!important;
+  }
+
+  .mobileAccordion .metricCardSimple .cardTopRow,
+  .mobileAccordion .tipPanelTitle{
+    display:none;
+  }
+
+  .mobileAccordion .statsListSimple,
+  .mobileAccordion .tipListCompact{
+    margin:0!important;
+    padding:0!important;
+    gap:8px;
+  }
+
+  .mobileAccordion .channelItemCompact,
+  .mobileAccordion .tipLineCompact{
+    min-height:34px;
+    padding:8px 10px;
+    border-radius:14px;
+    background:linear-gradient(90deg,rgba(255,255,255,.055),rgba(255,255,255,.025));
+    border-color:rgba(255,255,255,.09);
+    color:rgba(255,255,255,.90);
+  }
+}
+
+/* Premium sobre — Propulser/Fidéliser + stats Booster */
+.triItem{
+  height:68px;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.025)),
+    radial-gradient(circle at 50% 94%,rgba(255,255,255,.10),transparent 48%);
+  border-color:rgba(255,255,255,.15);
+  filter:drop-shadow(0 16px 20px rgba(0,0,0,.20));
+}
+.triItem::after{
+  content:"";
+  position:absolute;
+  left:12%;
+  right:12%;
+  bottom:-7px;
+  height:12px;
+  border-radius:999px;
+  background:rgba(255,255,255,.12);
+  filter:blur(10px);
+}
+.triCyan{background:linear-gradient(180deg,rgba(72,184,255,.20),rgba(255,255,255,.035));box-shadow:0 16px 34px rgba(72,184,255,.16)}
+.triPurple{background:linear-gradient(180deg,rgba(151,112,255,.20),rgba(255,255,255,.035));box-shadow:0 16px 34px rgba(151,112,255,.16)}
+.triPink{background:linear-gradient(180deg,rgba(255,116,184,.17),rgba(255,255,255,.035));box-shadow:0 16px 34px rgba(255,116,184,.14)}
+.triLabel{
+  color:rgba(255,255,255,.96);
+  text-shadow:0 2px 16px rgba(255,255,255,.14),0 1px 0 rgba(0,0,0,.28);
+}
+.actionCardSimple{
+  position:relative;
+  overflow:hidden;
+  min-height:168px;
+  background:
+    radial-gradient(circle at 50% 118%,rgba(79,70,229,.20),transparent 46%),
+    linear-gradient(180deg,rgba(18,28,52,.72),rgba(12,16,31,.86))!important;
+  border-color:rgba(255,255,255,.14)!important;
+  box-shadow:0 18px 44px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.07)!important;
+}
+.actionCardSimple::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:linear-gradient(135deg,rgba(255,255,255,.075),transparent 34%,rgba(255,255,255,.025));
+  opacity:.75;
+}
+.rocketColumn:nth-child(1) .actionCardSimple{background:radial-gradient(circle at 22% 5%,rgba(56,189,248,.18),transparent 34%),radial-gradient(circle at 50% 118%,rgba(56,189,248,.20),transparent 48%),linear-gradient(180deg,rgba(17,32,56,.78),rgba(12,16,31,.88))!important;}
+.rocketColumn:nth-child(2) .actionCardSimple{background:radial-gradient(circle at 22% 5%,rgba(168,85,247,.17),transparent 34%),radial-gradient(circle at 50% 118%,rgba(168,85,247,.20),transparent 48%),linear-gradient(180deg,rgba(25,22,54,.78),rgba(12,16,31,.88))!important;}
+.rocketColumn:nth-child(3) .actionCardSimple{background:radial-gradient(circle at 22% 5%,rgba(244,114,182,.15),transparent 34%),radial-gradient(circle at 50% 118%,rgba(244,114,182,.18),transparent 48%),linear-gradient(180deg,rgba(36,23,48,.78),rgba(12,16,31,.88))!important;}
+.actionCardSimple .actionDesc,.actionCardSimple .actionBtnWrap,.actionCardSimple .actionMiniTitle{position:relative;z-index:1}
+.actionCardSimple .actionDesc{color:rgba(235,242,255,.84)}
+.actionBtn{box-shadow:0 10px 24px rgba(56,189,248,.12), inset 0 1px 0 rgba(255,255,255,.14)!important;}
+.metricCardSimple,.tipPanel{
+  background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.026))!important;
+  border-color:rgba(255,255,255,.11)!important;
+}
+
+.statsModalPanel{
+  border:1px solid rgba(96,165,250,.18)!important;
+  box-shadow:0 32px 110px rgba(0,0,0,.55),0 0 70px rgba(59,130,246,.12)!important;
+}
+.boosterStatsCard{
+  position:relative;
+  overflow:hidden;
+  background:
+    radial-gradient(circle at 12% 0%,rgba(56,189,248,.16),transparent 35%),
+    radial-gradient(circle at 96% 12%,rgba(168,85,247,.13),transparent 32%),
+    linear-gradient(180deg,rgba(25,34,58,.92),rgba(13,18,34,.94))!important;
+  border-color:rgba(125,211,252,.16)!important;
+  box-shadow:0 20px 54px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.07)!important;
+}
+.boosterStatsCard .cardTopRow{position:relative;z-index:1}
+.boosterStatsCard .channelItemCompact{
+  background:linear-gradient(90deg,rgba(255,255,255,.075),rgba(255,255,255,.035));
+  border-color:rgba(255,255,255,.12);
+}
+.boosterStatsCard .channelCount{font-size:15px;color:#fff}
+.boosterStatsCard .progressBar{height:12px;background:rgba(255,255,255,.10);box-shadow:inset 0 1px 4px rgba(0,0,0,.24)}
+.boosterStatsCard .progressFill{box-shadow:0 0 18px rgba(46,229,157,.18)}
+.metricBubble.toneRed{
+  background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.18),rgba(255,93,114,.30) 46%,rgba(127,29,29,.28));
+  border-color:rgba(255,93,114,.46);
+  color:#fff1f3;
+  box-shadow:0 16px 34px rgba(255,93,114,.18), inset 0 1px 0 rgba(255,255,255,.12);
+}
+.metricBubble.toneGreen{
+  background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.18),rgba(46,229,157,.30) 46%,rgba(6,95,70,.28));
+  border-color:rgba(46,229,157,.48);
+  color:#ecfff7;
+  box-shadow:0 16px 34px rgba(46,229,157,.18), inset 0 1px 0 rgba(255,255,255,.12);
+}
+.metricBubble.toneOrange{
+  background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.18),rgba(255,176,32,.28) 46%,rgba(120,53,15,.26));
+  border-color:rgba(255,176,32,.42);
+  color:#fff8e8;
+  box-shadow:0 16px 34px rgba(255,176,32,.14), inset 0 1px 0 rgba(255,255,255,.12);
+}
+
+@media (max-width:700px){
+  .actionCardSimple{min-height:150px!important;}
+}
+
+/* Ajustements premium v3 — sobriété + lisibilité */
+.triItem{
+  opacity:.96;
+  border-color:rgba(255,255,255,.15)!important;
+  box-shadow:0 14px 28px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.08)!important;
+}
+.triCyan{
+  background:linear-gradient(180deg,rgba(56,189,248,.18),rgba(255,255,255,.035))!important;
+  box-shadow:0 14px 30px rgba(56,189,248,.12), inset 0 1px 0 rgba(255,255,255,.08)!important;
+}
+.triPurple{
+  background:linear-gradient(180deg,rgba(168,85,247,.16),rgba(255,255,255,.035))!important;
+  box-shadow:0 14px 30px rgba(168,85,247,.12), inset 0 1px 0 rgba(255,255,255,.08)!important;
+}
+.triPink{
+  background:linear-gradient(180deg,rgba(244,114,182,.105),rgba(255,255,255,.032))!important;
+  box-shadow:0 12px 24px rgba(244,114,182,.075), inset 0 1px 0 rgba(255,255,255,.07)!important;
+}
+.actionCardSimple .actionDesc{
+  color:rgba(245,248,255,.92)!important;
+  text-shadow:0 1px 10px rgba(0,0,0,.24);
+  opacity:1!important;
+}
+.rocketColumn:nth-child(3) .actionCardSimple{
+  background:
+    radial-gradient(circle at 22% 5%,rgba(244,114,182,.095),transparent 34%),
+    radial-gradient(circle at 50% 118%,rgba(244,114,182,.115),transparent 48%),
+    linear-gradient(180deg,rgba(31,23,43,.78),rgba(12,16,31,.88))!important;
+}
+.metricCardSimple,.tipPanel{
+  position:relative;
+  overflow:hidden;
+}
+.metricCardSimple::before,.tipPanel::before,.boosterStatsCard::before{
+  content:"";
+  position:absolute;
+  left:14px;
+  right:14px;
+  top:0;
+  height:1px;
+  pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);
+  opacity:.9;
+}
+.boosterStatsCard{
+  background:
+    radial-gradient(circle at 14% 0%,rgba(56,189,248,.22),transparent 36%),
+    radial-gradient(circle at 100% 8%,rgba(168,85,247,.18),transparent 34%),
+    linear-gradient(180deg,rgba(28,38,64,.96),rgba(12,17,33,.96))!important;
+  border-color:rgba(125,211,252,.24)!important;
+  box-shadow:0 24px 70px rgba(0,0,0,.42),0 0 42px rgba(56,189,248,.10),inset 0 1px 0 rgba(255,255,255,.09)!important;
+}
+.boosterStatsCard .progressFill.toneRed{background:linear-gradient(90deg,#ff5d72,#ff8a9a)!important;box-shadow:0 0 18px rgba(255,93,114,.32)!important;}
+.boosterStatsCard .progressFill.toneGreen{background:linear-gradient(90deg,#22c55e,#2ee59d)!important;box-shadow:0 0 20px rgba(46,229,157,.34)!important;}
+.boosterStatsCard .progressFill.toneOrange{background:linear-gradient(90deg,#ffb020,#ffd166)!important;box-shadow:0 0 18px rgba(255,176,32,.28)!important;}
+.boosterStatsCard .metricBubble.toneRed{
+  background:radial-gradient(circle at 30% 22%,rgba(255,255,255,.22),rgba(255,93,114,.42) 44%,rgba(127,29,29,.42))!important;
+  border-color:rgba(255,93,114,.62)!important;
+  box-shadow:0 0 0 1px rgba(255,93,114,.10),0 16px 36px rgba(255,93,114,.24),inset 0 1px 0 rgba(255,255,255,.15)!important;
+}
+.boosterStatsCard .metricBubble.toneGreen{
+  background:radial-gradient(circle at 30% 22%,rgba(255,255,255,.22),rgba(46,229,157,.44) 44%,rgba(6,95,70,.42))!important;
+  border-color:rgba(46,229,157,.66)!important;
+  box-shadow:0 0 0 1px rgba(46,229,157,.12),0 16px 36px rgba(46,229,157,.25),inset 0 1px 0 rgba(255,255,255,.15)!important;
 }

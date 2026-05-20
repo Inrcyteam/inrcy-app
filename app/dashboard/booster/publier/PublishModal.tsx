@@ -15,7 +15,7 @@ import {
   siteTextToEditableHtml,
   stripSiteTextFormatting,
 } from "@/lib/boosterFormatting";
-import stylesDash from "../../dashboard/dashboard.module.css";
+import stylesDash from "../../dashboard.module.css";
 import {
   ChannelImageAdapterCardsPanel,
   ChannelImageAdapterModal,

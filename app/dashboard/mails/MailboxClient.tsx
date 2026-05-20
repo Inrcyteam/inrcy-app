@@ -277,10 +277,10 @@ export default function MailboxClient() {
   const ATTACH_BUCKET = "inrbox_attachments";
   const lastAttachKeyRef = useRef<string>("");
 
-  // Optional tracking intent passed by Booster / Fidéliser templates.
+  // Optional tracking intent passed by Booster / Propulser / Fidéliser templates.
   // iNr'Send must only count items that are actually SENT.
   type PendingTrack = {
-    kind: "booster" | "fideliser";
+    kind: "booster" | "propulser" | "fideliser";
     type: string;
     payload: Record<string, any>;
   };
@@ -465,15 +465,15 @@ export default function MailboxClient() {
     const rawType = String(raw.track_type || "").trim().toLowerCase();
     const folderName = String(item.folder || raw.folder || "").trim().toLowerCase();
 
-    if ((rawKind === "booster" || rawKind === "fideliser") && rawType) {
-      return { kind: rawKind as "booster" | "fideliser", type: rawType, payload: {} };
+    if ((rawKind === "booster" || rawKind === "propulser" || rawKind === "fideliser") && rawType) {
+      return { kind: rawKind as "booster" | "propulser" | "fideliser", type: rawType, payload: {} };
     }
 
     if (rawType === "review_mail" || folderName === "recoltes") {
-      return { kind: "booster", type: "review_mail", payload: {} };
+      return { kind: "propulser", type: "review_mail", payload: {} };
     }
     if (rawType === "promo_mail" || folderName === "offres") {
-      return { kind: "booster", type: "promo_mail", payload: {} };
+      return { kind: "propulser", type: "promo_mail", payload: {} };
     }
     if (rawType === "newsletter_mail" || folderName === "informations") {
       return { kind: "fideliser", type: "newsletter_mail", payload: {} };
@@ -1031,27 +1031,17 @@ export default function MailboxClient() {
       case "devis":
         return { label: "🧾 Devis", href: "/dashboard/devis/new" };
 
-      // Booster
       case "publications":
-        // Deep-link vers la modale Booster "Publier"
         return { label: "📣 Publier", href: "/dashboard/booster?action=publish" };
+      case "propulsions":
       case "recoltes":
-        // Deep-link vers la modale Booster "Récolter" (bouton "Demander")
-        return { label: "⭐ Récolter", href: "/dashboard/booster?action=reviews" };
       case "offres":
-        // Deep-link vers la modale Booster "Offrir" (mail promo)
-        return { label: "🏷️ Offrir", href: "/dashboard/booster?action=promo" };
-
-      // Fidéliser
+        return { label: "🚀 Propulser", href: "/dashboard/propulser" };
+      case "fidelisations":
       case "informations":
-        // Deep-link vers la modale Fidéliser "Informer"
-        return { label: "📰 Informer", href: "/dashboard/fideliser?action=inform" };
       case "suivis":
-        // Deep-link vers la modale Fidéliser "Suivre" (thanks)
-        return { label: "🤝 Suivre", href: "/dashboard/fideliser?action=thanks" };
       case "enquetes":
-        // Deep-link vers la modale Fidéliser "Enquêter" (satisfaction)
-        return { label: "😊 Enquêter", href: "/dashboard/fideliser?action=satisfaction" };
+        return { label: "💌 Fidéliser", href: "/dashboard/fideliser" };
 
       default:
         return { label: "Ouvrir l’outil", href: null as string | null };
@@ -1150,11 +1140,13 @@ export default function MailboxClient() {
       factures: "factures",
       devis: "devis",
       publications: "publications",
-      recoltes: "recoltes",
-      offres: "offres",
-      informations: "informations",
-      suivis: "suivis",
-      enquetes: "enquetes",
+      propulsions: "propulsions",
+      fidelisations: "fidelisations",
+      recoltes: "propulsions",
+      offres: "propulsions",
+      informations: "fidelisations",
+      suivis: "fidelisations",
+      enquetes: "fidelisations",
     };
     if (q && allowed[q]) setFolder(allowed[q]);
   }, [searchParams, signatureEnabled, signaturePreview]);
@@ -1277,9 +1269,9 @@ export default function MailboxClient() {
     void run();
   }, [searchParams, signatureEnabled, signaturePreview]);
 
-  // Prefill compose modal from template modules (Booster / Fidéliser).
+  // Prefill compose modal from workflow modules (Booster / Propulser / Fidéliser).
   // Usage:
-  // - /dashboard/mails?folder=offres&template_key=...&prefill_subject=...&prefill_text=...&compose=1
+  // - /dashboard/mails?folder=propulsions&template_key=...&prefill_subject=...&prefill_text=...&compose=1
   // If template_key is provided, we render placeholders server-side from the user's profile/activity + connected tools.
   useEffect(() => {
     const preSubjectRaw = searchParams?.get("prefill_subject") || "";
@@ -1294,7 +1286,7 @@ export default function MailboxClient() {
     const trackType = searchParams?.get("track_type") || "";
     const trackPayloadRaw = searchParams?.get("track_payload") || "";
 
-    if ((trackKind === "booster" || trackKind === "fideliser") && trackType) {
+    if ((trackKind === "booster" || trackKind === "propulser" || trackKind === "fideliser") && trackType) {
       let payload: Record<string, any> = {};
       try {
         payload = trackPayloadRaw ? (JSON.parse(safeDecode(trackPayloadRaw)) as any) : {};

@@ -21,8 +21,9 @@ const INERTIA_ROWS = [
   { a: "Ouverture du compte", g: "+50 UI", f: "1 fois" },
   { a: "Compléter Mon profil", g: "+100 UI", f: "1 fois" },
   { a: "Compléter Mon activité", g: "+100 UI", f: "1 fois" },
-  { a: "Créer une actu", g: "+10 UI", f: "1 fois / semaine" },
-  { a: "Utiliser Booster / Fidéliser", g: "+10 UI", f: "1 fois / semaine" },
+  { a: "Utiliser Booster", g: "+10 UI", f: "1 publication / semaine" },
+  { a: "Utiliser Propulser", g: "+10 UI", f: "1 action / semaine" },
+  { a: "Utiliser Fidéliser", g: "+10 UI", f: "1 action / semaine" },
   { a: "Ancienneté", g: "+50 UI", f: "1re fois au 30e jour, puis tous les 30 jours" },
 ] as const;
 
@@ -62,7 +63,7 @@ export default function DashboardHelpModals({
             <div>
               <div style={{ fontWeight: 700, color: "#66d9ff", marginBottom: 10 }}>⚡ Unités d’Inertie</div>
               <div style={{ opacity: 0.96, lineHeight: 1.75, fontSize: 14.5 }}>
-                Points générés par votre activité et votre communication sur iNrCy (Booster, Fidéliser, publications, actions marketing…). Plus votre générateur est actif, plus vous accumulez d’Unités d’Inertie utilisables dans la Boutique iNrCy.
+                Points générés par votre activité et votre communication sur iNrCy (Booster, Propulser, Fidéliser, publications et actions hebdo). Plus votre générateur est actif, plus vous accumulez d’Unités d’Inertie utilisables dans la Boutique iNrCy.
               </div>
             </div>
 
@@ -84,7 +85,7 @@ export default function DashboardHelpModals({
             <div>
               <div style={{ fontWeight: 700, color: "#ffd36f", marginBottom: 10 }}>🚀 Opportunités activables</div>
               <div style={{ opacity: 0.96, lineHeight: 1.75, fontSize: 14.5 }}>
-                Contacts supplémentaires pouvant être générés grâce aux actions de communication réalisées dans iNrCy.
+                Contacts supplémentaires pouvant être générés grâce aux actions recommandées dans iNrCy : publier avec Booster, développer avec Propulser ou entretenir la relation avec Fidéliser.
                 Chaque opportunité activable représente une nouvelle demande potentielle à capter via vos canaux de communication.
               </div>
             </div>
@@ -180,7 +181,7 @@ export default function DashboardHelpModals({
               opacity: 0.95,
             }}
           >
-            Plus vos canaux sont actifs et alimentés par des actions de communication, plus votre générateur augmente sa capacité à attirer de nouveaux contacts.
+            Plus vos canaux sont actifs et alimentés par Booster, Propulser et Fidéliser, plus votre générateur augmente sa capacité à attirer et convertir de nouveaux contacts.
           </div>
         </div>
       </HelpModal>

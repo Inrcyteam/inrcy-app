@@ -87,7 +87,7 @@ const TOOL_TEXT_BANK: Record<ActionType, Record<SituationKey, ReadingTemplate[]>
     highPotentialHighLeads: [
       (ctx) => `${ctx.channelName} capte déjà des demandes (${ctx.monthLeads} sur 30 j) et garde un potentiel fort (+${ctx.opp}).`,
       (ctx) => `Il faut continuer à publier avec Booster pour maintenir la pression commerciale et éviter que le canal retombe.`,
-      (ctx) => `Ensuite, les templates peuvent prendre le relais si le CRM contient assez de contacts à relancer.`,
+      (ctx) => `Ensuite, Fidéliser peut prendre le relais si le CRM contient assez de contacts à relancer.`,
     ],
     lowPotentialHighLeads: [
       (ctx) => `${ctx.channelName} capte déjà de l’activité (${ctx.monthLeads} demandes sur 30 j), même si le potentiel additionnel reste limité (+${ctx.opp}).`,
@@ -97,92 +97,92 @@ const TOOL_TEXT_BANK: Record<ActionType, Record<SituationKey, ReadingTemplate[]>
     lowPotentialLowLeads: [
       (ctx) => `${ctx.channelName} reste encore discret : peu de demandes captées (${ctx.monthLeads} sur 30 j) et peu d’opportunités immédiates (+${ctx.opp}).`,
       (ctx) => `Le bon réflexe est Booster / Publier : une action courte pour tester le canal sans y passer trop de temps.`,
-      (ctx) => `Objectif : créer les premiers signaux avant de lancer des templates ou des relances.`,
+      (ctx) => `Objectif : créer les premiers signaux avant de lancer Propulser ou Fidéliser.`,
     ],
     balanced: [
       (ctx) => `${ctx.channelName} montre une base exploitable : +${ctx.opp} opportunités et ${ctx.monthLeads} demandes captées sur 30 j.`,
       (ctx) => `Publier avec Booster reste le levier prioritaire pour augmenter le volume sans complexifier l’action.`,
-      (ctx) => `Les templates viendront ensuite convertir les contacts si le CRM est suffisamment rempli.`,
+      (ctx) => `Fidéliser viendra ensuite convertir les contacts si le CRM est suffisamment rempli.`,
     ],
   },
   offrir: {
     highPotentialLowLeads: [
       (ctx) => `${ctx.channelName} a du potentiel (+${ctx.opp}) mais ne déclenche pas encore assez de demandes (${ctx.monthLeads} sur 30 j).`,
-      (ctx) => `Priorité Booster : publier une offre claire, visible et facile à comprendre pour provoquer le passage à l’action.`,
+      (ctx) => `Priorité Propulser : lancer une offre claire, visible et facile à comprendre pour provoquer le passage à l’action.`,
       (ctx) => `Le canal n’a pas besoin de plus de théorie : il a besoin d’un déclencheur commercial simple.`,
     ],
     highPotentialHighLeads: [
       (ctx) => `${ctx.channelName} fonctionne déjà (${ctx.monthLeads} demandes sur 30 j) et peut encore accélérer (+${ctx.opp}).`,
-      (ctx) => `Une offre publiée avec Booster peut transformer l’attention existante en demandes plus chaudes.`,
-      (ctx) => `Si le CRM suit, les templates permettront ensuite de relancer les contacts qui n’ont pas encore converti.`,
+      (ctx) => `Une action Offrir lancée avec Propulser peut transformer l’attention existante en demandes plus chaudes.`,
+      (ctx) => `Si le CRM suit, Fidéliser permettra ensuite de relancer les contacts qui n’ont pas encore converti.`,
     ],
     lowPotentialHighLeads: [
       (ctx) => `${ctx.channelName} génère déjà des demandes (${ctx.monthLeads} sur 30 j), mais le potentiel additionnel est plus mesuré (+${ctx.opp}).`,
       (ctx) => `Ici, une offre ponctuelle suffit : inutile de surinvestir, il faut surtout rentabiliser ce qui arrive déjà.`,
-      (ctx) => `Les templates de suivi ou de remerciement peuvent compléter si le CRM contient assez de contacts.`,
+      (ctx) => `Fidéliser peut compléter avec un suivi ou un remerciement si le CRM contient assez de contacts.`,
     ],
     lowPotentialLowLeads: [
       (ctx) => `${ctx.channelName} manque encore de traction : ${ctx.monthLeads} demandes sur 30 j et +${ctx.opp} opportunités.`,
-      (ctx) => `Une petite offre publiée via Booster est le test le plus rapide pour voir si le canal peut se réveiller.`,
+      (ctx) => `Une petite offre lancée via Propulser est le test le plus rapide pour voir si le canal peut se réveiller.`,
       (ctx) => `Avant de lancer des campagnes CRM, il faut d’abord créer une raison claire de contacter l’entreprise.`,
     ],
     balanced: [
       (ctx) => `${ctx.channelName} a une base correcte, mais le passage à l’action peut être renforcé.`,
-      (ctx) => `Booster doit servir à publier une offre ou un message très concret, orienté demande.`,
-      (ctx) => `Les templates deviennent utiles ensuite pour relancer ceux qui ont montré un intérêt.`,
+      (ctx) => `Propulser doit servir à lancer une offre ou un message très concret, orienté demande.`,
+      (ctx) => `Fidéliser devient utile ensuite pour relancer ceux qui ont montré un intérêt.`,
     ],
   },
   recolter: {
     highPotentialLowLeads: [
       (ctx) => `${ctx.channelName} laisse voir un potentiel (+${ctx.opp}), mais la confiance ne se transforme pas encore assez en demandes.`,
-      (ctx) => `Booster doit pousser une preuve : avis, témoignage, réalisation, avant/après ou retour client.`,
+      (ctx) => `Propulser doit pousser une preuve : avis, témoignage, réalisation, avant/après ou retour client.`,
       (ctx) => `Le but est de rassurer vite pour aider ce canal à capter plus que ${ctx.monthLeads} demandes sur 30 j.`,
     ],
     highPotentialHighLeads: [
       (ctx) => `${ctx.channelName} capte déjà (${ctx.monthLeads} demandes sur 30 j) et dispose encore d’un vrai potentiel (+${ctx.opp}).`,
-      (ctx) => `Publier des preuves avec Booster peut amplifier ce qui marche déjà, sans changer toute la stratégie.`,
-      (ctx) => `Ensuite, les templates peuvent demander des avis ou relancer les clients satisfaits.`,
+      (ctx) => `Valoriser des preuves avec Propulser peut amplifier ce qui marche déjà, sans changer toute la stratégie.`,
+      (ctx) => `Ensuite, Fidéliser peut demander des avis ou relancer les clients satisfaits.`,
     ],
     lowPotentialHighLeads: [
       (ctx) => `${ctx.channelName} capte des demandes réelles (${ctx.monthLeads} sur 30 j), même si le potentiel restant est plus limité.`,
-      (ctx) => `Le meilleur usage de Booster est de valoriser ces réussites : avis, preuve sociale, cas client.`,
-      (ctx) => `Les templates peuvent ensuite aider à récupérer plus d’avis depuis le CRM.`,
+      (ctx) => `Le meilleur usage de Propulser est de valoriser ces réussites : avis, preuve sociale, cas client.`,
+      (ctx) => `Fidéliser peut ensuite aider à récupérer plus d’avis depuis le CRM.`,
     ],
     lowPotentialLowLeads: [
       (ctx) => `${ctx.channelName} n’a pas encore assez de preuves visibles pour déclencher beaucoup de demandes.`,
-      (ctx) => `Une publication Booster basée sur un avis ou une réalisation peut créer le premier déclic.`,
-      (ctx) => `Les templates d’avis viendront après, quand le CRM aura assez de clients à solliciter.`,
+      (ctx) => `Une action Valoriser basée sur un avis ou une réalisation peut créer le premier déclic.`,
+      (ctx) => `Fidéliser viendra après, quand le CRM aura assez de clients à solliciter.`,
     ],
     balanced: [
       (ctx) => `${ctx.channelName} est exploitable, mais gagnerait à montrer davantage de preuves concrètes.`,
-      (ctx) => `Booster / Publier doit servir à rassurer avant de vendre : avis, résultat, cas client ou preuve terrain.`,
-      (ctx) => `C’est un bon pont vers les templates de collecte d’avis si le CRM est prêt.`,
+      (ctx) => `Propulser / Valoriser doit servir à rassurer avant de vendre : avis, résultat, cas client ou preuve terrain.`,
+      (ctx) => `C’est un bon pont vers Fidéliser si le CRM est prêt.`,
     ],
   },
   informer: {
     highPotentialLowLeads: [
       (ctx) => `${ctx.channelName} a encore du potentiel (+${ctx.opp}) mais pas assez de demandes captées (${ctx.monthLeads} sur 30 j).`,
-      (ctx) => `Même si l’action proposée est Informer, il faut d’abord garder une logique Booster : publier un conseil simple et visible.`,
-      (ctx) => `Les templates d’information deviennent utiles après, si le CRM contient assez de contacts à nourrir.`,
+      (ctx) => `Si Fidéliser est recommandé, il faut nourrir les contacts avec un message utile, simple et régulier.`,
+      (ctx) => `Fidéliser devient utile après, si le CRM contient assez de contacts à nourrir.`,
     ],
     highPotentialHighLeads: [
       (ctx) => `${ctx.channelName} est actif : ${ctx.monthLeads} demandes sur 30 j et encore +${ctx.opp} opportunités activables.`,
-      (ctx) => `Booster doit maintenir la visibilité, puis les templates d’information peuvent entretenir la relation dans le CRM.`,
+      (ctx) => `Booster maintient la visibilité, puis Fidéliser entretient la relation dans le CRM.`,
       (ctx) => `La logique est simple : publier pour attirer, informer pour rester présent.`,
     ],
     lowPotentialHighLeads: [
       (ctx) => `${ctx.channelName} capte déjà des demandes (${ctx.monthLeads} sur 30 j), sans énorme potentiel additionnel immédiat.`,
-      (ctx) => `Il faut entretenir cette base : publication légère côté Booster, puis information régulière via templates si le CRM le permet.`,
+      (ctx) => `Il faut entretenir cette base : publication légère côté Booster, puis information régulière via Fidéliser si le CRM le permet.`,
       (ctx) => `L’objectif est de rester en tête sans surcharger le canal.`,
     ],
     lowPotentialLowLeads: [
       (ctx) => `${ctx.channelName} reste calme : peu d’opportunités (+${ctx.opp}) et peu de demandes (${ctx.monthLeads} sur 30 j).`,
       (ctx) => `Un contenu informatif publié avec Booster est une bonne première action pour réchauffer le canal.`,
-      (ctx) => `Les campagnes d’information CRM attendront d’avoir assez de contacts utiles.`,
+      (ctx) => `Les actions Fidéliser attendront d’avoir assez de contacts utiles.`,
     ],
     balanced: [
       (ctx) => `${ctx.channelName} peut être entretenu sans action lourde.`,
-      (ctx) => `Publier un conseil via Booster maintient la présence ; les templates d’information prennent le relais côté CRM.`,
+      (ctx) => `Publier un conseil via Booster maintient la présence ; Fidéliser prend le relais côté CRM.`,
       (ctx) => `C’est une logique de continuité : visible dehors, présent auprès des contacts.`,
     ],
   },
@@ -190,11 +190,11 @@ const TOOL_TEXT_BANK: Record<ActionType, Record<SituationKey, ReadingTemplate[]>
     highPotentialLowLeads: [
       (ctx) => `${ctx.channelName} a du potentiel (+${ctx.opp}) mais pas encore assez de demandes à suivre (${ctx.monthLeads} sur 30 j).`,
       (ctx) => `Il faut donc publier avec Booster avant tout pour créer plus de matière commerciale.`,
-      (ctx) => `Les templates de suivi deviendront prioritaires dès que le CRM contiendra assez de demandes ou contacts chauds.`,
+      (ctx) => `Fidéliser deviendra prioritaire dès que le CRM contiendra assez de demandes ou contacts chauds.`,
     ],
     highPotentialHighLeads: [
       (ctx) => `${ctx.channelName} génère déjà de l’activité (${ctx.monthLeads} demandes sur 30 j) et garde un potentiel fort (+${ctx.opp}).`,
-      (ctx) => `Le bon enchaînement : Booster pour continuer à attirer, puis Suivre pour relancer vite les contacts du CRM.`,
+      (ctx) => `Le bon enchaînement : Booster pour continuer à attirer, puis Fidéliser / Suivre pour relancer vite les contacts du CRM.`,
       (ctx) => `C’est typiquement un canal à ne pas laisser dormir : chaque demande non suivie peut coûter du chiffre.`,
     ],
     lowPotentialHighLeads: [
@@ -204,34 +204,34 @@ const TOOL_TEXT_BANK: Record<ActionType, Record<SituationKey, ReadingTemplate[]>
     ],
     lowPotentialLowLeads: [
       (ctx) => `${ctx.channelName} n’a pas encore assez de demandes pour justifier une grosse séquence de suivi.`,
-      (ctx) => `Avant les templates, il faut publier avec Booster pour créer des signaux et remplir progressivement le CRM.`,
+      (ctx) => `Avant Fidéliser, il faut publier avec Booster pour créer des signaux et remplir progressivement le CRM.`,
       (ctx) => `Le suivi viendra ensuite, quand le canal aura plus de contacts à traiter.`,
     ],
     balanced: [
       (ctx) => `${ctx.channelName} présente une base exploitable : ${ctx.monthLeads} demandes sur 30 j et +${ctx.opp} opportunités.`,
-      (ctx) => `Booster maintient l’arrivée de demandes ; les templates Suivre transforment ensuite les contacts présents dans le CRM.`,
+      (ctx) => `Booster maintient l’arrivée de demandes ; Fidéliser transforme ensuite les contacts présents dans le CRM.`,
       (ctx) => `C’est le duo le plus logique : visibilité puis relance.`,
     ],
   },
   enqueter: {
     highPotentialLowLeads: [
       (ctx) => `${ctx.channelName} affiche un potentiel fort (+${ctx.opp}) mais ne capte pas assez de demandes (${ctx.monthLeads} sur 30 j).`,
-      (ctx) => `Avant de pousser plus fort, il faut tester avec Booster : publier un message clair pour comprendre ce qui déclenche ou bloque.`,
-      (ctx) => `Le template Enquêter pourra ensuite interroger les contacts CRM si la base est suffisante.`,
+      (ctx) => `Avant de pousser plus fort, il faut tester avec Booster ou Propulser : lancer un message clair pour comprendre ce qui déclenche ou bloque.`,
+      (ctx) => `Fidéliser pourra ensuite interroger les contacts CRM si la base est suffisante.`,
     ],
     highPotentialHighLeads: [
       (ctx) => `${ctx.channelName} capte déjà (${ctx.monthLeads} demandes sur 30 j), mais le potentiel restant indique qu’il y a encore quelque chose à optimiser.`,
-      (ctx) => `Booster permet de tester de nouveaux angles de publication ; Enquêter sert ensuite à comprendre les freins côté contacts.`,
+      (ctx) => `Booster permet de tester de nouveaux angles de publication ; Fidéliser / Enquêter sert ensuite à comprendre les freins côté contacts.`,
       (ctx) => `Le canal mérite une action rapide, pas une remise à zéro.`,
     ],
     lowPotentialHighLeads: [
       (ctx) => `${ctx.channelName} capte des demandes, mais l’opportunité additionnelle est plus basse (+${ctx.opp}).`,
-      (ctx) => `Il faut enquêter légèrement pour comprendre ce qui fonctionne déjà, puis le renforcer via Booster.`,
+      (ctx) => `Il faut enquêter légèrement avec Fidéliser pour comprendre ce qui fonctionne déjà, puis renforcer le bon levier.`,
       (ctx) => `Une enquête CRM courte peut aider, à condition d’avoir assez de contacts.`,
     ],
     lowPotentialLowLeads: [
       (ctx) => `${ctx.channelName} donne peu de signaux : ${ctx.monthLeads} demandes sur 30 j et +${ctx.opp} opportunités.`,
-      (ctx) => `Le bon test est une publication Booster simple, puis une enquête seulement si des contacts CRM peuvent répondre.`,
+      (ctx) => `Le bon test est une publication Booster simple, puis une action Enquêter seulement si des contacts CRM peuvent répondre.`,
       (ctx) => `Inutile de complexifier : il faut d’abord identifier le message qui réveille le canal.`,
     ],
     balanced: [
@@ -299,7 +299,7 @@ function buildContext(input: DecisionInput, provenance: ProvenanceInfo): Reading
 function qualityLine(ctx: ReadingContext) {
   if (ctx.quality <= 0) return "La qualité du signal reste à confirmer : mieux vaut lancer une action simple et mesurer la réaction.";
   if (ctx.quality < 55) return `Qualité ${ctx.quality}/100 : le canal doit être réveillé par une action simple avant d’être trop automatisé.`;
-  if (ctx.quality < 70) return `Qualité ${ctx.quality}/100 : la base est exploitable, mais Booster doit encore créer plus de régularité.`;
+  if (ctx.quality < 70) return `Qualité ${ctx.quality}/100 : la base est exploitable, mais la communication doit encore créer plus de régularité.`;
   return `Qualité ${ctx.quality}/100 : le canal est assez solide pour combiner publication et exploitation CRM.`;
 }
 

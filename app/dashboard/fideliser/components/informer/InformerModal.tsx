@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import stylesDash from "../../dashboard/dashboard.module.css";
+import stylesDash from "../../../dashboard.module.css";
 import { getTemplates, type TemplateDef } from "@/lib/messageTemplates";
 import { useBusinessTemplateContext } from "@/app/dashboard/_hooks/useBusinessTemplateContext";
 import RichMailEditor from "@/app/dashboard/_components/RichMailEditor";
@@ -8,7 +8,7 @@ import TemplateSubjectInlineEditor from "@/app/dashboard/_components/TemplateSub
 import { extractTemplatePlaceholders, textToRichMailHtml } from "@/lib/mailRichText";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 
-export default function ReviewModal({
+export default function InformerModal({
   styles,
   onClose,
   onDone = onClose,
@@ -20,7 +20,7 @@ export default function ReviewModal({
   const router = useRouter();
   const { sectorCategory, profession } = useBusinessTemplateContext();
 
-  const templates = useMemo(() => getTemplates("avis", undefined, sectorCategory, profession), [sectorCategory, profession]);
+  const templates = useMemo(() => getTemplates("informations", undefined, sectorCategory, profession), [sectorCategory, profession]);
   const categories = useMemo(() => {
     const map = new Map<string, TemplateDef>();
     for (const t of templates) {
@@ -29,17 +29,20 @@ export default function ReviewModal({
     return Array.from(map.values());
   }, [templates]);
 
-  const [selectedKey, setSelectedKey] = useState<string>(() => templates[0]?.key ?? "");
+  const [selectedKey, setSelectedKey] = useState<string>("");
   const selected = useMemo(
-    () => templates.find((t) => t.key === selectedKey) ?? templates[0],
-    [templates, selectedKey]
+    () => templates.find((t) => t.key === selectedKey) ?? categories[0] ?? templates[0],
+    [templates, categories, selectedKey]
   );
 
   const [subject, setSubject] = useState("");
   useEffect(() => {
-    if (!templates.length) return;
-    setSelectedKey((current) => (templates.some((t) => t.key === current) ? current : templates[0]?.key ?? ""));
-  }, [templates]);
+    if (!categories.length) {
+      setSelectedKey("");
+      return;
+    }
+    setSelectedKey(categories[0]?.key ?? "");
+  }, [categories]);
 
   const [body, setBody] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
@@ -53,6 +56,7 @@ export default function ReviewModal({
     return () => mq.removeEventListener?.("change", update);
   }, []);
 
+
   useEffect(() => {
     if (!selected) return;
     const subj = selected.subject;
@@ -61,6 +65,7 @@ export default function ReviewModal({
     setBody(txt);
     setBodyHtml(textToRichMailHtml(txt));
 
+    // Auto-remplissage (profil / activité / liens connectés)
     (async () => {
       try {
         const r = await fetch("/api/templates/render", {
@@ -75,7 +80,9 @@ export default function ReviewModal({
           setBody(renderedBody);
           setBodyHtml(textToRichMailHtml(renderedBody));
         }
-      } catch {}
+      } catch {
+        // ignore
+      }
     })();
   }, [selected?.key]);
 
@@ -94,15 +101,17 @@ export default function ReviewModal({
       if (!shouldContinue) return;
     }
     const q = new URLSearchParams();
-    q.set("folder", "recoltes");
+    q.set("folder", "informations");
     if (selected?.key) q.set("template_key", selected.key);
+    // URLSearchParams encode déjà, pas besoin de encodeURIComponent
     q.set("prefill_subject", subject);
     q.set("prefill_text", body);
     q.set("prefill_html", bodyHtml || textToRichMailHtml(body));
     q.set("compose", "1");
 
-    q.set("track_kind", "booster");
-    q.set("track_type", "review_mail");
+    // Track only after a real send (handled by iNr'Send).
+    q.set("track_kind", "fideliser");
+    q.set("track_type", "newsletter_mail");
     q.set(
       "track_payload",
       JSON.stringify({
@@ -119,7 +128,7 @@ export default function ReviewModal({
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 }}>
       <div className={styles.blockCard} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, maxWidth: "100%", boxSizing: "border-box", height: "100%" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 10, fontSize: 20, display: isMobile ? "none" : "block" }}>
-          Modèle d’email — Récolter
+          Modèle d’email — Informer
         </div>
 
         <div className={styles.subtitle} style={{ marginBottom: isMobile ? 0 : 10, display: isMobile ? "none" : "block" }}>
@@ -127,7 +136,7 @@ export default function ReviewModal({
         </div>
 
         <div style={{ marginBottom: isMobile ? 8 : 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(255,255,255,0.64)", marginBottom: 8, textTransform: "uppercase", display: isMobile ? "none" : "block" }}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.04em', color: 'rgba(255,255,255,0.64)', marginBottom: 8, textTransform: 'uppercase', display: isMobile ? 'none' : 'block' }}>
             Modèle dédié
           </div>
           <select
@@ -135,23 +144,23 @@ export default function ReviewModal({
             onChange={(e) => setSelectedKey(e.target.value)}
             aria-label="Choisir un modèle"
             style={{
-              width: "100%",
+              width: '100%',
               borderRadius: 16,
-              padding: "14px 16px",
-              background: "linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%)",
-              color: "#ffffff",
-              border: "1px solid rgba(255,255,255,0.16)",
-              outline: "none",
+              padding: '14px 16px',
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%)',
+              color: '#ffffff',
+              border: '1px solid rgba(255,255,255,0.16)',
+              outline: 'none',
               fontSize: 15,
               fontWeight: 700,
-              boxShadow: "0 14px 28px rgba(0,0,0,0.18)",
-              boxSizing: "border-box",
-              display: "block",
-              maxWidth: "100%",
+              boxShadow: '0 14px 28px rgba(0,0,0,0.18)',
+              boxSizing: 'border-box',
+              display: 'block',
+              maxWidth: '100%',
             }}
           >
             {categories.map((tpl, index) => (
-              <option key={tpl.category} value={tpl.key} style={{ color: "#111111" }}>
+              <option key={tpl.category} value={tpl.key} style={{ color: '#111111' }}>
                 {index + 1}. {tpl.title}
               </option>
             ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import BaseModal from "../../booster/components/BaseModal";
+import BaseModal from "../../_components/WorkflowBaseModal";
 import { legalDocs, type LegalDocKey } from "../../../legal/_components/legalDocs";
 import legalStyles from "../../../legal/legal.module.css";
 

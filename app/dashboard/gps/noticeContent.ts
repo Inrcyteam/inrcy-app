@@ -152,7 +152,7 @@ export const GPS_SECTIONS: GpsSection[] = [
           "Connecter les canaux utiles pour laisser iNrCy récupérer les données disponibles.",
           "Lire les résultats par canal : Google, sites, Facebook, Instagram ou LinkedIn selon les connexions.",
           "Repérer ce qui fonctionne : appels, clics, itinéraires, visites, formulaires ou interactions.",
-          "Utiliser ensuite **Booster** ou **Fidéliser** pour agir sur les bons leviers.",
+          "Utiliser ensuite **Booster**, **Propulser** ou **Fidéliser** selon le levier recommandé.",
         ],
         checks: [
           "Les canaux sont bien connectés.",
@@ -168,6 +168,8 @@ export const GPS_SECTIONS: GpsSection[] = [
           { label: "Ouvrir iNrStats", href: "/dashboard/stats" },
           { label: "Ouvrir les canaux", href: "/dashboard" },
           { label: "Ouvrir Booster", href: "/dashboard/booster" },
+          { label: "Ouvrir Propulser", href: "/dashboard/propulser" },
+          { label: "Ouvrir Fidéliser", href: "/dashboard/fideliser" },
         ],
       },
     ],
@@ -176,37 +178,75 @@ export const GPS_SECTIONS: GpsSection[] = [
     id: "booster",
     title: "Booster",
     emoji: "📣",
-    description: "Publier vite, bien et sur plusieurs canaux pour développer l’activité.",
+    description: "Activer les canaux avec une publication simple, rapide et multicanale.",
     articles: [
       {
         id: "booster-express",
         title: "Publier en moins d’une minute",
-        keywords: ["booster", "publier", "publication", "multicanal", "offrir", "récolter", "commercial", "avis", "nouveaux clients"],
+        keywords: ["booster", "publier", "publication", "multicanal", "canaux", "visibilité", "contenu"],
         duration: "3 min",
-        goal: "Capter",
         intro:
-          "Booster sert à développer la visibilité et capter de nouveaux clients. L’outil le plus important est Publier : une communication qualitative, multicanale et rapide.",
+          "Booster sert à publier sur tous les canaux connectés du professionnel. C’est l’outil phare pour rester visible avec un contenu clair, local et adapté à chaque canal.",
         steps: [
-          "Utiliser **Publier** pour communiquer sur un chantier, une offre, une nouveauté, un conseil ou une photo.",
+          "Cliquer sur **Publier maintenant** pour ouvrir directement l’outil de publication.",
+          "Préparer un contenu : chantier, nouveauté, conseil, photo, actualité ou preuve terrain.",
           "Choisir les canaux utiles : site, Google Business, Facebook, Instagram ou LinkedIn.",
-          "Vérifier le texte, l’image, le ton et l’appel à l’action : appeler, demander un devis ou visiter le site.",
-          "Utiliser ensuite **Offrir** et **Récolter** pour créer des actions commerciales personnalisées.",
+          "Vérifier le texte, l’image, le ton et l’appel à l’action avant l’envoi.",
+          "Pour une action commerciale guidée, passer ensuite par **Propulser**.",
         ],
         checks: [
           "Configuration IA est bien remplie.",
           "Les canaux de publication sont connectés.",
           "Le contenu correspond au métier et à la zone du pro.",
-          "L’appel à l’action est clair.",
+          "Une publication par semaine valide la mission Booster.",
         ],
         pitfalls: [
-          "Booster sert surtout à se développer et créer de nouvelles demandes.",
+          "**Régularité.**",
+          "Cet outil est un élément essentiel au développement de votre activité.",
           "Publier régulièrement vaut mieux que chercher la publication parfaite une fois tous les trois mois.",
         ],
         links: [
           { label: "Ouvrir Booster", href: "/dashboard/booster" },
-          { label: "Publier", href: "/dashboard/booster" },
           { label: "Configuration IA", href: "/dashboard/settings/ia" },
           { label: "Ouvrir les canaux", href: "/dashboard" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "propulser",
+    title: "Propulser",
+    emoji: "🚀",
+    description: "Développer l’activité avec des actions guidées : valoriser, récolter ou offrir.",
+    articles: [
+      {
+        id: "propulser-express",
+        title: "Lancer une action business",
+        keywords: ["propulser", "valoriser", "récolter", "offrir", "avis", "offre", "action business", "développer"],
+        duration: "3 min",
+        goal: "Développer",
+        intro:
+          "Propulser regroupe les actions guidées pour développer l’activité. Le pro choisit entre Valoriser, Récolter ou Offrir selon son besoin du moment.",
+        steps: [
+          "Choisir **Valoriser** pour mettre en avant avis, réalisations, coulisses ou preuves de confiance.",
+          "Choisir **Récolter** pour demander des avis, retours clients ou contacts exploitables.",
+          "Choisir **Offrir** pour pousser une offre, une opportunité commerciale ou une action courte.",
+          "Lancer une action par semaine pour valider la mission Propulser.",
+        ],
+        checks: [
+          "Le message est clair et orienté résultat.",
+          "Les contacts CRM sont prêts si l’action part par mail.",
+          "Les canaux sont connectés si l’action utilise une publication.",
+          "L’action choisie correspond au besoin réel : crédibilité, avis ou offre.",
+        ],
+        pitfalls: [
+          "Propulser ne remplace pas Booster : Booster publie, Propulser donne une direction business.",
+          "Une seule action Propulser par semaine suffit pour valider la mission UI.",
+        ],
+        links: [
+          { label: "Ouvrir Propulser", href: "/dashboard/propulser" },
+          { label: "Ouvrir CRM", href: "/dashboard/crm" },
+          { label: "Ouvrir iNr’Send", href: "/dashboard/mails" },
         ],
       },
     ],
@@ -224,12 +264,13 @@ export const GPS_SECTIONS: GpsSection[] = [
         duration: "4 min",
         goal: "Garder",
         intro:
-          "Booster aide à développer et capter de nouveaux clients. Fidéliser aide à garder le lien, faire revenir les anciens contacts et renforcer l’entreprise dans la durée.",
+          "Fidéliser sert à garder le lien avec les contacts existants, faire revenir les clients et renforcer la relation dans la durée.",
         steps: [
-          "Choisir un objectif : informer, relancer, suivre, enquêter, offrir ou récolter un retour client.",
+          "Choisir un objectif : **Informer**, **Suivre** ou **Enquêter**.",
           "Utiliser les contacts du **CRM** ou sélectionner les destinataires utiles.",
           "Laisser iNrCy générer un message personnalisé, puis l’ajuster si besoin.",
           "Envoyer depuis **iNr’Send** pour profiter de la boîte mail configurée et de la signature.",
+          "Une action Fidéliser par semaine valide la mission UI.",
         ],
         checks: [
           "Les contacts sont présents dans le CRM.",
@@ -262,11 +303,11 @@ export const GPS_SECTIONS: GpsSection[] = [
         duration: "3 min",
         goal: "Centraliser",
         intro:
-          "iNr’Send regroupe toutes les communications réalisées depuis iNrCy : mails, publications, campagnes, relances, devis et factures envoyés.",
+          "iNr’Send regroupe toutes les communications réalisées depuis iNrCy : mails, publications Booster, propulsions, fidélisations, devis et factures envoyés.",
         steps: [
           "Commencer par connecter les **boîtes mail** utilisées pour envoyer les communications.",
           "Créer une **signature iNr’Send** propre : elle sera ajoutée aux mails et évite les doubles signatures.",
-          "Consulter l’historique pour retrouver publications, mails, campagnes, devis, factures et résultats.",
+          "Consulter l’historique simplifié : Mails, Factures, Devis, Publications, Propulsions et Fidélisations.",
           "Réutiliser, modifier, supprimer ou revoir une communication sans retourner dans chaque outil séparément.",
         ],
         checks: [
@@ -300,7 +341,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         duration: "3 min",
         goal: "Contacts propres",
         intro:
-          "Le CRM sert à stocker et organiser les contacts. Les campagnes se pilotent depuis Booster, Fidéliser ou iNr’Send, mais elles s’appuient sur une base propre.",
+          "Le CRM sert à stocker et organiser les contacts. Les actions Propulser, Fidéliser et les envois iNr’Send s’appuient sur une base propre.",
         steps: [
           "Ajouter un contact à la main ou importer une liste existante.",
           "Renseigner au minimum nom/raison sociale, mail ou téléphone, catégorie et type.",
@@ -489,7 +530,7 @@ export const GPS_SECTIONS: GpsSection[] = [
           "iNrCy fonctionne mieux avec une petite régularité qu’avec de grosses actions rares. Le pro doit rester visible, actif et rassurant.",
         steps: [
           "Publier une fois par semaine une preuve d’activité : chantier, conseil, photo, offre ou actu.",
-          "Demander des avis après les clients satisfaits avec une action Récolter.",
+          "Demander des avis après les clients satisfaits avec **Propulser > Récolter**.",
           "Mettre à jour les infos visibles dès qu’un horaire, numéro ou service change.",
           "Relancer les anciens clients et prospects plutôt que chercher uniquement de nouveaux contacts.",
         ],
@@ -503,7 +544,11 @@ export const GPS_SECTIONS: GpsSection[] = [
           "Une petite action chaque semaine est meilleure qu’un gros effort une fois par mois.",
           "Montrer des preuves réelles rassure plus qu’un texte trop commercial.",
         ],
-        links: [{ label: "Ouvrir Booster", href: "/dashboard/booster" }],
+        links: [
+          { label: "Ouvrir Booster", href: "/dashboard/booster" },
+          { label: "Ouvrir Propulser", href: "/dashboard/propulser" },
+          { label: "Ouvrir Fidéliser", href: "/dashboard/fideliser" },
+        ],
       },
     ],
   },

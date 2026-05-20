@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
+import { awardInertiaActionForUser, type WeeklyMissionActionKey } from "@/lib/loyalty/serverAward";
 
 type AwardBody = {
   actionKey: string;
@@ -24,7 +25,9 @@ const ALLOWED_ACTION_KEYS = new Set([
 
   // Actions hebdo
   "create_actu",
-  "weekly_feature_use",
+  "weekly_feature_use", // compat ancienne mission commune
+  "weekly_propulser_use",
+  "weekly_fideliser_use",
 
   // Ancienneté
   "monthly_seniority",
@@ -35,6 +38,8 @@ const ALLOWED_ACTION_KEYS = new Set([
 const MULTIPLIED_ACTION_KEYS = new Set([
   "create_actu",
   "weekly_feature_use",
+  "weekly_propulser_use",
+  "weekly_fideliser_use",
   // (ajouter ici les futures actions de gains récurrents)
 ]);
 
@@ -172,6 +177,29 @@ export async function POST(req: Request) {
   if (MULTIPLIED_ACTION_KEYS.has(actionKey)) {
     // arrondi à l'entier le plus proche (UI = entier)
     effectiveAmount = Math.round(amount * turbo);
+  }
+
+  // Nouvelles missions hebdo séparées : Propulser et Fidéliser.
+  // On passe par l’insert serveur centralisé pour éviter toute dépendance à une ancienne RPC SQL
+  // qui ne connaîtrait que l’ancienne mission commune weekly_feature_use.
+  if (actionKey === "weekly_propulser_use" || actionKey === "weekly_fideliser_use") {
+    const result = await awardInertiaActionForUser({
+      userId: userData.user.id,
+      actionKey: actionKey as WeeklyMissionActionKey,
+      baseAmount: amount,
+      sourceId: String(body.sourceId || `week-${new Date().toISOString().slice(0, 10)}`),
+      label: body.label || (actionKey === "weekly_propulser_use" ? "Action Propulser" : "Action Fidéliser"),
+      meta: body.meta ?? {},
+    });
+
+    return NextResponse.json({
+      ok: result.ok,
+      skipped: result.skipped ?? false,
+      amount: result.amount ?? null,
+      balance: null,
+      updatedAt: null,
+      error: result.error ?? null,
+    }, { status: result.ok ? 200 : 400 });
   }
 
   const { data, error } = await supabase.rpc("award_inertia_action", {

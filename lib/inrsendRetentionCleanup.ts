@@ -37,7 +37,9 @@ function folderFromTrack(trackKind: string | null | undefined, trackType: string
   const kind = String(trackKind || "").toLowerCase();
   const type = String(trackType || "").toLowerCase();
 
-  if (kind === "booster") {
+  if (kind === "booster" || kind === "propulser") {
+    if (type === "publish") return "publications";
+    if (type === "valorize") return "propulsions";
     if (type === "review_mail") return "recoltes";
     if (type === "promo_mail") return "offres";
   }
@@ -53,7 +55,7 @@ function folderFromTrack(trackKind: string | null | undefined, trackType: string
 
 function resolveCampaignFolder(row: CampaignCleanupRow): InrSendFolder {
   const explicit = String(row.folder || "").toLowerCase();
-  if (explicit === "mails" || explicit === "factures" || explicit === "devis" || explicit === "publications" || explicit === "recoltes" || explicit === "offres" || explicit === "informations" || explicit === "suivis" || explicit === "enquetes") {
+  if (explicit === "mails" || explicit === "factures" || explicit === "devis" || explicit === "publications" || explicit === "recoltes" || explicit === "offres" || explicit === "informations" || explicit === "suivis" || explicit === "enquetes" || explicit === "propulsions" || explicit === "fidelisations") {
     return explicit;
   }
   return folderFromTrack(row.track_kind, row.track_type, defaultFolderFromSendType(row.type));
@@ -62,8 +64,9 @@ function resolveCampaignFolder(row: CampaignCleanupRow): InrSendFolder {
 function resolveEventFolder(row: EventCleanupRow): InrSendFolder | null {
   const mod = String(row.module || "").toLowerCase();
   const type = String(row.type || "").toLowerCase();
-  if (mod === "booster") {
+  if (mod === "booster" || mod === "propulser") {
     if (type === "publish") return "publications";
+    if (type === "valorize") return "propulsions";
     if (type === "review_mail") return "recoltes";
     if (type === "promo_mail") return "offres";
     return null;

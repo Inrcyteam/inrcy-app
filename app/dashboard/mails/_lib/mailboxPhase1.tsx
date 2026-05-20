@@ -77,18 +77,31 @@ export type Folder =
   | "offres"
   | "informations"
   | "suivis"
-  | "enquetes";
+  | "enquetes"
+  | "propulsions"
+  | "fidelisations";
 
+// Onglets affichés dans iNr'Send : navigation simplifiée, sans scroll horizontal.
 export const ALL_FOLDERS: Folder[] = [
   "mails",
   "factures",
   "devis",
   "publications",
+  "propulsions",
+  "fidelisations",
+];
+
+export const LEGACY_ACTION_FOLDERS: Folder[] = [
   "recoltes",
   "offres",
   "informations",
   "suivis",
   "enquetes",
+];
+
+export const ALL_KNOWN_FOLDERS: Folder[] = [
+  ...ALL_FOLDERS,
+  ...LEGACY_ACTION_FOLDERS,
 ];
 
 export type FolderCounts = Record<Folder, number>;
@@ -104,13 +117,15 @@ export function emptyFolderCounts(): FolderCounts {
     informations: 0,
     suivis: 0,
     enquetes: 0,
+    propulsions: 0,
+    fidelisations: 0,
   };
 }
 
 export function normalizeFolderCounts(input: unknown): FolderCounts {
   const counts = emptyFolderCounts();
   if (!input || typeof input !== "object") return counts;
-  for (const folder of ALL_FOLDERS) {
+  for (const folder of ALL_KNOWN_FOLDERS) {
     const value = Number((input as Record<string, unknown>)[folder] ?? 0);
     counts[folder] = Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
   }
@@ -118,22 +133,19 @@ export function normalizeFolderCounts(input: unknown): FolderCounts {
 }
 
 export function isFolderValue(value: string): value is Folder {
-  return (ALL_FOLDERS as string[]).includes(value);
+  return (ALL_KNOWN_FOLDERS as string[]).includes(value);
 }
 
 export function folderFromTrack(trackKind: string | null | undefined, trackType: string | null | undefined, fallback: Folder = "mails"): Folder {
   const kind = String(trackKind || "").toLowerCase();
   const type = String(trackType || "").toLowerCase();
 
-  if (kind === "booster") {
-    if (type === "review_mail") return "recoltes";
-    if (type === "promo_mail") return "offres";
+  if (kind === "booster" || kind === "propulser") {
+    if (type === "valorize" || type === "review_mail" || type === "promo_mail") return "propulsions";
   }
 
   if (kind === "fideliser") {
-    if (type === "newsletter_mail") return "informations";
-    if (type === "thanks_mail") return "suivis";
-    if (type === "satisfaction_mail") return "enquetes";
+    if (type === "newsletter_mail" || type === "thanks_mail" || type === "satisfaction_mail") return "fidelisations";
   }
 
   return fallback;
@@ -159,13 +171,38 @@ export function campaignTitleFromFolder(folder: Folder, subject: string) {
   if (folder === "informations") return `Information — ${safeSubject}`;
   if (folder === "suivis") return `Suivi — ${safeSubject}`;
   if (folder === "enquetes") return `Enquête — ${safeSubject}`;
+  if (folder === "propulsions") return safeSubject;
+  if (folder === "fidelisations") return safeSubject;
   if (folder === "factures") return `Envoi facture — ${safeSubject}`;
   if (folder === "devis") return `Envoi devis — ${safeSubject}`;
   return `Campagne — ${safeSubject}`;
 }
 
+export function groupedFolderFor(folder: Folder): Folder {
+  if (folder === "recoltes" || folder === "offres") return "propulsions";
+  if (folder === "informations" || folder === "suivis" || folder === "enquetes") return "fidelisations";
+  return folder;
+}
+
+export function isGroupedActionFolder(folder: Folder) {
+  return folder === "propulsions" || folder === "fidelisations";
+}
+
+export function workflowActionLabelFromFolder(folder: Folder): string | null {
+  if (folder === "recoltes") return "Récolter";
+  if (folder === "offres") return "Offrir";
+  if (folder === "informations") return "Informer";
+  if (folder === "suivis") return "Suivre";
+  if (folder === "enquetes") return "Enquêter";
+  return null;
+}
+
+export function workflowActionLabelForItem(item: Pick<OutboxItem, "folder" | "workflowActionLabel">): string {
+  return String(item.workflowActionLabel || workflowActionLabelFromFolder(item.folder) || "Action");
+}
+
 export function isBusinessMailFolder(folder: Folder) {
-  return folder === "recoltes" || folder === "offres" || folder === "informations" || folder === "suivis" || folder === "enquetes";
+  return folder === "recoltes" || folder === "offres" || folder === "propulsions" || folder === "informations" || folder === "suivis" || folder === "enquetes" || folder === "fidelisations";
 }
 
 // Typage historique d'envoi (ancienne table send_items)
@@ -263,9 +300,14 @@ export type SendItem = {
 export type OutboxItem = {
   id: string;
   source: "send_items" | "app_events" | "mail_campaigns";
-  module?: "booster" | "fideliser";
+  module?: "booster" | "propulser" | "fideliser";
   folder: Folder;
-  provider: string | null; // Gmail / Microsoft / IMAP / Booster / Fidéliser / Admin
+  groupedFolder?: Folder | null;
+  workflowAction?: "publier" | "valoriser" | "recolter" | "offrir" | "informer" | "suivre" | "enqueter" | null;
+  workflowActionLabel?: string | null;
+  workflowTool?: "booster" | "propulser" | "fideliser" | null;
+  workflowToolLabel?: string | null;
+  provider: string | null; // Gmail / Microsoft / IMAP / Booster / Propulser / Fidéliser / Admin
   status: Status;
   created_at: string;
   sent_at?: string | null;
@@ -1048,6 +1090,18 @@ export function folderTheme(f: Folder): React.CSSProperties {
       glow: "rgba(244,114,182,0.24)",
       border: "rgba(244,114,182,0.36)",
     },
+    propulsions: {
+      start: "rgba(251,146,60,0.30)",
+      end: "rgba(244,114,182,0.24)",
+      glow: "rgba(251,146,60,0.26)",
+      border: "rgba(251,146,60,0.40)",
+    },
+    fidelisations: {
+      start: "rgba(34,197,94,0.24)",
+      end: "rgba(56,189,248,0.20)",
+      glow: "rgba(34,197,94,0.22)",
+      border: "rgba(34,197,94,0.36)",
+    },
   };
 
   const theme = themes[f];
@@ -1094,6 +1148,10 @@ export function historyEmptyState(folder: Folder, view: BoxView, query: string):
       return "Aucun suivi envoyé pour le moment.";
     case "enquetes":
       return "Aucune enquête envoyée pour le moment.";
+    case "propulsions":
+      return "Aucune propulsion pour le moment.";
+    case "fidelisations":
+      return "Aucune fidélisation pour le moment.";
     case "factures":
       return "Aucune facture envoyée pour le moment.";
     case "devis":
@@ -1111,27 +1169,31 @@ export function folderLabel(f: Folder) {
       return "Factures";
     case "devis":
       return "Devis";
-    // Booster (actions: Publier / Récolter / Offrir)
     case "publications":
       return "Publications";
     case "recoltes":
       return "Récoltes";
     case "offres":
       return "Offres";
-    // Fidéliser (actions: Informer / Suivre / Enquêter)
+    case "propulsions":
+      return "Propulsions";
     case "informations":
       return "Informations";
     case "suivis":
       return "Suivis";
     case "enquetes":
       return "Enquêtes";
+    case "fidelisations":
+      return "Fidélisations";
   }
 }
 
 export type BoxView = "sent" | "drafts";
 
 export function isVisibleInFolder(folder: Folder, item: OutboxItem, view: BoxView) {
-  if (item.folder !== folder) return false;
+  const itemGroupedFolder = (item.groupedFolder as Folder | null | undefined) || groupedFolderFor(item.folder);
+  const folderMatches = isGroupedActionFolder(folder) ? itemGroupedFolder === folder : item.folder === folder;
+  if (!folderMatches) return false;
 
   // Brouillons : uniquement pour l'historique send_items.
   if (view === "drafts") return item.source === "send_items" && item.status === "draft";
@@ -1286,6 +1348,9 @@ export function historySelectionKey(item: Pick<OutboxItem, "id" | "source">) {
 }
 
 export function listGridTemplateColumns(folder: Folder) {
+  if (isGroupedActionFolder(folder)) {
+    return "minmax(360px, 2.35fr) minmax(88px, 108px) minmax(150px, 0.82fr) minmax(145px, 170px) 78px";
+  }
   if (folder === "publications") {
     return "minmax(0, 1.35fr) minmax(190px, 0.95fr) minmax(150px, 180px) 86px";
   }

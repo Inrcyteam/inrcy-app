@@ -346,7 +346,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                     <div className={styles.composeSectionHeader}>
                       <div>
                         <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>👥</span>Destinataires</div>
-                        <div className={styles.composeSectionHint}>Saisissez une adresse ou sélectionnez des contacts CRM.</div>
+                        <div className={styles.composeSectionHint}>Saisissez une adresse ou sélectionnez des contacts CRM. Séparez les adresses mails par un ";" pour ajouter plusieurs destinataires.</div>
                       </div>
                       {selectedCrmCount > 0 ? (
                         <span className={`${styles.badge} ${styles.composeCountBadge}`}>{selectedCrmCount} sélectionné{selectedCrmCount > 1 ? "s" : ""}</span>
@@ -355,7 +355,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                     <input
                       value={to}
                       onChange={(e) => setTo(e.target.value)}
-                      placeholder="email@exemple.com, autre@exemple.com"
+                      placeholder="email@exemple.com; autre@exemple.com"
                       style={composeInputStyle}
                     />
                     {isBulkCampaignCompose ? (

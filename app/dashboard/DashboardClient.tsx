@@ -9,6 +9,7 @@ import DashboardHelpModals from "./_components/DashboardHelpModals";
 import DashboardHero from "./_components/DashboardHero";
 import DashboardTopbar from "./_components/DashboardTopbar";
 import DashboardChannelsSection from "./_components/DashboardChannelsSection";
+import DashboardBoosterModalLayer from "./_components/DashboardBoosterModalLayer";
 import DashboardSettingsDrawerContent from "./_components/DashboardSettingsDrawerContent";
 import { useDrawerMutationGuard } from "./_hooks/useDrawerMutationGuard";
 import { useDashboardNotifications } from "./_hooks/useDashboardNotifications";
@@ -52,6 +53,7 @@ export default function DashboardClient() {
   const [helpSiteWebOpen, setHelpSiteWebOpen] = useState(false);
   const [helpInertieOpen, setHelpInertieOpen] = useState(false);
   const [helpInstagramOpen, setHelpInstagramOpen] = useState(false);
+  const [dashboardBoosterModal, setDashboardBoosterModal] = useState<null | "publish" | "stats">(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
@@ -2278,6 +2280,13 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         goToModule={goToModule}
         openPanel={openPanel}
         onOpenChannelsHelp={() => setHelpCanauxOpen(true)}
+        onOpenBoosterPublish={() => setDashboardBoosterModal("publish")}
+        onOpenBoosterStats={() => setDashboardBoosterModal("stats")}
+      />
+
+      <DashboardBoosterModalLayer
+        mode={dashboardBoosterModal}
+        onClose={() => setDashboardBoosterModal(null)}
       />
 
       <SettingsDrawer

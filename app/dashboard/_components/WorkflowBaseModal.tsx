@@ -1,21 +1,26 @@
 "use client";
 
 import { useEffect } from "react";
-import styles from "../../../dashboard/dashboard.module.css";
+import styles from "../dashboard.module.css";
 
 export default function BaseModal({
   title,
   moduleLabel,
   onClose,
   headerHidden = false,
+  compact = false,
+  maxWidth,
   children,
 }: {
   title: string;
   moduleLabel?: string; // ex: "Module Booster", "Module Fidéliser"
   onClose: () => void | Promise<void>;
   headerHidden?: boolean;
+  compact?: boolean;
+  maxWidth?: number | string;
   children: React.ReactNode;
 }) {
+  const resolvedMaxWidth = typeof maxWidth === "number" ? `${maxWidth}px` : maxWidth;
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") void onClose();
@@ -59,9 +64,11 @@ export default function BaseModal({
         backdropFilter: "blur(14px)",
         WebkitBackdropFilter: "blur(14px)",
         display: "flex",
-        alignItems: "stretch",
-        justifyContent: "stretch",
-        padding: "var(--inrcy-modal-overlay-padding, max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)))",
+        alignItems: compact ? "center" : "stretch",
+        justifyContent: compact ? "center" : "stretch",
+        padding: compact
+          ? "max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left))"
+          : "var(--inrcy-modal-overlay-padding, max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)))",
         boxSizing: "border-box",
         overflow: "hidden",
       }}
@@ -70,10 +77,10 @@ export default function BaseModal({
         onMouseDown={(e) => e.stopPropagation()}
         className={[styles.blockCard, styles.fullscreenModalCard].join(" ")}
         style={{
-          width: "100%",
-          maxWidth: "100%",
-          height: "100%",
-          maxHeight: "100%",
+          width: compact ? "min(100%, var(--inrcy-compact-modal-width, 680px))" : "100%",
+          maxWidth: compact ? (resolvedMaxWidth || "680px") : "100%",
+          height: compact ? "auto" : "100%",
+          maxHeight: compact ? "calc(100dvh - 32px)" : "100%",
           boxSizing: "border-box",
           minWidth: 0,
           borderRadius: "var(--inrcy-modal-card-radius, 22px)",
@@ -138,7 +145,7 @@ export default function BaseModal({
             padding: "var(--inrcy-modal-content-padding, max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)))",
             overflowY: "auto",
             overflowX: "hidden",
-            flex: 1,
+            flex: compact ? "0 1 auto" : 1,
             minHeight: 0,
             minWidth: 0,
             boxSizing: "border-box",
@@ -150,12 +157,12 @@ export default function BaseModal({
           <div
             className={styles.fullscreenModalInner}
             style={{
-              maxWidth: "var(--inrcy-modal-inner-max-width, min(1400px, 100%))",
+              maxWidth: compact ? "100%" : "var(--inrcy-modal-inner-max-width, min(1400px, 100%))",
               margin: "0 auto",
               minWidth: 0,
               boxSizing: "border-box",
-              minHeight: "100%",
-              height: "100%",
+              minHeight: compact ? "auto" : "100%",
+              height: compact ? "auto" : "100%",
               width: "100%",
               display: "flex",
               flexDirection: "column",

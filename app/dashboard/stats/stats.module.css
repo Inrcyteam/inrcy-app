@@ -1384,3 +1384,10 @@
   }
 }
 
+
+/* Étape 6 — iNrStats : badge Propulser */
+.action_propulser {
+  background: rgba(168, 85, 247, 0.13);
+  border-color: rgba(168, 85, 247, 0.32);
+  color: rgba(243, 232, 255, 0.94);
+}

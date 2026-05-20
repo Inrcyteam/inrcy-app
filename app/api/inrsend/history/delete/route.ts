@@ -22,7 +22,7 @@ export async function POST(req: Request) {
 
   try {
     const body = (await req.json().catch(() => ({}))) as DeletePayload;
-    const allowedFolders = ["mails", "factures", "devis", "publications", "recoltes", "offres", "informations", "suivis", "enquetes"];
+    const allowedFolders = ["mails", "factures", "devis", "publications", "recoltes", "offres", "informations", "suivis", "enquetes", "propulsions", "fidelisations"];
     const rawItems = Array.isArray(body?.items) ? body.items : [];
     const normalizedItems = rawItems.length
       ? rawItems.map((entry) => ({

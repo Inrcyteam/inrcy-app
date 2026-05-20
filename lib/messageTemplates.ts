@@ -12,7 +12,7 @@ import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 // {{site_url}}, {{facebook_url}}, {{gmb_url}}, {{avis_url}}, {{cta_label}}, {{cta_url}}
 
 export type TemplateModule = "booster" | "fideliser";
-export type TemplateAction = "avis" | "offres" | "informations" | "suivis" | "enquetes";
+export type TemplateAction = "valoriser" | "avis" | "offres" | "informations" | "suivis" | "enquetes";
 
 export type TemplateDef = {
   key: string;
@@ -30,6 +30,207 @@ export type TemplateDef = {
 
 const BASE_TEMPLATES: TemplateDef[] = [
   // -------------------- BOOSTER --------------------
+  // ---- VALORISER ----
+  {
+    key: "booster_valoriser_realisation",
+    module: "booster",
+    action: "valoriser",
+    category: "realisation",
+    title: "Réalisation / chantier récent",
+    subject: "Dernière réalisation de {{nom_entreprise}} ({{ville}})",
+    body:
+      "Bonjour,\n\n" +
+      "Nous partageons une réalisation récente pour montrer concrètement notre manière de travailler.\n\n" +
+      "🏁 Contexte\n" +
+      "• Besoin : [besoin du client]\n" +
+      "• Intervention : [ce qui a été fait]\n" +
+      "• Résultat : [résultat obtenu]\n\n" +
+      "Ce type de demande correspond à nos prestations : {{services}}.\n" +
+      "Nous intervenons sur : {{zones}}.\n\n" +
+      "Vous avez un besoin similaire ? Contactez-nous : {{telephone}} ou {{cta_url}}\n\n" +
+      "{{prenom}} — {{nom_entreprise}}",
+    ctaLabel: "Nous contacter",
+  },
+  {
+    key: "booster_valoriser_avant_apres",
+    module: "booster",
+    action: "valoriser",
+    category: "avant_apres",
+    title: "Avant / Après",
+    subject: "Avant / après : un résultat concret signé {{nom_entreprise}}",
+    body:
+      "Bonjour,\n\n" +
+      "Voici un exemple concret de transformation réalisée par {{nom_entreprise}}.\n\n" +
+      "📸 Avant\n" +
+      "• Situation de départ : [décrire le problème / besoin]\n\n" +
+      "✨ Après\n" +
+      "• Résultat obtenu : [résultat visible / bénéfice client]\n" +
+      "• Méthode utilisée : [étapes principales]\n\n" +
+      "Notre objectif : apporter une solution claire, propre et durable autour de {{services}}.\n\n" +
+      "Pour échanger sur votre projet : {{cta_url}}\n\n" +
+      "{{nom_entreprise}} — {{telephone}}",
+    ctaLabel: "Voir / demander conseil",
+  },
+  {
+    key: "booster_valoriser_temoignage_client",
+    module: "booster",
+    action: "valoriser",
+    category: "temoignage",
+    title: "Témoignage client",
+    subject: "Un retour client qui compte pour {{nom_entreprise}}",
+    body:
+      "Bonjour,\n\n" +
+      "Un client nous a récemment partagé ce retour :\n\n" +
+      "\"[insérer témoignage ou extrait d’avis]\"\n\n" +
+      "Ce retour reflète ce que nous cherchons à apporter au quotidien : un service sérieux, clair et adapté à chaque situation.\n\n" +
+      "🧩 Nos prestations : {{services}}\n" +
+      "📍 Zone : {{zones}}\n\n" +
+      "Vous souhaitez en discuter ? {{telephone}} ou {{cta_url}}\n\n" +
+      "{{prenom}} — {{nom_entreprise}}",
+    ctaLabel: "Contacter l’entreprise",
+  },
+  {
+    key: "booster_valoriser_pourquoi_nous",
+    module: "booster",
+    action: "valoriser",
+    category: "pourquoi_nous",
+    title: "Pourquoi nous choisir",
+    subject: "Pourquoi faire appel à {{nom_entreprise}} ?",
+    body:
+      "Bonjour,\n\n" +
+      "Quand on choisit un professionnel, le plus important est souvent d’être rassuré avant de passer à l’action.\n\n" +
+      "✅ Pourquoi nos clients nous font confiance\n" +
+      "• Une approche claire et adaptée à votre besoin\n" +
+      "• Des prestations centrées sur : {{services}}\n" +
+      "• Une présence locale sur : {{zones}}\n" +
+      "• Nos points forts : {{forces}}\n\n" +
+      "Besoin d’un avis ou d’un devis ? Contact : {{telephone}} ou {{cta_url}}\n\n" +
+      "{{nom_entreprise}}",
+    ctaLabel: "Demander un échange",
+  },
+  {
+    key: "booster_valoriser_service_phare",
+    module: "booster",
+    action: "valoriser",
+    category: "service_phare",
+    title: "Service phare",
+    subject: "Notre prestation la plus demandée chez {{nom_entreprise}}",
+    body:
+      "Bonjour,\n\n" +
+      "Nous mettons aujourd’hui en avant une prestation particulièrement demandée par nos clients.\n\n" +
+      "⭐ Service phare : [nom de la prestation]\n" +
+      "• Pour quel besoin : [cas fréquent]\n" +
+      "• Ce que cela apporte : [bénéfice concret]\n" +
+      "• Comment nous procédons : [méthode simple]\n\n" +
+      "Cette prestation s’inscrit dans notre activité : {{services}}.\n" +
+      "Zone d’intervention : {{zones}}.\n\n" +
+      "Pour en savoir plus : {{cta_url}}\n\n" +
+      "{{prenom}} — {{nom_entreprise}}",
+    ctaLabel: "Découvrir le service",
+  },
+  {
+    key: "booster_valoriser_cas_client",
+    module: "booster",
+    action: "valoriser",
+    category: "cas_client",
+    title: "Cas client / problème résolu",
+    subject: "Un problème résolu par {{nom_entreprise}}",
+    body:
+      "Bonjour,\n\n" +
+      "Voici un cas concret rencontré récemment.\n\n" +
+      "🔎 Le problème\n" +
+      "• [décrire la situation du client]\n\n" +
+      "🛠️ Notre intervention\n" +
+      "• [décrire les actions réalisées]\n\n" +
+      "✅ Le résultat\n" +
+      "• [résultat / bénéfice obtenu]\n\n" +
+      "C’est exactement le type de situation sur lequel nous pouvons vous accompagner autour de {{services}}.\n\n" +
+      "Contact : {{telephone}} ou {{cta_url}}\n\n" +
+      "{{nom_entreprise}}",
+    ctaLabel: "Parler de mon besoin",
+  },
+  {
+    key: "booster_valoriser_preuve_locale",
+    module: "booster",
+    action: "valoriser",
+    category: "preuve_locale",
+    title: "Preuve locale / intervention proche",
+    subject: "{{nom_entreprise}} intervient près de chez vous",
+    body:
+      "Bonjour,\n\n" +
+      "Nous accompagnons régulièrement des clients sur {{zones}} pour des besoins liés à {{services}}.\n\n" +
+      "📍 Exemple local\n" +
+      "• Lieu / secteur : [ville ou quartier]\n" +
+      "• Besoin traité : [besoin]\n" +
+      "• Résultat : [résultat / bénéfice]\n\n" +
+      "Cette proximité nous permet d’être plus réactifs et de proposer une réponse adaptée au terrain.\n\n" +
+      "Besoin d’un professionnel local ? {{telephone}} ou {{cta_url}}\n\n" +
+      "{{prenom}} — {{nom_entreprise}}",
+    ctaLabel: "Contacter localement",
+  },
+  {
+    key: "booster_valoriser_savoir_faire",
+    module: "booster",
+    action: "valoriser",
+    category: "savoir_faire",
+    title: "Savoir-faire métier",
+    subject: "Notre savoir-faire chez {{nom_entreprise}}",
+    body:
+      "Bonjour,\n\n" +
+      "Aujourd’hui, nous mettons en avant notre savoir-faire autour de {{services}}.\n\n" +
+      "🧠 Notre approche\n" +
+      "• Comprendre précisément le besoin\n" +
+      "• Proposer une solution adaptée\n" +
+      "• Réaliser avec soin\n" +
+      "• Rester disponible après l’intervention\n\n" +
+      "Nos forces : {{forces}}\n" +
+      "Zone : {{zones}}\n\n" +
+      "Pour échanger : {{cta_url}}\n\n" +
+      "{{nom_entreprise}} — {{telephone}}",
+    ctaLabel: "Échanger avec nous",
+  },
+  {
+    key: "booster_valoriser_engagements",
+    module: "booster",
+    action: "valoriser",
+    category: "engagements",
+    title: "Engagements de l’entreprise",
+    subject: "Nos engagements chez {{nom_entreprise}}",
+    body:
+      "Bonjour,\n\n" +
+      "Avant de choisir un professionnel, il est normal de vouloir comprendre ses engagements.\n\n" +
+      "✅ Chez {{nom_entreprise}}, nous nous engageons sur :\n" +
+      "• une communication claire\n" +
+      "• une solution adaptée au besoin\n" +
+      "• une intervention sérieuse\n" +
+      "• un suivi disponible si nécessaire\n\n" +
+      "Nos prestations : {{services}}\n" +
+      "Nos zones : {{zones}}\n\n" +
+      "Une question ? {{telephone}} ou {{cta_url}}\n\n" +
+      "{{prenom}} — {{nom_entreprise}}",
+    ctaLabel: "Poser une question",
+  },
+  {
+    key: "booster_valoriser_equipe_renforcee",
+    module: "booster",
+    action: "valoriser",
+    category: "equipe_renforcee",
+    title: "Équipe renforcée pour mieux servir",
+    subject: "Une équipe renforcée chez {{nom_entreprise}}",
+    body:
+      "Bonjour,\n\n" +
+      "Notre équipe évolue pour mieux répondre aux demandes de nos clients.\n\n" +
+      "👥 Ce que cela change concrètement\n" +
+      "• plus de disponibilité\n" +
+      "• une meilleure organisation\n" +
+      "• un accompagnement plus fluide autour de {{services}}\n\n" +
+      "L’objectif reste le même : proposer un service fiable et rassurant sur {{zones}}.\n\n" +
+      "Contact : {{telephone}} ou {{cta_url}}\n\n" +
+      "{{nom_entreprise}}",
+    ctaLabel: "Nous contacter",
+  },
+
+  // ---- AVIS ----
   {
     key: "booster_avis_base",
     module: "booster",
@@ -436,26 +637,6 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "{{nom_entreprise}}",
   },
   {
-    key: "fideliser_infos_realisation",
-    module: "fideliser",
-    action: "informations",
-    category: "realisation",
-    title: "Réalisation / chantier récent",
-    subject: "Dernière réalisation de {{nom_entreprise}} ({{ville}})",
-    body:
-      "Bonjour,\n\n" +
-      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
-      "Nous partageons une réalisation récente pour vous donner une idée concrète de notre méthode.\n\n" +
-      "🏁 Contexte\n" +
-      "• Besoin : [besoin]\n" +
-      "• Intervention : [ce qui a été fait]\n" +
-      "• Résultat : [résultat mesurable] \n\n" +
-      "Ce type de besoin correspond à nos prestations : {{services}}\n" +
-      "Zone : {{zones}}\n\n" +
-      "Vous avez une question similaire ? Contact : {{telephone}}\n\n" +
-      "{{prenom}} — {{nom_entreprise}}",
-  },
-  {
     key: "fideliser_infos_evenement",
     module: "fideliser",
     action: "informations",
@@ -671,7 +852,7 @@ export function getTemplates(
   intelligentContext?: IntelligentTemplateContext | null
 ): TemplateDef[] {
   const inferredModule: TemplateModule =
-    module ?? (action === "avis" || action === "offres" ? "booster" : "fideliser");
+    module ?? (action === "valoriser" || action === "avis" || action === "offres" ? "booster" : "fideliser");
 
   const effectiveContext = mergeIntelligentTemplateContext(
     buildIntelligentTemplateContext({ action, module: inferredModule, channel: "email" }),

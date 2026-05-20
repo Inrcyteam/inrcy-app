@@ -5,22 +5,34 @@ import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { getIsoWeekId, getIsoWeekStart } from "@/lib/weeklyGoals";
 
-const MULTIPLIED_ACTION_KEYS = new Set(["create_actu", "weekly_feature_use"]);
+export type WeeklyMissionActionKey = "create_actu" | "weekly_feature_use" | "weekly_propulser_use" | "weekly_fideliser_use";
 
-const WEEKLY_FEATURE_CAMPAIGNS = new Set([
+const MULTIPLIED_ACTION_KEYS = new Set<WeeklyMissionActionKey>(["create_actu", "weekly_feature_use", "weekly_propulser_use", "weekly_fideliser_use"]);
+
+const PROPULSER_CAMPAIGNS = new Set([
+  "propulser:valorize",
+  "propulser:review_mail",
+  "propulser:promo_mail",
+  // compat ancien historique : ces actions appartenaient à Booster avant la refonte
+  "booster:valorize",
   "booster:review_mail",
   "booster:promo_mail",
+]);
+
+const FIDELISER_CAMPAIGNS = new Set([
   "fideliser:newsletter_mail",
   "fideliser:thanks_mail",
   "fideliser:satisfaction_mail",
 ]);
 
-const WEEKLY_FEATURE_FOLDERS: Record<string, string> = {
-  recoltes: "booster:review_mail",
-  offres: "booster:promo_mail",
-  informations: "fideliser:newsletter_mail",
-  suivis: "fideliser:thanks_mail",
-  enquetes: "fideliser:satisfaction_mail",
+const WEEKLY_CAMPAIGN_FOLDERS: Record<string, { tool: "propulser" | "fideliser"; type: string }> = {
+  propulsions: { tool: "propulser", type: "" },
+  recoltes: { tool: "propulser", type: "review_mail" },
+  offres: { tool: "propulser", type: "promo_mail" },
+  fidelisations: { tool: "fideliser", type: "" },
+  informations: { tool: "fideliser", type: "newsletter_mail" },
+  suivis: { tool: "fideliser", type: "thanks_mail" },
+  enquetes: { tool: "fideliser", type: "satisfaction_mail" },
 };
 
 type AwardResult = {
@@ -47,21 +59,33 @@ function isDuplicateError(error: unknown) {
   return code === "23505" || message.includes("duplicate") || message.includes("unique");
 }
 
-export function isWeeklyFeatureCampaign(campaign: CampaignLike) {
+export function getWeeklyMissionForCampaign(campaign: CampaignLike): "propulser" | "fideliser" | null {
   const kind = normalize(campaign.trackKind);
   const type = normalize(campaign.trackType);
   const folder = normalize(campaign.folder);
 
-  if (kind && type && WEEKLY_FEATURE_CAMPAIGNS.has(`${kind}:${type}`)) return true;
+  if (kind && type) {
+    const signature = `${kind}:${type}`;
+    if (PROPULSER_CAMPAIGNS.has(signature)) return "propulser";
+    if (FIDELISER_CAMPAIGNS.has(signature)) return "fideliser";
+  }
 
-  const folderMatch = WEEKLY_FEATURE_FOLDERS[folder];
-  if (!folderMatch) return false;
+  if (kind === "propulser") return "propulser";
+  if (kind === "fideliser") return "fideliser";
 
-  if (!kind && !type) return true;
-  if (kind && folderMatch.startsWith(`${kind}:`)) return true;
-  if (type && folderMatch.endsWith(`:${type}`)) return true;
+  const folderMatch = WEEKLY_CAMPAIGN_FOLDERS[folder];
+  if (!folderMatch) return null;
 
-  return false;
+  if (!kind && !type) return folderMatch.tool;
+  if (!folderMatch.type) return folderMatch.tool;
+  if (type && folderMatch.type === type) return folderMatch.tool;
+  if (!type && folderMatch.tool) return folderMatch.tool;
+
+  return null;
+}
+
+export function isWeeklyFeatureCampaign(campaign: CampaignLike) {
+  return getWeeklyMissionForCampaign(campaign) !== null;
 }
 
 async function getTurboMultiplier(userId: string) {
@@ -83,14 +107,14 @@ async function getTurboMultiplier(userId: string) {
 
 export async function awardInertiaActionForUser(args: {
   userId: string;
-  actionKey: "create_actu" | "weekly_feature_use";
+  actionKey: WeeklyMissionActionKey;
   baseAmount: number;
   sourceId: string;
   label: string;
   meta?: Record<string, unknown>;
 }): Promise<AwardResult> {
   const userId = String(args.userId || "").trim();
-  const actionKey = String(args.actionKey || "").trim();
+  const actionKey = String(args.actionKey || "").trim() as WeeklyMissionActionKey;
   const sourceId = String(args.sourceId || "").trim();
   const baseAmount = Number(args.baseAmount || 0);
 
@@ -190,18 +214,22 @@ export async function awardWeeklyFeatureUseForCampaign(args: CampaignLike & {
   campaignId?: string | null;
   sentCount?: number | null;
 }) {
-  if (!args.userId || Number(args.sentCount || 0) <= 0 || !isWeeklyFeatureCampaign(args)) {
+  const missionTool = getWeeklyMissionForCampaign(args);
+  if (!args.userId || Number(args.sentCount || 0) <= 0 || !missionTool) {
     return { ok: true, skipped: true } satisfies AwardResult;
   }
 
+  const actionKey: WeeklyMissionActionKey = missionTool === "propulser" ? "weekly_propulser_use" : "weekly_fideliser_use";
+
   return awardInertiaActionForUser({
     userId: args.userId,
-    actionKey: "weekly_feature_use",
+    actionKey,
     baseAmount: 10,
     sourceId: `week-${getIsoWeekId()}`,
-    label: "Utilisation Booster/Fidéliser",
+    label: missionTool === "propulser" ? "Action Propulser" : "Action Fidéliser",
     meta: {
       origin: "mail_campaign",
+      mission_tool: missionTool,
       campaign_id: args.campaignId || null,
       track_kind: args.trackKind || null,
       track_type: args.trackType || null,
@@ -240,6 +268,30 @@ export async function repairWeeklyMissionAwardsForUser(userId: string) {
   }
 
   try {
+    const { data: propulserEvents } = await supabaseAdmin
+      .from("app_events")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("module", "propulser")
+      .eq("type", "valorize")
+      .gte("created_at", weekStartIso)
+      .limit(1);
+
+    if ((propulserEvents || []).length > 0) {
+      results.push(await awardInertiaActionForUser({
+        userId,
+        actionKey: "weekly_propulser_use",
+        baseAmount: 10,
+        sourceId: `week-${getIsoWeekId()}`,
+        label: "Action Propulser",
+        meta: { origin: "weekly_mission_repair", mission_tool: "propulser", type: "valorize" },
+      }));
+    }
+  } catch {
+    // Réparation best-effort : ne jamais bloquer l'affichage.
+  }
+
+  try {
     const { data: campaigns } = await supabaseAdmin
       .from("mail_campaigns")
       .select("id,track_kind,track_type,folder,sent_count")
@@ -249,13 +301,19 @@ export async function repairWeeklyMissionAwardsForUser(userId: string) {
       .order("created_at", { ascending: false })
       .limit(20);
 
-    const eligible = (campaigns || []).find((campaign: any) => isWeeklyFeatureCampaign({
+    const eligiblePropulser = (campaigns || []).find((campaign: any) => getWeeklyMissionForCampaign({
       trackKind: campaign.track_kind,
       trackType: campaign.track_type,
       folder: campaign.folder,
-    }));
+    }) === "propulser");
 
-    if (eligible) {
+    const eligibleFideliser = (campaigns || []).find((campaign: any) => getWeeklyMissionForCampaign({
+      trackKind: campaign.track_kind,
+      trackType: campaign.track_type,
+      folder: campaign.folder,
+    }) === "fideliser");
+
+    for (const eligible of [eligiblePropulser, eligibleFideliser].filter(Boolean) as any[]) {
       results.push(await awardWeeklyFeatureUseForCampaign({
         userId,
         campaignId: eligible.id,

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import stylesDash from "../../dashboard/dashboard.module.css";
+import stylesDash from "../../../dashboard.module.css";
 import { getTemplates, type TemplateDef } from "@/lib/messageTemplates";
 import { useBusinessTemplateContext } from "@/app/dashboard/_hooks/useBusinessTemplateContext";
 import RichMailEditor from "@/app/dashboard/_components/RichMailEditor";
@@ -8,19 +8,10 @@ import TemplateSubjectInlineEditor from "@/app/dashboard/_components/TemplateSub
 import { extractTemplatePlaceholders, textToRichMailHtml } from "@/lib/mailRichText";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 
-export default function InformModal({
-  styles,
-  onClose,
-  onDone = onClose,
-}: {
-  styles: typeof stylesDash;
-  onClose: () => void | Promise<void>;
-  onDone?: () => void | Promise<void>;
-}) {
+export default function ValoriserModal({ styles, onClose, onDone = onClose }: { styles: typeof stylesDash; onClose: () => void | Promise<void>; onDone?: () => void | Promise<void> }) {
   const router = useRouter();
   const { sectorCategory, profession } = useBusinessTemplateContext();
-
-  const templates = useMemo(() => getTemplates("informations", undefined, sectorCategory, profession), [sectorCategory, profession]);
+  const templates = useMemo(() => getTemplates("valoriser", undefined, sectorCategory, profession), [sectorCategory, profession]);
   const categories = useMemo(() => {
     const map = new Map<string, TemplateDef>();
     for (const t of templates) {
@@ -29,17 +20,17 @@ export default function InformModal({
     return Array.from(map.values());
   }, [templates]);
 
-  const [selectedKey, setSelectedKey] = useState<string>(() => templates[0]?.key ?? "");
-  const selected = useMemo(
-    () => templates.find((t) => t.key === selectedKey) ?? templates[0],
-    [templates, selectedKey]
-  );
+  const [selectedKey, setSelectedKey] = useState<string>("");
+  const selected = useMemo(() => templates.find((t) => t.key === selectedKey) ?? categories[0] ?? templates[0], [templates, categories, selectedKey]);
 
   const [subject, setSubject] = useState("");
   useEffect(() => {
-    if (!templates.length) return;
-    setSelectedKey((current) => (templates.some((t) => t.key === current) ? current : templates[0]?.key ?? ""));
-  }, [templates]);
+    if (!categories.length) {
+      setSelectedKey("");
+      return;
+    }
+    setSelectedKey(categories[0]?.key ?? "");
+  }, [categories]);
 
   const [body, setBody] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
@@ -62,7 +53,6 @@ export default function InformModal({
     setBody(txt);
     setBodyHtml(textToRichMailHtml(txt));
 
-    // Auto-remplissage (profil / activité / liens connectés)
     (async () => {
       try {
         const r = await fetch("/api/templates/render", {
@@ -77,9 +67,7 @@ export default function InformModal({
           setBody(renderedBody);
           setBodyHtml(textToRichMailHtml(renderedBody));
         }
-      } catch {
-        // ignore
-      }
+      } catch {}
     })();
   }, [selected?.key]);
 
@@ -98,7 +86,7 @@ export default function InformModal({
       if (!shouldContinue) return;
     }
     const q = new URLSearchParams();
-    q.set("folder", "informations");
+    q.set("folder", "propulsions");
     if (selected?.key) q.set("template_key", selected.key);
     // URLSearchParams encode déjà, pas besoin de encodeURIComponent
     q.set("prefill_subject", subject);
@@ -107,13 +95,14 @@ export default function InformModal({
     q.set("compose", "1");
 
     // Track only after a real send (handled by iNr'Send).
-    q.set("track_kind", "fideliser");
-    q.set("track_type", "newsletter_mail");
+    q.set("track_kind", "propulser");
+    q.set("track_type", "valorize");
     q.set(
       "track_payload",
       JSON.stringify({
         template_key: selected?.key ?? null,
         template_category: selected?.category ?? null,
+        action: "valoriser",
       })
     );
 
@@ -125,9 +114,8 @@ export default function InformModal({
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 }}>
       <div className={styles.blockCard} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, maxWidth: "100%", boxSizing: "border-box", height: "100%" }}>
         <div className={styles.blockTitle} style={{ marginBottom: 10, fontSize: 20, display: isMobile ? "none" : "block" }}>
-          Modèle d’email — Informer
+          Modèle d’email — Valoriser
         </div>
-
         <div className={styles.subtitle} style={{ marginBottom: isMobile ? 0 : 10, display: isMobile ? "none" : "block" }}>
           Choisissez un email préconçu, modifiez si besoin, puis cliquez sur Suivant.
         </div>

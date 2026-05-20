@@ -6,10 +6,17 @@ export const WEEKLY_GOALS = {
     reviews: 1,
     promo: 1,
   },
+  propulser: {
+    valorize: 1,
+    reviews: 1,
+    promo: 1,
+    global: 1,
+  },
   fideliser: {
     inform: 1,
     thanks: 1,
     satisfaction: 1,
+    global: 1,
   },
 } as const;
 

@@ -1,4 +1,5 @@
 import styles from "../dashboard.module.css";
+import { INRCY_WORKFLOW_TOOLS } from "@/lib/inrcyWorkflow";
 
 type DashboardPanelName =
   | "contact"
@@ -25,9 +26,11 @@ type DashboardPanelName =
 type DashboardModulesCardProps = {
   goToModule: (path: string) => void;
   openPanel: (panel: DashboardPanelName) => void;
+  onOpenBoosterPublish?: () => void;
+  onOpenBoosterStats?: () => void;
 };
 
-export default function DashboardModulesCard({ goToModule, openPanel }: DashboardModulesCardProps) {
+export default function DashboardModulesCard({ goToModule, openPanel, onOpenBoosterPublish, onOpenBoosterStats }: DashboardModulesCardProps) {
   return (
         <div className={styles.lowerRow}>
           <div className={styles.blockCard}>
@@ -208,7 +211,7 @@ export default function DashboardModulesCard({ goToModule, openPanel }: Dashboar
 
           </div>
 
-          <div className={styles.blockCard}>
+          <div className={`${styles.blockCard} ${styles.gearBlockCard}`}>
             <div className={styles.blockHead}>
               <h3 className={styles.h3}>Boîte de vitesse</h3>
               <span className={styles.smallMuted}>Conversion</span>
@@ -223,12 +226,49 @@ export default function DashboardModulesCard({ goToModule, openPanel }: Dashboar
                 <button
     type="button"
     className={`${styles.gearCapsule} ${styles.gear_cyan}`}
-    onClick={() => goToModule("/dashboard/booster")}
+    onClick={() => {
+      if (onOpenBoosterPublish) onOpenBoosterPublish();
+      else goToModule("/dashboard/booster?action=publish");
+    }}
+  >
+    <span
+      className={`${styles.gearSettingsBtn} ${styles.gearStatsBtn}`}
+      role="button"
+      tabIndex={0}
+      title="Statistiques Booster"
+      aria-label="Statistiques Booster"
+      onClick={(event) => {
+        event.stopPropagation();
+        if (onOpenBoosterStats) onOpenBoosterStats();
+        else goToModule("/dashboard/booster?stats=1");
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.stopPropagation();
+          if (onOpenBoosterStats) onOpenBoosterStats();
+        else goToModule("/dashboard/booster?stats=1");
+        }
+      }}
+    >
+      <span className={styles.gearStatsIcon} aria-hidden="true" />
+    </span>
+    <div className={styles.gearInner}>
+      <div className={styles.gearTitle}>{INRCY_WORKFLOW_TOOLS.booster.label}</div>
+      <div className={styles.gearSub}>{INRCY_WORKFLOW_TOOLS.booster.dashboardSubtitle}</div>
+      <div className={styles.gearBtn}>{INRCY_WORKFLOW_TOOLS.booster.primaryCta}</div>
+    </div>
+  </button>
+
+                <button
+    type="button"
+    className={`${styles.gearCapsule} ${styles.gear_purple}`}
+    onClick={() => goToModule("/dashboard/propulser")}
   >
     <div className={styles.gearInner}>
-      <div className={styles.gearTitle}>Booster</div>
-      <div className={styles.gearSub}>Active tous vos canaux</div>
-      <div className={styles.gearBtn}>Agir maintenant</div>
+      <div className={styles.gearTitle}>{INRCY_WORKFLOW_TOOLS.propulser.label}</div>
+      <div className={styles.gearSub}>Accélère votre activité</div>
+      <div className={styles.gearBtn}>Développer</div>
     </div>
   </button>
 
@@ -302,9 +342,9 @@ export default function DashboardModulesCard({ goToModule, openPanel }: Dashboar
     onClick={() => goToModule("/dashboard/fideliser")}
   >
     <div className={styles.gearInner}>
-      <div className={styles.gearTitle}>Fidéliser</div>
-      <div className={styles.gearSub}>Pérennise votre activité</div>
-      <div className={styles.gearBtn}>Communiquer</div>
+      <div className={styles.gearTitle}>{INRCY_WORKFLOW_TOOLS.fideliser.label}</div>
+      <div className={styles.gearSub}>{INRCY_WORKFLOW_TOOLS.fideliser.dashboardSubtitle}</div>
+      <div className={styles.gearBtn}>{INRCY_WORKFLOW_TOOLS.fideliser.primaryCta}</div>
     </div>
   </button>
               </div>

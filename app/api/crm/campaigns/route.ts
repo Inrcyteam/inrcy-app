@@ -31,7 +31,9 @@ type CampaignFolder =
   | "offres"
   | "informations"
   | "suivis"
-  | "enquetes";
+  | "enquetes"
+  | "propulsions"
+  | "fidelisations";
 
 const ALLOWED_FOLDERS = new Set<CampaignFolder>([
   "mails",
@@ -43,6 +45,8 @@ const ALLOWED_FOLDERS = new Set<CampaignFolder>([
   "informations",
   "suivis",
   "enquetes",
+  "propulsions",
+  "fidelisations",
 ]);
 
 function normalizeCampaignFolder(input: unknown, fallback: CampaignFolder): CampaignFolder {
@@ -157,7 +161,7 @@ export async function POST(req: Request) {
 
   const defaultFolder: CampaignFolder = type === "facture" ? "factures" : type === "devis" ? "devis" : "mails";
   const folder = normalizeCampaignFolder(body.folder, defaultFolder);
-  const trackKind = trackKindRaw === "booster" || trackKindRaw === "fideliser" ? trackKindRaw : null;
+  const trackKind = trackKindRaw === "booster" || trackKindRaw === "propulser" || trackKindRaw === "fideliser" ? trackKindRaw : null;
 
   const { data: account, error: accountError } = await supabase
     .from("integrations")

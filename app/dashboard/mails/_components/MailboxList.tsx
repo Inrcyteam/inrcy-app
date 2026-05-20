@@ -7,12 +7,13 @@ import {
   formatChannelLabel,
   historyEmptyState,
   historySelectionKey,
-  isVisibleInFolder,
+  isGroupedActionFolder,
   listGridTemplateColumns,
   renderPublicationChannelsWithFailures,
   extractChannelPublications,
   canDeleteHistoryItem,
   folderLabel,
+  workflowActionLabelForItem,
   type Folder,
   type BoxView,
   type MailAccount,
@@ -69,12 +70,24 @@ function simpleStatusLabel(item: OutboxItem) {
   return rawStatus || "Historique";
 }
 
+
+function stripWorkflowPrefix(value: string) {
+  return String(value || "")
+    .replace(/^(Valoriser|Récolter|Récolte|Offrir|Informer|Information|Suivre|Suivi|Enquêter|Enquête|Propulsion|Fidélisation)\s*[—–·-]\s*/i, "")
+    .trim();
+}
+
+function isWorkflowLabel(value: string, label: string) {
+  return value.trim().toLowerCase() === label.trim().toLowerCase();
+}
+
 function rowHeaderLabels(folder: Folder) {
   if (folder === "publications") return { title: "Publication", meta: "Canaux" };
+  if (isGroupedActionFolder(folder)) return { title: "Objet", meta: "Cible" };
   if (folder === "factures") return { title: "Facture", meta: "Statut / destinataire" };
   if (folder === "devis") return { title: "Devis", meta: "Statut / destinataire" };
-  if (folder === "mails") return { title: "Objet", meta: "Boîte / destinataire" };
-  return { title: folderLabel(folder), meta: "Boîte / cible" };
+  if (folder === "mails") return { title: "Objet", meta: "Destinataire" };
+  return { title: folderLabel(folder), meta: "Cible" };
 }
 
 function getRowTitle(item: OutboxItem, folder: Folder) {
@@ -91,6 +104,12 @@ function getRowTitle(item: OutboxItem, folder: Folder) {
     const docNumber = String((item.raw as any)?.source_doc_number || "").trim();
     if (docNumber && !String(item.title || "").includes(docNumber)) return `Devis ${docNumber} — ${item.title || "sans objet"}`;
   }
+  if (isGroupedActionFolder(folder)) {
+    const actionLabel = workflowActionLabelForItem(item);
+    let cleaned = stripWorkflowPrefix(item.title || item.subject || item.subTitle || "");
+    if (isWorkflowLabel(cleaned, actionLabel)) cleaned = stripWorkflowPrefix(item.subject || item.subTitle || item.preview || "");
+    return cleaned || item.subject || item.subTitle || item.preview || "(sans objet)";
+  }
   return item.title || item.subject || "(sans objet)";
 }
 
@@ -102,17 +121,23 @@ function getRowMetaText(opts: { item: OutboxItem; folder: Folder; accountLabel: 
     return [simpleStatusLabel(item), item.target].filter(Boolean).join(" · ") || simpleStatusLabel(item);
   }
 
+  if (isGroupedActionFolder(folder)) {
+    const actionLabel = workflowActionLabelForItem(item);
+    const target = stripWorkflowPrefix(String(item.target || midLabel || item.preview || ""));
+    return target && !isWorkflowLabel(target, actionLabel) ? target : "Cible non renseignée";
+  }
+
   if (item.source === "mail_campaigns") {
-    const mailbox = accountLabel || String(item.provider || "Mail").trim();
-    return [mailbox, item.target || item.preview].filter(Boolean).join(" · ");
+    return String(item.target || item.preview || "Destinataire non renseigné").trim();
   }
 
   if (folder === "mails") {
-    return [accountLabel || item.provider || "Mail", item.target].filter(Boolean).join(" · ");
+    return String(item.target || item.preview || "Destinataire non renseigné").trim();
   }
 
   return [accountLabel || item.provider || "Mail", item.target || midLabel].filter(Boolean).join(" · ");
 }
+
 
 export default function MailboxList(props: Props) {
   const {
@@ -153,6 +178,9 @@ export default function MailboxList(props: Props) {
                 return (
                   <div className={styles.listHeaderGrid} style={{ gridTemplateColumns: listGridTemplateColumns(folder) }}>
                     <div className={styles.listHeaderCell}>{labels.title}</div>
+                    {isGroupedActionFolder(folder) ? (
+                      <div className={`${styles.listHeaderCell} ${styles.listHeaderCellCenter} ${styles.workflowActionHeader}`}>Action</div>
+                    ) : null}
                     <div className={`${styles.listHeaderCell} ${styles.listHeaderCellCenter}`}>{labels.meta}</div>
                     <div className={`${styles.listHeaderCell} ${styles.listHeaderCellRight}`}>Date</div>
                     <div className={`${styles.listHeaderCell} ${styles.listHeaderCellAction}`}>Détails</div>
@@ -187,6 +215,8 @@ export default function MailboxList(props: Props) {
               const rowMetaText = getRowMetaText({ item: it, folder, accountLabel, midLabel });
               const rowMetaNode = folder === "publications" ? midLabelNode : rowMetaText;
               const rowDate = formatListDate(it.created_at);
+              const showWorkflowAction = isGroupedActionFolder(folder);
+              const workflowActionLabel = workflowActionLabelForItem(it);
 
               return (
                 <div
@@ -219,6 +249,12 @@ export default function MailboxList(props: Props) {
                       ) : null}
                       <div className={styles.from} title={rowTitle}>{rowTitle}</div>
                     </div>
+
+                    {showWorkflowAction ? (
+                      <div className={styles.workflowActionCell} title={workflowActionLabel}>
+                        <span className={styles.workflowActionBadge}>{workflowActionLabel}</span>
+                      </div>
+                    ) : null}
 
                     <div className={styles.itemMid} title={rowMetaText || midLabel || it.target}>
                       <span className={styles.itemMidContent}>{rowMetaNode}</span>

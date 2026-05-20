@@ -46,7 +46,9 @@ export async function GET() {
   const sumAction = (key: string) => events.filter((row) => row.action_key === key).reduce((acc, row) => acc + Number(row.amount ?? 0), 0);
 
   const createActuDone = hasAction("create_actu");
-  const featureDone = hasAction("weekly_feature_use");
+  const legacyFeatureDone = hasAction("weekly_feature_use");
+  const propulserDone = hasAction("weekly_propulser_use");
+  const fideliserDone = hasAction("weekly_fideliser_use");
 
   return NextResponse.json({
     weekId,
@@ -62,9 +64,20 @@ export async function GET() {
         gained: sumAction("create_actu"),
         projected: Math.round(10 * snapshot.multiplier),
       },
+      // Compat ancienne mission commune, conservée pour ne pas perdre l’historique.
       weeklyFeatureUse: {
-        done: featureDone,
+        done: legacyFeatureDone,
         gained: sumAction("weekly_feature_use"),
+        projected: Math.round(10 * snapshot.multiplier),
+      },
+      weeklyPropulserUse: {
+        done: propulserDone,
+        gained: sumAction("weekly_propulser_use"),
+        projected: Math.round(10 * snapshot.multiplier),
+      },
+      weeklyFideliserUse: {
+        done: fideliserDone,
+        gained: sumAction("weekly_fideliser_use"),
         projected: Math.round(10 * snapshot.multiplier),
       },
     },

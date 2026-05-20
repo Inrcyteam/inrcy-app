@@ -35,6 +35,8 @@ type DashboardChannelsSectionProps = {
   goToModule: (path: string) => void;
   openPanel: (panel: DashboardPanelName) => void;
   onOpenChannelsHelp: () => void;
+  onOpenBoosterPublish?: () => void;
+  onOpenBoosterStats?: () => void;
 };
 
 export default function DashboardChannelsSection({
@@ -42,6 +44,8 @@ export default function DashboardChannelsSection({
   goToModule,
   openPanel,
   onOpenChannelsHelp,
+  onOpenBoosterPublish,
+  onOpenBoosterStats,
 }: DashboardChannelsSectionProps) {
   const [bubbleView, setBubbleView] = useState<BubbleViewMode>("list");
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
@@ -282,7 +286,12 @@ export default function DashboardChannelsSection({
         </div>
       )}
 
-      <DashboardModulesCard goToModule={goToModule} openPanel={openPanel} />
+      <DashboardModulesCard
+        goToModule={goToModule}
+        openPanel={openPanel}
+        onOpenBoosterPublish={onOpenBoosterPublish}
+        onOpenBoosterStats={onOpenBoosterStats}
+      />
     </section>
   );
 }

@@ -98,19 +98,26 @@ export default function InertiaContent({ snapshot, onOpenBoutique }: Props) {
   const boosts = useMemo(() => {
     const inWeek = (e: LoyaltyEvent) => new Date(e.created_at) >= weekStart;
     const didActu = events.some((e) => inWeek(e) && e.action_key === "create_actu");
-    const didFeature = events.some((e) => inWeek(e) && e.action_key === "weekly_feature_use");
+    const didPropulser = events.some((e) => inWeek(e) && e.action_key === "weekly_propulser_use");
+    const didFideliser = events.some((e) => inWeek(e) && e.action_key === "weekly_fideliser_use");
     return [
       {
         key: "create_actu",
-        title: "Créer une actu",
-        subtitle: "+10 UI — 1 fois par semaine",
+        title: "Utiliser Booster",
+        subtitle: "+10 UI — 1 publication / semaine",
         done: didActu,
       },
       {
-        key: "weekly_feature_use",
-        title: "Utiliser Booster / Fidéliser",
-        subtitle: "+10 UI — 1 fois par semaine",
-        done: didFeature,
+        key: "weekly_propulser_use",
+        title: "Utiliser Propulser",
+        subtitle: "+10 UI — 1 action / semaine",
+        done: didPropulser,
+      },
+      {
+        key: "weekly_fideliser_use",
+        title: "Utiliser Fidéliser",
+        subtitle: "+10 UI — 1 action / semaine",
+        done: didFideliser,
       },
     ];
   }, [events, weekStart]);
@@ -120,8 +127,10 @@ export default function InertiaContent({ snapshot, onOpenBoutique }: Props) {
       account_open: "Ouverture du compte",
       profile_complete: "Profil complété",
       activity_complete: "Activité complétée",
-      create_actu: "Actu créée",
-      weekly_feature_use: "Utilisation Booster/Fidéliser",
+      create_actu: "Utilisation Booster",
+      weekly_feature_use: "Ancienne mission commune",
+      weekly_propulser_use: "Action Propulser",
+      weekly_fideliser_use: "Action Fidéliser",
       monthly_seniority: "Ancienneté",
     } as Record<string, string>;
   }, []);
