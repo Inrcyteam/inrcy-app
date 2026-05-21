@@ -1729,9 +1729,12 @@ async function deleteDraftPermanently(id: string) {
       if (!canDeleteHistoryItem(item)) return;
       if (deletingHistoryItemId || deletingHistorySelection) return;
 
+      const isDraftToDelete = String((item as any)?.status || (item as any)?.raw?.status || "").toLowerCase() === "draft";
       const ok = await confirmInrcy({
-        title: "Supprimer l’élément ?",
-        message: `Cette action supprimera cet élément de l’historique ${folderLabel(item.folder)}.`,
+        title: isDraftToDelete ? "Supprimer le brouillon ?" : "Supprimer l’élément ?",
+        message: isDraftToDelete
+          ? "Ce brouillon sera définitivement supprimé."
+          : `Cette action supprimera cet élément de l’historique ${folderLabel(item.folder)}.`,
         confirmLabel: "Supprimer",
         variant: "danger",
       });
@@ -1758,7 +1761,7 @@ async function deleteDraftPermanently(id: string) {
         setDetailsId(null);
       }
 
-      setToast(`Élément ${folderLabel(item.folder)} supprimé.`);
+      setToast(isDraftToDelete ? "Brouillon supprimé." : `Élément ${folderLabel(item.folder)} supprimé.`);
       await loadHistory();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Suppression impossible pour le moment.";

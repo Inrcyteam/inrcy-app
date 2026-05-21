@@ -348,11 +348,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 {canDeleteHistoryItem(detailsItem) ? (
                                   <button
                                     type="button"
-                                    className={styles.btnGhost}
+                                    className={isDraftItem ? styles.btnDangerSmall : styles.btnGhost}
                                     onClick={() => void deleteHistoryEntry(detailsItem)}
                                     disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
                                   >
-                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
+                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : isDraftItem ? "Supprimer le brouillon" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
                                   </button>
                                 ) : null}
                               </div>
@@ -429,11 +429,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 {canDeleteHistoryItem(detailsItem) ? (
                                   <button
                                     type="button"
-                                    className={styles.btnGhost}
+                                    className={isDraftItem ? styles.btnDangerSmall : styles.btnGhost}
                                     onClick={() => void deleteHistoryEntry(detailsItem)}
                                     disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
                                   >
-                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
+                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : isDraftItem ? "Supprimer le brouillon" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
                                   </button>
                                 ) : null}
                               </div>
@@ -519,11 +519,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   {canDeleteHistoryItem(detailsItem) ? (
                                     <button
                                       type="button"
-                                      className={styles.btnGhost}
+                                      className={isDraftItem ? styles.btnDangerSmall : styles.btnGhost}
                                       onClick={() => void deleteHistoryEntry(detailsItem)}
                                       disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id || detailsActionBusy}
                                     >
-                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
+                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : isDraftItem ? "Supprimer le brouillon" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
                                     </button>
                                   ) : null}
                                 </div>
@@ -541,11 +541,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   {canDeleteHistoryItem(detailsItem) ? (
                                     <button
                                       type="button"
-                                      className={styles.btnGhost}
+                                      className={isDraftItem ? styles.btnDangerSmall : styles.btnGhost}
                                       onClick={() => void deleteHistoryEntry(detailsItem)}
                                       disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
                                     >
-                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
+                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : isDraftItem ? "Supprimer le brouillon" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
                                     </button>
                                   ) : null}
                                 </div>

@@ -1356,7 +1356,6 @@ export function isRetryableCampaignItem(item: OutboxItem | null) {
 
 export function canDeleteHistoryItem(item: OutboxItem | null | undefined) {
   if (!item) return false;
-  if (item.status === "draft") return false;
   return item.source === "send_items" || item.source === "mail_campaigns" || item.source === "app_events";
 }
 

@@ -888,7 +888,7 @@ export default function PublishModal({
         setImageMetaByKey(restoredMeta);
         setChannelImageEditors(nextEditors);
         setLoadedPublicationDraftId(publicationDraftIdParam);
-        setDraftMessage("Brouillon publication chargé ✅");
+        setDraftMessage("Brouillon chargé");
 
         const imageNames = restoredFiles.map((file) => ({ name: file.name, type: file.type, size: file.size }));
         const selectedDraftChannels = Object.entries(nextChannels)
