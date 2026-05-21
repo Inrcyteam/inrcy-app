@@ -10,6 +10,7 @@ import {
   isGroupedActionFolder,
   listGridTemplateColumns,
   renderPublicationChannelsWithFailures,
+  getPublicationChannelStatuses,
   extractChannelPublications,
   canDeleteHistoryItem,
   folderLabel,
@@ -49,12 +50,10 @@ type Props = {
 function formatListDate(value: string | null | undefined) {
   const d = value ? new Date(value) : new Date();
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("fr-FR", {
+  return d.toLocaleDateString("fr-FR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
@@ -88,6 +87,17 @@ function rowHeaderLabels(folder: Folder) {
   if (folder === "devis") return { title: "Devis", meta: "Statut / destinataire" };
   if (folder === "mails") return { title: "Objet", meta: "Destinataire" };
   return { title: folderLabel(folder), meta: "Cible" };
+}
+
+function publicationChannelCount(item: OutboxItem): number {
+  const payload = item.source === "app_events" ? (item.raw as any)?.payload : item.raw;
+  const statuses = getPublicationChannelStatuses(payload || null, item.channels && item.channels.length ? item.channels : [item.target || ""]);
+  return statuses.length || 0;
+}
+
+function formatChannelCountLabel(count: number): string {
+  if (count <= 0) return "Canal non renseigné";
+  return count === 1 ? "1 canal" : `${count} canaux`;
 }
 
 function getRowTitle(item: OutboxItem, folder: Folder) {
@@ -218,6 +228,9 @@ export default function MailboxList(props: Props) {
               const rowMetaText = getRowMetaText({ item: it, folder, accountLabel, midLabel });
               const rowMetaNode = folder === "publications" ? midLabelNode : rowMetaText;
               const rowDate = formatListDate(it.created_at);
+              const publicationMobileMeta = folder === "publications"
+                ? `${formatChannelCountLabel(publicationChannelCount(it))} · ${rowDate}`
+                : "";
               const showWorkflowAction = isGroupedActionFolder(folder);
               const workflowActionLabel = workflowActionLabelForItem(it);
 
@@ -260,13 +273,16 @@ export default function MailboxList(props: Props) {
                     ) : null}
 
                     <div className={`${styles.itemMid} ${folder === "publications" ? styles.publicationChannelsCell : ""}`} title={rowMetaText || midLabel || it.target}>
-                      <span className={`${styles.itemMidContent} ${showWorkflowAction ? styles.itemMidContentDesktopOnly : ""}`}>{rowMetaNode}</span>
+                      <span className={`${styles.itemMidContent} ${showWorkflowAction || folder === "publications" ? styles.itemMidContentDesktopOnly : ""}`}>{rowMetaNode}</span>
+                      {folder === "publications" ? (
+                        <span className={styles.mobilePublicationMeta}>{publicationMobileMeta}</span>
+                      ) : null}
                       {showWorkflowAction ? (
                         <span className={styles.mobileWorkflowMeta}>
-                          {workflowActionLabel} - {rowMetaText}
+                          {workflowActionLabel} · {rowMetaText}
                         </span>
                       ) : null}
-                      <span className={styles.mobileMetaDate}> - {rowDate}</span>
+                      {folder !== "publications" ? <span className={styles.mobileMetaDate}> · {rowDate}</span> : null}
                     </div>
 
                     <div className={styles.itemDateCell}>

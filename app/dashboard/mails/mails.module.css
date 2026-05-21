@@ -4424,3 +4424,27 @@
     font-size: 12px;
   }
 }
+
+/* iNrSend mobile Publications: compact one-line channel count instead of channel badges */
+.mobilePublicationMeta {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .mobilePublicationMeta {
+    display: inline;
+    font-weight: 800;
+    color: rgba(220, 230, 255, 0.72);
+  }
+
+  .publicationChannelsCell .itemMidContentDesktopOnly,
+  .publicationChannelsCell .channelStatusInlineWrap {
+    display: none !important;
+  }
+
+  .itemMid .mobileMetaDate::before,
+  .itemMid .mobileWorkflowMeta::before,
+  .itemMid .mobilePublicationMeta::before {
+    content: "";
+  }
+}
