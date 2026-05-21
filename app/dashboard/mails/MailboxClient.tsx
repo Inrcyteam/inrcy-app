@@ -359,6 +359,19 @@ export default function MailboxClient() {
   }
 
 
+  function serializeComposeAttachments(input: ComposeAttachmentRef[] = composeAttachments) {
+    return input
+      .map((att) => ({
+        bucket: String(att.bucket || "").trim(),
+        path: String(att.path || "").trim(),
+        name: String(att.name || att.path?.split("/").pop() || "piece-jointe").trim(),
+        type: att.type || null,
+        size: att.size ?? null,
+      }))
+      .filter((att) => att.bucket && att.path && att.name);
+  }
+
+
   function sanitizeCrmDepartmentFilter(value: string) {
     return String(value || "")
       .trim()
@@ -460,13 +473,7 @@ export default function MailboxClient() {
       text: source.text ?? text ?? "",
       html: source.html ?? html ?? "",
       composeType: source.composeType ?? composeType,
-      attachments: (source.composeAttachments ?? composeAttachments).map((att) => ({
-        bucket: att.bucket || "",
-        path: att.path || "",
-        name: att.name || "",
-        type: att.type || null,
-        size: att.size ?? null,
-      })),
+      attachments: serializeComposeAttachments(source.composeAttachments ?? composeAttachments),
       sourceDocSaveId: source.composeSourceDocSaveId ?? composeSourceDocSaveId ?? "",
       sourceDocType: source.composeSourceDocType ?? composeSourceDocType ?? "",
       sourceDocNumber: source.composeSourceDocNumber ?? composeSourceDocNumber ?? "",
@@ -549,8 +556,16 @@ export default function MailboxClient() {
   }
 
   function normalizeCampaignAttachments(input: unknown): ComposeAttachmentRef[] {
-    const values = Array.isArray(input) ? input : [];
-    return values
+    let values: unknown = input;
+    if (typeof values === "string") {
+      try {
+        values = JSON.parse(values);
+      } catch {
+        values = [];
+      }
+    }
+    const rows = Array.isArray(values) ? values : [];
+    return rows
       .map((attachment: any) => {
         const bucket = String(attachment?.bucket || "").trim();
         const path = String(attachment?.path || "").trim();
@@ -560,7 +575,7 @@ export default function MailboxClient() {
           bucket,
           path,
           name,
-          type: attachment?.type || attachment?.mime_type || null,
+          type: attachment?.type || attachment?.mime_type || attachment?.mimeType || null,
           size: attachment?.size == null ? null : Number(attachment.size) || null,
         } satisfies ComposeAttachmentRef;
       })
@@ -1502,6 +1517,10 @@ export default function MailboxClient() {
   }
 
   async function saveDraft() {
+    if (attachBusy) {
+      setToast("Patientez : les pièces jointes sont encore en préparation.");
+      return;
+    }
     const { data: auth } = await supabase.auth.getUser();
     const userId = auth?.user?.id;
     if (!userId) return;
@@ -1524,13 +1543,7 @@ export default function MailboxClient() {
       track_kind: pendingTrack?.kind || null,
       track_type: pendingTrack?.type || null,
       template_key: composeTemplateKey || null,
-      attachments: composeAttachments.map((att) => ({
-        bucket: att.bucket,
-        path: att.path,
-        name: att.name,
-        type: att.type || null,
-        size: att.size ?? null,
-      })),
+      attachments: serializeComposeAttachments(),
     };
 
     const legacyPayload = {
@@ -1781,6 +1794,10 @@ async function deleteDraftPermanently(id: string) {
   }
 
   async function doSend() {
+    if (attachBusy) {
+      setToast("Patientez : les pièces jointes sont encore en préparation.");
+      return;
+    }
     if (!selectedAccount) {
       setToast("Veuillez connecter une boîte d’envoi dans les réglages.");
       return;
@@ -1845,7 +1862,7 @@ async function deleteDraftPermanently(id: string) {
               display_name: hint?.display_name || crmContact?.display_name || null,
             };
           }),
-          attachments: composeAttachments,
+          attachments: serializeComposeAttachments(),
           sourceDocSaveId: composeSourceDocSaveId || undefined,
           sourceDocType: composeSourceDocType || undefined,
           sourceDocNumber: composeSourceDocNumber || undefined,
@@ -1900,7 +1917,7 @@ async function deleteDraftPermanently(id: string) {
         html: normalizeRichMailHtmlForSend(text, html),
         type: composeType,
         ...(draftId ? { sendItemId: draftId } : {}),
-        attachments: composeAttachments,
+        attachments: serializeComposeAttachments(),
         sourceDocSaveId: composeSourceDocSaveId || undefined,
         sourceDocType: composeSourceDocType || undefined,
         sourceDocNumber: composeSourceDocNumber || undefined,

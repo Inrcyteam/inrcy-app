@@ -301,9 +301,9 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                     type="button"
                     aria-label="Sauvegarder le brouillon"
                     title="Sauvegarder le brouillon"
-                    disabled={sendBusy}
+                    disabled={sendBusy || attachBusy}
                   >
-                    💾
+                    {attachBusy ? "…" : "💾"}
                   </button>
                   <button
                     className={`${styles.btnGhost} ${styles.composeHeaderIconBtn}`}
@@ -706,7 +706,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
 
               <div className={`${styles.modalFooter} ${styles.composeModalFooter}`}>
                 <div className={styles.composeAttachmentDock}>
-                  <label htmlFor={fileInputId} className={styles.btnAttach}>
+                  <label htmlFor={fileInputId} className={styles.btnAttach} aria-disabled={attachBusy}>
                     <span aria-hidden>📎</span>
                     <span>Joindre</span>
                   </label>
@@ -733,8 +733,8 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                 </div>
 
                 <div className={styles.composeFooterActions}>
-                  <button className={`${styles.btnPrimary} ${styles.composeSendBtn}`} onClick={() => void requestSend()} type="button" disabled={sendBusy}>
-                    {sendBusy ? "Envoi…" : "Envoyer"}
+                  <button className={`${styles.btnPrimary} ${styles.composeSendBtn}`} onClick={() => void requestSend()} type="button" disabled={sendBusy || attachBusy}>
+                    {attachBusy ? "Préparation…" : sendBusy ? "Envoi…" : "Envoyer"}
                   </button>
                 </div>
               </div>

@@ -227,7 +227,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                         .filter((att: any) => att.url)
                     : [];
                   const attachmentCandidates = detailsItem.source === "send_items"
-                    ? [...(detailsItem.attachments || []), ...sourceDocAttachments]
+                    ? [...(detailsItem.attachments || []), ...extractAttachmentsFromPayload((detailsItem as any).raw), ...sourceDocAttachments]
                     : detailsItem.source === "mail_campaigns"
                     ? campaignAttachments
                     : detailsItem.source === "app_events"
@@ -1019,8 +1019,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       <span className={styles.attachmentName}>{a.name}</span>
                                       {a.type ? <span className={styles.attachmentMeta}>{a.type}</span> : null}
                                       {typeof a.size === "number" ? <span className={styles.attachmentMeta}>{Math.round(a.size / 1024)} Ko</span> : null}
-                                      {a.url ? (
-                                        <a className={styles.attachmentLink} href={a.downloadUrl || a.url} target="_blank" rel="noreferrer">
+                                      {a.downloadUrl || a.url ? (
+                                        <a className={styles.attachmentLink} href={a.downloadUrl || a.url || "#"} target="_blank" rel="noreferrer">
                                           Télécharger
                                         </a>
                                       ) : null}

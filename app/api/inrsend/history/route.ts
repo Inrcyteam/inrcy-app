@@ -369,9 +369,30 @@ function extractMessageFromPayload(payload: any): { html?: string | null; text?:
   return { html, text };
 }
 
-function extractAttachmentsFromPayload(payload: any): { name: string; type?: string | null; size?: number | null; url?: string | null }[] {
+function downloadUrlForDraftAttachment(bucket: string, path: string, name?: string | null) {
+  const params = new URLSearchParams();
+  params.set("bucket", bucket);
+  params.set("path", path);
+  if (name) params.set("name", name);
+  return `/api/inrsend/attachments/download?${params.toString()}`;
+}
+
+function parseMaybeJsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function extractAttachmentsFromPayload(payload: any): { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null }[] {
   if (!payload || typeof payload !== "object") return [];
-  const candidates =
+  const candidates = parseMaybeJsonArray(
     payload.attachments ||
     payload.files ||
     payload.images ||
@@ -380,7 +401,8 @@ function extractAttachmentsFromPayload(payload: any): { name: string; type?: str
     payload?.post?.files ||
     payload?.post?.images ||
     payload?.post?.media ||
-    [];
+    []
+  );
 
   if (!Array.isArray(candidates)) return [];
 
@@ -402,17 +424,24 @@ function extractAttachmentsFromPayload(payload: any): { name: string; type?: str
           ? { name: buildNameFromUrl(raw), url: raw }
           : { name: raw };
       }
-      const url = a.url || a.href || a.publicUrl || a.public_url || (typeof a.path === "string" && isLikelyUrl(a.path) ? a.path : null);
-      const name = a.name || a.filename || a.fileName || a.originalname || (typeof a.path === "string" && !isLikelyUrl(a.path) ? a.path : null) || url;
+      const bucket = String(a.bucket || a.storage_bucket || "").trim();
+      const storagePath = String(a.path || a.storage_path || "").trim();
+      const url = a.url || a.href || a.publicUrl || a.public_url || (storagePath && isLikelyUrl(storagePath) ? storagePath : null);
+      const name = a.name || a.filename || a.fileName || a.originalname || (storagePath && !isLikelyUrl(storagePath) ? storagePath.split("/").pop() : null) || url;
       if (!name && !url) return null;
+      const finalName = String(name || buildNameFromUrl(String(url || "")));
+      const downloadUrl = bucket && storagePath && !isLikelyUrl(storagePath)
+        ? downloadUrlForDraftAttachment(bucket, storagePath, finalName)
+        : null;
       return {
-        name: String(name || buildNameFromUrl(String(url || ""))),
+        name: finalName,
         type: a.type || a.mime || a.mimeType || null,
         size: typeof a.size === "number" ? a.size : typeof a.bytes === "number" ? a.bytes : null,
         url: url || null,
+        downloadUrl,
       };
     })
-    .filter(Boolean) as { name: string; type?: string | null; size?: number | null; url?: string | null }[];
+    .filter(Boolean) as { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null }[];
 }
 
 function isVisibleInFolder(folder: Folder, item: OutboxItem, view: BoxView) {
