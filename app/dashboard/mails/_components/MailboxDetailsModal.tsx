@@ -81,6 +81,7 @@ type MailboxDetailsModalProps = {
   deleteHistoryEntry: (item: any) => Promise<void>;
   loadCampaignRecipients: (campaignId: string, targetPage?: number, targetFilter?: CampaignRecipientsFilterId) => Promise<void>;
   loadCampaignHealth: (campaignId: string, raw?: any) => Promise<void>;
+  resumeDraft: (item: any) => void;
 };
 
 export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
@@ -132,6 +133,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     deleteHistoryEntry,
     loadCampaignRecipients,
     loadCampaignHealth,
+    resumeDraft,
   } = props;
   const router = useRouter();
   const [publicationPreviewOpen, setPublicationPreviewOpen] = React.useState(false);
@@ -241,6 +243,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                     const fallbackAttachments = extractAttachmentsFromPayload(payload);
                     return !(activeHasStructured || fallbackTitle || fallbackContent || fallbackCta || fallbackHashtags.length || fallbackAttachments.length);
                   })();
+                  const isDraftItem = String((detailsItem as any)?.status || (detailsItem as any)?.raw?.status || "").toLowerCase() === "draft";
                   const publicationEditPreview = (() => {
                     if (detailsItem.source !== "app_events" || !activePublicationEntry || !detailsEditMode) return null;
                     const selectedAssets = activePublicationEditAssets.filter((asset) => asset.selected);
@@ -305,6 +308,15 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 </div>
                               </div>
                               <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+                                {isDraftItem ? (
+                                  <button
+                                    type="button"
+                                    className={styles.btnPrimary}
+                                    onClick={() => resumeDraft(detailsItem)}
+                                  >
+                                    Reprendre l’édition
+                                  </button>
+                                ) : null}
                                 {detailsItem.reopenHref ? (
                                   <button
                                     type="button"
@@ -456,7 +468,16 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       <b>Action :</b> {detailsActionSuccess}
                                     </div>
                                   ) : null}
-                                  {detailsEditMode ? (
+                                  {isDraftItem ? (
+                                    <button
+                                      type="button"
+                                      className={styles.btnPrimary}
+                                      onClick={() => resumeDraft(detailsItem)}
+                                      disabled={detailsActionBusy}
+                                    >
+                                      Reprendre l’édition
+                                    </button>
+                                  ) : detailsEditMode ? (
                                     <button
                                       type="button"
                                       className={styles.btnPrimary}
@@ -475,14 +496,16 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       Modifier
                                     </button>
                                   )}
-                                  <button
-                                    type="button"
-                                    className={styles.btnDangerSmall}
-                                    onClick={deleteChannelPublication}
-                                    disabled={detailsActionBusy}
-                                  >
-                                    {detailsActionBusy && !detailsEditMode ? "Suppression…" : "Supprimer"}
-                                  </button>
+                                  {!isDraftItem ? (
+                                    <button
+                                      type="button"
+                                      className={styles.btnDangerSmall}
+                                      onClick={deleteChannelPublication}
+                                      disabled={detailsActionBusy}
+                                    >
+                                      {detailsActionBusy && !detailsEditMode ? "Suppression…" : "Supprimer"}
+                                    </button>
+                                  ) : null}
                                   {canDeleteHistoryItem(detailsItem) ? (
                                     <button
                                       type="button"
@@ -494,16 +517,27 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     </button>
                                   ) : null}
                                 </div>
-                              ) : canDeleteHistoryItem(detailsItem) ? (
+                              ) : isDraftItem || canDeleteHistoryItem(detailsItem) ? (
                                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
-                                  <button
-                                    type="button"
-                                    className={styles.btnGhost}
-                                    onClick={() => void deleteHistoryEntry(detailsItem)}
-                                    disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
-                                  >
-                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
-                                  </button>
+                                  {isDraftItem ? (
+                                    <button
+                                      type="button"
+                                      className={styles.btnPrimary}
+                                      onClick={() => resumeDraft(detailsItem)}
+                                    >
+                                      Reprendre l’édition
+                                    </button>
+                                  ) : null}
+                                  {canDeleteHistoryItem(detailsItem) ? (
+                                    <button
+                                      type="button"
+                                      className={styles.btnGhost}
+                                      onClick={() => void deleteHistoryEntry(detailsItem)}
+                                      disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
+                                    >
+                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
+                                    </button>
+                                  ) : null}
                                 </div>
                               ) : null}
                             </div>
@@ -989,9 +1023,9 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                         ) : null}
                       </div>
 
-                      {detailsItem.source === "send_items" && (detailsItem as any).raw?.status === "draft" ? (
+                      {isDraftItem ? (
                         <div style={{ marginTop: 14, color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
-                          Astuce : cliquez sur ce brouillon dans la liste pour l’ouvrir en édition.
+                          Astuce : utilisez “Reprendre l’édition” pour rouvrir ce brouillon dans le bon outil.
                         </div>
                       ) : null}
                     </>

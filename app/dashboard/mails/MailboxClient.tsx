@@ -141,6 +141,7 @@ export default function MailboxClient() {
   const [historyHasMorePotential, setHistoryHasMorePotential] = useState(false);
   const [historyTotalCount, setHistoryTotalCount] = useState<number | null>(null);
   const [folderCounts, setFolderCounts] = useState<FolderCounts>(() => emptyFolderCounts());
+  const [draftFolderCounts, setDraftFolderCounts] = useState<FolderCounts>(() => emptyFolderCounts());
 
   // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -435,6 +436,7 @@ export default function MailboxClient() {
   }, [composeRecipientHints]);
 
   const counts = folderCounts;
+  const currentFolderDraftCount = draftFolderCounts[folder] || 0;
 
   function makeComposeSnapshot(input?: {
     selectedAccountId?: string;
@@ -725,12 +727,14 @@ export default function MailboxClient() {
       const nextTotal = typeof payload?.total === "number" ? Math.max(0, Number(payload.total)) : null;
       const nextPage = typeof payload?.page === "number" ? Math.max(1, Number(payload.page)) : targetPage;
       const nextCounts = normalizeFolderCounts(payload?.folderCounts);
+      const nextDraftCounts = normalizeFolderCounts(payload?.draftFolderCounts);
 
       setItems(nextItems);
       setHistoryPage(nextPage);
       setHistoryHasMorePotential(Boolean(payload?.hasMore));
       setHistoryTotalCount(nextTotal);
       setFolderCounts(nextCounts);
+      setDraftFolderCounts(nextDraftCounts);
       setSelectedHistoryKeys([]);
       setSelectedId((prev) => (nextItems.some((item) => item.id === prev) ? prev : nextItems[0]?.id ?? null));
     } catch (error) {
@@ -740,6 +744,7 @@ export default function MailboxClient() {
       setHistoryHasMorePotential(false);
       setHistoryTotalCount(0);
       setFolderCounts(emptyFolderCounts());
+      setDraftFolderCounts(emptyFolderCounts());
       setSelectedHistoryKeys([]);
       setSelectedId(null);
     } finally {
@@ -1975,7 +1980,8 @@ async function deleteDraftPermanently(id: string) {
     const sourceName = String(sourceAsset?.name || "");
     setPublicationEditImagesByChannel((prev) => {
       const next: Record<string, PublicationChannelImagesState> = {};
-      for (const [channelKey, state] of Object.entries(prev)) {
+      for (const [channelKey, rawState] of Object.entries(prev)) {
+        const state = rawState as PublicationChannelImagesState;
         next[channelKey] = {
           assets: (state.assets || []).filter((asset) => {
             if (asset.key === imageKey) return false;
@@ -2257,8 +2263,15 @@ async function deleteDraftPermanently(id: string) {
         pendingTrack: nextTrack,
       }));
     } else if (it.source === "app_events" && it.status === "draft") {
-      openDetails(it);
+      const href = it.reopenHref || `/dashboard/booster?action=publish&draftId=${encodeURIComponent(String(it.id || ""))}`;
+      setDetailsOpen(false);
+      router.push(href);
     }
+  }
+
+  function resumeDraftFromDetails(item: OutboxItem) {
+    setDetailsOpen(false);
+    void openItem(item);
   }
 
   return (
@@ -2311,6 +2324,7 @@ async function deleteDraftPermanently(id: string) {
               setComposeOpen={setComposeOpen}
               boxView={boxView}
               setBoxView={setBoxView}
+              draftCount={currentFolderDraftCount}
             />
 
             <MailboxSearchPanel
@@ -2401,6 +2415,7 @@ async function deleteDraftPermanently(id: string) {
           deleteHistoryEntry={deleteHistoryEntry}
           loadCampaignRecipients={loadCampaignRecipients}
           loadCampaignHealth={loadCampaignHealth}
+          resumeDraft={resumeDraftFromDetails}
         />
 
         <MailboxPublicationImageAdapterModal

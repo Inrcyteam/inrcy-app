@@ -611,6 +611,13 @@ export function firstNonEmpty(...vals: any[]) {
   return "";
 }
 
+function looksLikeDelimitedChannelList(value: string) {
+  const v = String(value || "").trim();
+  if (!v) return false;
+  if (/^https?:\/\//i.test(v)) return false;
+  return /\s[\/]\s|[,;\n]/.test(v);
+}
+
 export function extractChannelsFromPayload(payload: any): string[] {
   if (!payload || typeof payload !== "object") return [];
 
@@ -621,14 +628,27 @@ export function extractChannelsFromPayload(payload: any): string[] {
   if (Array.isArray(payload.targets)) candidates.push(...payload.targets);
   if (Array.isArray(payload.destinations)) candidates.push(...payload.destinations);
 
-  const single = firstNonEmpty(payload.channel, payload.platform, payload.target, payload.destination);
-  if (single) candidates.push(single);
+  const postByChannel = payload?.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : null;
+  if (postByChannel) candidates.push(...Object.keys(postByChannel));
 
+  const results = payload?.results && typeof payload.results === "object" ? payload.results : null;
+  if (results) candidates.push(...Object.keys(results));
+
+  const single = firstNonEmpty(payload.channel, payload.platform, payload.target, payload.destination);
+  if (single && !looksLikeDelimitedChannelList(single)) candidates.push(single);
+
+  const seen = new Set<string>();
   return candidates
     .flat()
-    .map((x) => (typeof x === "string" ? x : x?.name || x?.label || ""))
+    .map((x) => (typeof x === "string" ? x : x?.key || x?.name || x?.label || ""))
     .map((s: string) => String(s).trim())
-    .filter(Boolean);
+    .filter((value) => Boolean(value) && !looksLikeDelimitedChannelList(value))
+    .filter((value) => {
+      const key = normalizeChannelKey(value);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 export function extractMessageFromPayload(payload: any): { html?: string | null; text?: string | null } {

@@ -3,7 +3,7 @@ import HelpModal from "../../_components/HelpModal";
 import StatusMessage from "../../_components/StatusMessage";
 import AiConfigurationContent from "../../settings/_components/AiConfigurationContent";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
   readSanitizedElementHtml,
@@ -175,6 +175,22 @@ const EMPTY_CHANNEL_DETAILS: Record<ChannelKey, ChannelConnectionDetail> = {
   linkedin: { type: "profile", label: null, href: null },
 };
 
+const CHANNEL_KEYS: ChannelKey[] = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"];
+
+function isChannelKey(value: unknown): value is ChannelKey {
+  return CHANNEL_KEYS.includes(String(value || "") as ChannelKey);
+}
+
+function isThemeKey(value: unknown): value is ThemeKey {
+  const raw = String(value || "");
+  return raw === "" || THEME_OPTIONS.some((option) => option.value === raw);
+}
+
+function isStyleKey(value: unknown): value is StyleKey {
+  const raw = String(value || "");
+  return STYLE_OPTIONS.some((option) => option.value === raw);
+}
+
 function simplifyChannelDetail(value?: string | null) {
   const text = String(value || "").trim();
   if (!text) return "";
@@ -213,6 +229,9 @@ export default function PublishModal({
   onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const publicationDraftIdParam = String(searchParams?.get("draftId") || "").trim();
+  const [loadedPublicationDraftId, setLoadedPublicationDraftId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [idea, setIdea] = useState("");
   const [theme, setTheme] = useState<ThemeKey>("");
@@ -762,6 +781,142 @@ export default function PublishModal({
     images,
     channelImageEditors,
   ]);
+
+
+  async function uploadPublicationDraftImages() {
+    const uploaded: Array<{ name: string; type?: string; size?: number; lastModified?: number; storagePath?: string; publicUrl?: string }> = [];
+    for (const file of images) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("path", `booster-drafts/${Date.now()}-${file.name}`);
+      const response = await fetch("/api/booster/upload-prepared", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(json?.error || "Impossible d’enregistrer les images du brouillon."));
+      }
+      uploaded.push({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        lastModified: file.lastModified,
+        storagePath: String(json?.storagePath || ""),
+        publicUrl: String(json?.publicUrl || ""),
+      });
+    }
+    return uploaded;
+  }
+
+  async function restorePublicationDraftImages(imageDrafts: any[]) {
+    const restoredFiles: File[] = [];
+    const restoredPreviews: string[] = [];
+    const restoredMeta: Record<string, ImageMeta> = {};
+
+    for (const image of imageDrafts) {
+      const publicUrl = String(image?.publicUrl || image?.url || "").trim();
+      const dataUrl = String(image?.dataUrl || "").trim();
+      const source = publicUrl || dataUrl;
+      if (!source) continue;
+      try {
+        const response = await fetch(source);
+        if (!response.ok) continue;
+        const blob = await response.blob();
+        const name = String(image?.name || "image.jpg");
+        const type = String(image?.type || blob.type || "image/jpeg");
+        const lastModified = Number(image?.lastModified || Date.now());
+        const file = new File([blob], name, { type, lastModified });
+        const key = makeImageKey(file);
+        restoredFiles.push(file);
+        restoredPreviews.push(URL.createObjectURL(file));
+        restoredMeta[key] = await readImageMeta(file);
+      } catch {
+        // Une ancienne image de brouillon peut ne plus être disponible : on recharge le reste du brouillon.
+      }
+    }
+
+    return { restoredFiles, restoredPreviews, restoredMeta };
+  }
+
+  useEffect(() => {
+    if (!publicationDraftIdParam || loadedPublicationDraftId === publicationDraftIdParam) return;
+    let cancelled = false;
+
+    const loadPublicationDraft = async () => {
+      setDraftMessage("Chargement du brouillon publication…");
+      setPublishError("");
+      try {
+        const response = await fetch(`/api/booster/events?draftId=${encodeURIComponent(publicationDraftIdParam)}`, {
+          cache: "no-store" as any,
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(String(result?.error || "Brouillon publication introuvable."));
+        const payload = (result?.payload || {}) as any;
+
+        const rawChannels = Array.isArray(payload.channels) ? payload.channels : [];
+        const savedChannels = rawChannels.map((value: unknown) => String(value || "")).filter(isChannelKey);
+        const nextChannels = CHANNEL_KEYS.reduce((acc, key) => {
+          acc[key] = savedChannels.length ? savedChannels.includes(key) : Boolean(channels[key]);
+          return acc;
+        }, {} as Record<ChannelKey, boolean>);
+
+        const nextTheme = isThemeKey(payload.theme) ? payload.theme : "";
+        const nextContentStyle = isStyleKey(payload.contentStyle) ? payload.contentStyle : "equilibre";
+        const nextPostsByChannel = (payload.postByChannel && typeof payload.postByChannel === "object") ? payload.postByChannel : {};
+        const nextEditors = (payload.imageSettingsByChannel && typeof payload.imageSettingsByChannel === "object") ? payload.imageSettingsByChannel : {};
+        const imageDrafts = Array.isArray(payload.imageDrafts) ? payload.imageDrafts : [];
+        const { restoredFiles, restoredPreviews, restoredMeta } = await restorePublicationDraftImages(imageDrafts);
+
+        if (cancelled) return;
+
+        const nextIdea = String(payload.idea || "");
+        const nextInstagramHashtags = String(payload.instagramHashtagsInput || "") || (
+          Array.isArray((nextPostsByChannel as any)?.instagram?.hashtags)
+            ? (nextPostsByChannel as any).instagram.hashtags.join(" ")
+            : ""
+        );
+
+        setIdea(nextIdea);
+        setTheme(nextTheme);
+        setContentStyle(nextContentStyle);
+        setChannels(nextChannels);
+        setPostsByChannel(nextPostsByChannel);
+        setInstagramHashtagsInput(nextInstagramHashtags);
+        setImages(restoredFiles);
+        setImagePreviews(restoredPreviews);
+        setImageMetaByKey(restoredMeta);
+        setChannelImageEditors(nextEditors);
+        setLoadedPublicationDraftId(publicationDraftIdParam);
+        setDraftMessage("Brouillon publication chargé ✅");
+
+        const imageNames = restoredFiles.map((file) => ({ name: file.name, type: file.type, size: file.size }));
+        const selectedDraftChannels = Object.entries(nextChannels)
+          .filter(([, enabled]) => enabled)
+          .map(([key]) => key as ChannelKey);
+        setLastPublicationDraftSnapshot(JSON.stringify({
+          idea: nextIdea.trim(),
+          theme: nextTheme,
+          contentStyle: nextContentStyle,
+          channels: selectedDraftChannels,
+          postsByChannel: nextPostsByChannel,
+          instagramHashtagsInput: nextInstagramHashtags,
+          imageNames,
+          imageSettingsByChannel: nextEditors,
+        }));
+        onUnsavedChange?.(false);
+      } catch (error) {
+        if (cancelled) return;
+        setPublishError(getSimpleFrenchErrorMessage(error, "Impossible de charger ce brouillon publication."));
+        setDraftMessage("");
+      }
+    };
+
+    void loadPublicationDraft();
+    return () => {
+      cancelled = true;
+    };
+  }, [publicationDraftIdParam, loadedPublicationDraftId, onUnsavedChange]);
 
   const hasUnsavedChanges = useMemo(
     () =>
@@ -1727,7 +1882,7 @@ export default function PublishModal({
         transforms: Object.fromEntries(
           Object.entries(editor.transforms || {}).map(([key, value]) => [
             key,
-            { ...value },
+            { ...(value as ImageTransform) },
           ]),
         ),
       };
@@ -1929,11 +2084,13 @@ export default function PublishModal({
 
     setDraftSaving(true);
     try {
+      const imageDrafts = await uploadPublicationDraftImages();
       const response = await fetch("/api/booster/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "publish_draft",
+          draftId: loadedPublicationDraftId || publicationDraftIdParam || undefined,
           payload: {
             status: "draft",
             title: firstTitle || "Brouillon publication",
@@ -1946,7 +2103,9 @@ export default function PublishModal({
             channels: selectedChannels,
             postByChannel: preparedPostsByChannel,
             imageNames,
+            imageDrafts,
             imageSettingsByChannel: channelImageEditors,
+            instagramHashtagsInput,
             saved_at: new Date().toISOString(),
           },
         }),
@@ -1954,6 +2113,11 @@ export default function PublishModal({
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(String(result?.error || "Impossible d’enregistrer le brouillon publication."));
+      }
+      const savedDraftId = String(result?.id || loadedPublicationDraftId || publicationDraftIdParam || "").trim();
+      if (savedDraftId) {
+        setLoadedPublicationDraftId(savedDraftId);
+        router.replace(`/dashboard/booster?action=publish&draftId=${encodeURIComponent(savedDraftId)}`, { scroll: false });
       }
       setLastPublicationDraftSnapshot(currentPublicationDraftSnapshot);
       onUnsavedChange?.(false);

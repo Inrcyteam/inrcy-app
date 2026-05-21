@@ -141,6 +141,13 @@ function firstNonEmpty(...vals: any[]) {
   return "";
 }
 
+function looksLikeDelimitedChannelList(value: string) {
+  const v = String(value || "").trim();
+  if (!v) return false;
+  if (/^https?:\/\//i.test(v)) return false;
+  return /\s[\/]\s|[,;\n]/.test(v);
+}
+
 function downloadUrlForHistoryFile(fileId: string) {
   return `/api/inrsend/history/files/${encodeURIComponent(fileId)}/download`;
 }
@@ -270,14 +277,27 @@ function extractChannelsFromPayload(payload: any): string[] {
   if (Array.isArray(payload.targets)) candidates.push(...payload.targets);
   if (Array.isArray(payload.destinations)) candidates.push(...payload.destinations);
 
-  const single = firstNonEmpty(payload.channel, payload.platform, payload.target, payload.destination);
-  if (single) candidates.push(single);
+  const postByChannel = payload?.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : null;
+  if (postByChannel) candidates.push(...Object.keys(postByChannel));
 
+  const results = payload?.results && typeof payload.results === "object" ? payload.results : null;
+  if (results) candidates.push(...Object.keys(results));
+
+  const single = firstNonEmpty(payload.channel, payload.platform, payload.target, payload.destination);
+  if (single && !looksLikeDelimitedChannelList(single)) candidates.push(single);
+
+  const seen = new Set<string>();
   return candidates
     .flat()
-    .map((x) => (typeof x === "string" ? x : x?.name || x?.label || ""))
+    .map((x) => (typeof x === "string" ? x : x?.key || x?.name || x?.label || ""))
     .map((s: string) => String(s).trim())
-    .filter(Boolean);
+    .filter((value) => Boolean(value) && !looksLikeDelimitedChannelList(value))
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 function extractMessageFromPayload(payload: any): { html?: string | null; text?: string | null } {
@@ -575,12 +595,16 @@ function mapEventItems(rows: any[]): OutboxItem[] {
         ? (isDraft ? "Brouillon publication" : "Publication")
         : stripWorkflowPrefix(subTitle || safeS(payload?.preview || payload?.text || payload?.message || payload?.content, "Message"));
 
-      const target =
-        safeS(payload.channel) ||
-        safeS(payload.platform) ||
-        safeS(payload.to) ||
-        safeS(payload.recipients) ||
-        (folder === "publications" ? "Google / Réseaux" : "Contacts");
+      const extractedChannels = extractChannelsFromPayload(payload);
+      const target = folder === "publications"
+        ? (extractedChannels.length ? extractedChannels.join(" / ") : "Google / Réseaux")
+        : (
+            safeS(payload.to) ||
+            safeS(payload.recipients) ||
+            safeS(payload.channel) ||
+            safeS(payload.platform) ||
+            "Contacts"
+          );
       const preview = safeS(payload.preview || payload.text || payload.message || payload.content, "").slice(0, 140);
       const extracted = extractMessageFromPayload(payload);
       return {
@@ -598,9 +622,12 @@ function mapEventItems(rows: any[]): OutboxItem[] {
         preview,
         detailHtml: extracted.html,
         detailText: extracted.text,
-        channels: extractChannelsFromPayload(payload),
+        channels: extractedChannels,
         attachments: extractAttachmentsFromPayload(payload),
         raw: e,
+        reopenHref: isDraft && folder === "publications"
+          ? `/dashboard/booster?action=publish&draftId=${encodeURIComponent(String(e.id || ""))}`
+          : null,
       };
     });
 }
@@ -883,7 +910,10 @@ export async function GET(req: Request) {
       }
     }
 
-    const folderCounts = await computeFolderCounts(supabase, userData.user.id, boxView, filterAccountId, query);
+    const [folderCounts, draftFolderCounts] = await Promise.all([
+      computeFolderCounts(supabase, userData.user.id, "sent", filterAccountId, query),
+      computeFolderCounts(supabase, userData.user.id, "drafts", filterAccountId, query),
+    ]);
 
     return NextResponse.json({
       items,
@@ -893,6 +923,7 @@ export async function GET(req: Request) {
       total,
       totalKnown: total != null,
       folderCounts,
+      draftFolderCounts,
     });
   } catch (error) {
     return jsonUserFacingError(error, { status: 500 });

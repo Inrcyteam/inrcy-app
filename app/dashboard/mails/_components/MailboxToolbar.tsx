@@ -25,6 +25,7 @@ type Props = {
   setComposeOpen: (open: boolean) => void;
   boxView: BoxView;
   setBoxView: React.Dispatch<React.SetStateAction<BoxView>>;
+  draftCount: number;
 };
 
 export default function MailboxToolbar(props: Props) {
@@ -50,6 +51,7 @@ export default function MailboxToolbar(props: Props) {
     setComposeOpen,
     boxView,
     setBoxView,
+    draftCount,
   } = props;
 
   return (
@@ -161,9 +163,10 @@ export default function MailboxToolbar(props: Props) {
           className={`${styles.toolbarBtn} ${boxView === "drafts" ? styles.toolbarBtnActive : ""}`}
           onClick={() => setBoxView((v: BoxView) => (v === "drafts" ? "sent" : "drafts"))}
           type="button"
-          title="Brouillons"
+          title={draftCount > 0 ? `${draftCount} brouillon${draftCount > 1 ? "s" : ""}` : "Brouillons"}
         >
           Brouillons
+          {draftCount > 0 ? <span className={styles.badgeCount}>{draftCount}</span> : null}
         </button>
         <button
           className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${styles.desktopToolbarIconBtn} ${
