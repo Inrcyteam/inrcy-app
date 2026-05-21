@@ -2117,7 +2117,7 @@ export default function PublishModal({
       const savedDraftId = String(result?.id || loadedPublicationDraftId || publicationDraftIdParam || "").trim();
       if (savedDraftId) {
         setLoadedPublicationDraftId(savedDraftId);
-        router.replace(`/dashboard/booster?action=publish&draftId=${encodeURIComponent(savedDraftId)}`, { scroll: false });
+        router.replace(`/dashboard?action=publish&draftId=${encodeURIComponent(savedDraftId)}`, { scroll: false });
       }
       setLastPublicationDraftSnapshot(currentPublicationDraftSnapshot);
       onUnsavedChange?.(false);

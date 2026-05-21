@@ -58,6 +58,16 @@ export default function DashboardClient() {
   const searchParams = useSearchParams();
   const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
 
+  useEffect(() => {
+    const action = searchParams.get("action");
+    const stats = searchParams.get("stats");
+    if (action === "publish") {
+      setDashboardBoosterModal("publish");
+    } else if (stats === "1") {
+      setDashboardBoosterModal("stats");
+    }
+  }, [searchParams]);
+
   // Orientation: gérée globalement via <OrientationGuard />
 
   // ✅ Déconnexion Supabase + retour /login
@@ -2286,7 +2296,12 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
       <DashboardBoosterModalLayer
         mode={dashboardBoosterModal}
-        onClose={() => setDashboardBoosterModal(null)}
+        onClose={() => {
+          setDashboardBoosterModal(null);
+          if (searchParams.get("action") === "publish" || searchParams.get("stats") === "1" || searchParams.get("draftId")) {
+            router.replace("/dashboard", { scroll: false });
+          }
+        }}
       />
 
       <SettingsDrawer

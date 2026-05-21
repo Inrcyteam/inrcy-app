@@ -1095,7 +1095,7 @@ export default function MailboxClient() {
         return { label: "🧾 Devis", href: "/dashboard/devis/new" };
 
       case "publications":
-        return { label: "📣 Publier", href: "/dashboard/booster?action=publish" };
+        return { label: "📣 Publier", href: "/dashboard?action=publish" };
       case "propulsions":
       case "recoltes":
       case "offres":
@@ -2263,7 +2263,7 @@ async function deleteDraftPermanently(id: string) {
         pendingTrack: nextTrack,
       }));
     } else if (it.source === "app_events" && it.status === "draft") {
-      const href = it.reopenHref || `/dashboard/booster?action=publish&draftId=${encodeURIComponent(String(it.id || ""))}`;
+      const href = it.reopenHref || `/dashboard?action=publish&draftId=${encodeURIComponent(String(it.id || ""))}`;
       setDetailsOpen(false);
       router.push(href);
     }

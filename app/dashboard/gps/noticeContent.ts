@@ -167,7 +167,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         links: [
           { label: "Ouvrir iNrStats", href: "/dashboard/stats" },
           { label: "Ouvrir les canaux", href: "/dashboard" },
-          { label: "Ouvrir Booster", href: "/dashboard/booster" },
+          { label: "Ouvrir Booster", href: "/dashboard?action=publish" },
           { label: "Ouvrir Propulser", href: "/dashboard/propulser" },
           { label: "Ouvrir Fidéliser", href: "/dashboard/fideliser" },
         ],
@@ -206,7 +206,7 @@ export const GPS_SECTIONS: GpsSection[] = [
           "Publier régulièrement vaut mieux que chercher la publication parfaite une fois tous les trois mois.",
         ],
         links: [
-          { label: "Ouvrir Booster", href: "/dashboard/booster" },
+          { label: "Ouvrir Booster", href: "/dashboard?action=publish" },
           { label: "Configuration IA", href: "/dashboard/settings/ia" },
           { label: "Ouvrir les canaux", href: "/dashboard" },
         ],
@@ -545,7 +545,7 @@ export const GPS_SECTIONS: GpsSection[] = [
           "Montrer des preuves réelles rassure plus qu’un texte trop commercial.",
         ],
         links: [
-          { label: "Ouvrir Booster", href: "/dashboard/booster" },
+          { label: "Ouvrir Booster", href: "/dashboard?action=publish" },
           { label: "Ouvrir Propulser", href: "/dashboard/propulser" },
           { label: "Ouvrir Fidéliser", href: "/dashboard/fideliser" },
         ],

@@ -216,12 +216,22 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   const campaignAttachments = detailsItem.source === "mail_campaigns"
                     ? [...(detailsItem.attachments || []), ...extractAttachmentsFromPayload((detailsItem as any).raw)]
                     : [];
+                  const publicationDraftAttachments = detailsItem.source === "app_events" && Array.isArray(payload?.imageDrafts)
+                    ? payload.imageDrafts
+                        .map((image: any) => ({
+                          url: String(image?.publicUrl || image?.url || image?.dataUrl || "").trim(),
+                          name: String(image?.name || "Image brouillon"),
+                          type: String(image?.type || "image/jpeg"),
+                          size: Number(image?.size || 0) || undefined,
+                        }))
+                        .filter((att: any) => att.url)
+                    : [];
                   const attachmentCandidates = detailsItem.source === "send_items"
                     ? [...(detailsItem.attachments || []), ...sourceDocAttachments]
                     : detailsItem.source === "mail_campaigns"
                     ? campaignAttachments
                     : detailsItem.source === "app_events"
-                    ? [...(activeParts.attachments || [])]
+                    ? [...(activeParts.attachments || []), ...publicationDraftAttachments]
                     : [];
                   const dedupedAttachments = attachmentCandidates.filter((att, idx, arr) => {
                     const key = `${att.url || ""}|${att.name || ""}`;

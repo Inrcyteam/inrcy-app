@@ -167,7 +167,7 @@ async function buildPerformanceNotification(userId: string, digestHours: number)
       ? `Le canal ${topOpportunityChannel.channel === 'gmb' ? 'Google Business' : topOpportunityChannel.channel.replace('_', ' ')} concentre à lui seul ${topOpportunityChannel.value} opportunités activables. Lancez une action simple cette semaine pour transformer ce potentiel en demandes.`
       : `Vos canaux ont encore du potentiel. Activez un mouvement simple cette semaine pour transformer ${opportunities} opportunités en demandes concrètes.`;
     ctaLabel = "Ouvrir Booster";
-    ctaUrl = "/dashboard/booster";
+    ctaUrl = "/dashboard?action=publish";
     kind = "opportunities_weekly";
   } else if (deltaDemandes >= 3) {
     title = `Belle traction : +${deltaDemandes} demandes par rapport au dernier point`;
@@ -231,7 +231,7 @@ async function buildActionNotification(userId: string, digestHours: number) {
   let title = "Il est temps de lancer une action booster";
   let body = "Un petit mouvement aujourd’hui peut relancer votre machine business sans vous submerger.";
   let ctaLabel = "Lancer Booster";
-  let ctaUrl = "/dashboard/booster";
+  let ctaUrl = "/dashboard?action=publish";
   let kind = "launch_booster";
 
   if (missingChannels.length > 0) {

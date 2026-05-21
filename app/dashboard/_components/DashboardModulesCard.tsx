@@ -228,7 +228,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenBoos
     className={`${styles.gearCapsule} ${styles.gear_cyan}`}
     onClick={() => {
       if (onOpenBoosterPublish) onOpenBoosterPublish();
-      else goToModule("/dashboard/booster?action=publish");
+      else goToModule("/dashboard?action=publish");
     }}
   >
     <span
@@ -240,14 +240,14 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenBoos
       onClick={(event) => {
         event.stopPropagation();
         if (onOpenBoosterStats) onOpenBoosterStats();
-        else goToModule("/dashboard/booster?stats=1");
+        else goToModule("/dashboard?stats=1");
       }}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           event.stopPropagation();
           if (onOpenBoosterStats) onOpenBoosterStats();
-        else goToModule("/dashboard/booster?stats=1");
+        else goToModule("/dashboard?stats=1");
         }
       }}
     >

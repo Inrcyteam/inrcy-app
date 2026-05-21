@@ -71,7 +71,7 @@ export const INRCY_WORKFLOW_TOOLS = {
   booster: {
     key: "booster",
     label: "Booster",
-    path: "/dashboard/booster",
+    path: "/dashboard?action=publish",
     shortPurpose: "Visibilité immédiate",
     dashboardSubtitle: "Active vos canaux",
     primaryCta: "Publier maintenant",

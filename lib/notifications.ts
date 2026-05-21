@@ -127,7 +127,7 @@ function getOnboardingNotificationSeeds(): OnboardingNotificationSeed[] {
       title: "Lancez votre premier Booster",
       body: "Booster vous aide à produire rapidement un contenu utile pour vos canaux. Faites un premier essai pour prendre l'application en main.",
       cta_label: "Ouvrir Booster",
-      cta_url: "/dashboard/booster",
+      cta_url: "/dashboard?action=publish",
       meta: { source: "onboarding", step: "booster" },
     },
   ];

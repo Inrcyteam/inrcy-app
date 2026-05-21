@@ -256,7 +256,7 @@ export default function MailboxList(props: Props) {
                       </div>
                     ) : null}
 
-                    <div className={styles.itemMid} title={rowMetaText || midLabel || it.target}>
+                    <div className={`${styles.itemMid} ${folder === "publications" ? styles.publicationChannelsCell : ""}`} title={rowMetaText || midLabel || it.target}>
                       <span className={`${styles.itemMidContent} ${showWorkflowAction ? styles.itemMidContentDesktopOnly : ""}`}>{rowMetaNode}</span>
                       {showWorkflowAction ? (
                         <span className={styles.mobileWorkflowMeta}>

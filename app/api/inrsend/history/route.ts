@@ -626,7 +626,7 @@ function mapEventItems(rows: any[]): OutboxItem[] {
         attachments: extractAttachmentsFromPayload(payload),
         raw: e,
         reopenHref: isDraft && folder === "publications"
-          ? `/dashboard/booster?action=publish&draftId=${encodeURIComponent(String(e.id || ""))}`
+          ? `/dashboard?action=publish&draftId=${encodeURIComponent(String(e.id || ""))}`
           : null,
       };
     });

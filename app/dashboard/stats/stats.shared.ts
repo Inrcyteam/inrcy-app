@@ -1087,7 +1087,7 @@ function boosterToolAction(detail: string): CubeModel["action"] {
     key: "booster_publier",
     title: "Booster",
     detail,
-    href: "/dashboard/booster?action=publish",
+    href: "/dashboard?action=publish",
     pill: "Booster",
     effort: { level: "faible", label: "Effort faible • 5 min" },
   };
@@ -1409,7 +1409,7 @@ export function buildCubeModel(
       key: "booster_publier",
       title: "Booster",
       detail: "Données LinkedIn non exploitables actuellement. Publiez depuis Booster puis réessayez demain.",
-      href: "/dashboard/booster?action=publish",
+      href: "/dashboard?action=publish",
       pill: "Booster",
     };
   }

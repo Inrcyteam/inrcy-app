@@ -946,7 +946,7 @@ export function getFailedChannelMessage(result: any): string {
 export function getPublicationChannelStatuses(payload: any, fallbackChannels: string[] = []) {
   const results = extractPublicationResults(payload);
   const channels = orderChannelKeys([
-    ...fallbackChannels,
+    ...fallbackChannels.filter((channel) => !looksLikeDelimitedChannelList(String(channel || ""))),
     ...extractChannelsFromPayload(payload),
     ...Object.keys(results),
   ]);
@@ -972,19 +972,16 @@ export function renderPublicationChannelsWithFailures(payload: any, fallbackChan
   return (
     <span className={styles.channelStatusInlineWrap}>
       {channels.map((entry, index) => (
-        <React.Fragment key={`${entry.key}-${index}`}>
-          <span className={styles.channelStatusInline}>
-            <span className={styles.channelStatusLabel}>{entry.label}</span>
-            {entry.indicator ? (
-              <span
-                className={entry.indicator.className}
-                title={entry.indicator.title}
-                aria-label={entry.indicator.title}
-              />
-            ) : null}
-          </span>
-          {index < channels.length - 1 ? <span className={styles.channelStatusSeparator}> / </span> : null}
-        </React.Fragment>
+        <span className={styles.channelStatusInline} key={`${entry.key}-${index}`}>
+          <span className={styles.channelStatusLabel}>{entry.label}</span>
+          {entry.indicator ? (
+            <span
+              className={entry.indicator.className}
+              title={entry.indicator.title}
+              aria-label={entry.indicator.title}
+            />
+          ) : null}
+        </span>
       ))}
     </span>
   );

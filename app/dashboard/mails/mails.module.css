@@ -4276,3 +4276,57 @@
   font-size:11.5px;
   margin-inline:auto;
 }
+
+
+/* Correctifs iNrSend Publications : canaux lisibles en bulles */
+.publicationChannelsCell {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.publicationChannelsCell .itemMidContent {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  display: block;
+  width: 100%;
+}
+
+.channelStatusInlineWrap {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.channelStatusInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.26);
+  background: rgba(14, 165, 233, 0.13);
+  color: rgba(255,255,255,0.9);
+  line-height: 1.1;
+}
+
+.channelStatusLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channelStatusSeparator {
+  display: none !important;
+}
