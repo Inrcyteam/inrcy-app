@@ -27,7 +27,7 @@ import { useSiteWebChannel } from "./_hooks/channels/useSiteWebChannel";
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
 import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import { expectedUiSnapshotDate, getLastChannelSyncAt, getOverviewSnapshotDate, hasFreshLocalGeneratorSnapshot, markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, mergeGeneratorChannelBlockIntoCachedKpis, syncGeneratorOpportunitiesFromStatsSummary, readCachedChannelBlocks, readCachedChannelSyncAt, readCachedGeneratorChannelSyncAt, readCachedOppTotal, readGeneratorCache, readInrStatsPeriodSyncAt, statsCubeSessionKey, statsSummarySessionKey, type StatsWarmPeriod, writeUiCacheValue } from "./dashboard.client-cache";
+import { expectedUiSnapshotDate, getLastChannelSyncAt, getOverviewSnapshotDate, hasFreshLocalGeneratorSnapshot, markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, mergeGeneratorChannelBlockIntoCachedKpis, syncGeneratorOpportunitiesFromStatsSummary, readCachedChannelBlocks, readCachedChannelSyncAt, readCachedGeneratorChannelSyncAt, readCachedOppTotal, readGeneratorCache, readInrStatsPeriodSyncAt, statsCubeSessionKey, statsSummarySessionKey, type StatsWarmPeriod, readUiCacheValue, writeUiCacheValue } from "./dashboard.client-cache";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
@@ -45,6 +45,19 @@ import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 const FORCED_SERVER_CACHE_CHECK_DEDUP_MS = 30_000;
 const AUTO_DAILY_REFRESH_DEDUP_MS = 5 * 60_000;
+const GENERATOR_POWER_CACHE_KEY = "inrcy_generator_power_percent_v1";
+
+function readCachedGeneratorPowerPercent(): number | null {
+  try {
+    const raw = readUiCacheValue(GENERATOR_POWER_CACHE_KEY);
+    if (!raw) return null;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return null;
+    return Math.max(0, Math.min(100, Math.round(value)));
+  } catch {
+    return null;
+  }
+}
 
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
@@ -54,6 +67,8 @@ export default function DashboardClient() {
   const [helpInertieOpen, setHelpInertieOpen] = useState(false);
   const [helpInstagramOpen, setHelpInstagramOpen] = useState(false);
   const [dashboardBoosterModal, setDashboardBoosterModal] = useState<null | "publish" | "stats">(null);
+  const [siteConnectionsReady, setSiteConnectionsReady] = useState(false);
+  const [displayedGeneratorPower, setDisplayedGeneratorPower] = useState<number | null>(() => readCachedGeneratorPowerPercent());
   const router = useRouter();
   const searchParams = useSearchParams();
   const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
@@ -728,10 +743,14 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
 // (ancienne table site_configs supprimée)
 const loadSiteInrcy = useCallback(async () => {
   const requestSeq = ++siteConfigRequestSeqRef.current;
+  setSiteConnectionsReady(false);
   const supabase = createClient();
   const { data: authData } = await supabase.auth.getUser();
   const user = authData?.user;
-  if (!user || requestSeq !== siteConfigRequestSeqRef.current) return;
+  if (!user || requestSeq !== siteConfigRequestSeqRef.current) {
+    if (!user) setSiteConnectionsReady(true);
+    return;
+  }
 
   const profileRes = await supabase
     .from("profiles")
@@ -947,6 +966,7 @@ const loadSiteInrcy = useCallback(async () => {
   setSiteInrcyGscConnected(nextState.siteInrcyGscConnected);
   setSiteWebGa4Connected(nextState.siteWebGa4Connected);
   setSiteWebGscConnected(nextState.siteWebGscConnected);
+  setSiteConnectionsReady(true);
 }, [fetchGoogleConnected]);
 
 useEffect(() => {
@@ -990,9 +1010,23 @@ const generatorPowerSteps = [
   { key: "linkedin", label: "Connecter LinkedIn", shortLabel: "LinkedIn", weight: 10, completed: linkedinConnected && linkedinConnectionStatus !== "needs_update" },
 ] as const;
 
-const generatorPower = generatorPowerSteps.reduce((sum, step) => sum + (step.completed ? step.weight : 0), 0);
-const nextGeneratorPowerStep = generatorPowerSteps.find((step) => !step.completed) ?? null;
-const remainingGeneratorPowerSteps = generatorPowerSteps.filter((step) => !step.completed).length;
+const computedGeneratorPower = generatorPowerSteps.reduce((sum, step) => sum + (step.completed ? step.weight : 0), 0);
+const usingCachedGeneratorPower = !siteConnectionsReady && displayedGeneratorPower !== null && displayedGeneratorPower > computedGeneratorPower;
+const generatorPower = usingCachedGeneratorPower ? displayedGeneratorPower : computedGeneratorPower;
+const computedNextGeneratorPowerStep = generatorPowerSteps.find((step) => !step.completed) ?? null;
+const computedRemainingGeneratorPowerSteps = generatorPowerSteps.filter((step) => !step.completed).length;
+const nextGeneratorPowerStep = usingCachedGeneratorPower && generatorPower >= 100 ? null : computedNextGeneratorPowerStep;
+const remainingGeneratorPowerSteps = usingCachedGeneratorPower && generatorPower >= 100 ? 0 : computedRemainingGeneratorPowerSteps;
+
+useEffect(() => {
+  if (!siteConnectionsReady) return;
+  setDisplayedGeneratorPower(computedGeneratorPower);
+  try {
+    writeUiCacheValue(GENERATOR_POWER_CACHE_KEY, String(computedGeneratorPower));
+  } catch {
+    // ignore browser storage failures
+  }
+}, [computedGeneratorPower, siteConnectionsReady]);
 
 const applyGeneratorCacheToState = useCallback(() => {
     const mergedPayload = readGeneratorCache()?.payload;
