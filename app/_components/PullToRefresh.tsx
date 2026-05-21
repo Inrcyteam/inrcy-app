@@ -4,7 +4,30 @@ import { useEffect, useRef, useState } from "react";
 
 const REFRESH_THRESHOLD = 112;
 const MAX_DISTANCE = 120;
-const MOBILE_QUERY = "(max-width: 768px) and (pointer: coarse)";
+
+function isIosSafari() {
+  if (typeof window === "undefined") return false;
+
+  const ua = window.navigator.userAgent;
+  const vendor = window.navigator.vendor;
+  const platform = window.navigator.platform;
+  const maxTouchPoints = window.navigator.maxTouchPoints || 0;
+
+  const isIOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (platform === "MacIntel" && maxTouchPoints > 1);
+
+  if (!isIOS) return false;
+
+  // On garde ce refresh maison uniquement pour Safari iOS.
+  // Android/Chrome garde son pull-to-refresh natif.
+  const isSafari =
+    /Safari/i.test(ua) &&
+    /Apple/i.test(vendor) &&
+    !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo|Instagram|FBAN|FBAV/i.test(ua);
+
+  return isSafari;
+}
 
 function isEditableElement(element: Element | null) {
   if (!element) return false;
@@ -36,31 +59,53 @@ function isInsideBlockingLayer(element: Element | null) {
   );
 }
 
-function hasScrollableParent(element: Element | null) {
-  let current = element?.parentElement ?? null;
+function isVerticallyScrollable(element: Element) {
+  const style = window.getComputedStyle(element);
+  const overflowY = style.overflowY;
+
+  if (!/(auto|scroll|overlay)/.test(overflowY)) return false;
+  return element.scrollHeight > element.clientHeight + 8;
+}
+
+function findScrollableContainer(element: Element | null): HTMLElement | null {
+  let current = element instanceof HTMLElement ? element : null;
 
   while (current && current !== document.body && current !== document.documentElement) {
-    const style = window.getComputedStyle(current);
-    const overflowY = style.overflowY;
-    const canScroll = /(auto|scroll)/.test(overflowY) && current.scrollHeight > current.clientHeight + 2;
-
-    if (canScroll) return true;
+    if (isVerticallyScrollable(current)) return current;
     current = current.parentElement;
   }
 
-  return false;
+  return null;
+}
+
+function getDocumentScrollTop() {
+  return Math.max(
+    window.scrollY || 0,
+    document.documentElement.scrollTop || 0,
+    document.body.scrollTop || 0,
+  );
+}
+
+function isAtRealTop(target: EventTarget | null) {
+  const element = target instanceof Element ? target : null;
+  const scrollContainer = findScrollableContainer(element);
+
+  // Si une page/zone possède son propre scroll, on se base dessus.
+  // Ça évite le bug où window.scrollY reste à 0 alors que l’utilisateur est en bas d’un conteneur interne.
+  if (scrollContainer) return scrollContainer.scrollTop <= 2;
+
+  return getDocumentScrollTop() <= 2;
 }
 
 function canPullToRefresh(target: EventTarget | null) {
   if (typeof window === "undefined") return false;
-  if (!window.matchMedia(MOBILE_QUERY).matches) return false;
-  if (window.scrollY > 2) return false;
+  if (!isIosSafari()) return false;
 
   const element = target instanceof Element ? target : null;
   if (isEditableElement(document.activeElement)) return false;
   if (isEditableElement(element)) return false;
   if (isInsideBlockingLayer(element)) return false;
-  if (hasScrollableParent(element)) return false;
+  if (!isAtRealTop(target)) return false;
 
   return true;
 }
@@ -73,6 +118,8 @@ export default function PullToRefresh() {
   const [distance, setDistance] = useState(0);
 
   useEffect(() => {
+    if (!isIosSafari()) return;
+
     const reset = () => {
       activeRef.current = false;
       startYRef.current = 0;
