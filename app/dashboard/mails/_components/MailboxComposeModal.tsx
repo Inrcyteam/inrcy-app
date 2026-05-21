@@ -15,6 +15,8 @@ type MailboxComposeModalProps = {
   onClose: () => void;
   onOpenSettings: () => void;
   draftId: string | null;
+  currentComposeSnapshot: string;
+  lastSavedComposeSnapshot: string | null;
   mailAccounts: any[];
   selectedAccountId: string;
   setSelectedAccountId: React.Dispatch<React.SetStateAction<string>>;
@@ -75,6 +77,8 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     onClose,
     onOpenSettings,
     draftId,
+    currentComposeSnapshot,
+    lastSavedComposeSnapshot,
     mailAccounts,
     selectedAccountId,
     setSelectedAccountId,
@@ -131,7 +135,6 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
 
   const hasComposeWork = React.useMemo(() => {
     return Boolean(
-      draftId ||
       to.trim() ||
       subject.trim() ||
       text.trim() ||
@@ -139,10 +142,15 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
       selectedCrmCount > 0 ||
       composeAttachments.length > 0
     );
-  }, [composeAttachments.length, draftId, html, selectedCrmCount, subject, text, to]);
+  }, [composeAttachments.length, html, selectedCrmCount, subject, text, to]);
+
+  const hasUnsavedComposeChanges = React.useMemo(() => {
+    if (!hasComposeWork) return false;
+    return currentComposeSnapshot !== lastSavedComposeSnapshot;
+  }, [currentComposeSnapshot, hasComposeWork, lastSavedComposeSnapshot]);
 
   const requestClose = React.useCallback(async () => {
-    if (!hasComposeWork) {
+    if (!hasUnsavedComposeChanges) {
       onClose();
       return;
     }
@@ -156,11 +164,11 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     });
 
     if (confirmed) onClose();
-  }, [hasComposeWork, onClose]);
+  }, [hasUnsavedComposeChanges, onClose]);
 
   useUnsavedExitGuard({
     active: open,
-    shouldBlock: hasComposeWork,
+    shouldBlock: hasUnsavedComposeChanges,
     onConfirmExit: onClose,
     title: "Fermer le message ?",
     message: "Vous avez un message en cours. Voulez-vous vraiment fermer cette fenêtre sans l’envoyer ni sauvegarder le brouillon ?",

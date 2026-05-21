@@ -3175,6 +3175,10 @@
   display: none;
 }
 
+.mobileWorkflowMeta {
+  display: none;
+}
+
 @media (max-width: 640px) {
   .list {
     gap: 0;
@@ -3229,6 +3233,16 @@
 
   .workflowActionCell {
     display: none;
+  }
+
+  .itemMidContentDesktopOnly {
+    display: none;
+  }
+
+  .mobileWorkflowMeta {
+    display: inline;
+    font-weight: 850;
+    color: rgba(235,242,255,0.82);
   }
 
   .itemDateCell {
@@ -3746,10 +3760,22 @@
 }
 
 .composeToast {
-  padding: 10px 20px;
-  color: rgba(255,255,255,0.76);
-  font-size: 12px;
-  background: rgba(4,7,18,0.72);
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 20px;
+  color: rgba(255,255,255,0.94);
+  font-size: 13px;
+  font-weight: 850;
+  text-align: center;
+  border-top: 1px solid rgba(125,211,252,0.26);
+  background: linear-gradient(135deg, rgba(14,165,233,0.26), rgba(124,58,237,0.24));
+  box-shadow: 0 -14px 30px rgba(0,0,0,0.20);
 }
 
 @media (max-width: 640px) {

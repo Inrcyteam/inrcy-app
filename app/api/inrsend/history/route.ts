@@ -79,6 +79,11 @@ type SendItemRow = {
   source_doc_save_id?: string | null;
   source_doc_type?: "devis" | "facture" | null;
   source_doc_number?: string | null;
+  folder?: Folder | string | null;
+  track_kind?: string | null;
+  track_type?: string | null;
+  template_key?: string | null;
+  attachments?: any;
   error: string | null;
   sent_at: string | null;
   created_at: string;
@@ -397,7 +402,9 @@ function isVisibleInFolder(folder: Folder, item: OutboxItem, view: BoxView) {
     : item.folder === folder;
 
   if (!folderMatches) return false;
-  if (view === "drafts") return item.source === "send_items" && item.status === "draft";
+  if (view === "drafts") {
+    return (item.source === "send_items" || item.source === "app_events") && item.status === "draft";
+  }
   return item.status !== "draft";
 }
 
@@ -426,8 +433,11 @@ function matchesQuery(item: OutboxItem, query: string) {
   return hay.includes(query);
 }
 
-function shouldQuerySendItems(folder: Folder) {
-  return folder === "mails" || folder === "factures" || folder === "devis";
+function shouldQuerySendItems(_folder: Folder) {
+  // Les brouillons iNrSend peuvent désormais être classés dans toutes les catégories
+  // (Factures, Devis, Publications, Propulsions, Fidélisations). On filtre ensuite
+  // côté JS pour rester compatible avec les anciennes lignes sans colonne folder.
+  return true;
 }
 
 function shouldQueryCampaigns(view: BoxView) {
@@ -435,7 +445,7 @@ function shouldQueryCampaigns(view: BoxView) {
 }
 
 function shouldQueryEvents(folder: Folder, view: BoxView) {
-  if (view === "drafts") return false;
+  if (view === "drafts") return folder === "publications";
   return folder === "publications"
     || folder === "recoltes"
     || folder === "offres"
@@ -450,14 +460,30 @@ function mapSendItems(rows: SendItemRow[]): OutboxItem[] {
   return rows
     .map<OutboxItem | null>((x) => {
       if ((x as any).status === "deleted") return null;
-      const folder: Folder = x.type === "facture" ? "factures" : x.type === "devis" ? "devis" : "mails";
-      const title = safeS(x.subject, folder === "factures" ? "Facture" : folder === "devis" ? "Devis" : "(sans objet)");
+      const explicitFolder = String((x as any).folder || "").toLowerCase();
+      const fallbackFolder: Folder = x.type === "facture" ? "factures" : x.type === "devis" ? "devis" : "mails";
+      const folder: Folder = isFolderValue(explicitFolder)
+        ? explicitFolder
+        : folderFromTrack((x as any).track_kind, (x as any).track_type, fallbackFolder);
+      const action = getActionFromTrack((x as any).track_kind, (x as any).track_type) || getActionFromLegacyFolder(folder);
+      const workflowMeta = action ? workflowMetaFromAction(action) : workflowMetaFromFolder(folder);
+      const title = stripWorkflowPrefix(safeS(x.subject, folder === "factures" ? "Facture" : folder === "devis" ? "Devis" : folder === "publications" ? "Brouillon publication" : "(sans objet)"));
       const preview = safeS(x.body_text || x.body_html, "").slice(0, 140);
-      const workflowMeta = workflowMetaFromFolder(folder);
       const status: Status = x.status === "sent" && x.error ? "error" : (x.status as Status);
+      const rawRecipients = safeS(x.to_emails, "");
+      const recipientCount = rawRecipients
+        ? rawRecipients.split(/[;,]/).map((v) => v.trim()).filter(Boolean).length
+        : 0;
+      const target = (folder === "propulsions" || folder === "fidelisations") && recipientCount > 1
+        ? `${recipientCount} contacts`
+        : rawRecipients;
+      const rawModule = String((x as any).track_kind || "").toLowerCase();
       return {
         id: x.id,
         source: "send_items",
+        module: rawModule === "booster" || rawModule === "propulser" || rawModule === "fideliser"
+          ? rawModule as "booster" | "propulser" | "fideliser"
+          : undefined,
         folder,
         ...workflowMeta,
         provider: x.provider || "Mail",
@@ -466,12 +492,13 @@ function mapSendItems(rows: SendItemRow[]): OutboxItem[] {
         sent_at: x.sent_at,
         error: x.error,
         title,
-        target: safeS(x.to_emails, ""),
+        target,
         preview,
         detailHtml: x.body_html,
         detailText: x.body_text,
         subject: x.subject,
         to: x.to_emails,
+        attachments: extractAttachmentsFromPayload(x),
         raw: x,
         reopenHref: x.source_doc_save_id && x.source_doc_type
           ? `/dashboard/${x.source_doc_type === "facture" ? "factures" : "devis"}/new?saveId=${encodeURIComponent(x.source_doc_save_id)}`
@@ -525,7 +552,10 @@ function mapEventItems(rows: any[]): OutboxItem[] {
     .map<OutboxItem>((e: any) => {
       const module = String(e.module || "") as "booster" | "propulser" | "fideliser";
       const t = String(e.type || "");
-      const action = getActionFromTrack(module, t);
+      const payload = (e.payload || {}) as any;
+      const isDraft = String(payload?.status || "").toLowerCase() === "draft" || t === "publish_draft";
+      const actionType = t === "publish_draft" ? "publish" : t;
+      const action = getActionFromTrack(module, actionType);
       const folder: Folder = action
         ? historyFolderForAction(action)
         : module === "fideliser"
@@ -534,7 +564,6 @@ function mapEventItems(rows: any[]): OutboxItem[] {
             ? "publications"
             : "propulsions";
       const workflowMeta = action ? workflowMetaFromAction(action) : workflowMetaFromFolder(folder);
-      const payload = (e.payload || {}) as any;
       const subTitle = firstNonEmpty(
         payload?.post?.title,
         payload?.title,
@@ -543,7 +572,7 @@ function mapEventItems(rows: any[]): OutboxItem[] {
       );
 
       const title = folder === "publications"
-        ? "Publication"
+        ? (isDraft ? "Brouillon publication" : "Publication")
         : stripWorkflowPrefix(subTitle || safeS(payload?.preview || payload?.text || payload?.message || payload?.content, "Message"));
 
       const target =
@@ -561,7 +590,7 @@ function mapEventItems(rows: any[]): OutboxItem[] {
         folder,
         ...workflowMeta,
         provider: module === "fideliser" ? "Fidéliser" : module === "propulser" ? "Propulser" : "Booster",
-        status: "sent",
+        status: isDraft ? "draft" : "sent",
         created_at: e.created_at,
         title,
         subTitle: subTitle || undefined,
@@ -607,7 +636,7 @@ async function computeFolderCounts(
   const sendItemsPromise = fetchAllRows<SendItemRow>(async (from, to) => {
     let builder: any = supabase
       .from("send_items")
-      .select("id, integration_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, provider_thread_id, source_doc_save_id, source_doc_type, source_doc_number, error, sent_at, created_at, updated_at")
+      .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
@@ -633,20 +662,22 @@ async function computeFolderCounts(
         return builder.range(from, to);
       });
 
-  const eventsPromise = boxView === "drafts"
-    ? Promise.resolve([] as any[])
-    : fetchAllRows<any>(async (from, to) => {
-        let builder: any = supabase
-          .from("app_events")
-          .select("id, module, type, payload, created_at")
-          .eq("user_id", userId)
-          .in("module", ["booster", "propulser", "fideliser"])
-          .order("created_at", { ascending: false });
+  const eventsPromise = fetchAllRows<any>(async (from, to) => {
+    let builder: any = supabase
+      .from("app_events")
+      .select("id, module, type, payload, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
 
-        if (eventsCutoffIso) builder = builder.gte("created_at", eventsCutoffIso);
+    if (boxView === "drafts") {
+      builder = builder.eq("module", "booster").eq("type", "publish_draft");
+    } else {
+      builder = builder.in("module", ["booster", "propulser", "fideliser"]);
+      if (eventsCutoffIso) builder = builder.gte("created_at", eventsCutoffIso);
+    }
 
-        return builder.range(from, to);
-      });
+    return builder.range(from, to);
+  });
 
   const [sendRows, campaignRows, eventRows] = await Promise.all([sendItemsPromise, campaignsPromise, eventsPromise]);
 
@@ -723,7 +754,7 @@ export async function GET(req: Request) {
         tasks.push((async () => {
           let builder: any = supabase
             .from("send_items")
-            .select("id, integration_id, type, status, to_emails, subject, body_text, body_html, provider, provider_message_id, provider_thread_id, source_doc_save_id, source_doc_type, source_doc_number, error, sent_at, created_at, updated_at")
+            .select("*")
             .eq("user_id", userData.user.id)
             .order("created_at", { ascending: false });
 
@@ -782,6 +813,10 @@ export async function GET(req: Request) {
 
           if (folderCutoffIso) builder = builder.gte("created_at", folderCutoffIso);
           else if (eventSourceCutoffIso) builder = builder.gte("created_at", eventSourceCutoffIso);
+
+          if (boxView === "drafts") {
+            builder = builder.eq("type", "publish_draft");
+          }
 
           if (folder === "publications") {
             builder = builder.eq("module", "booster");

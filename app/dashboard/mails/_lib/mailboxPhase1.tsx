@@ -291,6 +291,11 @@ export type SendItem = {
   source_doc_save_id?: string | null;
   source_doc_type?: "devis" | "facture" | null;
   source_doc_number?: string | null;
+  folder?: Folder | string | null;
+  track_kind?: string | null;
+  track_type?: string | null;
+  template_key?: string | null;
+  attachments?: unknown;
   error: string | null;
   sent_at: string | null;
   created_at: string;
@@ -1196,7 +1201,7 @@ export function isVisibleInFolder(folder: Folder, item: OutboxItem, view: BoxVie
   if (!folderMatches) return false;
 
   // Brouillons : uniquement pour l'historique send_items.
-  if (view === "drafts") return item.source === "send_items" && item.status === "draft";
+  if (view === "drafts") return (item.source === "send_items" || item.source === "app_events") && item.status === "draft";
 
   // Vue principale: uniquement les éléments réellement "envoyés" (ou en erreur), jamais les drafts.
   return item.status !== "draft";

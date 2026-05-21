@@ -223,6 +223,9 @@ export default function PublishModal({
   const generationTimersRef = useRef<number[]>([]);
   const [genError, setGenError] = useState("");
   const [publishError, setPublishError] = useState("");
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftMessage, setDraftMessage] = useState("");
+  const [lastPublicationDraftSnapshot, setLastPublicationDraftSnapshot] = useState<string | null>(null);
   const [publishProgress, setPublishProgress] = useState(0);
   const [publishProgressLabel, setPublishProgressLabel] = useState("");
   const [postsByChannel, setPostsByChannel] = useState<
@@ -703,7 +706,7 @@ export default function PublishModal({
     transform: activeEditorTransform,
   });
 
-  const hasUnsavedChanges = useMemo(() => {
+  const hasDraftablePublicationContent = useMemo(() => {
     const hasText = !!idea.trim() || !!theme || contentStyle !== "equilibre";
     const hasGeneratedContent = Object.values(postsByChannel).some((post) => {
       const normalized = normalizePost(post);
@@ -733,19 +736,57 @@ export default function PublishModal({
     instagramHashtagsInput,
   ]);
 
+  const currentPublicationDraftSnapshot = useMemo(() => {
+    const imageNames = images.map((file) => ({
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    }));
+    return JSON.stringify({
+      idea: idea.trim(),
+      theme,
+      contentStyle,
+      channels: selectedChannels,
+      postsByChannel,
+      instagramHashtagsInput,
+      imageNames,
+      imageSettingsByChannel: channelImageEditors,
+    });
+  }, [
+    idea,
+    theme,
+    contentStyle,
+    selectedChannels,
+    postsByChannel,
+    instagramHashtagsInput,
+    images,
+    channelImageEditors,
+  ]);
+
+  const hasUnsavedChanges = useMemo(
+    () =>
+      hasDraftablePublicationContent &&
+      currentPublicationDraftSnapshot !== lastPublicationDraftSnapshot,
+    [
+      hasDraftablePublicationContent,
+      currentPublicationDraftSnapshot,
+      lastPublicationDraftSnapshot,
+    ],
+  );
+
   useEffect(() => {
     onUnsavedChange?.(hasUnsavedChanges);
   }, [hasUnsavedChanges, onUnsavedChange]);
 
   useEffect(() => {
-    if (!hasUnsavedChanges || saving) return;
+    if (!hasUnsavedChanges || saving || draftSaving) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [hasUnsavedChanges, saving]);
+  }, [hasUnsavedChanges, saving, draftSaving]);
 
   const confirmDiscardPublicationWork = async (actionLabel: string) => {
     if (!hasUnsavedChanges) return true;
@@ -793,6 +834,8 @@ export default function PublishModal({
     closeEmptyContentWarnings();
     setGenError("");
     setDuplicateFeedback(null);
+    setDraftMessage("");
+    setLastPublicationDraftSnapshot(null);
     setFinalReviewOpen(false);
     setFinalReviewPosts(null);
     imagePreviews.forEach((url) => URL.revokeObjectURL(url));
@@ -1700,11 +1743,12 @@ export default function PublishModal({
     skipGmbNoImageWarning?: boolean;
     preparedPostsByChannel?: Partial<Record<ChannelKey, ChannelPost>>;
   }) => {
-    if (saving) return;
+    if (saving || draftSaving) return;
     const preparedPostsByChannel =
       options?.preparedPostsByChannel || buildPreparedPostsByChannel();
 
     setPublishError("");
+    setDraftMessage("");
     setImgError("");
     setPublishProgress(0);
     setPublishProgressLabel("");
@@ -1849,10 +1893,88 @@ export default function PublishModal({
     }
   };
 
+  const onSavePublicationDraft = async () => {
+    if (saving || draftSaving) return;
+
+    setPublishError("");
+    setDraftMessage("");
+
+    if (!hasDraftablePublicationContent) {
+      setPublishError("Ajoutez un contenu ou une image avant d’enregistrer le brouillon.");
+      scrollToPublishArea("smooth");
+      return;
+    }
+
+    if (!selectedChannels.length) {
+      setPublishError("Sélectionnez au moins 1 canal avant d’enregistrer le brouillon.");
+      scrollToPublishArea("smooth");
+      return;
+    }
+
+    const preparedPostsByChannel = buildPreparedPostsByChannel();
+    const imageNames = images.map((file) => ({
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    }));
+    const channelLabels = selectedChannels
+      .map((channel) => CHANNEL_LABELS[channel] || channel)
+      .join(" / ");
+    const firstTitle = selectedChannels
+      .map((channel) => String(preparedPostsByChannel[channel]?.title || "").trim())
+      .find(Boolean);
+    const firstContent = selectedChannels
+      .map((channel) => String(preparedPostsByChannel[channel]?.content || "").trim())
+      .find(Boolean);
+
+    setDraftSaving(true);
+    try {
+      const response = await fetch("/api/booster/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "publish_draft",
+          payload: {
+            status: "draft",
+            title: firstTitle || "Brouillon publication",
+            preview: firstContent || idea.trim() || channelLabels,
+            content: firstContent || "",
+            idea: idea.trim(),
+            theme,
+            contentStyle,
+            channel: channelLabels,
+            channels: selectedChannels,
+            postByChannel: preparedPostsByChannel,
+            imageNames,
+            imageSettingsByChannel: channelImageEditors,
+            saved_at: new Date().toISOString(),
+          },
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(result?.error || "Impossible d’enregistrer le brouillon publication."));
+      }
+      setLastPublicationDraftSnapshot(currentPublicationDraftSnapshot);
+      onUnsavedChange?.(false);
+      setDraftMessage("Brouillon publication enregistré ✅");
+    } catch (e) {
+      setPublishError(
+        getSimpleFrenchErrorMessage(
+          e,
+          "Impossible d’enregistrer le brouillon publication.",
+        ),
+      );
+    } finally {
+      setDraftSaving(false);
+    }
+  };
+
   const onPublish = async () => {
-    if (saving) return;
+    if (saving || draftSaving) return;
     const preparedPostsByChannel = buildPreparedPostsByChannel();
     setPublishError("");
+    setDraftMessage("");
     setImgError("");
     setPublishProgress(0);
     setPublishProgressLabel("");
@@ -3827,16 +3949,36 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
           />
           <button
             type="button"
+            className={styles.secondaryBtn}
+            onClick={onSavePublicationDraft}
+            disabled={saving || draftSaving}
+            title="Enregistrer le brouillon publication"
+            aria-label="Enregistrer le brouillon publication"
+            style={{
+              width: 52,
+              minHeight: 52,
+              padding: 0,
+              display: "inline-grid",
+              placeItems: "center",
+              fontSize: 22,
+              opacity: saving || draftSaving ? 0.64 : 1,
+              cursor: saving || draftSaving ? "wait" : "pointer",
+            }}
+          >
+            {draftSaving ? "…" : "💾"}
+          </button>
+          <button
+            type="button"
             className={styles.primaryBtn}
             onClick={onPublish}
-            disabled={saving}
+            disabled={saving || draftSaving}
             style={{
               minHeight: 52,
               padding: "0 24px",
               fontSize: 16,
               fontWeight: 800,
-              opacity: saving ? 0.64 : 1,
-              cursor: saving ? "wait" : "pointer",
+              opacity: saving || draftSaving ? 0.64 : 1,
+              cursor: saving || draftSaving ? "wait" : "pointer",
             }}
           >
             {saving
@@ -3847,7 +3989,7 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
         <div
           style={{
             width: "min(440px, 100%)",
-            minHeight: saving || publishError ? 58 : 0,
+            minHeight: saving || publishError || draftMessage ? 58 : 0,
             display: "grid",
             gap: 8,
             justifyItems: "stretch",
@@ -3899,6 +4041,19 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
                 />
               </div>
             </div>
+          ) : null}
+          {draftMessage ? (
+            <StatusMessage
+              variant="success"
+              style={{
+                marginTop: 0,
+                textAlign: "right",
+                maxWidth: 440,
+                justifySelf: "end",
+              }}
+            >
+              {draftMessage}
+            </StatusMessage>
           ) : null}
           {publishError ? (
             <StatusMessage

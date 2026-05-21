@@ -257,8 +257,13 @@ export default function MailboxList(props: Props) {
                     ) : null}
 
                     <div className={styles.itemMid} title={rowMetaText || midLabel || it.target}>
-                      <span className={styles.itemMidContent}>{rowMetaNode}</span>
-                      <span className={styles.mobileMetaDate}> · {rowDate}</span>
+                      <span className={`${styles.itemMidContent} ${showWorkflowAction ? styles.itemMidContentDesktopOnly : ""}`}>{rowMetaNode}</span>
+                      {showWorkflowAction ? (
+                        <span className={styles.mobileWorkflowMeta}>
+                          {workflowActionLabel} - {rowMetaText}
+                        </span>
+                      ) : null}
+                      <span className={styles.mobileMetaDate}> - {rowDate}</span>
                     </div>
 
                     <div className={styles.itemDateCell}>

@@ -271,6 +271,7 @@ export default function MailboxClient() {
   const [deletingHistoryItemId, setDeletingHistoryItemId] = useState<string | null>(null);
   const [deletingHistorySelection, setDeletingHistorySelection] = useState(false);
   const [selectedHistoryKeys, setSelectedHistoryKeys] = useState<string[]>([]);
+  const [lastSavedComposeSnapshot, setLastSavedComposeSnapshot] = useState<string | null>(null);
 
 
   // Attachments uploaded by Factures / Devis screens are stored here.
@@ -435,6 +436,62 @@ export default function MailboxClient() {
 
   const counts = folderCounts;
 
+  function makeComposeSnapshot(input?: {
+    selectedAccountId?: string;
+    to?: string;
+    subject?: string;
+    text?: string;
+    html?: string;
+    composeType?: SendType;
+    composeAttachments?: ComposeAttachmentRef[];
+    composeSourceDocSaveId?: string;
+    composeSourceDocType?: string;
+    composeSourceDocNumber?: string;
+    composeTemplateKey?: string;
+    pendingTrack?: PendingTrack | null;
+  }) {
+    const source = input || {};
+    return JSON.stringify({
+      selectedAccountId: source.selectedAccountId ?? selectedAccountId ?? "",
+      to: source.to ?? to ?? "",
+      subject: source.subject ?? subject ?? "",
+      text: source.text ?? text ?? "",
+      html: source.html ?? html ?? "",
+      composeType: source.composeType ?? composeType,
+      attachments: (source.composeAttachments ?? composeAttachments).map((att) => ({
+        bucket: att.bucket || "",
+        path: att.path || "",
+        name: att.name || "",
+        type: att.type || null,
+        size: att.size ?? null,
+      })),
+      sourceDocSaveId: source.composeSourceDocSaveId ?? composeSourceDocSaveId ?? "",
+      sourceDocType: source.composeSourceDocType ?? composeSourceDocType ?? "",
+      sourceDocNumber: source.composeSourceDocNumber ?? composeSourceDocNumber ?? "",
+      templateKey: source.composeTemplateKey ?? composeTemplateKey ?? "",
+      pendingTrack: source.pendingTrack ?? pendingTrack ?? null,
+    });
+  }
+
+  const currentComposeSnapshot = useMemo(() => makeComposeSnapshot(), [
+    selectedAccountId,
+    to,
+    subject,
+    text,
+    html,
+    composeType,
+    composeAttachments,
+    composeSourceDocSaveId,
+    composeSourceDocType,
+    composeSourceDocNumber,
+    composeTemplateKey,
+    pendingTrack,
+  ]);
+
+  function setComposeSavedSnapshotFromCurrent() {
+    setLastSavedComposeSnapshot(makeComposeSnapshot());
+  }
+
   function setComposeBody(nextText: string, nextHtml?: string | null) {
     const cleanText = stripTemplateSignatureBlock(String(nextText || ""));
     setText(cleanText);
@@ -443,6 +500,7 @@ export default function MailboxClient() {
 
   function resetCompose(nextType: SendType = "mail") {
     setDraftId(null);
+    setLastSavedComposeSnapshot(null);
     setComposeType(nextType);
     setComposeSourceDocSaveId("");
     setComposeSourceDocType("");
@@ -1056,7 +1114,10 @@ export default function MailboxClient() {
   }, []);
 
   useEffect(() => {
-    if (!composeOpen) return;
+    if (!composeOpen) {
+      setLastSavedComposeSnapshot(null);
+      return;
+    }
     void loadSignature(selectedAccountId || undefined);
   }, [composeOpen, selectedAccountId]);
 
@@ -1440,7 +1501,8 @@ export default function MailboxClient() {
     const userId = auth?.user?.id;
     if (!userId) return;
 
-    const payload = {
+    const draftFolder = getBulkCampaignFolder();
+    const draftPayload = {
       user_id: userId,
       integration_id: selectedAccountId || null,
       type: composeType,
@@ -1453,22 +1515,80 @@ export default function MailboxClient() {
       source_doc_save_id: composeSourceDocSaveId || null,
       source_doc_type: composeSourceDocType || null,
       source_doc_number: composeSourceDocNumber || null,
+      folder: draftFolder,
+      track_kind: pendingTrack?.kind || null,
+      track_type: pendingTrack?.type || null,
+      template_key: composeTemplateKey || null,
+      attachments: composeAttachments.map((att) => ({
+        bucket: att.bucket,
+        path: att.path,
+        name: att.name,
+        type: att.type || null,
+        size: att.size ?? null,
+      })),
+    };
+
+    const legacyPayload = {
+      user_id: draftPayload.user_id,
+      integration_id: draftPayload.integration_id,
+      type: draftPayload.type,
+      status: draftPayload.status,
+      to_emails: draftPayload.to_emails,
+      subject: draftPayload.subject,
+      body_text: draftPayload.body_text,
+      body_html: draftPayload.body_html,
+      provider: draftPayload.provider,
+      source_doc_save_id: draftPayload.source_doc_save_id,
+      source_doc_type: draftPayload.source_doc_type,
+      source_doc_number: draftPayload.source_doc_number,
+    };
+
+    const isMissingDraftMetadataColumn = (error: any) => {
+      const msg = String(error?.message || error?.details || error?.hint || "").toLowerCase();
+      return error?.code === "PGRST204" || msg.includes("folder") || msg.includes("track_kind") || msg.includes("track_type") || msg.includes("template_key") || msg.includes("attachments");
     };
 
     if (draftId) {
-      const { error } = await supabase.from("send_items").update(payload).eq("id", draftId);
-      if (!error) {
-        setToast("Brouillon sauvegardé");
-        await loadHistory();
+      let usedLegacyFallback = false;
+      let { error } = await supabase.from("send_items").update(draftPayload as any).eq("id", draftId);
+      if (error && isMissingDraftMetadataColumn(error)) {
+        ({ error } = await supabase.from("send_items").update(legacyPayload).eq("id", draftId));
+        usedLegacyFallback = !error;
       }
+      if (error) {
+        setToast(getSimpleFrenchErrorMessage(error, "Impossible d’enregistrer le brouillon."));
+        return;
+      }
+      setToast(
+        usedLegacyFallback
+          ? "Brouillon enregistré, mais classement avancé indisponible : exécutez le SQL des brouillons iNrSend."
+          : "Brouillon enregistré ✅",
+      );
+      setComposeSavedSnapshotFromCurrent();
+      await loadHistory();
       return;
     }
 
-    const { data, error } = await supabase.from("send_items").insert(payload).select("id").single();
-    if (!error && data?.id) {
+    let usedLegacyFallback = false;
+    let { data, error } = await supabase.from("send_items").insert(draftPayload as any).select("id").single();
+    if (error && isMissingDraftMetadataColumn(error)) {
+      ({ data, error } = await supabase.from("send_items").insert(legacyPayload).select("id").single());
+      usedLegacyFallback = !error;
+    }
+    if (error) {
+      setToast(getSimpleFrenchErrorMessage(error, "Impossible d’enregistrer le brouillon."));
+      return;
+    }
+    if (data?.id) {
       setDraftId(data.id);
-      setToast("Brouillon sauvegardé");
+      setToast(
+        usedLegacyFallback
+          ? "Brouillon enregistré, mais classement avancé indisponible : exécutez le SQL des brouillons iNrSend."
+          : "Brouillon enregistré ✅",
+      );
+      setComposeSavedSnapshotFromCurrent();
       await loadHistory();
+      if (!usedLegacyFallback && draftFolder !== folder) updateFolder(draftFolder);
     }
   }
 
@@ -1734,6 +1854,9 @@ async function deleteDraftPermanently(id: string) {
           return;
         }
 
+        if (draftId) {
+          await supabase.from("send_items").delete().eq("id", draftId).eq("user_id", (await supabase.auth.getUser()).data?.user?.id || "");
+        }
         if (trackedCampaign) setPendingTrack(null);
         const queuedCount = Math.max(0, Number(data?.queued ?? recipientsList.length));
         const blockedDuplicates = Math.max(0, Number(data?.blockedDuplicates ?? 0));
@@ -2103,11 +2226,38 @@ async function deleteDraftPermanently(id: string) {
       setDraftId(it.id);
       // raw = SendItem
       const raw = (it.raw || {}) as any;
-      setComposeType(raw.type as SendType);
+      const nextType = (raw.type === "facture" || raw.type === "devis" ? raw.type : "mail") as SendType;
+      const nextTrack = raw.track_kind && raw.track_type
+        ? ({ kind: raw.track_kind, type: raw.track_type, payload: {} } as PendingTrack)
+        : inferTrackFromCampaign(it);
+      const nextAttachments = normalizeCampaignAttachments(raw.attachments);
+      setComposeType(nextType);
+      setComposeTemplateKey(String(raw.template_key || ""));
+      setComposeSourceDocSaveId(String(raw.source_doc_save_id || ""));
+      setComposeSourceDocType(raw.source_doc_type === "facture" || raw.source_doc_type === "devis" ? raw.source_doc_type : "");
+      setComposeSourceDocNumber(String(raw.source_doc_number || ""));
+      setPendingTrack(nextTrack);
       setTo(raw.to_emails || "");
       setSubject(normalizeMailSubject(raw.subject || ""));
       setComposeBody(raw.body_text || "", raw.body_html || "");
+      setComposeAttachments(nextAttachments);
       setFiles([]);
+      setLastSavedComposeSnapshot(makeComposeSnapshot({
+        selectedAccountId: String(raw.integration_id || selectedAccountId || ""),
+        to: String(raw.to_emails || ""),
+        subject: normalizeMailSubject(raw.subject || ""),
+        text: String(raw.body_text || ""),
+        html: String(raw.body_html || ""),
+        composeType: nextType,
+        composeAttachments: nextAttachments,
+        composeSourceDocSaveId: String(raw.source_doc_save_id || ""),
+        composeSourceDocType: raw.source_doc_type === "facture" || raw.source_doc_type === "devis" ? raw.source_doc_type : "",
+        composeSourceDocNumber: String(raw.source_doc_number || ""),
+        composeTemplateKey: String(raw.template_key || ""),
+        pendingTrack: nextTrack,
+      }));
+    } else if (it.source === "app_events" && it.status === "draft") {
+      openDetails(it);
     }
   }
 
@@ -2275,6 +2425,8 @@ async function deleteDraftPermanently(id: string) {
           onClose={() => setComposeOpen(false)}
           onOpenSettings={() => setSettingsOpen(true)}
           draftId={draftId}
+          currentComposeSnapshot={currentComposeSnapshot}
+          lastSavedComposeSnapshot={lastSavedComposeSnapshot}
           mailAccounts={mailAccounts}
           selectedAccountId={selectedAccountId}
           setSelectedAccountId={setSelectedAccountId}

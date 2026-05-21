@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 
-type BoosterEventType = "publish" | "review_mail" | "promo_mail";
+type BoosterEventType = "publish" | "publish_draft" | "review_mail" | "promo_mail";
 
 export async function POST(req: Request) {
   try {
@@ -13,7 +13,7 @@ const body = await req.json().catch(() => ({}));
     const type = body?.type as BoosterEventType;
     const payload = (body?.payload ?? {}) as Record<string, unknown>;
 
-    if (!type || !["publish", "review_mail", "promo_mail"].includes(type)) {
+    if (!type || !["publish", "publish_draft", "review_mail", "promo_mail"].includes(type)) {
       return NextResponse.json({ error: "Type d'action invalide." }, { status: 400 });
     }
 
