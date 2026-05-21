@@ -47,7 +47,7 @@ export default function DashboardChannelsSection({
   onOpenBoosterPublish,
   onOpenBoosterStats,
 }: DashboardChannelsSectionProps) {
-  const [bubbleView, setBubbleView] = useState<BubbleViewMode>("list");
+  const [bubbleView, setBubbleView] = useState<BubbleViewMode>("carousel");
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
   const carouselRef = useRef<HTMLDivElement | null>(null);
   const [carouselIndex, setCarouselIndex] = useState(1);
@@ -75,20 +75,26 @@ export default function DashboardChannelsSection({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const saved = window.localStorage.getItem("inrcy_bubble_view");
-    if (saved === "list" || saved === "carousel") setBubbleView(saved);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
     if (isMobile === null) return;
 
-    if (isMobile === false) {
-      setBubbleView("list");
+    if (!isMobile) {
       return;
     }
 
-    window.localStorage.setItem("inrcy_bubble_view", bubbleView);
+    const saved = window.localStorage.getItem("inrcy_bubble_view_mobile");
+
+    if (saved === "list" || saved === "carousel") {
+      setBubbleView(saved);
+    } else {
+      setBubbleView("carousel");
+    }
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!isMobile) return;
+
+    window.localStorage.setItem("inrcy_bubble_view_mobile", bubbleView);
   }, [bubbleView, isMobile]);
 
   const renderFluxBubble = (item: DashboardFluxBubbleData, keyOverride?: string) => (
@@ -269,14 +275,41 @@ export default function DashboardChannelsSection({
           </div>
 
           {hasCarousel && (
-            <div className={styles.carouselDots} aria-label="Position dans le carrousel">
-              {baseModules.map((_, i) => (
-                <span
-                  key={i}
-                  className={`${styles.carouselDot} ${i === activeDot ? styles.carouselDotActive : ""}`}
-                  aria-hidden="true"
-                />
-              ))}
+            <div className={styles.carouselNav} aria-label="Position dans le carrousel">
+              <button
+                type="button"
+                className={styles.carouselArrow}
+                onClick={goPrev}
+                aria-label="Canal précédent"
+              >
+                <span aria-hidden="true">&lt;</span>
+              </button>
+
+              <div className={styles.carouselDots}>
+                {baseModules.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className={`${styles.carouselDot} ${i === activeDot ? styles.carouselDotActive : ""}`}
+                    onClick={() => {
+                      if (isAnimating.current) return;
+                      isAnimating.current = true;
+                      setCarouselTransition(true);
+                      setCarouselIndex(i + 1);
+                    }}
+                    aria-label={`Aller au canal ${i + 1}`}
+                  />
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className={styles.carouselArrow}
+                onClick={goNext}
+                aria-label="Canal suivant"
+              >
+                <span aria-hidden="true">&gt;</span>
+              </button>
             </div>
           )}
         </>

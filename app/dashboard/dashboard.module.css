@@ -974,11 +974,46 @@
 }
 
 
+.carouselNav{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  padding: 10px 0 2px;
+}
+
 .carouselDots{
   display: flex;
   justify-content: center;
   gap: 6px;
-  padding: 10px 0 2px;
+}
+
+.carouselArrow{
+  width:34px;
+  height:34px;
+  min-width:34px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.28);
+  background: linear-gradient(135deg, rgba(30, 190, 255, 0.28), rgba(154, 108, 255, 0.24));
+  color: #ffffff;
+  display:flex !important;
+  align-items:center;
+  justify-content:center;
+  font-size:18px;
+  line-height:1;
+  font-weight:900;
+  cursor:pointer;
+  box-shadow: 0 8px 18px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.18);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.carouselArrow span{
+  display:block;
+  transform: translateY(-1px);
+}
+
+.carouselArrow:active{
+  transform: scale(0.96);
 }
 
 .carouselDot{
@@ -987,6 +1022,9 @@
   border-radius: 999px;
   background: rgba(255,255,255,0.25);
   transition: background .15s ease, transform .15s ease;
+  border:none;
+  padding:0;
+  cursor:pointer;
 }
 
 .carouselDotActive{
