@@ -62,3 +62,37 @@ svg {
     max-width: 100%;
   }
 }
+
+
+/* Pull-to-refresh global mobile/iPhone */
+.globalPullRefreshIndicator{
+  position: fixed;
+  top: -54px;
+  left: 50%;
+  z-index: 2147483000;
+  pointer-events: none;
+  opacity: 0;
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(12, 18, 42, 0.86);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: opacity 140ms ease, transform 140ms ease;
+  white-space: nowrap;
+}
+
+.globalPullRefreshIndicatorVisible{
+  opacity: 1;
+}
+
+@media (min-width: 769px){
+  .globalPullRefreshIndicator{
+    display: none;
+  }
+}

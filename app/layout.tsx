@@ -4,6 +4,7 @@ import "./globals.css";
 import OrientationGuard from "./OrientationGuard";
 import CookieConsentBanner from "./_components/CookieConsentBanner";
 import InrcyDialogProvider from "./_components/InrcyDialogProvider";
+import PullToRefresh from "./_components/PullToRefresh";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,6 +49,7 @@ export default function RootLayout({
         <OrientationGuard />
         <CookieConsentBanner />
         <InrcyDialogProvider />
+        <PullToRefresh />
         {children}
       </body>
     </html>

@@ -116,7 +116,6 @@ export default function DashboardClient() {
   const latestTriggerChannelsRefreshRef = useRef<((channelsInput: DashboardChannelKey[]) => Promise<void>) | null>(null);
   const initialGeneratorRefreshDoneRef = useRef(false);
   const lastAutoDailyRefreshAtRef = useRef(0);
-
   const [kpisLoading, setKpisLoading] = useState(false);
   const [dailyBootReady, setDailyBootReady] = useState(false);
   const [kpis, setKpis] = useState<null | {
