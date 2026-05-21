@@ -223,7 +223,7 @@ export default function PropulserPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <HelpButton onClick={() => setHelpOpen(true)} title="Aide Propulser" />
                 <ResponsiveActionButton desktopLabel="Fidéliser" mobileIcon="F" href="/dashboard/fideliser" ariaLabel="Aller vers Fidéliser" title="Fidéliser" className={b.headerBtnFideliser} />
-                <ResponsiveActionButton desktopLabel="iNr'Send" mobileIcon="✉️" href="/dashboard/mails" ariaLabel="Aller vers iNr'Send" title="Ouvrir iNr'Send" className={b.headerBtnInrSend} />
+                <ResponsiveActionButton desktopLabel="iNr'Send" mobileIcon="✉️" href="/dashboard/mails?folder=propulsions" ariaLabel="Aller vers iNr'Send / Propulsions" title="Ouvrir iNr'Send" className={b.headerBtnInrSend} />
                 <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" />
               </div>
             </div>
