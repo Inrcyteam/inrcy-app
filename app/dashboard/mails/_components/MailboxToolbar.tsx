@@ -160,12 +160,12 @@ export default function MailboxToolbar(props: Props) {
         )}
 
         <button
-          className={`${styles.toolbarBtn} ${boxView === "drafts" ? styles.toolbarBtnActive : ""}`}
+          className={`${styles.toolbarBtn} ${styles.draftsToggleBtn} ${boxView === "drafts" ? styles.toolbarBtnActive : ""}`}
           onClick={() => setBoxView((v: BoxView) => (v === "drafts" ? "sent" : "drafts"))}
           type="button"
           title={draftCount > 0 ? `${draftCount} brouillon${draftCount > 1 ? "s" : ""}` : "Brouillons"}
         >
-          Brouillons
+          <span className={styles.draftsToggleLabel}>Brouillons</span>
           {draftCount > 0 ? <span className={styles.badgeCount}>{draftCount}</span> : null}
         </button>
         <button
