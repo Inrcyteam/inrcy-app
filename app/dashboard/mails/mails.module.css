@@ -4330,3 +4330,40 @@
 .channelStatusSeparator {
   display: none !important;
 }
+
+/* --- Correction UX Brouillons actif --- */
+.toolbarBtnActive{
+  border-color: rgba(56, 189, 248, 0.62);
+  background: linear-gradient(135deg, rgba(56,189,248,0.34), rgba(167,139,250,0.30));
+  color: rgba(255,255,255,0.98);
+  box-shadow: 0 14px 30px rgba(0,0,0,0.24), 0 0 0 1px rgba(255,255,255,0.07) inset, 0 0 22px rgba(56,189,248,0.16);
+}
+
+.toolbarBtnActive:hover{
+  background: linear-gradient(135deg, rgba(56,189,248,0.42), rgba(167,139,250,0.36));
+  border-color: rgba(125, 211, 252, 0.72);
+}
+
+.toolbarBtn,
+.toolbarBtnActive{
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.toolbarBtn .badgeCount{
+  flex: 0 0 auto;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+@media (max-width: 820px){
+  .toolbarBtnActive{
+    min-width: max-content;
+  }
+
+  .toolbarBtn .badgeCount{
+    padding: 5px 9px;
+    min-width: 30px;
+    text-align: center;
+  }
+}

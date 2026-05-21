@@ -107,8 +107,9 @@ function getRowTitle(item: OutboxItem, folder: Folder) {
   if (isGroupedActionFolder(folder)) {
     const actionLabel = workflowActionLabelForItem(item);
     let cleaned = stripWorkflowPrefix(item.title || item.subject || item.subTitle || "");
-    if (isWorkflowLabel(cleaned, actionLabel)) cleaned = stripWorkflowPrefix(item.subject || item.subTitle || item.preview || "");
-    return cleaned || item.subject || item.subTitle || item.preview || "(sans objet)";
+    if (isWorkflowLabel(cleaned, actionLabel)) cleaned = stripWorkflowPrefix(item.subject || item.subTitle || "");
+    // Ne pas basculer sur item.preview : c'est souvent le corps du message.
+    return cleaned || item.subject || item.subTitle || "(sans objet)";
   }
   return item.title || item.subject || "(sans objet)";
 }
@@ -123,16 +124,18 @@ function getRowMetaText(opts: { item: OutboxItem; folder: Folder; accountLabel: 
 
   if (isGroupedActionFolder(folder)) {
     const actionLabel = workflowActionLabelForItem(item);
-    const target = stripWorkflowPrefix(String(item.target || midLabel || item.preview || ""));
+    // Important : ne jamais utiliser item.preview ici, car preview = extrait du corps du message.
+    // Les colonnes "Cible" / "Destinataire" doivent rester vides ou explicites si aucune cible n'existe.
+    const target = stripWorkflowPrefix(String(item.target || midLabel || ""));
     return target && !isWorkflowLabel(target, actionLabel) ? target : "Cible non renseignée";
   }
 
   if (item.source === "mail_campaigns") {
-    return String(item.target || item.preview || "Destinataire non renseigné").trim();
+    return String(item.target || "").trim();
   }
 
   if (folder === "mails") {
-    return String(item.target || item.preview || "Destinataire non renseigné").trim();
+    return String(item.target || "").trim();
   }
 
   return [accountLabel || item.provider || "Mail", item.target || midLabel].filter(Boolean).join(" · ");
