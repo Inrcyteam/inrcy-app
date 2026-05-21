@@ -46,6 +46,7 @@ const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect :
 const FORCED_SERVER_CACHE_CHECK_DEDUP_MS = 30_000;
 const AUTO_DAILY_REFRESH_DEDUP_MS = 5 * 60_000;
 const GENERATOR_POWER_CACHE_KEY = "inrcy_generator_power_percent_v1";
+const GENERATOR_ACTIVE_CACHE_KEY = "inrcy_generator_active_v1";
 
 function readCachedGeneratorPowerPercent(): number | null {
   try {
@@ -54,6 +55,17 @@ function readCachedGeneratorPowerPercent(): number | null {
     const value = Number(raw);
     if (!Number.isFinite(value)) return null;
     return Math.max(0, Math.min(100, Math.round(value)));
+  } catch {
+    return null;
+  }
+}
+
+function readCachedGeneratorIsActive(): boolean | null {
+  try {
+    const raw = readUiCacheValue(GENERATOR_ACTIVE_CACHE_KEY);
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    return null;
   } catch {
     return null;
   }
@@ -69,6 +81,7 @@ export default function DashboardClient() {
   const [dashboardBoosterModal, setDashboardBoosterModal] = useState<null | "publish" | "stats">(null);
   const [siteConnectionsReady, setSiteConnectionsReady] = useState(false);
   const [displayedGeneratorPower, setDisplayedGeneratorPower] = useState<number | null>(() => readCachedGeneratorPowerPercent());
+  const [displayedGeneratorIsActive, setDisplayedGeneratorIsActive] = useState<boolean | null>(() => readCachedGeneratorIsActive());
   const router = useRouter();
   const searchParams = useSearchParams();
   const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
@@ -2125,7 +2138,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   const leadsToday = typeof kpis?.leads?.today === "number" ? kpis.leads.today : null;
   const leadsWeek = typeof kpis?.leads?.week === "number" ? kpis.leads.week : null;
   const leadsMonth = typeof kpis?.leads?.month === "number" ? kpis.leads.month : null;
-  const generatorIsActive = Boolean(
+  const computedGeneratorIsActive = Boolean(
     hasSiteInrcyUrl ||
     hasSiteWebUrl ||
     gmbConnected ||
@@ -2133,6 +2146,19 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     instagramConnected ||
     linkedinConnected
   );
+  const generatorIsActive = !siteConnectionsReady && displayedGeneratorIsActive !== null
+    ? displayedGeneratorIsActive
+    : computedGeneratorIsActive;
+
+  useEffect(() => {
+    if (!siteConnectionsReady) return;
+    setDisplayedGeneratorIsActive(computedGeneratorIsActive);
+    try {
+      writeUiCacheValue(GENERATOR_ACTIVE_CACHE_KEY, String(computedGeneratorIsActive));
+    } catch {
+      // ignore browser storage failures
+    }
+  }, [computedGeneratorIsActive, siteConnectionsReady]);
 
   const estimatedValue = typeof kpis?.estimatedValue === "number" ? kpis.estimatedValue : null;
 
